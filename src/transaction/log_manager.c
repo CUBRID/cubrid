@@ -11303,7 +11303,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
 	    mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = mvcc_undoredo->undoredo.data.rcvindex;
-	    undo_length = mvcc_undoredo->undoredo.ulength;
 
 	    if (rcvindex == RVHF_MVCC_DELETE_MODIFY_HOME || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	      {
@@ -11327,7 +11326,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
 	    undoredo = (LOG_REC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undoredo->data.rcvindex;
-	    undo_length = undoredo->ulength;
 
 	    if (rcvindex == RVHF_DELETE || rcvindex == RVHF_UPDATE)
 	      {
@@ -11359,7 +11357,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), &process_lsa, log_page_p);
 	    undo = (LOG_REC_UNDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undo->data.rcvindex;
-	    undo_length = undo->length;
 
 	    if (rcvindex == RVOVF_PAGE_UPDATE)
 	      {
