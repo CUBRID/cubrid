@@ -11216,7 +11216,6 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
  * log_page_p (in/out)        : fetch the next log page if needed
  * preserved  (in/out)        : preserve existing log page if needed
  */
-
 static int
 cdc_log_read_advance_and_preserve_if_needed (THREAD_ENTRY * thread_p, size_t size, LOG_LSA * lsa, LOG_PAGE * log_page_p,
 					     LOG_PAGE * preserved)
