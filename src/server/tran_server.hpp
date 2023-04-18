@@ -107,6 +107,7 @@ class tran_server
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
 	const std::string get_channel_id () const;
+	bool is_disconnecting () const;
 
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
@@ -126,6 +127,7 @@ class tran_server
 
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
+	std::atomic<bool> m_is_disconnecting;
     };
 
   protected:
@@ -143,6 +145,7 @@ class tran_server
     std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
     std::shared_mutex m_page_server_conn_vec_mtx;
+    std::condition_variable_any m_main_conn_cv;
 
   private:
     int init_page_server_hosts (const char *db_name);
