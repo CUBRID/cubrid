@@ -98,6 +98,10 @@ namespace cublog
 
       log_lsa m_lowest_unapplied_lsa;
       mutable std::mutex m_lowest_unapplied_lsa_mutex;
+
+#if !defined(NDEBUG)
+      vpid_lsa_consistency_check m_recovery_redo_consistency_check;
+#endif
   };
 }
 

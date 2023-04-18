@@ -72,7 +72,11 @@ namespace cublog
     , m_replicate_mvcc { is_passive_transaction_server () }
     , m_redo_lsa { start_redo_lsa }
     , m_replication_active { true }
-    , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE }
+    , m_redo_context { NULL_LSA, page_fetch_mode, log_reader::fetch_mode::FORCE
+#if !defined(NDEBUG)
+		       , nullptr
+#endif
+		     }
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_most_recent_trantable_snapshot_lsa { NULL_LSA }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }

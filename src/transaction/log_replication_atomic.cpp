@@ -31,7 +31,9 @@ namespace cublog
     , m_processed_lsa { prev_redo_lsa }
     , m_lowest_unapplied_lsa { start_redo_lsa }
   {
-
+#if !defined(NDEBUG)
+    m_redo_context.m_vpid_lsa_consistency_checker_ptr = &m_recovery_redo_consistency_check;
+#endif
   }
 
   atomic_replicator::~atomic_replicator ()
@@ -41,6 +43,9 @@ namespace cublog
      * and, thus, does not need to be left in consistent state; thus, no check as to the consistent
      * termination state for atomic replication is needed
      */
+#if !defined(NDEBUG)
+    m_recovery_redo_consistency_check.cleanup ();
+#endif
   }
 
   void

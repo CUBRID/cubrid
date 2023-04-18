@@ -512,7 +512,11 @@ fake_system_parameters_initialize_type::fake_system_parameters_initialize_type (
 }
 
 test_spec_type::test_spec_type ()
-  : m_log_redo_context { NULL_LSA, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, log_reader::fetch_mode::FORCE }
+  : m_log_redo_context { NULL_LSA, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, log_reader::fetch_mode::FORCE
+#if !defined(NDEBUG)
+			 , nullptr
+#endif
+		       }
 {
   m_thread_p = new THREAD_ENTRY;
 
@@ -918,23 +922,6 @@ logpb_fetch_page (THREAD_ENTRY * /*thread_p*/, const LOG_LSA * /*req_lsa*/, LOG_
   return NO_ERROR;
 }
 
-log_rv_redo_context::log_rv_redo_context (const log_lsa &end_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
-    log_reader::fetch_mode reader_fetch_page_mode)
-  : m_end_redo_lsa { end_redo_lsa }
-  , m_page_fetch_mode { page_fetch_mode }
-  , m_reader_fetch_page_mode { reader_fetch_page_mode }
-{
-}
-
-log_rv_redo_context::log_rv_redo_context (const log_rv_redo_context &that)
-  : log_rv_redo_context { that.m_end_redo_lsa, that.m_page_fetch_mode, that.m_reader_fetch_page_mode }
-{
-}
-
-log_rv_redo_context::~log_rv_redo_context ()
-{
-}
-
 void
 er_set (int severity, const char */*file_name*/, const int /*line_no*/, int err_id, int /*num_args*/, ...)
 {
@@ -1109,4 +1096,17 @@ log_rv_check_redo_is_needed (const PAGE_PTR & /*pgptr*/, const LOG_LSA & /*rcv_l
 {
   assert_release (false);
   return false;
+}
+
+bool
+log_zip_realloc_if_needed (LOG_ZIP &/*log_zip*/, LOG_ZIP_SIZE_T /*new_size*/)
+{
+  // linked and dummy called by unit test
+  return false;
+}
+
+void
+log_zip_free_data (LOG_ZIP &/*log_zip*/)
+{
+  // linked and dummy called by unit test
 }

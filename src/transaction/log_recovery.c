@@ -3449,7 +3449,14 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
 
-  log_rv_redo_context redo_context (context.get_end_redo_lsa (), RECOVERY_PAGE, log_reader::fetch_mode::NORMAL);
+#if !defined(NDEBUG)
+  vpid_lsa_consistency_check recovery_redo_consistency_check;
+#endif
+  log_rv_redo_context redo_context (context.get_end_redo_lsa (), RECOVERY_PAGE, log_reader::fetch_mode::NORMAL
+#if !defined(NDEBUG)
+				    , &recovery_redo_consistency_check
+#endif
+    );
 
   volatile TRANID tran_id;
   volatile LOG_RECTYPE log_rtype;
@@ -4130,7 +4137,7 @@ exit:
   LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
 
 #if !defined(NDEBUG)
-  log_Gl_recovery_redo_consistency_check.cleanup ();
+  recovery_redo_consistency_check.cleanup ();
 #endif
 
   rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_FINALIZE);
