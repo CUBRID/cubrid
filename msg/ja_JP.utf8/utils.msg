@@ -481,7 +481,7 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    インスタンスの予測数; デフォルト: 5000\n\
   -v, --verbose                  多様な進行情報を出力; デフォルト: 出力しない\n\
-  -c, --periodic-commit=COUNT    周期的なコミットに関するカウント; デフォルト: ロード中にコミットしない\n\
+  -c, --periodic-commit=COUNT    周期的なコミットに関するカウント; デフォルト: 10240\n\
       --no-oid                   OIDを未使用\n\
       --no-statistics            ロードの後、スタティスティックス情報を更新しない。\n\
   -s, --schema-file=FILE[:LINE]  ファイル[:ライン]情報でスキーマ生成\n\

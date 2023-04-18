@@ -483,7 +483,7 @@ options valids:\n\
   -l, --load-only                    load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NOMBRE        estimation du NOMBRE des instances; par défaut: 5000\n\
   -v, --verbose                      activer les messages verbeux d'état; par défaut: désactivé\n\
-  -c, --periodic-commit=COMPTE       COMPTE d'insertion pour la validation périodique; par défaut: aucune validation pendant le chargement\n\
+  -c, --periodic-commit=COMPTE       COMPTE d'insertion pour la validation périodique; 10240\n\
       --no-oid                       utilise pas l'OID\n\
       --no-statistics                ne met pas à jour les statistiques pendant le chargement\n\
   -s, --schema-file=FICHIER[:LIGNE]  crée le schéma de la LIGNE en utilisant le FICHIER\n\
