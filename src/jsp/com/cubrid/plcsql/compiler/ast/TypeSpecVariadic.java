@@ -63,9 +63,13 @@ public class TypeSpecVariadic extends TypeSpec {
         return elem.hashCode() + 31;
     }
 
+    @Override
+    public String toString() {
+        return elem + "[]";
+    }
+
     public TypeSpecVariadic(TypeSpecSimple elem) {
-        super("VariadicOf" + elem.internalName,
-            null, null, -1);  // javaCode null: this value cannot be written to Java code
+        super(null, null, null, -1);
         this.elem = elem;
     }
 }

@@ -155,14 +155,14 @@ public class SymbolStack {
     }
 
     public static DeclFunc
-    getOperator(List<Coerce> outCoercions, String name, int lineNoOfCall, TypeSpec... argTypes) {
-        return getFuncOverload(outCoercions, operators, name, lineNoOfCall, argTypes);
+    getOperator(List<Coerce> outCoercions, String name, TypeSpec... argTypes) {
+        return getFuncOverload(outCoercions, operators, name, argTypes);
     }
 
     /*
     public static DeclFunc
-    getCubridFunc(List<Coerce> outCoercions, String name, int lineNoOfCall, TypeSpec... argTypes) {
-        return getFuncOverload(outCoercions, cubridFuncs, name, lineNoOfCall, argTypes);
+    getCubridFunc(List<Coerce> outCoercions, String name, TypeSpec... argTypes) {
+        return getFuncOverload(outCoercions, cubridFuncs, name, argTypes);
     }
      */
 
@@ -367,13 +367,13 @@ public class SymbolStack {
      */
 
     private static DeclFunc getFuncOverload(List<Coerce> outCoercions,
-            Map<String, FuncOverloads> map, String name, int lineNoOfCall, TypeSpec... argTypes) {
+            Map<String, FuncOverloads> map, String name, TypeSpec... argTypes) {
 
         FuncOverloads overloads = map.get(name);
         if (overloads == null) {
             return null;        // TODO: throw?
         } else {
-            return overloads.get(outCoercions, Arrays.asList(argTypes), lineNoOfCall);
+            return overloads.get(outCoercions, Arrays.asList(argTypes));
         }
     }
 
@@ -458,7 +458,7 @@ public class SymbolStack {
             assert old == null;
         }
 
-        DeclFunc get(List<Coerce> outCoercions, List<TypeSpec> argTypes, int lineNoOfCall) {
+        DeclFunc get(List<Coerce> outCoercions, List<TypeSpec> argTypes) {
 
             List<TypeSpec> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
             if (paramTypes == null) {

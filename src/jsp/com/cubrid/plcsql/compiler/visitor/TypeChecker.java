@@ -222,8 +222,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec upperType = visit(node.upperBound);
 
         List<Coerce> outCoercions = new ArrayList<>();
-        DeclFunc op = symbolStack.getOperator(outCoercions, "opBetween",
-            node.lineNo(), targetType, lowerType, upperType);
+        DeclFunc op = symbolStack.getOperator(outCoercions, "opBetween", targetType, lowerType, upperType);
         if (op == null) {
             throw new SemanticError(node.lineNo(),    // s208, s209
                 "lower bound or upper bound does not have a comparable type");
@@ -244,8 +243,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         // in the following line, s210 (no match)
         List<Coerce> outCoercions = new ArrayList<>();
-        DeclFunc binOp = symbolStack.getOperator(outCoercions, "op" + node.opStr,
-            node.lineNo(), leftType, rightType);
+        DeclFunc binOp = symbolStack.getOperator(outCoercions, "op" + node.opStr, leftType, rightType);
         if (binOp == null) {
             throw new SemanticError(node.lineNo(),  // s210
                 "operands do not have compatible types");
@@ -273,14 +271,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec commonType = null;
         for (CaseExpr ce : node.whenParts.nodes) {
             TypeSpec ty = visit(ce);
+            commonType = getCommonType(commonType, ty);
             if (commonType == null) {
-                commonType = ty;
-            } else {
-                commonType = getCommonType(commonType, ty);
-                if (commonType == null) {
-                    throw new SemanticError(ce.expr.lineNo(),   // s227
-                    "expression in this case does not have a compatible type");
-                }
+                throw new SemanticError(ce.expr.lineNo(),   // s227
+                "expression in this case does not have a compatible type " + ty);
             }
             caseExprTypes.add(ty);
         }
@@ -289,14 +283,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             commonType = getCommonType(commonType, ty);
             if (commonType == null) {
                 throw new SemanticError(node.elsePart.lineNo(),   // s228
-                "expression in the else part does not have a compatible type");
+                "expression in the else part does not have a compatible type " + ty);
             }
             caseExprTypes.add(ty);
         }
 
         List<Coerce> outCoercions = new ArrayList<>();
-        DeclFunc op = symbolStack.getOperator(outCoercions, "opIn",
-            node.lineNo(), caseValTypes.toArray(TS_ARR));
+        DeclFunc op = symbolStack.getOperator(outCoercions, "opIn", caseValTypes.toArray(TYPESPEC_ARR));
         if (op == null) {
             throw new SemanticError(node.lineNo(),      // s226
                 "one of the values does not have a comparable type");
@@ -338,14 +331,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec commonType = null;
         for (CondExpr ce : node.condParts.nodes) {
             TypeSpec ty = visitCondExpr(ce);
+            commonType = getCommonType(commonType, ty);
             if (commonType == null) {
-                commonType = ty;
-            } else {
-                commonType = getCommonType(commonType, ty);
-                if (commonType == null) {
-                    throw new SemanticError(ce.expr.lineNo(),   // s229
-                    "expression in this case does not have a compatible type");
-                }
+                throw new SemanticError(ce.expr.lineNo(),   // s229
+                "expression in this case does not have a compatible type " + ty);
             }
             condExprTypes.add(ty);
         }
@@ -354,7 +343,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             commonType = getCommonType(commonType, ty);
             if (commonType == null) {
                 throw new SemanticError(node.elsePart.lineNo(),   // s230
-                "expression in the else part does not have a compatible type");
+                "expression in the else part does not have a compatible type " + ty);
             }
             condExprTypes.add(ty);
         }
@@ -494,8 +483,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         int len = args.size();
 
         List<Coerce> outCoercions = new ArrayList<>();
-        DeclFunc op = symbolStack.getOperator(outCoercions, "opIn",
-            node.lineNo(), argTypes.toArray(TS_ARR));
+        DeclFunc op = symbolStack.getOperator(outCoercions, "opIn", argTypes.toArray(TYPESPEC_ARR));
         if (op == null) {
             throw new SemanticError(node.lineNo(),      // s212
                 "one of the values does not have a comparable type");
@@ -597,8 +585,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec operandType = visit(node.operand);
 
         List<Coerce> outCoercions = new ArrayList<>();
-        DeclFunc unaryOp = symbolStack.getOperator(outCoercions, "op" + node.opStr,
-            node.lineNo(), operandType);
+        DeclFunc unaryOp = symbolStack.getOperator(outCoercions, "op" + node.opStr, operandType);
         if (unaryOp == null) {
             throw new SemanticError(node.lineNo(),  // s215
                 "argument does not have a compatible type");
@@ -669,8 +656,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         }
 
         List<Coerce> outCoercions = new ArrayList<>();
-        DeclFunc op = symbolStack.getOperator(outCoercions, "opIn",
-            node.lineNo(), caseValTypes.toArray(TS_ARR));
+        DeclFunc op = symbolStack.getOperator(outCoercions, "opIn", caseValTypes.toArray(TYPESPEC_ARR));
         if (op == null) {
             throw new SemanticError(node.lineNo(),      // s201
                 "one of the values does not have a comparable type");
@@ -999,15 +985,20 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     // Private
     // ------------------------------------------------------------------
 
-    private static final TypeSpec[] TS_ARR = new TypeSpec[0];
+    private static final TypeSpec[] TYPESPEC_ARR = new TypeSpec[0];
 
     private SymbolStack symbolStack;
 
     private TypeSpec caseSelectorType;
     private List<TypeSpec> caseValTypes;
 
-    private TypeSpec getCommonType(TypeSpec l, TypeSpec r) {
-        return CoercionScheme.getCommonType(l, r);
+    private TypeSpec getCommonType(TypeSpec former, TypeSpec delta) {
+        if (former == null) {
+            return delta;
+        } else {
+            return CoercionScheme.getCommonType(former, delta);
+        }
+
     }
 
     private void visitDeclParam(DeclParam node) {

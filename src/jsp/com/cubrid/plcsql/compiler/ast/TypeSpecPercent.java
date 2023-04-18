@@ -45,7 +45,7 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(String table, String column) {
-        super("Percent", null, null, -1);  // javaCode null: this value cannot be written to Java code
+        super(null, null, null, -1);
         this.table = table;
         this.column = column;
     }
@@ -67,6 +67,16 @@ public class TypeSpecPercent extends TypeSpec {
             throw new RuntimeException("unreachable");
         } else {
             return resolvedType.toJavaCode();
+        }
+    }
+
+    @Override
+    public String toString() {
+        if (resolvedType == null) {
+            assert false;
+            throw new RuntimeException("unreachable");
+        } else {
+            return resolvedType.toString();
         }
     }
 }
