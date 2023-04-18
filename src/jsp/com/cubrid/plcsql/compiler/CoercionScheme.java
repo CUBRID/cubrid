@@ -39,24 +39,69 @@ public enum CoercionScheme {
 
     CompOp {
         public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
-            assert argTypes.size() >= 2;
+            assert argTypes.size() == 2;
 
-            int len = argTypes.size();
-            TypeSpec commonTy = argTypes.get(0);
-            for (int i = 1; i < len; i++) {
-                TypeSpec nextTy = argTypes.get(i);
-                commonTy = getCommonType(commonTy, nextTy, compOpCommonType);
-                if (commonTy == null) {
-                    return null;    // not applicable to this argument types
-                }
+            TypeSpec commonTy = getCommonTypeInner(argTypes.get(0), argTypes.get(1), compOpCommonType);
+            if (commonTy == null) {
+                return null;    // not applicable to this argument types
+            }
+
+            if (commonTy.equals(TypeSpecSimple.NULL)) {
+                commonTy = TypeSpecSimple.OBJECT;
             }
 
             List<TypeSpec> ret = new ArrayList<>();
-            for (int i = 0; i < len; i++){
+            for (int i = 0; i < 2; i++){
                 Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
                 assert c != null;
                 outCoercions.add(c);
                 ret.add(commonTy);
+            }
+
+            return ret;
+        }
+    },
+
+    NAryCompOp {
+        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+
+            // between, in
+
+            int len = argTypes.size();
+
+            TypeSpec wholeCommonTy = null;
+            TypeSpec headTy = argTypes.get(0);
+            for (int i = 1; i < len; i++) {
+                TypeSpec commonTy = getCommonTypeInner(headTy, argTypes.get(i), compOpCommonType);
+                if (commonTy == null) {
+                    return null;
+                }
+
+                if (wholeCommonTy == null) {
+                    wholeCommonTy = commonTy;
+                } else {
+                    if (wholeCommonTy.equals(commonTy)) {
+                        // just keep wholeCommonTy (do nothing)
+                    } else {
+                        wholeCommonTy = TypeSpecSimple.OBJECT;
+                    }
+                }
+            }
+
+            if (wholeCommonTy.equals(TypeSpecSimple.OBJECT)) {
+                return null;    // TODO: implement runtime typechecking and conversion and remove these three lines
+            }
+
+            if (wholeCommonTy.equals(TypeSpecSimple.NULL)) {
+                wholeCommonTy = TypeSpecSimple.OBJECT;
+            }
+
+            List<TypeSpec> ret = new ArrayList<>();
+            for (int i = 0; i < len; i++){
+                Coerce c = Coerce.getCoerce(argTypes.get(i), wholeCommonTy);
+                assert c != null;
+                outCoercions.add(c);
+                ret.add(wholeCommonTy);
             }
 
             return ret;
@@ -73,26 +118,32 @@ public enum CoercionScheme {
                 TypeSpec lType = argTypes.get(0);
                 TypeSpec rType = argTypes.get(1);
 
-                int lTypeIdx = lType.simpleTypeIdx;
-                assert lTypeIdx >= 0 && lTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
-                int rTypeIdx = rType.simpleTypeIdx;
-                assert rTypeIdx >= 0 && rTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
-
                 TypeSpec commonTy;
-                int row, col;
-                if (lTypeIdx >= rTypeIdx) {
-                    row = lTypeIdx;
-                    col = rTypeIdx;
+                if (opName.equals("opSubtract")) {
+                    commonTy = getCommonTypeInner(lType, rType, arithOpCommonType, subtractCommonTypeExt);
                 } else {
-                    row = rTypeIdx;
-                    col = lTypeIdx;
-                }
-                commonTy = arithOpCommonType[row][col];
-                if (commonTy == null && opName.equals("opSubtract")) {
-                    commonTy = subtractCommonTypeExt[row][col];
+                    commonTy = getCommonTypeInner(lType, rType, arithOpCommonType);
                 }
 
-                if (commonTy == null) {
+                if (commonTy != null) {
+
+                    if (commonTy.equals(TypeSpecSimple.NULL)) {
+                        commonTy = TypeSpecSimple.OBJECT;
+                    }
+
+                    List<TypeSpec> ret = new ArrayList<>();
+                    for (int i = 0; i < 2; i++){
+                        Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
+                        assert c != null;
+                        outCoercions.add(c);
+                        ret.add(commonTy);
+                    }
+
+                    return ret;
+
+                } else {
+
+                    // further rules
 
                     if (lType.isDateTime()) {
                         if ((opName.equals("opAdd") && (rType.isString() || rType.isNumber())) ||
@@ -133,44 +184,30 @@ public enum CoercionScheme {
                     }
 
                     return null;
-                } else {
-
-                    Coerce c;
-                    c = Coerce.getCoerce(lType, commonTy);
-                    assert c != null;
-                    outCoercions.add(c);
-                    c = Coerce.getCoerce(rType, commonTy);
-                    assert c != null;
-                    outCoercions.add(c);
-
-                    List<TypeSpec> ret = new ArrayList<>();
-                    ret.add(commonTy);
-                    ret.add(commonTy);
-
-                    return ret;
                 }
 
             } else if (argTypes.size() == 1) {
 
                 // unary -
 
-                TypeSpec lType = argTypes.get(0);
-                int lTypeIdx = lType.simpleTypeIdx;
-                assert lTypeIdx >= 0 && lTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
-
-                TypeSpec targetTy = arithOpCommonType[lTypeIdx][lTypeIdx];
+                TypeSpec argType = argTypes.get(0);
+                TypeSpec targetTy = getCommonTypeInner(argType, argType, arithOpCommonType);
                 if (targetTy == null) {
                     return null;
-                } else {
-                    Coerce c = Coerce.getCoerce(lType, targetTy);
-                    assert c != null;
-                    outCoercions.add(c);
-
-                    List<TypeSpec> ret = new ArrayList<>();
-                    ret.add(targetTy);
-
-                    return ret;
                 }
+
+                if (targetTy.equals(TypeSpecSimple.NULL)) {
+                    targetTy = TypeSpecSimple.OBJECT;
+                }
+
+                Coerce c = Coerce.getCoerce(argType, targetTy);
+                assert c != null;
+                outCoercions.add(c);
+
+                List<TypeSpec> ret = new ArrayList<>();
+                ret.add(targetTy);
+
+                return ret;
             } else {
                 assert false: "unreachable";
                 throw new RuntimeException("unreachable");
@@ -185,64 +222,47 @@ public enum CoercionScheme {
 
                 // mod(%), div
 
-                TypeSpec lType = argTypes.get(0);
-                TypeSpec rType = argTypes.get(1);
-
-                int lTypeIdx = lType.simpleTypeIdx;
-                assert lTypeIdx >= 0 && lTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
-                int rTypeIdx = rType.simpleTypeIdx;
-                assert rTypeIdx >= 0 && rTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
-
-                TypeSpec commonTy;
-                int row, col;
-                if (lTypeIdx >= rTypeIdx) {
-                    row = lTypeIdx;
-                    col = rTypeIdx;
-                } else {
-                    row = rTypeIdx;
-                    col = lTypeIdx;
-                }
-                commonTy = intArithOpCommonType[row][col];
+                TypeSpec commonTy = getCommonTypeInner(argTypes.get(0), argTypes.get(1), intArithOpCommonType);
                 if (commonTy == null) {
                     return null;
-                } else {
-
-                    Coerce c;
-                    c = Coerce.getCoerce(lType, commonTy);
-                    assert c != null;
-                    outCoercions.add(c);
-                    c = Coerce.getCoerce(rType, commonTy);
-                    assert c != null;
-                    outCoercions.add(c);
-
-                    List<TypeSpec> ret = new ArrayList<>();
-                    ret.add(commonTy);
-                    ret.add(commonTy);
-
-                    return ret;
                 }
+
+                if (commonTy.equals(TypeSpecSimple.NULL)) {
+                    commonTy = TypeSpecSimple.OBJECT;
+                }
+
+                List<TypeSpec> ret = new ArrayList<>();
+                for (int i = 0; i < 2; i++){
+                    Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
+                    assert c != null;
+                    outCoercions.add(c);
+                    ret.add(commonTy);
+                }
+
+                return ret;
 
             } else if (argTypes.size() == 1) {
 
                 // ~
 
-                TypeSpec lType = argTypes.get(0);
-                int lTypeIdx = lType.simpleTypeIdx;
-                assert lTypeIdx >= 0 && lTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
-
-                TypeSpec targetTy = intArithOpCommonType[lTypeIdx][lTypeIdx];
+                TypeSpec argType = argTypes.get(0);
+                TypeSpec targetTy = getCommonTypeInner(argType, argType, intArithOpCommonType);
                 if (targetTy == null) {
                     return null;
-                } else {
-                    Coerce c = Coerce.getCoerce(lType, targetTy);
-                    assert c != null;
-                    outCoercions.add(c);
-
-                    List<TypeSpec> ret = new ArrayList<>();
-                    ret.add(targetTy);
-
-                    return ret;
                 }
+
+                if (targetTy.equals(TypeSpecSimple.NULL)) {
+                    targetTy = TypeSpecSimple.OBJECT;
+                }
+
+                Coerce c = Coerce.getCoerce(argType, targetTy);
+                assert c != null;
+                outCoercions.add(c);
+
+                List<TypeSpec> ret = new ArrayList<>();
+                ret.add(targetTy);
+
+                return ret;
             } else {
                 assert false: "unreachable";
                 throw new RuntimeException("unreachable");
@@ -278,6 +298,10 @@ public enum CoercionScheme {
         }
     };
 
+    public static TypeSpec getCommonType(TypeSpec lType, TypeSpec rType) {
+        return getCommonTypeInner(lType, rType, compOpCommonType);
+    }
+
     public abstract List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName);
 
     // -----------------------------------------------------------------------
@@ -286,7 +310,7 @@ public enum CoercionScheme {
     static final TypeSpecSimple[][] compOpCommonType =
         new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
     static {
-        compOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
+        compOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NULL;
 
         compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
 
@@ -300,25 +324,25 @@ public enum CoercionScheme {
 
         compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.SHORT;
         compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.SHORT;
-        compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.SHORT;
 
         compOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.INT;
         compOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.INT;
-        compOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.INT;
         compOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.INT;
 
         compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.BIGINT;
         compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.BIGINT;
-        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.BIGINT;
         compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.BIGINT;
         compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.BIGINT;
 
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NUMERIC;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.NUMERIC;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_INT] = TypeSpecSimple.NUMERIC;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.NUMERIC;
@@ -326,21 +350,21 @@ public enum CoercionScheme {
 
         compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.FLOAT;
         compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.FLOAT;
-        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.FLOAT;
+        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.FLOAT;
+        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.FLOAT;
+        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.FLOAT;
 
         compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_INT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_INT] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_DOUBLE] = TypeSpecSimple.DOUBLE;
 
         compOpCommonType[TypeSpecSimple.IDX_DATE][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.DATE;
@@ -359,6 +383,7 @@ public enum CoercionScheme {
         compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.DATETIME;
         compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.DATETIME;
         compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DATETIME;
+        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATE] = TypeSpecSimple.DATETIME;
         compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATETIME] = TypeSpecSimple.DATETIME;
 
         compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.TIMESTAMP;
@@ -380,7 +405,7 @@ public enum CoercionScheme {
     static final TypeSpecSimple[][] subtractCommonTypeExt =
         new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
     static {
-        arithOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
+        arithOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NULL;
 
         arithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
 
@@ -454,7 +479,7 @@ public enum CoercionScheme {
     static final TypeSpecSimple[][] intArithOpCommonType =
         new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
     static {
-        intArithOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
+        intArithOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NULL;
 
         intArithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
 
@@ -523,7 +548,7 @@ public enum CoercionScheme {
         return ret;
     }
 
-    private static TypeSpec getCommonType(TypeSpec lType, TypeSpec rType, TypeSpec[][]... table) {
+    private static TypeSpec getCommonTypeInner(TypeSpec lType, TypeSpec rType, TypeSpec[][]... table) {
 
         int lTypeIdx = lType.simpleTypeIdx;
         assert lTypeIdx >= 0 && lTypeIdx < TypeSpecSimple.COUNT_OF_IDX;

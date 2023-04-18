@@ -368,9 +368,10 @@ public class SymbolStack {
 
     private static DeclFunc getFuncOverload(List<Coerce> outCoercions,
             Map<String, FuncOverloads> map, String name, int lineNoOfCall, TypeSpec... argTypes) {
+
         FuncOverloads overloads = map.get(name);
         if (overloads == null) {
-            return null;
+            return null;        // TODO: throw?
         } else {
             return overloads.get(outCoercions, Arrays.asList(argTypes), lineNoOfCall);
         }
@@ -461,8 +462,7 @@ public class SymbolStack {
 
             List<TypeSpec> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
             if (paramTypes == null) {
-                throw new SemanticError(lineNoOfCall,
-                    "argument types are not compatible in the call of function " + name);
+                return null;    // no match
             } else {
                 assert argTypes.size() == outCoercions.size();
                 DeclFunc declFunc = overloads.get(paramTypes);
