@@ -22460,6 +22460,38 @@ btree_rv_data_pack_btid_and_stats (const BTID * btid, long long nulls, long long
 }
 
 /*
+ * btree_rv_global_unique_stats_commit_dump - dump stored info about global unique stats
+ *
+ */
+void
+btree_rv_global_unique_stats_commit_dump (FILE * fp, int length, void *data)
+{
+  BTID btid;
+  log_unique_stats stats;
+
+  assert (length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
+
+  const char *data_ptr = (const char *) data;
+
+  OR_GET_BTID (data_ptr, &btid);
+  data_ptr += OR_BTID_ALIGNED_SIZE;
+
+  OR_GET_BIGINT (data_ptr, &stats.num_nulls);
+  data_ptr += OR_BIGINT_SIZE;
+
+  OR_GET_BIGINT (data_ptr, &stats.num_oids);
+  data_ptr += OR_BIGINT_SIZE;
+
+  OR_GET_BIGINT (data_ptr, &stats.num_keys);
+  data_ptr += OR_BIGINT_SIZE;
+
+  assert (CAST_BUFLEN (data_ptr - (const char *)data) == length);
+
+  fprintf (fp, "OID = page_id=%d|vol_id=%d|file_id=%d   NEW_STATS = %lld keys, %lld objects, %lld nulls:  %d\n",
+	   BTID_AS_ARGS (&btid), (long long) stats.num_keys, (long long) stats.num_oids, (long long) stats.num_nulls);
+}
+
+/*
  * btree_search_key_and_apply_functions () - B-tree internal function to traverse the tree in the direction given by
  * 					     a key and calling three types of function: one to fix/handle root page,
  * 					     one on the traversed nodes and one on the leaf node pointed by key.
