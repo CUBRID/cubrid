@@ -52,15 +52,16 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 
 public class ExecuteThread extends Thread {
 
@@ -315,28 +316,26 @@ public class ExecuteThread extends Thread {
                 Path javaFilePath =
                         ClassLoaderManager.getDynamicPath().resolve(info.className + ".java");
                 File file = javaFilePath.toFile();
-                FileOutputStream fos = new FileOutputStream(file, false);
-                fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
-                fos.close();
+                new FileWriter(file).append(info.translated).close();
+
+                JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+                if (compiler == null) {
+                    throw new IllegalStateException(
+                            "Cannot find the system Java compiler. Check that your class path includes tools.jar");
+                }
 
                 Path cubrid_env_root = Server.getRootPath();
-                String command =
-                        "javac "
-                                + javaFilePath.toString()
-                                + " -cp "
-                                + cubrid_env_root
-                                        .resolve("java")
-                                        .resolve("jspserver.jar")
-                                        .toString();
+                String javacOpts[] = {
+                    "-classpath", cubrid_env_root + "/java/jspserver.jar", file.getPath()
+                };
 
-                Process proc = Runtime.getRuntime().exec(command);
-                proc.getErrorStream().close();
-                proc.getInputStream().close();
-                proc.getOutputStream().close();
-                proc.waitFor();
-
-                if (proc.exitValue() != 0) {
-                    // TODO
+                if (compiler.run(null, null, null, javacOpts) != 0) {
+                    String command =
+                            "javac "
+                                    + javaFilePath
+                                    + " -cp "
+                                    + cubrid_env_root
+                                    + "/java/jspserver.jar";
                     throw new RuntimeException(command);
                 }
             }

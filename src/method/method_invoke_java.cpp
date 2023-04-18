@@ -491,6 +491,12 @@ namespace cubmethod
 
     cubmem::block blk = std::move (mcon_pack_data_block (METHOD_RESPONSE_SUCCESS, info));
     error = mcon_send_data_to_java (m_group->get_socket (), get_next_java_header (m_java_header), std::move (blk));
+    if (blk.is_valid ())
+      {
+	delete [] blk.ptr;
+	blk.ptr = NULL;
+	blk.dim = 0;
+      }
     return error;
   }
 
