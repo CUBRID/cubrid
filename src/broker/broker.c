@@ -873,7 +873,11 @@ receiver_thr_f (void *arg)
 	  memcpy ((char *) &session_id, cas_req_header + 6, 4);
 	  session_id = ntohl (session_id);
 
-	  if (shm_br->br_info[br_index].shard_flag == OFF)
+	  if (shm_br->br_info[br_index].shard_flag == ON)
+	    {
+	      status = FN_STATUS_BUSY;
+	    }
+	  else
 	    {
 	      for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 		{

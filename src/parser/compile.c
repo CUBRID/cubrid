@@ -862,6 +862,12 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       return node;
     }
 
+  /* for DBLink DML */
+  if (node->info.spec.remote_server_name)
+    {
+      return node;
+    }
+
   if (node->info.spec.partition != NULL)
     {
       /* add specified lock on specified partition */
