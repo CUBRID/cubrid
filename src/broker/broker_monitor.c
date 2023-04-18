@@ -40,13 +40,6 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <conio.h>
-#else
-#if defined(AIX)
-#define _BOOL
-#include <curses.h>
-#else
-#include <curses.h>
-#endif
 #endif
 
 #if defined(WINDOWS)
@@ -55,6 +48,9 @@
 #include <sys/types.h>
 #include <regex.h>
 #include <sys/time.h>
+#include <fcntl.h>
+#include <termio.h>
+#include <dlfcn.h>
 #endif
 
 #include "cubrid_getopt.h"
@@ -346,13 +342,52 @@ static const char *get_status_string (T_APPL_SERVER_INFO * as_info_p, char appl_
 static void get_cpu_usage_string (char *buf_p, float usage);
 
 
-#if defined(WINDOWS)
 static void move (int x, int y);
 static void refresh ();
 static void clear ();
 static void clrtobot ();
 static void clrtoeol ();
 static void endwin ();
+
+#if !defined (WINDOWS)
+#define TINFO_HIGH_VERSION      10
+#define TINFO_LOW_VERSION       5
+
+static int getch ();
+static void *initscr ();
+static void noecho ();
+static void timeout (int delay);
+static void addstr (const char *);
+static int tty_noblock (void);
+static int get_timeout (void);
+static int num_newlines (const char *);
+char *term = NULL;
+
+typedef char *(*tgoto_func_t) (const char *cap, int col, int row);
+typedef int (*tgetent_func_t) (char *bp, const char *name);
+typedef char *(*tgetstr_func_t) (char *id, char **area);
+typedef int (*tputs_func_t) (const char *str, int affcnt, int (*putc) (int));
+typedef int (*tgetnum_func_t) (char *id);
+
+tgoto_func_t tgoto;
+tgetent_func_t tgetent;
+tgetstr_func_t tgetstr;
+tputs_func_t tputs;
+tgetnum_func_t tgetnum;
+
+int Stdin_timer = 0;
+static int currentY = 0;
+static int tty_Lines = 0;
+static int tty_Cols = 0;
+static int num_Chars = 0;
+static char *cm = NULL;
+static char *cd = NULL;
+static char *ce = NULL;
+static char *cl = NULL;
+
+void *dl_handle = NULL;
+
+struct termios oterm;
 #endif
 
 static int metadata_monitor (double elapsed_time);
@@ -455,7 +490,7 @@ main (int argc, char **argv)
   char *br_vector;
 #if defined(WINDOWS)
 #else
-  WINDOW *win;
+  void *win;
 #endif
   time_t time_old, time_cur;
   double elapsed_time;
@@ -519,7 +554,17 @@ main (int argc, char **argv)
 	}
 //  FillConsoleOutputCharacter(h_console, ' ', scr_info.dwSize.X * scr_info.dwSize.Y, top_left_pos, &size);
 #else
-      win = initscr ();
+      if ((win = initscr ()) == NULL)
+	{
+	  if (dl_handle != NULL)
+	    {
+	      dlclose (dl_handle);
+	      dl_handle = NULL;
+	    }
+	  fprintf (stderr, "fail to initialize tinfo library\n");
+	  return 127;
+	}
+
       timeout (refresh_sec * 1000);
       noecho ();
 #endif
@@ -1942,6 +1987,308 @@ endwin ()
 {
   clear ();
   move (0, 0);
+}
+#else
+static void
+refresh ()
+{
+  fflush (stdout);
+}
+
+static void
+move (int x, int y)
+{
+  int lines = -1;
+  int cols = -1;
+
+  if (tgetent (NULL, term) == 1)
+    {
+      lines = tgetnum ("li");
+      cols = tgetnum ("co");
+    }
+
+  tty_Lines = lines < 0 ? tty_Lines : lines;
+  tty_Cols = cols < 0 ? tty_Cols : cols;
+
+  currentY = y;
+  tputs (tgoto (cm, x, y), 1, putchar);
+  fflush (stdout);
+}
+
+static void
+clrtobot ()
+{
+  tputs (cd, 1, putchar);
+  fflush (stdout);
+}
+
+static void
+clrtoeol ()
+{
+  tputs (ce, 1, putchar);
+  fflush (stdout);
+}
+
+static void
+endwin ()
+{
+  tcsetattr (0, TCSAFLUSH, &oterm);
+  clear ();
+  move (0, 0);
+
+  if (dl_handle != NULL)
+    {
+      dlclose (dl_handle);
+      dl_handle = NULL;
+    }
+}
+
+static void
+addstr (const char *str)
+{
+  /* line# starts at 0 */
+  if (str == NULL || currentY >= tty_Lines)
+    {
+      return;
+    }
+
+  currentY += num_newlines (str);
+
+  if (currentY >= tty_Lines)
+    {
+      return;
+    }
+
+  fprintf (stdout, "%s", str);
+  fflush (stdout);
+}
+
+static int
+getch ()
+{
+  fd_set readfds;
+  struct timeval tv, *tv_p = &tv;
+  int fd = fileno (stdin);
+  int timeout = get_timeout ();
+  int ret = -1;
+
+  if (timeout < 0)
+    {
+      tv_p = NULL;
+    }
+  else
+    {
+      tv.tv_sec = timeout / 1000;
+      tv.tv_usec = timeout % 1000;
+    }
+
+  FD_ZERO (&readfds);
+  FD_SET (fd, &readfds);
+
+  ret = select (fd + 1, &readfds, (fd_set *) 0, (fd_set *) 0, tv_p);
+
+  if (ret <= 0)
+    {
+      return -1;
+    }
+
+  return fgetc (stdin);
+}
+
+static void
+clear ()
+{
+  currentY = 0;
+  tputs (cl, 1, putchar);
+  fflush (stdout);
+}
+
+static int
+num_newlines (const char *str)
+{
+  int num_nl = 0;
+  int i = 0;
+
+  if (str == NULL)
+    {
+      return 0;
+    }
+
+
+  while (str[i])
+    {
+      if (str[i++] == '\n')
+	{
+	  num_nl++;
+	  num_Chars = 0;
+	}
+      else
+	{
+	  num_Chars++;
+	}
+
+      if (num_Chars == tty_Cols)
+	{
+	  num_nl++;
+	  num_Chars = 0;
+	}
+    }
+
+  return num_nl;
+}
+
+static int
+tty_noblock ()
+{
+  struct termios term;
+
+  if (tcgetattr (fileno (stdin), &term) < 0)
+    {
+      return -1;
+    }
+
+  oterm = term;
+
+  term.c_iflag &= ~(BRKINT | INPCK | ISTRIP | IXON);
+  term.c_cflag |= (CS8);
+  term.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+
+  term.c_cc[VMIN] = 0;
+  term.c_cc[VTIME] = 8;		/* after a byte or .8 seconds */
+
+  /* put terminal in raw mode after flushing */
+  if (tcsetattr (0, TCSAFLUSH, &term) < 0)
+    {
+      return -2;
+    }
+
+  return 0;
+}
+
+static int
+get_timeout ()
+{
+  return Stdin_timer;
+}
+
+static void
+timeout (int delay)
+{
+  Stdin_timer = delay < 0 ? 0 : delay;
+}
+
+static void
+noecho ()
+{
+}
+
+static void *
+initscr ()
+{
+  char tinfo_so[PATH_MAX];
+  int major_version;
+  int ret = -1;
+
+  for (major_version = TINFO_HIGH_VERSION; major_version >= TINFO_LOW_VERSION; major_version--)
+    {
+      sprintf (tinfo_so, "libtinfo.so.%d", major_version);
+      if ((dl_handle = dlopen (tinfo_so, RTLD_LAZY)) != NULL)
+	{
+	  break;
+	}
+    }
+
+  if (dl_handle == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot load tinfo library. Please install tinfo library.\n");
+      return NULL;
+    }
+
+  if ((tgoto = (tgoto_func_t) dlsym (dl_handle, "tgoto")) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'tgoto' function in %s.\n", tinfo_so);
+      return NULL;
+    }
+
+  if ((tgetent = (tgetent_func_t) dlsym (dl_handle, "tgetent")) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'tgetent' function in %s.\n", tinfo_so);
+      return NULL;
+    }
+
+  if ((tgetstr = (tgetstr_func_t) dlsym (dl_handle, "tgetstr")) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'tgetstr' function in %s.\n", tinfo_so);
+      return NULL;
+    }
+
+  if ((tputs = (tputs_func_t) dlsym (dl_handle, "tputs")) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'tputs' function in %s.\n", tinfo_so);
+      return NULL;
+    }
+
+  tgetnum = (tgetnum_func_t) dlsym (dl_handle, "tgetnum");
+
+  term = getenv ("TERM");
+  if (term == NULL)
+    {
+      term = "xterm";
+    }
+
+  if (tgetent (NULL, term) != 1)
+    {
+      fprintf (stderr, "ERROR: Cannot find TERM type.");
+      return NULL;
+    }
+
+  if ((cm = tgetstr ("cm", NULL)) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'cursor motion (cm)' capability for the terminal\n");
+      return NULL;
+    }
+
+  if ((cd = tgetstr ("cd", NULL)) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'clear to end of screen (cd)' capability for the terminal\n");
+      return NULL;
+    }
+
+  if ((ce = tgetstr ("ce", NULL)) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'Clear to end of line (ce)' capability for the terminal\n");
+      return NULL;
+    }
+
+  if ((cl = tgetstr ("cl", NULL)) == NULL)
+    {
+      fprintf (stderr, "ERROR: Cannot find 'Clear screen and cursor home (cl)' capability for the terminal\n");
+      return NULL;
+    }
+
+  tty_Lines = tgetnum ("li");
+  if (tty_Lines < 1)
+    {
+      fprintf (stderr, "ERROR: cannot get #LINES for the terminal, check TERM environment variable\n");
+      return NULL;
+    }
+
+  tty_Cols = tgetnum ("co");
+  if (tty_Cols < 1)
+    {
+      fprintf (stderr, "ERROR: cannot get #COLUMNS for the terminal, check TERM environment variable\n");
+      return NULL;
+    }
+
+  if ((ret = tty_noblock ()) < 0)
+    {
+      fprintf (stderr, "ERROR: Cannot set terminal: error = %d", ret);
+      return NULL;
+    }
+
+  clear ();
+
+  return dl_handle;
 }
 #endif
 
