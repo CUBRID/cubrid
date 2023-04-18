@@ -459,7 +459,7 @@ loaddb: 将对象和结构导入到数据库.\n\
   -l, --load-only                加载数据不检查语法; 仅在SA_MODE模式下使用\n\
       --estimated-size=NUMBER    用NUMBER作为估计的实例数目; 默认: 5000\n\
   -v, --verbose                  开启详细状态信息; 默认: 关闭\n\
-  -c, --periodic-commit=COUNT    每插入COUNT个实例进行周期性的提交; 默认: 在读取时不提交\n\
+  -c, --periodic-commit=COUNT    每插入COUNT个实例进行周期性的提交; 默认: 10240\n\
       --no-oid                   不使用 OID\n\
       --no-statistics            在读取时不更新统计信息\n\
   -s, --schema-file=FILE[:LINE]  从文件 FILE 的第 LINE 行创建结构(schema)\n\

@@ -459,7 +459,7 @@ gültige Optionen:\n\
   -l, --load-only                  Dateiladung ohne vorherige Syntaxprüfung; nur im SA_MODE\n\
       --estimated-size=ANZAHL      abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
   -v, --verbose                    ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-  -c, --periodic-commit=ANZAHL     Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
+  -c, --periodic-commit=ANZAHL     Einfügungsanzahl für periodische Festschreibung; Standard: 10240\n\
       --no-oid                     OID nicht anwenden\n\
       --no-statistics              Statistiken während Ladung nicht aktualisieren\n\
   -s, --schema-file=DATEI[:ZEILE]  Schema ab ZEILE mit DATEI erstellen\n\
