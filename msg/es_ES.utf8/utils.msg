@@ -501,7 +501,7 @@ opciones validas:\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    NUMERO estimado de instancias; estandar: 5000\n\
   -v, --verbose                  habilitar mensajes de estado verbose; estandar: inhabilitado\n\
-  -c, --periodic-commit=COUNT    insertar COUNT al cometer periodicamente; estandar: no cometer mientras cargando\n\
+  -c, --periodic-commit=COUNT    insertar COUNT al cometer periodicamente; estandar: 10240\n\
       --no-oid                   no utilizar OID\n\
       --no-statistics            no actualizar las estadisticas mientras cargando\n\
   -s, --schema-file=FILE[:LINE]  crear esquema de la LINEA con ARCHIVO\n\

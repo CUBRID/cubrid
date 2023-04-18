@@ -515,7 +515,7 @@ opţiuni valide:\n\
       --estimated-size=NUMĂR        NUMĂR estimat de instanţe; implicit: 5000\n\
   -v, --verbose                     activează mesaje detaliate de stare; implicit: dezactivate\n\
   -c, --periodic-commit=CONTOR      CONTOR de inserare pentru salvare periodică;\n\
-                                    implicit: nu se face commit în timpul încărcării\n\
+                                    implicit: 10240\n\
       --no-oid                      nu se va folosi OID\n\
       --no-statistics               nu se vor actualiza statisticile în timpul încărcării\n\
   -s, --schema-file=FIŞIER[:LINIE]  creează schema de la linia, respectiv din fişierul specificat\n\
