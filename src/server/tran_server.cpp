@@ -156,14 +156,32 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 int
 tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out)
 {
+  int err_code = NO_ERROR;
+  constexpr auto timeout_1m = std::chrono::minutes { 1 };  // 1m, TODO: should be configurable.
   std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
-  if (m_page_server_conn_vec.empty())
-    {
-      assert_release (false); // TODO some error-handling is needed such as shutdown
-      return ER_FAILED; // All connections have been disconnected already
-    }
+  /*
+   *  send_receive () on a connection could fail when it is disconnected while waiting for its response.
+   *  In this case, it waits and retries with the expectation that the main connection will be changed.
+   *  - Normal disconnection: in receive_disconnect_request() and disconnect_all_page_servers()
+   *  - Abnormal disconnection: in the error handler, here, or somewhere else (TODO)
+   */
 
-  return m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
+  // TODO: exits when a thread waiting on it (transaction or whatever) stops. It should wake up periodically and check it.
+  m_main_conn_cv.wait_for (s_lock, timeout_1m, [&] ()
+  {
+    if (m_page_server_conn_vec.empty())
+      {
+	assert_release (false); // TODO some error-handling is needed such as shutdown
+	return true;
+      }
+
+    // we assume that 0-th conn is the main connection
+    err_code = m_page_server_conn_vec[0]->send_receive (reqid, std::move (payload_in), payload_out);
+    // when an error occurs and the connection is disconnecting, wait until new connection become the main connection
+    return err_code == NO_ERROR || !m_page_server_conn_vec[0]->is_disconnecting ();
+  });
+
+  return err_code;
 }
 
 int
@@ -352,6 +370,7 @@ tran_server::disconnect_all_page_servers ()
   }
   // finalize connections out of the mutex, m_page_server_conn_vec_mtx, since it joins request handler thread internally, and receive_disconnect_request() also acquires the lock of the mutex.
   conn_vec.clear ();
+  m_main_conn_cv.notify_all ();
 
   // Wait until all disconnection reuqests are handled.
   m_async_disconnect_handler.terminate ();
@@ -362,20 +381,47 @@ tran_server::disconnect_all_page_servers ()
 void
 tran_server::disconnect_page_server_async (const connection_handler *conn)
 {
-  std::lock_guard<std::shared_mutex> lk_guard (m_page_server_conn_vec_mtx);
+  bool main_conn_changed = false;
+  std::string prev_main_conn_id;
   auto &conn_vec = m_page_server_conn_vec;
+  auto ulock = std::unique_lock<std::shared_mutex> (m_page_server_conn_vec_mtx);
 
-  for (auto it = conn_vec.begin (); it != conn_vec.end (); it++)
+  auto conn_it = std::find_if (conn_vec.begin (), conn_vec.end (),
+			       [&conn] (std::unique_ptr<connection_handler> &conn_uptr)
+  {
+    return conn_uptr.get () == conn;
+  });
+
+  if (conn_it == conn_vec.end ())
     {
-      if (it->get () == conn)
-	{
-	  m_async_disconnect_handler.disconnect (std::move (*it));
-	  assert (*it == nullptr);
-	  conn_vec.erase (it);
-	  break;
-	}
+      return; // the connection is already cleared in disconnect_all_page_servers()
     }
-  // It's possible that the connection is already cleared in disconnect_all_page_servers()
+
+  if (conn_it == conn_vec.begin ())
+    {
+      main_conn_changed = true;
+      prev_main_conn_id = (*conn_it)->get_channel_id ();
+    }
+
+  m_async_disconnect_handler.disconnect (std::move (*conn_it));
+  assert (*conn_it == nullptr);
+  conn_vec.erase (conn_it);
+
+  if (main_conn_changed)
+    {
+      if (conn_vec.empty ())
+	{
+	  er_log_debug (ARG_FILE_LINE, "The last connection is disconnected (%s). No main connection available.\n",
+			prev_main_conn_id.c_str ());
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "The main connection is changed from %s to %s.\n",
+			prev_main_conn_id.c_str (), (*conn_vec.begin())->get_channel_id ().c_str ());
+	}
+      ulock.unlock ();
+      m_main_conn_cv.notify_all ();
+    }
 }
 
 bool
@@ -395,6 +441,7 @@ tran_server::uses_remote_storage () const
 tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts,
     request_handlers_map_t &&request_handlers)
   : m_ts { ts }
+  , m_is_disconnecting { false }
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
@@ -439,8 +486,8 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
+  m_is_disconnecting.store (true);
   m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
-
   m_ts.disconnect_page_server_async (this);
 }
 
@@ -482,6 +529,12 @@ const std::string
 tran_server::connection_handler::get_channel_id () const
 {
   return m_conn->get_underlying_channel_id ();
+}
+
+bool
+tran_server::connection_handler::is_disconnecting () const
+{
+  return m_is_disconnecting.load ();
 }
 
 void
