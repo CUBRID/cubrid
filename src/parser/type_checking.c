@@ -16470,6 +16470,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       break;
 
     case PT_STRCAT:
+#if 0
       if (typ1 == DB_TYPE_NULL || typ2 == DB_TYPE_NULL)
 	{
 	  bool check_empty_string;
@@ -16482,13 +16483,29 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      break;
 	    }
 	}
-
+      else
+#endif
+	{
+	  if (typ1 == DB_TYPE_NULL)
+	    {
+	      typ1 = DB_TYPE_VARCHAR;
+	      db_make_string (arg1, "");
+	      typ = DB_TYPE_VARCHAR;
+	    }
+	  if (typ2 == DB_TYPE_NULL)
+	    {
+	      typ2 = DB_TYPE_VARCHAR;
+	      db_make_string (arg2, "");
+	      typ = DB_TYPE_VARCHAR;
+	    }
+	}
+#if 0
       /* screen out cases we don't evaluate */
       if (!PT_IS_STRING_TYPE (rTyp))
 	{
 	  return 0;
 	}
-
+#endif
       switch (typ)
 	{
 	case DB_TYPE_CHAR:

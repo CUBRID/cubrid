@@ -6030,6 +6030,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   int error = NO_ERROR;
   DB_VALUE cast_value1;
   DB_VALUE cast_value2;
+  DB_VALUE temp1, temp2;
   TP_DOMAIN *cast_dom1 = NULL;
   TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
@@ -6087,16 +6088,35 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 
   if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
+      if (dbval1_p == NULL)
+	{
+          db_make_string (&temp1, "");
+	  dbval1_p = &temp1;
+	}
+      if (dbval2_p == NULL)
+	{
+          db_make_string (&temp2, "");
+	  dbval2_p = &temp2;
+	}
+
+      if (DB_IS_NULL (dbval1_p))
+	{
+	  db_make_string (dbval1_p, "");
+	}
+      if (DB_IS_NULL (dbval2_p))
+	{
+	  db_make_string (dbval2_p, "");
+        }
       /* ORACLE7 ServerSQL Language Reference Manual 3-4; Although ORACLE treats zero-length character strings as
        * nulls, concatenating a zero-length character string with another operand always results in the other operand,
        * rather than a null. However, this may not continue to be true in future versions of ORACLE. To concatenate an
        * expression that might be null, use the NVL function to explicitly convert the expression to a zero-length
        * string. */
+#if 0
       if (!prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 	{
 	  return NO_ERROR;
 	}
-
       if ((DB_IS_NULL (dbval1_p) && QSTR_IS_ANY_CHAR_OR_BIT (type2))
 	  || (DB_IS_NULL (dbval2_p) && QSTR_IS_ANY_CHAR_OR_BIT (type1)))
 	{
@@ -6106,6 +6126,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	{
 	  return NO_ERROR;
 	}
+#endif
     }
 
   switch (type1)
@@ -6147,7 +6168,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     case DB_TYPE_VARBIT:
       if (dbval1_p != NULL && dbval2_p != NULL)
 	{
-	  error = qdata_add_chars_to_dbval (dbval1_p, dbval2_p, result_p);
+          error = qdata_add_chars_to_dbval (dbval1_p, dbval2_p, result_p);
 	}
       break;
 
