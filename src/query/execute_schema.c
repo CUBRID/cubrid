@@ -8616,28 +8616,28 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
       /* check for mis-creating string type with -1 precision */
       for (column = query_columns; column != NULL; column = db_query_format_next (column))
-        {
-          switch (column->domain->type->id)
-            {
-              case DB_TYPE_VARCHAR:
-                if (column->domain->precision == DB_DEFAULT_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARCHAR_PRECISION;
-                  }
-                break;
-              case DB_TYPE_VARNCHAR:
-                if (column->domain->precision == DB_DEFAULT_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-                  }
-                else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
-                  {
-                    column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-                  }
-                default:
-                break;
-            }
-        }
+	{
+	  switch (column->domain->type->id)
+	    {
+	    case DB_TYPE_VARCHAR:
+	      if (column->domain->precision == DB_DEFAULT_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARCHAR_PRECISION;
+		}
+	      break;
+	    case DB_TYPE_VARNCHAR:
+	      if (column->domain->precision == DB_DEFAULT_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+		}
+	      else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
+		{
+		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
+		}
+	    default:
+	      break;
+	    }
+	}
     }
   assert (!(create_like != NULL && create_select != NULL));
 
@@ -9113,9 +9113,14 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
       return NO_ERROR;
     }
 
+  /* We can come here by renaming a view. In general, views have no constraints. If there are no constraints,
+   * NO_ERROR is returned before. However, views can have shared columns with a not null constraint.
+   * Renaming does not affect the not null constraint. So, even if the view has a not null constraint,
+   * change it so that an error does not occur here. I do not think there is a view with a constraint
+   * other than a not null constraint. Change the return value from ER_OBJ_NOT_A_CLASS to NO_ERROR. (In CBRD-24435) */
   if (class_->class_type != SM_CLASS_CT)
     {
-      return ER_OBJ_NOT_A_CLASS;
+      return NO_ERROR;
     }
 
   for (c = class_->constraints; c; c = c->next)

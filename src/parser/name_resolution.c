@@ -717,6 +717,11 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	    }
 	  level++;
 	}
+      if (node && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	{
+	  /* An error is meaningful only when it cannot be found in all scopes. */
+	  er_clear ();
+	}
     }
   else
     {
@@ -847,6 +852,16 @@ pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv)
   if (val)
     {
       hv = pt_bind_type_from_dbval (parser, hv, val);
+      /*
+         TODO:
+         the host variable's precision should be -1,
+         however, it looks not cleared from node allocation
+         for example, in case of reusing the node from JAVA SP session
+       */
+      if (hv->data_type)
+	{
+	  hv->data_type->info.data_type.precision = -1;
+	}
     }
   /* else : There isn't a host var yet.  This happens if someone does a db_compile_statement before doing
    * db_push_values, as might happen in a dynamic esql PREPARE statement where the host vars might not be supplied

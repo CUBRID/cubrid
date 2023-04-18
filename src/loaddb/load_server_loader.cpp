@@ -555,7 +555,8 @@ namespace cubload
 
     insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
 
-    if (insert_errors_filtered)
+    /* The locator_multi_insert_force() sometimes creates the data page-based log record instead of the record-based log record. In HA, it means that the replication log cannot have an accurate LSA for each insert by loaddb. */
+    if (insert_errors_filtered || !HA_DISABLED ())
       {
 	// In case of possible errors filtered for insert we disable the unique optimization
 	for (size_t i = 0; i < m_recdes_collected.size (); i++)
@@ -703,12 +704,12 @@ namespace cubload
 	m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
       }
     else if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
-           {
-              char class_attr[512];
+      {
+	char class_attr[512];
 
-              snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
-           }
+	snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
+      }
 
     return error_code;
   }
@@ -745,10 +746,10 @@ namespace cubload
 
 	if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
 	  {
-            char class_attr[512];
+	    char class_attr[512];
 
-            snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
-            er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
+	    snprintf (class_attr, 512, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
 	  }
 
 	return error_code;

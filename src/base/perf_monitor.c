@@ -1517,8 +1517,16 @@ perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *subs
 	    {
 	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
 		{
-		  fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
-			   (unsigned long long) stats_ptr[offset]);
+		  if (prm_get_bool_value (PRM_ID_STATDUMP_FORCE_ADD_INT_MAX))
+		    {
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			       (unsigned long long) stats_ptr[offset] + INT_MAX);
+		    }
+		  else
+		    {
+		      fprintf (stream, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+			       (unsigned long long) stats_ptr[offset]);
+		    }
 		}
 	      else
 		{

@@ -127,7 +127,7 @@ set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_
 set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")
 
 # editline library sources URL
-set(WITH_LIBEDIT_URL "http://thrysoee.dk/editline/libedit-20170329-3.1.tar.gz")
+set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/libedit_v1.tar.gz")
 
 # rapidjson library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")
@@ -295,9 +295,9 @@ if(UNIX)
     endif(WITH_SOURCES)
 
     # set has-style
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both")
-    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
 
   else(CMAKE_COMPILER_IS_GNUCC)
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
@@ -458,9 +458,9 @@ if(CMAKE_BUILD_TYPE MATCHES "Coverage")
     CACHE STRING "Flags used by the c++ compiler during coverage build." FORCE)
   set(CMAKE_C_FLAGS_COVERAGE "-g -O0 --coverage -fprofile-arcs -ftest-coverage"
     CACHE STRING "Flags used by the c compiler during coverage build." FORCE)
-  set(CMAKE_EXE_LINKER_FLAGS_COVERAGE ""
+  set(CMAKE_EXE_LINKER_FLAGS_COVERAGE "-static-libstdc++"
     CACHE STRING "Flags used for linking binaries during coverage build." FORCE)
-  set(CMAKE_SHARED_LINKER_FLAGS_COVERAGE ""
+  set(CMAKE_SHARED_LINKER_FLAGS_COVERAGE "-static-libstdc++"
     CACHE STRING "Flags used for shared libraries during coverage build." FORCE)
 
   mark_as_advanced(
@@ -1057,6 +1057,7 @@ else()
   set(LZ4_INCLUDES ${CMAKE_BINARY_DIR}/external/Source/lz4/lib)
   set(LZ4_LIBS ${CMAKE_BINARY_DIR}/external/Source/lz4/lib/liblz4.a)
 endif()
+list(APPEND EP_TARGETS ${LZ4_TARGET})
 list(APPEND EP_LIBS ${LZ4_LIBS})
 list(APPEND EP_INCLUDES ${LZ4_INCLUDES})
 
