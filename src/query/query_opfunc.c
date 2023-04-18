@@ -7123,8 +7123,6 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
     }
   while (bitval);		/* the parent tuple pos is null for the root node */
 
-  qfile_close_scan (thread_p, &s_id);
-
   /* here tuple_rec.tpl is the root tuple; get the required column */
 
   for (i = 0, valp = xptr->val_list->valp; valp; i++, valp = valp->next)
@@ -7139,6 +7137,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
     {
       if (qexec_get_tuple_column_value (tuple_rec.tpl, i, result_val_p, regu_p->domain) != NO_ERROR)
 	{
+	  qfile_close_scan (thread_p, &s_id);
 	  return false;
 	}
     }
@@ -7149,14 +7148,18 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 	{
 	  if (pr_clone_value (xasl->instnum_val, result_val_p) != NO_ERROR)
 	    {
+	      qfile_close_scan (thread_p, &s_id);
 	      return false;
 	    }
 	}
       else
 	{
+	  qfile_close_scan (thread_p, &s_id);
 	  return false;
 	}
     }
+
+  qfile_close_scan (thread_p, &s_id);
 
   return true;
 }
@@ -7244,19 +7247,19 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
       tuple_rec.tpl = NULL;
     }
 
-  qfile_close_scan (thread_p, &s_id);
-
   if (tuple_rec.tpl != NULL)
     {
       /* fetch val list from the parent tuple */
       if (fetch_val_list (thread_p, xptr->proc.connect_by.prior_regu_list_pred, vd, NULL, NULL, tuple_rec.tpl, PEEK) !=
 	  NO_ERROR)
 	{
+	  qfile_close_scan (thread_p, &s_id);
 	  return false;
 	}
       if (fetch_val_list (thread_p, xptr->proc.connect_by.prior_regu_list_rest, vd, NULL, NULL, tuple_rec.tpl, PEEK) !=
 	  NO_ERROR)
 	{
+	  qfile_close_scan (thread_p, &s_id);
 	  return false;
 	}
 
@@ -7266,6 +7269,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
       /* evaluate the modified regu_p */
       if (fetch_copy_dbval (thread_p, regu_p, vd, NULL, NULL, tuple_rec.tpl, result_val_p) != NO_ERROR)
 	{
+	  qfile_close_scan (thread_p, &s_id);
 	  return false;
 	}
     }
@@ -7273,6 +7277,8 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
     {
       db_make_null (result_val_p);
     }
+
+  qfile_close_scan (thread_p, &s_id);
 
   return true;
 }

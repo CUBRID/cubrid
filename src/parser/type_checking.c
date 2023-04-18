@@ -5446,6 +5446,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 	{
 	  PT_NODE *temp = NULL;
 	  int precision = 0, scale = 0;
+	  int units = LANG_SYS_CODESET;	/* code set */
+	  int collation_id = LANG_SYS_COLLATION;	/* collation_id */
 	  bool keep_searching = true;
 	  for (temp = arg2->data_type; temp != NULL && keep_searching; temp = temp->next)
 	    {
@@ -5459,9 +5461,8 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		case PT_TYPE_CHAR:
 		case PT_TYPE_NCHAR:
 		case PT_TYPE_BIT:
-		  /* CHAR, NCHAR and BIT are common types only if all arguments are of type NCHAR or CHAR */
-		  assert (temp->type_enum == PT_TYPE_CHAR || temp->type_enum == PT_TYPE_NCHAR);
-		  if (precision > temp->info.data_type.precision)
+		  /* CHAR, NCHAR types can be common type for one of all arguments is string type */
+		  if (precision < temp->info.data_type.precision)
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5477,7 +5478,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision > temp->info.data_type.precision)
+		  if (precision < temp->info.data_type.precision)
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5492,7 +5493,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision > temp->info.data_type.precision)
+		  if (precision < temp->info.data_type.precision)
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5527,9 +5528,21 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		  assert (false);
 		  break;
 		}
+
+	      if (PT_IS_STRING_TYPE (common_type) && PT_IS_STRING_TYPE (temp->type_enum))
+		{
+		  /* A bigger codesets's number can represent more characters. */
+		  if (units < temp->info.data_type.units)
+		    {
+		      units = temp->info.data_type.units;
+		      collation_id = temp->info.data_type.collation_id;
+		    }
+		}
 	    }
 	  data_type->info.data_type.precision = precision;
 	  data_type->info.data_type.dec_precision = scale;
+	  data_type->info.data_type.units = units;
+	  data_type->info.data_type.collation_id = collation_id;
 	}
 
       arg2 = pt_wrap_collection_with_cast_op (parser, arg2, sig.arg2_type.val.type, data_type, false);
@@ -6671,6 +6684,44 @@ pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, D
   return (!pt_has_error (parser));
 }
 
+/*
+ * pt_do_where_type () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+PT_NODE *
+pt_do_where_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = NULL;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
+	{
+	  if (spec->node_type == PT_SPEC && spec->info.spec.on_cond)
+	    {
+	      spec->info.spec.on_cond = pt_where_type (parser, spec->info.spec.on_cond);
+	    }
+	}
+
+      node->info.query.q.select.where = pt_where_type (parser, node->info.query.q.select.where);
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
 
 /*
  * pt_where_type () - Test for constant folded where clause,
@@ -10153,9 +10204,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->type_enum = PT_TYPE_NONE;
 	  break;
 	}
-      if (common_type == PT_TYPE_MAYBE)
+
+      if (common_type == PT_TYPE_MAYBE && arg1_type != PT_TYPE_NULL && arg2_type != PT_TYPE_NULL)
 	{
-	  common_type = (arg1_type == PT_TYPE_MAYBE && arg2_type != PT_TYPE_NULL) ? arg2_type : arg1_type;
+	  common_type = (arg1_type == PT_TYPE_MAYBE) ? arg2_type : arg1_type;
 	}
 
       if (common_type == PT_TYPE_MAYBE)
@@ -20126,6 +20178,20 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   /* do constant folding */
   tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
+  if (pt_has_error (parser))
+    {
+      tree = NULL;
+    }
+
+  /* When qo_reduce_equality_terms is executed in mq_optimize, a removable predicate like '1=1' is generated.
+   * This predicate is removed by executing pt_where_type after pt_fold_const_expr has executed.
+   * 
+   * If this predicate remains without being removed, it becomes a data filter and MRO (Multiple Key Ranges
+   * Optimization) cannot be performed.
+   *
+   * See CBRD-24735 for the details.
+   */
+  tree = parser_walk_tree (parser, tree, NULL, NULL, pt_do_where_type, NULL);
   if (pt_has_error (parser))
     {
       tree = NULL;

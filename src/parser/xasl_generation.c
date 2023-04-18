@@ -14255,6 +14255,12 @@ pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p, PT_NODE * sort_list, ANALYTIC
       func_meta->key[func_meta->key_size] = idx;
       func_meta->key_size++;
       func_meta->level++;
+
+      if (func_meta->key_size >= ANALYTIC_OPT_MAX_FUNCTIONS)
+	{
+	  /* no more space in  index */
+	  return false;
+	}
     }
 
   /* all ok */
@@ -14940,6 +14946,13 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool *
   for (func_p = info->head_list, sort_list = info->sort_lists; func_p != NULL && sort_list != NULL;
        func_p = func_p->next, sort_list = sort_list->next, af_count++)
     {
+      if (af_count >= ANALYTIC_OPT_MAX_FUNCTIONS)
+	{
+	  /* analytic function index overflow, we'll do it the old fashioned way */
+	  *no_optimization = true;
+	  return NULL;
+	}
+
       if (!pt_analytic_to_metadomain (func_p, sort_list->info.pointer.node, &af_meta[af_count], sc_index, &sc_count))
 	{
 	  /* sort spec index overflow, we'll do it the old fashioned way */

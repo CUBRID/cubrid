@@ -268,13 +268,8 @@ function check_args()
 function init_conf()
 {
 	# init path
-	mkdir -p $ha_temp_home
-	if [ -n $backup_dest_path ]; then 
-		backup_dest_path=$ha_temp_home/backup
-		if [ ! -d $backup_dest_path ]; then
-			mkdir $backup_dest_path
-		fi
-	fi
+	backup_dest_path=${backup_dest_path:-$ha_temp_home/backup}
+	mkdir -p $ha_temp_home $backup_dest_path
 	repl_log_home=${repl_log_home%%/}
 	backup_dest_path=${backup_dest_path%%/}
 	backup_dest_path=$(readlink -f $backup_dest_path)

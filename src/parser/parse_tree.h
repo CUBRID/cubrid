@@ -706,7 +706,7 @@ struct json_t;
 #define PT_IS_FALSE_WHERE_VALUE(node) \
  (((node) != NULL && (node)->node_type == PT_VALUE \
   && ((node)->type_enum == PT_TYPE_NULL \
-       || ((node)->type_enum == PT_TYPE_SET \
+       || (PT_IS_SET_TYPE (node) \
            && ((node)->info.value.data_value.set == NULL)))) ? true : false)
 
 #define PT_IS_SPEC_REAL_TABLE(spec_) PT_SPEC_IS_ENTITY(spec_)

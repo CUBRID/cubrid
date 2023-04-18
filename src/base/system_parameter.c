@@ -375,6 +375,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_PING_HOSTS "ha_ping_hosts"
 
+#define PRM_NAME_HA_TCP_PING_HOSTS "ha_tcp_ping_hosts"
+
+#define PRM_NAME_HA_PING_TIMEOUT "ha_ping_timeout"
+
 #define PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST "ha_applylogdb_retry_error_list"
 
 #define PRM_NAME_HA_APPLYLOGDB_IGNORE_ERROR_LIST "ha_applylogdb_ignore_error_list"
@@ -678,6 +682,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
+
+#define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1505,6 +1511,16 @@ const char *PRM_HA_PING_HOSTS = "";
 static const char *prm_ha_ping_hosts_default = NULL;
 static unsigned int prm_ha_ping_hosts_flag = 0;
 
+const char *PRM_HA_TCP_PING_HOSTS = "";
+static const char *prm_ha_tcp_ping_hosts_default = NULL;
+static unsigned int prm_ha_tcp_ping_hosts_flag = 0;
+
+int PRM_HA_PING_TIMEOUT = PRM_TCP_CONNECTION_TIMEOUT;
+static int prm_ha_ping_timeout_default = prm_tcp_connection_timeout_default;	/* NOTE: It is difficult to determine an accurate default value for TCP connection timeout, so the default value of the connection_time system parameter is followed. */
+static int prm_ha_ping_timeout_upper = INT_MAX / 1000;	/* divided by msecs */
+static int prm_ha_ping_timeout_lower = 0;
+static unsigned int prm_ha_ping_timeout_flag = 0;
+
 int *PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST = int_list_initial;
 static bool *prm_ha_applylogdb_retry_error_list_default = NULL;
 static unsigned int prm_ha_applylogdb_retry_error_list_flag = 0;
@@ -2276,6 +2292,10 @@ static unsigned int prm_first_log_pageid_flag = 0;
 bool PRM_USE_STAT_ESTIMATION = true;
 static bool prm_use_stat_estimation_default = true;
 static unsigned int prm_use_stat_estimation_flag = 0;
+
+bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
+static bool prm_statdump_force_add_int_max_default = false;
+static unsigned int prm_statdump_force_add_int_max_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5854,6 +5874,40 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_use_stat_estimation_default,
    (void *) &PRM_USE_STAT_ESTIMATION,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STATDUMP_FORCE_ADD_INT_MAX,
+   PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_statdump_force_add_int_max_flag,
+   (void *) &prm_statdump_force_add_int_max_default,
+   (void *) &PRM_STATDUMP_FORCE_ADD_INT_MAX,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_TCP_PING_HOSTS,
+   PRM_NAME_HA_TCP_PING_HOSTS,
+   (PRM_FOR_CLIENT | PRM_RELOADABLE | PRM_FOR_HA),
+   PRM_STRING,
+   &prm_ha_tcp_ping_hosts_flag,
+   (void *) &prm_ha_tcp_ping_hosts_default,
+   (void *) &PRM_HA_TCP_PING_HOSTS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_PING_TIMEOUT,
+   PRM_NAME_HA_PING_TIMEOUT,
+   (PRM_FOR_CLIENT | PRM_RELOADABLE | PRM_FOR_HA | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_ha_ping_timeout_flag,
+   (void *) &prm_ha_ping_timeout_default,
+   (void *) &PRM_HA_PING_TIMEOUT,
+   (void *) &prm_ha_ping_timeout_upper,
+   (void *) &prm_ha_ping_timeout_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
