@@ -724,6 +724,8 @@ conn_retry:
     tran_timeout = 0;
     query_timeout = 0;
 
+    er_init (NULL, ER_NEVER_EXIT);
+
     for (;;)
       {
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
