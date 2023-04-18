@@ -459,7 +459,7 @@ geçerli seçenekler:\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    örneklerini tahmin NUMBER; varsayılan: 5000\n\
   -v, --verbose                  Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
-  -c, --periodic-commit=COUNT    Periyodik tamamlama için ekleme COUNT; varsayılan: yükleme sırasında taahhüt yok\n\
+  -c, --periodic-commit=COUNT    Periyodik tamamlama için ekleme COUNT; varsayılan: 10240\n\
       --no-oid                   OID kullanmayın\n\
       --no-statistics            yüklerken istatistikleri güncelleştirmeyin\n\
   -s, --schema-file=FILE[:LINE]  FILE ile LINE şeması oluşturun\n\

@@ -459,7 +459,7 @@ opzioni valide:\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBERO   Stima del NUMERO di instanze; predefinito: 5000\n\
   -v, --verbose                  attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
-  -c, --periodic-commit=COUNT    inserimento COUNT per periodico commit; predefinito: no commit durante il caricamento\n\
+  -c, --periodic-commit=COUNT    inserimento COUNT per periodico commit; predefinito: 10240\n\
       --no-oid                   non usare OID\n\
       --no-statistics            non aggiornare le statistiche durante il caricamento\n\
   -s, --schema-file=FILE[:LINE]  creare schema da LINE con FILE\n\
