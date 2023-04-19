@@ -22889,10 +22889,10 @@ pt_get_var_regu_variable_p_list (const REGU_VARIABLE * regu, bool is_prior, int 
 
     case TYPE_FUNC:
       {
-	REGU_VARIABLE_LIST *r = &regu->value.funcp->operand;
-	while (*r)
+	REGU_VARIABLE_LIST r = regu->value.funcp->operand;
+	while (r)
 	  {
-	    list1 = pt_get_var_regu_variable_p_list (&(*r)->value, is_prior, err);
+	    list1 = pt_get_var_regu_variable_p_list (&r->value, is_prior, err);
 
 	    if (!list)
 	      {
@@ -22908,7 +22908,7 @@ pt_get_var_regu_variable_p_list (const REGU_VARIABLE * regu, bool is_prior, int 
 		list2->next = list1;
 	      }
 
-	    *r = (*r)->next;
+	    r = r->next;
 	  }
       }
       break;
