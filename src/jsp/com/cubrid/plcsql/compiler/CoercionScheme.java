@@ -69,10 +69,15 @@ public enum CoercionScheme {
 
             int len = argTypes.size();
 
-            TypeSpec wholeCommonTy = null;
             TypeSpec headTy = argTypes.get(0);
+            boolean hasDatetime = headTy.equals(TypeSpecSimple.DATETIME);
+
+            TypeSpec wholeCommonTy = null;
             for (int i = 1; i < len; i++) {
-                TypeSpec commonTy = getCommonTypeInner(headTy, argTypes.get(i), compOpCommonType);
+                TypeSpec argType = argTypes.get(i);
+                hasDatetime = hasDatetime || argType.equals(TypeSpecSimple.DATETIME);
+
+                TypeSpec commonTy = getCommonTypeInner(headTy, argType, compOpCommonType);
                 if (commonTy == null) {
                     return null;
                 }
@@ -83,17 +88,23 @@ public enum CoercionScheme {
                     if (wholeCommonTy.equals(commonTy)) {
                         // just keep wholeCommonTy (do nothing)
                     } else {
-                        wholeCommonTy = TypeSpecSimple.OBJECT;
+                        wholeCommonTy = TypeSpecSimple.OBJECT;  // resort to runtime type check and conversion
                     }
                 }
             }
 
-            if (wholeCommonTy.equals(TypeSpecSimple.OBJECT)) {
-                return null;    // TODO: implement runtime typechecking and conversion and remove these three lines
-            }
-
             if (wholeCommonTy.equals(TypeSpecSimple.NULL)) {
                 wholeCommonTy = TypeSpecSimple.OBJECT;
+            } else if (wholeCommonTy.equals(TypeSpecSimple.OBJECT)) {
+                // In this case, pairwise common types are not equal to a single type, and
+                // pairwise coomparison in opBetween and opIn in SpLib uses runtime type check and conversion.
+                if (hasDatetime) {
+                    // This case is not supported because the Java types of DATETIME and TIMESTAMP are the same Timestamp,
+                    // which causes ambiguity in runtime type check in compareWithRuntimeConv in SpLib.
+                    // TODO: This can be improved by a different code generation of operator between and in,
+                    //       or by using a different Java class for DATETIME type.
+                    return null;
+                }
             }
 
             List<TypeSpec> ret = new ArrayList<>();
@@ -313,6 +324,7 @@ public enum CoercionScheme {
         compOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NULL;
 
         compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
+        compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.OBJECT;
 
         compOpCommonType[TypeSpecSimple.IDX_BOOLEAN][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.BOOLEAN;
         compOpCommonType[TypeSpecSimple.IDX_BOOLEAN][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.BOOLEAN;

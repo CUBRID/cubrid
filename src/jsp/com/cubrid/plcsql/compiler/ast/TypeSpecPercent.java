@@ -73,8 +73,7 @@ public class TypeSpecPercent extends TypeSpec {
     @Override
     public String toString() {
         if (resolvedType == null) {
-            assert false;
-            throw new RuntimeException("unreachable");
+            return "%UNRESOLVED";
         } else {
             return resolvedType.toString();
         }

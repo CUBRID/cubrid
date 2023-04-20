@@ -32,14 +32,14 @@ package com.cubrid.plcsql.compiler.ast;
 
 public abstract class TypeSpec extends AstNode {
 
-    public final String internalName;
+    public final String pcsName;
     public final String javaCode;
     public final String nameOfGetMethod;
     public final int simpleTypeIdx;
 
-    public TypeSpec(String internalName, String javaCode, String nameOfGetMethod, int simpleTypeIdx) {
+    public TypeSpec(String pcsName, String javaCode, String nameOfGetMethod, int simpleTypeIdx) {
         super(null);
-        this.internalName = internalName;
+        this.pcsName = pcsName;
         this.javaCode = javaCode;
         this.nameOfGetMethod = nameOfGetMethod;
         this.simpleTypeIdx = simpleTypeIdx;
@@ -61,7 +61,7 @@ public abstract class TypeSpec extends AstNode {
 
     @Override
     public String toString() {
-        return internalName;
+        return pcsName;
     }
 
     @Override

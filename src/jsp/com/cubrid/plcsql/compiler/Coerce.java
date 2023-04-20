@@ -66,7 +66,7 @@ public abstract class Coerce {
 
         Set<TypeSpec> possibleTargets = possibleCasts.get(from);
         if (possibleTargets != null && possibleTargets.contains(to)) {
-            return new Conversion(from.internalName, to.internalName);
+            return new Conversion(from.pcsName, to.pcsName);
         } else {
             return null;
         }

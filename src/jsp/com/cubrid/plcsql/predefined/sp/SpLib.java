@@ -361,8 +361,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false: "unreachable";
-        throw new RuntimeException("unreachable");
+        return compareWithRuntimeTypeConv(l, r) == 0;
     }
 
     // ====================================
@@ -438,8 +437,8 @@ public class SpLib {
         } else if (r == null) {
             return false;
         }
-        assert false: "unreachable";
-        throw new RuntimeException("unreachable");
+
+        return compareWithRuntimeTypeConv(l, r) == 0;
     }
 
     // ====================================
@@ -513,8 +512,8 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false: "unreachable";
-        throw new RuntimeException("unreachable");
+
+        return compareWithRuntimeTypeConv(l, r) != 0;
     }
 
     // ====================================
@@ -588,8 +587,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false: "unreachable";
-        throw new RuntimeException("unreachable");
+        return compareWithRuntimeTypeConv(l, r) <= 0;
     }
 
     // ====================================
@@ -662,8 +660,7 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false: "unreachable";
-        throw new RuntimeException("unreachable");
+        return compareWithRuntimeTypeConv(l, r) >= 0;
     }
 
     // ====================================
@@ -736,8 +733,8 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false: "unreachable";
-        throw new RuntimeException("unreachable");
+
+        return compareWithRuntimeTypeConv(l, r) < 0;
     }
 
     // ====================================
@@ -810,8 +807,8 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false: "unreachable";
-        throw new RuntimeException("unreachable");
+
+        return compareWithRuntimeTypeConv(l, r) > 0;
     }
 
     // ====================================
@@ -917,223 +914,69 @@ public class SpLib {
         if (o == null || lower == null || upper == null) {
             return null;
         }
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+
+        return compareWithRuntimeTypeConv(lower, o) <= 0 && compareWithRuntimeTypeConv(o, upper) <= 0;
     }
 
     // ====================================
     // in
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Boolean o, Boolean... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (Boolean p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(Boolean o, Boolean... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(String o, String... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (String p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(String o, String... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(BigDecimal o, BigDecimal... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (BigDecimal p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(BigDecimal o, BigDecimal... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Short o, Short... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (Short p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(Short o, Short... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Integer o, Integer... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (Integer p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(Integer o, Integer... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Long o, Long... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (Long p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(Long o, Long... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Float o, Float... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (Float p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(Float o, Float... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Double o, Double... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (Double p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(Double o, Double... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Date o, Date... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (Date p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(Date o, Date... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Time o, Time... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (Time p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(Time o, Time... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Timestamp o, Timestamp... list) {
-        assert list != null;
-        if (o == null) {
-            return null;
-        }
-        boolean nullFound = false;
-        for (Timestamp p : list) {
-            if (p == null) {
-                nullFound = true;
-            } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
-                    return true;
-                }
-            }
-        }
-        return false;
+    public static Boolean opIn(Timestamp o, Timestamp... arr) {
+        return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(ZonedDateTime o, ZonedDateTime... list) {
+    public static Boolean opIn(ZonedDateTime o, ZonedDateTime... arr) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
@@ -1141,25 +984,23 @@ public class SpLib {
     }
 
     @Operator(coercionScheme=CoercionScheme.NAryCompOp)
-    public static Boolean opIn(Object o, Object... list) {
-        assert list != null;
+    public static Boolean opIn(Object o, Object... arr) {
+        assert arr != null;    // guaranteed by the syntax
         if (o == null) {
             return null;
         }
         boolean nullFound = false;
-        for (Object p : list) {
+        for (Object p : arr) {
             if (p == null) {
                 nullFound = true;
             } else {
-                if (Objects.equals(o, p)) {     // TODO: return null if p is null? check
+                if (compareWithRuntimeTypeConv(o, p) == 0) {
                     return true;
                 }
             }
         }
-        assert nullFound;   // Object argument type means one of the argument is of Null type
-        return null;
+        return nullFound ? null: false;
     }
-
     // ====================================
     // *
     @Operator(coercionScheme=CoercionScheme.ArithOp)
@@ -2136,12 +1977,12 @@ public class SpLib {
             return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
         } else {
             return new Timestamp(
-                dt.getYear() - 1900, 
-                dt.getMonthValue() - 1, 
-                dt.getDayOfMonth(), 
-                dt.getHour(), 
-                dt.getMinute(), 
-                dt.getSecond(), 
+                dt.getYear() - 1900,
+                dt.getMonthValue() - 1,
+                dt.getDayOfMonth(),
+                dt.getHour(),
+                dt.getMinute(),
+                dt.getSecond(),
                 dt.getNano());
         }
     }
@@ -2191,12 +2032,12 @@ public class SpLib {
         } else {
             assert zdt.getNano() == 0;
             return new Timestamp(
-                zdt.getYear() - 1900, 
-                zdt.getMonthValue() - 1, 
-                zdt.getDayOfMonth(), 
-                zdt.getHour(), 
-                zdt.getMinute(), 
-                zdt.getSecond(), 
+                zdt.getYear() - 1900,
+                zdt.getMonthValue() - 1,
+                zdt.getDayOfMonth(),
+                zdt.getHour(),
+                zdt.getMinute(),
+                zdt.getSecond(),
                 0);
         }
     }
@@ -2315,6 +2156,24 @@ public class SpLib {
             return null;
         }
         return l.compareTo(r) > 0;
+    }
+
+    private static Boolean commonOpIn(Object o, Object... arr) {
+        assert arr != null;    // guaranteed by the syntax
+        if (o == null) {
+            return null;
+        }
+        boolean nullFound = false;
+        for (Object p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (o.equals(p)) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null: false;
     }
 
     private static String getRegexForLike(String pattern, String escape) {
@@ -2457,6 +2316,416 @@ public class SpLib {
             return new BigDecimal(s);
         } catch (NumberFormatException e) {
             throw new RuntimeException("value error", e);  // TODO: throw an appropriate built-in exception
+        }
+    }
+
+    private static int compareWithRuntimeTypeConv(Object l, Object r) {
+        assert l != null;
+        assert r != null;
+
+        Comparable lConv = null;
+        Comparable rConv = null;
+
+        if (l instanceof Boolean) {
+            if (r instanceof Boolean) {
+                lConv = (Boolean) l;
+                rConv = (Boolean) r;
+            } else if (r instanceof String) {
+                // not applicable
+            } else if (r instanceof Short) {
+                // not applicable
+            } else if (r instanceof Integer) {
+                // not applicable
+            } else if (r instanceof Long) {
+                // not applicable
+            } else if (r instanceof BigDecimal) {
+                // not applicable
+            } else if (r instanceof Float) {
+                // not applicable
+            } else if (r instanceof Double) {
+                // not applicable
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof String) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (String) l;
+                rConv = (String) r;
+            } else if (r instanceof Short) {
+                lConv = convStringToDouble((String) l);
+                rConv = convShortToDouble((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = convStringToDouble((String) l);
+                rConv = convIntToDouble((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = convStringToDouble((String) l);
+                rConv = convBigintToDouble((Long) r);
+            } else if (r instanceof BigDecimal) {
+                lConv = convStringToDouble((String) l);
+                rConv = convNumericToDouble((BigDecimal) r);
+            } else if (r instanceof Float) {
+                lConv = convStringToDouble((String) l);
+                rConv = convFloatToDouble((Float)r);
+            } else if (r instanceof Double) {
+                lConv = convStringToDouble((String) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                lConv = convStringToDate((String) l);
+                rConv = (Date) r;
+            } else if (r instanceof Time) {
+                lConv = convStringToTime((String) l);
+                rConv = (Time) r;
+            } else if (r instanceof Timestamp) {
+                lConv = convStringToTimestamp((String) l);
+                rConv = (Timestamp) r;
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Short) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convShortToDouble((Short) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Short) (Short) l;
+                rConv = (Short) r;
+            } else if (r instanceof Integer) {
+                lConv = convShortToInt((Short) l);
+                rConv = (Integer) r;
+            } else if (r instanceof Long) {
+                lConv = convShortToBigint((Short) l);
+                rConv = (Long) r;
+            } else if (r instanceof BigDecimal) {
+                lConv = convShortToNumeric((Short) l);
+                rConv = (BigDecimal) r;
+            } else if (r instanceof Float) {
+                lConv = convShortToFloat((Short) l);
+                rConv = (Float) r;
+            } else if (r instanceof Double) {
+                lConv = convShortToDouble((Short) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                lConv = convShortToTime((Short) l);
+                rConv = (Time) r;
+            } else if (r instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in CoercionScheme
+                lConv = convShortToTimestamp((Short) l);
+                rConv = (Timestamp) r;
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Integer) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convIntToDouble((Integer) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Integer) l;
+                rConv = convShortToInt((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Integer) l;
+                rConv = (Integer) r;
+            } else if (r instanceof Long) {
+                lConv = convIntToBigint((Integer) l);
+                rConv = (Long) r;
+            } else if (r instanceof BigDecimal) {
+                lConv = convIntToNumeric((Integer) l);
+                rConv = (BigDecimal) r;
+            } else if (r instanceof Float) {
+                lConv = convIntToFloat((Integer) l);
+                rConv = (Float) r;
+            } else if (r instanceof Double) {
+                lConv = convIntToDouble((Integer) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                lConv = convIntToTime((Integer) l);
+                rConv = (Time) r;
+            } else if (r instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in CoercionScheme
+                lConv = convIntToTimestamp((Integer) l);
+                rConv = (Timestamp) r;
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Long) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convBigintToDouble((Long) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Long) l;
+                rConv = convShortToBigint((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Long) l;
+                rConv = convIntToBigint((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Long) l;
+                rConv = (Long) r;
+            } else if (r instanceof BigDecimal) {
+                lConv = convBigintToNumeric((Long) l);
+                rConv = (BigDecimal) r;
+            } else if (r instanceof Float) {
+                lConv = convBigintToFloat((Long) l);
+                rConv = (Float) r;
+            } else if (r instanceof Double) {
+                lConv = convBigintToDouble((Long) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                lConv = convBigintToTime((Long) l);
+                rConv = (Time) r;
+            } else if (r instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in CoercionScheme
+                lConv = convBigintToTimestamp((Long) l);
+                rConv = (Timestamp) r;
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof BigDecimal) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convNumericToDouble((BigDecimal) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (BigDecimal) l;
+                rConv = convShortToNumeric((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (BigDecimal) l;
+                rConv = convIntToNumeric((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (BigDecimal) l;
+                rConv = convBigintToNumeric((Long) r);
+            } else if (r instanceof BigDecimal) {
+                lConv = (BigDecimal) l;
+                rConv = (BigDecimal) r;
+            } else if (r instanceof Float) {
+                lConv = convNumericToDouble((BigDecimal) l);
+                rConv = convFloatToDouble((Float) r);
+            } else if (r instanceof Double) {
+                lConv = convNumericToDouble((BigDecimal) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Float) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convFloatToDouble((Float) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Float) l;
+                rConv = convShortToFloat((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Float) l;
+                rConv = convIntToFloat((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Float) l;
+                rConv = convBigintToFloat((Long) r);
+            } else if (r instanceof BigDecimal) {
+                lConv = convFloatToDouble((Float) l);
+                rConv = convNumericToDouble((BigDecimal) r);
+            } else if (r instanceof Float) {
+                lConv = (Float) l;
+                rConv = (Float) r;
+            } else if (r instanceof Double) {
+                lConv = convFloatToDouble((Float) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Double) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (Double) l;
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Double) l;
+                rConv = convShortToDouble((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Double) l;
+                rConv = convIntToDouble((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Double) l;
+                rConv = convBigintToDouble((Long) r);
+            } else if (r instanceof BigDecimal) {
+                lConv = (Double) l;
+                rConv = convNumericToDouble((BigDecimal) r);
+            } else if (r instanceof Float) {
+                lConv = (Double) l;
+                rConv = convFloatToDouble((Float) r);
+            } else if (r instanceof Double) {
+                lConv = (Double) l;
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Date) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (Date) l;
+                rConv = convStringToDate((String) r);
+            } else if (r instanceof Short) {
+                // not applicable
+            } else if (r instanceof Integer) {
+                // not applicable
+            } else if (r instanceof Long) {
+                // not applicable
+            } else if (r instanceof BigDecimal) {
+                // not applicable
+            } else if (r instanceof Float) {
+                // not applicable
+            } else if (r instanceof Double) {
+                // not applicable
+            } else if (r instanceof Date) {
+                lConv = (Date) l;
+                rConv = (Date) r;
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Time) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (Time) l;
+                rConv = convStringToTime((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Time) l;
+                rConv = convShortToTime((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Time) l;
+                rConv = convIntToTime((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Time) l;
+                rConv = convBigintToTime((Long) r);
+            } else if (r instanceof BigDecimal) {
+                // not applicable
+            } else if (r instanceof Float) {
+                // not applicable
+            } else if (r instanceof Double) {
+                // not applicable
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                lConv = (Time) l;
+                rConv = (Time) r;
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Timestamp) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (Timestamp) l;
+                rConv = convStringToTimestamp((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Timestamp) l;
+                rConv = convShortToTimestamp((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Timestamp) l;
+                rConv = convIntToTimestamp((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Timestamp) l;
+                rConv = convBigintToTimestamp((Long) r);
+            } else if (r instanceof BigDecimal) {
+                // not applicable
+            } else if (r instanceof Float) {
+                // not applicable
+            } else if (r instanceof Double) {
+                // not applicable
+            } else if (r instanceof Date) {
+                lConv = (Timestamp) l;
+                rConv = convDateToTimestamp((Date) r);
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                lConv = (Timestamp) l;
+                rConv = (Timestamp) r;
+            } else {
+                assert false: "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else {
+            assert false: "unreachable";
+            throw new RuntimeException("unreachable");
+        }
+
+        if (lConv == null) {
+            assert rConv == null;
+            throw new RuntimeException("cannot compare two values of unsupported types");
+        } else {
+            assert rConv != null;
+            return lConv.compareTo(rConv);
         }
     }
 }
