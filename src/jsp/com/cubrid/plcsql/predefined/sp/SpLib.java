@@ -2041,9 +2041,14 @@ public class SpLib {
                 0);
         }
     }
+
     public static Integer convStringToInt(String e) {
         if (e == null) {
             return null;
+        }
+
+        if (e.length() == 0) {
+            return INT_ZERO;
         }
 
         BigDecimal bd = strToBigDecimal(e);;
@@ -2054,12 +2059,20 @@ public class SpLib {
             return null;
         }
 
+        if (e.length() == 0) {
+            return SHORT_ZERO;
+        }
+
         BigDecimal bd = strToBigDecimal(e);;
         return Short.valueOf(bigDecimalToShort(bd));
     }
     public static Double convStringToDouble(String e) {
         if (e == null) {
             return null;
+        }
+
+        if (e.length() == 0) {
+            return DOUBLE_ZERO;
         }
 
         try {
@@ -2073,6 +2086,10 @@ public class SpLib {
             return null;
         }
 
+        if (e.length() == 0) {
+            return FLOAT_ZERO;
+        }
+
         try {
             return Float.valueOf(e);
         } catch (NumberFormatException ex) {
@@ -2080,7 +2097,7 @@ public class SpLib {
         }
     }
     public static BigDecimal convStringToNumeric(String e) {
-        if (e == null) {
+        if (e == null || e.length() == 0) {
             return null;
         }
 
@@ -2091,6 +2108,10 @@ public class SpLib {
             return null;
         }
 
+        if (e.length() == 0) {
+            return LONG_ZERO;
+        }
+
         BigDecimal bd = strToBigDecimal(e);;
         return Long.valueOf(bigDecimalToLong(bd));
     }
@@ -2098,6 +2119,12 @@ public class SpLib {
     // ------------------------------------------------
     // Private
     // ------------------------------------------------
+
+    private static final Short SHORT_ZERO = Short.valueOf((short) 0);
+    private static final Integer INT_ZERO = Integer.valueOf(0);
+    private static final Long LONG_ZERO = Long.valueOf(0L);
+    private static final Float FLOAT_ZERO = Float.valueOf(0.0f);
+    private static final Double DOUBLE_ZERO = Double.valueOf(0.0);
 
     private static final DateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
     private static final DateFormat timeFormat = new SimpleDateFormat("hh:mm:ss a");
