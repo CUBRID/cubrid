@@ -3937,12 +3937,6 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
     }
   else
     {
-      if (pt_has_error (parser))
-	{
-	  /* if already has error, return with no action */
-	  return 0;
-	}
-
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
       ok = (col != NULL);
@@ -5912,12 +5906,6 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    }
 	  else
 	    {
-	      if (pt_has_error (parser))
-		{
-		  /* if already has error, shrink error message */
-		  return NULL;
-		}
-
 	      temp = arg1->data_type;
 	      if (temp)
 		{
@@ -5975,12 +5963,6 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    }
 	  else
 	    {
-	      if (pt_has_error (parser))
-		{
-		  /* if already has error, shrink error message */
-		  return NULL;
-		}
-
 	      temp = arg1->data_type;
 	      if (temp)
 		{
