@@ -174,6 +174,8 @@ struct qo_index_entry
    */
   bool is_func_index;
 
+  bool is_hit_use_index;
+
   /* Idx of the first range list term; RANGE (r1, r2, ...) */
   int rangelist_term_idx;
 

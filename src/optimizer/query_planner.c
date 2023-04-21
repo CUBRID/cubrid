@@ -3620,6 +3620,30 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   QO_NODE *a_node, *b_node;
   QO_PLAN_COMPARE_RESULT temp_res;
 
+#if 1				// ctshim
+  if (a->plan_un.scan.index->head || b->plan_un.scan.index->head)
+    {
+      if (a->plan_un.scan.index->head == NULL)
+	{
+	  if (b->plan_un.scan.index->head->is_hit_use_index)
+	    {
+	      return PLAN_COMP_GT;
+	    }
+	}
+      else if (b->plan_un.scan.index->head == NULL)
+	{
+	  if (a->plan_un.scan.index->head->is_hit_use_index)
+	    {
+	      return PLAN_COMP_LT;
+	    }
+	}
+      else if (a->plan_un.scan.index->head->is_hit_use_index != b->plan_un.scan.index->head->is_hit_use_index)
+	{
+	  return (a->plan_un.scan.index->head->is_hit_use_index ? PLAN_COMP_LT : PLAN_COMP_GT);
+	}
+    }
+#endif
+
   af = a->fixed_cpu_cost + a->fixed_io_cost;
   aa = a->variable_cpu_cost + a->variable_io_cost;
   bf = b->fixed_cpu_cost + b->fixed_io_cost;
