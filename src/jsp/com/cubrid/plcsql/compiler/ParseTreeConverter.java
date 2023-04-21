@@ -109,7 +109,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (errCode < 0) {
                     throw new SemanticError( // s413
                             node.lineNo(),
-                            "number of the arguments to procedure "
+                            "the number of arguments to procedure "
                                     + ps.name
                                     + " does not match the number of the procedure's formal parameters");
                 } else if (errCode > 0) {
@@ -142,7 +142,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (errCode < 0) {
                     throw new SemanticError( // s416
                             node.lineNo(),
-                            "number of the arguments to function "
+                            "the number of arguments to function "
                                     + fs.name
                                     + " does not match the number of the function's formal parameters");
                 } else if (errCode > 0) {
@@ -656,6 +656,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public ExprFloat visitFp_num_exp(Fp_num_expContext ctx) {
         try {
+            addToImports("java.math.BigDecimal");
             BigDecimal bd = new BigDecimal(ctx.FLOATING_POINT_NUM().getText());
             return new ExprFloat(ctx, bd.toString());
         } catch (NumberFormatException e) {

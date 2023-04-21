@@ -126,8 +126,8 @@ public class TypeSpecSimple extends TypeSpec {
     // Private
     // ------------------------------------------------------------------
 
-    private TypeSpecSimple(String internalName, String fullJavaType, String nameOfGetMethod, int simpleTypeIdx) {
-        super(internalName, getJavaCode(fullJavaType), nameOfGetMethod, simpleTypeIdx);
+    private TypeSpecSimple(String pcsName, String fullJavaType, String nameOfGetMethod, int simpleTypeIdx) {
+        super(pcsName, getJavaCode(fullJavaType), nameOfGetMethod, simpleTypeIdx);
         this.fullJavaType = fullJavaType;
     }
 
