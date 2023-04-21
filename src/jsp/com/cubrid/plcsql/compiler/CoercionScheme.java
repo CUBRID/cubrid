@@ -32,18 +32,19 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 
 public enum CoercionScheme {
-
     CompOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+        public List<TypeSpec> getCoercions(
+                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
             assert argTypes.size() == 2;
 
-            TypeSpec commonTy = getCommonTypeInner(argTypes.get(0), argTypes.get(1), compOpCommonType);
+            TypeSpec commonTy =
+                    getCommonTypeInner(argTypes.get(0), argTypes.get(1), compOpCommonType);
             if (commonTy == null) {
-                return null;    // not applicable to this argument types
+                return null; // not applicable to this argument types
             }
 
             if (commonTy.equals(TypeSpecSimple.NULL)) {
@@ -51,7 +52,7 @@ public enum CoercionScheme {
             }
 
             List<TypeSpec> ret = new ArrayList<>();
-            for (int i = 0; i < 2; i++){
+            for (int i = 0; i < 2; i++) {
                 Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
                 assert c != null;
                 outCoercions.add(c);
@@ -63,7 +64,8 @@ public enum CoercionScheme {
     },
 
     NAryCompOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+        public List<TypeSpec> getCoercions(
+                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
 
             // between, in
 
@@ -88,7 +90,9 @@ public enum CoercionScheme {
                     if (wholeCommonTy.equals(commonTy)) {
                         // just keep wholeCommonTy (do nothing)
                     } else {
-                        wholeCommonTy = TypeSpecSimple.OBJECT;  // resort to runtime type check and conversion
+                        wholeCommonTy =
+                                TypeSpecSimple
+                                        .OBJECT; // resort to runtime type check and conversion
                     }
                 }
             }
@@ -97,18 +101,22 @@ public enum CoercionScheme {
                 wholeCommonTy = TypeSpecSimple.OBJECT;
             } else if (wholeCommonTy.equals(TypeSpecSimple.OBJECT)) {
                 // In this case, pairwise common types are not equal to a single type, and
-                // pairwise coomparison in opBetween and opIn in SpLib uses runtime type check and conversion.
+                // pairwise coomparison in opBetween and opIn in SpLib uses runtime type check and
+                // conversion.
                 if (hasDatetime) {
-                    // This case is not supported because the Java types of DATETIME and TIMESTAMP are the same Timestamp,
-                    // which causes ambiguity in runtime type check in compareWithRuntimeConv in SpLib.
-                    // TODO: This can be improved by a different code generation of operator between and in,
+                    // This case is not supported because the Java types of DATETIME and TIMESTAMP
+                    // are the same Timestamp,
+                    // which causes ambiguity in runtime type check in compareWithRuntimeConv in
+                    // SpLib.
+                    // TODO: This can be improved by a different code generation of operator between
+                    // and in,
                     //       or by using a different Java class for DATETIME type.
                     return null;
                 }
             }
 
             List<TypeSpec> ret = new ArrayList<>();
-            for (int i = 0; i < len; i++){
+            for (int i = 0; i < len; i++) {
                 Coerce c = Coerce.getCoerce(argTypes.get(i), wholeCommonTy);
                 assert c != null;
                 outCoercions.add(c);
@@ -120,7 +128,8 @@ public enum CoercionScheme {
     },
 
     ArithOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+        public List<TypeSpec> getCoercions(
+                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
 
             if (argTypes.size() == 2) {
 
@@ -131,7 +140,9 @@ public enum CoercionScheme {
 
                 TypeSpec commonTy;
                 if (opName.equals("opSubtract")) {
-                    commonTy = getCommonTypeInner(lType, rType, arithOpCommonType, subtractCommonTypeExt);
+                    commonTy =
+                            getCommonTypeInner(
+                                    lType, rType, arithOpCommonType, subtractCommonTypeExt);
                 } else {
                     commonTy = getCommonTypeInner(lType, rType, arithOpCommonType);
                 }
@@ -143,7 +154,7 @@ public enum CoercionScheme {
                     }
 
                     List<TypeSpec> ret = new ArrayList<>();
-                    for (int i = 0; i < 2; i++){
+                    for (int i = 0; i < 2; i++) {
                         Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
                         assert c != null;
                         outCoercions.add(c);
@@ -157,8 +168,8 @@ public enum CoercionScheme {
                     // further rules
 
                     if (lType.isDateTime()) {
-                        if ((opName.equals("opAdd") && (rType.isString() || rType.isNumber())) ||
-                            (opName.equals("opSubtract") && rType.isNumber())) {
+                        if ((opName.equals("opAdd") && (rType.isString() || rType.isNumber()))
+                                || (opName.equals("opSubtract") && rType.isNumber())) {
 
                             // date/time + string/number, or
                             // date/time - number
@@ -220,20 +231,22 @@ public enum CoercionScheme {
 
                 return ret;
             } else {
-                assert false: "unreachable";
+                assert false : "unreachable";
                 throw new RuntimeException("unreachable");
             }
         }
     },
 
     IntArithOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+        public List<TypeSpec> getCoercions(
+                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
 
             if (argTypes.size() == 2) {
 
                 // mod(%), div
 
-                TypeSpec commonTy = getCommonTypeInner(argTypes.get(0), argTypes.get(1), intArithOpCommonType);
+                TypeSpec commonTy =
+                        getCommonTypeInner(argTypes.get(0), argTypes.get(1), intArithOpCommonType);
                 if (commonTy == null) {
                     return null;
                 }
@@ -243,7 +256,7 @@ public enum CoercionScheme {
                 }
 
                 List<TypeSpec> ret = new ArrayList<>();
-                for (int i = 0; i < 2; i++){
+                for (int i = 0; i < 2; i++) {
                     Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
                     assert c != null;
                     outCoercions.add(c);
@@ -275,35 +288,41 @@ public enum CoercionScheme {
 
                 return ret;
             } else {
-                assert false: "unreachable";
+                assert false : "unreachable";
                 throw new RuntimeException("unreachable");
             }
         }
     },
 
     LogicalOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+        public List<TypeSpec> getCoercions(
+                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
             // and, or, xor, not
-            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.BOOLEAN);  // TODO: verify
+            return getCoercionsToFixedType(
+                    outCoercions, argTypes, TypeSpecSimple.BOOLEAN); // TODO: verify
         }
     },
 
     StringOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+        public List<TypeSpec> getCoercions(
+                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
             // ||, like
             return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.STRING);
         }
     },
 
     BitOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+        public List<TypeSpec> getCoercions(
+                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
             // <<, >>, &, ^, |
-            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.BIGINT);  // TODO: verify
+            return getCoercionsToFixedType(
+                    outCoercions, argTypes, TypeSpecSimple.BIGINT); // TODO: verify
         }
     },
 
     ObjectOp {
-        public List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+        public List<TypeSpec> getCoercions(
+                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
             // is-null
             return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.OBJECT);
         }
@@ -313,30 +332,42 @@ public enum CoercionScheme {
         return getCommonTypeInner(lType, rType, compOpCommonType);
     }
 
-    public abstract List<TypeSpec> getCoercions(List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName);
+    public abstract List<TypeSpec> getCoercions(
+            List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName);
 
     // -----------------------------------------------------------------------
     // Setting for comparison operators
 
     static final TypeSpecSimple[][] compOpCommonType =
-        new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
+            new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
+
     static {
         compOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NULL;
 
-        compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
-        compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.OBJECT;
+        compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.OBJECT;
+        compOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.OBJECT;
 
-        compOpCommonType[TypeSpecSimple.IDX_BOOLEAN][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.BOOLEAN;
-        compOpCommonType[TypeSpecSimple.IDX_BOOLEAN][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.BOOLEAN;
-        compOpCommonType[TypeSpecSimple.IDX_BOOLEAN][TypeSpecSimple.IDX_BOOLEAN] = TypeSpecSimple.BOOLEAN;
+        compOpCommonType[TypeSpecSimple.IDX_BOOLEAN][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.BOOLEAN;
+        compOpCommonType[TypeSpecSimple.IDX_BOOLEAN][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.BOOLEAN;
+        compOpCommonType[TypeSpecSimple.IDX_BOOLEAN][TypeSpecSimple.IDX_BOOLEAN] =
+                TypeSpecSimple.BOOLEAN;
 
-        compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.STRING;
-        compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.STRING;
-        compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.STRING;
+        compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.STRING;
+        compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.STRING;
+        compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.STRING;
 
         compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.SHORT;
-        compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.SHORT;
-        compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.SHORT;
+        compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.SHORT;
 
         compOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.INT;
@@ -345,39 +376,63 @@ public enum CoercionScheme {
         compOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.INT;
         compOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.INT;
 
-        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.BIGINT;
-        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.BIGINT;
-        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.BIGINT;
+        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.BIGINT;
+        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.BIGINT;
+        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.BIGINT;
         compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.BIGINT;
-        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.BIGINT;
+        compOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.BIGINT;
 
-        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_INT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.NUMERIC;
-        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_INT] =
+                TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.NUMERIC;
+        compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NUMERIC] =
+                TypeSpecSimple.NUMERIC;
 
         compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.FLOAT;
-        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.FLOAT;
-        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.FLOAT;
+        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.FLOAT;
         compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.FLOAT;
-        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.FLOAT;
-        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.FLOAT;
+        compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NUMERIC] =
+                TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.FLOAT;
 
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_INT] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.DOUBLE;
-        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_DOUBLE] = TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NUMERIC] =
+                TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_FLOAT] =
+                TypeSpecSimple.DOUBLE;
+        compOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_DOUBLE] =
+                TypeSpecSimple.DOUBLE;
 
         compOpCommonType[TypeSpecSimple.IDX_DATE][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.DATE;
         compOpCommonType[TypeSpecSimple.IDX_DATE][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.DATE;
@@ -392,162 +447,261 @@ public enum CoercionScheme {
         compOpCommonType[TypeSpecSimple.IDX_TIME][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.TIME;
         compOpCommonType[TypeSpecSimple.IDX_TIME][TypeSpecSimple.IDX_TIME] = TypeSpecSimple.TIME;
 
-        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.DATETIME;
-        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.DATETIME;
-        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DATETIME;
-        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATE] = TypeSpecSimple.DATETIME;
-        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATETIME] = TypeSpecSimple.DATETIME;
+        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.DATETIME;
+        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.DATETIME;
+        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DATETIME;
+        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATE] =
+                TypeSpecSimple.DATETIME;
+        compOpCommonType[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATETIME] =
+                TypeSpecSimple.DATETIME;
 
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.TIMESTAMP;
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.TIMESTAMP;
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.TIMESTAMP;
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.TIMESTAMP;
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_INT] = TypeSpecSimple.TIMESTAMP;
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.TIMESTAMP;
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATE] = TypeSpecSimple.TIMESTAMP;
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATETIME] = TypeSpecSimple.DATETIME;
-        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_TIMESTAMP] = TypeSpecSimple.TIMESTAMP;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.TIMESTAMP;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.TIMESTAMP;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.TIMESTAMP;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.TIMESTAMP;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_INT] =
+                TypeSpecSimple.TIMESTAMP;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.TIMESTAMP;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATE] =
+                TypeSpecSimple.TIMESTAMP;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATETIME] =
+                TypeSpecSimple.DATETIME;
+        compOpCommonType[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_TIMESTAMP] =
+                TypeSpecSimple.TIMESTAMP;
     }
 
     // -----------------------------------------------------------------------
     // Setting for arithmetic operators (unary -, *, /, +, binary -)
 
     static final TypeSpecSimple[][] arithOpCommonType =
-        new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
+            new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
     static final TypeSpecSimple[][] subtractCommonTypeExt =
-        new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
+            new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
+
     static {
         arithOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NULL;
 
-        arithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
+        arithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.OBJECT;
 
-        arithOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
 
         arithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.SHORT;
-        arithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.SHORT;
-        arithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.SHORT;
+        arithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.SHORT;
+        arithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.SHORT;
 
         arithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.INT;
         arithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.INT;
-        arithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
         arithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.INT;
         arithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.INT;
 
-        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.BIGINT;
-        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.BIGINT;
-        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.BIGINT;
-        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.BIGINT;
-        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.BIGINT;
+        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.BIGINT;
+        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.BIGINT;
+        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.BIGINT;
+        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_INT] =
+                TypeSpecSimple.BIGINT;
+        arithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.BIGINT;
 
-        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NUMERIC;
-        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.NUMERIC;
-        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.NUMERIC;
-        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_INT] = TypeSpecSimple.NUMERIC;
-        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.NUMERIC;
-        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.NUMERIC;
+        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.NUMERIC;
+        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.NUMERIC;
+        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.NUMERIC;
+        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_INT] =
+                TypeSpecSimple.NUMERIC;
+        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.NUMERIC;
+        arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NUMERIC] =
+                TypeSpecSimple.NUMERIC;
 
         arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.FLOAT;
-        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.FLOAT;
-        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.FLOAT;
+        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.FLOAT;
+        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.FLOAT;
         arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.FLOAT;
-        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.FLOAT;
-        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.FLOAT;
+        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.FLOAT;
+        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NUMERIC] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_FLOAT] =
+                TypeSpecSimple.FLOAT;
 
-        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_INT] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.DOUBLE;
-        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_DOUBLE] = TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_INT] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NUMERIC] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_FLOAT] =
+                TypeSpecSimple.DOUBLE;
+        arithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_DOUBLE] =
+                TypeSpecSimple.DOUBLE;
 
+        subtractCommonTypeExt[TypeSpecSimple.IDX_DATE][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DATETIME;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_DATE][TypeSpecSimple.IDX_DATE] =
+                TypeSpecSimple.DATE;
 
-        subtractCommonTypeExt[TypeSpecSimple.IDX_DATE][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DATETIME;
-        subtractCommonTypeExt[TypeSpecSimple.IDX_DATE][TypeSpecSimple.IDX_DATE] = TypeSpecSimple.DATE;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_TIME][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.TIME;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_TIME][TypeSpecSimple.IDX_TIME] =
+                TypeSpecSimple.TIME;
 
-        subtractCommonTypeExt[TypeSpecSimple.IDX_TIME][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.TIME;
-        subtractCommonTypeExt[TypeSpecSimple.IDX_TIME][TypeSpecSimple.IDX_TIME] = TypeSpecSimple.TIME;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DATETIME;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATE] =
+                TypeSpecSimple.DATETIME;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATETIME] =
+                TypeSpecSimple.DATETIME;
 
-        subtractCommonTypeExt[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DATETIME;
-        subtractCommonTypeExt[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATE] = TypeSpecSimple.DATETIME;
-        subtractCommonTypeExt[TypeSpecSimple.IDX_DATETIME][TypeSpecSimple.IDX_DATETIME] = TypeSpecSimple.DATETIME;
-
-        subtractCommonTypeExt[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.DATETIME;
-        subtractCommonTypeExt[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATE] = TypeSpecSimple.TIMESTAMP;
-        subtractCommonTypeExt[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATETIME] = TypeSpecSimple.DATETIME;
-        subtractCommonTypeExt[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_TIMESTAMP] = TypeSpecSimple.TIMESTAMP;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.DATETIME;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATE] =
+                TypeSpecSimple.TIMESTAMP;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_DATETIME] =
+                TypeSpecSimple.DATETIME;
+        subtractCommonTypeExt[TypeSpecSimple.IDX_TIMESTAMP][TypeSpecSimple.IDX_TIMESTAMP] =
+                TypeSpecSimple.TIMESTAMP;
     }
 
     // -----------------------------------------------------------------------
     // Setting for integer arithmetic operators (mod, (integer) div, bit compliment)
 
     static final TypeSpecSimple[][] intArithOpCommonType =
-        new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
+            new TypeSpecSimple[TypeSpecSimple.COUNT_OF_IDX][TypeSpecSimple.COUNT_OF_IDX];
+
     static {
-        intArithOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.NULL;
+        intArithOpCommonType[TypeSpecSimple.IDX_NULL][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.NULL;
 
-        intArithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.OBJECT;
+        intArithOpCommonType[TypeSpecSimple.IDX_OBJECT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.OBJECT;
 
-        intArithOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.BIGINT;
 
-        intArithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.SHORT;
-        intArithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.SHORT;
-        intArithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.SHORT;
+        intArithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.SHORT;
+        intArithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.SHORT;
+        intArithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.SHORT;
 
         intArithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.INT;
-        intArithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.INT;
-        intArithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.INT;
+        intArithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.BIGINT;
         intArithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.INT;
         intArithOpCommonType[TypeSpecSimple.IDX_INT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.INT;
 
-        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_INT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_BIGINT][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.BIGINT;
 
-        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_INT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_INT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NUMERIC] =
+                TypeSpecSimple.BIGINT;
 
-        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_INT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_INT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NUMERIC] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_FLOAT] =
+                TypeSpecSimple.BIGINT;
 
-        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_OBJECT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_STRING] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_SHORT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_INT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_BIGINT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NUMERIC] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_FLOAT] = TypeSpecSimple.BIGINT;
-        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_DOUBLE] = TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NULL] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_OBJECT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_STRING] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_SHORT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_INT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_BIGINT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_NUMERIC] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_FLOAT] =
+                TypeSpecSimple.BIGINT;
+        intArithOpCommonType[TypeSpecSimple.IDX_DOUBLE][TypeSpecSimple.IDX_DOUBLE] =
+                TypeSpecSimple.BIGINT;
     }
 
-    private static List<TypeSpec>
-    getCoercionsToFixedType(List<Coerce> outCoercions, List<TypeSpec> argTypes, TypeSpec targetType) {
+    private static List<TypeSpec> getCoercionsToFixedType(
+            List<Coerce> outCoercions, List<TypeSpec> argTypes, TypeSpec targetType) {
 
         List<TypeSpec> ret = new ArrayList<>();
-        for (TypeSpec t: argTypes) {
+        for (TypeSpec t : argTypes) {
             Coerce c = Coerce.getCoerce(t, targetType);
             if (c == null) {
                 return null;
@@ -560,7 +714,8 @@ public enum CoercionScheme {
         return ret;
     }
 
-    private static TypeSpec getCommonTypeInner(TypeSpec lType, TypeSpec rType, TypeSpec[][]... table) {
+    private static TypeSpec getCommonTypeInner(
+            TypeSpec lType, TypeSpec rType, TypeSpec[][]... table) {
 
         int lTypeIdx = lType.simpleTypeIdx;
         assert lTypeIdx >= 0 && lTypeIdx < TypeSpecSimple.COUNT_OF_IDX;
@@ -586,5 +741,4 @@ public enum CoercionScheme {
 
         return null;
     }
-
 }

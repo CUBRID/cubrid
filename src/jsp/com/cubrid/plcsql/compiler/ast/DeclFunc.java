@@ -64,5 +64,4 @@ public class DeclFunc extends DeclRoutine {
     // Private
     // --------------------------------------------------
 
-
 }

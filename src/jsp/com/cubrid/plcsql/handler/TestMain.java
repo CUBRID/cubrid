@@ -65,7 +65,8 @@ public class TestMain {
             // TODO: define an error code list
             CompileInfo err = new CompileInfo(-1, e.lineNo, e.getMessage());
             return err;
-        } catch (AssertionError e) {    // TODO: AssertionError must have been turned into the built-in ProgramError
+        } catch (AssertionError e) { // TODO: AssertionError must have been turned into the built-in
+            // ProgramError
             Server.log(e);
             CompileInfo err = new CompileInfo(-1, 0, "Internal Error");
             return err;

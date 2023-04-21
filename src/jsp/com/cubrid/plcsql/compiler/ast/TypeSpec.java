@@ -79,7 +79,15 @@ public abstract class TypeSpec extends AstNode {
     public abstract String toJavaSignature();
 
     // overriden by TypeSpecSimple
-    public boolean isNumber() { return false; }
-    public boolean isString() { return false; }
-    public boolean isDateTime() { return false; }
+    public boolean isNumber() {
+        return false;
+    }
+
+    public boolean isString() {
+        return false;
+    }
+
+    public boolean isDateTime() {
+        return false;
+    }
 }

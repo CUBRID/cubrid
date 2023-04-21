@@ -61,5 +61,6 @@ public class CondExpr extends AstNode {
     // Private
     // --------------------------------------------------
 
-    private static final String tmpl = Misc.combineLines("Boolean.TRUE.equals(%'CONDITION'%) ?", "  %'EXPRESSION'% :");
+    private static final String tmpl =
+            Misc.combineLines("Boolean.TRUE.equals(%'CONDITION'%) ?", "  %'EXPRESSION'% :");
 }

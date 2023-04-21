@@ -32,9 +32,8 @@ package com.cubrid.plcsql.compiler;
 
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
-import com.cubrid.plcsql.compiler.ast.*;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import com.cubrid.plcsql.compiler.annotation.Operator;
+import com.cubrid.plcsql.compiler.ast.*;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -154,8 +153,8 @@ public class SymbolStack {
         }
     }
 
-    public static DeclFunc
-    getOperator(List<Coerce> outCoercions, String name, TypeSpec... argTypes) {
+    public static DeclFunc getOperator(
+            List<Coerce> outCoercions, String name, TypeSpec... argTypes) {
         return getFuncOverload(outCoercions, operators, name, argTypes);
     }
 
@@ -236,24 +235,29 @@ public class SymbolStack {
         assert map != null;
         if (map == symbolTable.labels) {
             if (map.containsKey(name)) {
-                throw new SemanticError(decl.lineNo(),  // s061
-                    "label " + name + " has already been declared in the same scope");
+                throw new SemanticError(
+                        decl.lineNo(), // s061
+                        "label " + name + " has already been declared in the same scope");
             }
         } else {
             if (symbolTable.ids.containsKey(name)
                     || symbolTable.procs.containsKey(name)
                     || symbolTable.funcs.containsKey(name)
                     || symbolTable.exceptions.containsKey(name)) {
-                throw new SemanticError(decl.lineNo(),  // s062
-                    name + " has already been declared in the same scope");
+                throw new SemanticError(
+                        decl.lineNo(), // s062
+                        name + " has already been declared in the same scope");
             }
             if (symbolTable.scope.level == 1 && map.size() == 0) {
-                // the first symbol added to the level 1 is the top-level procedure/function being created or replaced
+                // the first symbol added to the level 1 is the top-level procedure/function being
+                // created or replaced
 
-                assert map == symbolTable.procs || map == symbolTable.funcs;    // top-level procedure/function
+                assert map == symbolTable.procs
+                        || map == symbolTable.funcs; // top-level procedure/function
                 if (cubridFuncs.containsKey(name)) {
-                    throw new SemanticError(decl.lineNo(),  // s063
-                        "procedure/function cannot be created with the same name as a built-in function");
+                    throw new SemanticError(
+                            decl.lineNo(), // s063
+                            "procedure/function cannot be created with the same name as a built-in function");
                 }
             }
         }
@@ -366,12 +370,15 @@ public class SymbolStack {
     }
      */
 
-    private static DeclFunc getFuncOverload(List<Coerce> outCoercions,
-            Map<String, FuncOverloads> map, String name, TypeSpec... argTypes) {
+    private static DeclFunc getFuncOverload(
+            List<Coerce> outCoercions,
+            Map<String, FuncOverloads> map,
+            String name,
+            TypeSpec... argTypes) {
 
         FuncOverloads overloads = map.get(name);
         if (overloads == null) {
-            return null;        // TODO: throw?
+            return null; // TODO: throw?
         } else {
             return overloads.get(outCoercions, Arrays.asList(argTypes));
         }
@@ -439,7 +446,8 @@ public class SymbolStack {
     }
 
     // FuncOverloads class corresponds to operators (+, -, etc) and system provided functions
-    // (substr, trim, etc) which can be overloaded for argument types unlike user defined procedures and functions.
+    // (substr, trim, etc) which can be overloaded for argument types unlike user defined procedures
+    // and functions.
     private static class FuncOverloads {
 
         FuncOverloads(String name, CoercionScheme cs) {
@@ -462,7 +470,7 @@ public class SymbolStack {
 
             List<TypeSpec> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
             if (paramTypes == null) {
-                return null;    // no match
+                return null; // no match
             } else {
                 assert argTypes.size() == outCoercions.size();
                 DeclFunc declFunc = overloads.get(paramTypes);
@@ -475,7 +483,8 @@ public class SymbolStack {
                 }
 
                 declFunc = overloads.get(paramTypes);
-                assert declFunc != null : paramTypes + " do not have a matching version of op " + name;
+                assert declFunc != null
+                        : paramTypes + " do not have a matching version of op " + name;
                 return declFunc;
             }
         }

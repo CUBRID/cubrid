@@ -33,13 +33,11 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.ast.TypeSpecPercent;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
-import com.cubrid.plcsql.compiler.ast.TypeSpecVariadic;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Set;
-import java.util.HashSet;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 public abstract class Coerce {
 
@@ -59,7 +57,8 @@ public abstract class Coerce {
         if (from.equals(to)) {
             return IDENTITY;
         } else if (from.equals(TypeSpecSimple.NULL) || from.equals(TypeSpecSimple.OBJECT)) {
-            // why NULL?: in order for Javac to pick the right version among operator function overloads
+            // why NULL?: in order for Javac to pick the right version among operator function
+            // overloads
             // when all the arguments are nulls
             return new Cast(to);
         } else if (to.equals(TypeSpecSimple.OBJECT)) {
@@ -120,97 +119,116 @@ public abstract class Coerce {
     // ----------------------------------------------
 
     private static final Map<TypeSpec, Set<TypeSpec>> possibleCasts = new HashMap<>();
+
     static {
-        possibleCasts.put(TypeSpecSimple.DATETIME, new HashSet(Arrays.asList(
-            TypeSpecSimple.DATE,
-            TypeSpecSimple.TIME,
-            TypeSpecSimple.TIMESTAMP,
-            TypeSpecSimple.STRING
-            )));
-        possibleCasts.put(TypeSpecSimple.DATE, new HashSet(Arrays.asList(
-            TypeSpecSimple.DATETIME,
-            TypeSpecSimple.TIMESTAMP,
-            TypeSpecSimple.STRING
-            )));
-        possibleCasts.put(TypeSpecSimple.TIME, new HashSet(Arrays.asList(
-            TypeSpecSimple.STRING
-            )));
-        possibleCasts.put(TypeSpecSimple.TIMESTAMP, new HashSet(Arrays.asList(
-            TypeSpecSimple.DATETIME,
-            TypeSpecSimple.DATE,
-            TypeSpecSimple.TIME,
-            TypeSpecSimple.STRING
-            )));
-        possibleCasts.put(TypeSpecSimple.DOUBLE, new HashSet(Arrays.asList(
-            TypeSpecSimple.TIME,
-            TypeSpecSimple.TIMESTAMP,
-            TypeSpecSimple.INT,
-            TypeSpecSimple.SHORT,
-            TypeSpecSimple.STRING,
-            TypeSpecSimple.FLOAT,
-            TypeSpecSimple.NUMERIC,
-            TypeSpecSimple.BIGINT
-            )));
-        possibleCasts.put(TypeSpecSimple.FLOAT, new HashSet(Arrays.asList(
-            TypeSpecSimple.TIME,
-            TypeSpecSimple.TIMESTAMP,
-            TypeSpecSimple.INT,
-            TypeSpecSimple.SHORT,
-            TypeSpecSimple.STRING,
-            TypeSpecSimple.DOUBLE,
-            TypeSpecSimple.NUMERIC,
-            TypeSpecSimple.BIGINT
-            )));
-        possibleCasts.put(TypeSpecSimple.NUMERIC, new HashSet(Arrays.asList(
-            TypeSpecSimple.TIMESTAMP,
-            TypeSpecSimple.INT,
-            TypeSpecSimple.SHORT,
-            TypeSpecSimple.STRING,
-            TypeSpecSimple.DOUBLE,
-            TypeSpecSimple.FLOAT,
-            TypeSpecSimple.BIGINT
-            )));
-        possibleCasts.put(TypeSpecSimple.BIGINT, new HashSet(Arrays.asList(
-            TypeSpecSimple.TIME,
-            TypeSpecSimple.TIMESTAMP,
-            TypeSpecSimple.INT,
-            TypeSpecSimple.SHORT,
-            TypeSpecSimple.STRING,
-            TypeSpecSimple.DOUBLE,
-            TypeSpecSimple.FLOAT,
-            TypeSpecSimple.NUMERIC
-            )));
-        possibleCasts.put(TypeSpecSimple.INT, new HashSet(Arrays.asList(
-            TypeSpecSimple.TIME,
-            TypeSpecSimple.TIMESTAMP,
-            TypeSpecSimple.SHORT,
-            TypeSpecSimple.STRING,
-            TypeSpecSimple.DOUBLE,
-            TypeSpecSimple.FLOAT,
-            TypeSpecSimple.NUMERIC,
-            TypeSpecSimple.BIGINT
-            )));
-        possibleCasts.put(TypeSpecSimple.SHORT, new HashSet(Arrays.asList(
-            TypeSpecSimple.TIME,
-            TypeSpecSimple.TIMESTAMP,
-            TypeSpecSimple.INT,
-            TypeSpecSimple.STRING,
-            TypeSpecSimple.DOUBLE,
-            TypeSpecSimple.FLOAT,
-            TypeSpecSimple.NUMERIC,
-            TypeSpecSimple.BIGINT
-            )));
-        possibleCasts.put(TypeSpecSimple.STRING, new HashSet(Arrays.asList(
-            TypeSpecSimple.DATETIME,
-            TypeSpecSimple.DATE,
-            TypeSpecSimple.TIME,
-            TypeSpecSimple.TIMESTAMP,
-            TypeSpecSimple.INT,
-            TypeSpecSimple.SHORT,
-            TypeSpecSimple.DOUBLE,
-            TypeSpecSimple.FLOAT,
-            TypeSpecSimple.NUMERIC,
-            TypeSpecSimple.BIGINT
-            )));
+        possibleCasts.put(
+                TypeSpecSimple.DATETIME,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.DATE,
+                                TypeSpecSimple.TIME,
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.STRING)));
+        possibleCasts.put(
+                TypeSpecSimple.DATE,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.DATETIME,
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.STRING)));
+        possibleCasts.put(TypeSpecSimple.TIME, new HashSet(Arrays.asList(TypeSpecSimple.STRING)));
+        possibleCasts.put(
+                TypeSpecSimple.TIMESTAMP,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.DATETIME,
+                                TypeSpecSimple.DATE,
+                                TypeSpecSimple.TIME,
+                                TypeSpecSimple.STRING)));
+        possibleCasts.put(
+                TypeSpecSimple.DOUBLE,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.TIME,
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.INT,
+                                TypeSpecSimple.SHORT,
+                                TypeSpecSimple.STRING,
+                                TypeSpecSimple.FLOAT,
+                                TypeSpecSimple.NUMERIC,
+                                TypeSpecSimple.BIGINT)));
+        possibleCasts.put(
+                TypeSpecSimple.FLOAT,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.TIME,
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.INT,
+                                TypeSpecSimple.SHORT,
+                                TypeSpecSimple.STRING,
+                                TypeSpecSimple.DOUBLE,
+                                TypeSpecSimple.NUMERIC,
+                                TypeSpecSimple.BIGINT)));
+        possibleCasts.put(
+                TypeSpecSimple.NUMERIC,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.INT,
+                                TypeSpecSimple.SHORT,
+                                TypeSpecSimple.STRING,
+                                TypeSpecSimple.DOUBLE,
+                                TypeSpecSimple.FLOAT,
+                                TypeSpecSimple.BIGINT)));
+        possibleCasts.put(
+                TypeSpecSimple.BIGINT,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.TIME,
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.INT,
+                                TypeSpecSimple.SHORT,
+                                TypeSpecSimple.STRING,
+                                TypeSpecSimple.DOUBLE,
+                                TypeSpecSimple.FLOAT,
+                                TypeSpecSimple.NUMERIC)));
+        possibleCasts.put(
+                TypeSpecSimple.INT,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.TIME,
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.SHORT,
+                                TypeSpecSimple.STRING,
+                                TypeSpecSimple.DOUBLE,
+                                TypeSpecSimple.FLOAT,
+                                TypeSpecSimple.NUMERIC,
+                                TypeSpecSimple.BIGINT)));
+        possibleCasts.put(
+                TypeSpecSimple.SHORT,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.TIME,
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.INT,
+                                TypeSpecSimple.STRING,
+                                TypeSpecSimple.DOUBLE,
+                                TypeSpecSimple.FLOAT,
+                                TypeSpecSimple.NUMERIC,
+                                TypeSpecSimple.BIGINT)));
+        possibleCasts.put(
+                TypeSpecSimple.STRING,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.DATETIME,
+                                TypeSpecSimple.DATE,
+                                TypeSpecSimple.TIME,
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.INT,
+                                TypeSpecSimple.SHORT,
+                                TypeSpecSimple.DOUBLE,
+                                TypeSpecSimple.FLOAT,
+                                TypeSpecSimple.NUMERIC,
+                                TypeSpecSimple.BIGINT)));
     }
 }
