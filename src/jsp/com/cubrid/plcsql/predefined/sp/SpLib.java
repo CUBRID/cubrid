@@ -2047,7 +2047,6 @@ public class SpLib {
         }
 
         BigDecimal bd = strToBigDecimal(e);;
-        bd = bd.setScale(0, RoundingMode.HALF_UP);
         return Integer.valueOf(bigDecimalToInt(bd));
     }
     public static Short convStringToShort(String e) {
@@ -2056,7 +2055,6 @@ public class SpLib {
         }
 
         BigDecimal bd = strToBigDecimal(e);;
-        bd = bd.setScale(0, RoundingMode.HALF_UP);
         return Short.valueOf(bigDecimalToShort(bd));
     }
     public static Double convStringToDouble(String e) {
@@ -2094,7 +2092,6 @@ public class SpLib {
         }
 
         BigDecimal bd = strToBigDecimal(e);;
-        bd = bd.setScale(0, RoundingMode.HALF_UP);
         return Long.valueOf(bigDecimalToLong(bd));
     }
 
@@ -2224,24 +2221,21 @@ public class SpLib {
 
     private static long doubleToLong(double d) {
         BigDecimal bd = BigDecimal.valueOf(d);
-        bd = bd.setScale(0, RoundingMode.HALF_UP);  // 1.5 -->2, and -1.5 --> -2 NOTE: different from Math.round
         return bigDecimalToLong(bd);
     }
 
     private static int doubleToInt(double d) {
         BigDecimal bd = BigDecimal.valueOf(d);
-        bd = bd.setScale(0, RoundingMode.HALF_UP);  // 1.5 -->2, and -1.5 --> -2 NOTE: different from Math.round
         return bigDecimalToInt(bd);
     }
 
     private static short doubleToShort(double d) {
         BigDecimal bd = BigDecimal.valueOf(d);
-        bd = bd.setScale(0, RoundingMode.HALF_UP);  // 1.5 -->2, and -1.5 --> -2 NOTE: different from Math.round
         return bigDecimalToShort(bd);
     }
 
     private static long bigDecimalToLong(BigDecimal bd) {
-        // CAUTION: bd must be set scale to zero
+        bd = bd.setScale(0, RoundingMode.HALF_UP);  // 1.5 -->2, and -1.5 --> -2 NOTE: different from Math.round
         try {
             return bd.longValueExact();
         } catch (ArithmeticException e) {
@@ -2250,7 +2244,7 @@ public class SpLib {
     }
 
     private static int bigDecimalToInt(BigDecimal bd) {
-        // CAUTION: bd must be set scale to zero
+        bd = bd.setScale(0, RoundingMode.HALF_UP);  // 1.5 -->2, and -1.5 --> -2 NOTE: different from Math.round
         try {
             return bd.intValueExact();
         } catch (ArithmeticException e) {
@@ -2259,7 +2253,7 @@ public class SpLib {
     }
 
     private static short bigDecimalToShort(BigDecimal bd) {
-        // CAUTION: bd must be set scale to zero
+        bd = bd.setScale(0, RoundingMode.HALF_UP);  // 1.5 -->2, and -1.5 --> -2 NOTE: different from Math.round
         try {
             return bd.shortValueExact();
         } catch (ArithmeticException e) {
