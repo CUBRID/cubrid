@@ -64,7 +64,7 @@ s_subquery_operation_part // ???
 s_query_block
     : SELECT (DISTINCT | UNIQUE | ALL)? s_selected_list
       s_into_clause? s_from_clause s_where_clause? s_hierarchical_query_clause?
-      s_group_by_clause? s_order_by_clause? s_fetch_clause?
+      s_group_by_clause? s_order_by_clause? s_fetch_clause? s_limit_clause?
     ;
 
 s_selected_list
@@ -170,6 +170,11 @@ s_offset_clause
     : OFFSET s_expression (ROW | ROWS)
     ;
 
+s_limit_clause
+    : LIMIT (s_expression',')? s_expression
+    | LIMIT s_expression (OFFSET s_expression)?
+    ;
+
 s_fetch_clause
     : FETCH (FIRST | NEXT) (s_expression PERCENT_KEYWORD?)? (ROW | ROWS) (ONLY | WITH TIES)
     ;
@@ -242,6 +247,10 @@ s_merge_update_delete_part
 s_merge_insert_clause
     : WHEN NOT MATCHED THEN INSERT s_paren_column_list?
       s_values_clause s_where_clause?
+    ;
+
+s_truncate_statement
+    : TRUNCATE TABLE? s_table_ref CASCADE?
     ;
 
 s_selected_tableview
@@ -729,6 +738,7 @@ s_non_reserved_keywords_pre12c // !!!
     | BREADTH
     | BYTE
     | CASE
+    | CASCADE
     | CHARACTER
     | CHR
     | CONNECT_BY_ROOT

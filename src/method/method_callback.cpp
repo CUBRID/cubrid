@@ -74,6 +74,9 @@ namespace cubmethod
     int error = NO_ERROR;
     switch (code)
       {
+      case METHOD_CALLBACK_END_TRANSACTION:
+	error = end_transaction (unpacker);
+	break;
       case METHOD_CALLBACK_QUERY_PREPARE:
 	error = prepare (unpacker);
 	break;
@@ -125,6 +128,39 @@ namespace cubmethod
 #endif
 
     return error;
+  }
+
+  int
+  callback_handler::end_transaction (packing_unpacker &unpacker)
+  {
+    int command; // commit : 1, abort : 2
+    unpacker.unpack_all (command);
+
+    if (command == 1)
+      {
+	db_commit_transaction ();
+      }
+    else if (command == 2)
+      {
+	db_abort_transaction ();
+      }
+    else
+      {
+	assert (false);
+      }
+
+    free_query_handle_all (true);
+
+    if (m_error_ctx.has_error())
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
+    else
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
+      }
+
+    return NO_ERROR;
   }
 
   int
@@ -467,7 +503,7 @@ namespace cubmethod
 		      }
 
 		    TP_DOMAIN *hv_expected_domain = NULL;
-		    if (parser->host_var_count <= idx)
+		    if (idx >= parser->host_var_count)
 		      {
 			// auto parameterized
 			hv_expected_domain = marker->expected_domain;
@@ -488,9 +524,9 @@ namespace cubmethod
 		    semantics.hvs[idx].scale = (short) db_domain_scale (hv_expected_domain);
 		    semantics.hvs[idx].charset = db_domain_codeset (hv_expected_domain);
 
-		    if (db_session->parser->host_variables[idx].domain.general_info.is_null == 0)
+		    if (semantics.hvs[idx].type != DB_TYPE_NULL)
 		      {
-			pr_clone_value (& (db_session->parser->host_variables[idx]), & (semantics.hvs[idx].value));
+			db_value_clone (& (db_session->parser->host_variables[idx]), & (semantics.hvs[idx].value));
 		      }
 		    else
 		      {
@@ -768,8 +804,6 @@ exit:
 
     global_semantics_response response;
 
-    std::vector <std::unique_ptr<global_semantics_response_common>> &qs_ptr = response.qs;
-
     int i = 0;
     for (global_semantics_question &question : request.qsqs)
       {
@@ -781,7 +815,7 @@ exit:
 	    auto res_ptr = std::make_unique <global_semantics_response_udpf> ();
 	    res_ptr->idx = i++;
 	    error = get_user_defined_procedure_function_info (question, *res_ptr);
-	    qs_ptr.push_back (std::move (res_ptr));
+	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  case 3: // SERIAL
@@ -789,7 +823,7 @@ exit:
 	    auto res_ptr = std::make_unique <global_semantics_response_serial> ();
 	    res_ptr->idx = i++;
 	    error = get_serial_info (question, *res_ptr);
-	    qs_ptr.push_back (std::move (res_ptr));
+	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  case 4: // COLUMN
@@ -797,7 +831,7 @@ exit:
 	    auto res_ptr = std::make_unique <global_semantics_response_column> ();
 	    res_ptr->idx = i++;
 	    error = get_column_info (question, *res_ptr);
-	    qs_ptr.push_back (std::move (res_ptr));
+	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  default:
@@ -809,7 +843,7 @@ exit:
 	    error_response.idx = request.qsqs.size ();
 	    auto res_ptr = std::make_unique <global_semantics_response_common> (error_response);
 	    res_ptr->idx = i++;
-	    qs_ptr.push_back (std::move (res_ptr));
+	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
 	  }

@@ -28,6 +28,12 @@ public class Context {
     // CAS client information connecting with this Context
     private Properties clientInfo = null;
 
+    // Whether SP is able to process TCL (commit, rollback). (default: false)
+    private boolean transactionControl = false;
+
+    // Connection Properties
+    private Properties connectionInfo = null;
+
     // TODO: dynamic classLoader for a session
 
     // message buffer for DBMS_OUTPUT
@@ -41,8 +47,9 @@ public class Context {
         return sessionId;
     }
 
-    public synchronized Connection getConnection() {
+    public synchronized Connection getConnection(Properties prop) {
         if (this.connection == null) {
+            this.connectionInfo = prop;
             this.connection = new CUBRIDServerSideConnection(this);
         }
         return connection;
@@ -96,6 +103,23 @@ public class Context {
             messageBuffer = new MessageBuffer();
         }
         return messageBuffer;
+    }
+
+    public void setTransactionControl(boolean tc) {
+        this.transactionControl = tc;
+    }
+
+    public boolean canTransactionControl() {
+        if (transactionControl) {
+            return true;
+        }
+
+        String tcProp = connectionInfo.getProperty("transaction_control");
+        if (tcProp != null && "true".equalsIgnoreCase(tcProp)) {
+            return true;
+        }
+
+        return false;
     }
 
     // TODO: move this function to proper place

@@ -755,10 +755,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      /* single-line-oriented execution */
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
-	      if (csql_arg->pl_server_output)
-		{
-		  csql_print_server_output (csql_arg);
-		}
 	      csql_edit_contents_clear ();
 	      if (csql_Is_interactive)
 		{
@@ -955,19 +951,10 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       /* Command stuffs */
     case S_CMD_RUN:
       csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
-      if (csql_arg->pl_server_output)
-	{
-	  csql_print_server_output (csql_arg);
-	}
-
       break;
 
     case S_CMD_XRUN:
       csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
-      if (csql_arg->pl_server_output)
-	{
-	  csql_print_server_output (csql_arg);
-	}
       csql_edit_contents_clear ();
       break;
 
@@ -2278,6 +2265,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	       FILE_INPUT) ? logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK) :
 	logddl_write_tran_str ("Rollback transaction at line %d", stmt_start_line_no);
 	    }
+	}
+
+      if (csql_arg->pl_server_output)
+	{
+	  csql_print_server_output (csql_arg);
 	}
 
       if (csql_arg->plain_output == false && csql_arg->query_output == false && csql_arg->loaddb_output == false)

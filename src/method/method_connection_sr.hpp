@@ -55,11 +55,11 @@ namespace cubmethod
   //////////////////////////////////////////////////////////////////////////
   int xs_receive (cubthread::entry *thread_p, const xs_callback_func &func);
   int xs_receive (cubthread::entry *thread_p, SOCKET socket, const xs_callback_func_with_sock &func);
-  int xs_send (cubthread::entry *thread_p, cubmem::extensible_block &mem);
+  int xs_send (cubthread::entry *thread_p, const cubmem::extensible_block &mem);
   template <typename ... Args>
   int method_send_data_to_client (cubthread::entry *thread_p, Args &&... args)
   {
-    cubmem::extensible_block b = std::move (mcon_pack_data (std::forward<Args> (args)...));
+    const cubmem::extensible_block b = std::move (mcon_pack_data (std::forward<Args> (args)...));
     return xs_send (thread_p, b);
   }
 }

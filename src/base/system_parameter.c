@@ -391,6 +391,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_SQL_LOG_MAX_SIZE_IN_MB "ha_sql_log_max_size_in_mbytes"
 
+#define PRM_NAME_HA_SQL_LOG_PATH "ha_sql_log_path"
+
+#define PRM_NAME_HA_SQL_LOG_MAX_COUNT "ha_sql_log_max_count"
+
 #define PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES "ha_copy_log_max_archives"
 
 #define PRM_NAME_HA_COPY_LOG_TIMEOUT "ha_copy_log_timeout"
@@ -717,6 +721,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REGEXP_ENGINE "regexp_engine"
 
 #define PRM_NAME_ORACLE_STYLE_NUMBER_RETURN "oracle_style_number_return"
+
+#define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -1482,6 +1488,16 @@ static unsigned int prm_ha_applylogdb_log_wait_time_in_secs_flag = 0;
 bool PRM_HA_SQL_LOGGING = false;
 static bool prm_ha_sql_logging_default = false;
 static unsigned int prm_ha_sql_logging_flag = 0;
+
+const char *PRM_HA_SQL_LOG_PATH = "";
+static char *prm_ha_sql_log_path_default = NULL;
+static unsigned int prm_ha_sql_log_path_flag = 0;
+
+int PRM_HA_SQL_LOG_MAX_COUNT = 2;
+static int prm_ha_sql_log_max_count_default = 2;
+static int prm_ha_sql_log_max_count_upper = 5;
+static int prm_ha_sql_log_max_count_lower = 2;
+static unsigned int prm_ha_sql_log_max_count_flag = 0;
 
 int PRM_HA_SQL_LOG_MAX_SIZE_IN_MB = INT_MIN;
 static int prm_ha_sql_log_max_size_in_mb_default = 50;
@@ -2365,6 +2381,10 @@ static unsigned int prm_oracle_style_number_return_flag = 0;
 bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
+
+bool PRM_PL_TRANSACTION_CONTROL = false;
+static bool prm_pl_transaction_control_default = false;
+static unsigned int prm_pl_transaction_control_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6226,6 +6246,40 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_statdump_force_add_int_max_default,
    (void *) &PRM_STATDUMP_FORCE_ADD_INT_MAX,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PL_TRANSACTION_CONTROL,
+   PRM_NAME_PL_TRANSACTION_CONTROL,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   &prm_pl_transaction_control_flag,
+   (void *) &prm_pl_transaction_control_default,
+   (void *) &PRM_PL_TRANSACTION_CONTROL,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_SQL_LOG_PATH,
+   PRM_NAME_HA_SQL_LOG_PATH,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_STRING,
+   &prm_ha_sql_log_path_flag,
+   (void *) &prm_ha_sql_log_path_default,
+   (void *) &PRM_HA_SQL_LOG_PATH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_SQL_LOG_MAX_COUNT,
+   PRM_NAME_HA_SQL_LOG_MAX_COUNT,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   &prm_ha_sql_log_max_count_flag,
+   (void *) &prm_ha_sql_log_max_count_default,
+   (void *) &PRM_HA_SQL_LOG_MAX_COUNT,
+   (void *) &prm_ha_sql_log_max_count_upper,
+   (void *) &prm_ha_sql_log_max_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

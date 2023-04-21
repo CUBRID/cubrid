@@ -51,14 +51,15 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.List;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 
 public class ExecuteThread extends Thread {
 
@@ -220,7 +221,7 @@ public class ExecuteThread extends Thread {
                     Server.log(throwable);
                     try {
                         if (throwable instanceof SQLException) {
-                            sendError(throwable.getMessage(), client);
+                            sendError(throwable.toString(), client);
                         } else {
                             sendError(throwable.toString(), client);
                         }
@@ -306,25 +307,30 @@ public class ExecuteThread extends Thread {
         try {
             info = TestMain.compilePLCSQL(inSource, verbose);
             if (info.errCode == 0) {
+                /* Save Java file */
                 String javaFilePath =
                         StoredProcedureClassLoader.ROOT_PATH + info.className + ".java";
                 File file = new File(javaFilePath);
-                FileOutputStream fos = new FileOutputStream(file, false);
-                fos.write(info.translated.getBytes(Charset.forName("UTF-8")));
-                fos.close();
+                new FileWriter(file).append(info.translated).close();
+
+                JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+                if (compiler == null) {
+                    throw new IllegalStateException(
+                            "Cannot find the system Java compiler. Check that your class path includes tools.jar");
+                }
 
                 String cubrid_env_root = Server.getRootPath();
-                String command =
-                        "javac " + javaFilePath + " -cp " + cubrid_env_root + "/java/jspserver.jar";
+                String javacOpts[] = {
+                    "-classpath", cubrid_env_root + "/java/jspserver.jar", file.getPath()
+                };
 
-                Process proc = Runtime.getRuntime().exec(command);
-                proc.getErrorStream().close();
-                proc.getInputStream().close();
-                proc.getOutputStream().close();
-                proc.waitFor();
-
-                if (proc.exitValue() != 0) {
-                    // TODO
+                if (compiler.run(null, null, null, javacOpts) != 0) {
+                    String command =
+                            "javac "
+                                    + javaFilePath
+                                    + " -cp "
+                                    + cubrid_env_root
+                                    + "/java/jspserver.jar";
                     throw new RuntimeException(command);
                 }
             }
@@ -356,6 +362,9 @@ public class ExecuteThread extends Thread {
             methodArgs[i] = val;
         }
         int returnType = unpacker.unpackInt();
+
+        boolean transactionControl = unpacker.unpackBool();
+        getCurrentContext().setTransactionControl(transactionControl);
 
         storedProcedure = new StoredProcedure(methodSig, methodArgs, returnType);
         return storedProcedure;

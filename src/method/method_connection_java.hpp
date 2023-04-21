@@ -40,14 +40,19 @@ namespace cubmethod
   //////////////////////////////////////////////////////////////////////////
   // Interface to communicate with Java SP Server
   //////////////////////////////////////////////////////////////////////////
-  EXPORT_IMPORT int mcon_send_buffer_to_java (SOCKET socket, cubmem::block &blk);
+  EXPORT_IMPORT int mcon_send_buffer_to_java (SOCKET socket, const cubmem::block &blk);
 
   template <typename ... Args>
   int mcon_send_data_to_java (SOCKET socket, Args &&... args)
   {
-    cubmem::block b = mcon_pack_data_block (std::forward<Args> (args)...);
+    cubmem::block b = std::move (mcon_pack_data_block (std::forward<Args> (args)...));
     int status = mcon_send_buffer_to_java (socket, b);
-    free (b.ptr);
+    if (b.is_valid ())
+      {
+	delete [] b.ptr;
+	b.ptr = NULL;
+	b.dim = 0;
+      }
     return status;
   }
 

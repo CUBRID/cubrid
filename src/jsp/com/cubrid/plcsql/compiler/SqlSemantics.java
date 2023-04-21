@@ -85,6 +85,7 @@ public class SqlSemantics {
         if (this.kind < 0) {
             this.errCode = this.kind;
             this.errMsg = this.rewritten;
+            return;
         }
 
         int selectListCnt = unpacker.unpackInt();

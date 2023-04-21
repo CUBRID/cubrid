@@ -37,6 +37,7 @@ package com.cubrid.jsp.impl;
  * added in UFunctionCode, it should be added below.
  */
 public enum SUFunctionCode {
+    END_TRANSACTION(1),
     PREPARE(2),
     EXECUTE(3),
     GET_DB_PARAMETER(4),
