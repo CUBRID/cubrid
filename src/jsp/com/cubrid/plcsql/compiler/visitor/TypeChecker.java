@@ -312,8 +312,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             Coerce c = Coerce.getCoerce(caseExprTypes.get(i - 1), commonType);
             assert c != null : ("no coercion from " + caseExprTypes.get(i - 1) + " to " + commonType);
             node.elsePart.setCoerce(c);
+            i++;
         }
-        assert i == caseExprTypes.size();
+        assert i == caseExprTypes.size() + 1;
 
         node.setSelectorType(op.paramList.nodes.get(0).typeSpec);
         node.setResultType(commonType);
@@ -361,7 +362,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             Coerce c = Coerce.getCoerce(condExprTypes.get(i), commonType);
             assert c != null : ("no coercion from " + condExprTypes.get(i) + " to " + commonType);
             node.elsePart.setCoerce(c);
+            i++;
         }
+        assert i == condExprTypes.size();
 
         node.setResultType(commonType);
 

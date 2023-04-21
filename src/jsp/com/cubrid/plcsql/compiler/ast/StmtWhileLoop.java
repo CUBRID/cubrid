@@ -75,5 +75,5 @@ public class StmtWhileLoop extends Stmt {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines("%'OPT-LABEL'%", "while (%'EXPRESSION'%) {", "  %'STATEMENTS'%", "}");
+            Misc.combineLines("%'OPT-LABEL'%", "while (Boolean.TRUE.equals(%'EXPRESSION'%)) {", "  %'STATEMENTS'%", "}");
 }
