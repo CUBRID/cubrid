@@ -6668,10 +6668,10 @@ file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user
  * return                 : Error code
  * thread_p (in)          : Thread entry
  * OID (in)               : Class identifier
- * n_user_pages_out (out) : Output number of user pages of class
+ * total_pages (out) : Output number of user pages of class
  */
 int
-file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *total_pages, bool * partition_yn)
+file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *total_pages)
 {
   int count = 0, part_pages = 0;
   OID *partitions = NULL;
@@ -6697,11 +6697,7 @@ file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *tota
 	      return ER_FAILED;
 	    }
 	  *total_pages += part_pages;
-	}
-
-      if (partition_yn)
-	{
-	  *partition_yn = true;
+	  catalog_free_class_info_and_init (cls_info_p);
 	}
     }
   else
@@ -6715,10 +6711,7 @@ file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *tota
 	{
 	  return ER_FAILED;
 	}
-      if (partition_yn)
-	{
-	  *partition_yn = true;
-	}
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   return NO_ERROR;
