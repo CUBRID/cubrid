@@ -2850,11 +2850,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (scan_type == S_HEAP_SAMPLING_SCAN && !is_partition_table)
     {
       int total_pages = 0;
-<<<<<<< HEAD
-      if (file_get_num_total_user_pages (thread_p, cls_oid, &total_pages, &hsidp->sampling.partition_yn) != NO_ERROR)
-=======
       if (file_get_num_total_user_pages (thread_p, cls_oid, &total_pages) != NO_ERROR)
->>>>>>> remotemain/feature/statistics
 	{
 	  return ER_FAILED;
 	}
