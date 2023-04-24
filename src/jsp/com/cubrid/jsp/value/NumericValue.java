@@ -42,6 +42,11 @@ public class NumericValue extends Value {
         this.value = new BigDecimal(value);
     }
 
+    public NumericValue(BigDecimal value) {
+        super();
+        this.value = value;
+    }
+
     public NumericValue(String value, int mode, int dbType) {
         super(mode);
         this.value = new BigDecimal(value);
