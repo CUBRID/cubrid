@@ -99,6 +99,9 @@ class record_descriptor;
     } \
   while (0)
 
+/* A good space to accept insertions */
+#define HEAP_DROP_FREE_SPACE (int)(DB_PAGESIZE * 0.3)
+
 /*
  * Heap scan structures
  */
