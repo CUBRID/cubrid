@@ -17,7 +17,7 @@
 #
 message(STATUS "======== CMakeLists.txt")
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.6)
 
 function(with_unit_tests res) # checks for -DUNIT_TESTS=ON or -DUNIT_TEST_???=ON
   get_cmake_property(vars VARIABLES)
@@ -112,9 +112,6 @@ endfunction(target_external_dependencies)
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
-    if(CMAKE_VERSION VERSION_LESS "3.2")
-      message(FATAL_ERROR "The Ninja generator requires CMake 3.2+. Try the \"Unix Makefiles\" generator instead.")
-    endif()
     set(${prefix_dependee}_BYPRODUCTS BUILD_BYPRODUCTS "${ARGN}")
   endif()
 endmacro()
@@ -1451,14 +1448,9 @@ if(WIN32)
   else()
     message(WARNING "Cannot generate MSI installer with unsupported compiler version")
   endif()
-  if(CMAKE_VERSION VERSION_GREATER "3.1")
     set_property(INSTALL "${CUBRID_BINDIR}/$<TARGET_FILE_NAME:cubridtray>"
       PROPERTY CPACK_START_MENU_SHORTCUTS "CUBRID Service Tray")
     configure_file(cmake/CPackWixPatch.cmake.in wix_patch.xml @ONLY)
-  else(CMAKE_VERSION VERSION_GREATER "3.1")
-    # TODO: msi package will not working on CMAKE version 3.5 or less
-    set(CPACK_PACKAGE_EXECUTABLES cubridtray "CUBRID Service Tray")
-  endif(CMAKE_VERSION VERSION_GREATER "3.1")
 endif(WIN32)
 
 include(CPack)
