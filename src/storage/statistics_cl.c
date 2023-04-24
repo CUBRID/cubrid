@@ -152,6 +152,11 @@ stats_client_unpack_statistics (char *buf_p)
       attr_stats_p->n_btstats = OR_GET_INT (buf_p);
       buf_p += OR_INT_SIZE;
 
+      /*
+         OR_GET_INT64 (buf_p, &attr_stats_p->ndv);
+         buf_p += OR_INT64_SIZE;
+       */
+
       if (attr_stats_p->n_btstats <= 0)
 	{
 	  attr_stats_p->bt_stats = NULL;
@@ -339,6 +344,9 @@ stats_dump (const char *class_name_p, FILE * file_p)
       name_p = sm_get_att_name (class_mop, attr_stats_p->id);
       fprintf (file_p, " Attribute: %s\n", (name_p ? name_p : "not found"));
       fprintf (file_p, "    id: %d\n", attr_stats_p->id);
+      /*
+         fprintf (file_p, "    ndv: %ld\n", attr_stats_p->ndv);
+       */
       fprintf (file_p, "    Type: ");
 
       switch (attr_stats_p->type)
@@ -524,7 +532,7 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
   int error = NO_ERROR;
   DB_ATTRIBUTE *att;
   int col_cnt = 0;
-  ATTR_NDV *attr_ndv = NULL;
+  CLASS_ATTR_NDV class_attr_ndv;
   int i;
 
   class_mop = sm_find_class (class_name_p);
@@ -534,7 +542,7 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
     }
 
   /* get NDV by query */
-  if (stats_get_ndv_by_query (class_mop, &attr_ndv, class_name_p, &col_cnt, file_p) != NO_ERROR)
+  if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, file_p) != NO_ERROR)
     {
       goto end;
     }
@@ -543,17 +551,17 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
   fprintf (file_p, "\nNumber of Distinct Values\n");
   fprintf (file_p, "****************\n");
   fprintf (file_p, " Class name: %s\n", class_name_p);
-  for (i = 0; i < col_cnt; i++)
+  for (i = 0; i < class_attr_ndv.attr_cnt; i++)
     {
-      fprintf (file_p, "  %s (%ld)\n", sm_get_att_name (class_mop, attr_ndv[i].id), attr_ndv[i].ndv);
+      fprintf (file_p, "  %s (%ld)\n", sm_get_att_name (class_mop, class_attr_ndv.attr_ndv[i].id), class_attr_ndv.attr_ndv[i].ndv);
     }
-  fprintf (file_p, "total count : %ld\n", attr_ndv[i].ndv);
+  fprintf (file_p, "total count : %ld\n", class_attr_ndv.attr_ndv[i].ndv);
   fprintf (file_p, "\n");
 
 end:
-  if (attr_ndv != NULL)
+  if (class_attr_ndv.attr_ndv != NULL)
     {
-      free_and_init (attr_ndv);
+      free_and_init (class_attr_ndv.attr_ndv);
     }
   return;
 }
@@ -563,11 +571,9 @@ end:
  *   return:
  *   class_mop(in):
  *   attr_ndv(out):
- *   class_name_p(in):
  */
 int
-stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *class_name_p, int *col_cnt,
-			FILE * file_p)
+stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p)
 {
   DB_ATTRIBUTE *att;
   int error = NO_ERROR;
@@ -582,24 +588,26 @@ stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *c
   DB_DOMAIN *dom;
   ATTR_NDV *att_ndv = NULL;
   int i;
+  const char *class_name_p = NULL;
 
+  /* get class_name */
+  class_name_p = db_get_class_name (class_mop);
   /* count number of the columns */
-  *col_cnt = 0;
+  class_attr_ndv->attr_cnt = 0;
   att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
   while (att != NULL)
     {
-      (*col_cnt)++;
+      class_attr_ndv->attr_cnt++;
       att = db_attribute_next (att);
     }
 
-  *attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (*col_cnt + 1));
-  if (*attr_ndv == NULL)
+  class_attr_ndv->attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (class_attr_ndv->attr_cnt + 1));
+  if (class_attr_ndv->attr_ndv == NULL)
     {
       return ER_FAILED;
     }
-  att_ndv = *attr_ndv;
 
-  select_list = stats_make_select_list_for_ndv (class_mop, attr_ndv);
+  select_list = stats_make_select_list_for_ndv (class_mop, &class_attr_ndv->attr_ndv);
   if (select_list == NULL)
     {
       return ER_FAILED;
@@ -636,14 +644,14 @@ stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *c
     }
 
   /* get NDV from tuple */
-  for (i = 0; i < *col_cnt; i++)
+  for (i = 0; i < class_attr_ndv->attr_cnt; i++)
     {
       error = db_query_get_tuple_value (query_result, i, &value);
       if (error != NO_ERROR)
 	{
 	  goto end;
 	}
-      att_ndv[i].ndv = DB_GET_BIGINT (&value);
+      class_attr_ndv->attr_ndv[i].ndv = DB_GET_BIGINT (&value);
     }
 
   /* get count(*) */
@@ -652,7 +660,7 @@ stats_get_ndv_by_query (const MOP class_mop, ATTR_NDV ** attr_ndv, const char *c
     {
       goto end;
     }
-  att_ndv[i].ndv = DB_GET_BIGINT (&value);
+  class_attr_ndv->attr_ndv[i].ndv = DB_GET_BIGINT (&value);
 
 end:
   if (select_list)
