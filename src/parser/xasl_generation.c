@@ -12356,6 +12356,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
 		}
+	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_SAMPLING_SCAN))
+		{
+		  access_method = ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN;
+		}
 	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PAGE_INFO_SCAN))
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN;
@@ -17030,6 +17034,12 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 	  goto exit_on_error;
 	}
       buildvalue = &xasl->proc.buildvalue;
+    }
+
+  /* check sampling scan */
+  if (xasl->spec_list && xasl->spec_list->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+    {
+      XASL_SET_FLAG (xasl, XASL_SAMPLING_SCAN);
     }
 
   /* save info for derived table size estimation */

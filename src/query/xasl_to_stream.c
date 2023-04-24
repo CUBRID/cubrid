@@ -4371,7 +4371,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, access_spec->access);
 
   if (access_spec->access == ACCESS_METHOD_SEQUENTIAL || access_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE)
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
     {
       ptr = or_pack_int (ptr, 0);
     }

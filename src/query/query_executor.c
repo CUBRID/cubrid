@@ -1838,6 +1838,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	case S_HEAP_SCAN:
 	case S_HEAP_SCAN_RECORD_INFO:
 	case S_CLASS_ATTR_SCAN:
+	case S_HEAP_SAMPLING_SCAN:
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.hsid.scan_pred.regu_list, is_final);
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.hsid.rest_regu_list, is_final);
 
@@ -6499,6 +6500,12 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  scan_type = S_HEAP_SCAN_RECORD_INFO;
 	  indx_info = NULL;
 	}
+      else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	{
+	  /* open a sequential heap file sampling scan */
+	  scan_type = S_HEAP_SAMPLING_SCAN;
+	  indx_info = NULL;
+	}
       else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
 	{
 	  /* open a sequential heap file scan that reads page info */
@@ -6527,7 +6534,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  return ER_QPROC_INVALID_XASLNODE;
 	}			/* if */
 
-      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO)
+      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_HEAP_SAMPLING_SCAN)
 	{
 	  error_code = scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
 					    curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
@@ -6539,7 +6546,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					    curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
 					    curr_spec->s.cls_node.cache_rest, scan_type,
 					    curr_spec->s.cls_node.cache_reserved,
-					    curr_spec->s.cls_node.cls_regu_list_reserved);
+					    curr_spec->s.cls_node.cls_regu_list_reserved, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -6788,7 +6795,8 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	{
 	case TARGET_CLASS:
 	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN
+	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
 	    }
@@ -6969,7 +6977,8 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	{
 	  /* initialize the scan_id for partitioned classes */
 	  if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL
-	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
+	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
 	    {
 	      class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
@@ -7675,10 +7684,14 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 	}
     }
   if (spec->type == TARGET_CLASS
-      && (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO))
+      && (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+	  || spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN))
     {
       HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
-      SCAN_TYPE scan_type = (spec->access == ACCESS_METHOD_SEQUENTIAL) ? S_HEAP_SCAN : S_HEAP_SCAN_RECORD_INFO;
+      SCAN_TYPE scan_type =
+	(spec->access == ACCESS_METHOD_SEQUENTIAL) ? S_HEAP_SCAN : (spec->access ==
+								    ACCESS_METHOD_SEQUENTIAL_RECORD_INFO) ?
+	S_HEAP_SCAN_RECORD_INFO : S_HEAP_SAMPLING_SCAN;
       int i = 0;
       if (hsidp->caches_inited)
 	{
@@ -7702,7 +7715,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 			     spec->s.cls_node.num_attrs_pred, spec->s.cls_node.attrids_pred,
 			     spec->s.cls_node.cache_pred, spec->s.cls_node.num_attrs_rest,
 			     spec->s.cls_node.attrids_rest, spec->s.cls_node.cache_rest,
-			     scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
+			     scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved, true);
     }
   else if (spec->type == TARGET_CLASS && spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {
@@ -13204,9 +13217,17 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_LIST_ID *output = NULL;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
+  sampling_info *sampling = NULL;
+
+  /* check sampling scan */
+  if (XASL_IS_FLAGED (xasl, XASL_SAMPLING_SCAN) && xasl->spec_list)
+    {
+      sampling = &xasl->spec_list->s_id.s.hsid.sampling;
+    }
 
   /* make final pass on aggregate list nodes */
-  if (buildvalue->agg_list && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false) != NO_ERROR)
+  if (buildvalue->agg_list
+      && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false, sampling) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -17590,7 +17611,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 
   assert (gbstate->g_dim[N].d_flag != GROUPBY_DIM_FLAG_NONE);
 
-  error_code = qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file);
+  error_code = qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
