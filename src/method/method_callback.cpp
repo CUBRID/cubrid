@@ -617,6 +617,8 @@ namespace cubmethod
 	  goto exit;
 	}
 
+      res.args.resize (num_args);
+
       DB_VALUE args;
       /* arg_mode, arg_type */
       err = db_get (mop_p, SP_ATTR_ARGS, &args);
@@ -627,7 +629,7 @@ namespace cubmethod
 	  int i;
 	  for (i = 0; i < num_args; i++)
 	    {
-	      pl_parameter_info param_info;
+	      pl_parameter_info &param_info = res.args[i];
 	      set_get_element (param_set, i, &temp);
 	      DB_OBJECT *arg_mop_p = db_get_object (&temp);
 	      if (arg_mop_p)
@@ -648,6 +650,7 @@ namespace cubmethod
 		}
 	      else
 		{
+		  // error
 		  break;
 		}
 	    }
