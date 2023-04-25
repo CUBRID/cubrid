@@ -99,7 +99,6 @@ extern const char *AU_DBA_USER_NAME;
 
 
 int au_disable (void);
-int au_sysadm_disable (void);
 void au_enable (int save);
 MOP au_get_public_user (void);
 MOP au_get_dba_user (void);
