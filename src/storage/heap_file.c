@@ -98,9 +98,6 @@ static int rv;
 #define HEAP_STATS_ENTRY_MHT_EST_SIZE 1000
 #define HEAP_STATS_ENTRY_FREELIST_SIZE 1000
 
-/* A good space to accept insertions */
-#define HEAP_DROP_FREE_SPACE (int)(DB_PAGESIZE * 0.3)
-
 #define HEAP_DEBUG_SCANCACHE_INITPATTERN (12345)
 
 #if defined(CUBRID_DEBUG)
