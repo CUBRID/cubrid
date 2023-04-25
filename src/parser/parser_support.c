@@ -11506,11 +11506,19 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
 
 static PT_NODE *pt_convert_select (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
-static void
-pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
+static PT_NODE *
+pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_NODE *list = node, *spec;
+  PT_NODE *list, *spec;
   PT_NODE *sub_sel = NULL;
+  SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
+
+  if (node->node_type != PT_SPEC)
+    {
+      return node;
+    }
+
+  list = node;
 
   while (list)
     {
@@ -11546,6 +11554,8 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LI
 
       list = list->next;
     }
+
+  return node;
 }
 
 static void
@@ -11567,16 +11577,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
       sub_sel = node->info.insert.value_clauses;
       for (list = sub_sel->info.node_list.list; list; list = list->next)
 	{
-	  if (list->node_type == PT_SELECT)
+	  if (local_upd > 0)
 	    {
-	      if (local_upd > 0)
-		{
-		  pt_check_sub_query_spec (parser, list->info.query.q.select.from, snl);
-		}
-	      else
-		{
-		  parser_walk_tree (parser, list->info.query.q.select.from, pt_get_server_name_list, snl, NULL, NULL);
-		}
+	      parser_walk_tree (parser, list, pt_check_sub_query_spec, snl, NULL, NULL);
+	    }
+	  else
+	    {
+	      parser_walk_tree (parser, list, pt_get_server_name_list, snl, NULL, NULL);
 	    }
 	}
       sub_sel = NULL;
@@ -11597,7 +11604,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
 
   if (local_upd > 0 && upd_spec)
     {
-      pt_check_sub_query_spec (parser, upd_spec, snl);
+      pt_check_sub_query_spec (parser, upd_spec, snl, NULL);
     }
 
   if (into_spec)
