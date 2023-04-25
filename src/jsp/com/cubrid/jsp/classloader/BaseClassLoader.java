@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,8 +29,9 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.jsp.classloader;
 
+import com.cubrid.jsp.Server;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -38,45 +39,26 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.stream.Stream;
 
-public class StoredProcedureClassLoader extends URLClassLoader {
-    private static volatile StoredProcedureClassLoader instance = null;
+public abstract class BaseClassLoader extends URLClassLoader {
 
-    public static final String ROOT_PATH = Server.getSpPath() + "/java/";
-    public static final Path root = Paths.get(ROOT_PATH);
-
-    private FileTime lastModified = null;
-
-    /* For singleton */
-    public static synchronized StoredProcedureClassLoader getInstance() {
-        if (instance == null) {
-            instance = new StoredProcedureClassLoader();
-        }
-
-        return instance;
+    public BaseClassLoader(Path path, URL[] urls, ClassLoader parent) {
+        super(urls, parent);
+        init(path);
     }
 
-    private StoredProcedureClassLoader() {
-        super(new URL[0]);
-        init();
-    }
-
-    private void init() {
+    private void init(Path path) {
         try {
-            addURL(root.toUri().toURL());
-            initJar();
-            lastModified = getLastModifiedTime(root);
+            addURL(path.toUri().toURL());
+            initJar(path);
         } catch (Exception e) {
             Server.log(e);
         }
     }
 
-    private void initJar() throws IOException {
-        try (Stream<Path> files = Files.list(root)) {
+    private void initJar(Path path) throws IOException {
+        try (Stream<Path> files = Files.list(path)) {
             files.filter((file) -> !Files.isDirectory(file) && (file.toString().endsWith(".jar")))
                     .forEach(
                             jar -> {
@@ -91,26 +73,33 @@ public class StoredProcedureClassLoader extends URLClassLoader {
         }
     }
 
-    public Class<?> loadClass(String name) throws ClassNotFoundException {
-        try {
-            if (!isModified()) {
-                return super.loadClass(name);
+    public Class<?> loadClass(String name) {
+        Class c = findLoadedClass(name);
+        if (c == null) {
+            // find child first
+            try {
+                c = super.loadClass(name);
+            } catch (ClassNotFoundException e) {
+                // ignore
             }
-
-            instance = new StoredProcedureClassLoader();
-            return instance.loadClass(name);
-        } catch (IOException e) {
-            return null;
         }
-    }
 
-    private boolean isModified() throws IOException {
-        return lastModified.compareTo(getLastModifiedTime(root)) != 0;
-    }
+        if (c == null && getParent() != null) {
+            try {
+                c = getParent().loadClass(name);
+            } catch (ClassNotFoundException e) {
+                // ignore
+            }
+        }
 
-    private FileTime getLastModifiedTime(Path path) throws IOException {
-        BasicFileAttributes attr = Files.readAttributes(path, BasicFileAttributes.class);
-        FileTime lastModifiedTime = attr.lastModifiedTime();
-        return lastModifiedTime;
+        if (c == null) {
+            try {
+                c = getSystemClassLoader().loadClass(name);
+            } catch (ClassNotFoundException e) {
+                // ignore
+            }
+        }
+
+        return c;
     }
 }

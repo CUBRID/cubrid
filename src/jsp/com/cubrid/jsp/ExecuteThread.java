@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.CUBRIDPacker;
@@ -56,6 +57,7 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.List;
 import javax.tools.JavaCompiler;
@@ -285,11 +287,15 @@ public class ExecuteThread extends Thread {
         } else {
             prepareArgs.readArgs(unpacker);
         }
+        ctx.checkTranId(prepareArgs.getTranId());
     }
 
     private void processStoredProcedure() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
         long id = unpacker.unpackBigint();
+        int tid = unpacker.unpackInt();
+
+        ctx.checkTranId(tid);
 
         StoredProcedure procedure = makeStoredProcedure(unpacker);
         Value result = procedure.invoke();
@@ -307,10 +313,9 @@ public class ExecuteThread extends Thread {
         try {
             info = TestMain.compilePLCSQL(inSource, verbose);
             if (info.errCode == 0) {
-                /* Save Java file */
-                String javaFilePath =
-                        StoredProcedureClassLoader.ROOT_PATH + info.className + ".java";
-                File file = new File(javaFilePath);
+                Path javaFilePath =
+                        ClassLoaderManager.getDynamicPath().resolve(info.className + ".java");
+                File file = javaFilePath.toFile();
                 new FileWriter(file).append(info.translated).close();
 
                 JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
@@ -319,7 +324,7 @@ public class ExecuteThread extends Thread {
                             "Cannot find the system Java compiler. Check that your class path includes tools.jar");
                 }
 
-                String cubrid_env_root = Server.getRootPath();
+                Path cubrid_env_root = Server.getRootPath();
                 String javacOpts[] = {
                     "-classpath", cubrid_env_root + "/java/jspserver.jar", file.getPath()
                 };

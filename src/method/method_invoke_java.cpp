@@ -72,7 +72,7 @@ namespace cubmethod
     int error = NO_ERROR;
 
     cubmethod::header header (m_group->get_session_id (), SP_CODE_INVOKE, m_group->get_and_increment_request_id ());
-    cubmethod::invoke_java arg (m_group->get_id (), m_method_sig, m_transaction_control);
+    cubmethod::invoke_java arg (m_group->get_id (), m_group->get_tran_id (), m_method_sig, m_transaction_control);
 
     error = mcon_send_data_to_java (m_group->get_socket (), header, arg);
     return error;

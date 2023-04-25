@@ -7,6 +7,7 @@ import com.cubrid.jsp.value.Value;
 public class PrepareArgs {
 
     private long groupId = -1;
+    private int tranId;
     private Value[] arguments = null;
 
     public PrepareArgs(CUBRIDUnpacker unpacker) throws TypeMismatchException {
@@ -29,8 +30,13 @@ public class PrepareArgs {
         }
     }
 
+    public int getTranId() {
+        return tranId;
+    }
+
     public void readArgs(CUBRIDUnpacker unpacker) throws TypeMismatchException {
         groupId = unpacker.unpackBigint();
+        tranId = unpacker.unpackInt();
         int argCount = unpacker.unpackInt();
 
         if (arguments == null || argCount != arguments.length) {
