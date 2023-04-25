@@ -1044,7 +1044,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_sysadm_disable ();
+	      au_disable ();
 	    }
 	  csql_Database_connected = true;
 
@@ -2880,6 +2880,12 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       client_type = DB_CLIENT_TYPE_CSQL;
     }
 
+  if (csql_arg->sysadm_rebuild_catalog)
+    {
+      client_type = DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG;
+      csql_arg->sysadm = true;
+    }
+
   if (db_restart_ex (argv0, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL, client_type) != NO_ERROR)
     {
       if (!csql_Is_interactive || csql_arg->passwd != NULL || db_error_code () != ER_AU_INVALID_PASSWORD)
@@ -2934,7 +2940,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_sysadm_disable ();
+      au_disable ();
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */
