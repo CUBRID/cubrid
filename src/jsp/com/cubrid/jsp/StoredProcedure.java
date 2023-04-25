@@ -40,6 +40,7 @@ import com.cubrid.jsp.value.DoubleValue;
 import com.cubrid.jsp.value.FloatValue;
 import com.cubrid.jsp.value.IntValue;
 import com.cubrid.jsp.value.LongValue;
+import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.jsp.value.OidValue;
 import com.cubrid.jsp.value.ResultSetValue;
 import com.cubrid.jsp.value.SetValue;
@@ -329,7 +330,7 @@ public class StoredProcedure {
         } else if (o instanceof Double) {
             val = new DoubleValue(((Double) o).doubleValue());
         } else if (o instanceof BigDecimal) {
-            val = new DoubleValue(((BigDecimal) o).doubleValue());
+            val = new NumericValue(((BigDecimal) o));
         } else if (o instanceof String) {
             val = new StringValue((String) o);
         } else if (o instanceof java.sql.Date) {
