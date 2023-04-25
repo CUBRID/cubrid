@@ -51,9 +51,11 @@ public enum CoercionScheme {
             // In this case, we need to change the common type to some non-Null type because
             // Java does not have Null type in its type system.
             // I choose Object as the 'some non-Null type' among possible choices.
-            // This will work fine because operators return null when any of their arguemnts are null
+            // This will work fine because operators return null when any of their arguemnts are
+            // null
             // for all their overloaded versions.
-            // (Note that the common type decides which version will be used among the overloaded versions
+            // (Note that the common type decides which version will be used among the overloaded
+            // versions
             //  of operators)
             if (commonTy.equals(TypeSpecSimple.NULL)) {
                 commonTy = TypeSpecSimple.OBJECT;
@@ -106,7 +108,7 @@ public enum CoercionScheme {
             }
 
             if (wholeCommonTy.equals(TypeSpecSimple.NULL)) {
-                wholeCommonTy = TypeSpecSimple.OBJECT;  // see the comment in CompOp
+                wholeCommonTy = TypeSpecSimple.OBJECT; // see the comment in CompOp
             } else if (wholeCommonTy.equals(TypeSpecSimple.OBJECT)) {
                 // In this case, pairwise common types are not equal to a single type, and
                 // pairwise coomparison in opBetween and opIn in SpLib uses runtime type check and
@@ -158,7 +160,7 @@ public enum CoercionScheme {
                 if (commonTy != null) {
 
                     if (commonTy.equals(TypeSpecSimple.NULL)) {
-                        commonTy = TypeSpecSimple.OBJECT;   // see the comment in CompOp
+                        commonTy = TypeSpecSimple.OBJECT; // see the comment in CompOp
                     }
 
                     List<TypeSpec> ret = new ArrayList<>();
@@ -227,7 +229,7 @@ public enum CoercionScheme {
                 }
 
                 if (targetTy.equals(TypeSpecSimple.NULL)) {
-                    targetTy = TypeSpecSimple.OBJECT;   // see the comment in CompOp
+                    targetTy = TypeSpecSimple.OBJECT; // see the comment in CompOp
                 }
 
                 Coerce c = Coerce.getCoerce(argType, targetTy);
@@ -260,7 +262,7 @@ public enum CoercionScheme {
                 }
 
                 if (commonTy.equals(TypeSpecSimple.NULL)) {
-                    commonTy = TypeSpecSimple.OBJECT;   // see the comment in CompOp
+                    commonTy = TypeSpecSimple.OBJECT; // see the comment in CompOp
                 }
 
                 List<TypeSpec> ret = new ArrayList<>();
@@ -284,7 +286,7 @@ public enum CoercionScheme {
                 }
 
                 if (targetTy.equals(TypeSpecSimple.NULL)) {
-                    targetTy = TypeSpecSimple.OBJECT;   // see the comment in CompOp
+                    targetTy = TypeSpecSimple.OBJECT; // see the comment in CompOp
                 }
 
                 Coerce c = Coerce.getCoerce(argType, targetTy);
@@ -306,8 +308,7 @@ public enum CoercionScheme {
         public List<TypeSpec> getCoercions(
                 List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
             // and, or, xor, not
-            return getCoercionsToFixedType(
-                    outCoercions, argTypes, TypeSpecSimple.BOOLEAN);
+            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.BOOLEAN);
         }
     },
 
@@ -323,8 +324,7 @@ public enum CoercionScheme {
         public List<TypeSpec> getCoercions(
                 List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
             // <<, >>, &, ^, |
-            return getCoercionsToFixedType(
-                    outCoercions, argTypes, TypeSpecSimple.BIGINT);
+            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.BIGINT);
         }
     },
 
