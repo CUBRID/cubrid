@@ -69,6 +69,16 @@
          || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_CSQL \
          || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
 
+/* DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG is excluded
+ * for using the `--sysadm_rebuild_catalog` option of the csql utility.
+ *
+ * See CBRD-24781 for the details.
+ */
+#define BOOT_ADMIN_CSQL_CLIENT_TYPE(client_type) \
+        ((client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
+
 #define BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_DEFAULT \
          || (client_type) == DB_CLIENT_TYPE_BROKER \
