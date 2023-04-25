@@ -13,8 +13,7 @@ install:
 - ps: choco install ant --ignore-dependencies --no-progress
 - ps: choco install cmake --version=3.26.3 --no-progress
 - ps: $env:ANT="C:\ProgramData\chocolatey\bin\ant.exe"
-- ps: $env:CMAKE="C:\Program Files\CMake\bin\cmake.exe"
-- set PATH=%CMAKE%;%PATH%
+- set PATH=C:\Program Files\CMake\bin\;%PATH%
 
 clone_script:
 - ps: >-
