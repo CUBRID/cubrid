@@ -469,6 +469,8 @@ qo_plan_malloc (QO_ENV * env)
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
 
+  plan->hit_use_or_force = 0;	// ctshim
+
   return plan;
 }
 
@@ -3621,26 +3623,9 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   QO_PLAN_COMPARE_RESULT temp_res;
 
 #if 1				// ctshim
-  if (a->plan_un.scan.index->head || b->plan_un.scan.index->head)
+  if (a->hit_use_or_force != b->hit_use_or_force)
     {
-      if (a->plan_un.scan.index->head == NULL)
-	{
-	  if (b->plan_un.scan.index->head->is_hit_use_index)
-	    {
-	      return PLAN_COMP_GT;
-	    }
-	}
-      else if (b->plan_un.scan.index->head == NULL)
-	{
-	  if (a->plan_un.scan.index->head->is_hit_use_index)
-	    {
-	      return PLAN_COMP_LT;
-	    }
-	}
-      else if (a->plan_un.scan.index->head->is_hit_use_index != b->plan_un.scan.index->head->is_hit_use_index)
-	{
-	  return (a->plan_un.scan.index->head->is_hit_use_index ? PLAN_COMP_LT : PLAN_COMP_GT);
-	}
+      return ((a->hit_use_or_force > b->hit_use_or_force) ? PLAN_COMP_LT : PLAN_COMP_GT);
     }
 #endif
 
@@ -7851,6 +7836,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
       if (n)
 	{
 	  normal_index_plan_n++;	/* include index skip scan */
+	  planp->hit_use_or_force = ni_entryp->head->hit_index_use_or_force;	//  ctshim
 	}
 
       /* is it safe to ignore the result of qo_check_plan_on_info()? */
@@ -7873,6 +7859,7 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
       if (n)
 	{
 	  normal_index_plan_n++;	/* include index skip scan */
+	  planp->hit_use_or_force = ni_entryp->head->hit_index_use_or_force;	//  ctshim
 	}
 
       /* is it safe to ignore the result of qo_check_plan_on_info()? */
@@ -7921,6 +7908,11 @@ qo_generate_loose_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_EN
   planp = qo_index_scan_new (infop, nodep, ni_entryp, QO_SCANMETHOD_INDEX_SCAN, &range_terms, NULL);
 
   n = qo_check_plan_on_info (infop, planp);
+
+  if (n > 0)
+    {
+      planp->hit_use_or_force = index_entryp->hit_index_use_or_force;	//  ctshim
+    }
 
   bitset_delset (&range_terms);
 
@@ -8238,11 +8230,20 @@ qo_search_planner (QO_PLANNER * planner)
 		   * term different than "is null" in a filter index expression, the user knows from beginning that
 		   * null values can't appear when scan filter index.
 		   */
-
+#if 1				// ctshim
+		  QO_PLAN *t_plan = qo_index_scan_new (info, node, ni_entry, QO_SCANMETHOD_INDEX_SCAN,
+						       &seg_terms, NULL);
+		  n = qo_check_plan_on_info (info, t_plan);
+		  if (n > 0)
+		    {
+		      t_plan->hit_use_or_force = index_entry->hit_index_use_or_force;	//  ctshim
+		    }
+#else
 		  n =
 		    qo_check_plan_on_info (info,
 					   qo_index_scan_new (info, node, ni_entry, QO_SCANMETHOD_INDEX_SCAN,
 							      &seg_terms, NULL));
+#endif
 		  normal_index_plan_n += n;
 		}
 	      else if (index_entry->ils_prefix_len > 0)

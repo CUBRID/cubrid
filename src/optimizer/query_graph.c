@@ -7231,7 +7231,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
   bool found, is_hint_use, is_hint_ignore, is_hint_force, is_hint_all_except;
   BITSET index_segs, index_terms;
   bool special_index_scan = false;
-  bool is_hit_use_index = false;
+  int hit_index_use_or_force = 0;
 
   /* information of classes underlying this node */
   class_infop = QO_NODE_INFO (nodep);
@@ -7302,7 +7302,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      continue;		// skip it
 	    }
 
-	  is_hit_use_index = false;
+	  hit_index_use_or_force = 0;
 
 	  uip = QO_NODE_USING_INDEX (nodep);
 	  j = -1;
@@ -7367,19 +7367,31 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      else if (is_hint_force || is_hint_use)
 		{
 		  /* if any indexes are forced or used, use them */
+#if 0				// ctshim
 		  if (!found || QO_UI_FORCE (uip, j) == PT_IDX_HINT_IGNORE)
 		    {
-#if 0				// ctshim
 		      continue;
+		    }
 #else
+		  if (!found || QO_UI_FORCE (uip, j) == PT_IDX_HINT_IGNORE)
+		    {
 		      if (QO_UI_FORCE (uip, j) == PT_IDX_HINT_IGNORE)
 			{
 			  continue;
 			}
+		      if (special_index_scan || consp->filter_predicate != NULL)
+			{
+			  /* don't use filter indexes unless specified */
+			  continue;
+			}
 		      j = -1;
-#endif
 		    }
-		  is_hit_use_index = found;	// ctshim
+
+		  if (found)
+		    {
+		      hit_index_use_or_force = (QO_UI_FORCE (uip, j) == PT_IDX_HINT_FORCE) ? 2 : 1;
+		    }
+#endif
 		}
 	      else
 		{
@@ -7450,7 +7462,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      index_entryp->seg_equal_terms = NULL;
 	      index_entryp->seg_other_terms = NULL;
 
-	      index_entryp->is_hit_use_index = is_hit_use_index;
+	      index_entryp->hit_index_use_or_force = hit_index_use_or_force;
 
 	      if (index_entryp->nsegs > 0)
 		{
