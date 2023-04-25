@@ -62,7 +62,7 @@ namespace cubmethod
   struct prepare_args : public cubpacking::packable_object
   {
     prepare_args () = delete;
-    prepare_args (METHOD_GROUP_ID id, METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &args);
+    prepare_args (METHOD_GROUP_ID id, int tran_id, METHOD_TYPE type, std::vector<std::reference_wrapper<DB_VALUE>> &args);
     ~prepare_args () = default;
 
     void pack (cubpacking::packer &serializator) const override;
@@ -70,6 +70,7 @@ namespace cubmethod
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     METHOD_GROUP_ID group_id;
+    int tran_id;
     METHOD_TYPE type;
     std::vector<std::reference_wrapper<DB_VALUE>> &args;
   };
@@ -100,13 +101,15 @@ namespace cubmethod
   struct invoke_java : public cubpacking::packable_object
   {
     invoke_java () = delete;
-    invoke_java (METHOD_GROUP_ID group_id, method_sig_node *sig, bool tc);
+    invoke_java (METHOD_GROUP_ID group_id, int tran_id, method_sig_node *sig, bool tc);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     METHOD_GROUP_ID group_id;
+    int tran_id;
+
     std::string signature;
     int num_args;
     std::vector<int> arg_pos;

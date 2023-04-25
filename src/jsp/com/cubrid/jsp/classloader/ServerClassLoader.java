@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,30 +29,22 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.jsp.classloader;
 
-import java.util.HashMap;
+import java.net.URL;
 
-public class TargetMethodCache {
-    private HashMap<String, TargetMethod> methods;
+public class ServerClassLoader extends BaseClassLoader {
 
-    public TargetMethodCache() {
-        methods = new HashMap<String, TargetMethod>();
+    // singleton
+    private static class LazyHolder {
+        private static final ServerClassLoader INSTANCE = new ServerClassLoader();
     }
 
-    public TargetMethod get(String signature) throws Exception {
-        TargetMethod method = null;
-
-        method = methods.get(signature);
-        if (method == null) {
-            method = new TargetMethod(signature);
-            methods.put(signature, method);
-        }
-
-        return method;
+    public static ServerClassLoader getInstance() {
+        return LazyHolder.INSTANCE;
     }
 
-    public void clear() {
-        methods.clear();
+    private ServerClassLoader() {
+        super(ClassLoaderManager.getServerPath(), new URL[0], null);
     }
 }

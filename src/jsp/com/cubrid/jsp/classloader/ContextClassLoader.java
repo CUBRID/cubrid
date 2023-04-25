@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,30 +29,26 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.jsp.classloader;
 
-import java.util.HashMap;
+import java.net.URL;
+import java.nio.file.attribute.FileTime;
 
-public class TargetMethodCache {
-    private HashMap<String, TargetMethod> methods;
+public class ContextClassLoader extends BaseClassLoader {
+    private FileTime initializedTime = null;
 
-    public TargetMethodCache() {
-        methods = new HashMap<String, TargetMethod>();
+    public ContextClassLoader(ClassLoader parent) {
+        super(ClassLoaderManager.getDynamicPath(), new URL[0], parent);
+        initializedTime =
+                ClassLoaderManager.getLastModifiedTimeOfPath(ClassLoaderManager.getDynamicPath());
+        ClassLoaderManager.isModified(ClassLoaderManager.getDynamicPath());
     }
 
-    public TargetMethod get(String signature) throws Exception {
-        TargetMethod method = null;
-
-        method = methods.get(signature);
-        if (method == null) {
-            method = new TargetMethod(signature);
-            methods.put(signature, method);
-        }
-
-        return method;
+    public ContextClassLoader() {
+        this(ServerClassLoader.getInstance());
     }
 
-    public void clear() {
-        methods.clear();
+    public FileTime getInitializedTime() {
+        return initializedTime;
     }
 }

@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.BooleanValue;
@@ -68,7 +69,8 @@ public class StoredProcedure {
         this.signature = signature;
         this.args = args;
         this.returnType = returnType;
-        this.target = TargetMethodCache.getInstance().get(signature);
+        this.target =
+                ContextManager.getContextofCurrentThread().getTargetMethodCache().get(signature);
         this.cachedResolved = null;
 
         checkArgs();

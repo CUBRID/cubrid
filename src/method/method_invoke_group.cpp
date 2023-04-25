@@ -55,6 +55,7 @@ namespace cubmethod
     session_get_method_runtime_context (thread_p, m_rctx);
 
     m_sid = thread_p->conn_entry->session_id;
+    m_tid = logtb_find_current_tranid (thread_p);
 
     method_sig_node *sig = sig_list.method_sig;
     while (sig)
@@ -123,6 +124,13 @@ namespace cubmethod
   method_invoke_group::get_id () const
   {
     return m_id;
+  }
+
+  TRANID
+  method_invoke_group::get_tran_id ()
+  {
+    m_tid = logtb_find_current_tranid (m_thread_p);
+    return m_tid;
   }
 
   SOCKET
@@ -194,7 +202,7 @@ namespace cubmethod
 	  case METHOD_TYPE_CLASS_METHOD:
 	  {
 	    cubmethod::header header (get_session_id(), METHOD_REQUEST_ARG_PREPARE, get_and_increment_request_id ());
-	    cubmethod::prepare_args arg (m_id, elem, arg_base);
+	    cubmethod::prepare_args arg (m_id, get_tran_id (), elem, arg_base);
 	    error = method_send_data_to_client (m_thread_p, header, arg);
 	    break;
 	  }
@@ -213,7 +221,7 @@ namespace cubmethod
 
 	    // send to Java SP Servers
 	    cubmethod::header header (get_session_id(), SP_CODE_PREPARE_ARGS, get_and_increment_request_id ());
-	    cubmethod::prepare_args arg (m_id, elem, optimized_arg_base);
+	    cubmethod::prepare_args arg (m_id, get_tran_id (), elem, optimized_arg_base);
 
 	    error = mcon_send_data_to_java (get_socket (), header, arg);
 	    break;

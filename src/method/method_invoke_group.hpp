@@ -43,6 +43,7 @@
 #include "method_struct_parameter_info.hpp" /* db_parameter_info */
 #include "mem_block.hpp"	/* cubmem::block, cubmem::extensible_block */
 #include "porting.h" /* SOCKET */
+#include "storage_common.h"
 
 // thread_entry.hpp
 namespace cubthread
@@ -92,6 +93,7 @@ namespace cubmethod
       {
 	return m_sid;
       }
+      TRANID get_tran_id ();
 
       bool is_running () const;
       bool is_for_scan () const;
@@ -134,6 +136,7 @@ namespace cubmethod
 
       SESSION_ID m_sid;
       METHOD_GROUP_ID m_id;
+      TRANID m_tid;
 
       db_parameter_info *m_parameter_info;
       cubthread::entry *m_thread_p;
