@@ -3484,7 +3484,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_sysadm_disable ();
+      au_disable ();
     }
   csql_Database_connected = true;
 
