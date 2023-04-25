@@ -6404,7 +6404,9 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
    */
   if (Au_disable)
     {
-      if (db_get_client_type() != DB_CLIENT_TYPE_ADMIN_CSQL || !(sm_class->flags & SM_CLASSFLAG_SYSTEM))
+      int client_type = db_get_client_type ();
+      if ((client_type != DB_CLIENT_TYPE_ADMIN_CSQL && client_type != DB_CLIENT_TYPE_ADMIN_CSQL_WOS
+	   && client_type != DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL) || !(sm_class->flags & SM_CLASSFLAG_SYSTEM))
 	{
 	  return NO_ERROR;
 	}
