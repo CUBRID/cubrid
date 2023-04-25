@@ -9017,6 +9017,14 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG)
+    {
+      if (sm_check_system_class_by_name (class_name))
+	{
+	  sm_mark_system_class (class_obj, 1);
+	}
+    }
+
   if (do_flush_class_mop == true)
     {
       assert (error == NO_ERROR);
