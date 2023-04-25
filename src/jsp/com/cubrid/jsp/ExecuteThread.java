@@ -335,7 +335,7 @@ public class ExecuteThread extends Thread {
                 }
             }
         } catch (Exception e) {
-            info = new CompileInfo(-1, -1, "unknown error");
+            info = new CompileInfo(-1, -1, e.getMessage().isEmpty() ? "unknown error" : e.getMessage());
             throw new RuntimeException(e);
         } finally {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
