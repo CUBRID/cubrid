@@ -51,6 +51,7 @@ public class StmtStaticSql extends StmtSql {
                 false,
                 level,
                 new ExprStr(staticSql.ctx, staticSql.rewritten),
+                staticSql.getColumnTypeList(),
                 staticSql.intoVars,
                 new ArrayList(staticSql.hostExprs.keySet()));
 

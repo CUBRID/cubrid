@@ -1744,15 +1744,23 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             intoVars.addNode(id);
         }
 
+        List<TypeSpec> columnTypeList;
         if (cursor.decl instanceof DeclCursor) {
             if (intoVars.nodes.size() != ((DeclCursor) cursor.decl).staticSql.selectList.size()) {
                 throw new SemanticError( // TODO: verify what happens in Oracle
                         cursor.lineNo(), // s059
                         "the number of columns of the cursor must be equal to the number of into-variables");
             }
+
+            columnTypeList = ((DeclCursor) cursor.decl).staticSql.getColumnTypeList();
+            assert columnTypeList != null;
+        } else {
+            // id is SYS_REFCURSOR variable
+            // column types are hard to figure out in general because the SELECT statement executed is decided at runtime
+            columnTypeList = null;
         }
 
-        return new StmtCursorFetch(ctx, cursor, intoVars);
+        return new StmtCursorFetch(ctx, cursor, columnTypeList, intoVars.nodes);
     }
 
     @Override

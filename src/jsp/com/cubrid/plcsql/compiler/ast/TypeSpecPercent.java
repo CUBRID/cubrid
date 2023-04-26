@@ -78,4 +78,14 @@ public class TypeSpecPercent extends TypeSpec {
             return resolvedType.toString();
         }
     }
+
+    @Override
+    public String getNameOfGetMethod() {
+        if (resolvedType == null) {
+            assert false;
+            throw new RuntimeException("unreachable");
+        } else {
+            return resolvedType.getNameOfGetMethod();
+        }
+    }
 }

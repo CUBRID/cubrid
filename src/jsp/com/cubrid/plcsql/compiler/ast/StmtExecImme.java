@@ -51,6 +51,7 @@ public class StmtExecImme extends StmtSql {
                 true,
                 level,
                 dynamicSql,
+                null,
                 intoVarList == null ? null : intoVarList.nodes,
                 usedExprList == null ? null : usedExprList.nodes);
     }

@@ -78,6 +78,10 @@ public abstract class TypeSpec extends AstNode {
 
     public abstract String toJavaSignature();
 
+    public String getNameOfGetMethod() {
+        return nameOfGetMethod;
+    }
+
     // overriden by TypeSpecSimple
     public boolean isNumber() {
         return false;
