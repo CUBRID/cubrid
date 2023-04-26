@@ -32,7 +32,6 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Coerce;
 import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -48,7 +47,11 @@ public class StmtCursorFetch extends Stmt {
     public final List<TypeSpec> columnTypeList;
     public final List<ExprId> intoVarList;
 
-    public StmtCursorFetch(ParserRuleContext ctx, ExprId id, List<TypeSpec> columnTypeList, List<ExprId> intoVarList) {
+    public StmtCursorFetch(
+            ParserRuleContext ctx,
+            ExprId id,
+            List<TypeSpec> columnTypeList,
+            List<ExprId> intoVarList) {
         super(ctx);
 
         this.id = id;
@@ -95,7 +98,10 @@ public class StmtCursorFetch extends Stmt {
         StringBuffer sbuf = new StringBuffer();
         for (ExprId id : intoVarList) {
 
-            String nameOfGetMethod = (columnTypeList == null) ? "getObject" : columnTypeList.get(i).getNameOfGetMethod();
+            String nameOfGetMethod =
+                    (columnTypeList == null)
+                            ? "getObject"
+                            : columnTypeList.get(i).getNameOfGetMethod();
             String resultStr = String.format("rs.%s(%d)", nameOfGetMethod, i + 1);
 
             if (i > 0) {

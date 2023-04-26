@@ -733,7 +733,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         int i = 0;
         for (ExprId intoVar : node.intoVarList) {
-            TypeSpec srcTy = (node.columnTypeList == null) ? TypeSpecSimple.OBJECT : node.columnTypeList.get(i);
+            TypeSpec srcTy =
+                    (node.columnTypeList == null)
+                            ? TypeSpecSimple.OBJECT
+                            : node.columnTypeList.get(i);
             TypeSpec dstTy = ((DeclIdTyped) intoVar.decl).typeSpec();
 
             Coerce c = Coerce.getCoerce(srcTy, dstTy);
@@ -795,8 +798,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         // check types of expressions in USING clause
         if (node.usedExprList != null) {
-            for (Expr e: node.usedExprList) {
-                visit(e);   // s420
+            for (Expr e : node.usedExprList) {
+                visit(e); // s420
             }
         }
 
@@ -805,7 +808,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             List<Coerce> coerces = new ArrayList<>();
 
             // check types of into-variables
-            for (ExprId intoVar: node.intoVarList) {
+            for (ExprId intoVar : node.intoVarList) {
                 TypeSpec tyIntoVar = visitExprId(intoVar);
                 Coerce c = Coerce.getCoerce(TypeSpecSimple.OBJECT, tyIntoVar);
                 if (c == null) {

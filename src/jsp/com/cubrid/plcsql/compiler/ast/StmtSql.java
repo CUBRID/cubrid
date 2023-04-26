@@ -153,7 +153,8 @@ public abstract class StmtSql extends Stmt {
             assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
                     : "only variables or out-parameters can be used in into-clauses";
 
-            String nameOfGetMethod = dynamic ? "getObject" : columnTypeList.get(i).getNameOfGetMethod();
+            String nameOfGetMethod =
+                    dynamic ? "getObject" : columnTypeList.get(i).getNameOfGetMethod();
             String resultStr = String.format("r%%'LEVEL'%%.%s(%d)", nameOfGetMethod, i + 1);
 
             if (i > 0) {

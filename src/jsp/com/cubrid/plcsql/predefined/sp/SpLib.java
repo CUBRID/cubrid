@@ -2358,11 +2358,11 @@ public class SpLib {
             return convDateToString((Date) e);
         } else if (e instanceof Time) {
             return convTimeToString((Time) e);
-        /*
-        } else if (e instanceof Timestamp) {
-            // e is DATETIME or TIMESTAMP
-            return convDatetimeToString((Timestamp) e); // TODO: wrong if it is a TIMESTAMP?
-        */
+            /*
+            } else if (e instanceof Timestamp) {
+                // e is DATETIME or TIMESTAMP
+                return convDatetimeToString((Timestamp) e); // TODO: wrong if it is a TIMESTAMP?
+            */
         }
 
         throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
@@ -2463,8 +2463,6 @@ public class SpLib {
 
         throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
     }
-
-
 
     // ------------------------------------------------
     // Private

@@ -33,9 +33,9 @@ package com.cubrid.plcsql.compiler;
 import com.cubrid.plcsql.compiler.ast.Expr;
 import com.cubrid.plcsql.compiler.ast.ExprId;
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.ArrayList;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StaticSql {
@@ -68,7 +68,7 @@ public class StaticSql {
             return null;
         } else {
             List<TypeSpec> ret = new ArrayList<>();
-            for (String s: selectList.keySet()) {
+            for (String s : selectList.keySet()) {
                 ret.add(selectList.get(s));
             }
             return ret;

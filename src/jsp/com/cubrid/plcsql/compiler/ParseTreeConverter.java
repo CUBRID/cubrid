@@ -1756,7 +1756,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             assert columnTypeList != null;
         } else {
             // id is SYS_REFCURSOR variable
-            // column types are hard to figure out in general because the SELECT statement executed is decided at runtime
+            // column types are hard to figure out in general because the SELECT statement executed
+            // is decided at runtime
             columnTypeList = null;
         }
 
