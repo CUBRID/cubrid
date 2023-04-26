@@ -216,7 +216,12 @@ namespace cubcomm
     {
       std::lock_guard<std::mutex> lk_guard (m_mutex);
 
-      assert (!m_terminate);
+      if (m_terminate)
+	{
+	  // it has been terminated. the entry may have been erased or will be erased soon.
+	  // See the get_response(). If the way to deal with termination is changed as described in the function, this has to be changed along.
+	  return;
+	}
 
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       assert (!ent.m_response_or_error_present);
@@ -236,7 +241,12 @@ namespace cubcomm
     {
       std::lock_guard<std::mutex> lockg (m_mutex);
 
-      assert (!m_terminate);
+      if (m_terminate)
+	{
+	  // it has been terminated. the entry may have been erased or will be erased soon.
+	  // See the get_response(). If the way to deal with termination is changed as described in the function, this has to be changed along.
+	  return;
+	}
 
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       assert (!ent.m_response_or_error_present);
@@ -313,6 +323,10 @@ namespace cubcomm
   {
     {
       std::lock_guard<std::mutex> lockg (m_mutex);
+      if (m_terminate)
+	{
+	  return; // it has been already terminated.
+	}
       m_terminate = true;
     }
     // notify all because there is more than one thread waiting for data on the same bucket

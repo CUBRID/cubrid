@@ -3174,8 +3174,35 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #if defined (SERVER_MODE)
   if (get_server_type () == SERVER_TYPE_PAGE)
     {
-      log_Gl.finalize_log_prior_receiver ();	// stop receiving log before log_final()
-      ps_Gl->disconnect_all_tran_server ();
+      /*
+       * The dependencies in PS shutdown: 
+       * - ps_Gl.disconnect_all_tran_server() -> log_Gl.finalize_log_prior_receiver()
+       *   :stop communication with tran_server to prevent the ATS from pushing log prior nodes 
+       *    to finalized receiver.
+       * - ps_Gl->disconnect_all_tran_servers() -> ps_Gl->finalize_request_responder()
+       *   : the dtor of connection_handler access the request responder.
+       * - log_Gl.finalize_log_prior_receiver(), ps_Gl->finish_replication_during_shutdown -> log_final()
+       *   : they access the log_Gl so that they must stop before log_final(). 
+       *   e.g. they access log_Gl.append.nxio_lsa which are set NULL_LSA in log_final().
+       *
+       * The disconnection from TS.
+       * * Note that the PS-disconnection process always starts from TS.
+       *   PS requests the disconnection but doesn't disconnect by itself. It's the case even during the shutdown.
+       * 1. A PS sends SEND_DISCONNECT_REQUEST_MSG to a TS.
+       *   - the PS keeps the connection and running.
+       * 2. The TS who received the message starts preparing disconnection.
+       *   - Stop pushing requests to the connection.
+       *   - Stop threads generating msgs to the connection.
+       * 3. The TS sends SEND_DISCONNECT_MSG to the PS.
+       *   - When the PS receives this msg, it can release resources at any point for the connection.
+       * 4. The TS releases resources for the connection.
+       *   - Stop the request receiver for the connection.
+       *   - Wake up all threads that wait for a response.
+       *   - Make sure all msg are digested.
+       *   - Stop the request sender for the connection. 
+       */
+      ps_Gl->disconnect_all_tran_servers ();
+      log_Gl.finalize_log_prior_receiver ();
       ps_Gl->finish_replication_during_shutdown (*thread_p);
       ps_Gl->finalize_request_responder ();
     }

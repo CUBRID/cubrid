@@ -69,6 +69,7 @@ namespace cubcomm
       request_sync_client_server &operator = (request_sync_client_server &&) = delete;
 
       void start ();
+      void stop_response_broker ();
       void stop_incoming_communication_thread ();
       void stop_outgoing_communication_thread ();
 
@@ -177,6 +178,14 @@ namespace cubcomm
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::stop_response_broker ()
+  {
+    // unblock all waiting client thread - they will receive errors
+    m_response_broker.notify_terminate_and_wait ();
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::stop_incoming_communication_thread ()
   {
     // stop receiving thread such that fresh requests are not received anymore
@@ -184,7 +193,7 @@ namespace cubcomm
 
     // if the receiving thread terminated, there will not be any more responses
     // unblock all waiting client thread - they will receive errors
-    m_response_broker.notify_terminate_and_wait ();
+    stop_response_broker ();
 
     // at this point, the page server async responder must be waited for to terminate
     // processing all async requests

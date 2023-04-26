@@ -18,11 +18,13 @@
 
 #include "async_disconnect_handler.hpp"
 #include "page_server.hpp"
+#include "tran_server.hpp"
 
 #include <cassert>
 #include <chrono>
 
 template class async_disconnect_handler<page_server::connection_handler>;
+template class async_disconnect_handler<tran_server::connection_handler>;
 
 template <typename T_CONN_HANDLER>
 async_disconnect_handler<T_CONN_HANDLER>::async_disconnect_handler ()
@@ -34,16 +36,8 @@ async_disconnect_handler<T_CONN_HANDLER>::async_disconnect_handler ()
 template <typename T_CONN_HANDLER>
 async_disconnect_handler<T_CONN_HANDLER>::~async_disconnect_handler ()
 {
-  if (m_terminate.load () && m_thread.joinable ())
-    {
-      m_thread.join ();
-    }
-  else
-    {
-      assert (m_terminate.load ());
-    }
-
-  assert (m_disconnect_queue.empty ());
+  // it's terminated explicitely in advance so all disconnection requests have been handled.
+  assert (m_terminate.load ());
 }
 
 template <typename T_CONN_HANDLER>
@@ -68,8 +62,23 @@ template <typename T_CONN_HANDLER>
 void
 async_disconnect_handler<T_CONN_HANDLER>::terminate ()
 {
-  m_terminate.store (true);
+  if (m_terminate.exchange (true))
+    {
+      return; // have been terminated already
+    }
+
   m_queue_cv.notify_one ();
+
+  if (m_thread.joinable ())
+    {
+      m_thread.join ();
+    }
+  else
+    {
+      assert (false);
+    }
+
+  assert (m_disconnect_queue.empty ());
 }
 
 template <typename T_CONN_HANDLER>
