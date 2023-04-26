@@ -22466,29 +22466,16 @@ btree_rv_data_pack_btid_and_stats (const BTID * btid, long long nulls, long long
 void
 btree_rv_global_unique_stats_commit_dump (FILE * fp, int length, void *data)
 {
+  LOG_RCV rcv;
+  rcv.data = (char *) data;
+  rcv.length = length;
+
   BTID btid;
   log_unique_stats stats;
+  btree_rv_data_unpack_btid_and_stats (rcv, btid, stats);
 
-  assert (length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
-
-  const char *data_ptr = (const char *) data;
-
-  OR_GET_BTID (data_ptr, &btid);
-  data_ptr += OR_BTID_ALIGNED_SIZE;
-
-  OR_GET_BIGINT (data_ptr, &stats.num_nulls);
-  data_ptr += OR_BIGINT_SIZE;
-
-  OR_GET_BIGINT (data_ptr, &stats.num_oids);
-  data_ptr += OR_BIGINT_SIZE;
-
-  OR_GET_BIGINT (data_ptr, &stats.num_keys);
-  data_ptr += OR_BIGINT_SIZE;
-
-  assert (CAST_BUFLEN (data_ptr - (const char *)data) == length);
-
-  fprintf (fp, "OID = page_id=%d|vol_id=%d|file_id=%d   NEW_STATS = %lld keys, %lld objects, %lld nulls:  %d\n",
-	   BTID_AS_ARGS (&btid), (long long) stats.num_keys, (long long) stats.num_oids, (long long) stats.num_nulls);
+  fprintf (fp, "OID= page_id=%d, vol_id=%d, file_id=%d   NEW_STATS= nulls=%lld, oids=%lld, keys=%lld\n",
+	   BTID_AS_ARGS (&btid), (long long) stats.num_nulls, (long long) stats.num_oids, (long long) stats.num_keys);
 }
 
 /*
