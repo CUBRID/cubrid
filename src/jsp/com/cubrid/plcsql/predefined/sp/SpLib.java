@@ -2196,6 +2196,276 @@ public class SpLib {
         return Long.valueOf(bigDecimalToLong(bd));
     }
 
+    // from Object
+    public static Timestamp convObjectToDatetime(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToDatetime((String) e);
+        } else if (e instanceof Date) {
+            return convDateToDatetime((Date) e);
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP
+            return (Timestamp) e;
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Date convObjectToDate(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToDate((String) e);
+        } else if (e instanceof Date) {
+            return (Date) e;
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP
+            return convTimestampToDate((Timestamp) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Time convObjectToTime(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToTime((String) e);
+        } else if (e instanceof Short) {
+            return convShortToTime((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToTime((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToTime((Long) e);
+        } else if (e instanceof Float) {
+            return convFloatToTime((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToTime((Double) e);
+        } else if (e instanceof Time) {
+            return (Time) e;
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP
+            return convTimestampToTime((Timestamp) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Timestamp convObjectToTimestamp(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToTimestamp((String) e);
+        } else if (e instanceof Short) {
+            return convShortToTimestamp((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToTimestamp((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToTimestamp((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToTimestamp((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToTimestamp((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToTimestamp((Double) e);
+        } else if (e instanceof Date) {
+            return convDateToTimestamp((Date) e);
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP
+            return convDatetimeToTimestamp((Timestamp) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Integer convObjectToInt(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToInt((String) e);
+        } else if (e instanceof Short) {
+            return convShortToInt((Short) e);
+        } else if (e instanceof Integer) {
+            return (Integer) e;
+        } else if (e instanceof Long) {
+            return convBigintToInt((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToInt((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToInt((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToInt((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Short convObjectToShort(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToShort((String) e);
+        } else if (e instanceof Short) {
+            return (Short) e;
+        } else if (e instanceof Integer) {
+            return convIntToShort((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToShort((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToShort((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToShort((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToShort((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static String convObjectToString(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return (String) e;
+        } else if (e instanceof Short) {
+            return convShortToString((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToString((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToString((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToString((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToString((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToString((Double) e);
+        } else if (e instanceof Date) {
+            return convDateToString((Date) e);
+        } else if (e instanceof Time) {
+            return convTimeToString((Time) e);
+        /*
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP
+            return convDatetimeToString((Timestamp) e); // TODO: wrong if it is a TIMESTAMP?
+        */
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Double convObjectToDouble(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToDouble((String) e);
+        } else if (e instanceof Short) {
+            return convShortToDouble((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToDouble((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToDouble((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToDouble((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToDouble((Float) e);
+        } else if (e instanceof Double) {
+            return (Double) e;
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Float convObjectToFloat(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToFloat((String) e);
+        } else if (e instanceof Short) {
+            return convShortToFloat((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToFloat((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToFloat((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToFloat((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return (Float) e;
+        } else if (e instanceof Double) {
+            return convDoubleToFloat((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static BigDecimal convObjectToNumeric(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToNumeric((String) e);
+        } else if (e instanceof Short) {
+            return convShortToNumeric((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToNumeric((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToNumeric((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return (BigDecimal) e;
+        } else if (e instanceof Float) {
+            return convFloatToNumeric((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToNumeric((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Long convObjectToBigint(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToBigint((String) e);
+        } else if (e instanceof Short) {
+            return convShortToBigint((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToBigint((Integer) e);
+        } else if (e instanceof Long) {
+            return (Long) e;
+        } else if (e instanceof BigDecimal) {
+            return convNumericToBigint((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToBigint((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToBigint((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+
+
     // ------------------------------------------------
     // Private
     // ------------------------------------------------

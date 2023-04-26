@@ -56,10 +56,9 @@ public abstract class Coerce {
 
         if (from.equals(to)) {
             return IDENTITY;
-        } else if (from.equals(TypeSpecSimple.NULL) || from.equals(TypeSpecSimple.OBJECT)) {
+        } else if (from.equals(TypeSpecSimple.NULL)) {
             // why NULL?: in order for Javac to pick the right version among operator function
-            // overloads
-            // when all the arguments are nulls
+            // overloads when all the arguments are nulls
             return new Cast(to);
         } else if (to.equals(TypeSpecSimple.OBJECT)) {
             return IDENTITY;
@@ -226,6 +225,21 @@ public abstract class Coerce {
                                 TypeSpecSimple.TIMESTAMP,
                                 TypeSpecSimple.INT,
                                 TypeSpecSimple.SHORT,
+                                TypeSpecSimple.DOUBLE,
+                                TypeSpecSimple.FLOAT,
+                                TypeSpecSimple.NUMERIC,
+                                TypeSpecSimple.BIGINT)));
+        possibleCasts.put(
+                TypeSpecSimple.OBJECT,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.DATETIME,
+                                TypeSpecSimple.DATE,
+                                TypeSpecSimple.TIME,
+                                TypeSpecSimple.TIMESTAMP,
+                                TypeSpecSimple.INT,
+                                TypeSpecSimple.SHORT,
+                                TypeSpecSimple.STRING,
                                 TypeSpecSimple.DOUBLE,
                                 TypeSpecSimple.FLOAT,
                                 TypeSpecSimple.NUMERIC,
