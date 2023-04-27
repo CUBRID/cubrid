@@ -41,6 +41,7 @@ public class CompileInfo implements PackableObject {
     public String translated;
     public String createStmt;
     public String className;
+    public String signature;
 
     public CompileInfo(int code, int line, String msg) {
         assert code < 0;
@@ -50,11 +51,12 @@ public class CompileInfo implements PackableObject {
         errMsg = msg;
     }
 
-    public CompileInfo(String translated, String stmt, String name) {
+    public CompileInfo(String translated, String stmt, String name, String sig) {
         errCode = 0;
         this.translated = translated;
         this.createStmt = stmt;
         this.className = name;
+        this.signature = sig;
     }
 
     @Override
@@ -67,6 +69,7 @@ public class CompileInfo implements PackableObject {
             packer.packString(translated);
             packer.packString(createStmt);
             packer.packString(className);
+            packer.packString(signature);
         }
     }
 }
