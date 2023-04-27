@@ -20,7 +20,6 @@
 
     <property name="plcsql.antlr.lexer" value="${src.dir}/antlr4/PcsLexer.g4"/>
     <property name="plcsql.antlr.grammar" value="${src.dir}/antlr4/PcsParser.g4"/>
-    <property name="plcsql.antlr.sql" value="${src.dir}/antlr4/SqlParser.g4"/>
     <property name="plcsql.antlrgen.dir" value="antlrgen"/>
     <property name="plcsql.predefined.path" value="${src.dir}/com/cubrid/plcsql/predefined"/>
     <property name="plcsql.predefined.sp.path" value="${plcsql.predefined.path}/sp"/>
@@ -92,7 +91,6 @@
                 args="-listener -visitor -o ${plcsql.antlrgen.dir}">
             <arg value="${plcsql.antlr.lexer}"/>
             <arg value="${plcsql.antlr.grammar}"/>
-            <arg value="${plcsql.antlr.sql}"/>
         </java>
 
         <javac destdir="${classes.dir}" source="1.8" target="1.8" includeantruntime="no" encoding="UTF-8" debug="true" classpathref="runtime.path">

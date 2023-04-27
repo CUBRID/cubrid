@@ -44,46 +44,18 @@ public class StaticSqlCollector extends PcsParserBaseListener {
     public void visitTerminal(TerminalNode node) {
 
         if (collecting) {
-            String txt = node.getSymbol().getText();
-
-            if (sbuf.length() > 0) {
-                sbuf.append(" ");
-            }
-            sbuf.append(txt);
+            sbuf.append(node.getSymbol().getText());
         }
     }
 
     @Override
-    public void enterData_manipulation_language_statements(
-            PcsParser.Data_manipulation_language_statementsContext ctx) {
-        level++;
-        assert level == 1;
+    public void enterStatic_sql(PcsParser.Static_sqlContext ctx) {
         startCollect();
     }
 
     @Override
-    public void exitData_manipulation_language_statements(
-            PcsParser.Data_manipulation_language_statementsContext ctx) {
-        level--;
-        assert level == 0;
+    public void exitStatic_sql(PcsParser.Static_sqlContext ctx) {
         stopCollect(ctx);
-    }
-
-    @Override
-    public void enterS_select_statement(PcsParser.S_select_statementContext ctx) {
-        level++;
-        if (level == 1) {
-            startCollect(); // s_select_statement can be a decendant of
-            // data_manipulation_language_statements
-        }
-    }
-
-    @Override
-    public void exitS_select_statement(PcsParser.S_select_statementContext ctx) {
-        level--;
-        if (level == 0) {
-            stopCollect(ctx);
-        }
     }
 
     // -----------------------------------------------

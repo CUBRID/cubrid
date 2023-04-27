@@ -983,15 +983,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             }
         }
 
-        SqlSemantics sws = staticSqls.get(ctx.s_select_statement());
+        SqlSemantics sws = staticSqls.get(ctx.static_sql());
         assert sws != null;
         assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
         if (sws.intoVars != null) {
             throw new SemanticError(
-                    Misc.getLineOf(ctx.s_select_statement()), // s015
+                    Misc.getLineOf(ctx.static_sql()), // s015
                     "SQL in a cursor definition may not have an into-clause");
         }
-        StaticSql staticSql = checkAndConvertStaticSql(sws, ctx.s_select_statement());
+        StaticSql staticSql = checkAndConvertStaticSql(sws, ctx.static_sql());
 
         symbolStack.popSymbolTable();
 
@@ -1408,7 +1408,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         symbolStack.pushSymbolTable("for_s_sql_loop", null);
 
         ParserRuleContext recNameCtx = ctx.for_static_sql().record_name();
-        ParserRuleContext selectCtx = ctx.for_static_sql().s_select_statement();
+        ParserRuleContext selectCtx = ctx.for_static_sql().static_sql();
 
         String record = Misc.getNormalizedText(recNameCtx);
 
@@ -1634,8 +1634,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public StmtStaticSql visitData_manipulation_language_statements(
-            Data_manipulation_language_statementsContext ctx) {
+    public StmtStaticSql visitStatic_sql(Static_sqlContext ctx) {
 
         connectionRequired = true;
         addToImports("java.sql.*");
@@ -1782,15 +1781,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     "identifier in an OPEN-FOR statement must be of SYS_REFCURSOR type");
         }
 
-        SqlSemantics sws = staticSqls.get(ctx.s_select_statement());
+        SqlSemantics sws = staticSqls.get(ctx.static_sql());
         assert sws != null;
         assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
         if (sws.intoVars != null) {
             throw new SemanticError(
-                    Misc.getLineOf(ctx.s_select_statement()), // s043
+                    Misc.getLineOf(ctx.static_sql()), // s043
                     "SQL in an OPEN-FOR statement may not have an into-clause");
         }
-        StaticSql staticSql = checkAndConvertStaticSql(sws, ctx.s_select_statement());
+        StaticSql staticSql = checkAndConvertStaticSql(sws, ctx.static_sql());
 
         return new StmtOpenFor(ctx, refCursor, staticSql);
     }
