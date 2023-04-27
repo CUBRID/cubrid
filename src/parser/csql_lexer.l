@@ -144,6 +144,7 @@ int is_dblink_query_string = 0;
 										return AUTO_INCREMENT; }
 [aA][vV][gG]								{ begin_token(yytext);   return AVG; }
 [bB][eE][fF][oO][rR][eE]						{ begin_token(yytext);   return BEFORE; }
+[bB][eE][gG][iI][nN]							{ begin_token(yytext);   return BEGIN_; }
 [bB][eE][nN][cC][hH][mM][aA][rR][kK]					{ begin_token(yytext);
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return BENCHMARK; }
@@ -728,6 +729,9 @@ int is_dblink_query_string = 0;
 [pP][eE][rR][cC][eE][nN][tT][iI][lL][eE]_[dD][iI][sS][cC]	{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PERCENTILE_DISC; }
+[pP][lL][cC][sS][qQ][lL]				{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return PLCSQL; }
 [pP][oO][rR][tT]        					        { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PORT; }
@@ -1483,7 +1487,6 @@ _[uU][tT][fF]8[']		{
 				}
 
 
-
 "--"				{
 					char* cp = parser_line_hint();
 					if (cp)
@@ -1992,7 +1995,6 @@ consume_comment:
 
   return NULL;
 }
-
 
 static char *
 parser_line_hint (void)

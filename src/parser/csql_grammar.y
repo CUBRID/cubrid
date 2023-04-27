@@ -150,6 +150,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "memory_alloc.h"
 #include "db_elo.h"
 #include "storage_common.h"
+#include "jsp_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -978,6 +979,9 @@ int g_original_buffer_len;
 %type <node> dblink_conn_str
 %type <node> dblink_column_definition_list
 %type <node> dblink_column_definition
+
+%type <node> opt_pl_language_spec
+
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1575,6 +1579,7 @@ int g_original_buffer_len;
 %token <cptr> PERCENT_RANK
 %token <cptr> PERCENTILE_CONT
 %token <cptr> PERCENTILE_DISC
+%token <cptr> PLCSQL
 %token <cptr> PORT
 %token <cptr> PRINT
 %token <cptr> PRIORITY
@@ -2949,17 +2954,19 @@ create_stmt
 
 		DBG_PRINT}}
 	| CREATE					/* 1 */
-	  opt_or_replace                		/* 2 */
+	  opt_or_replace               		        /* 2 */
 	  PROCEDURE					/* 3 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 4 */
+		{ 					/* 4 */
+		  PT_NODE* node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
+		  parser_push_hint_node (node);
+		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
+		}
 	  identifier '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
-	  opt_of_is_as LANGUAGE JAVA			/* 9, 10, 11 */
-	  NAME char_string_literal			/* 12, 13 */
-	  opt_comment_spec				/* 14 */
+	  opt_of_is_as opt_pl_language_spec		/* 9, 10 */
+	  opt_comment_spec				/* 11 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace PROCEDURE~);
-
-			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
+			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
 			    node->info.sp.or_replace = $2;
@@ -2967,8 +2974,8 @@ create_stmt
 			    node->info.sp.type = PT_SP_PROCEDURE;
 			    node->info.sp.param_list = $7;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
-			    node->info.sp.java_method = $13;
-			    node->info.sp.comment = $14;
+			    node->info.sp.body = $10;
+			    node->info.sp.comment = $11;
 			  }
 
 			$$ = node;
@@ -2977,17 +2984,19 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE                        		/* 1 */
 	  opt_or_replace                		/* 2 */
-	  FUNCTION					/* 3 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 4 */
+	  FUNCTION								/* 3 */
+		{ 									/* 4 */
+			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
+			parser_push_hint_node (node);
+			push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION);
+		}
 	  identifier '('  opt_sp_param_list  ')'	/* 5, 6, 7, 8 */
 	  RETURN opt_of_data_type_cursor		/* 9, 10 */
-	  opt_of_is_as LANGUAGE JAVA			/* 11, 12, 13 */
-	  NAME char_string_literal			/* 14, 15 */
-	  opt_comment_spec				/* 16 */
+	  opt_of_is_as opt_pl_language_spec		/* 11, 12 */
+	  opt_comment_spec				/* 13 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace FUNCTION~);
-
-			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
+			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
 			    node->info.sp.or_replace = $2;
@@ -2995,8 +3004,8 @@ create_stmt
 			    node->info.sp.type = PT_SP_FUNCTION;
 			    node->info.sp.param_list = $7;
 			    node->info.sp.ret_type = $10;
-			    node->info.sp.java_method = $15;
-			    node->info.sp.comment = $16;
+			    node->info.sp.body = $12;
+			    node->info.sp.comment = $13;
 			  }
 
 			$$ = node;
@@ -12398,9 +12407,61 @@ opt_of_data_type_cursor
 	;
 
 opt_of_is_as
-	: /* empty */
-	| IS
+	: IS
 	| AS
+	;
+
+opt_pl_language_spec
+	: char_string_literal
+		{{ DBG_TRACE_GRAMMAR(opt_pl_language_spec, : );
+
+			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
+
+			if (node)
+			  {
+			    node->info.sp_body.lang = SP_LANG_PLCSQL;
+			    node->info.sp_body.impl = $1;
+                            node->info.sp_body.direct = 1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| LANGUAGE PLCSQL	/* 1, 2 */
+	  char_string_literal 	/* 3 */
+		{{ DBG_TRACE_GRAMMAR(opt_pl_language_spec, | LANGAUGE PLCSQL );
+
+			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
+
+			if (node)
+			  {
+			    node->info.sp_body.lang = SP_LANG_PLCSQL;
+			    node->info.sp_body.impl = $3;
+                            node->info.sp_body.direct = 1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| LANGUAGE JAVA 		/* 1, 2 */
+	  NAME char_string_literal	/* 3 */
+		{{ DBG_TRACE_GRAMMAR(opt_pl_language_spec, : LANGAUGE JAVA );
+
+			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
+
+			if (node)
+			  {
+			    node->info.sp_body.lang = SP_LANG_JAVA;
+			    node->info.sp_body.decl = $3;
+                            node->info.sp_body.direct = 0;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 opt_sp_param_list
