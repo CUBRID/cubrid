@@ -54,6 +54,7 @@
 #include "dbtype.h"
 #include "parser_allocator.hpp"
 #include "tde.h"
+#include "jsp_cl.h"
 
 #include <malloc.h>
 
@@ -274,6 +275,7 @@ static PT_NODE *pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, vo
 static PT_NODE *pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -435,6 +437,7 @@ static PARSER_VARCHAR *pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE 
 static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -5026,6 +5029,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_CREATE_SYNONYM] = pt_apply_create_synonym;
   pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
   pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
+  pt_apply_func_array[PT_SP_BODY] = pt_apply_sp_body;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5160,6 +5164,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_CREATE_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_DROP_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_RENAME_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_SP_BODY] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5287,6 +5292,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_CREATE_SYNONYM] = pt_print_create_synonym;
   pt_print_func_array[PT_DROP_SYNONYM] = pt_print_drop_synonym;
   pt_print_func_array[PT_RENAME_SYNONYM] = pt_print_rename_synonym;
+  pt_print_func_array[PT_SP_BODY] = pt_print_sp_body;
 
   pt_print_f = pt_print_func_array;
 }
@@ -7531,8 +7537,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->info.sp.ret_type));
     }
 
-  r3 = pt_print_bytes (parser, p->info.sp.java_method);
-  q = pt_append_nulstring (parser, q, " as language java name ");
+  r3 = pt_print_bytes (parser, p->info.sp.body);
   q = pt_append_varchar (parser, q, r3);
 
   if (p->info.sp.comment != NULL)
@@ -7802,6 +7807,76 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return q;
 }
+
+/*
+ * pt_apply_sp_body () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  return p;
+}
+
+/*
+ * pt_print_sp_parameter () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1 = NULL;
+
+  q = pt_append_nulstring (parser, q, " as ");
+  if (p->info.sp_body.lang == SP_LANG_PLCSQL)
+    {
+      // TODO: PL/CSQL compiler should permit it.
+      // q = pt_append_nulstring (parser, q, "language plcsql ");
+      r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
+    }
+  else /* (p->info.sp_body.lang == SP_LANG_JAVA) */
+    {
+      q = pt_append_nulstring (parser, q, "language java ");\
+
+      // TODO: CBRD-24641
+      /*
+         if (p->info.sp_body.direct)
+         {
+         q = pt_append_nulstring (parser, q, " begin ");
+         r1 = pt_print_bytes (parser, p->info.sp_body.impl);
+         }
+       */
+
+      if (p->info.sp_body.direct == false)
+	{
+	  q = pt_append_nulstring (parser, q, " name ");
+	  r1 = pt_print_bytes (parser, p->info.sp_body.decl);
+	}
+      else
+	{
+	  r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
+	}
+
+      // TODO: CBRD-24641
+      /*
+         if (p->info.sp_body.direct)
+         {
+         q = pt_append_nulstring (parser, q, " end ");
+         }
+       */
+    }
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ";");
+
+  return q;
+}
+
 
 /* PARTITION */
 /*
