@@ -328,7 +328,8 @@ public class TestMain {
                 new CompileInfo(
                         unit.toJavaCode(),
                         String.format(sqlTemplate[0], unit.getJavaSignature()),
-                        unit.getClassName());
+                        unit.getClassName(),
+                        unit.getJavaSignature());
         return info;
     }
 
