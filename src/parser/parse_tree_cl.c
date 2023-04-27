@@ -7840,9 +7840,9 @@ pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p)
       // q = pt_append_nulstring (parser, q, "language plcsql ");
       r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
     }
-  else /* (p->info.sp_body.lang == SP_LANG_JAVA) */
+  else				/* (p->info.sp_body.lang == SP_LANG_JAVA) */
     {
-      q = pt_append_nulstring (parser, q, "language java ");\
+      q = pt_append_nulstring (parser, q, "language java ");
 
       // TODO: CBRD-24641
       /*
