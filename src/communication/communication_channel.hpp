@@ -105,18 +105,8 @@ namespace cubcomm
 
       std::string get_channel_id () const
       {
-	std::stringstream ss;
-
-	ss << m_channel_name << "_" << m_hostname;
-
-	if (m_port != -1)
-	  {
-	    ss << "_" << m_port;
-	  }
-
-	ss << "_" << m_socket;
-
-	return ss.str ();
+	assert (!m_channel_id.empty());
+	return m_channel_id;
       }
 
     protected:
@@ -126,6 +116,12 @@ namespace cubcomm
       std::string m_channel_name;
       std::string m_hostname;
       int m_port = INVALID_PORT;
+
+    private:
+      void materialize_channel_id ();
+
+    private:
+      std::string m_channel_id;
   };
 
 

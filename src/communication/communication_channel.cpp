@@ -75,6 +75,8 @@ namespace cubcomm
 
     m_port = comm.m_port;
     comm.m_port = INVALID_PORT;
+
+    materialize_channel_id ();
   }
 
   channel::~channel ()
@@ -165,8 +167,6 @@ namespace cubcomm
 
     m_socket = css_tcp_client_open (hostname, port);
 
-    er_log_chn_debug ("[%s] Connect to %s:%d socket = %d.\n", get_channel_id ().c_str (), hostname, port, m_socket);
-
     if (IS_INVALID_SOCKET (m_socket))
       {
 	return REQUEST_REFUSED;
@@ -176,13 +176,16 @@ namespace cubcomm
     m_hostname = hostname;
     m_port = port;
 
+    materialize_channel_id ();
+
+    er_log_chn_debug ("[%s] Connect to %s:%d socket = %d.\n", get_channel_id ().c_str (), hostname, port, m_socket);
+
+
     return NO_ERRORS;
   }
 
   css_error_code channel::accept (SOCKET socket)
   {
-    er_log_chn_debug ("[%s] Accept connection to socket = %d.\n", get_channel_id ().c_str (), socket);
-
     if (is_connection_alive () || IS_INVALID_SOCKET (socket))
       {
 	return INTERNAL_CSS_ERROR;
@@ -190,6 +193,10 @@ namespace cubcomm
 
     m_type = CHANNEL_TYPE::LISTENER;
     m_socket = socket;
+
+    materialize_channel_id ();
+
+    er_log_chn_debug ("[%s] Accept connection to socket = %d.\n", get_channel_id ().c_str (), socket);
 
     return NO_ERRORS;
   }
@@ -252,4 +259,19 @@ namespace cubcomm
     return m_port;
   }
 
+  void channel::materialize_channel_id ()
+  {
+    std::stringstream ss;
+
+    ss << m_channel_name << "_" << m_hostname;
+
+    if (m_port != -1)
+      {
+	ss << "_" << m_port;
+      }
+
+    ss << "_" << m_socket;
+
+    m_channel_id = ss.str ();
+  }
 } /* namespace cubcomm */
