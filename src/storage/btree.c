@@ -22460,6 +22460,25 @@ btree_rv_data_pack_btid_and_stats (const BTID * btid, long long nulls, long long
 }
 
 /*
+ * btree_rv_global_unique_stats_commit_dump - dump stored info about global unique stats
+ *
+ */
+void
+btree_rv_global_unique_stats_commit_dump (FILE * fp, int length, void *data)
+{
+  LOG_RCV rcv;
+  rcv.data = (char *) data;
+  rcv.length = length;
+
+  BTID btid;
+  log_unique_stats stats;
+  btree_rv_data_unpack_btid_and_stats (rcv, btid, stats);
+
+  fprintf (fp, "OID= page_id=%d, vol_id=%d, file_id=%d   NEW_STATS= nulls=%lld, oids=%lld, keys=%lld\n",
+	   BTID_AS_ARGS (&btid), (long long) stats.num_nulls, (long long) stats.num_oids, (long long) stats.num_keys);
+}
+
+/*
  * btree_search_key_and_apply_functions () - B-tree internal function to traverse the tree in the direction given by
  * 					     a key and calling three types of function: one to fix/handle root page,
  * 					     one on the traversed nodes and one on the leaf node pointed by key.
