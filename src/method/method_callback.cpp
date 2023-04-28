@@ -479,7 +479,7 @@ namespace cubmethod
 	    PARSER_CONTEXT *parser = db_get_parser (db_session);
 	    PT_NODE *stmt = db_get_statement (db_session, 0);
 
-      parser->custom_print |= PT_CONVERT_RANGE;
+	    parser->custom_print |= PT_CONVERT_RANGE;
 	    semantics.rewritten_query = parser_print_tree (parser, stmt);
 
 	    const std::vector<column_info> &column_infos = info.column_infos;
