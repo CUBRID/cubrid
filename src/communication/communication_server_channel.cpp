@@ -93,19 +93,17 @@ namespace cubcomm
 
   css_error_code server_channel::accept (SOCKET socket)
   {
-    er_log_chn_debug ("[%s] Accept connection to socket = %d.\n", get_channel_id ().c_str (), socket);
+    css_error_code rc = NO_ERRORS;
 
-    if (is_connection_alive () || IS_INVALID_SOCKET (socket))
+    rc = channel::accept (socket);
+    if (rc != NO_ERRORS)
       {
-	return INTERNAL_CSS_ERROR;
+	return rc;
       }
-
-    m_type = CHANNEL_TYPE::LISTENER;
-    m_socket = socket;
 
     char buffer[CUB_MAXHOSTNAMELEN];
     size_t max_size = CUB_MAXHOSTNAMELEN;
-    css_error_code rc = recv (buffer, max_size);
+    rc = recv (buffer, max_size);
     m_hostname = buffer;
     m_conn_type = static_cast<cubcomm::server_server> (css_get_master_request (socket));
     return rc;
