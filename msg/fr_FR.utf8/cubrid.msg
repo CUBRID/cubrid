@@ -1347,7 +1347,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1276 Connected page server cannot be reached anymore.
 1277 Atomic replication error: %s.
 1278 Decompression failed (%s).
-1279 Error reserved for scalability development.
+1279 No page server connection is available. At least one connection is required.
 1280 Error reserved for scalability development.
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
