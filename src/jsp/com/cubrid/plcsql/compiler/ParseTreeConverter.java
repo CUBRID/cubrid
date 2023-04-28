@@ -109,7 +109,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (errCode < 0) {
                     throw new SemanticError( // s413
                             node.lineNo(),
-                            "number of the arguments to procedure "
+                            "the number of arguments to procedure "
                                     + ps.name
                                     + " does not match the number of the procedure's formal parameters");
                 } else if (errCode > 0) {
@@ -142,7 +142,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (errCode < 0) {
                     throw new SemanticError( // s416
                             node.lineNo(),
-                            "number of the arguments to function "
+                            "the number of arguments to function "
                                     + fs.name
                                     + " does not match the number of the function's formal parameters");
                 } else if (errCode > 0) {
@@ -389,11 +389,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (opStr == null) {
             assert false : "unreachable"; // by syntax
             throw new RuntimeException("unreachable");
-        }
-
-        String ty = null;
-        if (opStr.equals("Eq") || opStr.equals("NullSafeEq") || opStr.equals("Neq")) {
-            ty = "Object";
         }
 
         Expr l = visitExpression(ctx.relational_expression(0));
@@ -661,6 +656,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public ExprFloat visitFp_num_exp(Fp_num_expContext ctx) {
         try {
+            addToImports("java.math.BigDecimal");
             BigDecimal bd = new BigDecimal(ctx.FLOATING_POINT_NUM().getText());
             return new ExprFloat(ctx, bd.toString());
         } catch (NumberFormatException e) {
@@ -677,17 +673,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitNull_exp(Null_expContext ctx) {
-        return ExprNull.SINGLETON;
+        return new ExprNull(ctx);
     }
 
     @Override
     public Expr visitTrue_exp(True_expContext ctx) {
-        return ExprTrue.SINGLETON;
+        return new ExprTrue(ctx);
     }
 
     @Override
     public Expr visitFalse_exp(False_expContext ctx) {
-        return ExprFalse.SINGLETON;
+        return new ExprFalse(ctx);
     }
 
     @Override
@@ -1748,15 +1744,24 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             intoVars.addNode(id);
         }
 
+        List<TypeSpec> columnTypeList;
         if (cursor.decl instanceof DeclCursor) {
             if (intoVars.nodes.size() != ((DeclCursor) cursor.decl).staticSql.selectList.size()) {
                 throw new SemanticError( // TODO: verify what happens in Oracle
                         cursor.lineNo(), // s059
                         "the number of columns of the cursor must be equal to the number of into-variables");
             }
+
+            columnTypeList = ((DeclCursor) cursor.decl).staticSql.getColumnTypeList();
+            assert columnTypeList != null;
+        } else {
+            // id is SYS_REFCURSOR variable
+            // column types are hard to figure out in general because the SELECT statement executed
+            // is decided at runtime
+            columnTypeList = null;
         }
 
-        return new StmtCursorFetch(ctx, cursor, intoVars);
+        return new StmtCursorFetch(ctx, cursor, columnTypeList, intoVars.nodes);
     }
 
     @Override

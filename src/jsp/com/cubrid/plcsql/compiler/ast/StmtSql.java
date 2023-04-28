@@ -40,6 +40,7 @@ public abstract class StmtSql extends Stmt {
     public final boolean dynamic;
     public final int level;
     public final Expr sql;
+    public final List<TypeSpec> columnTypeList;
     public final List<ExprId> intoVarList;
     public final List<? extends Expr> usedExprList;
 
@@ -48,13 +49,18 @@ public abstract class StmtSql extends Stmt {
             boolean dynamic,
             int level,
             Expr sql,
+            List<TypeSpec> columnTypeList,
             List<ExprId> intoVarList,
             List<? extends Expr> usedExprList) {
         super(ctx);
 
+        // if static and a SELECT statement, then columnTypeList must be given
+        assert dynamic || intoVarList == null || columnTypeList != null;
+
         this.dynamic = dynamic;
         this.level = level;
         this.sql = sql;
+        this.columnTypeList = columnTypeList;
         this.intoVarList = intoVarList;
         this.usedExprList = usedExprList;
     }
@@ -64,11 +70,15 @@ public abstract class StmtSql extends Stmt {
         String setUsedExprStr = Common.getSetUsedExprStr(usedExprList);
 
         if (intoVarList == null) {
+            assert coerces == null;
+
             return tmplDml.replace("%'KIND'%", dynamic ? "dynamic" : "static")
                     .replace("%'SQL'%", Misc.indentLines(sql.toJavaCode(), 1, true))
                     .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
                     .replace("%'LEVEL'%", "" + level);
         } else {
+            assert coerces != null;
+
             String setResultsStr = getSetResultsStr(intoVarList);
             String setNullsStr = getSetNullsStr(intoVarList);
             return tmplSelect
@@ -89,7 +99,7 @@ public abstract class StmtSql extends Stmt {
     // Private
     // --------------------------------------------------
 
-    private List<Coerce> coerces; // TODO: consider coerces for static SELECT statements
+    private List<Coerce> coerces;
 
     private static final String tmplDml =
             Misc.combineLines(
@@ -129,39 +139,47 @@ public abstract class StmtSql extends Stmt {
                     "  stmt_%'LEVEL'%.close();",
                     "}");
 
-    private static String getSetResultsStr(List<ExprId> idList) {
+    private String getSetResultsStr(List<ExprId> intoVarList) {
 
         StringBuffer sbuf = new StringBuffer();
-        int size = idList.size();
-        for (int i = 0; i < size; i++) {
+
+        int size = intoVarList.size();
+        assert coerces.size() == size;
+        assert dynamic || (columnTypeList != null && columnTypeList.size() == size);
+
+        int i = 0;
+        for (ExprId id : intoVarList) {
+
+            assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
+                    : "only variables or out-parameters can be used in into-clauses";
+
+            String nameOfGetMethod =
+                    dynamic ? "getObject" : columnTypeList.get(i).getNameOfGetMethod();
+            String resultStr = String.format("r%%'LEVEL'%%.%s(%d)", nameOfGetMethod, i + 1);
+
             if (i > 0) {
                 sbuf.append("\n");
             }
 
-            ExprId id = idList.get(i);
-            assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
-                    : "only variables or out-parameters can be used in into-clauses";
+            Coerce c = coerces.get(i);
+            sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
 
-            String ty = ((DeclIdTyped) id.decl).typeSpec().name;
-
-            sbuf.append(
-                    String.format(
-                            "%s = (%s) r%%'LEVEL'%%.getObject(%d);", id.toJavaCode(), ty, i + 1));
+            i++;
         }
 
         return sbuf.toString();
     }
 
-    private static String getSetNullsStr(List<ExprId> idList) {
+    private static String getSetNullsStr(List<ExprId> intoVarList) {
 
         StringBuffer sbuf = new StringBuffer();
-        int size = idList.size();
+        int size = intoVarList.size();
         for (int i = 0; i < size; i++) {
             if (i > 0) {
                 sbuf.append("\n");
             }
 
-            ExprId id = idList.get(i);
+            ExprId id = intoVarList.get(i);
             sbuf.append(String.format("%s = null;", id.toJavaCode()));
         }
 

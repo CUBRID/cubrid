@@ -30,24 +30,11 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Coerce;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprCase extends Expr {
-
-    @Override
-    public void setCoerce(Coerce c) {
-
-        if (c instanceof Coerce.DownCast) {
-            assert resultType.equals(TypeSpecSimple.OBJECT);
-            resultType = ((Coerce.DownCast) c).to;
-            super.setCoerce(Coerce.IDENTITY);
-        } else {
-            super.setCoerce(c);
-        }
-    }
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -74,16 +61,12 @@ public class ExprCase extends Expr {
         assert resultType != null;
 
         if (resultType.equals(TypeSpecSimple.NULL)) {
-            assert elsePart != null;
+            // in this case, every branch including else has null as its expression.
             return "null";
         } else {
             String elseCode;
             if (elsePart == null) {
-                if (resultType.equals(TypeSpecSimple.OBJECT)) {
-                    elseCode = "raiseCaseNotFound()"; // no need to cast
-                } else {
-                    elseCode = "(%'RESULT-TYPE'%) raiseCaseNotFound()";
-                }
+                elseCode = "null";
             } else {
                 elseCode = elsePart.toJavaCode();
             }

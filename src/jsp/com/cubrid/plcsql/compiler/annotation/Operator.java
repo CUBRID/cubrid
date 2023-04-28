@@ -28,39 +28,16 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler.annotation;
 
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+import com.cubrid.plcsql.compiler.CoercionScheme;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-public class CondExpr extends AstNode {
-
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitCondExpr(this);
-    }
-
-    public final Expr cond;
-    public final Expr expr;
-
-    public CondExpr(ParserRuleContext ctx, Expr cond, Expr expr) {
-        super(ctx);
-
-        this.cond = cond;
-        this.expr = expr;
-    }
-
-    @Override
-    public String toJavaCode() {
-        return tmpl.replace("%'CONDITION'%", cond.toJavaCode())
-                .replace("  %'EXPRESSION'%", Misc.indentLines(expr.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines("Boolean.TRUE.equals(%'CONDITION'%) ?", "  %'EXPRESSION'% :");
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface Operator {
+    public CoercionScheme coercionScheme();
 }

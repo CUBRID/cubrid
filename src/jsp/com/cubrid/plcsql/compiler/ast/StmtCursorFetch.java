@@ -44,18 +44,24 @@ public class StmtCursorFetch extends Stmt {
     }
 
     public final ExprId id;
-    public final NodeList<ExprId> intoVars;
+    public final List<TypeSpec> columnTypeList;
+    public final List<ExprId> intoVarList;
 
-    public StmtCursorFetch(ParserRuleContext ctx, ExprId id, NodeList<ExprId> intoVars) {
+    public StmtCursorFetch(
+            ParserRuleContext ctx,
+            ExprId id,
+            List<TypeSpec> columnTypeList,
+            List<ExprId> intoVarList) {
         super(ctx);
 
         this.id = id;
-        this.intoVars = intoVars;
+        this.columnTypeList = columnTypeList;
+        this.intoVarList = intoVarList;
     }
 
     @Override
     public String toJavaCode() {
-        String setIntoVarsStr = getSetIntoVarsStr(intoVars);
+        String setIntoVarsStr = getSetIntoVarsStr(intoVarList);
         return tmplStmt.replace("%'CURSOR'%", id.toJavaCode())
                 .replace("    %'SET-INTO-VARIABLES'%", Misc.indentLines(setIntoVarsStr, 2));
     }
@@ -83,20 +89,27 @@ public class StmtCursorFetch extends Stmt {
                     "  }",
                     "}");
 
-    private static String getSetIntoVarsStr(NodeList<ExprId> intoVars) {
+    private String getSetIntoVarsStr(List<ExprId> intoVarList) {
+
+        assert coerces != null;
+        assert coerces.size() == intoVarList.size();
 
         int i = 0;
         StringBuffer sbuf = new StringBuffer();
-        for (ExprId id : intoVars.nodes) {
+        for (ExprId id : intoVarList) {
+
+            String nameOfGetMethod =
+                    (columnTypeList == null)
+                            ? "getObject"
+                            : columnTypeList.get(i).getNameOfGetMethod();
+            String resultStr = String.format("rs.%s(%d)", nameOfGetMethod, i + 1);
 
             if (i > 0) {
                 sbuf.append("\n");
             }
 
-            sbuf.append(
-                    String.format(
-                            "%s = (%s) rs.getObject(%d);",
-                            id.toJavaCode(), ((DeclIdTyped) id.decl).typeSpec().name, i + 1));
+            Coerce c = coerces.get(i);
+            sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
 
             i++;
         }
