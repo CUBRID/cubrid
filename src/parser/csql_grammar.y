@@ -12421,7 +12421,7 @@ opt_pl_language_spec
 			  {
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
 			    node->info.sp_body.impl = $1;
-                            node->info.sp_body.direct = 1;
+			    node->info.sp_body.direct = 1;
 			  }
 
 			$$ = node;
@@ -12438,7 +12438,7 @@ opt_pl_language_spec
 			  {
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
 			    node->info.sp_body.impl = $3;
-                            node->info.sp_body.direct = 1;
+			    node->info.sp_body.direct = 1;
 			  }
 
 			$$ = node;
@@ -12446,7 +12446,7 @@ opt_pl_language_spec
 
 		DBG_PRINT}}
 	| LANGUAGE JAVA 		/* 1, 2 */
-	  NAME char_string_literal	/* 3 */
+	  NAME char_string_literal	/* 3, 4 */
 		{{ DBG_TRACE_GRAMMAR(opt_pl_language_spec, : LANGAUGE JAVA );
 
 			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
@@ -12454,8 +12454,8 @@ opt_pl_language_spec
 			if (node)
 			  {
 			    node->info.sp_body.lang = SP_LANG_JAVA;
-			    node->info.sp_body.decl = $3;
-                            node->info.sp_body.direct = 0;
+			    node->info.sp_body.decl = $4;
+			    node->info.sp_body.direct = 0;
 			  }
 
 			$$ = node;
