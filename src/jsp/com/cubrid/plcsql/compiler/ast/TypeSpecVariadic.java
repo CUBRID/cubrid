@@ -58,8 +58,18 @@ public class TypeSpecVariadic extends TypeSpec {
         return this.elem.equals(((TypeSpecVariadic) o).elem);
     }
 
+    @Override
+    public int hashCode() {
+        return elem.hashCode() + 31;
+    }
+
+    @Override
+    public String toString() {
+        return elem + "[]";
+    }
+
     public TypeSpecVariadic(TypeSpecSimple elem) {
-        super(elem.name + "[]");
+        super(null, null, null, -1);
         this.elem = elem;
     }
 }

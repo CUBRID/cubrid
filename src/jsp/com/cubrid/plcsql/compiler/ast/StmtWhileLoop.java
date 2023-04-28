@@ -57,7 +57,7 @@ public class StmtWhileLoop extends Stmt {
     @Override
     public String toJavaCode() {
         String condStr;
-        if (cond == ExprTrue.SINGLETON) {
+        if (cond instanceof ExprTrue) {
             // to avoid unreachable statement check of javac
             condStr = "opNot(false)";
         } else {
@@ -75,5 +75,7 @@ public class StmtWhileLoop extends Stmt {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines("%'OPT-LABEL'%", "while (%'EXPRESSION'%) {", "  %'STATEMENTS'%", "}");
+            Misc.combineLines(
+                    "%'OPT-LABEL'%",
+                    "while (Boolean.TRUE.equals(%'EXPRESSION'%)) {", "  %'STATEMENTS'%", "}");
 }

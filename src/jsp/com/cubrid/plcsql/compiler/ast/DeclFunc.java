@@ -59,8 +59,4 @@ public class DeclFunc extends DeclRoutine {
     public String kind() {
         return "function";
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

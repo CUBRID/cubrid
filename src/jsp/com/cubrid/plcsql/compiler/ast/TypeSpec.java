@@ -32,11 +32,17 @@ package com.cubrid.plcsql.compiler.ast;
 
 public abstract class TypeSpec extends AstNode {
 
-    public final String name;
+    public final String pcsName;
+    public final String javaCode;
+    public final String nameOfGetMethod;
+    public final int simpleTypeIdx;
 
-    public TypeSpec(String name) {
+    public TypeSpec(String pcsName, String javaCode, String nameOfGetMethod, int simpleTypeIdx) {
         super(null);
-        this.name = name;
+        this.pcsName = pcsName;
+        this.javaCode = javaCode;
+        this.nameOfGetMethod = nameOfGetMethod;
+        this.simpleTypeIdx = simpleTypeIdx;
     }
 
     public static TypeSpec ofJavaName(String javaType) {
@@ -54,6 +60,11 @@ public abstract class TypeSpec extends AstNode {
     }
 
     @Override
+    public String toString() {
+        return pcsName;
+    }
+
+    @Override
     public boolean equals(Object that) {
         return this == that; // Actually, this is the same as equals of Object class.
         // I just wanted to be explicit.
@@ -61,8 +72,26 @@ public abstract class TypeSpec extends AstNode {
 
     @Override
     public String toJavaCode() {
-        return name;
+        assert javaCode != null;
+        return javaCode;
     }
 
     public abstract String toJavaSignature();
+
+    public String getNameOfGetMethod() {
+        return nameOfGetMethod;
+    }
+
+    // overriden by TypeSpecSimple
+    public boolean isNumber() {
+        return false;
+    }
+
+    public boolean isString() {
+        return false;
+    }
+
+    public boolean isDateTime() {
+        return false;
+    }
 }

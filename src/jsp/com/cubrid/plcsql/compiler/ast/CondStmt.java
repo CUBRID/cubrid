@@ -66,5 +66,5 @@ public class CondStmt extends AstNode {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines("if (%'CONDITION'%) {", "  %'STATEMENTS'%", "}");
+            Misc.combineLines("if (Boolean.TRUE.equals(%'CONDITION'%)) {", "  %'STATEMENTS'%", "}");
 }

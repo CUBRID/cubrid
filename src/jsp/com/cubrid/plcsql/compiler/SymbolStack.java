@@ -32,8 +32,8 @@ package com.cubrid.plcsql.compiler;
 
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
+import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.ast.*;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -66,8 +66,8 @@ public class SymbolStack {
                     "VALUE_ERROR",
                     "ZERO_DIVIDE");
 
-    private static final Map<String, OverloadedFunc> operators = new HashMap<>();
-    private static final Map<String, OverloadedFunc> cubridFuncs = new HashMap<>();
+    private static final Map<String, FuncOverloads> operators = new HashMap<>();
+    private static final Map<String, FuncOverloads> cubridFuncs = new HashMap<>();
     private static SymbolTable predefinedSymbols =
             new SymbolTable(new Scope(null, null, "%predefined_0", 0));
 
@@ -89,10 +89,13 @@ public class SymbolStack {
                     if (name.startsWith("op")) {
                         // System.out.println("temp: " + m.getName());
 
+                        Operator opAnnot = m.getAnnotation(Operator.class);
+                        assert opAnnot != null;
+
                         // parameter types
                         Class[] paramTypes = m.getParameterTypes();
                         NodeList<DeclParam> params = new NodeList<>();
-                        ;
+
                         int i = 0;
                         for (Class pt : paramTypes) {
                             String typeName = pt.getTypeName();
@@ -113,7 +116,7 @@ public class SymbolStack {
 
                         // add op
                         DeclFunc op = new DeclFunc(null, name, params, retType);
-                        putOperator(name, op);
+                        putOperator(name, op, opAnnot.coercionScheme());
                     }
                 }
             }
@@ -131,7 +134,7 @@ public class SymbolStack {
                             null,
                             "PUT_LINE",
                             new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.OBJECT)),
+                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)),
                             null,
                             null);
             putDeclTo(predefinedSymbols, "PUT_LINE", dp);
@@ -139,55 +142,28 @@ public class SymbolStack {
             // add constants TODO implement SQLERRM and SQLCODE properly
             DeclConst dc =
                     new DeclConst(
-                            null, "SQLERRM", TypeSpecSimple.STRING, false, ExprNull.SINGLETON);
+                            null, "SQLERRM", TypeSpecSimple.STRING, false, new ExprNull(null));
             putDeclTo(predefinedSymbols, "SQLERRM", dc);
 
-            dc = new DeclConst(null, "SQLCODE", TypeSpecSimple.INT, false, ExprNull.SINGLETON);
+            dc = new DeclConst(null, "SQLCODE", TypeSpecSimple.INT, false, new ExprNull(null));
             putDeclTo(predefinedSymbols, "SQLCODE", dc);
 
-            dc = new DeclConst(null, "SYSDATE", TypeSpecSimple.DATE, false, ExprNull.SINGLETON);
+            dc = new DeclConst(null, "SYSDATE", TypeSpecSimple.DATE, false, new ExprNull(null));
             putDeclTo(predefinedSymbols, "SYSDATE", dc);
         }
     }
 
-    private static void putOperator(String name, DeclFunc df) {
-        putPredefinedFunc(operators, name, df);
+    public static DeclFunc getOperator(
+            List<Coerce> outCoercions, String name, TypeSpec... argTypes) {
+        return getFuncOverload(outCoercions, operators, name, argTypes);
     }
 
-    public static DeclFunc getOperator(String name, TypeSpec... argTypes) {
-        return getPredefinedFunc(operators, name, argTypes);
+    /*
+    public static DeclFunc
+    getCubridFunc(List<Coerce> outCoercions, String name, TypeSpec... argTypes) {
+        return getFuncOverload(outCoercions, cubridFuncs, name, argTypes);
     }
-
-    private static void putCubridFunc(String name, DeclFunc df) {
-        putPredefinedFunc(cubridFuncs, name, df);
-    }
-
-    public static DeclFunc getCubridFunc(String name, TypeSpec... argTypes) {
-        return getPredefinedFunc(cubridFuncs, name, argTypes);
-    }
-
-    private static DeclFunc getPredefinedFunc(
-            Map<String, OverloadedFunc> map, String name, TypeSpec... argTypes) {
-        OverloadedFunc overload = map.get(name);
-        if (overload == null) {
-            return null;
-        } else {
-            return overload.get(Arrays.asList(argTypes));
-        }
-    }
-
-    private static void putPredefinedFunc(
-            Map<String, OverloadedFunc> map, String name, DeclFunc df) {
-
-        OverloadedFunc overload = map.get(name);
-        if (overload == null) {
-            overload = new OverloadedFunc();
-            map.put(name, overload);
-        }
-
-        df.setScope(predefinedSymbols.scope);
-        overload.put(df);
-    }
+     */
 
     // -----------------------------------------------------------------------------
     // end of Static
@@ -259,21 +235,29 @@ public class SymbolStack {
         assert map != null;
         if (map == symbolTable.labels) {
             if (map.containsKey(name)) {
-                assert false : name + " has already been declared in the same scope";
-                throw new RuntimeException("unreachable");
+                throw new SemanticError(
+                        decl.lineNo(), // s061
+                        "label " + name + " has already been declared in the same scope");
             }
         } else {
             if (symbolTable.ids.containsKey(name)
                     || symbolTable.procs.containsKey(name)
                     || symbolTable.funcs.containsKey(name)
                     || symbolTable.exceptions.containsKey(name)) {
-                assert false : name + " has already been declared in the same scope";
-                throw new RuntimeException("unreachable");
+                throw new SemanticError(
+                        decl.lineNo(), // s062
+                        name + " has already been declared in the same scope");
             }
-            if (symbolTable.scope.level == 0 && map == symbolTable.funcs) {
+            if (symbolTable.scope.level == 1 && map.size() == 0) {
+                // the first symbol added to the level 1 is the top-level procedure/function being
+                // created or replaced
+
+                assert map == symbolTable.procs
+                        || map == symbolTable.funcs; // top-level procedure/function
                 if (cubridFuncs.containsKey(name)) {
-                    assert false : name + " is a predefined function";
-                    throw new RuntimeException("unreachable");
+                    throw new SemanticError(
+                            decl.lineNo(), // s063
+                            "procedure/function cannot be created with the same name as a built-in function");
                 }
             }
         }
@@ -296,9 +280,11 @@ public class SymbolStack {
 
     DeclFunc getDeclFunc(String name) {
         DeclFunc ret = getDecl(DeclFunc.class, name);
+        return ret;
+        /* TODO: restore
         if (ret == null) {
             // search the predefined functions too
-            OverloadedFunc overloaded = cubridFuncs.get(name);
+            FuncOverloads overloaded = cubridFuncs.get(name);
             if (overloaded == null) {
                 return null;
             } else {
@@ -311,13 +297,16 @@ public class SymbolStack {
         } else {
             return ret;
         }
+         */
     }
 
     DeclFunc getDeclFunc(String name, List<TypeSpec> argTypes) {
         DeclFunc ret = getDecl(DeclFunc.class, name);
+        return ret;
+        /* TODO: restore
         if (ret == null) {
             // search the predefined functions too
-            OverloadedFunc overloaded = cubridFuncs.get(name);
+            FuncOverloads overloaded = cubridFuncs.get(name);
             if (overloaded == null) {
                 return null;
             } else {
@@ -330,6 +319,7 @@ public class SymbolStack {
                 return null;
             }
         }
+         */
     }
 
     DeclException getDeclException(String name) {
@@ -369,6 +359,45 @@ public class SymbolStack {
     private SymbolTable currSymbolTable;
 
     private LinkedList<SymbolTable> symbolTableStack = new LinkedList<>();
+
+    private static void putOperator(String name, DeclFunc df, CoercionScheme cs) {
+        putFuncOverload(operators, name, df, cs);
+    }
+
+    /*
+    private static void putCubridFunc(String name, DeclFunc df) {
+        putFuncOverload(cubridFuncs, name, df, CoercionScheme.Individual);
+    }
+     */
+
+    private static DeclFunc getFuncOverload(
+            List<Coerce> outCoercions,
+            Map<String, FuncOverloads> map,
+            String name,
+            TypeSpec... argTypes) {
+
+        FuncOverloads overloads = map.get(name);
+        if (overloads == null) {
+            return null; // TODO: throw?
+        } else {
+            return overloads.get(outCoercions, Arrays.asList(argTypes));
+        }
+    }
+
+    private static void putFuncOverload(
+            Map<String, FuncOverloads> map, String name, DeclFunc df, CoercionScheme cs) {
+
+        FuncOverloads overloads = map.get(name);
+        if (overloads == null) {
+            overloads = new FuncOverloads(name, cs);
+            map.put(name, overloads);
+        } else {
+            assert overloads.coercionScheme == cs;
+        }
+
+        df.setScope(predefinedSymbols.scope);
+        overloads.put(df);
+    }
 
     private static class SymbolTable {
         final Scope scope;
@@ -416,18 +445,15 @@ public class SymbolStack {
         return null;
     }
 
-    // OverloadedFunc class corresponds to operators (+, -, etc) and system provided functions
-    // (substr, trim, etc)
-    // which can be overloaded unlike user defined procedures and functions.
-    // It implements DeclId in order to be inserted ids map for system provided functions.
-    private static class OverloadedFunc extends Decl {
+    // FuncOverloads class corresponds to operators (+, -, etc) and system provided functions
+    // (substr, trim, etc) which can be overloaded for argument types unlike user defined procedures
+    // and functions.
+    private static class FuncOverloads {
 
-        OverloadedFunc() {
-            super(null);
+        FuncOverloads(String name, CoercionScheme cs) {
+            this.name = name;
+            this.coercionScheme = cs;
         }
-
-        private final Map<List<TypeSpec>, DeclFunc> overloads =
-                new HashMap<>(); // (arg types --> func decl) map
 
         void put(DeclFunc decl) {
             List<TypeSpec> paramTypes =
@@ -440,33 +466,36 @@ public class SymbolStack {
             assert old == null;
         }
 
-        DeclFunc get(List<TypeSpec> argTypes) {
-            DeclFunc ret = null;
-            for (Map.Entry<List<TypeSpec>, DeclFunc> e : overloads.entrySet()) {
-                if (Coerce.matchTypeLists(argTypes, e.getKey())) {
-                    assert ret == null; // TODO: remove this assert when ready
-                    ret = e.getValue();
+        DeclFunc get(List<Coerce> outCoercions, List<TypeSpec> argTypes) {
+
+            List<TypeSpec> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
+            if (paramTypes == null) {
+                return null; // no match
+            } else {
+                assert argTypes.size() == outCoercions.size();
+                DeclFunc declFunc = overloads.get(paramTypes);
+                if (name.equals("opIn")) {
+                    // opIn is the only operation that uses variadic parameters
+                    TypeSpec ty = paramTypes.get(0);
+                    paramTypes.clear();
+                    paramTypes.add(ty);
+                    paramTypes.add(new TypeSpecVariadic((TypeSpecSimple) ty));
                 }
+
+                declFunc = overloads.get(paramTypes);
+                assert declFunc != null
+                        : paramTypes + " do not have a matching version of op " + name;
+                return declFunc;
             }
-            return ret;
         }
 
-        // TODO: separate Symbol from AstNode. Remove 'extends Decl' and the following methods
-        @Override
-        public <R> R accept(AstVisitor<R> visitor) {
-            assert false : "unreachable";
-            throw new RuntimeException("unreachable");
-        }
+        // ---------------------------------------------------------
+        //
+        // ---------------------------------------------------------
 
-        @Override
-        public String kind() {
-            return "operator";
-        }
-
-        @Override
-        public String toJavaCode() {
-            assert false : "unreachable";
-            throw new RuntimeException("unreachagle");
-        }
+        private final Map<List<TypeSpec>, DeclFunc> overloads =
+                new HashMap<>(); // (arg types --> func decl) map
+        private final CoercionScheme coercionScheme;
+        private final String name;
     }
 }

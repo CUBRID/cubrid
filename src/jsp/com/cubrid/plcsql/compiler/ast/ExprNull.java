@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprNull extends Expr {
 
@@ -39,18 +40,12 @@ public class ExprNull extends Expr {
         return visitor.visitExprNull(this);
     }
 
-    public static final ExprNull SINGLETON = new ExprNull();
-
-    private ExprNull() {
-        super(null);
+    public ExprNull(ParserRuleContext ctx) {
+        super(ctx);
     }
 
     @Override
     public String exprToJavaCode() {
         return "null";
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

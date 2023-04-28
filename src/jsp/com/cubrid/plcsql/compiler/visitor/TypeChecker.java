@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler.visitor;
 
 import com.cubrid.plcsql.compiler.Coerce;
+import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.StaticSql;
@@ -65,10 +66,12 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         return null;
     }
 
+    /* TODO: restore
     @Override
     public TypeSpec visitTypeSpecNumeric(TypeSpecNumeric node) {
         return null; // nothing to do
     }
+     */
 
     @Override
     public TypeSpec visitTypeSpecPercent(TypeSpecPercent node) {
@@ -84,22 +87,16 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitCaseExpr(CaseExpr node) {
         TypeSpec caseValType = visit(node.val);
-        if (!areComparableTypes(caseSelectorType, caseValType)) {
-            throw new SemanticError(
-                    node.val.lineNo(), // s200
-                    "case value is not comparable with the case selector: incomparable types");
-        }
+        assert caseValTypes != null;
+        caseValTypes.add(caseValType);
         return visit(node.expr);
     }
 
     @Override
     public TypeSpec visitCaseStmt(CaseStmt node) {
         TypeSpec caseValType = visit(node.val);
-        if (!areComparableTypes(caseSelectorType, caseValType)) {
-            throw new SemanticError(
-                    node.val.lineNo(), // s201
-                    "case value is not comparable with the case selector: incomparable types");
-        }
+        assert caseValTypes != null;
+        caseValTypes.add(caseValType);
         visitNodeList(node.stmts);
         return null;
     }
@@ -222,20 +219,22 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitExprBetween(ExprBetween node) {
         TypeSpec targetType = visit(node.target);
         TypeSpec lowerType = visit(node.lowerBound);
-
-        if (!areComparableTypes(targetType, lowerType)) {
-            throw new SemanticError(
-                    node.lowerBound.lineNo(), // s208
-                    "lower bound has an incomparable type in the BETWEEN expression");
-        }
-
         TypeSpec upperType = visit(node.upperBound);
 
-        if (!areComparableTypes(targetType, upperType)) {
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc op =
+                symbolStack.getOperator(
+                        outCoercions, "opBetween", targetType, lowerType, upperType);
+        if (op == null) {
             throw new SemanticError(
-                    node.upperBound.lineNo(), // s209
-                    "upper bound has an incomparable type in the BETWEEN expression");
+                    node.lineNo(), // s208, s209
+                    "lower bound or upper bound does not have a comparable type");
         }
+        assert outCoercions.size() == 3;
+
+        node.target.setCoerce(outCoercions.get(0));
+        node.lowerBound.setCoerce(outCoercions.get(1));
+        node.upperBound.setCoerce(outCoercions.get(2));
 
         return TypeSpecSimple.BOOLEAN;
     }
@@ -244,16 +243,20 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitExprBinaryOp(ExprBinaryOp node) {
         TypeSpec leftType = visit(node.left);
         TypeSpec rightType = visit(node.right);
-        DeclFunc binOp = symbolStack.getOperator("op" + node.opStr, leftType, rightType);
+
+        // in the following line, s210 (no match)
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc binOp =
+                symbolStack.getOperator(outCoercions, "op" + node.opStr, leftType, rightType);
         if (binOp == null) {
             throw new SemanticError(
                     node.lineNo(), // s210
-                    "binary operator "
-                            + node.opStr.toUpperCase()
-                            + " cannot be applied to the argument types");
+                    "operands do not have compatible types");
         }
+        assert outCoercions.size() == 2;
 
-        // TODO: coerce
+        node.left.setCoerce(outCoercions.get(0));
+        node.right.setCoerce(outCoercions.get(1));
 
         return binOp.retType;
     }
@@ -261,64 +264,123 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprCase(ExprCase node) {
 
-        // TODO: check the cases when selector or case value is NULL at
-        // compile time and at runtime in CUBRID and Oracle
-
         TypeSpec saveCaseSelectorType = caseSelectorType;
+        List<TypeSpec> saveCaseValTypes = caseValTypes;
+        caseValTypes = new ArrayList<>();
+        List<TypeSpec> caseExprTypes = new ArrayList<>();
+
+        // visit
         caseSelectorType = visit(node.selector);
-        node.setSelectorType(caseSelectorType);
+        caseValTypes.add(caseSelectorType);
 
         TypeSpec commonType = null;
         for (CaseExpr ce : node.whenParts.nodes) {
             TypeSpec ty = visit(ce);
+            commonType = getCommonType(commonType, ty);
             if (commonType == null) {
-                commonType = ty;
-            } else {
-                commonType = getCommonType(commonType, ty);
+                throw new SemanticError(
+                        ce.expr.lineNo(), // s227
+                        "expression in this case does not have a compatible type " + ty);
             }
+            caseExprTypes.add(ty);
         }
-        if (node.elsePart == null) {
-            if (commonType.equals(TypeSpecSimple.NULL)) {
-                commonType =
-                        TypeSpecSimple
-                                .OBJECT; // cannot be a specific Java type: there is no Null type in
-                // Java
-            }
-        } else {
+        if (node.elsePart != null) {
             TypeSpec ty = visit(node.elsePart);
             commonType = getCommonType(commonType, ty);
+            if (commonType == null) {
+                throw new SemanticError(
+                        node.elsePart.lineNo(), // s228
+                        "expression in the else part does not have a compatible type " + ty);
+            }
+            caseExprTypes.add(ty);
         }
 
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc op =
+                symbolStack.getOperator(outCoercions, "opIn", caseValTypes.toArray(TYPESPEC_ARR));
+        if (op == null) {
+            throw new SemanticError(
+                    node.lineNo(), // s226
+                    "one of the values does not have a comparable type");
+        }
+        assert outCoercions.size() == caseValTypes.size();
+
+        // set coercions of selector, case values, and case expressions
+        node.selector.setCoerce(outCoercions.get(0));
+        int i = 1;
+        for (CaseExpr ce : node.whenParts.nodes) {
+            ce.val.setCoerce(outCoercions.get(i));
+
+            Coerce c = Coerce.getCoerce(caseExprTypes.get(i - 1), commonType);
+            assert c != null
+                    : ("no coercion from " + caseExprTypes.get(i - 1) + " to " + commonType);
+            ce.expr.setCoerce(c);
+
+            i++;
+        }
+        if (node.elsePart != null) {
+            Coerce c = Coerce.getCoerce(caseExprTypes.get(i - 1), commonType);
+            assert c != null
+                    : ("no coercion from " + caseExprTypes.get(i - 1) + " to " + commonType);
+            node.elsePart.setCoerce(c);
+            i++;
+        }
+        assert i == caseExprTypes.size() + 1;
+
+        node.setSelectorType(op.paramList.nodes.get(0).typeSpec);
         node.setResultType(commonType);
 
         caseSelectorType = saveCaseSelectorType; // restore
+        caseValTypes = saveCaseValTypes; // restore
+
         return commonType;
     }
 
     @Override
     public TypeSpec visitExprCond(ExprCond node) {
+        List<TypeSpec> condExprTypes = new ArrayList<>();
+
         TypeSpec commonType = null;
         for (CondExpr ce : node.condParts.nodes) {
             TypeSpec ty = visitCondExpr(ce);
+            commonType = getCommonType(commonType, ty);
             if (commonType == null) {
-                commonType = ty;
-            } else {
-                commonType = getCommonType(commonType, ty);
+                throw new SemanticError(
+                        ce.expr.lineNo(), // s229
+                        "expression in this case does not have a compatible type " + ty);
             }
+            condExprTypes.add(ty);
         }
-        if (node.elsePart == null) {
-            if (commonType.equals(TypeSpecSimple.NULL)) {
-                commonType =
-                        TypeSpecSimple
-                                .OBJECT; // cannot be a specific Java type: there is no Null type in
-                // Java
-            }
-        } else {
+        if (node.elsePart != null) {
             TypeSpec ty = visit(node.elsePart);
             commonType = getCommonType(commonType, ty);
+            if (commonType == null) {
+                throw new SemanticError(
+                        node.elsePart.lineNo(), // s230
+                        "expression in the else part does not have a compatible type " + ty);
+            }
+            condExprTypes.add(ty);
         }
 
+        int i = 0;
+        for (CondExpr ce : node.condParts.nodes) {
+
+            Coerce c = Coerce.getCoerce(condExprTypes.get(i), commonType);
+            assert c != null : ("no coercion from " + condExprTypes.get(i) + " to " + commonType);
+            ce.expr.setCoerce(c);
+
+            i++;
+        }
+        if (node.elsePart != null) {
+            Coerce c = Coerce.getCoerce(condExprTypes.get(i), commonType);
+            assert c != null : ("no coercion from " + condExprTypes.get(i) + " to " + commonType);
+            node.elsePart.setCoerce(c);
+            i++;
+        }
+        assert i == condExprTypes.size();
+
         node.setResultType(commonType);
+
         return commonType;
     }
 
@@ -422,28 +484,51 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprIn(ExprIn node) {
+        List<Expr> args = new ArrayList<>();
+        List<TypeSpec> argTypes = new ArrayList<>();
+
         TypeSpec targetType = visit(node.target);
-        int i = 1;
+        args.add(node.target);
+        argTypes.add(targetType);
+
         for (Expr e : node.inElements.nodes) {
             TypeSpec eType = visit(e);
-            if (!areComparableTypes(targetType, eType)) {
-                throw new SemanticError(
-                        e.lineNo(), // s212
-                        "element " + i + " has an incomparable type");
-            }
-            i++;
+            args.add(e);
+            argTypes.add(eType);
         }
+        int len = args.size();
+
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc op = symbolStack.getOperator(outCoercions, "opIn", argTypes.toArray(TYPESPEC_ARR));
+        if (op == null) {
+            throw new SemanticError(
+                    node.lineNo(), // s212
+                    "one of the values does not have a comparable type");
+        }
+        assert op != null;
+        assert outCoercions.size() == len;
+
+        for (int i = 0; i < len; i++) {
+            Expr arg = args.get(i);
+            Coerce c = outCoercions.get(i);
+            arg.setCoerce(c);
+        }
+
         return TypeSpecSimple.BOOLEAN;
     }
 
     @Override
     public TypeSpec visitExprLike(ExprLike node) {
         TypeSpec targetType = visit(node.target);
-        if (!targetType.equals(TypeSpecSimple.STRING)) {
+        Coerce c = Coerce.getCoerce(targetType, TypeSpecSimple.STRING);
+        if (c == null) {
             throw new SemanticError(
                     node.target.lineNo(), // s213
-                    "tested expression is not of STRING type");
+                    "tested expression cannot be coerced to STRING type");
+        } else {
+            node.target.setCoerce(c);
         }
+
         return TypeSpecSimple.BOOLEAN;
     }
 
@@ -515,16 +600,16 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprUnaryOp(ExprUnaryOp node) {
         TypeSpec operandType = visit(node.operand);
-        DeclFunc unaryOp = symbolStack.getOperator("op" + node.opStr, operandType);
+
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc unaryOp = symbolStack.getOperator(outCoercions, "op" + node.opStr, operandType);
         if (unaryOp == null) {
             throw new SemanticError(
                     node.lineNo(), // s215
-                    "unary operator "
-                            + node.opStr.toUpperCase()
-                            + " cannot be applied to the argument type");
+                    "argument does not have a compatible type");
         }
 
-        // TODO: coerce
+        node.operand.setCoerce(outCoercions.get(0));
 
         return unaryOp.retType;
     }
@@ -575,16 +660,43 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitStmtCase(StmtCase node) {
+
         TypeSpec saveCaseSelectorType = caseSelectorType;
+        List<TypeSpec> saveCaseValTypes = caseValTypes;
+        caseValTypes = new ArrayList<>();
+
         caseSelectorType = visit(node.selector);
-        node.setSelectorType(caseSelectorType);
+        caseValTypes.add(caseSelectorType);
 
         visitNodeList(node.whenParts);
         if (node.elsePart != null) {
             visitNodeList(node.elsePart);
         }
 
+        List<Coerce> outCoercions = new ArrayList<>();
+        DeclFunc op =
+                symbolStack.getOperator(outCoercions, "opIn", caseValTypes.toArray(TYPESPEC_ARR));
+        if (op == null) {
+            throw new SemanticError(
+                    node.lineNo(), // s201
+                    "one of the values does not have a comparable type");
+        }
+        assert outCoercions.size() == caseValTypes.size();
+
+        // set coercions of selector, case values, and case expressions
+        node.selector.setCoerce(outCoercions.get(0));
+        int i = 1;
+        for (CaseStmt cs : node.whenParts.nodes) {
+            cs.val.setCoerce(outCoercions.get(i));
+            i++;
+        }
+        assert i == caseValTypes.size();
+
+        node.setSelectorType(op.paramList.nodes.get(0).typeSpec);
+
         caseSelectorType = saveCaseSelectorType; // restore
+        caseValTypes = saveCaseValTypes; // restore
+
         return null;
     }
 
@@ -611,38 +723,36 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         TypeSpec idType = visit(node.id);
         if (idType.equals(TypeSpecSimple.CURSOR)) {
-
-            List<Coerce> coerces = new ArrayList<>();
-
-            DeclCursor declCursor = (DeclCursor) node.id.decl;
-            assert declCursor.staticSql != null;
-            LinkedHashMap<String, TypeSpec> selectList = declCursor.staticSql.selectList;
-
-            int i = 0;
-            for (String column : selectList.keySet()) {
-                TypeSpec columnType = selectList.get(column);
-                ExprId intoVar = node.intoVars.nodes.get(i);
-                Coerce c = Coerce.getCoerce(columnType, ((DeclIdTyped) intoVar.decl).typeSpec());
-                if (c == null) {
-                    throw new SemanticError(
-                            intoVar.lineNo(), // s403
-                            String.format(
-                                    "type of column %d of the cursor is not compatible with the type of variable %s",
-                                    i + 1, intoVar.name));
-                } else {
-                    coerces.add(c);
-                }
-
-                i++;
-            }
-            node.setCoerces(coerces);
-
-        } else if (idType.equals(TypeSpecSimple.SYS_REFCURSOR)) {
-            // nothing to do more,
+            assert node.columnTypeList != null;
         } else {
-            assert false : "unreachable"; // by earlier check
-            throw new RuntimeException("unreachable");
+            assert idType.equals(TypeSpecSimple.SYS_REFCURSOR);
+            assert node.columnTypeList == null;
         }
+
+        List<Coerce> coerces = new ArrayList<>();
+
+        int i = 0;
+        for (ExprId intoVar : node.intoVarList) {
+            TypeSpec srcTy =
+                    (node.columnTypeList == null)
+                            ? TypeSpecSimple.OBJECT
+                            : node.columnTypeList.get(i);
+            TypeSpec dstTy = ((DeclIdTyped) intoVar.decl).typeSpec();
+
+            Coerce c = Coerce.getCoerce(srcTy, dstTy);
+            if (c == null) {
+                throw new SemanticError(
+                        intoVar.lineNo(), // s403
+                        String.format(
+                                "type of column %d of the cursor is not compatible with the type of variable %s",
+                                i + 1, intoVar.name));
+            } else {
+                coerces.add(c);
+            }
+
+            i++;
+        }
+        node.setCoerces(coerces);
 
         return null;
     }
@@ -678,11 +788,40 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtExecImme(StmtExecImme node) {
 
+        // type of sql must be STRING
         TypeSpec sqlType = visit(node.sql);
         if (!sqlType.equals(TypeSpecSimple.STRING)) {
             throw new SemanticError(
                     node.sql.lineNo(), // s221
                     "SQL in the EXECUTE IMMEDIATE statement must be of STRING type");
+        }
+
+        // check types of expressions in USING clause
+        if (node.usedExprList != null) {
+            for (Expr e : node.usedExprList) {
+                visit(e); // s420
+            }
+        }
+
+        if (node.intoVarList != null) {
+
+            List<Coerce> coerces = new ArrayList<>();
+
+            // check types of into-variables
+            for (ExprId intoVar : node.intoVarList) {
+                TypeSpec tyIntoVar = visitExprId(intoVar);
+                Coerce c = Coerce.getCoerce(TypeSpecSimple.OBJECT, tyIntoVar);
+                if (c == null) {
+                    throw new SemanticError( // s421
+                            intoVar.lineNo(),
+                            "into-variable "
+                                    + intoVar.name
+                                    + " cannot be used there due to its incompatible type");
+                } else {
+                    coerces.add(c);
+                }
+            }
+            node.setCoerces(coerces);
         }
 
         return null;
@@ -694,7 +833,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         StaticSql staticSql = node.staticSql;
 
         typeCheckHostExprs(staticSql); // s404
-        if (staticSql.intoVars != null) {
+
+        if (node.intoVarList != null) {
 
             List<Coerce> coerces = new ArrayList<>();
 
@@ -702,7 +842,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             int i = 0;
             for (String column : staticSql.selectList.keySet()) {
                 TypeSpec tyColumn = staticSql.selectList.get(column);
-                ExprId intoVar = staticSql.intoVars.get(i);
+                ExprId intoVar = node.intoVarList.get(i);
                 TypeSpec tyIntoVar = visitExprId(intoVar);
                 Coerce c = Coerce.getCoerce(tyColumn, tyIntoVar);
                 if (c == null) {
@@ -893,16 +1033,19 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     // Private
     // ------------------------------------------------------------------
 
+    private static final TypeSpec[] TYPESPEC_ARR = new TypeSpec[0];
+
     private SymbolStack symbolStack;
 
     private TypeSpec caseSelectorType;
+    private List<TypeSpec> caseValTypes;
 
-    private boolean areComparableTypes(TypeSpec l, TypeSpec r) {
-        return l.equals(r); // TODO: consider implicit type conversion
-    }
-
-    private TypeSpec getCommonType(TypeSpec l, TypeSpec r) {
-        return l.equals(r) ? l : null; // TODO: complete
+    private TypeSpec getCommonType(TypeSpec former, TypeSpec delta) {
+        if (former == null) {
+            return delta;
+        } else {
+            return CoercionScheme.getCommonType(former, delta);
+        }
     }
 
     private void visitDeclParam(DeclParam node) {
@@ -950,9 +1093,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         LinkedHashMap<Expr, TypeSpec> hostExprs = staticSql.hostExprs;
         for (Expr e : hostExprs.keySet()) {
             TypeSpec ty = visit(e);
+
             TypeSpec tyRequired = hostExprs.get(e);
             if (tyRequired != null) {
-                // NOTE: Unreachable for now but for future extension
+                // NOTE: unreachable for now. but remains for future extension
                 assert e instanceof ExprId;
 
                 ExprId id = (ExprId) e;

@@ -31,17 +31,22 @@
 package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
+import com.cubrid.plcsql.compiler.CoercionScheme;
+import com.cubrid.plcsql.compiler.DateTimeParser;
+import com.cubrid.plcsql.compiler.annotation.Operator;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.*;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Objects;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
@@ -80,8 +85,8 @@ public class SpLib {
         throw new CASE_NOT_FOUND();
     }
 
-    public static void PUT_LINE(Object s) {
-        DBMS_OUTPUT.putLine(s.toString());
+    public static void PUT_LINE(String s) {
+        DBMS_OUTPUT.putLine(s);
     }
 
     public static class Query {
@@ -145,6 +150,7 @@ public class SpLib {
 
     // ====================================
     // boolean not
+    @Operator(coercionScheme = CoercionScheme.LogicalOp)
     public static Boolean opNot(Boolean l) {
         if (l == null) {
             return null;
@@ -154,12 +160,14 @@ public class SpLib {
 
     // ====================================
     // is null
+    @Operator(coercionScheme = CoercionScheme.ObjectOp)
     public static Boolean opIsNull(Object l) {
         return (l == null);
     }
 
     // ====================================
     // arithmetic negative
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Short opNeg(Short l) {
         if (l == null) {
             return null;
@@ -167,6 +175,7 @@ public class SpLib {
         return ((short) -l);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Integer opNeg(Integer l) {
         if (l == null) {
             return null;
@@ -174,6 +183,7 @@ public class SpLib {
         return -l;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Long opNeg(Long l) {
         if (l == null) {
             return null;
@@ -181,6 +191,7 @@ public class SpLib {
         return -l;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static BigDecimal opNeg(BigDecimal l) {
         if (l == null) {
             return null;
@@ -188,6 +199,7 @@ public class SpLib {
         return l.negate();
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Float opNeg(Float l) {
         if (l == null) {
             return null;
@@ -195,6 +207,7 @@ public class SpLib {
         return -l;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Double opNeg(Double l) {
         if (l == null) {
             return null;
@@ -202,8 +215,18 @@ public class SpLib {
         return -l;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Object opNeg(Object l) {
+        if (l == null) {
+            return null;
+        }
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // bitwise compliment
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Long opBitCompli(Short l) {
         if (l == null) {
             return null;
@@ -211,6 +234,7 @@ public class SpLib {
         return ~l.longValue();
     }
 
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Long opBitCompli(Integer l) {
         if (l == null) {
             return null;
@@ -218,6 +242,7 @@ public class SpLib {
         return ~l.longValue();
     }
 
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Long opBitCompli(Long l) {
         if (l == null) {
             return null;
@@ -225,8 +250,18 @@ public class SpLib {
         return ~l;
     }
 
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
+    public static Object opBitCompli(Object l) {
+        if (l == null) {
+            return null;
+        }
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // boolean and
+    @Operator(coercionScheme = CoercionScheme.LogicalOp)
     public static Boolean opAnd(Boolean l, Boolean r) {
         if (l == null || r == null) {
             return null;
@@ -236,6 +271,7 @@ public class SpLib {
 
     // ====================================
     // boolean or
+    @Operator(coercionScheme = CoercionScheme.LogicalOp)
     public static Boolean opOr(Boolean l, Boolean r) {
         if (l == null || r == null) {
             return null;
@@ -245,6 +281,7 @@ public class SpLib {
 
     // ====================================
     // boolean xor
+    @Operator(coercionScheme = CoercionScheme.LogicalOp)
     public static Boolean opXor(Boolean l, Boolean r) {
         if (l == null || r == null) {
             return null;
@@ -254,84 +291,63 @@ public class SpLib {
 
     // ====================================
     // comparison equal
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Boolean l, Boolean r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+        return commonOpEq(l, r);
     }
 
-    /*
-    public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opEq(Timestamp l, Timestamp r) {
+        return commonOpEq(l, r);
     }
-     */
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -339,136 +355,225 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
-    public static Boolean opEq(Timestamp l, Timestamp r) {
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opEq(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
-        return l.equals(r);
+        return compareWithRuntimeTypeConv(l, r) == 0;
     }
-
-    /* TODO: restore later
-    public static Boolean opEq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
-    }
-
-    public static Boolean opEq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
-    }
-
-    public static Boolean opEq(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.equals(r);
-    }
-     */
 
     // ====================================
     // comparison null safe equal
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Boolean l, Boolean r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(String l, String r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(BigDecimal l, BigDecimal r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Short l, Short r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Integer l, Integer r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Long l, Long r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Float l, Float r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Double l, Double r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Time l, Time r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Date l, Date r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(Timestamp l, Timestamp r) {
+        return commonOpNullSafeEq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNullSafeEq(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(Object l, Object r) {
         if (l == null) {
             return (r == null);
         } else if (r == null) {
-            return (l == null);
+            return false;
         }
-        return l.equals(r);
+
+        return compareWithRuntimeTypeConv(l, r) == 0;
     }
 
     // ====================================
     // comparison not equal
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(Boolean l, Boolean r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(String l, String r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(BigDecimal l, BigDecimal r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(Short l, Short r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(Integer l, Integer r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(Long l, Long r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(Float l, Float r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(Double l, Double r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(Time l, Time r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(Date l, Date r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(Timestamp l, Timestamp r) {
+        return commonOpNeq(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opNeq(ZonedDateTime l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
-        return !l.equals(r);
+
+        return compareWithRuntimeTypeConv(l, r) != 0;
     }
 
     // ====================================
     // comparison less than or equal to (<=)
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opLe(Boolean l, Boolean r) {
+        return commonOpLe(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
+        return commonOpLe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+        return commonOpLe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+        return commonOpLe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+        return commonOpLe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
+        return commonOpLe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+        return commonOpLe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l <= r;
+        return commonOpLe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
+        return commonOpLe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
+        return commonOpLe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
+        return commonOpLe(l, r);
     }
 
-    /*
-    public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) <= 0;
-    }
-     */
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -476,111 +581,72 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
-    /* TODO: restore later
-    public static Boolean opLe(Set l, Set r) {
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opLe(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
-        SetOrder o = compareSets(l, r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
+        return compareWithRuntimeTypeConv(l, r) <= 0;
     }
-
-    public static Boolean opLe(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static <E extends Comparable<E>> Boolean opLe(List<E> l, List<E> r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) <= 0;
-    }
-     */
 
     // ====================================
     // comparison greater than or equal to (>=)
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opGe(Boolean l, Boolean r) {
+        return commonOpGe(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l >= r;
+        return commonOpGe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
+        return commonOpGe(l, r);
     }
 
-    /*
-    public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) >= 0;
-    }
-     */
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -588,111 +654,72 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
-    /* TODO: restore later
-    public static Boolean opGe(Set l, Set r) {
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opGe(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
-        SetOrder o = compareSets(l, r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
+        return compareWithRuntimeTypeConv(l, r) >= 0;
     }
-
-    public static Boolean opGe(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static <E extends Comparable<E>> Boolean opGe(List<E> l, List<E> r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) >= 0;
-    }
-     */
 
     // ====================================
     // comparison less than (<)
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opLt(Boolean l, Boolean r) {
+        return commonOpLt(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l < r;
+        return commonOpLt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
+        return commonOpLt(l, r);
     }
 
-    /*
-    public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) < 0;
-    }
-     */
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -700,109 +727,73 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
-    /*
-    public static Boolean opLt(Set l, Set r) {
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opLt(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
-        return (compareSets(l, r) == SetOrder.INCLUDED);
-    }
 
-    public static Boolean opLt(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareMultiSets(l, r) == SetOrder.INCLUDED);
+        return compareWithRuntimeTypeConv(l, r) < 0;
     }
-
-    public static <E extends Comparable<E>> Boolean opLt(List<E> l, List<E> r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) < 0;
-    }
-     */
 
     // ====================================
     // comparison greater than (>)
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opGt(Boolean l, Boolean r) {
+        return commonOpGt(l, r);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(String l, String r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Short l, Short r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Integer l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Long l, Long r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(BigDecimal l, BigDecimal r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Float l, Float r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Double l, Double r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l > r;
+        return commonOpGt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Date l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Time l, Time r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
+        return commonOpGt(l, r);
     }
 
-    /*
-    public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.compareTo(r) > 0;
-    }
-     */
+    @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -810,411 +801,18 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
-    /* TODO: restore later
-    public static Boolean opGt(Set l, Set r) {
+    @Operator(coercionScheme = CoercionScheme.CompOp)
+    public static Boolean opGt(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
-        return (compareSets(l, r) == SetOrder.INCLUDING);
-    }
 
-    public static Boolean opGt(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareMultiSets(l, r) == SetOrder.INCLUDING);
+        return compareWithRuntimeTypeConv(l, r) > 0;
     }
-
-    public static <E extends Comparable<E>> Boolean opGt(List<E> l, List<E> r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) > 0;
-    }
-     */
-
-    /*
-    // ====================================
-    // comparison set equal
-    public static Boolean opSetEq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareSets(l, r) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, set2MultiSet(r)) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), set2MultiSet(r)) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), r) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, r) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), r) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), list2MultiSet(r)) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, list2MultiSet(r)) == SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetEq(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareLists(l, r) == 0;
-    }
-
-    // ====================================
-    // comparison set not equal
-    public static Boolean opSetNeq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareSets(l, r) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, set2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), set2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), r) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, r) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), r) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), list2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, list2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    public static Boolean opSetNeq(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), list2MultiSet(r)) != SetOrder.EQUAL;
-    }
-
-    // ====================================
-    // comparison superset
-    public static Boolean opSuperset(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareSets(l, r) == SetOrder.INCLUDING);
-    }
-
-    public static Boolean opSuperset(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, set2MultiSet(r)) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), set2MultiSet(r)) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), r) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, r) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), r) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), list2MultiSet(r)) == SetOrder.INCLUDING;
-    }
-
-    public static Boolean opSuperset(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, list2MultiSet(r)) == SetOrder.INCLUDING;
-    }
-
-    // ====================================
-    // comparison subset
-    public static Boolean opSubset(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return (compareSets(l, r) == SetOrder.INCLUDED);
-    }
-
-    public static Boolean opSubset(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, set2MultiSet(r)) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), set2MultiSet(r)) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), r) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, r) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(list2MultiSet(l), r) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(set2MultiSet(l), list2MultiSet(r)) == SetOrder.INCLUDED;
-    }
-
-    public static Boolean opSubset(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return compareMultiSets(l, list2MultiSet(r)) == SetOrder.INCLUDED;
-    }
-
-    // ====================================
-    // comparison superset or equal
-    public static Boolean opSupersetEq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareSets(l, r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, set2MultiSet(r));
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(list2MultiSet(l), set2MultiSet(r));
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(set2MultiSet(l), r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(list2MultiSet(l), r);
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(set2MultiSet(l), list2MultiSet(r));
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSupersetEq(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, list2MultiSet(r));
-        return (o == SetOrder.INCLUDING || o == SetOrder.EQUAL);
-    }
-
-    // ====================================
-    // comparison subset or equal
-    public static Boolean opSubsetEq(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareSets(l, r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, set2MultiSet(r));
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(list2MultiSet(l), set2MultiSet(r));
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(set2MultiSet(l), r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(list2MultiSet(l), r);
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(set2MultiSet(l), list2MultiSet(r));
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-
-    public static Boolean opSubsetEq(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        SetOrder o = compareMultiSets(l, list2MultiSet(r));
-        return (o == SetOrder.INCLUDED || o == SetOrder.EQUAL);
-    }
-    */
 
     // ====================================
     // between
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Boolean o, Boolean lower, Boolean upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1222,6 +820,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(String o, String lower, String upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1229,6 +828,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Short o, Short lower, Short upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1236,6 +836,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Integer o, Integer lower, Integer upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1243,6 +844,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Long o, Long lower, Long upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1250,6 +852,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(BigDecimal o, BigDecimal lower, BigDecimal upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1257,6 +860,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Float o, Float lower, Float upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1264,6 +868,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Double o, Double lower, Double upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1271,6 +876,7 @@ public class SpLib {
         return o >= lower && o <= upper;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Date o, Date lower, Date upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1278,6 +884,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Time o, Time lower, Time upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1285,6 +892,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Timestamp o, Timestamp lower, Timestamp upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1292,14 +900,7 @@ public class SpLib {
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
-    /*
-    public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
-        if (o == null || lower == null || upper == null) {
-            return null;
-        }
-        return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
-    }
-     */
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1307,22 +908,102 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
-    // ====================================
-    // in
-    public static Boolean opIn(Object o, Object... list) {
-        if (o == null || list == null) {
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opBetween(Object o, Object lower, Object upper) {
+        if (o == null || lower == null || upper == null) {
             return null;
         }
-        for (Object p : list) {
-            if (Objects.equals(o, p)) {
-                return true;
-            }
-        }
-        return false;
+
+        return compareWithRuntimeTypeConv(lower, o) <= 0
+                && compareWithRuntimeTypeConv(o, upper) <= 0;
     }
 
     // ====================================
+    // in
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Boolean o, Boolean... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(String o, String... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(BigDecimal o, BigDecimal... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Short o, Short... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Integer o, Integer... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Long o, Long... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Float o, Float... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Double o, Double... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Date o, Date... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Time o, Time... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Timestamp o, Timestamp... arr) {
+        return commonOpIn(o, (Object[]) arr);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(ZonedDateTime o, ZonedDateTime... arr) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
+    @Operator(coercionScheme = CoercionScheme.NAryCompOp)
+    public static Boolean opIn(Object o, Object... arr) {
+        assert arr != null; // guaranteed by the syntax
+        if (o == null) {
+            return null;
+        }
+        boolean nullFound = false;
+        for (Object p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (compareWithRuntimeTypeConv(o, p) == 0) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null : false;
+    }
+    // ====================================
     // *
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Short opMult(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1330,6 +1011,7 @@ public class SpLib {
         return (short) (l * r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Integer opMult(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1337,6 +1019,7 @@ public class SpLib {
         return l * r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Long opMult(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1344,6 +1027,7 @@ public class SpLib {
         return l * r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static BigDecimal opMult(BigDecimal l, BigDecimal r) {
         if (l == null || r == null) {
             return null;
@@ -1351,6 +1035,7 @@ public class SpLib {
         return l.multiply(r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Float opMult(Float l, Float r) {
         if (l == null || r == null) {
             return null;
@@ -1358,80 +1043,26 @@ public class SpLib {
         return l * r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Double opMult(Double l, Double r) {
         if (l == null || r == null) {
             return null;
         }
         return l * r;
     }
-    /*
-    // sets
-    public static Set opMult(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectSets(l, r);
-    }
 
-    public static MultiSet opMult(MultiSet l, Set r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Object opMult(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
-        return intersectMultiSets(l, set2MultiSet(r));
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
     }
-
-    public static MultiSet opMult(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(list2MultiSet(l), set2MultiSet(r));
-    }
-
-    public static MultiSet opMult(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(set2MultiSet(l), r);
-    }
-
-    public static MultiSet opMult(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(l, r);
-    }
-
-    public static MultiSet opMult(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(list2MultiSet(l), r);
-    }
-
-    public static MultiSet opMult(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(set2MultiSet(l), list2MultiSet(r));
-    }
-
-    public static MultiSet opMult(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(l, list2MultiSet(r));
-    }
-
-    public static MultiSet opMult(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return intersectMultiSets(list2MultiSet(l), list2MultiSet(r));
-    }
-    */
 
     // ====================================
     // /
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Short opDiv(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1439,6 +1070,7 @@ public class SpLib {
         return (short) (l / r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Integer opDiv(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1446,6 +1078,7 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Long opDiv(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1453,6 +1086,7 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static BigDecimal opDiv(BigDecimal l, BigDecimal r) {
         if (l == null || r == null) {
             return null;
@@ -1460,6 +1094,7 @@ public class SpLib {
         return l.divide(r, BigDecimal.ROUND_HALF_UP);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Float opDiv(Float l, Float r) {
         if (l == null || r == null) {
             return null;
@@ -1467,6 +1102,7 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Double opDiv(Double l, Double r) {
         if (l == null || r == null) {
             return null;
@@ -1474,8 +1110,18 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Object opDiv(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // DIV
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Short opDivInt(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1483,6 +1129,7 @@ public class SpLib {
         return (short) (l / r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Integer opDivInt(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1490,6 +1137,7 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Long opDivInt(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1497,8 +1145,18 @@ public class SpLib {
         return l / r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
+    public static Object opDivInt(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // MOD
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Short opMod(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1506,6 +1164,7 @@ public class SpLib {
         return (short) (l % r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Integer opMod(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1513,6 +1172,7 @@ public class SpLib {
         return l % r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
     public static Long opMod(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1520,8 +1180,18 @@ public class SpLib {
         return l % r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.IntArithOp)
+    public static Object opMod(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
+    }
+
     // ====================================
     // +
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Short opAdd(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1529,6 +1199,7 @@ public class SpLib {
         return (short) (l + r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Integer opAdd(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1536,6 +1207,7 @@ public class SpLib {
         return l + r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Long opAdd(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1543,6 +1215,7 @@ public class SpLib {
         return l + r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static BigDecimal opAdd(BigDecimal l, BigDecimal r) {
         if (l == null || r == null) {
             return null;
@@ -1550,6 +1223,7 @@ public class SpLib {
         return l.add(r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Float opAdd(Float l, Float r) {
         if (l == null || r == null) {
             return null;
@@ -1557,6 +1231,7 @@ public class SpLib {
         return l + r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Double opAdd(Double l, Double r) {
         if (l == null || r == null) {
             return null;
@@ -1564,7 +1239,8 @@ public class SpLib {
         return l + r;
     }
 
-    public static Time opAdd(Time l, Integer r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Time opAdd(Time l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1572,7 +1248,13 @@ public class SpLib {
         return Time.valueOf(llt.plusSeconds(r.longValue()));
     }
 
-    public static Date opAdd(Date l, Integer r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Time opAdd(Long l, Time r) {
+        return opAdd(r, l);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Date opAdd(Date l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1581,7 +1263,13 @@ public class SpLib {
         return Date.valueOf(lld.plusDays(r.longValue()));
     }
 
-    public static Timestamp opAdd(Timestamp l, Integer r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Date opAdd(Long l, Date r) {
+        return opAdd(r, l);
+    }
+
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Timestamp opAdd(Timestamp l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1589,90 +1277,39 @@ public class SpLib {
         return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.MILLIS));
     }
 
-    /*
-    public static ZonedDateTime opAdd(ZonedDateTime l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.plusSeconds(r.longValue());
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Timestamp opAdd(Long l, Timestamp r) {
+        return opAdd(r, l);
     }
-     */
 
-    public static ZonedDateTime opAdd(ZonedDateTime l, Integer r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static ZonedDateTime opAdd(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
-    /*
-    // sets
-    public static Set opAdd(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionSets(l, r);
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static ZonedDateTime opAdd(Long l, ZonedDateTime r) {
+        // cannot be called actually, but only to register this operator with a parameter type
+        // TIMESTAMP
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
     }
 
-    public static MultiSet opAdd(MultiSet l, Set r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Object opAdd(Object l, Object r) {
         if (l == null || r == null) {
             return null;
         }
-        return unionMultiSets(l, set2MultiSet(r));
+        assert false : "unreachable";
+        throw new RuntimeException("unreachable");
     }
-
-    public static MultiSet opAdd(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(list2MultiSet(l), set2MultiSet(r));
-    }
-
-    public static MultiSet opAdd(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(set2MultiSet(l), r);
-    }
-
-    public static MultiSet opAdd(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(l, r);
-    }
-
-    public static MultiSet opAdd(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(list2MultiSet(l), r);
-    }
-
-    public static MultiSet opAdd(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(set2MultiSet(l), list2MultiSet(r));
-    }
-
-    public static MultiSet opAdd(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return unionMultiSets(l, list2MultiSet(r));
-    }
-
-    public static List opAdd(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return concatLists(l, r);
-    }
-    */
 
     // ====================================
     // -
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Short opSubtract(Short l, Short r) {
         if (l == null || r == null) {
             return null;
@@ -1680,6 +1317,7 @@ public class SpLib {
         return (short) (l - r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Integer opSubtract(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
@@ -1687,6 +1325,7 @@ public class SpLib {
         return l - r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Long opSubtract(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1694,6 +1333,7 @@ public class SpLib {
         return l - r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static BigDecimal opSubtract(BigDecimal l, BigDecimal r) {
         if (l == null || r == null) {
             return null;
@@ -1701,6 +1341,7 @@ public class SpLib {
         return l.subtract(r);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Float opSubtract(Float l, Float r) {
         if (l == null || r == null) {
             return null;
@@ -1708,6 +1349,7 @@ public class SpLib {
         return l - r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Double opSubtract(Double l, Double r) {
         if (l == null || r == null) {
             return null;
@@ -1715,6 +1357,7 @@ public class SpLib {
         return l - r;
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Long opSubtract(Time l, Time r) {
         if (l == null || r == null) {
             return null;
@@ -1724,6 +1367,7 @@ public class SpLib {
         return rlt.until(llt, ChronoUnit.SECONDS);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Long opSubtract(Date l, Date r) {
         if (l == null || r == null) {
             return null;
@@ -1733,6 +1377,7 @@ public class SpLib {
         return rld.until(lld, ChronoUnit.DAYS);
     }
 
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Long opSubtract(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -1742,14 +1387,7 @@ public class SpLib {
         return rldt.until(lldt, ChronoUnit.MILLIS);
     }
 
-    /*
-    public static Long opSubtract(ZonedDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return r.until(l, ChronoUnit.SECONDS);
-    }
-     */
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Long opSubtract(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
@@ -1757,7 +1395,8 @@ public class SpLib {
         throw new RuntimeException("unreachable");
     }
 
-    public static Time opSubtract(Time l, Integer r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Time opSubtract(Time l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1765,7 +1404,8 @@ public class SpLib {
         return Time.valueOf(llt.minusSeconds(r.longValue()));
     }
 
-    public static Date opSubtract(Date l, Integer r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Date opSubtract(Date l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1773,7 +1413,8 @@ public class SpLib {
         return Date.valueOf(lld.minusDays(r.longValue()));
     }
 
-    public static Timestamp opSubtract(Timestamp l, Integer r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Timestamp opSubtract(Timestamp l, Long r) {
         if (l == null || r == null) {
             return null;
         }
@@ -1781,171 +1422,36 @@ public class SpLib {
         return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.MILLIS));
     }
 
-    /*
-    public static ZonedDateTime opSubtract(ZonedDateTime l, Integer r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return l.minusSeconds(r.longValue());
-    }
-
-    public static Long opSubtract(LocalDate l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return opSubtract(ZonedDateTime.of(l, LocalTime.MIN, r.getZone()), r);
-    }
-     */
-    public static ZonedDateTime opSubtract(ZonedDateTime l, Integer r) {
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static ZonedDateTime opSubtract(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
-    public static Long opSubtract(Date l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type
-        // TIMESTAMP
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Object opSubtract(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
         assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
-
-    public static Long opSubtract(Date l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-
-        LocalDate lld = l.toLocalDate();
-        return opSubtract(Timestamp.valueOf(LocalDateTime.of(lld, LocalTime.MIN)), r);
-    }
-
-    public static Long opSubtract(Timestamp l, Date r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        LocalDate rld = r.toLocalDate();
-        return opSubtract(l, Timestamp.valueOf(LocalDateTime.of(rld, LocalTime.MIN)));
-    }
-
-    /*
-    public static Long opSubtract(LocalDateTime l, ZonedDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return opSubtract(l, r.toLocalDateTime());
-    }
-
-    public static Long opSubtract(ZonedDateTime l, LocalDate r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return opSubtract(l, ZonedDateTime.of(r, LocalTime.MIN, l.getZone()));
-    }
-
-    public static Long opSubtract(ZonedDateTime l, LocalDateTime r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return opSubtract(l.toLocalDateTime(), r);
-    }
-     */
-    public static Long opSubtract(Timestamp l, ZonedDateTime r) {
-        // cannot be called actually, but only to register this operator with a parameter type
-        // TIMESTAMP
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    public static Long opSubtract(ZonedDateTime l, Date r) {
-        // cannot be called actually, but only to register this operator with a parameter type
-        // TIMESTAMP
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-
-    public static Long opSubtract(ZonedDateTime l, Timestamp r) {
-        // cannot be called actually, but only to register this operator with a parameter type
-        // TIMESTAMP
-        assert false : "unreachable";
-        throw new RuntimeException("unreachable");
-    }
-    /*
-    // sets
-    public static Set opSubtract(Set l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffSets(l, r);
-    }
-
-    public static MultiSet opSubtract(MultiSet l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(l, set2MultiSet(r));
-    }
-
-    public static MultiSet opSubtract(List l, Set r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(list2MultiSet(l), set2MultiSet(r));
-    }
-
-    public static MultiSet opSubtract(Set l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(set2MultiSet(l), r);
-    }
-
-    public static MultiSet opSubtract(MultiSet l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(l, r);
-    }
-
-    public static MultiSet opSubtract(List l, MultiSet r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(list2MultiSet(l), r);
-    }
-
-    public static MultiSet opSubtract(Set l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(set2MultiSet(l), list2MultiSet(r));
-    }
-
-    public static MultiSet opSubtract(MultiSet l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(l, list2MultiSet(r));
-    }
-
-    public static MultiSet opSubtract(List l, List r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        return diffMultiSets(list2MultiSet(l), list2MultiSet(r));
-    }
-     */
 
     // ====================================
     // ||
-    public static String opConcat(Object l, Object r) {
+    @Operator(coercionScheme = CoercionScheme.StringOp)
+    public static String opConcat(String l, String r) {
         if (l == null || r == null) {
             return null;
         }
-        return l.toString() + r.toString();
+        return l + r;
     }
 
     // ====================================
     // <<
+    @Operator(coercionScheme = CoercionScheme.BitOp)
     public static Long opBitShiftLeft(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1955,6 +1461,7 @@ public class SpLib {
 
     // ====================================
     // >>
+    @Operator(coercionScheme = CoercionScheme.BitOp)
     public static Long opBitShiftRight(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1964,6 +1471,7 @@ public class SpLib {
 
     // ====================================
     // &
+    @Operator(coercionScheme = CoercionScheme.BitOp)
     public static Long opBitAnd(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1973,6 +1481,7 @@ public class SpLib {
 
     // ====================================
     // ^
+    @Operator(coercionScheme = CoercionScheme.BitOp)
     public static Long opBitXor(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1982,6 +1491,7 @@ public class SpLib {
 
     // ====================================
     // |
+    @Operator(coercionScheme = CoercionScheme.BitOp)
     public static Long opBitOr(Long l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1991,6 +1501,7 @@ public class SpLib {
 
     // ====================================
     // like
+    @Operator(coercionScheme = CoercionScheme.StringOp)
     public static Boolean opLike(String s, String pattern, String escape) {
         assert pattern != null;
         assert escape == null || escape.length() == 1;
@@ -2008,11 +1519,1037 @@ public class SpLib {
         }
     }
 
+    // ------------------------------------
+    // coercions
+    // ------------------------------------
+
+    // from datetime
+    public static Date convDatetimeToDate(Timestamp e) {
+        if (e == null) {
+            return null;
+        }
+
+        return new Date(e.getYear(), e.getMonth(), e.getDate());
+    }
+
+    public static Time convDatetimeToTime(Timestamp e) {
+        if (e == null) {
+            return null;
+        }
+
+        return new Time(e.getHours(), e.getMinutes(), e.getSeconds());
+    }
+
+    public static Timestamp convDatetimeToTimestamp(Timestamp e) {
+        if (e == null) {
+            return null;
+        }
+
+        return new Timestamp(
+                e.getYear(),
+                e.getMonth(),
+                e.getDate(),
+                e.getHours(),
+                e.getMinutes(),
+                e.getSeconds(),
+                0);
+    }
+
+    public static String convDatetimeToString(Timestamp e) {
+        if (e == null) {
+            return null;
+        }
+
+        return datetimeFormat.format(e);
+    }
+
+    // from date
+    public static Timestamp convDateToDatetime(Date e) {
+        if (e == null) {
+            return null;
+        }
+
+        return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
+    }
+
+    public static Timestamp convDateToTimestamp(Date e) {
+        if (e == null) {
+            return null;
+        }
+
+        return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
+    }
+
+    public static String convDateToString(Date e) {
+        if (e == null) {
+            return null;
+        }
+
+        return dateFormat.format(e);
+    }
+
+    // from time
+    public static String convTimeToString(Time e) {
+        if (e == null) {
+            return null;
+        }
+
+        return timeFormat.format(e);
+    }
+
+    // from timestamp
+    public static Timestamp convTimestampToDatetime(Timestamp e) {
+        if (e == null) {
+            return null;
+        }
+
+        return new Timestamp(
+                e.getYear(),
+                e.getMonth(),
+                e.getDate(),
+                e.getHours(),
+                e.getMinutes(),
+                e.getSeconds(),
+                0);
+    }
+
+    public static Date convTimestampToDate(Timestamp e) {
+        if (e == null) {
+            return null;
+        }
+
+        return new Date(e.getYear(), e.getMonth(), e.getDate());
+    }
+
+    public static Time convTimestampToTime(Timestamp e) {
+        if (e == null) {
+            return null;
+        }
+
+        return new Time(e.getHours(), e.getMinutes(), e.getSeconds());
+    }
+
+    public static String convTimestampToString(Timestamp e) {
+        if (e == null) {
+            return null;
+        }
+
+        return timestampFormat.format(e);
+    }
+
+    // from double
+    public static Time convDoubleToTime(Double e) {
+        if (e == null) {
+            return null;
+        }
+
+        long l = doubleToLong(e.doubleValue());
+        return longToTime(l);
+    }
+
+    public static Timestamp convDoubleToTimestamp(Double e) {
+        if (e == null) {
+            return null;
+        }
+
+        long l = doubleToLong(e.doubleValue());
+        return longToTimestamp(l);
+    }
+
+    public static Integer convDoubleToInt(Double e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(doubleToInt(e.doubleValue()));
+    }
+
+    public static Short convDoubleToShort(Double e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(doubleToShort(e.doubleValue()));
+    }
+
+    public static String convDoubleToString(Double e) {
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
+    }
+
+    public static Float convDoubleToFloat(Double e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
+    }
+
+    public static BigDecimal convDoubleToNumeric(Double e) {
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.doubleValue());
+    }
+
+    public static Long convDoubleToBigint(Double e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(doubleToLong(e.doubleValue()));
+    }
+
+    // from float
+    public static Time convFloatToTime(Float e) {
+        if (e == null) {
+            return null;
+        }
+
+        long l = doubleToLong(e.doubleValue());
+        return longToTime(l);
+    }
+
+    public static Timestamp convFloatToTimestamp(Float e) {
+        if (e == null) {
+            return null;
+        }
+
+        long l = doubleToLong(e.doubleValue());
+        return longToTimestamp(l);
+    }
+
+    public static Integer convFloatToInt(Float e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(doubleToInt(e.doubleValue()));
+    }
+
+    public static Short convFloatToShort(Float e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(doubleToShort(e.doubleValue()));
+    }
+
+    public static String convFloatToString(Float e) {
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
+    }
+
+    public static Double convFloatToDouble(Float e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
+    }
+
+    public static BigDecimal convFloatToNumeric(Float e) {
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.doubleValue());
+    }
+
+    public static Long convFloatToBigint(Float e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(doubleToLong(e.doubleValue()));
+    }
+
+    // from numeric
+    public static Timestamp convNumericToTimestamp(BigDecimal e) {
+        if (e == null) {
+            return null;
+        }
+
+        long l = bigDecimalToLong(e);
+        return longToTimestamp(l);
+    }
+
+    public static Integer convNumericToInt(BigDecimal e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(bigDecimalToInt(e));
+    }
+
+    public static Short convNumericToShort(BigDecimal e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(bigDecimalToShort(e));
+    }
+
+    public static String convNumericToString(BigDecimal e) {
+        if (e == null) {
+            return null;
+        }
+
+        return e.toPlainString();
+    }
+
+    public static Double convNumericToDouble(BigDecimal e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
+    }
+
+    public static Float convNumericToFloat(BigDecimal e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
+    }
+
+    public static Long convNumericToBigint(BigDecimal e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(bigDecimalToLong(e));
+    }
+
+    // from bigint
+    public static Time convBigintToTime(Long e) {
+        if (e == null) {
+            return null;
+        }
+
+        return longToTime(e.longValue());
+    }
+
+    public static Timestamp convBigintToTimestamp(Long e) {
+        if (e == null) {
+            return null;
+        }
+
+        return longToTimestamp(e.longValue());
+    }
+
+    public static Integer convBigintToInt(Long e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(longToInt(e.longValue()));
+    }
+
+    public static Short convBigintToShort(Long e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(longToShort(e.longValue()));
+    }
+
+    public static String convBigintToString(Long e) {
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
+    }
+
+    public static Double convBigintToDouble(Long e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
+    }
+
+    public static Float convBigintToFloat(Long e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
+    }
+
+    public static BigDecimal convBigintToNumeric(Long e) {
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.longValue());
+    }
+
+    // from int
+    public static Time convIntToTime(Integer e) {
+        if (e == null) {
+            return null;
+        }
+
+        return longToTime(e.longValue());
+    }
+
+    public static Timestamp convIntToTimestamp(Integer e) {
+        if (e == null) {
+            return null;
+        }
+
+        return longToTimestamp(e.longValue());
+    }
+
+    public static Short convIntToShort(Integer e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Short.valueOf(longToShort(e.longValue()));
+    }
+
+    public static String convIntToString(Integer e) {
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
+    }
+
+    public static Double convIntToDouble(Integer e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
+    }
+
+    public static Float convIntToFloat(Integer e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
+    }
+
+    public static BigDecimal convIntToNumeric(Integer e) {
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.longValue());
+    }
+
+    public static Long convIntToBigint(Integer e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(e.longValue());
+    }
+
+    // from short
+    public static Time convShortToTime(Short e) {
+        if (e == null) {
+            return null;
+        }
+
+        return longToTime(e.longValue());
+    }
+
+    public static Timestamp convShortToTimestamp(Short e) {
+        if (e == null) {
+            return null;
+        }
+
+        return longToTimestamp(e.longValue());
+    }
+
+    public static Integer convShortToInt(Short e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Integer.valueOf(e.intValue());
+    }
+
+    public static String convShortToString(Short e) {
+        if (e == null) {
+            return null;
+        }
+
+        return e.toString();
+    }
+
+    public static Double convShortToDouble(Short e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Double.valueOf(e.doubleValue());
+    }
+
+    public static Float convShortToFloat(Short e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Float.valueOf(e.floatValue());
+    }
+
+    public static BigDecimal convShortToNumeric(Short e) {
+        if (e == null) {
+            return null;
+        }
+
+        return BigDecimal.valueOf(e.longValue());
+    }
+
+    public static Long convShortToBigint(Short e) {
+        if (e == null) {
+            return null;
+        }
+
+        return Long.valueOf(e.longValue());
+    }
+
+    // from string
+    public static Timestamp convStringToDatetime(String e) {
+        if (e == null) {
+            return null;
+        }
+
+        LocalDateTime dt = DateTimeParser.DatetimeLiteral.parse(e);
+        if (dt == null) {
+            // invalid string
+            throw new RuntimeException(
+                    "value error"); // TODO: throw an appropriate built-in exception
+        }
+
+        if (dt.equals(DateTimeParser.nullDatetime)) {
+            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+        } else {
+            return new Timestamp(
+                    dt.getYear() - 1900,
+                    dt.getMonthValue() - 1,
+                    dt.getDayOfMonth(),
+                    dt.getHour(),
+                    dt.getMinute(),
+                    dt.getSecond(),
+                    dt.getNano());
+        }
+    }
+
+    public static Date convStringToDate(String e) {
+        if (e == null) {
+            return null;
+        }
+
+        LocalDate d = DateTimeParser.DateLiteral.parse(e);
+        if (d == null) {
+            // invalid string
+            throw new RuntimeException(
+                    "value error"); // TODO: throw an appropriate built-in exception
+        }
+
+        if (d.equals(DateTimeParser.nullDate)) {
+            return new Date(-1900, -1, 0);
+        } else {
+            return new Date(d.getYear() - 1900, d.getMonthValue() - 1, d.getDayOfMonth());
+        }
+    }
+
+    public static Time convStringToTime(String e) {
+        if (e == null) {
+            return null;
+        }
+
+        LocalTime t = DateTimeParser.TimeLiteral.parse(e);
+        if (t == null) {
+            // invalid string
+            throw new RuntimeException(
+                    "value error"); // TODO: throw an appropriate built-in exception
+        }
+
+        return new Time(t.getHour(), t.getMinute(), t.getSecond());
+    }
+
+    public static Timestamp convStringToTimestamp(String e) {
+        if (e == null) {
+            return null;
+        }
+
+        ZonedDateTime zdt = DateTimeParser.TimestampLiteral.parse(e);
+        if (zdt == null) {
+            // invalid string
+            throw new RuntimeException(
+                    "value error"); // TODO: throw an appropriate built-in exception
+        }
+
+        if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
+            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+        } else {
+            assert zdt.getNano() == 0;
+            return new Timestamp(
+                    zdt.getYear() - 1900,
+                    zdt.getMonthValue() - 1,
+                    zdt.getDayOfMonth(),
+                    zdt.getHour(),
+                    zdt.getMinute(),
+                    zdt.getSecond(),
+                    0);
+        }
+    }
+
+    public static Integer convStringToInt(String e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e.length() == 0) {
+            return INT_ZERO;
+        }
+
+        BigDecimal bd = strToBigDecimal(e);
+        ;
+        return Integer.valueOf(bigDecimalToInt(bd));
+    }
+
+    public static Short convStringToShort(String e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e.length() == 0) {
+            return SHORT_ZERO;
+        }
+
+        BigDecimal bd = strToBigDecimal(e);
+        ;
+        return Short.valueOf(bigDecimalToShort(bd));
+    }
+
+    public static Double convStringToDouble(String e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e.length() == 0) {
+            return DOUBLE_ZERO;
+        }
+
+        try {
+            return Double.valueOf(e);
+        } catch (NumberFormatException ex) {
+            throw new RuntimeException(
+                    "value error", ex); // TODO: throw an appropriate built-in exception
+        }
+    }
+
+    public static Float convStringToFloat(String e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e.length() == 0) {
+            return FLOAT_ZERO;
+        }
+
+        try {
+            return Float.valueOf(e);
+        } catch (NumberFormatException ex) {
+            throw new RuntimeException(
+                    "value error", ex); // TODO: throw an appropriate built-in exception
+        }
+    }
+
+    public static BigDecimal convStringToNumeric(String e) {
+        if (e == null || e.length() == 0) {
+            return null;
+        }
+
+        return strToBigDecimal(e);
+    }
+
+    public static Long convStringToBigint(String e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e.length() == 0) {
+            return LONG_ZERO;
+        }
+
+        BigDecimal bd = strToBigDecimal(e);
+        ;
+        return Long.valueOf(bigDecimalToLong(bd));
+    }
+
+    // from Object
+    public static Timestamp convObjectToDatetime(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToDatetime((String) e);
+        } else if (e instanceof Date) {
+            return convDateToDatetime((Date) e);
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP
+            return (Timestamp) e;
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Date convObjectToDate(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToDate((String) e);
+        } else if (e instanceof Date) {
+            return (Date) e;
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP
+            return convTimestampToDate((Timestamp) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Time convObjectToTime(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToTime((String) e);
+        } else if (e instanceof Short) {
+            return convShortToTime((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToTime((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToTime((Long) e);
+        } else if (e instanceof Float) {
+            return convFloatToTime((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToTime((Double) e);
+        } else if (e instanceof Time) {
+            return (Time) e;
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP
+            return convTimestampToTime((Timestamp) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Timestamp convObjectToTimestamp(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToTimestamp((String) e);
+        } else if (e instanceof Short) {
+            return convShortToTimestamp((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToTimestamp((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToTimestamp((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToTimestamp((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToTimestamp((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToTimestamp((Double) e);
+        } else if (e instanceof Date) {
+            return convDateToTimestamp((Date) e);
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP
+            return convDatetimeToTimestamp((Timestamp) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Integer convObjectToInt(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToInt((String) e);
+        } else if (e instanceof Short) {
+            return convShortToInt((Short) e);
+        } else if (e instanceof Integer) {
+            return (Integer) e;
+        } else if (e instanceof Long) {
+            return convBigintToInt((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToInt((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToInt((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToInt((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Short convObjectToShort(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToShort((String) e);
+        } else if (e instanceof Short) {
+            return (Short) e;
+        } else if (e instanceof Integer) {
+            return convIntToShort((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToShort((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToShort((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToShort((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToShort((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static String convObjectToString(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return (String) e;
+        } else if (e instanceof Short) {
+            return convShortToString((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToString((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToString((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToString((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToString((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToString((Double) e);
+        } else if (e instanceof Date) {
+            return convDateToString((Date) e);
+        } else if (e instanceof Time) {
+            return convTimeToString((Time) e);
+            /*
+            } else if (e instanceof Timestamp) {
+                // e is DATETIME or TIMESTAMP
+                return convDatetimeToString((Timestamp) e); // TODO: wrong if it is a TIMESTAMP?
+            */
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Double convObjectToDouble(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToDouble((String) e);
+        } else if (e instanceof Short) {
+            return convShortToDouble((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToDouble((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToDouble((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToDouble((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToDouble((Float) e);
+        } else if (e instanceof Double) {
+            return (Double) e;
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Float convObjectToFloat(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToFloat((String) e);
+        } else if (e instanceof Short) {
+            return convShortToFloat((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToFloat((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToFloat((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return convNumericToFloat((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return (Float) e;
+        } else if (e instanceof Double) {
+            return convDoubleToFloat((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static BigDecimal convObjectToNumeric(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToNumeric((String) e);
+        } else if (e instanceof Short) {
+            return convShortToNumeric((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToNumeric((Integer) e);
+        } else if (e instanceof Long) {
+            return convBigintToNumeric((Long) e);
+        } else if (e instanceof BigDecimal) {
+            return (BigDecimal) e;
+        } else if (e instanceof Float) {
+            return convFloatToNumeric((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToNumeric((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
+    public static Long convObjectToBigint(Object e) {
+        if (e == null) {
+            return null;
+        }
+
+        if (e instanceof String) {
+            return convStringToBigint((String) e);
+        } else if (e instanceof Short) {
+            return convShortToBigint((Short) e);
+        } else if (e instanceof Integer) {
+            return convIntToBigint((Integer) e);
+        } else if (e instanceof Long) {
+            return (Long) e;
+        } else if (e instanceof BigDecimal) {
+            return convNumericToBigint((BigDecimal) e);
+        } else if (e instanceof Float) {
+            return convFloatToBigint((Float) e);
+        } else if (e instanceof Double) {
+            return convDoubleToBigint((Double) e);
+        }
+
+        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+    }
+
     // ------------------------------------------------
     // Private
     // ------------------------------------------------
 
-    static String getRegexForLike(String pattern, String escape) {
+    private static final Short SHORT_ZERO = Short.valueOf((short) 0);
+    private static final Integer INT_ZERO = Integer.valueOf(0);
+    private static final Long LONG_ZERO = Long.valueOf(0L);
+    private static final Float FLOAT_ZERO = Float.valueOf(0.0f);
+    private static final Double DOUBLE_ZERO = Double.valueOf(0.0);
+
+    private static final DateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
+    private static final DateFormat timeFormat = new SimpleDateFormat("hh:mm:ss a");
+    private static final DateFormat datetimeFormat =
+            new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy");
+    private static final DateFormat timestampFormat = new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+
+    private static Boolean commonOpEq(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.equals(r);
+    }
+
+    private static Boolean commonOpNullSafeEq(Object l, Object r) {
+        if (l == null) {
+            return (r == null);
+        } else if (r == null) {
+            return false;
+        }
+        return l.equals(r);
+    }
+
+    private static Boolean commonOpNeq(Object l, Object r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return !l.equals(r);
+    }
+
+    private static Boolean commonOpLe(Comparable l, Comparable r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) <= 0;
+    }
+
+    private static Boolean commonOpLt(Comparable l, Comparable r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) < 0;
+    }
+
+    private static Boolean commonOpGe(Comparable l, Comparable r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) >= 0;
+    }
+
+    private static Boolean commonOpGt(Comparable l, Comparable r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        return l.compareTo(r) > 0;
+    }
+
+    private static Boolean commonOpIn(Object o, Object... arr) {
+        assert arr != null; // guaranteed by the syntax
+        if (o == null) {
+            return null;
+        }
+        boolean nullFound = false;
+        for (Object p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                if (o.equals(p)) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null : false;
+    }
+
+    private static String getRegexForLike(String pattern, String escape) {
 
         StringBuffer sbuf = new StringBuffer();
 
@@ -2058,164 +2595,523 @@ public class SpLib {
         return sbuf.toString();
     }
 
-    /* TODO: restore later
-    // set and multiset ordering
-    enum SetOrder {
-        EQUAL,
-        INCLUDING,
-        INCLUDED,
-        NONE,
+    private static long doubleToLong(double d) {
+        BigDecimal bd = BigDecimal.valueOf(d);
+        return bigDecimalToLong(bd);
     }
 
-    static SetOrder compareSets(Set l, Set r) {
-        assert l != null && r != null;
-
-        if (l.equals(r)) {
-            return SetOrder.EQUAL;
-        }
-        if (l.containsAll(r)) {
-            return SetOrder.INCLUDING;
-        }
-        if (r.containsAll(l)) {
-            return SetOrder.INCLUDED;
-        }
-
-        return SetOrder.NONE;
+    private static int doubleToInt(double d) {
+        BigDecimal bd = BigDecimal.valueOf(d);
+        return bigDecimalToInt(bd);
     }
 
-    static SetOrder compareMultiSets(MultiSet l, MultiSet r) {
-        assert l != null && r != null;
+    private static short doubleToShort(double d) {
+        BigDecimal bd = BigDecimal.valueOf(d);
+        return bigDecimalToShort(bd);
+    }
 
-        if (l.equals(r)) {
-            return SetOrder.EQUAL;
+    private static long bigDecimalToLong(BigDecimal bd) {
+        bd = bd.setScale(0, RoundingMode.HALF_UP); // 1.5 -->2, and -1.5 --> -2 NOTE: different from
+        // Math.round
+        try {
+            return bd.longValueExact();
+        } catch (ArithmeticException e) {
+            throw new RuntimeException(
+                    "value error"); // TODO: throw an appropriate built-in exception
+        }
+    }
+
+    private static int bigDecimalToInt(BigDecimal bd) {
+        bd = bd.setScale(0, RoundingMode.HALF_UP); // 1.5 -->2, and -1.5 --> -2 NOTE: different from
+        // Math.round
+        try {
+            return bd.intValueExact();
+        } catch (ArithmeticException e) {
+            throw new RuntimeException(
+                    "value error"); // TODO: throw an appropriate built-in exception
+        }
+    }
+
+    private static short bigDecimalToShort(BigDecimal bd) {
+        bd = bd.setScale(0, RoundingMode.HALF_UP); // 1.5 -->2, and -1.5 --> -2 NOTE: different from
+        // Math.round
+        try {
+            return bd.shortValueExact();
+        } catch (ArithmeticException e) {
+            throw new RuntimeException(
+                    "value error"); // TODO: throw an appropriate built-in exception
+        }
+    }
+
+    private static Time longToTime(long l) {
+        if (l < 0L) {
+            // negative values seem to result in a invalid time value
+            // e.g.
+            // select cast(cast(-1 as bigint) as time);
+            // === <Result of SELECT Command in Line 1> ===
+            //
+            // <00001>  cast( cast(-1 as bigint) as time): 12:00:0/ AM
+            //
+            // 1 row selected. (0.004910 sec) Committed. (0.000020 sec)
+
+            // TODO: figure out what to return
+            throw new RuntimeException("unimplemented yet");
+        }
+
+        int totalSec = (int) (l % 86400L);
+        int hour = totalSec / 3600;
+        int minuteSec = totalSec % 3600;
+        int min = minuteSec / 60;
+        int sec = minuteSec % 60;
+        return new Time(hour, min, sec);
+    }
+
+    private static Timestamp longToTimestamp(long l) {
+        if (l < 0L) {
+            // TODO: check the following error and decide what to do for negative values
+            //   select cast(cast(-100 as bigint) as timestamp);
+            //   ERROR: Cannot coerce value of domain "bigint" to domain "timestamp"
+            throw new RuntimeException("unimplemented yet");
+        } else if (l
+                > 2147483647L) { // 2147483647L : see section 'implicit type conversion' in the user
+            // manual
+            throw new RuntimeException(
+                    "value error"); // TODO: throw an appropriate built-in exception
         } else {
-            boolean broken = false;
-            if (l.containsAll(r)) {
-                Set s = r.uniqueSet();
-
-                for (Object o : s) {
-                    int ln = l.getCount(o);
-                    int rn = r.getCount(o);
-                    if (ln < rn) {
-                        broken = true;
-                        break;
-                    }
-                }
-                if (!broken) {
-                    return SetOrder.INCLUDING;
-                }
-            }
-
-            broken = false;
-            if (r.containsAll(l)) {
-                Set s = l.uniqueSet();
-                for (Object o : s) {
-                    int ln = l.getCount(o);
-                    int rn = r.getCount(o);
-                    if (ln > rn) {
-                        broken = true;
-                        break;
-                    }
-                }
-                if (!broken) {
-                    return SetOrder.INCLUDED;
-                }
-            }
-
-            return SetOrder.NONE;
+            return new Timestamp(l * 1000L); // * 1000 : converts it to milli-seconds
         }
     }
 
-    static <E extends Comparable<E>> int compareLists(List<E> l, List<E> r) {
-        assert l != null && r != null;
+    private static int longToInt(long l) {
+        return bigDecimalToInt(BigDecimal.valueOf(l));
+    }
 
-        // lexicographic order
+    private static short longToShort(long l) {
+        return bigDecimalToShort(BigDecimal.valueOf(l));
+    }
 
-        int ln = l.size();
-        int rn = r.size();
-        int common = Math.min(ln, rn);
-
-        for (int i = 0; i < common; i++) {
-            E le = l.get(i);
-            E re = r.get(i);
-            int sign = le.compareTo(re);
-            if (sign > 0) {
-                return 1;
-            }
-            if (sign < 0) {
-                return -1;
-            }
+    private static BigDecimal strToBigDecimal(String s) {
+        try {
+            return new BigDecimal(s);
+        } catch (NumberFormatException e) {
+            throw new RuntimeException(
+                    "value error", e); // TODO: throw an appropriate built-in exception
         }
-
-        // every pair of elements upto first 'common' ones has the same elements
-        return (ln - rn);
     }
 
-    static MultiSet set2MultiSet(Set s) {
-        assert s != null;
-        return new HashMultiSet(s);
-    }
-
-    static MultiSet list2MultiSet(List l) {
+    private static int compareWithRuntimeTypeConv(Object l, Object r) {
         assert l != null;
-        return new HashMultiSet(
-                l); // TODO: check if the elements duplicate in the list has count larger than 1
-    }
+        assert r != null;
 
-    static List concatLists(List l, List r) {
-        ArrayList ret = new ArrayList();
-        ret.addAll(l);
-        ret.addAll(r);
-        return ret;
-    }
+        Comparable lConv = null;
+        Comparable rConv = null;
 
-    static Set unionSets(Set l, Set r) {
-        HashSet ret = new HashSet();
-        ret.addAll(l);
-        ret.addAll(r);
-        return ret;
-    }
-
-    static Set diffSets(Set l, Set r) {
-        HashSet ret = new HashSet();
-        ret.addAll(l);
-        ret.removeAll(r);
-        return ret;
-    }
-
-    static Set intersectSets(Set l, Set r) {
-        HashSet ret = new HashSet();
-        ret.addAll(l);
-        ret.retainAll(r);
-        return ret;
-    }
-
-    static MultiSet unionMultiSets(MultiSet l, MultiSet r) {
-        HashMultiSet ret = new HashMultiSet(l);
-        ret.addAll(r);
-        return ret;
-    }
-
-    static MultiSet diffMultiSets(MultiSet l, MultiSet r) {
-        HashMultiSet ret = new HashMultiSet(l);
-        for (Object o : r) {
-            ret.remove(o);
-        }
-        return ret;
-    }
-
-    static MultiSet intersectMultiSets(MultiSet l, MultiSet r) {
-        HashMultiSet ret = new HashMultiSet();
-        Set s = l.uniqueSet();
-        for (Object o : s) {
-            int ln = l.getCount(o);
-            int rn = r.getCount(o);
-            int min = Math.min(ln, rn);
-            if (min > 0) {
-                ret.add(o, min);
+        if (l instanceof Boolean) {
+            if (r instanceof Boolean) {
+                lConv = (Boolean) l;
+                rConv = (Boolean) r;
+            } else if (r instanceof String) {
+                // not applicable
+            } else if (r instanceof Short) {
+                // not applicable
+            } else if (r instanceof Integer) {
+                // not applicable
+            } else if (r instanceof Long) {
+                // not applicable
+            } else if (r instanceof BigDecimal) {
+                // not applicable
+            } else if (r instanceof Float) {
+                // not applicable
+            } else if (r instanceof Double) {
+                // not applicable
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
             }
+
+        } else if (l instanceof String) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (String) l;
+                rConv = (String) r;
+            } else if (r instanceof Short) {
+                lConv = convStringToDouble((String) l);
+                rConv = convShortToDouble((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = convStringToDouble((String) l);
+                rConv = convIntToDouble((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = convStringToDouble((String) l);
+                rConv = convBigintToDouble((Long) r);
+            } else if (r instanceof BigDecimal) {
+                lConv = convStringToDouble((String) l);
+                rConv = convNumericToDouble((BigDecimal) r);
+            } else if (r instanceof Float) {
+                lConv = convStringToDouble((String) l);
+                rConv = convFloatToDouble((Float) r);
+            } else if (r instanceof Double) {
+                lConv = convStringToDouble((String) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                lConv = convStringToDate((String) l);
+                rConv = (Date) r;
+            } else if (r instanceof Time) {
+                lConv = convStringToTime((String) l);
+                rConv = (Time) r;
+            } else if (r instanceof Timestamp) {
+                lConv = convStringToTimestamp((String) l);
+                rConv = (Timestamp) r;
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Short) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convShortToDouble((Short) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Short) (Short) l;
+                rConv = (Short) r;
+            } else if (r instanceof Integer) {
+                lConv = convShortToInt((Short) l);
+                rConv = (Integer) r;
+            } else if (r instanceof Long) {
+                lConv = convShortToBigint((Short) l);
+                rConv = (Long) r;
+            } else if (r instanceof BigDecimal) {
+                lConv = convShortToNumeric((Short) l);
+                rConv = (BigDecimal) r;
+            } else if (r instanceof Float) {
+                lConv = convShortToFloat((Short) l);
+                rConv = (Float) r;
+            } else if (r instanceof Double) {
+                lConv = convShortToDouble((Short) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                lConv = convShortToTime((Short) l);
+                rConv = (Time) r;
+            } else if (r
+                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
+                // CoercionScheme
+                lConv = convShortToTimestamp((Short) l);
+                rConv = (Timestamp) r;
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Integer) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convIntToDouble((Integer) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Integer) l;
+                rConv = convShortToInt((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Integer) l;
+                rConv = (Integer) r;
+            } else if (r instanceof Long) {
+                lConv = convIntToBigint((Integer) l);
+                rConv = (Long) r;
+            } else if (r instanceof BigDecimal) {
+                lConv = convIntToNumeric((Integer) l);
+                rConv = (BigDecimal) r;
+            } else if (r instanceof Float) {
+                lConv = convIntToFloat((Integer) l);
+                rConv = (Float) r;
+            } else if (r instanceof Double) {
+                lConv = convIntToDouble((Integer) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                lConv = convIntToTime((Integer) l);
+                rConv = (Time) r;
+            } else if (r
+                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
+                // CoercionScheme
+                lConv = convIntToTimestamp((Integer) l);
+                rConv = (Timestamp) r;
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Long) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convBigintToDouble((Long) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Long) l;
+                rConv = convShortToBigint((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Long) l;
+                rConv = convIntToBigint((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Long) l;
+                rConv = (Long) r;
+            } else if (r instanceof BigDecimal) {
+                lConv = convBigintToNumeric((Long) l);
+                rConv = (BigDecimal) r;
+            } else if (r instanceof Float) {
+                lConv = convBigintToFloat((Long) l);
+                rConv = (Float) r;
+            } else if (r instanceof Double) {
+                lConv = convBigintToDouble((Long) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                lConv = convBigintToTime((Long) l);
+                rConv = (Time) r;
+            } else if (r
+                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
+                // CoercionScheme
+                lConv = convBigintToTimestamp((Long) l);
+                rConv = (Timestamp) r;
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof BigDecimal) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convNumericToDouble((BigDecimal) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (BigDecimal) l;
+                rConv = convShortToNumeric((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (BigDecimal) l;
+                rConv = convIntToNumeric((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (BigDecimal) l;
+                rConv = convBigintToNumeric((Long) r);
+            } else if (r instanceof BigDecimal) {
+                lConv = (BigDecimal) l;
+                rConv = (BigDecimal) r;
+            } else if (r instanceof Float) {
+                lConv = convNumericToDouble((BigDecimal) l);
+                rConv = convFloatToDouble((Float) r);
+            } else if (r instanceof Double) {
+                lConv = convNumericToDouble((BigDecimal) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Float) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = convFloatToDouble((Float) l);
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Float) l;
+                rConv = convShortToFloat((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Float) l;
+                rConv = convIntToFloat((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Float) l;
+                rConv = convBigintToFloat((Long) r);
+            } else if (r instanceof BigDecimal) {
+                lConv = convFloatToDouble((Float) l);
+                rConv = convNumericToDouble((BigDecimal) r);
+            } else if (r instanceof Float) {
+                lConv = (Float) l;
+                rConv = (Float) r;
+            } else if (r instanceof Double) {
+                lConv = convFloatToDouble((Float) l);
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Double) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (Double) l;
+                rConv = convStringToDouble((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Double) l;
+                rConv = convShortToDouble((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Double) l;
+                rConv = convIntToDouble((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Double) l;
+                rConv = convBigintToDouble((Long) r);
+            } else if (r instanceof BigDecimal) {
+                lConv = (Double) l;
+                rConv = convNumericToDouble((BigDecimal) r);
+            } else if (r instanceof Float) {
+                lConv = (Double) l;
+                rConv = convFloatToDouble((Float) r);
+            } else if (r instanceof Double) {
+                lConv = (Double) l;
+                rConv = (Double) r;
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Date) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (Date) l;
+                rConv = convStringToDate((String) r);
+            } else if (r instanceof Short) {
+                // not applicable
+            } else if (r instanceof Integer) {
+                // not applicable
+            } else if (r instanceof Long) {
+                // not applicable
+            } else if (r instanceof BigDecimal) {
+                // not applicable
+            } else if (r instanceof Float) {
+                // not applicable
+            } else if (r instanceof Double) {
+                // not applicable
+            } else if (r instanceof Date) {
+                lConv = (Date) l;
+                rConv = (Date) r;
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Time) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (Time) l;
+                rConv = convStringToTime((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Time) l;
+                rConv = convShortToTime((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Time) l;
+                rConv = convIntToTime((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Time) l;
+                rConv = convBigintToTime((Long) r);
+            } else if (r instanceof BigDecimal) {
+                // not applicable
+            } else if (r instanceof Float) {
+                // not applicable
+            } else if (r instanceof Double) {
+                // not applicable
+            } else if (r instanceof Date) {
+                // not applicable
+            } else if (r instanceof Time) {
+                lConv = (Time) l;
+                rConv = (Time) r;
+            } else if (r instanceof Timestamp) {
+                // not applicable
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else if (l instanceof Timestamp) {
+
+            if (r instanceof Boolean) {
+                // not applicable
+            } else if (r instanceof String) {
+                lConv = (Timestamp) l;
+                rConv = convStringToTimestamp((String) r);
+            } else if (r instanceof Short) {
+                lConv = (Timestamp) l;
+                rConv = convShortToTimestamp((Short) r);
+            } else if (r instanceof Integer) {
+                lConv = (Timestamp) l;
+                rConv = convIntToTimestamp((Integer) r);
+            } else if (r instanceof Long) {
+                lConv = (Timestamp) l;
+                rConv = convBigintToTimestamp((Long) r);
+            } else if (r instanceof BigDecimal) {
+                // not applicable
+            } else if (r instanceof Float) {
+                // not applicable
+            } else if (r instanceof Double) {
+                // not applicable
+            } else if (r instanceof Date) {
+                lConv = (Timestamp) l;
+                rConv = convDateToTimestamp((Date) r);
+            } else if (r instanceof Time) {
+                // not applicable
+            } else if (r instanceof Timestamp) {
+                lConv = (Timestamp) l;
+                rConv = (Timestamp) r;
+            } else {
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
+            }
+
+        } else {
+            assert false : "unreachable";
+            throw new RuntimeException("unreachable");
         }
-        return ret;
+
+        if (lConv == null) {
+            assert rConv == null;
+            throw new RuntimeException("cannot compare two values of unsupported types");
+        } else {
+            assert rConv != null;
+            return lConv.compareTo(rConv);
+        }
     }
-     */
 }

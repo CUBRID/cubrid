@@ -159,7 +159,7 @@ public class CUBRIDPacker {
             packDouble(((Double) result).doubleValue());
         } else if (result instanceof BigDecimal) {
             packInt(DBType.DB_NUMERIC);
-            packString(((BigDecimal) result).toString(), charset);
+            packString(((BigDecimal) result).toPlainString(), charset);
         } else if (result instanceof String) {
             packInt(DBType.DB_STRING);
             packString((String) result, charset);
