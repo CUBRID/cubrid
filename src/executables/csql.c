@@ -3384,6 +3384,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   char *p = NULL;
   const char *err_msg;
   CSQL_ARGUMENT csql_new_arg;
+  char csql_db_name[DB_NAME_LEN];
 
   if (argument == NULL)
     {
@@ -3474,10 +3475,10 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
 /*If login is success, copy csql_new_arg to csql_arg*/
   csql_new_arg.user_name = strdup (user_name_ptr);
-  csql_new_arg.db_name = strdup (db_name_ptr);
+  strcpy (csql_db_name, db_name_ptr);
+  csql_new_arg.db_name = csql_db_name;
 
   FREE_MEM ((char *) csql_arg->user_name);
-  FREE_MEM ((char *) csql_arg->db_name);
   FREE_MEM ((char *) csql_arg->passwd);
 
   memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
