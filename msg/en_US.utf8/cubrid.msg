@@ -1347,7 +1347,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1276 Connected page server cannot be reached anymore.
 1277 Atomic replication error: %s.
 1278 Decompression failed (%s).
-1279 No page server connection is available. At least one connection is necessary.
+1279 No page server connection is available. At least one connection is required.
 1280 Error reserved for scalability development.
 1281 Error reserved for scalability development.
 1282 Error reserved for scalability development.
