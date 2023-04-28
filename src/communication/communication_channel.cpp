@@ -261,6 +261,8 @@ namespace cubcomm
 
   void channel::materialize_channel_id ()
   {
+    assert (m_channel_name.empty ());
+
     std::stringstream ss;
 
     ss << m_channel_name << "_" << m_hostname;
