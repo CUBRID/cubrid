@@ -68,7 +68,7 @@ begin
 =========================================================
             7  ggg                 777-7777');
 
-    EXECUTE IMMEDIATE 'INSERT INTO a_tbl1 SELECT * FROM a_tbl1 WHERE id=7 ON DUPLICATE KEY UPDATE name=''ggg'';';
+    INSERT INTO a_tbl1 SELECT * FROM a_tbl1 WHERE id=7 ON DUPLICATE KEY UPDATE name='ggg';
 
     PUT_LINE('Actual');
     for r in (SELECT id, name, phone FROM a_tbl1 WHERE id=7) loop
