@@ -1266,31 +1266,33 @@ spage_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
   page_header_p->offset_to_free_area = to_offset;
   ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area, page_header_p->alignment);
 
+  // zero-out the remaining free space
+  memset ((void *) page_p + page_header_p->offset_to_free_area, 0, page_header_p->total_free);
+
   spage_verify_header (page_p);
 
   /* The page is set dirty somewhere else */
   return NO_ERROR;
 }
 
-int
-spage_compact_and_zero_out_free_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
-{
-  assert (page_p != nullptr);
+//int
+//spage_compact_and_zero_out_free_space (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
+//{
+//  assert (page_p != nullptr);
 
-  int error_code = spage_compact (thread_p, page_p);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
+//  int error_code = spage_compact (thread_p, page_p);
+//  if (error_code != NO_ERROR)
+//    {
+//      return error_code;
+//    }
 
-  const SPAGE_HEADER *const page_header_p = (const SPAGE_HEADER *) page_p;
+//  const SPAGE_HEADER *const page_header_p = (const SPAGE_HEADER *) page_p;
 
-  assert (page_header_p->cont_free == page_header_p->total_free);
-  memset ((void *) page_p + page_header_p->offset_to_free_area, 0,
-			     page_header_p->total_free);
+//  assert (page_header_p->cont_free == page_header_p->total_free);
+//  memset ((void *) page_p + page_header_p->offset_to_free_area, 0, page_header_p->total_free);
 
-  return NO_ERROR;
-}
+//  return NO_ERROR;
+//}
 
 /*
  * spage_find_free_slot () -
@@ -2436,6 +2438,7 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPA
   /* Update the record in place. Same area */
   is_located_end = spage_is_record_located_at_end (page_header_p, slot_p);
 
+  const unsigned int old_record_length = slot_p->record_length;
   slot_p->record_length = record_descriptor_p->length;
   if (SPAGE_OVERFLOW (slot_p->offset_to_record + record_descriptor_p->length))
     {
@@ -2444,6 +2447,12 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPA
       return SP_ERROR;
     }
   memcpy (((char *) page_p + slot_p->offset_to_record), record_descriptor_p->data, record_descriptor_p->length);
+  // zero-out the remaining free space
+  if (slot_p->record_length < old_record_length)
+    {
+      memset ((void *) page_p + slot_p->offset_to_record + slot_p->record_length,
+              0, (old_record_length - slot_p->record_length));
+    }
   page_header_p->total_free -= space;
 
   /* If the record was located at the end, we can execute a simple compaction */
