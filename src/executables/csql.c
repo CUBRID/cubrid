@@ -127,6 +127,7 @@ int (*csql_text_console_to_utf8) (const char *, const int, char **, int *) = NUL
 
 int csql_Row_count;
 int csql_Num_failures;
+char csql_Db_name[512];
 
 /* command editor lines */
 int csql_Line_lwm = -1;
@@ -3474,10 +3475,10 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
 /*If login is success, copy csql_new_arg to csql_arg*/
   csql_new_arg.user_name = strdup (user_name_ptr);
-  csql_new_arg.db_name = strdup (db_name_ptr);
+  strcpy (csql_Db_name, db_name_ptr);
+  csql_new_arg.db_name = csql_Db_name;
 
   FREE_MEM ((char *) csql_arg->user_name);
-  FREE_MEM ((char *) csql_arg->db_name);
   FREE_MEM ((char *) csql_arg->passwd);
 
   memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
