@@ -277,6 +277,7 @@ extern "C"
     bool nopager;
     bool continue_on_error;
     bool sysadm;
+    bool sysadm_rebuild_catalog;
     bool write_on_standby;
     bool trigger_action_flag;
     bool plain_output;
