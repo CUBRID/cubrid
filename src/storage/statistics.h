@@ -104,7 +104,7 @@ struct attr_ndv
 typedef struct class_attr_ndv CLASS_ATTR_NDV;
 struct class_attr_ndv
 {
-  int attr_cnt;			/* column id */
+  int attr_cnt;			/* attribute count */
   ATTR_NDV *attr_ndv;		/* Number of Distinct Values of column */
 };
 
