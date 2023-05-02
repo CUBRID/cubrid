@@ -43,6 +43,8 @@
 
 #define STATS_MIN_MAX_SIZE    sizeof(DB_DATA)
 
+#define STATS_MAX_PRECISION	4000	/* max precision of char for getting statistics */
+
 /* free_and_init routine */
 #define stats_free_statistics_and_init(stats) \
   do \
@@ -104,7 +106,7 @@ struct attr_ndv
 typedef struct class_attr_ndv CLASS_ATTR_NDV;
 struct class_attr_ndv
 {
-  int attr_cnt;			/* attribute count */
+  int attr_cnt;			/* column id */
   ATTR_NDV *attr_ndv;		/* Number of Distinct Values of column */
 };
 

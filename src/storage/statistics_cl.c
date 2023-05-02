@@ -710,9 +710,10 @@ stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
   att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
   while (att != NULL)
     {
-      /* check if type is varchar(4000) or lob. */
+      /* check if type is varchar or lob. */
       dom = db_attribute_domain (att);
-      if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (dom)) || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dom)) && dom->precision > 4000))
+      if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (dom)) ||
+	  (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dom)) && dom->precision > STATS_MAX_PRECISION))
 	{
 	  /* These types are not gathered for statistics. */
 	  snprintf (column, 23, "cast (-1 as BIGINT), ");
