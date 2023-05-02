@@ -705,7 +705,7 @@ help_print_info (const char *command, FILE * fpp)
       ptr = obj_print_next_token (ptr, buffer);
       if (!strlen (buffer))
 	{
-	  fprintf (fpp, "Info ndv class-name!!!!!\n");
+	  fprintf (fpp, "Info ndv class-name\n");
 	}
       else
 	{
