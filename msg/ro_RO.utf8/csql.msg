@@ -92,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Prea puține argumente date.
 
 145 <Ajutor: Schema unei clase>
 146 vid
@@ -192,7 +193,7 @@ $ csql help messages
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
    ;SIngleline [ON|OFF]         - activați/dezactivați modul cu o singură linie.\n\
    ;CONnect username [dbname | dbname@hostname]\n\
-                                - conectați-vă la bazele de date curente sau la alte baze de date ca nume de utilizator.\n\ 
+                                - conectați-vă la bazele de date curente sau la alte baze de date ca nume de utilizator.\n\
    ;.Hist [ON/OFF]              - porniți/opriți colectarea informațiilor statistice în CSQL (doar DBA disponibil).\n\
    ;.Clear_hist                 - ștergeți informațiile statistice CSQL din buffer.\n\
    ;.Dump_hist                  - afișați informațiile statistice CSQL în CSQL.\n\

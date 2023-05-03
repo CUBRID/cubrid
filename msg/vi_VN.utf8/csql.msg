@@ -92,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Too few arguments given.
 
 145 <Help: Schema of a Class>
 146 none

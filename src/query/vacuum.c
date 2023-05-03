@@ -2385,6 +2385,24 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true);
 
+      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
+	{
+	  int freespace = spage_get_free_space_without_saving (thread_p, helper->forward_page, NULL);
+
+	  if (freespace > HEAP_DROP_FREE_SPACE)
+	    {
+	      /*
+	       * NOTE:
+	       * By checking the freespace > HEAP_DROP_FREE_SPACE condition, heap_Bestspace->bestspace_mutex contention is reduced
+	       * and the unnecessarily frequent extraction from heap_Bestspace->vpid_ht due to small free space is prevented in heap_stats_find_page_in_bestspace().
+	       * And Passing the prev_freespace argument to 0 is a trick to get heap_stats_add_bestspace() called from heap_stats_update().
+	       *
+	       * This part will be refactored right away in the related issue, at which time this comment will be removed.
+	       */
+	      heap_stats_update (thread_p, helper->forward_page, &helper->hfid, 0);
+	    }
+	}
+
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
       /* Log changes in forward page immediately. */

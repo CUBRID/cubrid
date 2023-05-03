@@ -70,7 +70,8 @@
     <InstallExecuteSequence>
       <Custom Action="RegisterService" After="InstallFiles"><![CDATA[NOT Installed]]></Custom>
       <Custom Action="CreateScheduledTask" After="RegisterService"><![CDATA[NOT Installed]]></Custom>
-      <Custom Action="CreateDemodb" After="CreateScheduledTask"><![CDATA[NOT Installed AND INSTALLWITHDEMODB]]></Custom>
+      <Custom Action="CreateforDatabases" After="CreateScheduledTask"><![CDATA[NOT Installed]]></Custom>
+      <Custom Action="CreateDemodb" After="CreateforDatabases"><![CDATA[NOT Installed AND INSTALLWITHDEMODB]]></Custom>
       <Custom Action="DeleteScheduledTask" After="InstallInitialize"><![CDATA[Installed]]></Custom>
       <Custom Action="KillTray" Before="DeleteScheduledTask"><![CDATA[Installed]]></Custom>
     </InstallExecuteSequence>
@@ -84,16 +85,19 @@
       </Component>
     </DirectoryRef>
 <!-- Create a schedule for autorun tray -->
-    <SetProperty Id="CreateScheduledTask" Before="CreateScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /CREATE /SC ONLOGON /TN &quot;CUBRID Service Tray&quot; /TR &quot;[#CM_FP_Application.bin.CUBRID_Service_Tray.exe]&quot; /RU &quot;NT Authority\System&quot; /RP /RL HIGHEST"/>
+    <SetProperty Id="CreateScheduledTask" Before="CreateScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /CREATE /SC ONLOGON /TN &quot;CUBRID Service Tray&quot; /TR &quot;[#CM_FP_Application.bin.CUBRID_Service_Tray.exe]&quot; /RU &quot;NT Authority\System&quot; /RP /RL HIGHEST /F"/>
     <CustomAction Id="CreateScheduledTask" Return="check" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
     <SetProperty Id="DeleteScheduledTask" Before="DeleteScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /DELETE /TN &quot;CUBRID Service Tray&quot; /F"/>
     <CustomAction Id="DeleteScheduledTask" Return="ignore" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
 <!-- Kill Tray before uninstall -->
     <SetProperty Id="KillTray" Before="KillTray" Sequence="execute" Value="&quot;[SystemFolder]TASKKILL.EXE&quot; /F /IM CUBRID_Service_Tray.exe"/>
     <CustomAction Id="KillTray" Return="ignore" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
+<!-- Create Databases folder and databases.txt -->
+    <SetProperty Id="CreateforDatabases" Before="CreateforDatabases" Sequence="execute" Value="&quot;[SystemFolder]CMD.EXE&quot; /C &quot;[#CM_FP_Unspecified.share.scripts_for_msi.create_for_databases.bat] [INSTALL_ROOT]&quot;"/>
+    <CustomAction Id="CreateforDatabases" BinaryKey="WixCA" DllEntry="CAQuietExec" Execute="deferred" Return="ignore"/>
 <!-- Create demodb -->
     <Property Id="INSTALLWITHDEMODB" Value="1"/>
-    <SetProperty Id="CreateDemodb" Before="CreateDemodb" Sequence="execute" Value="&quot;[SystemFolder]CMD.EXE&quot; /C &quot;[#CM_FP_Unspecified.demo.make_cubrid_demo.bat] demodb [INSTALL_ROOT]&quot;"/>
+    <SetProperty Id="CreateDemodb" Before="CreateDemodb" Sequence="execute" Value="&quot;[SystemFolder]CMD.EXE&quot; /C &quot;[#CM_FP_Unspecified.share.scripts_for_msi.make_demo_msi.bat] demodb [INSTALL_ROOT]&quot;"/>
     <CustomAction Id="CreateDemodb" BinaryKey="WixCA" DllEntry="CAQuietExec" Execute="deferred" Return="ignore"/>
 <!-- Start Tray after install -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>
