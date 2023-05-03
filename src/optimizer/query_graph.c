@@ -236,6 +236,7 @@ static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
 static void qo_discover_edges (QO_ENV *);
+static void qo_sort_sarg_terms (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
 static void qo_seg_clear (QO_ENV *, int);
@@ -581,9 +582,6 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
-  get_local_subqueries (env, tree);
-  get_rank (env);
-
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
@@ -593,6 +591,9 @@ qo_optimize_helper (QO_ENV * env)
    */
   qo_assign_eq_classes (env);
 
+  get_local_subqueries (env, tree);
+  get_rank (env);
+  qo_sort_sarg_terms (env);
   qo_discover_indexes (env);
   qo_discover_partitions (env);
   qo_discover_sort_limit_nodes (env);
@@ -6085,12 +6086,6 @@ qo_discover_edges (QO_ENV * env)
 	    {
 	      qo_exchange (term1, term2);
 	    }
-	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2))
-		   && (QO_TERM_SELECTIVITY (term1) == QO_TERM_SELECTIVITY (term2))
-		   && QO_TERM_RANK (term1) > QO_TERM_RANK (term2))
-	    {
-	      qo_exchange (term1, term2);
-	    }
 	}
     }
 
@@ -6166,6 +6161,56 @@ qo_discover_edges (QO_ENV * env)
     }
 
   bitset_delset (&direct_nodes);
+}
+
+/*
+ * qo_sort_sarg_terms () -
+ *   return:
+ *   env(in):
+ */
+static void
+qo_sort_sarg_terms (QO_ENV * env)
+{
+  int i;
+  QO_NODE *node;
+  int t1, t2;
+  QO_TERM *term1, *term2;
+
+  /* skip edge term (join term) */
+  for (i = 0; i < env->nterms - 1; i++)
+    {
+      term1 = QO_ENV_TERM (env, i);
+      if (!QO_IS_EDGE_TERM (term1))
+	{
+	  break;
+	}
+    }
+
+  /* sort sarg-term on pred_order desc, selectivity asc, rank asc */
+  for (t1 = i; t1 < env->nterms - 1; t1++)
+    {
+      term1 = QO_ENV_TERM (env, t1);
+      for (t2 = t1 + 1; t2 < env->nterms; t2++)
+	{
+	  term2 = QO_ENV_TERM (env, t2);
+
+	  if (QO_TERM_PRED_ORDER (term1) < QO_TERM_PRED_ORDER (term2))
+	    {
+	      qo_exchange (term1, term2);
+	    }
+	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2))
+		   && (QO_TERM_SELECTIVITY (term1) > QO_TERM_SELECTIVITY (term2)))
+	    {
+	      qo_exchange (term1, term2);
+	    }
+	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2))
+		   && (QO_TERM_SELECTIVITY (term1) == QO_TERM_SELECTIVITY (term2))
+		   && QO_TERM_RANK (term1) > QO_TERM_RANK (term2))
+	    {
+	      qo_exchange (term1, term2);
+	    }
+	}
+    }
 }
 
 /*
