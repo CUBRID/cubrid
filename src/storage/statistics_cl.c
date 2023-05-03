@@ -550,7 +550,7 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
   /* print NDV info */
   fprintf (file_p, "\nNumber of Distinct Values\n");
   fprintf (file_p, "****************\n");
-  fprintf (file_p, " Class name: %s\n", class_name_p);
+  fprintf (file_p, " Class name: %s\n", sm_get_ch_name (class_mop));
   for (i = 0; i < class_attr_ndv.attr_cnt; i++)
     {
       fprintf (file_p, "  %s (%ld)\n", sm_get_att_name (class_mop, class_attr_ndv.attr_ndv[i].id),
