@@ -721,7 +721,7 @@ stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
       else
 	{
 	  /* make column */
-	  snprintf (column, DB_MAX_IDENTIFIER_LENGTH + 20, "count(distinct %s), ", db_attribute_name (att));
+	  snprintf (column, DB_MAX_IDENTIFIER_LENGTH + 20, "count(distinct [%s]), ", db_attribute_name (att));
 	}
 
       /* alloc memory */
