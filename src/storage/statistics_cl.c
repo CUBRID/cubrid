@@ -620,7 +620,8 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
   query_buf = (char *) malloc (sizeof (char) * buf_size);
   if (query_buf == NULL)
     {
-      return ER_FAILED;
+      error = ER_FAILED;
+      goto end;
     }
   snprintf (query_buf, buf_size, query, select_list, class_name_p);
 
