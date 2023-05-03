@@ -587,7 +587,6 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
   DB_VALUE value;
   INT64 v1, v2;
   DB_DOMAIN *dom;
-  ATTR_NDV *att_ndv = NULL;
   int i;
   const char *class_name_p = NULL;
 
