@@ -230,6 +230,8 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 /* for opt_over_analytic_partition_by */
 static bool is_analytic_function = false;
 
+static bool is_in_create_trigger = false;
+
 #define PT_EMPTY INT_MAX
 
 
@@ -762,6 +764,7 @@ int g_original_buffer_len;
 %type <node> event_target
 %type <node> trigger_condition
 %type <node> trigger_action
+%type <node> trigger_action_in
 %type <node> trigger_spec_list
 %type <node> trace_spec
 %type <node> depth_spec
@@ -5505,6 +5508,11 @@ class_name_with_server_name
                 PT_NAME_INFO_CLEAR_FLAG($1, PT_NAME_INFO_USER_SPECIFIED);
                 SET_CONTAINER_2 (ctn, $1, $3);
                 $$ = ctn;
+		if (is_in_create_trigger)
+		  {
+		    PT_ERROR(this_parser, $1, "check syntax: Not supported @!!!");
+		    PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos);
+		  }
                 DBG_PRINT}}
         ;
 
@@ -11933,7 +11941,7 @@ trigger_condition
 		DBG_PRINT}}
 	;
 
-trigger_action
+trigger_action_in
 	: REJECT_
 		{{ DBG_TRACE_GRAMMAR(trigger_action, : REJECT_);
 
@@ -12067,6 +12075,17 @@ trigger_action
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	;
+
+trigger_action
+	:
+	  { is_in_create_trigger = true; }
+	  trigger_action_in
+	    {{
+		is_in_create_trigger = false;
+		$$ = $2;
+		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+	     DBG_PRINT}}
 	;
 
 trigger_spec_list

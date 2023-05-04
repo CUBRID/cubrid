@@ -10968,6 +10968,148 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
+static char *
+skip_comment (char *ps)
+{
+  while (*ps)
+    {
+      if (ps[0] == '*' && ps[1] == '/')
+	{
+	  ps += 2;
+	  break;
+	}
+      ps++;
+    }
+  return ps;
+}
+
+char *
+read_id (char *ps, char end_char)
+{
+  while (*ps != end_char)
+    {
+      ps++;
+    }
+
+  return ((*ps == end_char) ? (ps + 1) : ps);
+
+}
+
+static char *
+read_string (char *ps, char end_char, bool no_escape)
+{
+  if (no_escape)
+    {
+      while (*ps)
+	{
+	  if (ps[0] == end_char)
+	    {
+	      if (ps[1] != end_char)
+		{
+		  return ps + 1;
+		}
+	      ps++;
+	    }
+	  ps++;
+	}
+    }
+  else
+    {
+      while (*ps)
+	{
+	  if (ps[0] == end_char)
+	    {
+	      if (ps[1] != end_char)
+		{
+		  return ps + 1;
+		}
+	      ps++;
+	    }
+
+	  else if (ps[0] == '\\')
+	    {
+	      switch (ps[1])
+		{
+		case '\'':
+		case '"':
+		case 'n':
+		case 'r':
+		case 't':
+		case '\\':
+		case '%':
+		case '_':
+		  ps++;
+		  break;
+
+		default:
+		  break;
+		}
+	    }
+	  ps++;
+	}
+    }
+
+  return ps;
+}
+
+static char *
+find_circle_at_char (bool ansi_quotes, bool no_escape, char *ps)
+{
+  while (*ps)
+    {
+      switch (*ps)
+	{
+	case '@':
+	  {
+	    return ps;
+	  }
+	  break;
+
+	case '[':
+	  ps = read_id (ps + 1, ']');
+	  break;
+
+	case '`':
+	  ps = read_id (ps + 1, '`');
+	  break;
+
+	case '"':
+	  ps = (ansi_quotes ? read_id (ps + 1, '"') : read_string (ps + 1, '"', no_escape));
+	  break;
+
+	case '\'':
+	  ps = read_string (ps + 1, '\'', no_escape);
+	  break;
+
+	case '/':
+	case '-':
+	  if (ps[0] == ps[1])
+	    {
+	      ps += 2;
+	      while (*ps)
+		{
+		  ps++;
+		  if (ps[-1] == '\n')
+		    {
+		      break;
+		    }
+		}
+	    }
+	  else if (ps[0] == '/' && ps[1] == '*')
+	    {
+	      ps = skip_comment (ps + 2);
+	    }
+	  break;
+
+	default:
+	  ps++;
+	  break;
+	}
+    }
+
+  return NULL;
+}
+
 static PARSER_VARCHAR *
 pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
@@ -11851,7 +11993,6 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_DELETE:
     case PT_UPDATE:
     case PT_MERGE:
-    case PT_SCOPE:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
       if (pt_has_error (parser))
 	{
