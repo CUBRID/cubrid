@@ -11116,22 +11116,23 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_
   PARSER_VARCHAR *pvc = NULL;
   char *ps, *pt, *t;
   int adjust_pos = 1;
+  bool ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
+  bool no_escape = prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES);
 
   ps = sql_user_text;
   if (snl->server_node_cnt > 0)
     {
       int i, idx;
       int zidx[2] = { 0, 1 };
-
       if (snl->server_node_cnt == 2 && snl->len[0] < snl->len[1])
 	{
 	  zidx[0] = 1;
 	  zidx[1] = 0;
 	}
-
-      while (ps)
+      assert (ps != NULL);
+      while (*ps)
 	{
-	  t = strchr ((char *) ps, '@');
+	  t = find_circle_at_char (ansi_quotes, no_escape, ps);
 	  if (!t)
 	    {
 	      break;
@@ -11143,7 +11144,7 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_
 	      t++;
 	    }
 
-	  if (t[1] == '[' || t[1] == '"')
+	  if (t[1] == '[' || t[1] == '`' || (ansi_quotes && t[1] == '"'))
 	    {
 	      adjust_pos = 2;
 	      t++;
@@ -11165,6 +11166,7 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_
 		    }
 		}
 	    }
+
 	  assert (i < snl->server_node_cnt);
 	  ps = t + snl->len[idx] + adjust_pos;
 	}
