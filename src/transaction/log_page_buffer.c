@@ -2120,6 +2120,9 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
         {
 	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
         }
+
+      // TODO handling the case such as shutdown
+      assert_release (error_code != ER_CONN_NO_PAGE_SERVER_AVAILABLE);
       return error_code;
     }
 
