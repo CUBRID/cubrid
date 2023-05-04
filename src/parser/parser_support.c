@@ -10973,6 +10973,7 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_
 {
   PARSER_VARCHAR *pvc = NULL;
   char *ps, *pt, *t;
+  int adjust_pos = 1;
 
   ps = sql_user_text;
   if (snl->server_node_cnt > 0)
@@ -10993,39 +10994,53 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_
 	    {
 	      break;
 	    }
+
 	  pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
+	  while (char_isspace (t[1]))
+	    {
+	      t++;
+	    }
+
+	  if (t[1] == '[' || t[1] == '"')
+	    {
+	      adjust_pos = 2;
+	      t++;
+	    }
+	  else
+	    {
+	      adjust_pos = 1;
+	    }
 
 	  for (i = 0; i < snl->server_node_cnt; i++)
 	    {
 	      idx = zidx[i];
 	      if (strncasecmp (t + 1, snl->server_full_name[idx], snl->len[idx]) == 0)
 		{
-		  char ch = t[snl->len[idx] + 1];
+		  char ch = t[snl->len[idx] + adjust_pos];
 		  if (char_isspace (ch) || ch == ',' || ch == ';' || ch == '(' || ch == ')')
 		    {
 		      break;
 		    }
 		}
 	    }
-
 	  assert (i < snl->server_node_cnt);
-	  ps = t + snl->len[idx] + 1;
+	  ps = t + snl->len[idx] + adjust_pos;
 	}
     }
 
   pvc = pt_append_nulstring (parser, pvc, ps);
-
   pt = (char *) pvc->bytes;
   t = pt + (pvc->length - 1);
+
   while (t > pt)
     {
       if (*t != ' ' && *t != '\t' && *t != '\n' && *t != '\a')
 	{
 	  break;
 	}
-
       t--;
     }
+
   t[1] = '\0';
   pvc->length = (int) (t - pt) + 1;
 
@@ -11836,6 +11851,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_DELETE:
     case PT_UPDATE:
     case PT_MERGE:
+    case PT_SCOPE:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
       if (pt_has_error (parser))
 	{

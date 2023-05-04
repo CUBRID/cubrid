@@ -1160,6 +1160,14 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
       upd->info.update.spec = entity;
     }
 
+  pt_rewrite_for_dblink (parser, statement);
+
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+      return NULL;
+    }
+
   statement = pt_compile (parser, statement);
 
   /* Remove those info we append, which users can't understand them */
