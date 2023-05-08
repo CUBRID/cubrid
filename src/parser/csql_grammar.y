@@ -5510,7 +5510,7 @@ class_name_with_server_name
                 $$ = ctn;
 		if (is_in_create_trigger)
 		  {
-		    PT_ERROR(this_parser, $1, "check syntax: Not supported @!!!");
+		    PT_ERROR(this_parser, $1, "triggers on remote tables not supported yet");
 		    PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos);
 		  }
                 DBG_PRINT}}
