@@ -43,6 +43,8 @@
 
 #define STATS_MIN_MAX_SIZE    sizeof(DB_DATA)
 
+#define STATS_MAX_PRECISION	4000	/* max precision of char for getting statistics */
+
 /* free_and_init routine */
 #define stats_free_statistics_and_init(stats) \
   do \
@@ -79,6 +81,7 @@ struct attr_stats
   DB_TYPE type;
   int n_btstats;		/* number of B+tree statistics information */
   BTREE_STATS *bt_stats;	/* pointer to array of BTREE_STATS[n_btstats] */
+  /* INT64 ndv; */
 };
 
 /* Statistical Information about the class */
@@ -92,10 +95,28 @@ struct class_stats
   ATTR_STATS *attr_stats;	/* pointer to the array of attribute statistics */
 };
 
+/* Statistical Information about the attribute NDV */
+typedef struct attr_ndv ATTR_NDV;
+struct attr_ndv
+{
+  int id;			/* column id */
+  INT64 ndv;			/* Number of Distinct Values of column */
+};
+
+typedef struct class_attr_ndv CLASS_ATTR_NDV;
+struct class_attr_ndv
+{
+  int attr_cnt;			/* column id */
+  ATTR_NDV *attr_ndv;		/* Number of Distinct Values of column */
+};
+
 #if !defined(SERVER_MODE)
 extern int stats_get_statistics (OID * classoid, unsigned int timestamp, CLASS_STATS ** stats_p);
 extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
+extern void stats_ndv_dump (const char *classname, FILE * fp);
+extern char *stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv);
+extern int stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p);
 #endif /* !SERVER_MODE */
 
 #endif /* _STATISTICS_H_ */
