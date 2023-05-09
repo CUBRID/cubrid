@@ -2382,8 +2382,8 @@ bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
 
-bool PRM_ORACLE_STYLE_DIVIDE = false;
-static bool prm_oracle_style_divide_default = false;
+bool PRM_ORACLE_STYLE_DIVIDE = true;
+static bool prm_oracle_style_divide_default = true;
 static unsigned int prm_oracle_style_divide_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
