@@ -3286,7 +3286,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	{
 	  db_clear_host_connected ();
 
-	  printf ("\n *** Applied Info. *** \n");
+	  fprintf (stdout, "\n *** Applied Info. *** \n");
+	  fflush (stdout);
 	  if (check_database_name (local_database_name))
 	    {
 	      goto check_applied_info_end;
@@ -3347,7 +3348,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
       if (check_master_info_temp)
 	{
-	  printf ("\n ***  Active Info. *** \n");
+	  fprintf (stdout, "\n ***  Active Info. *** \n");
+	  fflush (stdout);
 	  memset (master_database_name, 0x00, CUB_MAXHOSTNAMELEN);
 	  strcpy (master_database_name, database_name);
 	  strcat (master_database_name, "@");
@@ -3407,7 +3409,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      process_rate = 0.0f;
 	    }
 
-	  printf ("\n *** Delay in Copying Active Log *** \n");
+	  fprintf (stdout, "\n *** Delay in Copying Active Log *** \n");
+	  fflush (stdout);
 	  la_print_delay_info (copied_append_lsa, master_eof_lsa, process_rate);
 	}
 
@@ -3424,7 +3427,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      process_rate = 0.0f;
 	    }
 
-	  printf ("\n *** Delay in Applying Copied Log *** \n");
+	  fprintf (stdout, "\n *** Delay in Applying Copied Log *** \n");
+	  fflush (stdout);
 	  la_print_delay_info (applied_final_lsa, copied_eof_lsa, process_rate);
 	}
 

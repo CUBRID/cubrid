@@ -7264,7 +7264,8 @@ la_get_copied_log_info (const char *database_name, const char *log_path, INT64 p
   /* init la_Info */
   la_init (log_path, 0);
 
-  printf ("\n *** Copied Active Info. *** \n");
+  fprintf (stdout, "\n *** Copied Active Info. *** \n");
+  fflush (stdout);
 
   fileio_make_log_active_name ((char *) active_log_path, la_Info.log_path, database_name);
   if (!fileio_is_volume_exist ((const char *) active_log_path))
