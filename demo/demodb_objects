@@ -1,14 +1,14 @@
-%id stadium 21
-%id code 23
-%id nation 24
-%id "event" 27
-%id athlete 29
-%id participant 46
-%id olympic 47
-%id game 48
-%id record 49
-%id history 50
-%class stadium (code nation_code "name" area seats address)
+%id public.stadium 21
+%id public.code 23
+%id public.nation 24
+%id public.[event] 27
+%id public.athlete 29
+%id public.participant 46
+%id public.olympic 47
+%id public.game 48
+%id public.record 49
+%id public.history 50
+%class public.stadium (code nation_code [name] area seats address)
 30000 'AUS' 'Blacktown Olympic Centre Aquilina Reserve' 75000.00 12000 'Blacktown'
 30001 'AUS' 'Baseball Stadium' 85000.00 21000 'Sydney Olympic Park, Homebush Bay'
 30002 'AUS' 'Beach Volleyball centre, Bondi' 34000.00 10000 'Bondi Beach'
@@ -160,14 +160,14 @@
 30138 'GRE' 'Athens Olympic Tennis Centre' 12800.00 3200 'Athens, Greece'
 30139 'GRE' 'Goudi Olympic Hall' 21000.00 5000 'Athens, Greece'
 30140 'GRE' 'Vouliagmeni Olympic Centre' 7024.00 3400 'Athens, Greece'
-%class code (s_name f_name)
+%class public.code (s_name f_name)
 'G' 'Gold'
 'S' 'Silver'
 'B' 'Bronze'
 'M' 'Man'
 'W' 'Woman'
 'X' 'Mixed'
-%class nation (code "name" continent capital)
+%class public.nation (code [name] continent capital)
 'AFG' 'Afghanistan' 'Asia' 'Kabul'
 'AHO' 'Netherlands Antilles' 'Americas' 'Willemstad'
 'ALB' 'Albania' 'Europe' 'Tirana'
@@ -393,7 +393,7 @@
 'SCG' 'Serbia and Montenegro' 'Europe' 'Beograd'
 'KIR' 'Kiribati' 'Oceania' 'Tarawa'
 'SRB' 'Serbia' 'Europe' 'Beograd'
-%class "event" (code sports "name" gender players)
+%class public.[event] (code sports [name] gender players)
 20358 'Wrestling' 'Freestyle 48kg' 'W' 1
 20359 'Wrestling' 'Freestyle -48kg' 'M' 1
 20360 'Wrestling' 'Freestyle 52kg' 'M' 1
@@ -816,7 +816,7 @@
 20419 'Wrestling' 'Greco-Roman 90kg' 'M' 1
 20420 'Wrestling' 'Greco-Roman 96kg' 'M' 1
 20421 'Wrestling' 'Greco-Roman 97kg' 'M' 1
-%class athlete (code "name" gender nation_code "event")
+%class public.athlete (code [name] gender nation_code [event])
 10000 'Aardewijn Pepijn' 'M' 'NED' 'Rowing'
 10001 'Aarones Ann Kristin' 'W' 'NOR' 'Football'
 10002 'Abanda Patrice' 'M' 'CMR' 'Football'
@@ -7513,7 +7513,7 @@
 16690 'Zimmermann Kathrin' 'W' 'GDR' 'Swimming'
 16691 'Zuelow Andreas' 'M' 'GDR' 'Boxing'
 16692 'Zulianello Clavdio F' 'M' 'ARG' 'Volleyball'
-%class participant (host_year nation_code gold silver bronze)
+%class public.participant (host_year nation_code gold silver bronze)
 1988 'URS' 55 31 46
 1988 'GDR' 37 35 30
 1988 'USA' 36 31 27
@@ -8430,7 +8430,7 @@
 2004 'ISV' 0 0 0
 2004 'YEM' 0 0 0
 2004 'ZAM' 0 0 0
-%class olympic (host_year host_nation host_city opening_date closing_date mascot slogan introduction)
+%class public.olympic (host_year host_nation host_city opening_date closing_date mascot slogan introduction)
 1896 'Greece' 'Athens' date '04/06/1896' date '04/15/1896' NULL NULL 'Thirteen countries participated at the 1896 Athens Games with around 3'+
  '00 athletes taking part in the competition. There were 43 events conte'+
  'sted which fell into the following categories; athletics (track and fi'+
@@ -8578,7 +8578,7 @@
  'in both the 800m and the 1,500m. In team play, Argentina won the men'+
  '''s football tournament without giving up a goal, and the U.S. sof'+
  'tball team won by outscoring their opponents 51-1.'
-%class game (host_year event_code athlete_code stadium_code nation_code medal game_date)
+%class public.game (host_year event_code athlete_code stadium_code nation_code medal game_date)
 2004 20116 14666 30121 'ESP' 'S' date '08/20/2004'
 2004 20116 14870 30121 'ESP' 'S' date '08/20/2004'
 2004 20116 14915 30121 'GER' 'G' date '08/20/2004'
@@ -17232,7 +17232,7 @@
 1988 20114 15779 30067 'USA' 'S' date '10/02/1988'
 1988 20114 15923 30067 'FRA' 'G' date '10/02/1988'
 1988 20114 16066 30067 'FRG' 'B' date '10/02/1988'
-%class record (host_year event_code athlete_code medal score unit)
+%class public.record (host_year event_code athlete_code medal score unit)
 1988 20287 11551 'B' '04:39.8' 'Time'
 1988 20287 16253 'S' '04:39.5' 'Time'
 1988 20288 10333 'G' '22.14' 'Time'
@@ -19236,7 +19236,7 @@
 2004 20338 15008 'S' '342.5' 'kg'
 2004 20344 15258 'B' '365' 'kg'
 2004 20344 15362 'G' '375' 'kg'
-%class history (event_code athlete host_year score unit)
+%class public.history (event_code athlete host_year score unit)
 20283 'Vollmer Dana' 2004 '07:53.0' 'time'
 20283 'Sandeno Kaitlin' 2004 '07:53.0' 'time'
 20281 'Rooney Giaan' 2004 '03:57.0' 'time'
