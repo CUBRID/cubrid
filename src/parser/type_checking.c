@@ -6089,6 +6089,8 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   int matches = 0, best_match = -1, i = 0;
   EXPRESSION_SIGNATURE sig;
 
+  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
+
   if (expr->node_type != PT_EXPR)
     {
       return NO_ERROR;
@@ -6216,7 +6218,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   else
     {
       expr->type_enum = pt_expr_get_return_type (expr, sig);
-      if (op == PT_DIVIDE)
+      if (op == PT_DIVIDE && oracle_style_divide)
 	{
 	  if (PT_IS_DISCRETE_NUMBER_TYPE (expr->type_enum))
 	    {

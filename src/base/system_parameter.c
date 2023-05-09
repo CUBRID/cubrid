@@ -728,6 +728,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
 
+#define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2379,6 +2381,10 @@ static unsigned int prm_oracle_style_number_return_flag = 0;
 bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
+
+bool PRM_ORACLE_STYLE_DIVIDE = false;
+static bool prm_oracle_style_divide_default = false;
+static unsigned int prm_oracle_style_divide_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6263,6 +6269,17 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_HA_SQL_LOG_MAX_COUNT,
    (void *) &prm_ha_sql_log_max_count_upper,
    (void *) &prm_ha_sql_log_max_count_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ORACLE_STYLE_DIVIDE,
+   PRM_NAME_ORACLE_STYLE_DIVIDE,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_oracle_style_divide_flag,
+   (void *) &prm_oracle_style_divide_default,
+   (void *) &PRM_ORACLE_STYLE_DIVIDE,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
