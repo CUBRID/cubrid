@@ -198,7 +198,7 @@ ldr_validate_object_file (const char *argv0, load_args * args)
 		   || args->schema_file_list.empty () == false || args->trigger_file.empty () == false))
 		{
 		  PRINT_AND_LOG_ERR_MSG
-		    ("loaddb: In case of using loaddb CS mode (-C, --CS-mode) in HA Mode, only OBJECT can be loaded.\n");
+		    ("In loaddb CS (-C, --CS-mode) in HA mode, only OBJECT loading is possible.\n");
 		  return ER_FAILED;
 		}
 	    }
