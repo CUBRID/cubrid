@@ -1446,7 +1446,9 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 
 1361 "%1$s" dosyası bulunamadı.
 
-1362 Son Hata
+1362 Stored procedure compile error: %1$s
+
+1363 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

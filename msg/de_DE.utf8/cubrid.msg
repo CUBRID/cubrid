@@ -1446,7 +1446,9 @@ $ LOADDB
 
 1361 Datei "%1$s" wurde nicht gefunden.
 
-1362 Letzter Fehler
+1362 Stored procedure compile error: %1$s
+
+1363 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

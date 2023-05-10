@@ -1446,7 +1446,9 @@ $ LOADDB
 
 1361 파일 "%1$s"을(를) 찾을 수 없습니다.
 
-1362 마지막 에러
+1362 Stored procedure compile error: %1$s
+
+1363 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

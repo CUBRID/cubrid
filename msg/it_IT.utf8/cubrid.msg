@@ -1446,7 +1446,9 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 1361 Il file "%1$s" non è stato trovato.
 
-1362 Ultimo errore
+1362 Stored procedure compile error: %1$s
+
+1363 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

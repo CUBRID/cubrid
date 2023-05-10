@@ -1446,7 +1446,9 @@ $ LOADDB
 
 1361 ファイル "%1$s" が見つかりませんでした。
 
-1362 ラストエラー
+1362 Stored procedure compile error: %1$s
+
+1363 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
