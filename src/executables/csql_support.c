@@ -93,6 +93,7 @@ typedef struct
   int data_size;
   int alloc_size;
   CSQL_STATEMENT_STATE state;
+  // following three fields are used to identify the beginning and the end of PL/CSQL texts
   CSQL_STATEMENT_SUBSTATE substate;
   int plcsql_begin_end_balance;
   int plcsql_nest_level;
@@ -1335,8 +1336,15 @@ csql_walk_statement (const char *str)
 	    case ';':
               if (substate != CSQL_SUBSTATE_PLCSQL_TEXT)
                 {
+                  assert(substate != CSQL_SUBSTATE_SEEN_END);
+
                   include_stmt = true;
                   is_last_stmt_valid = false;
+
+                  // initialize the state variables used to identify PL/CSQL text
+                  substate = CSQL_SUBSTATE_INITIAL;
+                  plcsql_begin_end_balance = 0;
+                  plcsql_nest_level = 0;
                 }
 	      break;
 	    case ' ':
@@ -1508,6 +1516,9 @@ csql_edit_contents_clear ()
 {
   csql_Edit_contents.data_size = 0;
   csql_Edit_contents.state = CSQL_STATE_GENERAL;
+  csql_Edit_contents.substate = CSQL_SUBSTATE_INITIAL;
+  csql_Edit_contents.plcsql_begin_end_balance = 0;
+  csql_Edit_contents.plcsql_nest_level = 0;
 }
 
 void

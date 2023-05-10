@@ -1794,6 +1794,7 @@ stmt
 			allow_attribute_ordering = false;
 			parser_hidden_incr_list = NULL;
 
+                        assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
 		DBG_PRINT}}
 	stmt_
 		{{ DBG_TRACE_GRAMMAR(stmt, stmt_ );
