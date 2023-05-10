@@ -7581,7 +7581,6 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		}
 
 	      node->info.query.flag.rewrite_limit = 0;
-	      node->info.query.limit = NULL;
 	    }
 	  else
 	    {
