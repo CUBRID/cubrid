@@ -21,7 +21,6 @@
  */
 
 parser grammar PcsParser;
-import SqlParser;
 
 @header {
 package com.cubrid.plcsql.compiler.antlrgen;
@@ -36,12 +35,12 @@ sql_script
     ;
 
 create_routine
-    : CREATE (OR REPLACE)? routine_definition
+    : CREATE (OR_REPLACE)? routine_definition
     ;
 
 routine_definition
-    : (PROCEDURE | FUNCTION) identifier ( ('(' parameter_list ')')? | '(' ')' ) (RETURN type_spec)?
-      (IS | AS) seq_of_declare_specs? body ';'
+    : (PROCEDURE | FUNCTION) identifier ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
+      (IS | AS) seq_of_declare_specs? body SEMICOLON
     ;
 
 parameter_list
@@ -75,27 +74,27 @@ item_declaration
     ;
 
 variable_declaration
-    : identifier type_spec ((NOT NULL_)? default_value_part)? ';'
+    : identifier type_spec ((NOT NULL_)? default_value_part)? SEMICOLON
     ;
 
 constant_declaration
-    : identifier CONSTANT type_spec (NOT NULL_)? default_value_part ';'
+    : identifier CONSTANT type_spec (NOT NULL_)? default_value_part SEMICOLON
     ;
 
 cursor_definition
-    : CURSOR identifier ( ('(' parameter_list ')')? | '(' ')' ) IS s_select_statement ';'
+    : CURSOR identifier ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) IS static_sql SEMICOLON
     ;
 
 exception_declaration
-    : identifier EXCEPTION ';'
+    : identifier EXCEPTION SEMICOLON
     ;
 
 pragma_declaration
-    : PRAGMA AUTONOMOUS_TRANSACTION ';'
+    : PRAGMA AUTONOMOUS_TRANSACTION SEMICOLON
     ;
 
 seq_of_statements
-    : (statement ';')+
+    : (statement SEMICOLON)+
     ;
 
 label_declaration
@@ -170,15 +169,15 @@ iterator
     ;
 
 for_cursor
-    : record_name IN cursor_exp ('(' expressions? ')')?
+    : record_name IN cursor_exp (LPAREN expressions? RPAREN)?
     ;
 
 for_static_sql
-    : record_name IN '(' s_select_statement ')'
+    : record_name IN LPAREN static_sql RPAREN
     ;
 
 for_dynamic_sql
-    : record_name IN '(' EXECUTE IMMEDIATE dyn_sql restricted_using_clause? ')'
+    : record_name IN LPAREN EXECUTE IMMEDIATE dyn_sql restricted_using_clause? RPAREN
     ;
 
 lower_bound
@@ -222,21 +221,27 @@ block
     ;
 
 sql_statement
-    : data_manipulation_language_statements
-    | cursor_manipulation_statements
-    | transaction_control_statements
+    : static_sql
+    | cursor_manipulation_statement
+    | transaction_control_statement
     ;
 
-data_manipulation_language_statements
-    : s_merge_statement
-    | s_select_statement
-    | s_update_statement
-    | s_delete_statement
-    | s_insert_statement
-    | s_truncate_statement
+static_sql
+    : static_sql_begin (SS_STR | SS_WS | SS_NON_STR)+
     ;
 
-cursor_manipulation_statements
+static_sql_begin
+    : WITH
+    | SELECT
+    | INSERT
+    | UPDATE
+    | DELETE
+    | REPLACE
+    | MERGE
+    | TRUNCATE
+    ;
+
+cursor_manipulation_statement
     : close_statement
     | open_statement
     | fetch_statement
@@ -248,7 +253,7 @@ close_statement
     ;
 
 open_statement
-    : OPEN cursor_exp ('(' expressions? ')')?
+    : OPEN cursor_exp (LPAREN expressions? RPAREN)?
     ;
 
 fetch_statement
@@ -256,11 +261,11 @@ fetch_statement
     ;
 
 open_for_statement
-    : OPEN identifier FOR s_select_statement
+    : OPEN identifier FOR static_sql
     //| OPEN identifier FOR dyn_sql using_clause?   TODO
     ;
 
-transaction_control_statements
+transaction_control_statement
     : commit_statement
     | rollback_statement
     ;
@@ -338,7 +343,7 @@ atom
     | case_expression                           # case_exp
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
-    | '(' expression ')'                        # paren_exp
+    | LPAREN expression RPAREN                        # paren_exp
     //| '{' expressions '}'                       # list_exp    TODO: restore later
     ;
 
@@ -365,7 +370,7 @@ relational_operator
     ;
 
 in_elements
-    : '(' in_expression (',' in_expression)* ')'
+    : LPAREN in_expression (',' in_expression)* RPAREN
     ;
 
 between_elements
@@ -403,7 +408,7 @@ case_statement
     ;
 
 raise_application_error_statement
-    : RAISE_APPLICATION_ERROR '(' err_code ',' err_msg ')'
+    : RAISE_APPLICATION_ERROR LPAREN err_code ',' err_msg RPAREN
     ;
 
 err_code
@@ -484,7 +489,7 @@ column_name
     ;
 
 function_argument
-    : '(' (argument (',' argument)*)? ')'
+    : LPAREN (argument (',' argument)*)? RPAREN
     ;
 
 argument
@@ -503,11 +508,11 @@ native_datatype
     ;
 
 numeric_type
-    : (NUMERIC | DECIMAL | DEC) ('(' precision=UNSIGNED_INTEGER (',' scale=UNSIGNED_INTEGER)? ')')?
+    : (NUMERIC | DECIMAL | DEC) (LPAREN precision=UNSIGNED_INTEGER (',' scale=UNSIGNED_INTEGER)? RPAREN)?
     ;
 
 char_type
-    : (CHAR | CHARACTER | VARCHAR | CHAR VARYING | CHARACTER VARYING) ( '(' length=UNSIGNED_INTEGER ')' )?
+    : (CHAR | CHARACTER | VARCHAR | CHAR VARYING | CHARACTER VARYING) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
     ;
 
 simple_type
@@ -566,37 +571,6 @@ quoted_string
     ;
 
 identifier
-    : regular_id
+    : REGULAR_ID
     | DELIMITED_ID
-    ;
-
-regular_id
-    : s_non_reserved_keywords_pre12c
-    | s_non_reserved_keywords_in_12c
-    | REGULAR_ID
-    | RAISE_APPLICATION_ERROR
-    | A_LETTER
-    | AUTONOMOUS_TRANSACTION
-    | CHAR
-    | DECIMAL
-    | DELETE
-    | EXCEPTION
-    | EXISTS
-    | EXIT
-    | FLOAT
-    | INTEGER
-    | LONG
-    | LOOP
-    | OUT
-    | PRAGMA
-    | RAISE
-    | RAW
-    | REF
-    | SET
-    | SMALLINT
-    | VARCHAR
-    | WHILE
-    | REGR_
-    | VAR_
-    | COVAR_
     ;
