@@ -595,9 +595,27 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       impl = parser_print_tree (parser, statement);
       err = plcsql_transfer_file (std::string (impl), false, compile_info);
-      if (err == NO_ERROR)
+      if (err == NO_ERROR && compile_info.err_code == NO_ERROR)
 	{
 	  decl = compile_info.java_signature.c_str ();
+	}
+      else
+	{
+	  // TODO: error handling needs to be improved
+	  err = ER_SP_COMPILE_ERROR;
+
+	  std::string err_msg;
+	  if (compile_info.err_msg.empty ())
+	    {
+	      err_msg = "unknown";
+	    }
+	  else
+	    {
+	      err_msg.assign (compile_info.err_msg);
+	      err_msg += " at ";
+	      err_msg += std::to_string (compile_info.err_line);
+	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, err_msg.c_str ());
 	}
     }
   else				/* SP_LANG_JAVA */
