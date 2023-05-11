@@ -1,4 +1,3 @@
-version: 2.1
 orbs:
   win: circleci/windows@4.1
 
