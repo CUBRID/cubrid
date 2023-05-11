@@ -145,26 +145,32 @@ namespace cubcomm
   // channel mockup
   //
 
+  std::atomic<uint64_t> channel::unique_id_allocator = 0;
+
   channel::channel (int max_timeout_in_ms)
-    : m_max_timeout_in_ms (max_timeout_in_ms),
-      m_type (CHANNEL_TYPE::NO_TYPE),
-      m_socket (INVALID_SOCKET)
+    : m_max_timeout_in_ms (max_timeout_in_ms)
+    , m_type (CHANNEL_TYPE::NO_TYPE)
+    , m_socket (INVALID_SOCKET)
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (std::string &&channel_name)
     : m_channel_name { std::move (channel_name) }
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (int max_timeout_in_ms, std::string &&channel_name)
     : m_max_timeout_in_ms (max_timeout_in_ms)
     , m_channel_name { std::move (channel_name) }
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (channel &&comm)
     : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
+    , m_unique_id (comm.m_unique_id)
   {
     m_type = comm.m_type;
     comm.m_type = NO_TYPE;
@@ -174,6 +180,9 @@ namespace cubcomm
 
     m_channel_name = std::move (comm.m_channel_name);
     m_hostname = std::move (comm.m_hostname);
+
+    m_port = comm.m_port;
+    comm.m_port = INVALID_PORT;
   }
 
   channel::~channel ()
