@@ -3494,11 +3494,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	{
 	  output_ctx (")");
 	}
-      if (constraint->comment != NULL && constraint->comment[0] != '\0')
-	{
-	  output_ctx (" ");
-	  help_print_describe_comment (output_ctx, constraint->comment);
-	}
 
       /* Safeguard. */
       /* If it's unique then it must surely be with online flag. */
@@ -3508,6 +3503,13 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	{
 	  output_ctx (" WITH ONLINE");
 	}
+
+      if (constraint->comment != NULL && constraint->comment[0] != '\0')
+	{
+	  output_ctx (" ");
+	  help_print_describe_comment (output_ctx, constraint->comment);
+	}
+
       output_ctx (";\n");
     }
 }
