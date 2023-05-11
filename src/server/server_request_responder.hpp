@@ -47,6 +47,11 @@ class server_request_responder
     //
 
   public:
+    enum request_type
+    {
+    };
+
+  public:
     using connection_t = T_CONN;
     using payload_t = typename connection_t::payload_t;
     using sequenced_payload_t = typename connection_t::sequenced_payload;

@@ -175,10 +175,10 @@ namespace cubcomm
     // synchronize push request into the queue and notify consumers
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    m_request_queue.emplace ();
-    m_request_queue.back ().m_id = reqid;
-    m_request_queue.back ().m_payload = std::move (payload);
-    m_request_queue.back ().m_error_handler = std::move (error_handler);
+    m_request_queue.emplace (queue_item_type { reqid, std::move (payload), std::move (error_handler) });
+    //m_request_queue.back ().m_id = reqid;
+    //m_request_queue.back ().m_payload = std::move (payload);
+    //m_request_queue.back ().m_error_handler = std::move (error_handler);
 
     ulock.unlock ();
     m_queue_condvar.notify_all ();
