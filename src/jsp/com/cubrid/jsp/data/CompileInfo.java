@@ -44,11 +44,12 @@ public class CompileInfo implements PackableObject {
     public String className = null;
     public String signature = null;
 
-    public CompileInfo(int code, int line, String msg) {
+    public CompileInfo(int code, int line, int column, String msg) {
         assert code < 0;
 
         errCode = code;
         errLine = line;
+        errColumn = column;
         errMsg = msg;
     }
 
