@@ -612,10 +612,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      err_msg.assign (compile_info.err_msg);
-	      err_msg += " at ";
-	      err_msg += std::to_string (compile_info.err_line);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, err_msg.c_str ());
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_info.err_line,
+		  compile_info.err_column, err_msg.c_str ());
+	  pt_record_error (parser, parser->statement_number, compile_info.err_line, compile_info.err_column, er_msg (),
+			   NULL);
 	}
     }
   else				/* SP_LANG_JAVA */
