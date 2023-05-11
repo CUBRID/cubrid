@@ -43,26 +43,32 @@ namespace cubcomm
 #define er_log_chn_debug(...) \
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMM_CHANNEL)) _er_log_debug (ARG_FILE_LINE, "[COMM_CHN]" __VA_ARGS__)
 
+  std::atomic<uint64_t> channel::unique_id_allocator = 0;
+
   channel::channel (int max_timeout_in_ms)
-    : m_max_timeout_in_ms (max_timeout_in_ms),
-      m_type (CHANNEL_TYPE::NO_TYPE),
-      m_socket (INVALID_SOCKET)
+    : m_max_timeout_in_ms (max_timeout_in_ms)
+    , m_type (CHANNEL_TYPE::NO_TYPE)
+    , m_socket (INVALID_SOCKET)
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (std::string &&channel_name)
     : m_channel_name { std::move (channel_name) }
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (int max_timeout_in_ms, std::string &&channel_name)
     : m_max_timeout_in_ms (max_timeout_in_ms)
     , m_channel_name { std::move (channel_name) }
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (channel &&comm)
     : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
+    , m_unique_id (comm.m_unique_id)
   {
     m_type = comm.m_type;
     comm.m_type = NO_TYPE;
