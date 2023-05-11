@@ -2432,8 +2432,8 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPA
   // zero-out the remaining free space
   if (slot_p->record_length < old_record_length)
     {
-      memset ((void *) page_p + slot_p->offset_to_record + slot_p->record_length,
-              0, (old_record_length - slot_p->record_length));
+      memset ((void *) page_p + slot_p->offset_to_record + slot_p->record_length, 0,
+	      (old_record_length - slot_p->record_length));
     }
 
   page_header_p->total_free -= space;
