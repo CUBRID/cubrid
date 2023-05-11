@@ -6285,26 +6285,15 @@ pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PARSER_VARCHAR *
 pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2, *r3, *comment;
+  PARSER_VARCHAR *b = 0, *r1, *comment;
   unsigned int saved_cp = parser->custom_print;
 
   parser->custom_print |= PT_SUPPRESS_RESOLVED;
 
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
-  r2 = pt_print_index_columns (parser, p);
-
   parser->custom_print = saved_cp;
 
-  b = pt_append_nulstring (parser, b, "alter");
-  if (p->info.index.reverse)
-    {
-      b = pt_append_nulstring (parser, b, " reverse");
-    }
-  if (p->info.index.unique)
-    {
-      b = pt_append_nulstring (parser, b, " unique");
-    }
-  b = pt_append_nulstring (parser, b, " index ");
+  b = pt_append_nulstring (parser, b, "alter index ");
   if (p->info.index.index_name)
     {
       const char *index_name = p->info.index.index_name->info.name.original;
@@ -6314,36 +6303,20 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   assert (r1 != NULL);
   b = pt_append_nulstring (parser, b, " on ");
   b = pt_append_varchar (parser, b, r1);
-
-  if (r2 != NULL)
-    {
-      b = pt_append_nulstring (parser, b, " (");
-      b = pt_append_varchar (parser, b, r2);
-      b = pt_append_nulstring (parser, b, ")");
-    }
-
   b = pt_append_nulstring (parser, b, " ");
 
-  if (p->info.index.code == PT_REBUILD_INDEX)
-    {
-      if (p->info.index.where)
-	{
-	  r3 = pt_print_and_list (parser, p->info.index.where);
-	  b = pt_append_nulstring (parser, b, " where ");
-	  b = pt_append_varchar (parser, b, r3);
-	}
-    }
 #if defined (ENABLE_RENAME_CONSTRAINT)
-  else if (p->info.index.code == PT_RENAME_INDEX)
-    {
-      b = pt_append_nulstring (parser, b, "rename to ");
+  else
+if (p->info.index.code == PT_RENAME_INDEX)
+  {
+    b = pt_append_nulstring (parser, b, "rename to ");
 
-      if (p->info.index.new_name)
-	{
-	  const char *new_name = p->info.index.new_name->info.name.original;
-	  b = pt_append_bytes (parser, b, new_name, strlen (new_name));
-	}
-    }
+    if (p->info.index.new_name)
+      {
+	const char *new_name = p->info.index.new_name->info.name.original;
+	b = pt_append_bytes (parser, b, new_name, strlen (new_name));
+      }
+  }
 #endif
 
   if (p->info.index.comment != NULL)
