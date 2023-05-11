@@ -143,8 +143,8 @@ jobs:
           name: Build
           command: |
             cmake -E make_directory build
-            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=$env:CUBRID_BUILD_TYPE ..
-            cmake --build build --config $env:CUBRID_BUILD_TYPE --parallel $env:PARALLEL_LEVEL
+            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+            cmake --build build --config RelWithDebInfo --parallel $env:PARALLEL_LEVEL
 
 workflows:
   version: 2
