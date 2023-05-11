@@ -1267,7 +1267,7 @@ spage_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
   ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area, page_header_p->alignment);
 
   // zero-out the remaining free space
-  memset ((void *) page_p + page_header_p->offset_to_free_area, 0, page_header_p->total_free);
+  memset ((void *) page_p + page_header_p->offset_to_free_area, 0, page_header_p->cont_free);
 
   spage_verify_header (page_p);
 
