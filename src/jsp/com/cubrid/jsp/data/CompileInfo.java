@@ -35,13 +35,14 @@ import com.cubrid.jsp.protocol.PackableObject;
 
 public class CompileInfo implements PackableObject {
     public int errCode = -1; // 0: no error, < 0: error
-    public int errLine;
-    public String errMsg;
+    public int errLine = 0;
+    public int errColumn = 0;
+    public String errMsg = null;
 
-    public String translated;
-    public String createStmt;
-    public String className;
-    public String signature;
+    public String translated = null;
+    public String createStmt = null;
+    public String className = null;
+    public String signature = null;
 
     public CompileInfo(int code, int line, String msg) {
         assert code < 0;
@@ -64,6 +65,7 @@ public class CompileInfo implements PackableObject {
         packer.packInt(errCode);
         if (errCode < 0) {
             packer.packInt(errLine);
+            packer.packInt(errColumn);
             packer.packString(errMsg);
         } else {
             packer.packString(translated);
