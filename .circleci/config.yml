@@ -1,3 +1,5 @@
+version: 2.1
+
 defaults: &defaults
   working_directory: /home
   docker:
@@ -7,6 +9,12 @@ oraclelinux: &oraclelinux
   working_directory: /home
   docker:
     - image: cubridci/cubridci:ol7.8 
+
+windows: &windows
+  machine:
+    - image: 'windows-server-2019-vs2019:2022.08.1'
+    - resource_class: windows.medium
+    - shell: 'powershell.exe -ExecutionPolicy Bypass'
 
 test_defaults: &test_defaults
   steps:
@@ -99,6 +107,34 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
+  build-windows:
+    <<: *windows
+    environment:
+      CMAKE_GENERATOR: "Visual Studio 15 2017 Win64"
+      BUILD_TYPE: RelWithDebInfo
+      WITH_CCI: true
+    resource_class: windows.medium
+    steps:
+      - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule update --init --recursive && git rm -f cubridmanager
+      - run:
+          name: Install dependencies
+          command: |
+            choco install openjdk8 --force --no-progress -y
+            choco install cmake --version=3.26.3 --no-progress -y
+            choco install winflexbison wixtoolset --no-progress -y
+            choco install ant --ignore-dependencies --no-progress -y
+            $env:ANT="C:\ProgramData\chocolatey\bin\ant.exe"
+      - run:
+          name: Build
+          command: |
+            cmake -E make_directory build
+            cmake -E chdir build cmake -G $CMAKE_GENERATOR -DWITH_CCI=$WITH_CCI -DCMAKE_BUILD_TYPE=$BUILD_TYPE ..
+            cmake --build build --config %BUILD_TYPE%
+
 workflows:
   version: 2
   build_test:
@@ -117,3 +153,4 @@ workflows:
       - test_sql_ol:
           requires:
             - build
+      - build-windows
