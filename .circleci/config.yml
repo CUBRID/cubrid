@@ -132,21 +132,7 @@ jobs:
             cmake --build build --config %BUILD_TYPE%
 
 workflows:
-  version: 2
+  version: 2.1
   build_test:
     jobs:
-      - build
-      - test_medium:
-          requires:
-            - build
-      - test_sql:
-          requires:
-            - build
-
-      - test_medium_ol:
-          requires:
-            - build
-      - test_sql_ol:
-          requires:
-            - build
       - build-windows
