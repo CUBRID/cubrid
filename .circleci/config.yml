@@ -112,6 +112,7 @@ jobs:
       - BUILD_TYPE: RelWithDebInfo
       - WITH_CCI: true
       - CHOCO_CACHE_DIR: "C:\\ChocoCache"
+      - PARALLEL_LEVEL: 10
     steps:
       - checkout
       - run:
@@ -130,7 +131,7 @@ jobs:
       - run:
           name: Install dependencies
           command: |
-            choco install openjdk8 --no-progress -y
+            choco install openjdk8redhatbuild --no-progress -y
             choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
             choco install winflexbison wixtoolset --no-progress -y
             choco install ant --ignore-dependencies --no-progress -y
@@ -142,8 +143,8 @@ jobs:
           name: Build
           command: |
             cmake -E make_directory build
-            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR ..
-            cmake --build build --config RelWithDebInfo
+            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=$env:BUILD_TYPE ..
+            cmake --build build --config $env:BUILD_TYPE --parallel $env:PARALLEL_LEVEL
 
 workflows:
   version: 2
