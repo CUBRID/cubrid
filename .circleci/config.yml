@@ -108,7 +108,6 @@ jobs:
       - CMAKE_GENERATOR: "Visual Studio 15 2017 Win64"
       - BUILD_TYPE: RelWithDebInfo
       - WITH_CCI: true
-      - CMAKE_DIR: 'C:\Program Files\CMake\bin'
     steps:
       - checkout
       - run:
@@ -127,7 +126,7 @@ jobs:
           name: Build
           command: |
             cmake -E make_directory build
-            cmake -E chdir build cmake -G $CMAKE_GENERATOR -DWITH_CCI=$WITH_CCI -DCMAKE_BUILD_TYPE=$BUILD_TYPE ..
+            cmake -E chdir build cmake ..
             cmake --build build --config %BUILD_TYPE%
 
 workflows:
