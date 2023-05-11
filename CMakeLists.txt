@@ -267,6 +267,7 @@ endif(CMAKE_BUILD_TYPE MATCHES "Debug")
 
 if(MSVC)
   configure_file(cmake/version.rc.cmake version.rc)
+  add_compile_options("/wd4251")
   # TODO: remove version.rc files from win/*
 endif(MSVC)
 
