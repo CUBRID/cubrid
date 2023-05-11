@@ -12,6 +12,7 @@ windows: &windows
   machine:
     - image: 'windows-server-2019-vs2019:2022.08.1'
     - resource_class: windows.medium
+    - shell: powershell.exe -ExecutionPolicy Bypass
 
 test_defaults: &test_defaults
   steps:
@@ -111,7 +112,7 @@ jobs:
       - BUILD_TYPE: RelWithDebInfo
       - WITH_CCI: true
       - CMAKE_DIR: 'C:\Program Files\CMake\bin'
-    shell: 'powershell.exe -ExecutionPolicy Bypass'
+    shell: powershell.exe -ExecutionPolicy Bypass
     steps:
       - checkout
       - run:
