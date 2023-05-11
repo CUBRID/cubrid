@@ -108,9 +108,10 @@ jobs:
   build-windows:
     <<: *windows
     environment:
-      CMAKE_GENERATOR: "Visual Studio 15 2017 Win64"
-      BUILD_TYPE: RelWithDebInfo
-      WITH_CCI: true
+      - CMAKE_GENERATOR: "Visual Studio 15 2017 Win64"
+      - BUILD_TYPE: RelWithDebInfo
+      - WITH_CCI: true
+      - CMAKE_DIR: 'C:\Program Files\CMake\bin'
     resource_class: windows.medium
     steps:
       - checkout
@@ -122,7 +123,7 @@ jobs:
           name: Install dependencies
           command: |
             choco install openjdk8 --force --no-progress -y
-            choco install cmake --version=3.26.3 --no-progress -y
+            choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
             choco install winflexbison wixtoolset --no-progress -y
             choco install ant --ignore-dependencies --no-progress -y
       - run:
