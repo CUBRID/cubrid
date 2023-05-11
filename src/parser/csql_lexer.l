@@ -1445,7 +1445,6 @@ _[uU][tT][fF]8[']		{
 				}
 
 <DOUBLY_QUOTED_CHAR_STRING,DELIMITED_ID_NAME>["]["]	{
-                                
                                         if (from_plcsql_text) {
                                             csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\"\"");
                                         } else {
@@ -1594,7 +1593,7 @@ _[uU][tT][fF]8[']		{
 <PL_LANG_SPEC>\n					{ begin_token(yytext);
 								this_parser->line = yylineno;
 								this_parser->column = yycolumn = yycolumn_end = 0; }
-<PL_LANG_SPEC><<EOF>> 					{ 
+<PL_LANG_SPEC><<EOF>> 					{
                                                                 BEGIN(INITIAL);
                                                                 csql_yyerror("unterminated PL language spec");
                                                                 return UNTERMINATED_PL_LANG_SPEC; }
@@ -1609,14 +1608,14 @@ _[uU][tT][fF]8[']		{
 <PLCSQL_TEXT>[ \t\r]+					{ begin_token(yytext);
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
-<PLCSQL_TEXT>"//".*\n                                   |	                        
+<PLCSQL_TEXT>"//".*\n                                   |
 <PLCSQL_TEXT>"--".*\n	                                |
 <PLCSQL_TEXT>\n					        { begin_token(yytext);
 								this_parser->line = yylineno;
 								this_parser->column = yycolumn = yycolumn_end = 0;
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
-<PLCSQL_TEXT><<EOF>> 					{ 
+<PLCSQL_TEXT><<EOF>> 					{
                                                                 BEGIN(INITIAL);
                                                                 csql_yyerror("unterminated PL/CSQL text");
                                                                 return UNTERMINATED_PL_LANG_SPEC; }

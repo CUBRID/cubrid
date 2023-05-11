@@ -2969,7 +2969,7 @@ create_stmt
                   expecting_pl_lang_spec = 1;
 		}
 	  identifier '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
-	  is_or_as pl_language_spec		/* 9, 10 */
+	  is_or_as pl_language_spec		        /* 9, 10 */
 	  opt_comment_spec				/* 11 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace PROCEDURE~);
@@ -2991,8 +2991,8 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE                        		/* 1 */
 	  opt_or_replace                		/* 2 */
-	  FUNCTION								/* 3 */
-		{ 									/* 4 */
+	  FUNCTION					/* 3 */
+		{ 					/* 4 */
 			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
 			parser_push_hint_node (node);
 			push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION);
@@ -3000,7 +3000,7 @@ create_stmt
 		}
 	  identifier '('  opt_sp_param_list  ')'	/* 5, 6, 7, 8 */
 	  RETURN opt_of_data_type_cursor		/* 9, 10 */
-	  is_or_as pl_language_spec		/* 11, 12 */
+	  is_or_as pl_language_spec		        /* 11, 12 */
 	  opt_comment_spec				/* 13 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace FUNCTION~);
