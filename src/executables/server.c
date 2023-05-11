@@ -208,12 +208,6 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 {
   int pid;
 
-  if (signo != SIGABRT && siginfo != NULL && siginfo->si_code <= 0)
-    {
-      register_fatal_signal_handler (signo);
-      return;
-    }
-
   if (os_set_signal_handler (signo, SIG_DFL) == SIG_ERR)
     {
       return;
@@ -224,12 +218,16 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
       return;
     }
 
+  signal (SIGCHLD, SIG_IGN);
+
   pid = fork ();
-  if (pid == 0)
+  if (pid == 0)			/* child process */
     {
       char err_log[PATH_MAX];
       int ppid;
       int fd, fd_max;
+
+      signal (SIGCHLD, SIG_DFL);
 
       fd_max = css_get_max_socket_fds ();
 
@@ -243,8 +241,14 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 	{
 	  if (kill (ppid, 0) < 0)
 	    {
+	      if (errno != ESRCH)
+		{
+		  kill (ppid, SIGKILL);
+		}
+
 	      break;
 	    }
+
 	  sleep (1);
 	}
 
@@ -256,8 +260,12 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 	  rename (prm_get_string_value (PRM_ID_ER_LOG_FILE), err_log);
 	}
 
-      execl (executable_path, executable_path, database_name, NULL);
+      execl (executable_path, fileio_get_base_file_name (executable_path), database_name, NULL);
       exit (0);
+    }
+  else				/* parent process or fork error */
+    {
+      exit (-1);
     }
 }
 
