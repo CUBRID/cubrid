@@ -677,7 +677,7 @@ db_compile_statement_local (DB_SESSION * session)
    */
   if (PT_IS_DBLINK_DML_QUERY (statement))
     {
-      ;
+      statement->flag.recompile = 1;
     }
   else
     {
