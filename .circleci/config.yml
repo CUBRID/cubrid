@@ -122,10 +122,13 @@ jobs:
           name: Install dependencies
           command: |
             choco install openjdk8 --force --no-progress -y
+            if (-not $?) { throw "Failed to install OpenJDK 8" }
             choco install cmake --version=3.26.3 --no-progress -y
+            if (-not $?) { throw "Failed to install CMake" }
             choco install winflexbison wixtoolset --no-progress -y
+            if (-not $?) { throw "Failed to install Win flex-bison and WiX Toolset" }
             choco install ant --ignore-dependencies --no-progress -y
-            $env:ANT="C:\ProgramData\chocolatey\bin\ant.exe"
+            if (-not $?) { throw "Failed to install Ant" }
       - run:
           name: Build
           command: |
