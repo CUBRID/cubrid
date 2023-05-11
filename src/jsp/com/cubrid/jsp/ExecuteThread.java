@@ -316,6 +316,9 @@ public class ExecuteThread extends Thread {
                 Path javaFilePath =
                         ClassLoaderManager.getDynamicPath().resolve(info.className + ".java");
                 File file = javaFilePath.toFile();
+                if (file.exists()) {
+                    file.delete();
+                }
                 new FileWriter(file).append(info.translated).close();
 
                 JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();

@@ -51,7 +51,8 @@ namespace cubmethod
 
     std::string translated_code;
     std::string register_stmt;
-    std::string java_class_name;
+    std::string class_name;
+    std::string java_signature;
   };
 
   struct EXPORT_IMPORT sql_semantics : public cubpacking::packable_object

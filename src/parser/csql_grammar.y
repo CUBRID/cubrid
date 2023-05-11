@@ -84,6 +84,7 @@ extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
+extern int expecting_pl_lang_spec;
 
 #if defined(SA_MODE)
      /*
@@ -150,6 +151,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "memory_alloc.h"
 #include "db_elo.h"
 #include "storage_common.h"
+#include "jsp_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -978,6 +980,10 @@ int g_original_buffer_len;
 %type <node> dblink_conn_str
 %type <node> dblink_column_definition_list
 %type <node> dblink_column_definition
+
+%type <node> pl_language_spec
+%type <node> plcsql_text
+
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -986,6 +992,7 @@ int g_original_buffer_len;
 %type <cptr> of_integer_real_literal
 %type <cptr> integer_text
 %type <cptr> json_schema
+%type <cptr> plcsql_text_part
 /*}}}*/
 
 /* define rule type (container) */
@@ -1380,6 +1387,7 @@ int g_original_buffer_len;
 %token UNKNOWN
 %token UNTERMINATED_STRING
 %token UNTERMINATED_IDENTIFIER
+%token UNTERMINATED_PL_LANG_SPEC
 %token UPDATE
 %token UPPER
 %token USAGE
@@ -1575,6 +1583,8 @@ int g_original_buffer_len;
 %token <cptr> PERCENT_RANK
 %token <cptr> PERCENTILE_CONT
 %token <cptr> PERCENTILE_DISC
+%token <cptr> PLCSQL
+%token <cptr> PLCSQL_TEXT_SOME
 %token <cptr> PORT
 %token <cptr> PRINT
 %token <cptr> PRIORITY
@@ -1784,6 +1794,7 @@ stmt
 			allow_attribute_ordering = false;
 			parser_hidden_incr_list = NULL;
 
+                        assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
 		DBG_PRINT}}
 	stmt_
 		{{ DBG_TRACE_GRAMMAR(stmt, stmt_ );
@@ -2949,17 +2960,20 @@ create_stmt
 
 		DBG_PRINT}}
 	| CREATE					/* 1 */
-	  opt_or_replace                		/* 2 */
+	  opt_or_replace               		        /* 2 */
 	  PROCEDURE					/* 3 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE); }	/* 4 */
+		{ 					/* 4 */
+		  PT_NODE* node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
+		  parser_push_hint_node (node);
+		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
+                  expecting_pl_lang_spec = 1;
+		}
 	  identifier '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
-	  opt_of_is_as LANGUAGE JAVA			/* 9, 10, 11 */
-	  NAME char_string_literal			/* 12, 13 */
-	  opt_comment_spec				/* 14 */
+	  is_or_as pl_language_spec		        /* 9, 10 */
+	  opt_comment_spec				/* 11 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace PROCEDURE~);
-
-			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
+			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
 			    node->info.sp.or_replace = $2;
@@ -2967,8 +2981,8 @@ create_stmt
 			    node->info.sp.type = PT_SP_PROCEDURE;
 			    node->info.sp.param_list = $7;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
-			    node->info.sp.java_method = $13;
-			    node->info.sp.comment = $14;
+			    node->info.sp.body = $10;
+			    node->info.sp.comment = $11;
 			  }
 
 			$$ = node;
@@ -2978,16 +2992,19 @@ create_stmt
 	| CREATE                        		/* 1 */
 	  opt_or_replace                		/* 2 */
 	  FUNCTION					/* 3 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 4 */
+		{ 					/* 4 */
+			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
+			parser_push_hint_node (node);
+			push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION);
+                        expecting_pl_lang_spec = 1;
+		}
 	  identifier '('  opt_sp_param_list  ')'	/* 5, 6, 7, 8 */
 	  RETURN opt_of_data_type_cursor		/* 9, 10 */
-	  opt_of_is_as LANGUAGE JAVA			/* 11, 12, 13 */
-	  NAME char_string_literal			/* 14, 15 */
-	  opt_comment_spec				/* 16 */
+	  is_or_as pl_language_spec		        /* 11, 12 */
+	  opt_comment_spec				/* 13 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace FUNCTION~);
-
-			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
+			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
 			    node->info.sp.or_replace = $2;
@@ -2995,8 +3012,8 @@ create_stmt
 			    node->info.sp.type = PT_SP_FUNCTION;
 			    node->info.sp.param_list = $7;
 			    node->info.sp.ret_type = $10;
-			    node->info.sp.java_method = $15;
-			    node->info.sp.comment = $16;
+			    node->info.sp.body = $12;
+			    node->info.sp.comment = $13;
 			  }
 
 			$$ = node;
@@ -12397,11 +12414,156 @@ opt_of_data_type_cursor
 		DBG_PRINT}}
 	;
 
-opt_of_is_as
-	: /* empty */
-	| IS
+is_or_as
+	: IS
 	| AS
 	;
+
+pl_language_spec
+	: plcsql_text
+		{{ DBG_TRACE_GRAMMAR(pl_language_spec, : );
+
+			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
+
+			if (node)
+			  {
+			    node->info.sp_body.lang = SP_LANG_PLCSQL;
+			    node->info.sp_body.impl = $1;
+			    node->info.sp_body.direct = 1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| LANGUAGE PLCSQL	/* 1, 2 */
+	  plcsql_text 	/* 3 */
+		{{ DBG_TRACE_GRAMMAR(pl_language_spec, | LANGAUGE PLCSQL );
+
+			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
+
+			if (node)
+			  {
+			    node->info.sp_body.lang = SP_LANG_PLCSQL;
+			    node->info.sp_body.impl = $3;
+			    node->info.sp_body.direct = 1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| LANGUAGE JAVA 		/* 1, 2 */
+	  NAME char_string_literal	/* 3, 4 */
+		{{ DBG_TRACE_GRAMMAR(pl_language_spec, : LANGAUGE JAVA );
+
+			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
+
+			if (node)
+			  {
+			    node->info.sp_body.lang = SP_LANG_JAVA;
+			    node->info.sp_body.decl = $4;
+			    node->info.sp_body.direct = 0;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+plcsql_text
+        : plcsql_text plcsql_text_part
+		{{ DBG_TRACE_GRAMMAR(plcsql_text, : plcsql_text plcsql_text_part);
+
+			PT_NODE *str = $1;
+			if (str)
+			  {
+			    str->info.value.data_value.str =
+			      pt_append_bytes (this_parser, str->info.value.data_value.str, $2,
+					       strlen ($2));
+			    str->info.value.text = NULL;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, str);
+			  }
+
+			$$ = str;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+        | plcsql_text_part
+		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
+			PT_NODE *node = NULL;
+			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
+			INTL_CODESET charset;
+			int collation_id;
+			bool force;
+
+			if (lang_get_parser_use_client_charset ())
+			  {
+			    charset = lang_get_client_charset ();
+			    collation_id = lang_get_client_collation ();
+			    force = false;
+			  }
+			else
+			  {
+			    charset = LANG_SYS_CODESET;
+			    collation_id = LANG_SYS_COLLATION;
+			    force = true;
+			  }
+
+                        node = pt_create_char_string_literal (this_parser,
+							      PT_TYPE_CHAR,
+                                                              $1, charset);
+
+			if (node)
+			  {
+			    pt_value_set_charset_coll (this_parser, node,
+						       charset, collation_id,
+						       force);
+			    node->info.value.has_cs_introducer = force;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+        ;
+
+
+plcsql_text_part
+        : PLCSQL_TEXT_SOME
+		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, : PLCSQL_TEXT_SOME);
+                    $$ = $1;
+		DBG_PRINT}}
+        | CHAR_STRING
+		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | CHAR_STRING);
+                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "'");
+                    val = pt_append_string(this_parser, val, $1);
+                    val = pt_append_string(this_parser, val, "'");
+                    $$ = val;
+		DBG_PRINT}}
+        | DelimitedIdName
+		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | DelimitedIdName);
+                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "\"");
+                    val = pt_append_string(this_parser, val, $1);
+                    val = pt_append_string(this_parser, val, "\"");
+                    $$ = val;
+		DBG_PRINT}}
+        | BracketDelimitedIdName
+		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BracketDelimitedIdName);
+                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "[");
+                    val = pt_append_string(this_parser, val, $1);
+                    val = pt_append_string(this_parser, val, "]");
+                    $$ = val;
+		DBG_PRINT}}
+        | BacktickDelimitedIdName
+		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BacktickDelimitedIdName);
+                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "`");
+                    val = pt_append_string(this_parser, val, $1);
+                    val = pt_append_string(this_parser, val, "`");
+                    $$ = val;
+		DBG_PRINT}}
+        ;
 
 opt_sp_param_list
 	: /* empty */
@@ -25563,6 +25725,7 @@ parser_main (PARSER_CONTEXT * parser)
   yycolumn = yycolumn_end = 1;
   yybuffer_pos=0;
   is_dblink_query_string = 0;
+  expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -25663,6 +25826,7 @@ parse_one_statement (int state)
 
   yybuffer_pos=0;
   is_dblink_query_string = 0;
+  expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;

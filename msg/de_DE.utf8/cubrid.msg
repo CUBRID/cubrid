@@ -1446,7 +1446,9 @@ $ LOADDB
 
 1361 Datei "%1$s" wurde nicht gefunden.
 
-1362 Letzter Fehler
+1362 Stored procedure compile error: %1$s
+
+1363 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1508,8 +1510,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 Ungültiges create Benutzer\n  CREATE BENUTZER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 Ungültiges create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 Ungültiges create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 Ungültiges create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 Ungültiges create Funktion\n  CREATE FUNKTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 Ungültiges create procedure\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 Ungültiges create Funktion\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 Ungültiges groups\n  groups spec: GROUPS identifier {, identifier}*
 37 Ungültiges members\n  member spec: MEMBERS identifier {, identifier}*
 38 Ungültiges password\n  password spec: PASSWORD 'STRING'

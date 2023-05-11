@@ -55,6 +55,7 @@
 #include "unicode_support.h"
 #include "dbtype.h"
 #include "jsp_comm.h"
+#include "method_compile_def.hpp"
 
 #define PT_NODE_SP_NAME(node) \
   ((node)->info.sp.name->info.name.original)
@@ -65,8 +66,20 @@
 #define PT_NODE_SP_RETURN_TYPE(node) \
   ((node)->info.sp.ret_type->info.name.original)
 
+#define PT_NODE_SP_BODY(node) \
+  ((node)->info.sp.body)
+
+#define PT_NODE_SP_LANG(node) \
+  ((node)->info.sp.body->info.sp_body.lang)
+
+#define PT_NODE_SP_DIRECT(node) \
+  ((node)->info.sp.body->info.sp_body.direct)
+
+#define PT_NODE_SP_IMPL(node) \
+  ((node)->info.sp.body->info.sp_body.impl->info.value.data_value.str->bytes)
+
 #define PT_NODE_SP_JAVA_METHOD(node) \
-  ((node)->info.sp.java_method->info.value.data_value.str->bytes)
+  ((node)->info.sp.body->info.sp_body.decl->info.value.data_value.str->bytes)
 
 #define PT_NODE_SP_COMMENT(node) \
   (((node)->info.sp.comment == NULL) ? NULL : \
@@ -533,14 +546,16 @@ jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  const char *name, *java_method, *comment = NULL;
+  const char *name, *decl, *impl, *comment = NULL;
 
   PT_MISC_TYPE type;
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
   int param_count;
+  int lang;
   int err = NO_ERROR;
   bool has_savepoint = false;
+  PLCSQL_COMPILE_INFO compile_info;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -563,9 +578,66 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       ret_type = statement->info.sp.ret_type;
     }
 
-  java_method = (char *) PT_NODE_SP_JAVA_METHOD (statement);
   param_list = statement->info.sp.param_list;
+  for (p = param_list, param_count = 0; p != NULL; p = p->next, param_count++)
+    {
+      ;
+    }
 
+  if (param_count > MAX_ARG_COUNT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, name);
+      goto error_exit;
+    }
+
+  lang = PT_NODE_SP_LANG (statement);
+  if (lang == SP_LANG_PLCSQL)
+    {
+      impl = parser_print_tree (parser, statement);
+      err = plcsql_transfer_file (std::string (impl), false, compile_info);
+      if (err == NO_ERROR && compile_info.err_code == NO_ERROR)
+	{
+	  decl = compile_info.java_signature.c_str ();
+	}
+      else
+	{
+	  // TODO: error handling needs to be improved
+	  err = ER_SP_COMPILE_ERROR;
+
+	  std::string err_msg;
+	  if (compile_info.err_msg.empty ())
+	    {
+	      err_msg = "unknown";
+	    }
+	  else
+	    {
+	      err_msg.assign (compile_info.err_msg);
+	      err_msg += " at ";
+	      err_msg += std::to_string (compile_info.err_line);
+	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, err_msg.c_str ());
+	}
+    }
+  else				/* SP_LANG_JAVA */
+    {
+      bool is_direct = PT_NODE_SP_DIRECT (statement);
+      if (is_direct)
+	{
+	  // TODO: CBRD-24641
+	  assert (false);
+	}
+      else
+	{
+	  decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
+	}
+    }
+
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* check already exists */
   if (jsp_is_exist_stored_procedure (name))
     {
       if (statement->info.sp.or_replace)
@@ -591,20 +663,9 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  for (p = param_list, param_count = 0; p != NULL; p = p->next, param_count++)
-    {
-      ;
-    }
-
-  if (param_count > MAX_ARG_COUNT)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, name);
-      goto error_exit;
-    }
-
   comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  err = jsp_add_stored_procedure (name, type, ret_type, param_list, java_method, comment);
+  err = jsp_add_stored_procedure (name, type, ret_type, param_list, decl, comment);
   if (err != NO_ERROR)
     {
       goto error_exit;

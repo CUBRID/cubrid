@@ -1446,7 +1446,9 @@ $ LOADDB
 
 1361 파일 "%1$s"을(를) 찾을 수 없습니다.
 
-1362 마지막 에러
+1362 Stored procedure compile error: %1$s
+
+1363 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1508,8 +1510,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 잘못된 형식의 create user 구문입니다.\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 잘못된 형식의 create trigger 구문입니다.\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 잘못된 형식의 create serial 구문입니다.\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 잘못된 형식의 create procedure 구문입니다.\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 잘못된 형식의 create function 구문입니다.\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 잘못된 형식의 create procedure 구문입니다.\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 잘못된 형식의 create function 구문입니다.\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 잘못된 형식의 groups 구문입니다.\n  groups spec: GROUPS identifier {, identifier}*
 37 잘못된 형식의 members 구문입니다.\n  member spec: MEMBERS identifier {, identifier}*
 38 잘못된 형식의 password 구문입니다.\n  password spec: PASSWORD 'STRING'

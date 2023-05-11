@@ -1446,7 +1446,9 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 1361 Fișierul "%1$s" nu a fost găsit.
 
-1362 Ultima eroare
+1362 Stored procedure compile error: %1$s
+
+1363 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1508,8 +1510,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 31 instrucţiune invalidă: create user\n  CREATE USER identifier {PASSWORD 'STRING'} {GROUPS identifier {, identifier}* } {MEMBERS identifier {, identifier}* }
 32 instrucţiune invalidă: create trigger\n  CREATE TRIGGER identifier {STATE [ACTIVE|INACTIVE]} {PRIORITY unsigned_real}\n    [BEFORE|AFTER|DEFERRED] event_spec {IF trigger_condition}\n    EXECUTE {AFTER|DEFERRED} trigger_action
 33 instrucţiune invalidă: create serial\n  CREATE SERIAL identifier {START WITH integer} {INCREMENT BY integer}\n    serial_min_max {CYCLE|NOCYCLE} {CACHE unsigned_integer|NOCACHE}
-34 instrucţiune invalidă: create procedure\n  CREATE PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} LANGUAGE JAVA NAME 'STRING'
-35 instrucţiune invalidă: create function\n  CREATE FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} LANGUAGE JAVA NAME 'STRING'
+34 instrucţiune invalidă: create procedure\n  CREATE [OR REPLACE] PROCEDURE identifier '(' {sp_param_list} ')' {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {procedure_source|procedure_spec}
+35 instrucţiune invalidă: create function\n  CREATE [OR REPLACE] FUNCTION identifier '(' {sp_param_list} ')' RETURN {data_type|CURSOR} {IS|AS} {[LANGUAGE PLCSQL|LANGUAGE JAVA]} {function_source|function_spec}
 36 instrucţiune invalidă: groups\n  groups spec: GROUPS identifier {, identifier}*
 37 instrucţiune invalidă: members\n  member spec: MEMBERS identifier {, identifier}*
 38 instrucţiune invalidă: password\n  password spec: PASSWORD 'STRING'

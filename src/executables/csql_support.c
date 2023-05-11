@@ -73,6 +73,19 @@ typedef enum csql_statement_state
   CSQL_STATE_STATEMENT_END
 } CSQL_STATEMENT_STATE;
 
+typedef enum csql_statement_substate
+{
+  CSQL_SUBSTATE_INITIAL = 0,
+  CSQL_SUBSTATE_SEEN_CREATE,
+  CSQL_SUBSTATE_SEEN_OR,
+  CSQL_SUBSTATE_SEEN_REPLACE,
+  CSQL_SUBSTATE_EXPECTING_IS_OR_AS,
+  CSQL_SUBSTATE_PL_LANG_SPEC,
+  CSQL_SUBSTATE_SEEN_LANGUAGE,
+  CSQL_SUBSTATE_PLCSQL_TEXT,
+  CSQL_SUBSTATE_SEEN_END
+} CSQL_STATEMENT_SUBSTATE;
+
 /* editor buffer management */
 typedef struct
 {
@@ -80,10 +93,16 @@ typedef struct
   int data_size;
   int alloc_size;
   CSQL_STATEMENT_STATE state;
+  // following three fields are used to identify the beginning and the end of PL/CSQL texts
+  CSQL_STATEMENT_SUBSTATE substate;
+  int plcsql_begin_end_balance;
+  int plcsql_nest_level;
 } CSQL_EDIT_CONTENTS;
 
-static CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0, CSQL_STATE_GENERAL };
+static CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0 };
 
+
+static bool match_word_ci (const char *word, const char **bufp);
 
 static void iq_pipe_handler (int sig_no);
 static void iq_format_err (char *string, int buf_size, int line_no, int col_no);
@@ -1040,12 +1059,18 @@ csql_walk_statement (const char *str)
   const char *p;
   int str_length;
 
-  CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
-
   if (str == NULL)
     {
       return;
     }
+
+  CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
+  CSQL_STATEMENT_SUBSTATE substate = csql_Edit_contents.substate;
+  int plcsql_begin_end_balance = csql_Edit_contents.plcsql_begin_end_balance;
+  int plcsql_nest_level = csql_Edit_contents.plcsql_nest_level;
+
+  assert ((plcsql_begin_end_balance == 0 && plcsql_nest_level == 0) ||
+	  (substate == CSQL_SUBSTATE_PLCSQL_TEXT || substate == CSQL_SUBSTATE_SEEN_END));
 
   if (state == CSQL_STATE_CPP_COMMENT || state == CSQL_STATE_SQL_COMMENT)
     {
@@ -1057,6 +1082,7 @@ csql_walk_statement (const char *str)
     {
       /* reset state in prev statement */
       state = CSQL_STATE_GENERAL;
+      substate = CSQL_SUBSTATE_INITIAL;
     }
 
   str_length = strlen (str);
@@ -1066,6 +1092,198 @@ csql_walk_statement (const char *str)
       switch (state)
 	{
 	case CSQL_STATE_GENERAL:
+
+	  // eat up blanks
+	  switch (*p)
+	    {
+	    case ' ':
+	    case '\t':
+	    case '\r':
+	    case '\n':
+	      continue;
+	    }
+
+	  // here, *p is a non-white-space
+
+	substate_transition:
+	  switch (substate)
+	    {
+	    case CSQL_SUBSTATE_INITIAL:
+	      if (match_word_ci ("create", &p))
+		{
+		  substate = CSQL_SUBSTATE_SEEN_CREATE;
+		  continue;
+		}
+	      else
+		{
+		  // keep the substate CSQL_SUBSTATE_INITIAL
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_SEEN_CREATE:
+	      if (match_word_ci ("or", &p))
+		{
+		  substate = CSQL_SUBSTATE_SEEN_OR;
+		  continue;
+		}
+	      else if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p))
+		{
+		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS;
+		  continue;
+		}
+	      else
+		{
+		  substate = CSQL_SUBSTATE_INITIAL;
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_SEEN_OR:
+	      if (match_word_ci ("replace", &p))
+		{
+		  substate = CSQL_SUBSTATE_SEEN_REPLACE;
+		  continue;
+		}
+	      else
+		{
+		  substate = CSQL_SUBSTATE_INITIAL;
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_SEEN_REPLACE:
+	      if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p))
+		{
+		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS;
+		  continue;
+		}
+	      else
+		{
+		  substate = CSQL_SUBSTATE_INITIAL;
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_EXPECTING_IS_OR_AS:
+	      if (match_word_ci ("is", &p) || match_word_ci ("as", &p))
+		{
+		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  continue;
+		}
+	      else
+		{
+		  // keep the substate CSQL_SUBSTATE_EXPECTING_IS_OR_AS
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_PL_LANG_SPEC:
+	      if (match_word_ci ("language", &p))
+		{
+		  substate = CSQL_SUBSTATE_SEEN_LANGUAGE;
+		  continue;
+		}
+	      else
+		{
+		  // TRANSITION to CSQL_SUBSTATE_PLCSQL_TEXT!!!
+		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  plcsql_begin_end_balance = 0;
+		  plcsql_nest_level = 0;
+		  goto substate_transition;	// use goto to repeat a substate transition without increasing p
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_SEEN_LANGUAGE:
+	      if (match_word_ci ("java", &p))
+		{
+		  substate = CSQL_SUBSTATE_INITIAL;
+		  continue;
+		}
+	      else if (match_word_ci ("plcsql", &p))
+		{
+		  // TRANSITION to CSQL_SUBSTATE_PLCSQL_TEXT!!!
+		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  plcsql_begin_end_balance = 0;
+		  plcsql_nest_level = 0;
+		  continue;
+		}
+	      else
+		{
+		  // syntax error
+		  substate = CSQL_SUBSTATE_INITIAL;
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_PLCSQL_TEXT:
+	      if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p))
+		{
+		  if (plcsql_begin_end_balance == 0)
+		    {
+		      // plcsql_begin_end_balance == 0:
+		      //   the procedure or function is not in a block statement
+		      plcsql_nest_level++;
+		    }
+		  continue;
+		}
+	      else if (match_word_ci ("begin", &p) || match_word_ci ("if", &p) ||
+		       match_word_ci ("case", &p) || match_word_ci ("loop", &p))
+		{
+		  plcsql_begin_end_balance++;
+		  continue;
+		}
+	      else if (match_word_ci ("end", &p))
+		{
+		  substate = CSQL_SUBSTATE_SEEN_END;
+		  continue;
+		}
+	      else
+		{
+		  // keep the substate CSQL_SUBSTATE_PLCSQL_TEXT
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_SEEN_END:
+	      plcsql_begin_end_balance--;
+	      if (plcsql_begin_end_balance < 0)
+		{
+		  // syntax error
+		  plcsql_begin_end_balance = 0;
+		}
+	      if (plcsql_begin_end_balance == 0)
+		{
+		  plcsql_nest_level--;
+		  if (plcsql_nest_level < 0)
+		    {
+		      // the last END closing PL/CSQL text was found
+		      substate = CSQL_SUBSTATE_INITIAL;
+		      plcsql_begin_end_balance = 0;
+		      plcsql_nest_level = 0;
+		      goto substate_transition;	// use goto to repeat a substate transition without increasing p
+		    }
+		}
+
+	      substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+
+	      // match if/case/loop if exists, but ignore them
+	      if (match_word_ci ("if", &p) || match_word_ci ("case", &p) || match_word_ci ("loop", &p))
+		{
+		  continue;
+		}
+	      else
+		{
+		  // keep the substate CSQL_SUBSTATE_PLCSQL_TEXT
+		  // break and proceed to the second switch
+		}
+
+	      break;
+
+	    default:
+	      assert (false);	// unreachable
+	    }
+
 	  switch (*p)
 	    {
 	    case '/':
@@ -1116,16 +1334,24 @@ csql_walk_statement (const char *str)
 	      is_last_stmt_valid = true;
 	      break;
 	    case ';':
-	      include_stmt = true;
-	      is_last_stmt_valid = false;
-	      if (*(p + 1) == 0)
+	      if (substate != CSQL_SUBSTATE_PLCSQL_TEXT)
 		{
-		  state = CSQL_STATE_STATEMENT_END;
+		  assert (substate != CSQL_SUBSTATE_SEEN_END);
+
+		  include_stmt = true;
+		  is_last_stmt_valid = false;
+
+		  // initialize the state variables used to identify PL/CSQL text
+		  substate = CSQL_SUBSTATE_INITIAL;
+		  plcsql_begin_end_balance = 0;
+		  plcsql_nest_level = 0;
 		}
 	      break;
 	    case ' ':
 	    case '\t':
-	      /* do not change is_last_stmt_valid */
+	    case '\r':
+	    case '\n':
+	      assert (false);	// unreachable
 	      break;
 	    default:
 	      if (!is_last_stmt_valid)
@@ -1232,6 +1458,9 @@ csql_walk_statement (const char *str)
     }
 
   csql_Edit_contents.state = state;
+  csql_Edit_contents.substate = substate;
+  csql_Edit_contents.plcsql_begin_end_balance = plcsql_begin_end_balance;
+  csql_Edit_contents.plcsql_nest_level = plcsql_nest_level;
 }
 
 /*
@@ -1266,10 +1495,14 @@ csql_is_statement_in_block (void)
     {
       return true;
     }
-  else
+
+  CSQL_STATEMENT_SUBSTATE substate = csql_Edit_contents.substate;
+  if (state == CSQL_STATE_GENERAL && (substate == CSQL_SUBSTATE_PLCSQL_TEXT || substate == CSQL_SUBSTATE_SEEN_END))
     {
-      return false;
+      return true;
     }
+
+  return false;
 }
 
 /*
@@ -1282,6 +1515,9 @@ csql_edit_contents_clear ()
 {
   csql_Edit_contents.data_size = 0;
   csql_Edit_contents.state = CSQL_STATE_GENERAL;
+  csql_Edit_contents.substate = CSQL_SUBSTATE_INITIAL;
+  csql_Edit_contents.plcsql_begin_end_balance = 0;
+  csql_Edit_contents.plcsql_nest_level = 0;
 }
 
 void
@@ -1402,5 +1638,28 @@ csql_errmsg (int code)
 	    }
 	}
       return (csql_get_message (CSQL_E_UNKNOWN_TEXT));
+    }
+}
+
+static bool
+is_identifier_letter (const char c)
+{
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || (c == '_');
+}
+
+static bool
+match_word_ci (const char *word, const char **bufp)
+{
+  int len = strlen (word);
+  assert (len > 0);
+
+  if (strncasecmp (word, *bufp, len) == 0 && !is_identifier_letter ((*bufp)[len]))
+    {
+      *bufp += (len - 1);	// advance the pointer to the last letter
+      return true;
+    }
+  else
+    {
+      return false;
     }
 }

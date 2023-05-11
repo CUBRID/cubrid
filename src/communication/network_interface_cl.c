@@ -10932,7 +10932,8 @@ error:
   // TODO error handling
   if (req_error != NO_ERROR)
     {
-      //
+      // TODO: er_set (...): set proper error
+      rc = req_error;
     }
 
   if (data_reply != NULL)
