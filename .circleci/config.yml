@@ -104,12 +104,13 @@ jobs:
 
   build-windows:
     executor: win/server-2019
+    resource_class: windows.medium
+    shell: powershell.exe -ExecutionPolicy Bypass
     environment:
       - CMAKE_GENERATOR: "Visual Studio 15 2017 Win64"
       - BUILD_TYPE: RelWithDebInfo
       - WITH_CCI: true
       - CMAKE_DIR: 'C:\Program Files\CMake\bin'
-    shell: powershell.exe -ExecutionPolicy Bypass
     steps:
       - checkout
       - run:
