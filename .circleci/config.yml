@@ -12,7 +12,6 @@ windows: &windows
   machine:
     - image: 'windows-server-2019-vs2019:2022.08.1'
     - resource_class: windows.medium
-    - shell: 'powershell.exe -ExecutionPolicy Bypass'
 
 test_defaults: &test_defaults
   steps:
@@ -112,7 +111,7 @@ jobs:
       - BUILD_TYPE: RelWithDebInfo
       - WITH_CCI: true
       - CMAKE_DIR: 'C:\Program Files\CMake\bin'
-    resource_class: windows.medium
+    shell: 'powershell.exe -ExecutionPolicy Bypass'
     steps:
       - checkout
       - run:
@@ -122,7 +121,7 @@ jobs:
       - run:
           name: Install dependencies
           command: |
-            choco install openjdk8 --force --no-progress -y
+            choco install openjdk8 --no-progress -y
             choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
             choco install winflexbison wixtoolset --no-progress -y
             choco install ant --ignore-dependencies --no-progress -y
