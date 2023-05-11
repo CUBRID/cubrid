@@ -87,7 +87,7 @@ struct db_type_double_profile
 #define DOUBLE_FORMAT_HYBRID       'g'
 
 static DB_TYPE_DOUBLE_PROFILE default_double_profile = {
-  DOUBLE_FORMAT_HYBRID, 0, DBL_DIG, false, false, false, false
+  DOUBLE_FORMAT_SCIENTIFIC, 0, DBL_DIG, false, false, true, false
 };
 
 static DB_TYPE_FLOAT_PROFILE default_float_profile = {
@@ -1342,6 +1342,12 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
     (output_type != CSQL_UNKNOWN_OUTPUT) ? column_enclosure : default_string_profile.string_delimiter;
   bool change_single_quote = (output_type != CSQL_UNKNOWN_OUTPUT && column_enclosure == '\'');
 
+  /* for backward compatibility on oracle_style_divide */
+  bool trailingzeros = true;
+  char double_format = DOUBLE_FORMAT_SCIENTIFIC;
+
+  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
+
   if (value == NULL)
     {
       return (NULL);
@@ -1390,11 +1396,16 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	}
       break;
     case DB_TYPE_DOUBLE:
+      if (oracle_style_divide)
+	{
+	  trailingzeros = false;
+	  double_format = DOUBLE_FORMAT_HYBRID;
+	}
+
       result =
 	double_to_string (db_get_double (value), default_double_profile.fieldwidth, default_double_profile.precision,
 			  default_double_profile.leadingsign, nullptr, nullptr, default_double_profile.leadingzeros,
-			  default_double_profile.trailingzeros, default_double_profile.commas,
-			  default_double_profile.format);
+			  trailingzeros, default_double_profile.commas, double_format);
       if (result)
 	{
 	  len = strlen (result);
