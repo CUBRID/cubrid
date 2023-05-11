@@ -131,7 +131,7 @@ jobs:
             cmake --build build --config %BUILD_TYPE%
 
 workflows:
-  version: 2.1
+  version: 2
   build_test:
     jobs:
       - build-windows
