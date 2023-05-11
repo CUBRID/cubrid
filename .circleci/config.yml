@@ -1,6 +1,3 @@
-orbs:
-  win: circleci/windows@4.1
-
 defaults: &defaults
   working_directory: /home
   docker:
@@ -103,9 +100,10 @@ jobs:
     <<: *test_defaults
 
   build-windows:
-    executor: win/server-2019
-    resource_class: windows.medium
-    shell: powershell.exe -ExecutionPolicy Bypass
+    machine:
+      image: 'windows-server-2019-vs2019:2022.08.1'
+      resource_class: windows.medium
+      shell: powershell.exe -ExecutionPolicy Bypass
     environment:
       - CMAKE_GENERATOR: "Visual Studio 15 2017 Win64"
       - BUILD_TYPE: RelWithDebInfo
