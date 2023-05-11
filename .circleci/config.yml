@@ -114,7 +114,8 @@ jobs:
       - run:
           name: Submodules
           command: |
-            git submodule update --init --recursive && git rm -f cubridmanager
+            git submodule update --init --recursive
+            git rm -f cubridmanager
       - run:
           name: Install dependencies
           command: |
