@@ -496,7 +496,7 @@ uso: %1$s loaddb [OPTION] database-name[@host]\n\
 opciones validas:\n\
   -S, --SA-mode                  modo de ejecucion independiente\n\
   -C, --CS-mode                  modo de ejecucion cliente-servidor\n\
-                                 ADVERTENCIA: En el modo cliente-servidor, solo se puede cargar el archivo de datos (-d, --data-file=FILE).\n\
+                                 ADVERTENCIA: En modo HA, solo los archivos de datos (-d, --data-file=FILE) se pueden cargar en modo cliente-servidor.\n\
   -u, --user=ID                  ID de utilizador para acceso a la base de datos; estandar: "public"\n\
   -p, --password=PASS            contrasena de utilizador; estandar: ninguna\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
