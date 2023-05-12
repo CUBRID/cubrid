@@ -496,14 +496,14 @@ kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
 geçerli seçenekler:\n\
   -S, --SA-mode                  stand-alone modu yürütme\n\
   -C, --CS-mode                  istemci-sunucu modunda yürütme\n\
-                                 UYARI: İstemci-sunucu modunda, yalnızca veri dosyası(-d, --data-file=DOSYA) yüklenebilir.\n\
+                                 UYARI: HA Modundayken, istemci-sunucu modunda sadece veri dosyaları (-d, --data-file=FILE) yüklenebilir.\n\
   -u, --user=ID                  veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
   -p, --password=PASS            kullanıcı şifresi; varsayılan: hiçbir\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    örneklerini tahmin NUMBER; varsayılan: 5000\n\
   -v, --verbose                  Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
-  -c, --periodic-commit=COUNT    Periyodik tamamlama için ekleme COUNT; varsayılan: yükleme sırasında taahhüt yok\n\
+  -c, --periodic-commit=COUNT    Periyodik tamamlama için ekleme COUNT; varsayılan: 10240\n\
       --no-oid                   OID kullanmayın\n\
       --no-statistics            yüklerken istatistikleri güncelleştirmeyin\n\
   -s, --schema-file=FILE[:LINE]  FILE ile LINE şeması oluşturun\n\

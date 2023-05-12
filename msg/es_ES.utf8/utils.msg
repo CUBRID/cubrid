@@ -496,14 +496,14 @@ uso: %1$s loaddb [OPTION] database-name[@host]\n\
 opciones validas:\n\
   -S, --SA-mode                  modo de ejecucion independiente\n\
   -C, --CS-mode                  modo de ejecucion cliente-servidor\n\
-                                 ADVERTENCIA: En el modo cliente-servidor, solo se puede cargar el archivo de datos (-d, --data-file=FILE).\n\
+                                 ADVERTENCIA: En modo HA, solo los archivos de datos (-d, --data-file=FILE) se pueden cargar en modo cliente-servidor.\n\
   -u, --user=ID                  ID de utilizador para acceso a la base de datos; estandar: "public"\n\
   -p, --password=PASS            contrasena de utilizador; estandar: ninguna\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    NUMERO estimado de instancias; estandar: 5000\n\
   -v, --verbose                  habilitar mensajes de estado verbose; estandar: inhabilitado\n\
-  -c, --periodic-commit=COUNT    insertar COUNT al cometer periodicamente; estandar: no cometer mientras cargando\n\
+  -c, --periodic-commit=COUNT    insertar COUNT al cometer periodicamente; estandar: 10240\n\
       --no-oid                   no utilizar OID\n\
       --no-statistics            no actualizar las estadisticas mientras cargando\n\
   -s, --schema-file=FILE[:LINE]  crear esquema de la LINEA con ARCHIVO\n\

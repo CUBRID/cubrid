@@ -496,14 +496,14 @@ Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 gültige Optionen:\n\
   -S, --SA-mode                    Stand-Alone-Ausführung\n\
   -C, --CS-mode                    Client-Server-Ausführung\n\
-                                   WAARSCHUWING: In client-servermodus kan alleen databestand (-d, --data-file=FILE) worden geladen.\n\
+                                   WAARSCHUWING: In de HA-modus kunnen alleen gegevensbestanden (-d, --data-file=FILE) worden geladen in client-server-modus.\n\
   -u, --user=ID                    Benutzer ID für Datenbankzugang; Standard: "public"\n\
   -p, --password=PASSWORT          Benutzerpasswort; Standard: keinen\n\
       --data-file-check-only       Syntaxprüfung der Datei ohne Ladung; Standard: inaktiv\n\
   -l, --load-only                  Dateiladung ohne vorherige Syntaxprüfung; nur im SA_MODE\n\
       --estimated-size=ANZAHL      abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
   -v, --verbose                    ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-  -c, --periodic-commit=ANZAHL     Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
+  -c, --periodic-commit=ANZAHL     Einfügungsanzahl für periodische Festschreibung; Standard: 10240\n\
       --no-oid                     OID nicht anwenden\n\
       --no-statistics              Statistiken während Ladung nicht aktualisieren\n\
   -s, --schema-file=DATEI[:ZEILE]  Schema ab ZEILE mit DATEI erstellen\n\

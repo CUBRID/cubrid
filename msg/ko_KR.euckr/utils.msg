@@ -496,14 +496,14 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 옵션:\n\
   -S, --SA-mode                  독립 모드 실행\n\
   -C, --CS-mode                  클라이언트 서버 모드 실행\n\
-                                 경고: 클라이언트 서버 모드에서는 데이터 파일(-d, --data-file=FILE)만 로드 할 수 있습니다.\n\
+                                 경고: HA Mode 일때, 클라이언트-서버 모드에서는 데이터 파일(-d, --data-file=FILE)만 로드할 수 있습니다.\n\
   -u, --user=ID                  데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
   -p, --password=PASS            사용자 패스워드; 기본값: 없음\n\
       --data-file-check-only     데이터 파일을 로딩하지 않고 신택스만 검사; 기본값: 아니오\n\
   -l, --load-only                신택스 체크없이 데이터 파일 로딩; SA_MODE만 지원\n\
       --estimated-size=NUMBER    인스턴스의 대략적인 개수; 기본값: 5000\n\
   -v, --verbose                  많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
-  -c, --periodic-commit=COUNT    주기적인 커밋에 대한 카운트; 기본값: 적재 중 커밋하지 않음(SA_MODE)\n\
+  -c, --periodic-commit=COUNT    주기적인 커밋에 대한 카운트; 기본값: 10240\n\
       --no-oid                   OID 사용 안 함\n\
       --no-statistics            로딩 후에 통계 정보 갱신하지 않음\n\
   -s, --schema-file=FILE[:LINE]  파일[:라인] 정보로 스키마 생성\n\
