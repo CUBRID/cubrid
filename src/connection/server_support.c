@@ -324,7 +324,7 @@ css_setup_server_loop (void)
       (void) os_set_signal_handler (SIGFPE, SIG_IGN);
     }
 #else /* LINUX || x86_SOLARIS || HPUX */
-  (void) os_set_signal_handler (SIGFPE, SIG_IGN);
+  // (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 #endif /* LINUX || x86_SOLARIS || HPUX */
 
   if (!IS_INVALID_SOCKET (css_Pipe_to_master))

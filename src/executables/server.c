@@ -208,6 +208,8 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
 {
   int pid;
 
+  _er_log_debug (ARG_FILE_LINE, "cub_server(pid=%d) received the signal(signo=%d).", getpid (), signo);
+
   if (os_set_signal_handler (signo, SIG_DFL) == SIG_ERR)
     {
       return;
@@ -217,6 +219,8 @@ crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
     {
       return;
     }
+
+  _er_log_debug (ARG_FILE_LINE, "cub_server(pid=%d) will be restarted.", getpid ());
 
   signal (SIGCHLD, SIG_IGN);
 
