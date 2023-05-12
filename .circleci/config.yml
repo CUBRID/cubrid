@@ -138,7 +138,7 @@ workflows:
           requires:
             - build
       - test_sql:
-         requires:
+          requires:
             - build
 
       - test_medium_ol:

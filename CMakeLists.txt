@@ -740,7 +740,9 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
 elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
   add_definitions(-DWIN -DWINDOWS -D_CRT_SECURE_NO_WARNINGS /wd4274 /wd4996 /wd4251 /wd4275)
   string(REPLACE "/DWIN32" "/D_WIN64" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-  # experimental option (it can lead the build system to a halt or creating a bad object files)
+  
+  # [WARNING] EXPERIMENTAL OPTION: it can lead the build system to a halt or creating a bad object files.
+  # If the build fails unexpectedly, set PARALLEL_JOBS to "0" and try to compile again.
   set(PARALLEL_JOBS "10" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
   if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
     add_definitions(/MP)
