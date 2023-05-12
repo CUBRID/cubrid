@@ -346,21 +346,6 @@ namespace cubcomm
     assert (other.m_user_payload.empty ());
   }
 
-//  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-//  typename request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload &
-//  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::operator= (
-//	  sequenced_payload &&other)
-//  {
-//    if (this != &other)
-//      {
-//	m_rsn = std::move (other.m_rsn);
-//	m_user_payload = std::move (other.m_user_payload);
-
-//	other.m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
-//      }
-//    return *this;
-//  }
-
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   void
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::push_payload (
