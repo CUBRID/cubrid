@@ -357,7 +357,7 @@ main (int argc, char *argv[])
 
   if (argc - optind == 1)
     {
-      csql_arg.db_name = strdup (argv[optind]);
+      csql_arg.db_name = argv[optind];
     }
   else if (argc > optind)
     {
