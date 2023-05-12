@@ -110,7 +110,6 @@ jobs:
     environment:
       - CMAKE_GENERATOR: "Visual Studio 16 2019"
       - WITH_CCI: true
-      - CHOCO_CACHE_DIR: "C:\\ChocoCache"
       - PARALLEL_LEVEL: 10
     steps:
       - checkout
@@ -119,14 +118,6 @@ jobs:
           command: |
             git submodule update --init --recursive
             git rm -f cubridmanager
-      - restore_cache:
-          keys:
-            - *windows_choco_cache_key
-      - run:
-          name: Choco cache
-          # Cache our dependencies which can be flakey to download
-          command: |
-            choco config set --name cacheLocation --value $env:CHOCO_CACHE_DIR
       - run:
           name: Install dependencies
           command: |
@@ -134,10 +125,6 @@ jobs:
             choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
             choco install winflexbison wixtoolset --no-progress -y
             choco install ant --ignore-dependencies --no-progress -y
-      - save_cache:
-          key: *windows_choco_cache_key
-          paths:
-            - $env:CHOCO_CACHE_DIR
       - run:
           name: Build
           command: |
