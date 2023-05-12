@@ -5629,40 +5629,90 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
  * NOTE:
  */
 int
-stats_update_statistics (OID * classoid, int with_fullscan)
+stats_update_statistics (MOP classop, int with_fullscan)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
-  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
   char *ptr;
+  int request_size;
+  CLASS_ATTR_NDV class_attr_ndv;
 
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
+  /* get NDV by query */
+  if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL) != NO_ERROR)
+    {
+      if (class_attr_ndv.attr_ndv != NULL)
+	{
+	  free_and_init (class_attr_ndv.attr_ndv);
+	}
+      return ER_FAILED;
+    }
 
-  ptr = or_pack_oid (request, classoid);
+  request_size = OR_INT_SIZE + (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1)) + OR_INT_SIZE + OR_OID_SIZE;
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (request, class_attr_ndv.attr_cnt);
+  for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
+    {
+      ptr = or_pack_int (ptr, class_attr_ndv.attr_ndv[i].id);
+      ptr = or_pack_int64 (ptr, class_attr_ndv.attr_ndv[i].ndv);
+    }
+  ptr = or_pack_oid (ptr, WS_OID (classop));
   ptr = or_pack_int (ptr, with_fullscan);
 
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
   req_error =
-    net_client_request (NET_SERVER_QST_UPDATE_STATISTICS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+    net_client_request (NET_SERVER_QST_UPDATE_STATISTICS, request, request_size, reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_errcode (reply, &error);
     }
 
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      free_and_init (class_attr_ndv.attr_ndv);
+    }
+
+  free_and_init (request);
+
   return error;
 #else /* CS_MODE */
   int success;
+  CLASS_ATTR_NDV class_attr_ndv;
+
+  /* get NDV by query */
+  if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL) != NO_ERROR)
+    {
+      if (class_attr_ndv.attr_ndv != NULL)
+	{
+	  free_and_init (class_attr_ndv.attr_ndv);
+	}
+      return ER_FAILED;
+    }
+
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xstats_update_statistics (thread_p, classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+  success =
+    xstats_update_statistics (thread_p, WS_OID (classop), (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING),
+			      &class_attr_ndv);
 
   exit_server (*thread_p);
+
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      free_and_init (class_attr_ndv.attr_ndv);
+    }
 
   return success;
 #endif /* !CS_MODE */

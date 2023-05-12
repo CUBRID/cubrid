@@ -152,10 +152,8 @@ stats_client_unpack_statistics (char *buf_p)
       attr_stats_p->n_btstats = OR_GET_INT (buf_p);
       buf_p += OR_INT_SIZE;
 
-      /*
-         OR_GET_INT64 (buf_p, &attr_stats_p->ndv);
-         buf_p += OR_INT64_SIZE;
-       */
+      OR_GET_INT64 (buf_p, &attr_stats_p->ndv);
+      buf_p += OR_INT64_SIZE;
 
       if (attr_stats_p->n_btstats <= 0)
 	{
@@ -343,10 +341,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
 
       name_p = sm_get_att_name (class_mop, attr_stats_p->id);
       fprintf (file_p, " Attribute: %s\n", (name_p ? name_p : "not found"));
-      fprintf (file_p, "    id: %d\n", attr_stats_p->id);
-      /*
-         fprintf (file_p, "    ndv: %ld\n", attr_stats_p->ndv);
-       */
+      fprintf (file_p, "    Number of Distinct Values: %ld\n", attr_stats_p->ndv);
       fprintf (file_p, "    Type: ");
 
       switch (attr_stats_p->type)
@@ -530,8 +525,6 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
 {
   MOP class_mop;
   int error = NO_ERROR;
-  DB_ATTRIBUTE *att;
-  int col_cnt = 0;
   CLASS_ATTR_NDV class_attr_ndv;
   int i;
 
@@ -759,6 +752,7 @@ stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
 	  goto end;
 	}
     }
+  att_ndv[i].id = -1;
   strcat (select_list, "count(*)");
 
   return select_list;

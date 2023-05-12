@@ -102,7 +102,8 @@ static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * c
  *       for the last class representation.
  */
 int
-xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_fullscan)
+xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_fullscan,
+			  CLASS_ATTR_NDV * class_attr_ndv)
 {
   CLS_INFO *cls_info_p = NULL;
   REPR_ID repr_id;
@@ -276,6 +277,16 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
 
 	  assert_release (btree_stats_p->keys >= 0);
 	}			/* for (j = 0; ...) */
+
+      /* put ndv of columns */
+      for (int k = 0; k < class_attr_ndv->attr_cnt; k++)
+	{
+	  if (disk_attr_p->id == class_attr_ndv->attr_ndv[k].id)
+	    {
+	      disk_attr_p->ndv = class_attr_ndv->attr_ndv[k].ndv;
+	      break;
+	    }
+	}
     }				/* for (i = 0; ...) */
 
   error_code = catalog_start_access_with_dir_oid (thread_p, &catalog_access_info, X_LOCK);
@@ -397,7 +408,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
       assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
 #endif
 
-      error = xstats_update_statistics (thread_p, &class_oid, with_fullscan);
+      error = xstats_update_statistics (thread_p, &class_oid, with_fullscan, NULL);
       if (error == ER_UPDATE_STAT_CANNOT_GET_LOCK || error == ER_SP_UNKNOWN_SLOTID)
 	{
 	  /* continue with other classes */
@@ -555,6 +566,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  + (OR_INT_SIZE	/* id of DISK_ATTR */
 	     + OR_INT_SIZE	/* type of DISK_ATTR */
 	     + OR_INT_SIZE	/* n_btstats of DISK_ATTR */
+	     + OR_INT64_SIZE	/* Number of Distinct Values */
 	  ) * n_attrs);		/* number of attributes */
 
   size += ((OR_BTID_ALIGNED_SIZE	/* btid of BTREE_STATS */
@@ -663,6 +675,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 
       OR_PUT_INT (buf_p, disk_attr_p->n_btstats);
       buf_p += OR_INT_SIZE;
+
+      OR_PUT_INT64 (buf_p, &disk_attr_p->ndv);	/* 박세훈 */
+      buf_p += OR_INT64_SIZE;
 
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
@@ -1247,7 +1262,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 
   for (i = 0; i < partitions_count; i++)
     {
-      error = xstats_update_statistics (thread_p, &partitions[i], with_fullscan);
+      error = xstats_update_statistics (thread_p, &partitions[i], with_fullscan, NULL);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;

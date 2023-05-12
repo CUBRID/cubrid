@@ -4270,7 +4270,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (WS_OID (classop), (with_fullscan ? 1 : 0));
+      error = stats_update_statistics (classop, (with_fullscan ? 1 : 0));
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */

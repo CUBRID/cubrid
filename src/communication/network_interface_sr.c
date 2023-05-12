@@ -3973,11 +3973,27 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  CLASS_ATTR_NDV class_attr_ndv;
 
-  ptr = or_unpack_oid (request, &classoid);
+  ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
+
+  class_attr_ndv.attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
+  if (class_attr_ndv.attr_ndv == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
+    {
+      ptr = or_unpack_int (ptr, &class_attr_ndv.attr_ndv[i].id);
+      ptr = or_unpack_int64 (ptr, &class_attr_ndv.attr_ndv[i].ndv);
+    }
+  ptr = or_unpack_oid (ptr, &classoid);
   ptr = or_unpack_int (ptr, &with_fullscan);
 
-  error = xstats_update_statistics (thread_p, &classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+  error =
+    xstats_update_statistics (thread_p, &classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING),
+			      &class_attr_ndv);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

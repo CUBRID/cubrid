@@ -81,7 +81,7 @@ struct attr_stats
   DB_TYPE type;
   int n_btstats;		/* number of B+tree statistics information */
   BTREE_STATS *bt_stats;	/* pointer to array of BTREE_STATS[n_btstats] */
-  /* INT64 ndv; */
+  INT64 ndv;			/* Number of Distinct Values of column */
 };
 
 /* Statistical Information about the class */
