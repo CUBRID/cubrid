@@ -149,20 +149,26 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
   log_Gl.get_log_prior_receiver ().push_message (std::move (a_sp.pull_payload ()));
 }
 
+template<class F, class ... Args>
+void
+page_server::connection_handler::push_async_response (F &&a_func, tran_server_conn_t::sequenced_payload &&a_sp,
+    Args &&... args)
+{
+  auto handler_func = std::bind (std::forward<F> (a_func), std::placeholders::_1, std::placeholders::_2,
+				 std::forward<Args> (args)...);
+  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
+}
+
 void
 page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp),
-				       std::bind (logpb_respond_fetch_log_page_request, std::placeholders::_1,
-					   std::placeholders::_2));
+  push_async_response (logpb_respond_fetch_log_page_request, std::move (a_sp));
 }
 
 void
 page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp),
-				       std::bind (pgbuf_respond_data_fetch_page_request, std::placeholders::_1,
-					   std::placeholders::_2));
+  push_async_response (pgbuf_respond_data_fetch_page_request, std::move (a_sp));
 }
 
 void
@@ -184,9 +190,7 @@ page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t
   m_prior_sender_sink_hook_func =
 	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
 
-  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp),
-				       std::bind (log_pack_log_boot_info, std::placeholders::_1,
-					   std::placeholders::_2, std::ref (m_prior_sender_sink_hook_func)));
+  push_async_response (log_pack_log_boot_info, std::move (a_sp), std::ref (m_prior_sender_sink_hook_func));
 }
 
 void

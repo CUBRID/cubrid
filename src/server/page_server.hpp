@@ -142,6 +142,10 @@ class page_server
 
 	void abnormal_tran_server_disconnect (css_error_code error_code, bool &abort_further_processing);
 
+	// Helper function to convert above functions into responder specific tasks.
+	template<class F, class ... Args>
+	void push_async_response (F &&, tran_server_conn_t::sequenced_payload &&a_sp, Args &&...args);
+
 	// Function used as sink for log transfer
 	void prior_sender_sink_hook (std::string &&message) const;
 
