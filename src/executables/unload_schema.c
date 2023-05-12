@@ -3070,6 +3070,11 @@ emit_index_def (print_output & output_ctx, DB_OBJECT * class_)
 	  help_print_describe_comment (output_ctx, constraint->comment);
 	}
 
+      if (constraint->index_status == SM_INVISIBLE_INDEX)
+	{
+	  output_ctx (" INVISIBLE ");
+	}
+
       /* Safeguard. */
       /* If it's unique then it must surely be with online flag. */
       assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
