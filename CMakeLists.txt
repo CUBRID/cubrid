@@ -743,7 +743,13 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
   
   # [WARNING] EXPERIMENTAL OPTION: it can lead the build system to a halt or creating a bad object files.
   # If the build fails unexpectedly, set PARALLEL_JOBS to "0" and try to compile again.
-  set(PARALLEL_JOBS "10" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
+  set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
+  if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL})
+    set(PARALLEL_JOBS "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+  endif()
+
+  message(STATUS "Build in parallel: ${PARALLEL_JOBS}")
+
   if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
     add_definitions(/MP)
   elseif(PARALLEL_JOBS GREATER 0)
