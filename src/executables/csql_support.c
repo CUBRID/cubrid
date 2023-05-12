@@ -1227,7 +1227,7 @@ csql_walk_statement (const char *str)
 		}
 	      else if (match_word_ci ("case", &p))
 		{
-                  // case can start an expression and can appear in a balance 0 area
+		  // case can start an expression and can appear in a balance 0 area
 		  if (plcsql_begin_end_balance == 0)
 		    {
 		      plcsql_nest_level++;
