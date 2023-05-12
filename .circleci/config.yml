@@ -122,12 +122,11 @@ jobs:
             choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
             choco install winflexbison wixtoolset --no-progress -y
             choco install ant --ignore-dependencies --no-progress -y
-            choco install ninja --ignore-dependencies --no-progress -y
       - run:
           name: CMake Configure
           command: |
             cmake -E make_directory build
-            cmake -E chdir build -G "Ninja" -DMSVC_TOOLSET_VERSION=141 -DCMAKE_C_COMPILER=cl.exe -DCMAKE_CXX_COMPILER=cl.exe -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
       - run:
           name: CMake Build
           command: |
