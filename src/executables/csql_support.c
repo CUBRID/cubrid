@@ -1221,14 +1221,21 @@ csql_walk_statement (const char *str)
 		{
 		  if (plcsql_begin_end_balance == 0)
 		    {
-		      // plcsql_begin_end_balance == 0:
-		      //   the procedure or function is not in a block statement
 		      plcsql_nest_level++;
 		    }
 		  continue;
 		}
-	      else if (match_word_ci ("begin", &p) || match_word_ci ("if", &p) ||
-		       match_word_ci ("case", &p) || match_word_ci ("loop", &p))
+	      else if (match_word_ci ("case", &p))
+		{
+                  // case can start an expression and can appear in a balance 0 area
+		  if (plcsql_begin_end_balance == 0)
+		    {
+		      plcsql_nest_level++;
+		    }
+		  plcsql_begin_end_balance++;
+		  continue;
+		}
+	      else if (match_word_ci ("begin", &p) || match_word_ci ("if", &p) || match_word_ci ("loop", &p))
 		{
 		  plcsql_begin_end_balance++;
 		  continue;
