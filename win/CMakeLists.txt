@@ -20,32 +20,34 @@ if(NOT WIN32)
   return()
 endif(NOT WIN32)
 
+set_source_files_properties(${WIN_TOOLS_DIR}/ctrlservice/stdafx.cpp
+  PROPERTIES
+  COMPILE_FLAGS "/Ycstdafx1.h"
+  )
+
 set(CTRLSERVICE_SOURCES
   ${WIN_TOOLS_DIR}/ctrlservice/ctrlservice.cpp
   ${WIN_TOOLS_DIR}/ctrlservice/stdafx.cpp
   ${CMAKE_BINARY_DIR}/version.rc
   )
-set_source_files_properties(${WIN_TOOLS_DIR}/ctrlservice/stdafx.cpp
-  PROPERTIES
-  COMPILE_FLAGS "/Ycstdafx.h"
-  )
 add_executable(ctrlservice ${CTRLSERVICE_SOURCES})
-set_target_properties(ctrlservice PROPERTIES COMPILE_FLAGS "/Yustdafx.h")
 target_compile_definitions(ctrlservice PRIVATE _CONSOLE)
-
+set_target_properties(ctrlservice PROPERTIES COMPILE_FLAGS "/Yustdafx1.h")
+add_dependencies(ctrlservice cubrid)
 
 set(CUBRIDSERVICE_SOURCES
   ${WIN_TOOLS_DIR}/cubridservice/cubridservice.cpp
   ${WIN_TOOLS_DIR}/cubridservice/stdafx.cpp
   ${CMAKE_BINARY_DIR}/version.rc
   )
+add_executable(cubridservice ${CUBRIDSERVICE_SOURCES})
+target_compile_definitions(cubridservice PRIVATE _CONSOLE)
+set_target_properties(cubridservice PROPERTIES COMPILE_FLAGS "/Yustdafx2.h")
 set_source_files_properties(${WIN_TOOLS_DIR}/cubridservice/stdafx.cpp
   PROPERTIES
-  COMPILE_FLAGS "/Ycstdafx.h"
+  COMPILE_FLAGS "/Ycstdafx2.h"
   )
-add_executable(cubridservice ${CUBRIDSERVICE_SOURCES})
-set_target_properties(cubridservice PROPERTIES COMPILE_FLAGS "/Yustdafx.h")
-target_compile_definitions(cubridservice PRIVATE _CONSOLE)
+add_dependencies(cubridservice ctrlservice)
 
 
 set(CUBRIDTRAY_SOURCES
@@ -83,15 +85,12 @@ set(CUBRIDTRAY_SOURCES
   ${WIN_TOOLS_DIR}/cubridtray/cubridtray.rc
   ${CMAKE_BINARY_DIR}/version.rc
   )
-set_source_files_properties(${WIN_TOOLS_DIR}/cubridtray/STDAFX.CPP
-  PROPERTIES
-  COMPILE_FLAGS "/YcSTDAFX.H"
-  )
+
 set(CMAKE_MFC_FLAG 2)
 add_executable(cubridtray WIN32 ${CUBRIDTRAY_SOURCES})
 # TODO: remove version.h in win/ directory
 target_include_directories(cubridtray PRIVATE ${CMAKE_SOURCE_DIR}/win)
-set_target_properties(cubridtray PROPERTIES COMPILE_FLAGS "/GF /YuSTDAFX.H")
+set_target_properties(cubridtray PROPERTIES COMPILE_FLAGS "/GF /YuSTDAFX3.H")
 set_target_properties(cubridtray PROPERTIES OUTPUT_NAME "CUBRID_Service_Tray")
 if(MSVC_VERSION LESS 1600)
   # for VS 2008 (9.0) or less version
@@ -99,7 +98,11 @@ if(MSVC_VERSION LESS 1600)
 else(MSVC_VERSION LESS 1600)
   set_target_properties(cubridtray PROPERTIES LINK_FLAGS "/level='requireAdministrator' /uiAccess='false'")
 endif(MSVC_VERSION LESS 1600)
-
+set_source_files_properties(${WIN_TOOLS_DIR}/cubridtray/STDAFX.CPP
+  PROPERTIES
+  COMPILE_FLAGS "/YcSTDAFX3.H"
+  )
+add_dependencies(cubridtray cubridservice)
 
 install(TARGETS
   ctrlservice
