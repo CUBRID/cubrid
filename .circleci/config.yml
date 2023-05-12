@@ -130,7 +130,7 @@ jobs:
       - run:
           name: CMake Build
           command: |
-            cmake --build build --config RelWithDebInfo --parallel $env:PARALLEL_LEVEL
+            cmake --build build --config RelWithDebInfo --parallel $env:CMAKE_BUILD_PARALLEL_LEVEL
 
 workflows:
   version: 2
