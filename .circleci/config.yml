@@ -37,9 +37,6 @@ test_defaults: &test_defaults
     - store_artifacts:
         path: /tmp/logs
 
-cache_keys:
-  windows_choco_cache_key: &windows_choco_cache_key v1-win-choco-cache-{{ .Environment.CIRCLE_JOB }}
-
 version: 2
 jobs:
   build:
