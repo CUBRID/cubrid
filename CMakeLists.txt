@@ -125,6 +125,7 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
+option(ENABLE_CHECK "Enable checking function exists, header files, type size, etc" ON)
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 # expat library sources URL
@@ -564,142 +565,144 @@ if(WITH_CCI)
   )
 endif(WITH_CCI)
 
-include(CheckFunctionExists)
-check_function_exists(asprintf HAVE_ASPRINTF)
-check_function_exists(vasprintf HAVE_VASPRINTF)
-check_function_exists(basename HAVE_BASENAME)
-check_function_exists(dirname HAVE_DIRNAME)
-check_function_exists(ctime_r HAVE_CTIME_R)
-check_function_exists(localtime_r HAVE_LOCALTIME_R)
-check_function_exists(drand48_r HAVE_DRAND48_R)
-check_function_exists(gethostbyname_r HAVE_GETHOSTBYNAME_R)
-check_function_exists(getopt_long HAVE_GETOPT_LONG)
-check_function_exists(open_memstream HAVE_OPEN_MEMSTREAM)
-check_function_exists(strdup HAVE_STRDUP)
-check_function_exists(strlcpy HAVE_STRLCPY)
+if(ENABLE_CHECK)
+  include(CheckFunctionExists)
+  check_function_exists(asprintf HAVE_ASPRINTF)
+  check_function_exists(vasprintf HAVE_VASPRINTF)
+  check_function_exists(basename HAVE_BASENAME)
+  check_function_exists(dirname HAVE_DIRNAME)
+  check_function_exists(ctime_r HAVE_CTIME_R)
+  check_function_exists(localtime_r HAVE_LOCALTIME_R)
+  check_function_exists(drand48_r HAVE_DRAND48_R)
+  check_function_exists(gethostbyname_r HAVE_GETHOSTBYNAME_R)
+  check_function_exists(getopt_long HAVE_GETOPT_LONG)
+  check_function_exists(open_memstream HAVE_OPEN_MEMSTREAM)
+  check_function_exists(strdup HAVE_STRDUP)
+  check_function_exists(strlcpy HAVE_STRLCPY)
 
-if(WIN32)
-  set(NOMINMAX 1)
-endif(WIN32)
+  if(WIN32)
+    set(NOMINMAX 1)
+  endif(WIN32)
 
-include(CheckIncludeFile)
-check_include_file(err.h HAVE_ERR_H)
-check_include_file(getopt.h HAVE_GETOPT_H)
-check_include_file(inttypes.h HAVE_INTTYPES_H)
-check_include_file(libgen.h HAVE_LIBGEN_H)
-check_include_file(limits.h HAVE_LIMITS_H)
-if(NOT HAVE_LIMITS_H)
-  set(PATH_MAX 512)
-  set(NAME_MAX 255)
-  set(LINE_MAX 2048)
-endif(NOT HAVE_LIMITS_H)
-if(WIN32)
-  set(LINE_MAX 2048)
-endif(WIN32)
+  include(CheckIncludeFile)
+  check_include_file(err.h HAVE_ERR_H)
+  check_include_file(getopt.h HAVE_GETOPT_H)
+  check_include_file(inttypes.h HAVE_INTTYPES_H)
+  check_include_file(libgen.h HAVE_LIBGEN_H)
+  check_include_file(limits.h HAVE_LIMITS_H)
+  if(NOT HAVE_LIMITS_H)
+    set(PATH_MAX 512)
+    set(NAME_MAX 255)
+    set(LINE_MAX 2048)
+  endif(NOT HAVE_LIMITS_H)
+  if(WIN32)
+    set(LINE_MAX 2048)
+  endif(WIN32)
 
-check_include_file(memory.h HAVE_MEMORY_H)
-check_include_file(nl_types.h HAVE_NL_TYPES_H)
-check_include_file(regex.h HAVE_REGEX_H)
-check_include_file(rpc/des_crypt.h HAVE_RPC_DES_CRYPT_H)
-check_include_file(stdbool.h HAVE_STDBOOL_H)
-check_include_file(stdint.h HAVE_STDINT_H)
-check_include_file(stdlib.h HAVE_STDLIB_H)
-check_include_file(stddef.h HAVE_STDDEF_H)
-check_include_file(string.h HAVE_STRING_H)
-check_include_file(strings.h HAVE_STRINGS_H)
-check_include_file(sys/param.h HAVE_SYS_PARAM_H)
-check_include_file(sys/stat.h HAVE_SYS_STAT_H)
-check_include_file(sys/types.h HAVE_SYS_TYPES_H)
-check_include_file(unistd.h HAVE_UNISTD_H)
-if(HAVE_STDLIB_H AND HAVE_STDDEF_H)
-  set(STDC_HEADERS 1)
-endif(HAVE_STDLIB_H AND HAVE_STDDEF_H)
+  check_include_file(memory.h HAVE_MEMORY_H)
+  check_include_file(nl_types.h HAVE_NL_TYPES_H)
+  check_include_file(regex.h HAVE_REGEX_H)
+  check_include_file(rpc/des_crypt.h HAVE_RPC_DES_CRYPT_H)
+  check_include_file(stdbool.h HAVE_STDBOOL_H)
+  check_include_file(stdint.h HAVE_STDINT_H)
+  check_include_file(stdlib.h HAVE_STDLIB_H)
+  check_include_file(stddef.h HAVE_STDDEF_H)
+  check_include_file(string.h HAVE_STRING_H)
+  check_include_file(strings.h HAVE_STRINGS_H)
+  check_include_file(sys/param.h HAVE_SYS_PARAM_H)
+  check_include_file(sys/stat.h HAVE_SYS_STAT_H)
+  check_include_file(sys/types.h HAVE_SYS_TYPES_H)
+  check_include_file(unistd.h HAVE_UNISTD_H)
+  if(HAVE_STDLIB_H AND HAVE_STDDEF_H)
+    set(STDC_HEADERS 1)
+  endif(HAVE_STDLIB_H AND HAVE_STDDEF_H)
 
-include(CheckTypeSize)
-check_type_size(char SIZEOF_CHAR)
-check_type_size(short SIZEOF_SHORT)
-check_type_size(int SIZEOF_INT)
-check_type_size(long SIZEOF_LONG)
-check_type_size("long long" SIZEOF_LONG_LONG)
-check_type_size("void *" SIZEOF_VOID_P)
-check_type_size(byte_t BYTE_T)
-check_type_size(int8_t INT8_T)
-check_type_size(int16_t INT16_T)
-check_type_size(int32_t INT32_T)
-check_type_size(int64_t INT64_T)
-check_type_size(intptr_t INTPTR_T)
-check_type_size(uint8_t UINT8_T)
-check_type_size(uint16_t UINT16_T)
-check_type_size(uint32_t UINT32_T)
-check_type_size(uint64_t UINT64_T)
-check_type_size(uintptr_t UINTPTR_T)
-check_type_size("off_t" SIZEOF_OFF_T)
-if(NOT SIZEOF_OFF_T)
-  set(off_t "long int")
-endif()
-check_type_size("size_t" SIZEOF_SIZE_T)
-if(NOT SIZEOF_SIZE_T)
-  set(size_t "unsinged int")
-endif()
-check_type_size("pid_t" SIZEOF_PID_T)
-if(NOT SIZEOF_PID_T)
-  # TODO: util_sa.c:79 remove typedef int pid_t
-  if(NOT WIN32)
-    set(pid_t "int")
-  endif(NOT WIN32)
-endif()
-set(CMAKE_REQUIRED_FLAGS "-D_LARGEFILE64_SOURCE -finline-functions")
-check_type_size("off64_t" SIZEOF_OFF64_T)
-unset(CMAKE_REQUIRED_FLAGS)
+  include(CheckTypeSize)
+  check_type_size(char SIZEOF_CHAR)
+  check_type_size(short SIZEOF_SHORT)
+  check_type_size(int SIZEOF_INT)
+  check_type_size(long SIZEOF_LONG)
+  check_type_size("long long" SIZEOF_LONG_LONG)
+  check_type_size("void *" SIZEOF_VOID_P)
+  check_type_size(byte_t BYTE_T)
+  check_type_size(int8_t INT8_T)
+  check_type_size(int16_t INT16_T)
+  check_type_size(int32_t INT32_T)
+  check_type_size(int64_t INT64_T)
+  check_type_size(intptr_t INTPTR_T)
+  check_type_size(uint8_t UINT8_T)
+  check_type_size(uint16_t UINT16_T)
+  check_type_size(uint32_t UINT32_T)
+  check_type_size(uint64_t UINT64_T)
+  check_type_size(uintptr_t UINTPTR_T)
+  check_type_size("off_t" SIZEOF_OFF_T)
+  if(NOT SIZEOF_OFF_T)
+    set(off_t "long int")
+  endif()
+  check_type_size("size_t" SIZEOF_SIZE_T)
+  if(NOT SIZEOF_SIZE_T)
+    set(size_t "unsinged int")
+  endif()
+  check_type_size("pid_t" SIZEOF_PID_T)
+  if(NOT SIZEOF_PID_T)
+    # TODO: util_sa.c:79 remove typedef int pid_t
+    if(NOT WIN32)
+      set(pid_t "int")
+    endif(NOT WIN32)
+  endif()
+  set(CMAKE_REQUIRED_FLAGS "-D_LARGEFILE64_SOURCE -finline-functions")
+  check_type_size("off64_t" SIZEOF_OFF64_T)
+  unset(CMAKE_REQUIRED_FLAGS)
 
-include(CheckPrototypeDefinition)
-if(HAVE_GETHOSTBYNAME_R)
-  check_prototype_definition(gethostbyname_r
-    "int gethostbyname_r(const char *name, struct hostent *hp, char *buf, size_t buflen, struct hostent **result, int *herr)"
-    "0"
-    "netdb.h"
-    HAVE_GETHOSTBYNAME_R_GLIBC)
-  check_prototype_definition(gethostbyname_r
-    "struct hostent *gethostbyname_r(const char *name, struct hostent *hp, char *buf, size_t buflen, int *herr)"
-    "NULL"
-    "netdb.h"
-    HAVE_GETHOSTBYNAME_R_SOLARIS)
-  check_prototype_definition(gethostbyname_r
-    "int gethostbyname_r(const char *name, struct hostent *hp, struct hostent_data *hdata)"
-    "0"
-    "netdb.h"
-    HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
-endif(HAVE_GETHOSTBYNAME_R)
+  include(CheckPrototypeDefinition)
+  if(HAVE_GETHOSTBYNAME_R)
+    check_prototype_definition(gethostbyname_r
+      "int gethostbyname_r(const char *name, struct hostent *hp, char *buf, size_t buflen, struct hostent **result, int *herr)"
+      "0"
+      "netdb.h"
+      HAVE_GETHOSTBYNAME_R_GLIBC)
+    check_prototype_definition(gethostbyname_r
+      "struct hostent *gethostbyname_r(const char *name, struct hostent *hp, char *buf, size_t buflen, int *herr)"
+      "NULL"
+      "netdb.h"
+      HAVE_GETHOSTBYNAME_R_SOLARIS)
+    check_prototype_definition(gethostbyname_r
+      "int gethostbyname_r(const char *name, struct hostent *hp, struct hostent_data *hdata)"
+      "0"
+      "netdb.h"
+      HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+  endif(HAVE_GETHOSTBYNAME_R)
 
-include(CheckSymbolExists)
-if(NOT HAVE_STDBOOL_H)
-  check_symbol_exists( "_Bool" stdbool.h HAVE__BOOL)
-endif(NOT HAVE_STDBOOL_H)
+  include(CheckSymbolExists)
+  if(NOT HAVE_STDBOOL_H)
+    check_symbol_exists( "_Bool" stdbool.h HAVE__BOOL)
+  endif(NOT HAVE_STDBOOL_H)
 
-include(CheckCSourceCompiles)
-check_c_source_compiles("#include <sys/time.h>\n#include <time.h>\nmain(){}" TIME_WITH_SYS_TIME)
-check_c_source_compiles("#include <stdint.h>
-int main() {
-  uint64_t i, j, r;
-  i = 100; j = 200; r = __sync_bool_compare_and_swap(&i, 100, j);
-  if (r == 0 || i != 200) { return(1); }
-  i = 100; j = 200; r = __sync_bool_compare_and_swap(&i, 101, j);
-  if (r != 0 || i != 100) { return(1); }
-  i = 100; j = 200; r = __sync_add_and_fetch(&i, j);
-  if (r != 300 || i != 300) { return(1); }
-  i = 100; r = __sync_lock_test_and_set(&i, 200);
-  if (r != 100 || i != 200) { return(1); }
-  return(0);
-}"
-  HAVE_GCC_ATOMIC_BUILTINS)
+  include(CheckCSourceCompiles)
+  check_c_source_compiles("#include <sys/time.h>\n#include <time.h>\nmain(){}" TIME_WITH_SYS_TIME)
+  check_c_source_compiles("#include <stdint.h>
+  int main() {
+    uint64_t i, j, r;
+    i = 100; j = 200; r = __sync_bool_compare_and_swap(&i, 100, j);
+    if (r == 0 || i != 200) { return(1); }
+    i = 100; j = 200; r = __sync_bool_compare_and_swap(&i, 101, j);
+    if (r != 0 || i != 100) { return(1); }
+    i = 100; j = 200; r = __sync_add_and_fetch(&i, j);
+    if (r != 300 || i != 300) { return(1); }
+    i = 100; r = __sync_lock_test_and_set(&i, 200);
+    if (r != 100 || i != 200) { return(1); }
+    return(0);
+  }"
+    HAVE_GCC_ATOMIC_BUILTINS)
 
-include(TestBigEndian)
-test_big_endian(WORDS_BIGENDIAN)
+  include(TestBigEndian)
+  test_big_endian(WORDS_BIGENDIAN)
 
-if(UNIX)
-  include(FindThreads)
-endif(UNIX)
+  if(UNIX)
+    include(FindThreads)
+  endif(UNIX)
 
+endif(ENABLE_CHECK)
 
 configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
@@ -740,7 +743,9 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
 elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
   add_definitions(-DWIN -DWINDOWS -D_CRT_SECURE_NO_WARNINGS /wd4274 /wd4996 /wd4251 /wd4275)
   string(REPLACE "/DWIN32" "/D_WIN64" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-  # experimental option (it can lead the build system to a halt or creating a bad object files)
+
+  # [WARNING] EXPERIMENTAL OPTION: it can lead the build system to a halt or creating a bad object files.
+  # If the build fails unexpectedly, set PARALLEL_JOBS to "0" and try to compile again.
   set(PARALLEL_JOBS "10" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
   if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
     add_definitions(/MP)
