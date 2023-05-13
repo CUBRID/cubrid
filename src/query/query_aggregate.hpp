@@ -29,7 +29,8 @@
 
 #include "external_sort.h"    // SORTKEY_INFO
 #include "query_list.h"
-#include "storage_common.h"   // AGGREGATE_HASH_STATE, SCAN_CODE, FUNC_TYPE
+#include "storage_common.h"   // AGGREGATE_HASH_STATE, SCAN_CODE
+#include "db_function.hpp"  // FUNC_TYPE
 
 #include <vector>
 

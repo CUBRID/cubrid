@@ -36,6 +36,7 @@
 #include "compile_context.h"
 #include "config.h"
 #include "cursor.h"
+#include "db_function.hpp"
 #include "json_table_def.h"
 #include "message_catalog.h"
 #include "string_opfunc.h"

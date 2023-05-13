@@ -26,6 +26,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
+#include "db_function.hpp"
 #include "query_list.h"
 #include "storage_common.h"
 #include "string_opfunc.h"

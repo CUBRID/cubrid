@@ -25,6 +25,7 @@
 
 #include "error_manager.h"
 #include "memory_reference_store.hpp"
+#include "db_function.hpp"
 #include "storage_common.h"
 
 #include <cstdint>

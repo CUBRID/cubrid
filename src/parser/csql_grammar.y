@@ -150,6 +150,8 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "memory_alloc.h"
 #include "db_elo.h"
 #include "storage_common.h"
+#include "jsp_cl.h"
+#include "db_function.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

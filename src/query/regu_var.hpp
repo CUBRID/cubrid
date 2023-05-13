@@ -28,6 +28,7 @@
 #include "query_list.h"
 #include "string_opfunc.h"
 #include "object_primitive.h"
+#include "db_function.hpp"
 
 #include <functional>
 
