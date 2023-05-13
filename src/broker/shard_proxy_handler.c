@@ -1001,7 +1001,7 @@ proxy_context_dump_title (FILE * fp)
   fprintf (fp,
 	   "%-5s %-10s %-10s %-5s %-5s " "%-5s %-5s %-15s " "%-15s %-15s %-15s " "%-10s %-10s %-10s " "%-10s %-10s \n",
 	   "CID", "UID", "CLIENT", "SHARD", "CAS", "BUSY", "IN_TRAN", "PREPARE_FOR_EXEC", "FREE_ON_END_TRAN",
-	   "FREE_CONTEXT", "CLIENT_END_TRAN", "FUNC_CODE", "STMT_H_ID", "STMT_HINT_TYPE", "ERROR_IND", "ERROR_CODE");
+	   "FREE_CONTEXT", "CLIENT_END_TRAN", "FUNC_TYPE", "STMT_H_ID", "STMT_HINT_TYPE", "ERROR_IND", "ERROR_CODE");
 
   return;
 }
