@@ -142,7 +142,7 @@ struct function_node
 {
   DB_VALUE *value;		/* value of the function */
   REGU_VARIABLE_LIST operand;	/* operands */
-  FUNC_TYPE ftype;		/* function to call */
+  FUNC_CODE ftype;		/* function to call */
   mutable union function_tmp_obj *tmp_obj;
 };
 

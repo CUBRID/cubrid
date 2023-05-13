@@ -47,12 +47,12 @@ using namespace cubquery;
 // static functions declarations
 //
 static int qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
-    cubxasl::aggregate_accumulator_domain *domain, FUNC_TYPE func_type,
+    cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
     tp_domain *func_domain, db_value *value, bool is_acc_to_acc);
 static int qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p,
     cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain,
-    FUNC_TYPE func_type, tp_domain *func_domain,
+    FUNC_CODE func_type, tp_domain *func_domain,
     std::vector<DB_VALUE> &db_values);
 static int qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     QUERY_ID query_id);
@@ -204,7 +204,7 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
  */
 int
 qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
-    cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_TYPE func_type,
+    cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_CODE func_type,
     tp_domain *func_domain, cubxasl::aggregate_accumulator *new_acc)
 {
   TP_DOMAIN *double_domain;
@@ -309,7 +309,7 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
  */
 static int
 qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
-				      cubxasl::aggregate_accumulator_domain *domain, FUNC_TYPE func_type,
+				      cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
 				      tp_domain *func_domain, db_value *value, bool is_acc_to_acc)
 {
   DB_VALUE squared;
@@ -543,7 +543,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 
 static int
 qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
-    cubxasl::aggregate_accumulator_domain *domain, FUNC_TYPE func_type,
+    cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
     tp_domain *func_domain, std::vector<DB_VALUE> &db_values)
 {
   // we have only one argument so aggregate only the first db_value
@@ -2895,7 +2895,7 @@ qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_li
   int error = NO_ERROR;
   INT64 tuple_count;
   double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
-  FUNC_TYPE function;
+  FUNC_CODE function;
   double cur_group_percentile;
 
   assert (agg_p != NULL && scan_id != NULL && scan_id->status == S_OPENED);

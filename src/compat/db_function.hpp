@@ -75,14 +75,14 @@ typedef enum
   PT_PERCENT_RANK,
   PT_PERCENTILE_CONT,
   PT_PERCENTILE_DISC
-} FUNC_TYPE;
+} FUNC_CODE;
 
 # ifdef  __cplusplus
 extern "C" {
 # endif
 
-const char *fcode_get_lowercase_name (FUNC_TYPE ftype);
-const char *fcode_get_uppercase_name (FUNC_TYPE ftype);
+const char *fcode_get_lowercase_name (FUNC_CODE ftype);
+const char *fcode_get_uppercase_name (FUNC_CODE ftype);
 
 # ifdef  __cplusplus
 }

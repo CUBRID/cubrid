@@ -30,7 +30,7 @@
 #include "external_sort.h"    // SORTKEY_INFO
 #include "query_list.h"
 #include "storage_common.h"   // AGGREGATE_HASH_STATE, SCAN_CODE
-#include "db_function.hpp"  // FUNC_TYPE
+#include "db_function.hpp"  // FUNC_CODE
 
 #include <vector>
 
@@ -118,7 +118,7 @@ using HIERARCHY_AGGREGATE_HELPER = cubquery::hierarchy_aggregate_helper;
 int qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
 				     QUERY_ID query_id);
 int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
-    cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_TYPE func_type,
+    cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_CODE func_type,
     tp_domain *func_domain, cubxasl::aggregate_accumulator *new_acc);
 int qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list, val_descr *vd,
 				   cubxasl::aggregate_accumulator *alt_acc_list);

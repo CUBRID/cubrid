@@ -389,7 +389,7 @@ func_all_signatures sig_of_regexp_substr =
 };
 
 func_all_signatures *
-get_signatures (FUNC_TYPE ft)
+get_signatures (FUNC_CODE ft)
 {
   switch (ft)
     {
@@ -1145,7 +1145,7 @@ namespace func_type
   bool
   Node::apply_signature (const func_signature &signature)
   {
-    FUNC_TYPE func_type = m_node->info.function.function_type;
+    FUNC_CODE func_type = m_node->info.function.function_type;
     parser_node *arg = m_node->info.function.arg_list;
     parser_node *prev = NULL;
     size_t arg_pos = 0;

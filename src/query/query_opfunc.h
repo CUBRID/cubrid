@@ -112,14 +112,14 @@ extern int qdata_get_cardinality (THREAD_ENTRY * thread_p, DB_VALUE * db_class_n
 extern int qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, qfile_tuple_descriptor * tuple, DB_VALUE ** values);
 extern int qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p);
 extern int qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** result_dom, DB_VALUE * result,
-							FUNC_TYPE function);
+							FUNC_CODE function);
 extern int qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, double row_num_d,
 						double f_row_num_d, double c_row_num_d, tp_domain ** result_dom,
-						DB_VALUE * result, FUNC_TYPE function);
+						DB_VALUE * result, FUNC_CODE function);
 extern int qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, qfile_list_scan_id * scan_id,
 						    tp_domain * domain, int pos, double row_num_d, double f_row_num_d,
 						    double c_row_num_d, DB_VALUE * result, tp_domain ** result_dom,
-						    FUNC_TYPE function);
+						    FUNC_CODE function);
 extern int qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val, DB_VALUE * dest_val,
 							     tp_domain ** domain);
 

@@ -244,7 +244,7 @@ static int pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, P
 						      PT_TYPE_ENUM * result_type);
 static int pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3);
 
-static bool pt_is_function_no_arg (FUNC_TYPE code);
+static bool pt_is_function_no_arg (FUNC_CODE code);
 static bool pt_is_function_new_type_checking (PT_NODE * node);
 static PT_NODE *pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -12577,7 +12577,7 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
 }
 
 static bool
-pt_is_function_no_arg (FUNC_TYPE fcode)
+pt_is_function_no_arg (FUNC_CODE fcode)
 {
   switch (fcode)
     {
@@ -12668,7 +12668,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 static PT_NODE *
 pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  FUNC_TYPE fcode = node->info.function.function_type;
+  FUNC_CODE fcode = node->info.function.function_type;
   switch (fcode)
     {
     case PT_TOP_AGG_FUNC:
@@ -12741,7 +12741,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *arg_list;
   PT_TYPE_ENUM arg_type;
-  FUNC_TYPE fcode;
+  FUNC_CODE fcode;
   bool check_agg_single_arg = false;
   bool is_agg_function = false;
   PT_NODE *prev = NULL;
@@ -19934,7 +19934,7 @@ end:
  *   result(out): result value of function (if evaluated)
  */
 int
-pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE * args[], const int num_args,
+pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE * args[], const int num_args,
 			     DB_VALUE * result)
 {
   int error = NO_ERROR, i;
@@ -20260,7 +20260,7 @@ pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_
 {
   PT_NODE *operand;
   DB_VALUE dummy, **arg_array;
-  FUNC_TYPE fcode;
+  FUNC_CODE fcode;
   int error = NO_ERROR, i;
   int num_args = 0;
   bool all_args_const = false;
@@ -24864,7 +24864,7 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_COLL_INFER common_coll_infer, res_coll_infer;
   bool need_arg_coerc = false;
   TP_DOMAIN_COLL_ACTION res_collation_flag = TP_DOMAIN_COLL_LEAVE;
-  FUNC_TYPE fcode;
+  FUNC_CODE fcode;
 
   assert (node != NULL);
   assert (node->node_type == PT_FUNCTION);

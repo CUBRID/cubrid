@@ -19,7 +19,7 @@
 #include "db_function.hpp"
 
 const char *
-fcode_get_uppercase_name (FUNC_TYPE ftype)
+fcode_get_uppercase_name (FUNC_CODE ftype)
 {
   switch (ftype)
     {
@@ -184,7 +184,7 @@ fcode_get_uppercase_name (FUNC_TYPE ftype)
 }
 
 const char *
-fcode_get_lowercase_name (FUNC_TYPE ftype)
+fcode_get_lowercase_name (FUNC_CODE ftype)
 {
   switch (ftype)
     {
