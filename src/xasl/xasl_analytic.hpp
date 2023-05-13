@@ -24,8 +24,9 @@
 #define _XASL_ANALYTIC_HPP_
 
 #include "dbtype_def.h"
+#include "db_function.hpp"          // FUNC_CODE
 #include "regu_var.hpp"             // regu_variable_node
-#include "storage_common.h"       // FUNC_CODE, QUERY_OPTIONS
+#include "storage_common.h"       // QUERY_OPTIONS
 
 // forward definitions
 struct qfile_list_id;
