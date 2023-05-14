@@ -1598,3 +1598,110 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 
   return PT_TYPE_NONE;
 }
+
+bool
+pt_is_function_unsupported (FUNC_CODE fcode)
+{
+  switch (fcode)
+    {
+    case PT_TOP_AGG_FUNC:
+    case F_MIDXKEY:
+    case F_TOP_TABLE_FUNC:
+    case F_VID:
+      return true;
+    default:
+      return false;
+    }
+}
+
+bool
+pt_is_function_new_type_checking (PT_NODE *node)
+{
+  switch (node->info.function.function_type)
+    {
+    // old functions
+    case PT_MIN:
+    case PT_MAX:
+    case PT_SUM:
+
+    case PT_AVG:
+    case PT_STDDEV:
+    case PT_VARIANCE:
+    case PT_STDDEV_POP:
+    case PT_VAR_POP:
+    case PT_STDDEV_SAMP:
+    case PT_VAR_SAMP:
+
+    case PT_GROUPBY_NUM:
+    case PT_AGG_BIT_AND:
+    case PT_AGG_BIT_OR:
+    case PT_AGG_BIT_XOR:
+    // case PT_GROUP_CONCAT:
+    case PT_ROW_NUMBER:
+    case PT_RANK:
+    case PT_DENSE_RANK:
+    // case PT_NTILE:
+    // case PT_LEAD:
+    // case PT_LAG:
+    case F_SET:
+    case F_TABLE_SET:
+    case F_MULTISET:
+    case F_TABLE_MULTISET:
+    case F_SEQUENCE:
+    case F_TABLE_SEQUENCE:
+
+    // case F_INSERT_SUBSTRING:
+    // case F_ELT:
+
+    // case PT_FIRST_VALUE:
+    // case PT_LAST_VALUE:
+    // case PT_NTH_VALUE:
+    case PT_MEDIAN:
+
+    case PT_CUME_DIST:
+    case PT_PERCENT_RANK:
+    case PT_PERCENTILE_CONT:
+    case PT_PERCENTILE_DISC:
+
+    case F_BENCHMARK:
+    // JSON functions are migrated to new checking function
+    case F_JSON_ARRAY:
+    case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
+    case PT_JSON_ARRAYAGG:
+    case F_JSON_CONTAINS:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
+    case F_JSON_EXTRACT:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_KEYS:
+    case F_JSON_INSERT:
+    case F_JSON_LENGTH:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_OBJECT:
+    case PT_JSON_OBJECTAGG:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_REMOVE:
+    case F_JSON_REPLACE:
+    case F_JSON_SEARCH:
+    case F_JSON_SET:
+    case F_JSON_TYPE:
+    case F_JSON_UNQUOTE:
+    case F_JSON_VALID:
+    // REGEXP functions are migrated to new checking function
+    case F_REGEXP_COUNT:
+    case F_REGEXP_INSTR:
+    case F_REGEXP_LIKE:
+    case F_REGEXP_REPLACE:
+    case F_REGEXP_SUBSTR:
+    // COUNT functions
+    case PT_COUNT:
+    case PT_COUNT_STAR:
+      return true;
+
+    default:
+      return false;
+    }
+}

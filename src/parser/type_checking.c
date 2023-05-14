@@ -245,7 +245,6 @@ static int pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, P
 static int pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3);
 
 static bool pt_is_function_no_arg (FUNC_CODE code);
-static bool pt_is_function_new_type_checking (PT_NODE * node);
 static PT_NODE *pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -12597,54 +12596,6 @@ pt_is_function_no_arg (FUNC_CODE fcode)
     }
 }
 
-static bool
-pt_is_function_new_type_checking (PT_NODE * node)
-{
-  switch (node->info.function.function_type)
-    {
-    case F_BENCHMARK:
-      // JSON functions are migrated to new checking function
-    case F_JSON_ARRAY:
-    case F_JSON_ARRAY_APPEND:
-    case F_JSON_ARRAY_INSERT:
-    case PT_JSON_ARRAYAGG:
-    case F_JSON_CONTAINS:
-    case F_JSON_CONTAINS_PATH:
-    case F_JSON_DEPTH:
-    case F_JSON_EXTRACT:
-    case F_JSON_GET_ALL_PATHS:
-    case F_JSON_KEYS:
-    case F_JSON_INSERT:
-    case F_JSON_LENGTH:
-    case F_JSON_MERGE:
-    case F_JSON_MERGE_PATCH:
-    case F_JSON_OBJECT:
-    case PT_JSON_OBJECTAGG:
-    case F_JSON_PRETTY:
-    case F_JSON_QUOTE:
-    case F_JSON_REMOVE:
-    case F_JSON_REPLACE:
-    case F_JSON_SEARCH:
-    case F_JSON_SET:
-    case F_JSON_TYPE:
-    case F_JSON_UNQUOTE:
-    case F_JSON_VALID:
-      // REGEXP functions are migrated to new checking function
-    case F_REGEXP_COUNT:
-    case F_REGEXP_INSTR:
-    case F_REGEXP_LIKE:
-    case F_REGEXP_REPLACE:
-    case F_REGEXP_SUBSTR:
-      // COUNT functions
-    case PT_COUNT:
-    case PT_COUNT_STAR:
-      return true;
-
-    default:
-      return false;
-    }
-}
-
 static PT_NODE *
 pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 {
@@ -12669,16 +12620,10 @@ static PT_NODE *
 pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   FUNC_CODE fcode = node->info.function.function_type;
-  switch (fcode)
+  if (pt_is_function_unsupported (fcode))
     {
-    case PT_TOP_AGG_FUNC:
-    case F_MIDXKEY:
-    case F_TOP_TABLE_FUNC:
-    case F_VID:
       assert (false);
       pt_frob_error (parser, node, "ERR unsupported function code: %d", fcode);
-      return NULL;
-    default:;
     }
 
   PT_NODE *arg_list = node->info.function.arg_list;

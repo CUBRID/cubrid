@@ -117,4 +117,7 @@ namespace func_type
 bool pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type);
 PT_TYPE_ENUM pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type);
 
+bool pt_is_function_unsupported (FUNC_CODE fcode);
+bool pt_is_function_new_type_checking (PT_NODE *node);
+
 #endif
