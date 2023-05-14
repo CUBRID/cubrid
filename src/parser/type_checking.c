@@ -244,7 +244,6 @@ static int pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, P
 						      PT_TYPE_ENUM * result_type);
 static int pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3);
 
-static bool pt_is_function_no_arg (FUNC_CODE code);
 static PT_NODE *pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -12573,27 +12572,6 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
     }
 
   return precision;
-}
-
-static bool
-pt_is_function_no_arg (FUNC_CODE fcode)
-{
-  switch (fcode)
-    {
-    case PT_COUNT_STAR:
-    case PT_GROUPBY_NUM:
-    case PT_ROW_NUMBER:
-    case PT_RANK:
-    case PT_DENSE_RANK:
-    case PT_CUME_DIST:
-    case PT_PERCENT_RANK:
-    case F_JSON_ARRAY:
-    case F_JSON_OBJECT:
-      return true;
-
-    default:
-      return false;
-    }
 }
 
 static PT_NODE *

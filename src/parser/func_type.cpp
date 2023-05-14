@@ -1615,6 +1615,27 @@ pt_is_function_unsupported (FUNC_CODE fcode)
 }
 
 bool
+pt_is_function_no_arg (FUNC_CODE fcode)
+{
+  switch (fcode)
+    {
+    case PT_COUNT_STAR:
+    case PT_GROUPBY_NUM:
+    case PT_ROW_NUMBER:
+    case PT_RANK:
+    case PT_DENSE_RANK:
+    case PT_CUME_DIST:
+    case PT_PERCENT_RANK:
+    case F_JSON_ARRAY:
+    case F_JSON_OBJECT:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+bool
 pt_is_function_new_type_checking (FUNC_CODE fcode)
 {
   switch (fcode)
