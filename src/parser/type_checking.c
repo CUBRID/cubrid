@@ -12599,7 +12599,8 @@ pt_is_function_no_arg (FUNC_CODE fcode)
 static PT_NODE *
 pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  if (pt_is_function_new_type_checking (node))
+  FUNC_CODE fcode = node->info.function.function_type;
+  if (pt_is_function_new_type_checking (fcode))
     {
       return pt_eval_function_type_new (parser, node);
     }

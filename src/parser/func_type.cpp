@@ -1615,9 +1615,9 @@ pt_is_function_unsupported (FUNC_CODE fcode)
 }
 
 bool
-pt_is_function_new_type_checking (PT_NODE *node)
+pt_is_function_new_type_checking (FUNC_CODE fcode)
 {
-  switch (node->info.function.function_type)
+  switch (fcode)
     {
     // old functions
     case PT_MIN:
