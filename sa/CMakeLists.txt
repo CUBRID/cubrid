@@ -15,7 +15,6 @@
 #   limitations under the License.
 # 
 #
-
 set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql.c
   ${EXECUTABLES_DIR}/csql_session.c
@@ -642,9 +641,14 @@ if(WIN32)
   target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
+
+# include target_external_dependencies function
+include (expand_dependency)
+
 if(UNIX)
 target_external_dependencies(cubridsa
   LIBNCURSES
+  LIBEDIT
   )
 endif(UNIX)
 target_external_dependencies(cubridsa
@@ -663,7 +667,7 @@ target_include_directories(cubridsa PRIVATE
 if(UNIX)
   # find out what this means:
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
   target_link_libraries(cubridsa PUBLIC stdc++fs)
 endif(UNIX)
 # for dblink

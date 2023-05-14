@@ -864,6 +864,11 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
       m_buf (" ON UPDATE %s", classobj_describe_foreign_key_action (constraint.fk_info->update_action));
     }
 
+  if (constraint.index_status == SM_INVISIBLE_INDEX)
+    {
+      m_buf (" INVISIBLE");
+    }
+
   if (constraint.comment != NULL && constraint.comment[0] != '\0')
     {
       m_buf (" ");
@@ -875,11 +880,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  describe_comment (constraint.comment);
 	}
-    }
-
-  if (constraint.index_status == SM_INVISIBLE_INDEX)
-    {
-      m_buf (" INVISIBLE");
     }
 
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)

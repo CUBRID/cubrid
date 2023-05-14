@@ -6346,14 +6346,6 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 #endif
 
-  if (p->info.index.comment != NULL)
-    {
-      comment = pt_print_bytes (parser, p->info.index.comment);
-      b = pt_append_nulstring (parser, b, " comment ");
-      b = pt_append_varchar (parser, b, comment);
-      b = pt_append_nulstring (parser, b, " ");
-    }
-
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
     {
       b = pt_append_nulstring (parser, b, " INVISIBLE ");
@@ -6361,6 +6353,14 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   else if (p->info.index.index_status == SM_NORMAL_INDEX)
     {
       b = pt_append_nulstring (parser, b, " VISIBLE ");
+    }
+
+  if (p->info.index.comment != NULL)
+    {
+      comment = pt_print_bytes (parser, p->info.index.comment);
+      b = pt_append_nulstring (parser, b, " comment ");
+      b = pt_append_varchar (parser, b, comment);
+      b = pt_append_nulstring (parser, b, " ");
     }
 
   if (p->info.index.code == PT_REBUILD_INDEX)
@@ -7345,6 +7345,13 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       b = pt_append_nulstring (parser, b, " WITH ONLINE ");
+    }
+
+  if (p->info.index.comment != NULL)
+    {
+      comment = pt_print_bytes (parser, p->info.index.comment);
+      b = pt_append_nulstring (parser, b, " comment ");
+      b = pt_append_varchar (parser, b, comment);
     }
 
   parser->custom_print = saved_cp;

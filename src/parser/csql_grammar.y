@@ -2718,9 +2718,10 @@ create_stmt
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
           opt_deduplicate_key_mode                      /* 13 */
-	  opt_comment_spec				/* 14 */
-	  opt_with_online				/* 15 */
-	  opt_invisible					/* 16 */
+	  opt_with_online				/* 14 */
+	  opt_invisible					/* 15 */
+	  opt_comment_spec				/* 16 */          
+
 		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2852,12 +2853,12 @@ create_stmt
                             pt_get_deduplicate_key_mode_level($13,  &node->info.index.dedup_key_mode, &node->info.index.dedup_key_level);
 #endif                            
 
-			    node->info.index.comment = $14;
+			    node->info.index.comment = $16;
 
-                            int with_online_ret = $15;  // 0 for normal, 1 for online no parallel,
+                            int with_online_ret = $14;  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
-                            bool is_invisible = $16;
+                            bool is_invisible = $15;
 
                             if (is_online && is_invisible)
                               {
@@ -10476,8 +10477,8 @@ attr_index_def
 	  index_column_name_list    /* 3 */
 	  opt_where_clause          /* 4 */
           opt_deduplicate_key_mode  /* 5 */
-	  opt_comment_spec          /* 6 */
-	  opt_invisible             /* 7 */
+	  opt_invisible             /* 6 */
+          opt_comment_spec          /* 7 */
 		{{ DBG_TRACE_GRAMMAR(attr_index_def, : index_or_key identifier index_column_name_list opt_where_clause opt_comment_spec opt_invisible);
 			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser,
@@ -10492,7 +10493,7 @@ attr_index_def
 			  }
 			node->info.index.indexed_class = NULL;
 			node->info.index.where = $4;
-			node->info.index.comment = $6;
+			node->info.index.comment = $7;
 			node->info.index.index_status = SM_NORMAL_INDEX;
 
 			prefix_col_count = parser_count_prefix_columns (col, &arg_count);
@@ -10535,7 +10536,8 @@ attr_index_def
 #endif                            
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
-			if ($7)
+
+			if ($6)
 			  {
 			       node->info.index.index_status = SM_INVISIBLE_INDEX;
 			  }
