@@ -351,6 +351,7 @@ error:
   goto end;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * xstats_update_all_statistics () - Updates the statistics
  *                                   for all the classes of the database
@@ -434,6 +435,7 @@ exit_on_error:
 
   return DISK_ERROR;
 }
+#endif
 
 /*
  * xstats_get_statistics_from_server () - Retrieves the class statistics

@@ -201,7 +201,9 @@ extern char *xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * c
 						int *length);
 extern int xstats_update_statistics (THREAD_ENTRY * thread_p, OID * classoid, bool with_fullscan,
 				     CLASS_ATTR_NDV * class_attr_ndv);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan);
+#endif
 
 extern DKNPAGES xdisk_get_total_numpages (THREAD_ENTRY * thread_p, VOLID volid);
 extern DKNPAGES xdisk_get_free_numpages (THREAD_ENTRY * thread_p, VOLID volid);
