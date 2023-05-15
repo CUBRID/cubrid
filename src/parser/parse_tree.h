@@ -927,6 +927,7 @@ enum pt_custom_print
    * Check PT_PRINT_NO_SPECIFIED_USER_NAME before PT_PRINT_NO_CURRENT_USER_NAME to set implicit priority. */
   PT_PRINT_NO_SPECIFIED_USER_NAME = (0x1 << 23),
   PT_PRINT_NO_CURRENT_USER_NAME = (0x1 << 24),
+  /* the '@' sign has to be supressed during printing remote-table speicification for pure remote query */
   PT_PRINT_SUPPRESS_SERVER_NAME = (0x1 << 25)
 };
 
