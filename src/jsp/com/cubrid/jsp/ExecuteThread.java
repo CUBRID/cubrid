@@ -37,7 +37,6 @@ import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.CompileInfo;
-import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.DataUtilities;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -47,6 +46,8 @@ import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.handler.TestMain;
+import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
+import com.cubrid.plcsql.predefined.sp.SpLib.SQL_ERROR;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -222,10 +223,18 @@ public class ExecuteThread extends Thread {
                     }
                     Server.log(throwable);
                     try {
+                        // TODO: error managing module
                         if (throwable instanceof SQLException) {
-                            sendError(throwable.toString(), client);
+                            sendError(throwable.toString());
+                        } else if (throwable instanceof PlcsqlRuntimeError) {
+                            PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
+                            String errMsg = plcsqlError.getMessage();
+                            if (plcsqlError instanceof SQL_ERROR) {
+                                errMsg = "sql error <" + errMsg + ">";
+                            }
+                            sendError(errMsg);
                         } else {
-                            sendError(throwable.toString(), client);
+                            sendError(throwable.toString());
                         }
                     } catch (IOException e1) {
                         Server.log(e1);
@@ -437,14 +446,13 @@ public class ExecuteThread extends Thread {
         writeBuffer(resultBuffer);
     }
 
-    private void sendError(String exception, Socket socket) throws IOException {
+    private void sendError(String exception) throws IOException {
         resultBuffer.clear();
         packer.setBuffer(resultBuffer);
 
         packer.packInt(RequestCode.ERROR);
         packer.align(DataUtilities.MAX_ALIGNMENT);
-        packer.packValue(new Integer(1), DBType.DB_INT, this.charSet);
-        packer.packValue(exception, DBType.DB_STRING, this.charSet);
+        packer.packString(exception);
 
         resultBuffer = packer.getBuffer();
         writeBuffer(resultBuffer);
