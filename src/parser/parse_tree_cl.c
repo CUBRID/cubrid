@@ -9172,7 +9172,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
 
-      if (p->info.spec.remote_server_name)
+      if (p->info.spec.remote_server_name && !(parser->custom_print & PT_PRINT_SUPPRESS_SERVER_NAME))
 	{
 	  q = pt_append_nulstring (parser, q, "@");
 	  if (p->info.spec.remote_server_name->next)
@@ -9202,7 +9202,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
 
-      if (p->info.spec.remote_server_name)
+      if (p->info.spec.remote_server_name && !(parser->custom_print & PT_PRINT_SUPPRESS_SERVER_NAME))
 	{
 	  q = pt_append_nulstring (parser, q, "@");
 	  if (p->info.spec.remote_server_name->next)

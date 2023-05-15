@@ -10968,6 +10968,7 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static char *
 skip_comment (char *ps)
 {
@@ -11190,6 +11191,7 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_
 
   return pvc;
 }
+#endif
 
 static int
 pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
@@ -11828,12 +11830,10 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   val->type_enum = PT_TYPE_CHAR;
   val->info.value.string_type = ' ';
 
-  assert (sql_user_text && sql_user_text[0]);
-  if (sql_user_text)
-    {
-      val->info.value.data_value.str = pt_make_remote_query (parser, sql_user_text, snl);
-      PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
-    }
+  parser->custom_print |= PT_PRINT_SUPPRESS_SERVER_NAME;
+  val->info.value.data_value.str = pt_print_bytes (parser, node);
+  PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
+  parser->custom_print &= ~PT_PRINT_SUPPRESS_SERVER_NAME;
 
   if (into_spec)
     {
