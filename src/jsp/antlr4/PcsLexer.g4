@@ -83,6 +83,7 @@ FUNCTION:                     F U N C T I O N ;
 IF:                           I F ;
 IMMEDIATE:                    I M M E D I A T E ;
 IN:                           I N ;
+INOUT:                        I N O U T;
 INTEGER:                      I N T E G E R ;
 INT:                          I N T ;
 INTO:                         I N T O ;
