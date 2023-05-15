@@ -28,35 +28,37 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.predefined;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+public class PlcsqlRuntimeError extends RuntimeException {
 
-public class StmtRaiseAppErr extends Stmt {
+    public final int code;
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtRaiseAppErr(this);
+    public PlcsqlRuntimeError(int code, String msg) {
+        super(msg);
+        this.code = code;
     }
 
-    public final Expr errCode;
-    public final Expr errMsg;
-
-    public StmtRaiseAppErr(ParserRuleContext ctx, Expr errCode, Expr errMsg) {
-        super(ctx);
-
-        this.errCode = errCode;
-        this.errMsg = errMsg;
+    public int getLine() {
+        return line;
     }
 
-    @Override
-    public String toJavaCode() {
-        return String.format("throw new $APP_ERROR(%s, %s);", errCode.toJavaCode(), errMsg.toJavaCode());
+    public short getColumn() {
+        return column;
     }
 
-    // --------------------------------------------------
+    public void setLine(int line) {
+        this.line = line;
+    }
+
+    public void setColumn(short column) {
+        this.column = column;
+    }
+
+    // --------------------------------------------
     // Private
-    // --------------------------------------------------
+    // --------------------------------------------
 
+    private int line;
+    private short column;
 }

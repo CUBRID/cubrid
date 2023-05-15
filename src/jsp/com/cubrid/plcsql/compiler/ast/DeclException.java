@@ -55,6 +55,6 @@ public class DeclException extends Decl {
 
     @Override
     public String toJavaCode() {
-        return "class " + name + " extends RuntimeException {}";
+        return "class " + name + " extends $APP_ERROR {}";
     }
 }

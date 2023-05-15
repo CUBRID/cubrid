@@ -198,6 +198,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitSql_script(Sql_scriptContext ctx) {
 
+        addToImports("com.cubrid.jsp.Server");
+        addToImports("com.cubrid.plcsql.predefined.PlcsqlRuntimeError");
+
         AstNode ret = visitCreate_routine(ctx.create_routine());
 
         assert symbolStack.getSize() == 2;

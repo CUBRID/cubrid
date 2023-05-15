@@ -82,7 +82,7 @@ public class StmtForCursorLoop extends StmtCursorOpen {
 
     private static final String tmplStmt =
             Misc.combineLines(
-                    "{ // for loop with a cursor",
+                    "try { // for loop with a cursor",
                     "  %'DUPLICATE-CURSOR-ARG'%",
                     "  %'CURSOR'%.open(conn%'HOST-VALUES'%);",
                     "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
@@ -91,5 +91,8 @@ public class StmtForCursorLoop extends StmtCursorOpen {
                     "    %'STATEMENTS'%",
                     "  }",
                     "  %'CURSOR'%.close();",
+                    "} catch (SQLException e) {",
+                    "  Server.log(e);",
+                    "  throw new SQL_ERROR(e.getMessage());",
                     "}");
 }

@@ -30,7 +30,10 @@
 
 package com.cubrid.plcsql.predefined.sp;
 
+import com.cubrid.jsp.Server;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
+import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
+
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.DateTimeParser;
 import com.cubrid.plcsql.compiler.annotation.Operator;
@@ -51,39 +54,74 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
-    public static class $APP_ERROR extends RuntimeException {}
+    // builtin exceptions
+    public static class CASE_NOT_FOUND extends PlcsqlRuntimeError {
+        public CASE_NOT_FOUND() {
+            super(CODE_CASE_NOT_FOUND, MSG_CASE_NOT_FOUND);
+        }
+    }
+    public static class CURSOR_ALREADY_OPEN extends PlcsqlRuntimeError {
+        public CURSOR_ALREADY_OPEN() {
+            super(CODE_CURSOR_ALREADY_OPEN, MSG_CURSOR_ALREADY_OPEN);
+        }
+    }
+    public static class INVALID_CURSOR extends PlcsqlRuntimeError {
+        public INVALID_CURSOR() {
+            super(CODE_INVALID_CURSOR, MSG_INVALID_CURSOR);
+        }
+    }
+    public static class NO_DATA_FOUND extends PlcsqlRuntimeError {
+        public NO_DATA_FOUND() {
+            super(CODE_NO_DATA_FOUND, MSG_NO_DATA_FOUND);
+        }
+    }
+    public static class PROGRAM_ERROR extends PlcsqlRuntimeError {
+        public PROGRAM_ERROR() {
+            super(CODE_PROGRAM_ERROR, MSG_PROGRAM_ERROR);
+        }
+    }
+    public static class STORAGE_ERROR extends PlcsqlRuntimeError {
+        public STORAGE_ERROR() {
+            super(CODE_STORAGE_ERROR, MSG_STORAGE_ERROR);
+        }
+    }
+    public static class SQL_ERROR extends PlcsqlRuntimeError {
+        public SQL_ERROR(String s) {
+            super(CODE_STORAGE_ERROR, (s == null || s.length() == 0) ? MSG_SQL_ERROR : s);
+        }
+    }
+    public static class TOO_MANY_ROWS extends PlcsqlRuntimeError {
+        public TOO_MANY_ROWS() {
+            super(CODE_TOO_MANY_ROWS, MSG_TOO_MANY_ROWS);
+        }
+    }
+    public static class VALUE_ERROR extends PlcsqlRuntimeError {
+        public VALUE_ERROR() {
+            super(CODE_VALUE_ERROR, MSG_VALUE_ERROR);
+        }
+    }
+    public static class ZERO_DIVIDE extends PlcsqlRuntimeError {
+        public ZERO_DIVIDE() {
+            super(CODE_ZERO_DIVIDE, MSG_ZERO_DIVIDE);
+        }
+    }
 
-    public static class CASE_NOT_FOUND extends RuntimeException {}
-
-    public static class CURSOR_ALREADY_OPEN extends RuntimeException {}
-
-    public static class DUP_VAL_ON_INDEX extends RuntimeException {}
-
-    public static class INVALID_CURSOR extends RuntimeException {}
-
-    public static class LOGIN_DENIED extends RuntimeException {}
-
-    public static class NO_DATA_FOUND extends RuntimeException {}
-
-    public static class PROGRAM_ERROR extends RuntimeException {}
-
-    public static class ROWTYPE_MISMATCH extends RuntimeException {}
-
-    public static class STORAGE_ERROR extends RuntimeException {}
-
-    public static class TOO_MANY_ROWS extends RuntimeException {}
-
-    public static class VALUE_ERROR extends RuntimeException {}
-
-    public static class ZERO_DIVIDE extends RuntimeException {}
+    // user defined exception
+    public static class $APP_ERROR extends PlcsqlRuntimeError {
+        public $APP_ERROR(int code, String msg) {
+            super(code, msg);
+        }
+        public $APP_ERROR(String msg) {
+            super(CODE_APP_ERROR, msg);
+        }
+        public $APP_ERROR() {
+            super(CODE_APP_ERROR, "a user defined exception");
+        }
+    }
 
     public static String SQLERRM = null;
     public static Integer SQLCODE = null;
     public static Date SYSDATE = null;
-
-    public static Object raiseCaseNotFound() {
-        throw new CASE_NOT_FOUND();
-    }
 
     public static void PUT_LINE(String s) {
         DBMS_OUTPUT.putLine(s);
@@ -97,50 +135,83 @@ public class SpLib {
             this.query = query;
         }
 
-        public void open(Connection conn, Object... val) throws Exception {
-            if (isOpen()) {
-                throw new RuntimeException("already open");
-            }
-            PreparedStatement pstmt = conn.prepareStatement(query);
-            for (int i = 0; i < val.length; i++) {
-                pstmt.setObject(i + 1, val[i]);
-            }
-            rs = pstmt.executeQuery();
-        }
-
-        public void close() throws Exception {
-            if (rs != null) {
-                Statement stmt = rs.getStatement();
-                if (stmt != null) {
-                    stmt.close();
+        public void open(Connection conn, Object... val) {
+            try {
+                if (isOpen()) {
+                    throw new CURSOR_ALREADY_OPEN();
                 }
-                rs = null;
+                PreparedStatement pstmt = conn.prepareStatement(query);
+                for (int i = 0; i < val.length; i++) {
+                    pstmt.setObject(i + 1, val[i]);
+                }
+                rs = pstmt.executeQuery();
+            } catch (SQLException e) {
+                Server.log(e);
+                throw new SQL_ERROR(e.getMessage());
             }
         }
 
-        public boolean isOpen() throws Exception {
-            return (rs != null && !rs.isClosed());
+        public void close() {
+            try {
+                if (!isOpen()) {
+                    throw new INVALID_CURSOR();
+                }
+                if (rs != null) {
+                    Statement stmt = rs.getStatement();
+                    if (stmt != null) {
+                        stmt.close();
+                    }
+                    rs = null;
+                }
+            } catch (SQLException e) {
+                Server.log(e);
+                throw new SQL_ERROR(e.getMessage());
+            }
         }
 
-        public boolean found() throws Exception {
-            if (!isOpen()) {
-                throw new RuntimeException("invalid cursor");
+        public boolean isOpen() {
+            try {
+                return (rs != null && !rs.isClosed());
+            } catch (SQLException e) {
+                Server.log(e);
+                throw new SQL_ERROR(e.getMessage());
             }
-            return rs.getRow() > 0;
         }
 
-        public boolean notFound() throws Exception {
-            if (!isOpen()) {
-                throw new RuntimeException("invalid cursor");
+        public boolean found() {
+            try {
+                if (!isOpen()) {
+                    throw new INVALID_CURSOR();
+                }
+                return rs.getRow() > 0;
+            } catch (SQLException e) {
+                Server.log(e);
+                throw new SQL_ERROR(e.getMessage());
             }
-            return rs.getRow() == 0;
         }
 
-        public int rowCount() throws Exception {
-            if (!isOpen()) {
-                throw new RuntimeException("invalid cursor");
+        public boolean notFound() {
+            try {
+                if (!isOpen()) {
+                    throw new INVALID_CURSOR();
+                }
+                return rs.getRow() == 0;
+            } catch (SQLException e) {
+                Server.log(e);
+                throw new SQL_ERROR(e.getMessage());
             }
-            return rs.getRow();
+        }
+
+        public int rowCount() {
+            try {
+                if (!isOpen()) {
+                    throw new INVALID_CURSOR();
+                }
+                return rs.getRow();
+            } catch (SQLException e) {
+                Server.log(e);
+                throw new SQL_ERROR(e.getMessage());
+            }
         }
     }
 
@@ -221,7 +292,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     // ====================================
@@ -256,7 +327,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     // ====================================
@@ -352,7 +423,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -426,7 +497,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -503,7 +574,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -578,7 +649,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -651,7 +722,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -724,7 +795,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -798,7 +869,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -905,7 +976,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -980,7 +1051,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -1057,7 +1128,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     // ====================================
@@ -1067,6 +1138,9 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (r.equals((short) 0)) {
+            throw new ZERO_DIVIDE();
+        }
         return (short) (l / r);
     }
 
@@ -1074,6 +1148,9 @@ public class SpLib {
     public static Integer opDiv(Integer l, Integer r) {
         if (l == null || r == null) {
             return null;
+        }
+        if (r.equals(0)) {
+            throw new ZERO_DIVIDE();
         }
         return l / r;
     }
@@ -1083,6 +1160,9 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (r.equals(0)) {
+            throw new ZERO_DIVIDE();
+        }
         return l / r;
     }
 
@@ -1090,6 +1170,9 @@ public class SpLib {
     public static BigDecimal opDiv(BigDecimal l, BigDecimal r) {
         if (l == null || r == null) {
             return null;
+        }
+        if (r.equals(BigDecimal.ZERO)) {
+            throw new ZERO_DIVIDE();
         }
         return l.divide(r, BigDecimal.ROUND_HALF_UP);
     }
@@ -1099,6 +1182,9 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (r.equals(0.0f)) {
+            throw new ZERO_DIVIDE();
+        }
         return l / r;
     }
 
@@ -1106,6 +1192,9 @@ public class SpLib {
     public static Double opDiv(Double l, Double r) {
         if (l == null || r == null) {
             return null;
+        }
+        if (r.equals(0.0)) {
+            throw new ZERO_DIVIDE();
         }
         return l / r;
     }
@@ -1116,7 +1205,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     // ====================================
@@ -1126,6 +1215,9 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (r.equals((short) 0)) {
+            throw new ZERO_DIVIDE();
+        }
         return (short) (l / r);
     }
 
@@ -1134,6 +1226,9 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (r.equals(0)) {
+            throw new ZERO_DIVIDE();
+        }
         return l / r;
     }
 
@@ -1141,6 +1236,9 @@ public class SpLib {
     public static Long opDivInt(Long l, Long r) {
         if (l == null || r == null) {
             return null;
+        }
+        if (r.equals(0)) {
+            throw new ZERO_DIVIDE();
         }
         return l / r;
     }
@@ -1151,7 +1249,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     // ====================================
@@ -1161,6 +1259,9 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (r.equals((short) 0)) {
+            throw new ZERO_DIVIDE();
+        }
         return (short) (l % r);
     }
 
@@ -1169,6 +1270,9 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (r.equals(0)) {
+            throw new ZERO_DIVIDE();
+        }
         return l % r;
     }
 
@@ -1176,6 +1280,9 @@ public class SpLib {
     public static Long opMod(Long l, Long r) {
         if (l == null || r == null) {
             return null;
+        }
+        if (r.equals(0)) {
+            throw new ZERO_DIVIDE();
         }
         return l % r;
     }
@@ -1186,7 +1293,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     // ====================================
@@ -1287,7 +1394,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1295,7 +1402,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1304,7 +1411,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     // ====================================
@@ -1392,7 +1499,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1427,7 +1534,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1436,7 +1543,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR();  // unreachable
     }
 
     // ====================================
@@ -1515,7 +1622,7 @@ public class SpLib {
             return s.matches(regex);
         } catch (PatternSyntaxException e) {
             assert false;
-            throw new RuntimeException("unreachable");
+            throw new PROGRAM_ERROR();  // unreachable
         }
     }
 
@@ -2033,8 +2140,7 @@ public class SpLib {
         LocalDateTime dt = DateTimeParser.DatetimeLiteral.parse(e);
         if (dt == null) {
             // invalid string
-            throw new RuntimeException(
-                    "value error"); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
 
         if (dt.equals(DateTimeParser.nullDatetime)) {
@@ -2059,8 +2165,7 @@ public class SpLib {
         LocalDate d = DateTimeParser.DateLiteral.parse(e);
         if (d == null) {
             // invalid string
-            throw new RuntimeException(
-                    "value error"); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
 
         if (d.equals(DateTimeParser.nullDate)) {
@@ -2078,8 +2183,7 @@ public class SpLib {
         LocalTime t = DateTimeParser.TimeLiteral.parse(e);
         if (t == null) {
             // invalid string
-            throw new RuntimeException(
-                    "value error"); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
 
         return new Time(t.getHour(), t.getMinute(), t.getSecond());
@@ -2093,8 +2197,7 @@ public class SpLib {
         ZonedDateTime zdt = DateTimeParser.TimestampLiteral.parse(e);
         if (zdt == null) {
             // invalid string
-            throw new RuntimeException(
-                    "value error"); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
 
         if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
@@ -2152,8 +2255,7 @@ public class SpLib {
         try {
             return Double.valueOf(e);
         } catch (NumberFormatException ex) {
-            throw new RuntimeException(
-                    "value error", ex); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
     }
 
@@ -2169,8 +2271,7 @@ public class SpLib {
         try {
             return Float.valueOf(e);
         } catch (NumberFormatException ex) {
-            throw new RuntimeException(
-                    "value error", ex); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
     }
 
@@ -2211,7 +2312,7 @@ public class SpLib {
             return (Timestamp) e;
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static Date convObjectToDate(Object e) {
@@ -2228,7 +2329,7 @@ public class SpLib {
             return convTimestampToDate((Timestamp) e);
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static Time convObjectToTime(Object e) {
@@ -2255,7 +2356,7 @@ public class SpLib {
             return convTimestampToTime((Timestamp) e);
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static Timestamp convObjectToTimestamp(Object e) {
@@ -2284,7 +2385,7 @@ public class SpLib {
             return convDatetimeToTimestamp((Timestamp) e);
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static Integer convObjectToInt(Object e) {
@@ -2308,7 +2409,7 @@ public class SpLib {
             return convDoubleToInt((Double) e);
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static Short convObjectToShort(Object e) {
@@ -2332,7 +2433,7 @@ public class SpLib {
             return convDoubleToShort((Double) e);
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static String convObjectToString(Object e) {
@@ -2365,7 +2466,7 @@ public class SpLib {
             */
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static Double convObjectToDouble(Object e) {
@@ -2389,7 +2490,7 @@ public class SpLib {
             return (Double) e;
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static Float convObjectToFloat(Object e) {
@@ -2413,7 +2514,7 @@ public class SpLib {
             return convDoubleToFloat((Double) e);
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static BigDecimal convObjectToNumeric(Object e) {
@@ -2437,7 +2538,7 @@ public class SpLib {
             return convDoubleToNumeric((Double) e);
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     public static Long convObjectToBigint(Object e) {
@@ -2461,12 +2562,36 @@ public class SpLib {
             return convDoubleToBigint((Double) e);
         }
 
-        throw new RuntimeException("value error"); // TODO: throw an appropriate built-in exception
+        throw new VALUE_ERROR();
     }
 
     // ------------------------------------------------
     // Private
     // ------------------------------------------------
+
+    private static final int CODE_CASE_NOT_FOUND = 0;
+    private static final int CODE_CURSOR_ALREADY_OPEN = 1;
+    private static final int CODE_INVALID_CURSOR = 2;
+    private static final int CODE_NO_DATA_FOUND = 3;
+    private static final int CODE_PROGRAM_ERROR = 4;
+    private static final int CODE_STORAGE_ERROR = 5;
+    private static final int CODE_SQL_ERROR = 6;
+    private static final int CODE_TOO_MANY_ROWS = 7;
+    private static final int CODE_VALUE_ERROR = 8;
+    private static final int CODE_ZERO_DIVIDE = 9;
+
+    private static final int CODE_APP_ERROR = 99;
+
+    private static final String MSG_CASE_NOT_FOUND = "case not found";
+    private static final String MSG_CURSOR_ALREADY_OPEN = "cursor already open";
+    private static final String MSG_INVALID_CURSOR = "invalid cursor";
+    private static final String MSG_NO_DATA_FOUND = "no data found";
+    private static final String MSG_PROGRAM_ERROR = "internal server error";
+    private static final String MSG_STORAGE_ERROR = "storage error";
+    private static final String MSG_SQL_ERROR = "error while running SQL";
+    private static final String MSG_TOO_MANY_ROWS = "too many rows";
+    private static final String MSG_VALUE_ERROR = "value error";
+    private static final String MSG_ZERO_DIVIDE = "division by zero";
 
     private static final Short SHORT_ZERO = Short.valueOf((short) 0);
     private static final Integer INT_ZERO = Integer.valueOf(0);
@@ -2616,8 +2741,7 @@ public class SpLib {
         try {
             return bd.longValueExact();
         } catch (ArithmeticException e) {
-            throw new RuntimeException(
-                    "value error"); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
     }
 
@@ -2627,8 +2751,7 @@ public class SpLib {
         try {
             return bd.intValueExact();
         } catch (ArithmeticException e) {
-            throw new RuntimeException(
-                    "value error"); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
     }
 
@@ -2638,8 +2761,7 @@ public class SpLib {
         try {
             return bd.shortValueExact();
         } catch (ArithmeticException e) {
-            throw new RuntimeException(
-                    "value error"); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
     }
 
@@ -2655,7 +2777,7 @@ public class SpLib {
             // 1 row selected. (0.004910 sec) Committed. (0.000020 sec)
 
             // TODO: figure out what to return
-            throw new RuntimeException("unimplemented yet");
+            throw new VALUE_ERROR();
         }
 
         int totalSec = (int) (l % 86400L);
@@ -2671,12 +2793,11 @@ public class SpLib {
             // TODO: check the following error and decide what to do for negative values
             //   select cast(cast(-100 as bigint) as timestamp);
             //   ERROR: Cannot coerce value of domain "bigint" to domain "timestamp"
-            throw new RuntimeException("unimplemented yet");
+            throw new VALUE_ERROR();
         } else if (l
                 > 2147483647L) { // 2147483647L : see section 'implicit type conversion' in the user
             // manual
-            throw new RuntimeException(
-                    "value error"); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         } else {
             return new Timestamp(l * 1000L); // * 1000 : converts it to milli-seconds
         }
@@ -2694,8 +2815,7 @@ public class SpLib {
         try {
             return new BigDecimal(s);
         } catch (NumberFormatException e) {
-            throw new RuntimeException(
-                    "value error", e); // TODO: throw an appropriate built-in exception
+            throw new VALUE_ERROR();
         }
     }
 
@@ -2731,7 +2851,7 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof String) {
@@ -2770,7 +2890,7 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof Short) {
@@ -2810,7 +2930,7 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof Integer) {
@@ -2850,7 +2970,7 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof Long) {
@@ -2890,7 +3010,7 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof BigDecimal) {
@@ -2926,7 +3046,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof Float) {
@@ -2962,7 +3082,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof Double) {
@@ -2998,7 +3118,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof Date) {
@@ -3029,7 +3149,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof Time) {
@@ -3063,7 +3183,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else if (l instanceof Timestamp) {
@@ -3098,17 +3218,17 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new RuntimeException("unreachable");
+                throw new PROGRAM_ERROR();  // unreachable
             }
 
         } else {
             assert false : "unreachable";
-            throw new RuntimeException("unreachable");
+            throw new PROGRAM_ERROR();  // unreachable
         }
 
         if (lConv == null) {
             assert rConv == null;
-            throw new RuntimeException("cannot compare two values of unsupported types");
+            throw new VALUE_ERROR(); // cannot compare two values of unsupported types
         } else {
             assert rConv != null;
             return lConv.compareTo(rConv);

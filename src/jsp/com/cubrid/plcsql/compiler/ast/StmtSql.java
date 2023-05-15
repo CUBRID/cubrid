@@ -80,13 +80,11 @@ public abstract class StmtSql extends Stmt {
             assert coerces != null;
 
             String setResultsStr = getSetResultsStr(intoVarList);
-            String setNullsStr = getSetNullsStr(intoVarList);
             return tmplSelect
                     .replace("%'KIND'%", dynamic ? "dynamic" : "static")
                     .replace("%'SQL'%", Misc.indentLines(sql.toJavaCode(), 1, true))
                     .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
                     .replace("      %'SET-RESULTS'%", Misc.indentLines(setResultsStr, 3))
-                    .replace("    %'SET-NULLS'%", Misc.indentLines(setNullsStr, 2))
                     .replace("%'LEVEL'%", "" + level);
         }
     }
@@ -103,17 +101,20 @@ public abstract class StmtSql extends Stmt {
 
     private static final String tmplDml =
             Misc.combineLines(
-                    "{ // %'KIND'% SQL statement",
+                    "try { // %'KIND'% SQL statement",
                     "  String dynSql_%'LEVEL'% = %'SQL'%;",
                     "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
                     "  %'SET-USED-VALUES'%",
                     "  sql_rowcount[0] = (long) stmt_%'LEVEL'%.executeUpdate();",
                     "  stmt_%'LEVEL'%.close();",
+                    "} catch (SQLException e) {",
+                    "  Server.log(e);",
+                    "  throw new SQL_ERROR(e.getMessage());",
                     "}");
 
     private static final String tmplSelect =
             Misc.combineLines(
-                    "{ // %'KIND'% Select statement",
+                    "try { // %'KIND'% Select statement",
                     "  String dynSql_%'LEVEL'% = %'SQL'%;",
                     "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
                     "  %'SET-USED-VALUES'%",
@@ -129,14 +130,17 @@ public abstract class StmtSql extends Stmt {
                     "  }",
                     "  if (i%'LEVEL'% == 0) {",
                     "    sql_rowcount[0] = 0L;",
-                    "    %'SET-NULLS'%",
+                    "    throw new NO_DATA_FOUND();",
                     "  } else if (i%'LEVEL'% == 1) {",
                     "    sql_rowcount[0] = 1L;",
                     "  } else {",
                     "    sql_rowcount[0] = 1L; // Surprise? Refer to the Spec.",
-                    "    throw new RuntimeException(\"too many rows\");",
+                    "    throw new TOO_MANY_ROWS();",
                     "  }",
                     "  stmt_%'LEVEL'%.close();",
+                    "} catch (SQLException e) {",
+                    "  Server.log(e);",
+                    "  throw new SQL_ERROR(e.getMessage());",
                     "}");
 
     private String getSetResultsStr(List<ExprId> intoVarList) {
@@ -165,22 +169,6 @@ public abstract class StmtSql extends Stmt {
             sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
 
             i++;
-        }
-
-        return sbuf.toString();
-    }
-
-    private static String getSetNullsStr(List<ExprId> intoVarList) {
-
-        StringBuffer sbuf = new StringBuffer();
-        int size = intoVarList.size();
-        for (int i = 0; i < size; i++) {
-            if (i > 0) {
-                sbuf.append("\n");
-            }
-
-            ExprId id = intoVarList.get(i);
-            sbuf.append(String.format("%s = null;", id.toJavaCode()));
         }
 
         return sbuf.toString();
