@@ -5642,7 +5642,7 @@ stats_update_statistics (MOP classop, int with_fullscan)
   CLASS_ATTR_NDV class_attr_ndv;
 
   /* get NDV by query */
-  if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL) != NO_ERROR)
+  if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
     {
       if (class_attr_ndv.attr_ndv != NULL)
 	{
@@ -5691,7 +5691,7 @@ stats_update_statistics (MOP classop, int with_fullscan)
   CLASS_ATTR_NDV class_attr_ndv;
 
   /* get NDV by query */
-  if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL) != NO_ERROR)
+  if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
     {
       if (class_attr_ndv.attr_ndv != NULL)
 	{

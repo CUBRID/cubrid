@@ -340,149 +340,148 @@ stats_dump (const char *class_name_p, FILE * file_p)
       attr_stats_p = &(class_stats_p->attr_stats[i]);
 
       name_p = sm_get_att_name (class_mop, attr_stats_p->id);
-      fprintf (file_p, " Attribute: %s\n", (name_p ? name_p : "not found"));
-      fprintf (file_p, "    Number of Distinct Values: %ld\n", attr_stats_p->ndv);
-      fprintf (file_p, "    Type: ");
+      fprintf (file_p, " Attribute: %s (", (name_p ? name_p : "not found"));
 
       switch (attr_stats_p->type)
 	{
 	case DB_TYPE_SHORT:
-	  fprintf (file_p, "DB_TYPE_SHORT\n");
+	  fprintf (file_p, "SHORT)\n");
 	  break;
 
 	case DB_TYPE_INTEGER:
-	  fprintf (file_p, "DB_TYPE_INTEGER\n");
+	  fprintf (file_p, "INTEGER)\n");
 	  break;
 
 	case DB_TYPE_BIGINT:
-	  fprintf (file_p, "DB_TYPE_BIGINT\n");
+	  fprintf (file_p, "BIGINT)\n");
 	  break;
 
 	case DB_TYPE_FLOAT:
-	  fprintf (file_p, "DB_TYPE_FLOAT\n");
+	  fprintf (file_p, "FLOAT)\n");
 	  break;
 
 	case DB_TYPE_DOUBLE:
-	  fprintf (file_p, "DB_TYPE_DOUBLE\n");
+	  fprintf (file_p, "DOUBLE)\n");
 	  break;
 
 	case DB_TYPE_STRING:
-	  fprintf (file_p, "DB_TYPE_STRING\n");
+	  fprintf (file_p, "STRING)\n");
 	  break;
 
 	case DB_TYPE_OBJECT:
-	  fprintf (file_p, "DB_TYPE_OBJECT\n");
+	  fprintf (file_p, "OBJECT)\n");
 	  break;
 
 	case DB_TYPE_SET:
-	  fprintf (file_p, "DB_TYPE_SET\n");
+	  fprintf (file_p, "SET)\n");
 	  break;
 
 	case DB_TYPE_MULTISET:
-	  fprintf (file_p, "DB_TYPE_MULTISET\n");
+	  fprintf (file_p, "MULTISET)\n");
 	  break;
 
 	case DB_TYPE_SEQUENCE:
-	  fprintf (file_p, "DB_TYPE_SEQUENCE\n");
+	  fprintf (file_p, "SEQUENCE)\n");
 	  break;
 
 	case DB_TYPE_TIME:
-	  fprintf (file_p, "DB_TYPE_TIME\n");
+	  fprintf (file_p, "TIME)\n");
 	  break;
 
 	case DB_TYPE_TIMESTAMP:
-	  fprintf (file_p, "DB_TYPE_TIMESTAMP\n");
+	  fprintf (file_p, "TIMESTAMP)\n");
 	  break;
 
 	case DB_TYPE_TIMESTAMPLTZ:
-	  fprintf (file_p, "DB_TYPE_TIMESTAMPLTZ\n");
+	  fprintf (file_p, "TIMESTAMPLTZ)\n");
 	  break;
 
 	case DB_TYPE_TIMESTAMPTZ:
-	  fprintf (file_p, "DB_TYPE_TIMESTAMPTZ\n");
+	  fprintf (file_p, "TIMESTAMPTZ)\n");
 	  break;
 
 	case DB_TYPE_DATETIME:
-	  fprintf (file_p, "DB_TYPE_DATETIME\n");
+	  fprintf (file_p, "DATETIME)\n");
 	  break;
 
 	case DB_TYPE_DATETIMELTZ:
-	  fprintf (file_p, "DB_TYPE_DATETIMELTZ\n");
+	  fprintf (file_p, "DATETIMELTZ)\n");
 	  break;
 
 	case DB_TYPE_DATETIMETZ:
-	  fprintf (file_p, "DB_TYPE_DATETIMETZ\n");
+	  fprintf (file_p, "DATETIMETZ)\n");
 	  break;
 
 	case DB_TYPE_MONETARY:
-	  fprintf (file_p, "DB_TYPE_MONETARY\n");
+	  fprintf (file_p, "MONETARY)\n");
 	  break;
 
 	case DB_TYPE_DATE:
-	  fprintf (file_p, "DB_TYPE_DATE\n");
+	  fprintf (file_p, "DB_TYPE_DATE)\n");
 	  break;
 
 	case DB_TYPE_BLOB:
-	  fprintf (file_p, "DB_TYPE_BLOB\n");
+	  fprintf (file_p, "BLOB)\n");
 	  break;
 
 	case DB_TYPE_CLOB:
-	  fprintf (file_p, "DB_TYPE_CLOB\n");
+	  fprintf (file_p, "CLOB)\n");
 	  break;
 
 	case DB_TYPE_VARIABLE:
-	  fprintf (file_p, "DB_TYPE_VARIABLE\n");
+	  fprintf (file_p, "VARIABLE)\n");
 	  break;
 
 	case DB_TYPE_SUB:
-	  fprintf (file_p, "DB_TYPE_SUB\n");
+	  fprintf (file_p, "SUB)\n");
 	  break;
 
 	case DB_TYPE_POINTER:
-	  fprintf (file_p, "DB_TYPE_POINTER\n");
+	  fprintf (file_p, "POINTER)\n");
 	  break;
 
 	case DB_TYPE_NULL:
-	  fprintf (file_p, "DB_TYPE_NULL\n");
+	  fprintf (file_p, "NULL)\n");
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  fprintf (file_p, "DB_TYPE_NUMERIC\n");
+	  fprintf (file_p, "NUMERIC)\n");
 	  break;
 
 	case DB_TYPE_BIT:
-	  fprintf (file_p, "DB_TYPE_BIT\n");
+	  fprintf (file_p, "BIT)\n");
 	  break;
 
 	case DB_TYPE_VARBIT:
-	  fprintf (file_p, "DB_TYPE_VARBIT\n");
+	  fprintf (file_p, "VARBIT)\n");
 	  break;
 
 	case DB_TYPE_CHAR:
-	  fprintf (file_p, "DB_TYPE_CHAR\n");
+	  fprintf (file_p, "CHAR)\n");
 	  break;
 
 	case DB_TYPE_NCHAR:
-	  fprintf (file_p, "DB_TYPE_NCHAR\n");
+	  fprintf (file_p, "NCHAR)\n");
 	  break;
 
 	case DB_TYPE_VARNCHAR:
-	  fprintf (file_p, "DB_TYPE_VARNCHAR\n");
+	  fprintf (file_p, "VARNCHAR)\n");
 	  break;
 
 	case DB_TYPE_DB_VALUE:
-	  fprintf (file_p, "DB_TYPE_DB_VALUE\n");
+	  fprintf (file_p, "DB_VALUE)\n");
 	  break;
 
 	case DB_TYPE_ENUMERATION:
-	  fprintf (file_p, "DB_TYPE_ENUMERATION\n");
+	  fprintf (file_p, "ENUMERATION)\n");
 	  break;
 
 	default:
 	  assert (false);
-	  fprintf (file_p, "UNKNOWN_TYPE\n");
+	  fprintf (file_p, "UNKNOWN_TYPE)\n");
 	  break;
 	}
+      fprintf (file_p, "    Number of Distinct Values: %ld\n", attr_stats_p->ndv);
 
       if (attr_stats_p->n_btstats > 0)
 	{
@@ -535,7 +534,7 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
     }
 
   /* get NDV by query */
-  if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, file_p) != NO_ERROR)
+  if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, file_p, 0) != NO_ERROR)
     {
       goto end;
     }
@@ -567,7 +566,7 @@ end:
  *   attr_ndv(out):
  */
 int
-stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p)
+stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p, int with_fullscan)
 {
   DB_ATTRIBUTE *att;
   int error = NO_ERROR;
@@ -607,7 +606,14 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
     }
 
   /* create sampling SQL statement */
-  query = "SELECT /*+ SAMPLING_SCAN */ %s FROM [%s]";
+  if (with_fullscan)
+    {
+      query = "SELECT %s FROM [%s]";
+    }
+  else
+    {
+      query = "SELECT /*+ SAMPLING_SCAN */ %s FROM [%s]";
+    }
 
   buf_size = strlen (select_list) + strlen (class_name_p) + 40;
   query_buf = (char *) malloc (sizeof (char) * buf_size);
