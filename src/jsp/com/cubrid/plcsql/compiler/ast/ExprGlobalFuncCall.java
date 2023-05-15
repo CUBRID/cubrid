@@ -66,7 +66,7 @@ public class ExprGlobalFuncCall extends Expr {
                 .replace("%'DYNAMIC-SQL'%", dynSql)
                 .replace("%'RETURN-TYPE'%", decl.retType.toJavaCode())
                 .replace("%'PARAMETERS'%", paramStr)
-                .replace("    %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 2))
+                .replace("      %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 3))
                 .replace("  %'ARGUMENTS'%", Misc.indentLines(args.toJavaCode(",\n"), 1));
     }
 
@@ -78,14 +78,19 @@ public class ExprGlobalFuncCall extends Expr {
             Misc.combineLines(
                     "(new Object() { // global function call: %'FUNC-NAME'%",
                     "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
-                    "    String dynSql = \"%'DYNAMIC-SQL'%\";",
-                    "    CallableStatement stmt = conn.prepareCall(dynSql);",
-                    "    stmt.registerOutParameter(1, java.sql.Types.OTHER);",
-                    "    %'SET-USED-VALUES'%",
-                    "    stmt.execute();",
-                    "    %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) stmt.getObject(1);",
-                    "    stmt.close();",
-                    "    return ret;",
+                    "    try {",
+                    "      String dynSql = \"%'DYNAMIC-SQL'%\";",
+                    "      CallableStatement stmt = conn.prepareCall(dynSql);",
+                    "      stmt.registerOutParameter(1, java.sql.Types.OTHER);",
+                    "      %'SET-USED-VALUES'%",
+                    "      stmt.execute();",
+                    "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) stmt.getObject(1);",
+                    "      stmt.close();",
+                    "      return ret;",
+                    "    } catch (SQLException e) {",
+                    "      Server.log(e);",
+                    "      throw new PROGRAM_ERROR();",
+                    "    } ",
                     "  }",
                     "}.invoke(",
                     "  %'ARGUMENTS'%",

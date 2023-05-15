@@ -28,38 +28,37 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.predefined;
 
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+public class PlcsqlRuntimeError extends RuntimeException {
 
-public class StmtRollback extends Stmt {
+    public final int code;
 
-    public StmtRollback(ParserRuleContext ctx) {
-        super(ctx);
+    public PlcsqlRuntimeError(int code, String msg) {
+        super(msg);
+        this.code = code;
     }
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtRollback(this);
+    public int getLine() {
+        return line;
     }
 
-    @Override
-    public String toJavaCode() {
-        return code;
+    public short getColumn() {
+        return column;
     }
 
-    // --------------------------------------------------
+    public void setLine(int line) {
+        this.line = line;
+    }
+
+    public void setColumn(short column) {
+        this.column = column;
+    }
+
+    // --------------------------------------------
     // Private
-    // --------------------------------------------------
+    // --------------------------------------------
 
-    private static final String code =
-            Misc.combineLines(
-                    "try {",
-                    "  conn.rollback();",
-                    "} catch (SQLException e) {",
-                    "  Server.log(e);",
-                    "  throw new SQL_ERROR(e.getMessage());",
-                    "}");
+    private int line;
+    private short column;
 }
