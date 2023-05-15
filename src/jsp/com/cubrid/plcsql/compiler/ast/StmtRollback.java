@@ -62,5 +62,4 @@ public class StmtRollback extends Stmt {
                     "  Server.log(e);",
                     "  throw new SQL_ERROR(e.getMessage());",
                     "}");
-
 }

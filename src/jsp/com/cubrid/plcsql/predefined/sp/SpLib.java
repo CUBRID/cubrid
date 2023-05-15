@@ -32,11 +32,10 @@ package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
-import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
-
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.DateTimeParser;
 import com.cubrid.plcsql.compiler.annotation.Operator;
+import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.*;
@@ -60,46 +59,55 @@ public class SpLib {
             super(CODE_CASE_NOT_FOUND, MSG_CASE_NOT_FOUND);
         }
     }
+
     public static class CURSOR_ALREADY_OPEN extends PlcsqlRuntimeError {
         public CURSOR_ALREADY_OPEN() {
             super(CODE_CURSOR_ALREADY_OPEN, MSG_CURSOR_ALREADY_OPEN);
         }
     }
+
     public static class INVALID_CURSOR extends PlcsqlRuntimeError {
         public INVALID_CURSOR() {
             super(CODE_INVALID_CURSOR, MSG_INVALID_CURSOR);
         }
     }
+
     public static class NO_DATA_FOUND extends PlcsqlRuntimeError {
         public NO_DATA_FOUND() {
             super(CODE_NO_DATA_FOUND, MSG_NO_DATA_FOUND);
         }
     }
+
     public static class PROGRAM_ERROR extends PlcsqlRuntimeError {
         public PROGRAM_ERROR() {
             super(CODE_PROGRAM_ERROR, MSG_PROGRAM_ERROR);
         }
     }
+
     public static class STORAGE_ERROR extends PlcsqlRuntimeError {
         public STORAGE_ERROR() {
             super(CODE_STORAGE_ERROR, MSG_STORAGE_ERROR);
         }
     }
+
     public static class SQL_ERROR extends PlcsqlRuntimeError {
         public SQL_ERROR(String s) {
             super(CODE_STORAGE_ERROR, (s == null || s.length() == 0) ? MSG_SQL_ERROR : s);
         }
     }
+
     public static class TOO_MANY_ROWS extends PlcsqlRuntimeError {
         public TOO_MANY_ROWS() {
             super(CODE_TOO_MANY_ROWS, MSG_TOO_MANY_ROWS);
         }
     }
+
     public static class VALUE_ERROR extends PlcsqlRuntimeError {
         public VALUE_ERROR() {
             super(CODE_VALUE_ERROR, MSG_VALUE_ERROR);
         }
     }
+
     public static class ZERO_DIVIDE extends PlcsqlRuntimeError {
         public ZERO_DIVIDE() {
             super(CODE_ZERO_DIVIDE, MSG_ZERO_DIVIDE);
@@ -111,9 +119,11 @@ public class SpLib {
         public $APP_ERROR(int code, String msg) {
             super(code, msg);
         }
+
         public $APP_ERROR(String msg) {
             super(CODE_APP_ERROR, msg);
         }
+
         public $APP_ERROR() {
             super(CODE_APP_ERROR, "a user defined exception");
         }
@@ -292,7 +302,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     // ====================================
@@ -327,7 +337,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     // ====================================
@@ -423,7 +433,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -497,7 +507,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -574,7 +584,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -649,7 +659,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -722,7 +732,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -795,7 +805,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -869,7 +879,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -976,7 +986,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -1051,7 +1061,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -1128,7 +1138,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     // ====================================
@@ -1205,7 +1215,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     // ====================================
@@ -1249,7 +1259,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     // ====================================
@@ -1293,7 +1303,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     // ====================================
@@ -1394,7 +1404,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1402,7 +1412,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1411,7 +1421,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     // ====================================
@@ -1499,7 +1509,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1534,7 +1544,7 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1543,7 +1553,7 @@ public class SpLib {
             return null;
         }
         assert false : "unreachable";
-        throw new PROGRAM_ERROR();  // unreachable
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     // ====================================
@@ -1622,7 +1632,7 @@ public class SpLib {
             return s.matches(regex);
         } catch (PatternSyntaxException e) {
             assert false;
-            throw new PROGRAM_ERROR();  // unreachable
+            throw new PROGRAM_ERROR(); // unreachable
         }
     }
 
@@ -2851,7 +2861,7 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof String) {
@@ -2890,7 +2900,7 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof Short) {
@@ -2930,7 +2940,7 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof Integer) {
@@ -2970,7 +2980,7 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof Long) {
@@ -3010,7 +3020,7 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof BigDecimal) {
@@ -3046,7 +3056,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof Float) {
@@ -3082,7 +3092,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof Double) {
@@ -3118,7 +3128,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof Date) {
@@ -3149,7 +3159,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof Time) {
@@ -3183,7 +3193,7 @@ public class SpLib {
                 // not applicable
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else if (l instanceof Timestamp) {
@@ -3218,12 +3228,12 @@ public class SpLib {
                 rConv = (Timestamp) r;
             } else {
                 assert false : "unreachable";
-                throw new PROGRAM_ERROR();  // unreachable
+                throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else {
             assert false : "unreachable";
-            throw new PROGRAM_ERROR();  // unreachable
+            throw new PROGRAM_ERROR(); // unreachable
         }
 
         if (lConv == null) {
