@@ -3301,6 +3301,9 @@ struct pt_pointer_info
 {
   PT_NODE *node;		/* original node pointer */
   PT_POINTER_TYPE type;		/* pointer type (normal pointer/reference) */
+  double sel;			/* selectivity factor of the predicate */
+  int rank;			/* rank factor for the same selectivity */
+  int pred_order;		/* for view-merge or predicate-push. pred is ordered by pred_order */
   bool do_walk;			/* apply walk on node bool */
 };
 
