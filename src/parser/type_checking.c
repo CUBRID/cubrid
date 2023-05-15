@@ -245,7 +245,6 @@ static int pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, P
 static int pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3);
 
 static PT_NODE *pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node);
-static PT_NODE *pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg);
@@ -12574,47 +12573,12 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
   return precision;
 }
 
-static PT_NODE *
-pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+static int
+pt_wrap_logical_arglist_with_integer (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * arg_list)
 {
-  FUNC_CODE fcode = node->info.function.function_type;
-  if (pt_is_function_new_type_checking (fcode))
-    {
-      return pt_eval_function_type_new (parser, node);
-    }
-  else
-    {
-      return pt_eval_function_type_old (parser, node);
-    }
-}
-
-/*
- * pt_eval_function_type () -
- *   return: returns a node of the same type.
- *   parser(in): parser global context info for reentrancy
- *   node(in): a parse tree node of type PT_FUNCTION denoting an
- *             an expression with aggregate functions.
- */
-static PT_NODE *
-pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
-{
-  FUNC_CODE fcode = node->info.function.function_type;
-  if (pt_is_function_unsupported (fcode))
-    {
-      assert (false);
-      pt_frob_error (parser, node, "ERR unsupported function code: %d", fcode);
-    }
-
-  PT_NODE *arg_list = node->info.function.arg_list;
-  if (!arg_list && !pt_is_function_no_arg (fcode))
-    {
-      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
-		    pt_short_print (parser, node));
-      return node;
-    }
-
   PT_NODE *prev = NULL;
   PT_NODE *arg = NULL;
+
   /* to avoid "node->next" ambiguities, wrap any logical node within the arg list with a cast to integer. This way, the
    * CNF trees do not mix up with the arg list. */
   for (arg = arg_list; arg != NULL; prev = arg, arg = arg->next)
@@ -12626,7 +12590,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      /* the error message is set by pt_wrap_with_cast_op */
 	      node->type_enum = PT_TYPE_NONE;
-	      return node;
+	      return ER_FAILED;
 	    }
 	  if (prev != NULL)
 	    {
@@ -12639,6 +12603,35 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+  return NO_ERROR;
+}
+
+static PT_NODE *
+pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  FUNC_CODE fcode = node->info.function.function_type;
+  if (pt_is_function_unsupported (fcode))
+    {
+      assert (false);
+      pt_frob_error (parser, node, "ERR unsupported function code: %d", fcode);
+    }
+
+  PT_NODE *arg_list = node->info.function.arg_list;
+  if (!arg_list && !pt_is_function_no_arg (fcode))
+    {
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
+		  pt_short_print (parser, node));
+      return node;
+    }
+
+  /* to avoid "node->next" ambiguities, wrap any logical node within the arg list with a cast to integer. This way, the
+   * CNF trees do not mix up with the arg list. */
+  if (pt_wrap_logical_arglist_with_integer (parser, node, arg_list) != NO_ERROR)
+    {
+      /* the error message is set by pt_wrap_with_cast_op in pt_wrap_logical_arglist_with_integer () */
+      return node;
+    }
+
   if (pt_list_has_logical_nodes (arg_list))
     {
       pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
@@ -12646,9 +12639,16 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  func_type::Node funcNode (parser, node);
-  node = funcNode.type_checking ();
-  return node;
+
+  if (pt_is_function_new_type_checking (fcode))
+    {
+      func_type::Node funcNode (parser, node);
+      return funcNode.type_checking ();
+    }
+  else
+    {
+      return pt_eval_function_type_old (parser, node);
+    }
 }
 
 /*
@@ -12674,44 +12674,6 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
   is_agg_function = pt_is_aggregate_function (parser, node);
   arg_list = node->info.function.arg_list;
   fcode = node->info.function.function_type;
-
-  if (!arg_list && !pt_is_function_no_arg (fcode))
-    {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
-		  pt_short_print (parser, node));
-      return node;
-    }
-
-  /* to avoid "node->next" ambiguities, wrap any logical node within the arg list with a cast to integer. This way, the
-   * CNF trees do not mix up with the arg list. */
-  for (arg = arg_list; arg != NULL; prev = arg, arg = arg->next)
-    {
-      if (arg->type_enum == PT_TYPE_LOGICAL)
-	{
-	  arg = pt_wrap_with_cast_op (parser, arg, PT_TYPE_INTEGER, 0, 0, NULL);
-	  if (arg == NULL)
-	    {
-	      /* the error message is set by pt_wrap_with_cast_op */
-	      node->type_enum = PT_TYPE_NONE;
-	      return node;
-	    }
-	  if (prev != NULL)
-	    {
-	      prev->next = arg;
-	    }
-	  else
-	    {
-	      node->info.function.arg_list = arg_list = arg;
-	    }
-	}
-    }
-
-  if (pt_list_has_logical_nodes (arg_list))
-    {
-      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-		   fcode_get_lowercase_name (fcode), "boolean");
-      return node;
-    }
 
   /*
    * Should only get one arg to function; set to 0 if the function
