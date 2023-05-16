@@ -59,8 +59,8 @@ public class TestMain {
 
     public static CompileInfo compilePLCSQL(String in, boolean verbose) {
 
-        System.out.println("[TEMP] text to the compiler");
-        System.out.println(in);
+        //System.out.println("[TEMP] text to the compiler");
+        //System.out.println(in);
 
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
