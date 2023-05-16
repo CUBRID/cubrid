@@ -3000,8 +3000,8 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
     // case PT_MIN:
     // case PT_MAX:
     // case PT_SUM:
+    // case PT_AVG:
 
-    case PT_AVG:
     case PT_STDDEV:
     case PT_VARIANCE:
     case PT_STDDEV_POP:
@@ -3033,7 +3033,7 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
     // case PT_FIRST_VALUE:
     // case PT_LAST_VALUE:
     // case PT_NTH_VALUE:
-    case PT_MEDIAN:
+    // case PT_MEDIAN:
 
     case PT_CUME_DIST:
     case PT_PERCENT_RANK:
