@@ -79,7 +79,7 @@ public abstract class StmtForSqlLoop extends Stmt {
 
     private static final String tmplStmt =
             Misc.combineLines(
-                    "{ // for-loop with %'KIND'% SQL",
+                    "try { // for-loop with %'KIND'% SQL",
                     "  String sql_%'LEVEL'% = %'SQL'%;",
                     "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(sql_%'LEVEL'%);",
                     "  %'SET-USED-VALUES'%",
@@ -89,5 +89,8 @@ public abstract class StmtForSqlLoop extends Stmt {
                     "    %'STATEMENTS'%",
                     "  }",
                     "  stmt_%'LEVEL'%.close();",
+                    "} catch (SQLException e) {",
+                    "  Server.log(e);",
+                    "  throw new SQL_ERROR(e.getMessage());",
                     "}");
 }

@@ -40,7 +40,6 @@ begin
     for r in (SELECT code, name FROM test_tcl_tbl2 WHERE code > 2) loop
         i := r.code;
         n := r.name;
-        PUT_LINE(i);
-        PUT_LINE('name = ' || n);
+        PUT_LINE('code = ' || i || ', name = ' || n);
     end loop;
 end;

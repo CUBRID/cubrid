@@ -47,36 +47,30 @@ begin
 
 -- 2)
     PUT_LINE('Expected: ');
-    PUT_LINE('           id  name                  phone');
-    PUT_LINE('=========================================================');
-    PUT_LINE('            6  eee                 666-6666');
+    PUT_LINE(6 || ' ' || 'eee' || ' ' || '666-6666');
 
-    PUT_LINE('Actual');
+    PUT_LINE('Actual: ');
     for r in (SELECT id, name, phone FROM a_tbl1 WHERE id=6) loop
         i := r.id;
         n := r.name;
         p := r.phone;
-        PUT_LINE(i);
-        PUT_LINE(n || ' ' || p);
+        PUT_LINE(i || ' ' || n || ' ' || p);
     end loop;
     PUT_LINE('[Test 1] OK');
 
 -- 3)
     PUT_LINE('[Test 2] =====================================================================');
     PUT_LINE('Expected: ');
-    PUT_LINE('           id  name                  phone
-=========================================================
-            7  ggg                 777-7777');
+    PUT_LINE(7 || ' ' || 'ggg' || ' ' || '777-7777');
 
     INSERT INTO a_tbl1 SELECT * FROM a_tbl1 WHERE id=7 ON DUPLICATE KEY UPDATE name='ggg';
 
-    PUT_LINE('Actual');
+    PUT_LINE('Actual: ');
     for r in (SELECT id, name, phone FROM a_tbl1 WHERE id=7) loop
         i := r.id;
         n := r.name;
         p := r.phone;
-        PUT_LINE(i);
-        PUT_LINE(n || ' ' || p);
+        PUT_LINE(i || ' ' || n || ' ' || p);
     end loop;
 
     PUT_LINE('[Test 2] OK');
