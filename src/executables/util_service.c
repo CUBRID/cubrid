@@ -3944,9 +3944,6 @@ static int
 us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
 {
   int status = NO_ERROR;
-  int i;
-  int pid;
-  dynamic_array *pids = NULL;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_START);
 
