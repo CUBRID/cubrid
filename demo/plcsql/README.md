@@ -13,7 +13,7 @@
 -  [demo_hello.sql](./demo_hello.sql)
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/demo_hello.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/demo_hello.sql
 ```
 
 ```
@@ -29,7 +29,7 @@ csql -u public demodb
 -  [test_query_single_row_const.sql](./test_query_single_row_const.sql)
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_query_single_row_const.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_query_single_row_const.sql
 ```
 
 ```
@@ -40,13 +40,10 @@ csql -u public demodb
 ;ex
 ```
 
-NOTE
-- LIMIT clause is not supported yet
-
 -  [test_query_single_row.sql](./test_query_single_row.sql)
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_query_single_row.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_query_single_row.sql
 ```
 
 ```
@@ -77,8 +74,8 @@ csql -u public demodb
 -  [test_query_cursor_simple.sql](./test_query_cursor_simple.sql)
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_query_cursor_simple_nocond.sql
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_query_cursor_simple.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_query_cursor_simple_nocond.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_query_cursor_simple.sql
 ```
 
 ```
@@ -93,7 +90,7 @@ csql -u public demodb
 -  [test_query_cursor_hostvar.sql](./test_query_cursor_hostvar.sql)
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_query_cursor_hostvar.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_query_cursor_hostvar.sql
 ```
 
 ```
@@ -109,7 +106,7 @@ csql -u public demodb
 -  [test_ddl.sql](./test_ddl.sql)
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_ddl.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_ddl.sql
 ```
 
 ```
@@ -123,16 +120,20 @@ csql -u public demodb
 
 #### INSERT
 -  [test_dml_insert.sql](./test_dml_insert.sql)
+-  [test_dml_truncate.sql](./test_dml_truncate.sql)
 ```
--- preparation
+-- preparation and registration
 csql -u public demodb
     drop table if exists a_tbl1;
     CREATE TABLE a_tbl1(id INT UNIQUE, name VARCHAR, phone VARCHAR DEFAULT '000-0000');
 ;ex
+
+csql -u public demodb -i $CUBRID/demo/plcsql/test_dml_insert.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_dml_truncate.sql
 ```
+
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_dml_insert.sql
 ```
 
 ```
@@ -167,7 +168,7 @@ csql -u public demodb
 ```
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_dml_delete.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_dml_delete.sql
 ```
 
 ```
@@ -191,7 +192,7 @@ csql -u public demodb
 ```
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_tcl_commit.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_tcl_commit.sql
 ```
 
 ```
@@ -219,7 +220,7 @@ csql -u public demodb
 ```
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/test_tcl_rollback.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/test_tcl_rollback.sql
 ```
 
 ```
@@ -236,11 +237,12 @@ csql -u public demodb
 ```
 ---
 ## 4. Procedure/Function
+-  [demo_hello_ret.sql](./demo_hello_ret.sql)
 -  [demo_global_semantics_udpf.sql](./demo_global_semantics_udpf.sql)
 ```
 -- registration
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/demo_hello_ret.sql
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/demo_global_semantics_udpf.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/demo_hello_ret.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/demo_global_semantics_udpf.sql
 ```
 
 ```
@@ -255,7 +257,7 @@ csql -u public demodb
 -  [demo_global_semantics_type.sql](./demo_global_semantics_type.sql)
 -- registration
 ```
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/demo_global_semantics_type.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/demo_global_semantics_type.sql
 ```
 
 ```
@@ -269,7 +271,7 @@ csql -u public demodb
 ## 6. Pseudocolumn
 
 ### 6.1 Serial
--  [demo_global_semantics_type.sql](./demo_global_semantics_serial.sql)
+-  [demo_global_semantics_serial.sql](./demo_global_semantics_serial.sql)
 ```
 -- preparation
 csql -u public demodb
@@ -280,7 +282,7 @@ csql -u public demodb
 
 -- registration
 ```
-plcsql_helper demodb -u public -i $CUBRID/demo/plcsql/demo_global_semantics_serial.sql
+csql -u public demodb -i $CUBRID/demo/plcsql/demo_global_semantics_serial.sql
 ```
 
 ```
