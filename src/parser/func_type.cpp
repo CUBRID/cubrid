@@ -876,6 +876,7 @@ namespace func_type
 	  }
 	break;
       }
+
       default:
 	;
       }
@@ -1470,6 +1471,1361 @@ pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
   return false;
 }
 
+// TODO: remove me
+#define PT_COLL_WRAP_TYPE_FOR_MAYBE(type) \
+  ((PT_IS_CHAR_STRING_TYPE (type)) ? (type) : PT_TYPE_VARCHAR)
+
+#define PT_IS_CAST_MAYBE(node) \
+  ((node)->node_type == PT_EXPR && (node)->info.expr.op == PT_CAST \
+   && (node)->info.expr.arg1 != NULL && (node)->info.expr.arg1->type_enum == PT_TYPE_MAYBE)
+
+static PT_NODE *pt_check_function_collation (PARSER_CONTEXT *parser, PT_NODE *node);
+static int pt_character_length_for_node (PT_NODE *node, const PT_TYPE_ENUM coerce_type);
+
+/*
+ * pt_eval_function_type () -
+ *   return: returns a node of the same type.
+ *   parser(in): parser global context info for reentrancy
+ *   node(in): a parse tree node of type PT_FUNCTION denoting an
+ *             an expression with aggregate functions.
+ *
+ * TODO - remove me when all functions are migrated to new evaluation
+ * GIVEUP - just moved from type_check.c to type_eval_func.cpp
+ */
+PT_NODE *
+pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  PT_NODE *arg_list;
+  PT_TYPE_ENUM arg_type;
+  FUNC_CODE fcode;
+  bool check_agg_single_arg = false;
+  bool is_agg_function = false;
+  PT_NODE *prev = NULL;
+  PT_NODE *arg = NULL;
+
+  is_agg_function = pt_is_aggregate_function (parser, node);
+  arg_list = node->info.function.arg_list;
+  fcode = node->info.function.function_type;
+
+  /*
+   * Should only get one arg to function; set to 0 if the function
+   * accepts more than one.
+   */
+  check_agg_single_arg = true;
+  arg_type = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
+
+  switch (fcode)
+    {
+    case PT_STDDEV:
+    case PT_STDDEV_POP:
+    case PT_STDDEV_SAMP:
+    case PT_VARIANCE:
+    case PT_VAR_POP:
+    case PT_VAR_SAMP:
+    case PT_AVG:
+      if (arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL && arg_type != PT_TYPE_NA)
+	{
+	  if (!PT_IS_NUMERIC_TYPE (arg_type))
+	    {
+	      arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_DOUBLE, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	      if (arg_list == NULL)
+		{
+		  return node;
+		}
+	    }
+	  node->info.function.arg_list = arg_list;
+	}
+
+      arg_type = PT_TYPE_DOUBLE;
+      break;
+
+    case PT_AGG_BIT_AND:
+    case PT_AGG_BIT_OR:
+    case PT_AGG_BIT_XOR:
+      if (!PT_IS_DISCRETE_NUMBER_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
+	  && arg_type != PT_TYPE_NA)
+	{
+	  /* cast arg_list to bigint */
+	  arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_BIGINT, 0, 0, NULL);
+	  if (arg_list == NULL)
+	    {
+	      return node;
+	    }
+	  arg_type = PT_TYPE_BIGINT;
+	  node->info.function.arg_list = arg_list;
+	}
+      break;
+
+    case PT_SUM:
+      if (!PT_IS_NUMERIC_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
+	  && arg_type != PT_TYPE_NA && !pt_is_set_type (arg_list))
+	{
+	  /* To display the sum as integer and not scientific */
+	  PT_TYPE_ENUM cast_type = (arg_type == PT_TYPE_ENUMERATION ? PT_TYPE_INTEGER : PT_TYPE_DOUBLE);
+
+	  /* cast arg_list to double or integer */
+	  arg_list = pt_wrap_with_cast_op (parser, arg_list, cast_type, 0, 0, NULL);
+	  if (arg_list == NULL)
+	    {
+	      return node;
+	    }
+	  arg_type = cast_type;
+	  node->info.function.arg_list = arg_list;
+	}
+      break;
+
+    case PT_MAX:
+    case PT_MIN:
+    case PT_FIRST_VALUE:
+    case PT_LAST_VALUE:
+    case PT_NTH_VALUE:
+      if (!PT_IS_NUMERIC_TYPE (arg_type) && !PT_IS_STRING_TYPE (arg_type) && !PT_IS_DATE_TIME_TYPE (arg_type)
+	  && arg_type != PT_TYPE_ENUMERATION && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
+	  && arg_type != PT_TYPE_NA)
+	{
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type));
+	}
+      break;
+
+    case PT_LEAD:
+    case PT_LAG:
+      break;
+
+    case PT_COUNT:
+      assert (false);
+      break;
+
+    case PT_GROUP_CONCAT:
+    {
+      PT_TYPE_ENUM sep_type;
+      sep_type = (arg_list->next) ? arg_list->next->type_enum : PT_TYPE_NONE;
+      check_agg_single_arg = false;
+
+      if (!PT_IS_NUMERIC_TYPE (arg_type) && !PT_IS_STRING_TYPE (arg_type) && !PT_IS_DATE_TIME_TYPE (arg_type)
+	  && arg_type != PT_TYPE_ENUMERATION && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
+	  && arg_type != PT_TYPE_NA)
+	{
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type));
+	  break;
+	}
+
+      if (!PT_IS_STRING_TYPE (sep_type) && sep_type != PT_TYPE_NONE)
+	{
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (sep_type));
+	  break;
+	}
+
+      if ((sep_type == PT_TYPE_NCHAR || sep_type == PT_TYPE_VARNCHAR) && arg_type != PT_TYPE_NCHAR
+	  && arg_type != PT_TYPE_VARNCHAR)
+	{
+	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+	  break;
+	}
+
+      if ((arg_type == PT_TYPE_NCHAR || arg_type == PT_TYPE_VARNCHAR) && sep_type != PT_TYPE_NCHAR
+	  && sep_type != PT_TYPE_VARNCHAR && sep_type != PT_TYPE_NONE)
+	{
+	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+	  break;
+	}
+
+      if ((arg_type == PT_TYPE_BIT || arg_type == PT_TYPE_VARBIT) && sep_type != PT_TYPE_BIT
+	  && sep_type != PT_TYPE_VARBIT && sep_type != PT_TYPE_NONE)
+	{
+	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+	  break;
+	}
+
+      if ((arg_type != PT_TYPE_BIT && arg_type != PT_TYPE_VARBIT)
+	  && (sep_type == PT_TYPE_BIT || sep_type == PT_TYPE_VARBIT))
+	{
+	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+	  break;
+	}
+    }
+    break;
+
+    case PT_CUME_DIST:
+    case PT_PERCENT_RANK:
+      check_agg_single_arg = false;
+      break;
+
+    case PT_NTILE:
+      if (!PT_IS_DISCRETE_NUMBER_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE && arg_type != PT_TYPE_NULL
+	  && arg_type != PT_TYPE_NA)
+	{
+	  /* cast arg_list to double */
+	  arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_DOUBLE, 0, 0, NULL);
+	  if (arg_list == NULL)
+	    {
+	      return node;
+	    }
+
+	  arg_type = PT_TYPE_INTEGER;
+	  node->info.function.arg_list = arg_list;
+	}
+      break;
+
+    case F_ELT:
+    {
+      /* all types used in the arguments list */
+      bool has_arg_type[PT_TYPE_MAX - PT_TYPE_MIN] = { false };
+
+      /* a subset of argument types given to ELT that can not be cast to [N]CHAR VARYING */
+      PT_TYPE_ENUM bad_types[4] =
+      {
+	PT_TYPE_NONE, PT_TYPE_NONE, PT_TYPE_NONE, PT_TYPE_NONE
+      };
+
+      PT_NODE *arg = arg_list;
+
+      size_t i = 0;		/* used to index has_arg_type */
+      size_t num_bad = 0;	/* used to index bad_types */
+
+      memset (has_arg_type, 0, sizeof (has_arg_type));
+
+      /* check the index argument (null, numeric or host var) */
+      if (PT_IS_NUMERIC_TYPE (arg->type_enum) || PT_IS_CHAR_STRING_TYPE (arg->type_enum)
+	  || arg->type_enum == PT_TYPE_NONE || arg->type_enum == PT_TYPE_NA || arg->type_enum == PT_TYPE_NULL
+	  || arg->type_enum == PT_TYPE_MAYBE)
+	{
+	  arg = arg->next;
+	}
+      else
+	{
+	  arg_type = PT_TYPE_NONE;
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_INDEX,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg->type_enum));
+	  break;
+	}
+
+      /* make a list of all other argument types (null, [N]CHAR [VARYING], or host var) */
+      while (arg)
+	{
+	  if (arg->type_enum < PT_TYPE_MAX)
+	    {
+	      has_arg_type[arg->type_enum - PT_TYPE_MIN] = true;
+	      arg = arg->next;
+	    }
+	  else
+	    {
+	      assert (false);	/* invalid data type */
+	      arg_type = PT_TYPE_NONE;
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			   fcode_get_lowercase_name (fcode), pt_show_type_enum (arg->type_enum));
+	      break;
+	    }
+	}
+
+      /* look for unsupported argument types in the list */
+      while (i < (sizeof (has_arg_type) / sizeof (has_arg_type[0])))
+	{
+	  if (has_arg_type[i])
+	    {
+	      if (!PT_IS_NUMERIC_TYPE (PT_TYPE_MIN + i) && !PT_IS_CHAR_STRING_TYPE (PT_TYPE_MIN + i)
+		  && !PT_IS_DATE_TIME_TYPE (PT_TYPE_MIN + i) && (PT_TYPE_MIN + i != PT_TYPE_ENUMERATION)
+		  && (PT_TYPE_MIN + i != PT_TYPE_LOGICAL) && (PT_TYPE_MIN + i != PT_TYPE_NONE)
+		  && (PT_TYPE_MIN + i != PT_TYPE_NA) && (PT_TYPE_MIN + i != PT_TYPE_NULL)
+		  && (PT_TYPE_MIN + i != PT_TYPE_MAYBE))
+		{
+		  /* type is not NULL, unknown and is not known coercible to [N]CHAR VARYING */
+		  size_t k = 0;
+
+		  while (k < num_bad && bad_types[k] != PT_TYPE_MIN + i)
+		    {
+		      k++;
+		    }
+
+		  if (k == num_bad)
+		    {
+		      bad_types[num_bad++] = (PT_TYPE_ENUM) (PT_TYPE_MIN + i);
+
+		      if (num_bad == sizeof (bad_types) / sizeof (bad_types[0]))
+			{
+			  break;
+			}
+		    }
+		}
+	    }
+
+	  i++;
+	}
+
+      /* check string category (CHAR or NCHAR) for any string arguments */
+      if ((num_bad < sizeof (bad_types) / sizeof (bad_types[0]) - 1)
+	  && (has_arg_type[PT_TYPE_CHAR - PT_TYPE_MIN] || has_arg_type[PT_TYPE_VARCHAR - PT_TYPE_MIN])
+	  && (has_arg_type[PT_TYPE_NCHAR - PT_TYPE_MIN] || has_arg_type[PT_TYPE_VARNCHAR - PT_TYPE_MIN]))
+	{
+	  if (has_arg_type[PT_TYPE_CHAR - PT_TYPE_MIN])
+	    {
+	      bad_types[num_bad++] = PT_TYPE_CHAR;
+	    }
+	  else
+	    {
+	      bad_types[num_bad++] = PT_TYPE_VARCHAR;
+	    }
+
+	  if (has_arg_type[PT_TYPE_NCHAR - PT_TYPE_MIN])
+	    {
+	      bad_types[num_bad++] = PT_TYPE_NCHAR;
+	    }
+	  else
+	    {
+	      bad_types[num_bad++] = PT_TYPE_VARNCHAR;
+	    }
+	}
+
+      /* report any unsupported arguments */
+      switch (num_bad)
+	{
+	case 1:
+	  arg_type = PT_TYPE_NONE;
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]));
+	  break;
+	case 2:
+	  arg_type = PT_TYPE_NONE;
+	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_2,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]),
+		       pt_show_type_enum (bad_types[1]));
+	  break;
+	case 3:
+	  arg_type = PT_TYPE_NONE;
+	  PT_ERRORmf4 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_3,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]),
+		       pt_show_type_enum (bad_types[1]), pt_show_type_enum (bad_types[2]));
+	  break;
+	case 4:
+	  arg_type = PT_TYPE_NONE;
+	  PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]),
+		       pt_show_type_enum (bad_types[1]), pt_show_type_enum (bad_types[2]),
+		       pt_show_type_enum (bad_types[3]));
+	  break;
+	}
+    }
+    break;
+
+    case F_INSERT_SUBSTRING:
+    {
+      PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE, arg3_type = PT_TYPE_NONE, arg4_type =
+				       PT_TYPE_NONE;
+      PT_NODE *arg_array[NUM_F_INSERT_SUBSTRING_ARGS];
+      int num_args = 0;
+      /* arg_list to array */
+      if (pt_node_list_to_array (parser, arg_list, arg_array, NUM_F_INSERT_SUBSTRING_ARGS, &num_args) != NO_ERROR)
+	{
+	  break;
+	}
+      if (num_args != NUM_F_INSERT_SUBSTRING_ARGS)
+	{
+	  assert (false);
+	  break;
+	}
+
+      arg1_type = arg_array[0]->type_enum;
+      arg2_type = arg_array[1]->type_enum;
+      arg3_type = arg_array[2]->type_enum;
+      arg4_type = arg_array[3]->type_enum;
+      /* check arg2 and arg3 */
+      if (!PT_IS_NUMERIC_TYPE (arg2_type) && !PT_IS_CHAR_STRING_TYPE (arg2_type) && arg2_type != PT_TYPE_MAYBE
+	  && arg2_type != PT_TYPE_NULL && arg2_type != PT_TYPE_NA)
+	{
+	  arg_type = PT_TYPE_NONE;
+	  PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+		       pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
+	  break;
+	}
+
+      if (!PT_IS_NUMERIC_TYPE (arg3_type) && !PT_IS_CHAR_STRING_TYPE (arg3_type) && arg3_type != PT_TYPE_MAYBE
+	  && arg3_type != PT_TYPE_NULL && arg3_type != PT_TYPE_NA)
+	{
+	  arg_type = PT_TYPE_NONE;
+	  PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+		       pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
+	  break;
+	}
+
+      /* check arg1 */
+      if (!PT_IS_NUMERIC_TYPE (arg1_type) && !PT_IS_STRING_TYPE (arg1_type) && !PT_IS_DATE_TIME_TYPE (arg1_type)
+	  && arg1_type != PT_TYPE_ENUMERATION && arg1_type != PT_TYPE_MAYBE && arg1_type != PT_TYPE_NULL
+	  && arg1_type != PT_TYPE_NA)
+	{
+	  arg_type = PT_TYPE_NONE;
+	  PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+		       pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
+	  break;
+	}
+      /* check arg4 */
+      if (!PT_IS_NUMERIC_TYPE (arg4_type) && !PT_IS_STRING_TYPE (arg4_type) && !PT_IS_DATE_TIME_TYPE (arg4_type)
+	  && arg4_type != PT_TYPE_MAYBE && arg4_type != PT_TYPE_NULL && arg4_type != PT_TYPE_NA)
+	{
+	  arg_type = PT_TYPE_NONE;
+	  PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+		       pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
+	  break;
+	}
+    }
+    break;
+
+    case PT_MEDIAN:
+    case PT_PERCENTILE_CONT:
+    case PT_PERCENTILE_DISC:
+      if (arg_type != PT_TYPE_NULL && arg_type != PT_TYPE_NA && !PT_IS_NUMERIC_TYPE (arg_type)
+	  && !PT_IS_STRING_TYPE (arg_type) && !PT_IS_DATE_TIME_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE)
+	{
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type));
+	}
+
+      break;
+
+    default:
+      check_agg_single_arg = false;
+      break;
+    }
+
+  if (is_agg_function && check_agg_single_arg)
+    {
+      if (arg_list->next)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AGG_FUN_WANT_1_ARG,
+		      pt_short_print (parser, node));
+	}
+    }
+
+  if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL || ! (node->info.function.is_type_checked))
+    {
+      /* determine function result type */
+      switch (fcode)
+	{
+	case PT_COUNT:
+	case PT_COUNT_STAR:
+	  assert (false);
+	  break;
+	case PT_ROW_NUMBER:
+	case PT_RANK:
+	case PT_DENSE_RANK:
+	case PT_NTILE:
+	  node->type_enum = PT_TYPE_INTEGER;
+	  break;
+
+	case PT_CUME_DIST:
+	case PT_PERCENT_RANK:
+	  node->type_enum = PT_TYPE_DOUBLE;
+	  break;
+
+	case PT_GROUPBY_NUM:
+	  node->type_enum = PT_TYPE_BIGINT;
+	  break;
+
+	case PT_AGG_BIT_AND:
+	case PT_AGG_BIT_OR:
+	case PT_AGG_BIT_XOR:
+	  node->type_enum = PT_TYPE_BIGINT;
+	  break;
+
+	case F_TABLE_SET:
+	  node->type_enum = PT_TYPE_SET;
+	  pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
+	  break;
+
+	case F_TABLE_MULTISET:
+	  node->type_enum = PT_TYPE_MULTISET;
+	  pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
+	  break;
+
+	case F_TABLE_SEQUENCE:
+	  node->type_enum = PT_TYPE_SEQUENCE;
+	  pt_add_type_to_set (parser, pt_get_select_list (parser, arg_list), &node->data_type);
+	  break;
+
+	case F_SET:
+	  node->type_enum = PT_TYPE_SET;
+	  pt_add_type_to_set (parser, arg_list, &node->data_type);
+	  break;
+
+	case F_MULTISET:
+	  node->type_enum = PT_TYPE_MULTISET;
+	  pt_add_type_to_set (parser, arg_list, &node->data_type);
+	  break;
+
+	case F_SEQUENCE:
+	  node->type_enum = PT_TYPE_SEQUENCE;
+	  pt_add_type_to_set (parser, arg_list, &node->data_type);
+	  break;
+
+	case PT_SUM:
+	  node->type_enum = arg_type;
+	  node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
+	  if (arg_type == PT_TYPE_NUMERIC && node->data_type)
+	    {
+	      node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+	    }
+	  break;
+
+	case PT_AVG:
+	case PT_STDDEV:
+	case PT_STDDEV_POP:
+	case PT_STDDEV_SAMP:
+	case PT_VARIANCE:
+	case PT_VAR_POP:
+	case PT_VAR_SAMP:
+	  node->type_enum = arg_type;
+	  node->data_type = NULL;
+	  break;
+
+	case PT_MEDIAN:
+	case PT_PERCENTILE_CONT:
+	case PT_PERCENTILE_DISC:
+	  /* let calculation decide the type */
+	  node->type_enum = PT_TYPE_MAYBE;
+	  node->data_type = NULL;
+	  break;
+
+	case PT_GROUP_CONCAT:
+	{
+	  if (arg_type == PT_TYPE_NCHAR || arg_type == PT_TYPE_VARNCHAR)
+	    {
+	      node->type_enum = PT_TYPE_VARNCHAR;
+	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARNCHAR);
+	      if (node->data_type == NULL)
+		{
+		  assert (false);
+		}
+	      node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	    }
+	  else if (arg_type == PT_TYPE_BIT || arg_type == PT_TYPE_VARBIT)
+	    {
+	      node->type_enum = PT_TYPE_VARBIT;
+	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
+	      if (node->data_type == NULL)
+		{
+		  node->type_enum = PT_TYPE_NONE;
+		  assert (false);
+		}
+	      node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	    }
+	  else
+	    {
+	      node->type_enum = PT_TYPE_VARCHAR;
+	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+	      if (node->data_type == NULL)
+		{
+		  node->type_enum = PT_TYPE_NONE;
+		  assert (false);
+		}
+	      node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	    }
+	}
+	break;
+
+	case F_INSERT_SUBSTRING:
+	{
+	  PT_NODE *new_att = NULL;
+	  PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg2_type = PT_TYPE_NONE, arg3_type = PT_TYPE_NONE, arg4_type =
+					   PT_TYPE_NONE;
+	  PT_TYPE_ENUM arg1_orig_type, arg2_orig_type, arg3_orig_type, arg4_orig_type;
+	  PT_NODE *arg_array[NUM_F_INSERT_SUBSTRING_ARGS];
+	  int num_args;
+
+	  /* arg_list to array */
+	  if (pt_node_list_to_array (parser, arg_list, arg_array, NUM_F_INSERT_SUBSTRING_ARGS, &num_args) != NO_ERROR)
+	    {
+	      break;
+	    }
+	  if (num_args != NUM_F_INSERT_SUBSTRING_ARGS)
+	    {
+	      assert (false);
+	      break;
+	    }
+
+	  arg1_orig_type = arg1_type = arg_array[0]->type_enum;
+	  arg2_orig_type = arg2_type = arg_array[1]->type_enum;
+	  arg3_orig_type = arg3_type = arg_array[2]->type_enum;
+	  arg4_orig_type = arg4_type = arg_array[3]->type_enum;
+	  arg_type = PT_TYPE_NONE;
+
+	  /* validate and/or convert arguments */
+	  /* arg1 should be VAR-str, but compatible with arg4 (except when arg4 is BIT - no casting to bit on arg1) */
+	  if (! (PT_IS_STRING_TYPE (arg1_type)))
+	    {
+	      PT_TYPE_ENUM upgraded_type = PT_TYPE_NONE;
+	      if (arg4_type == PT_TYPE_NCHAR)
+		{
+		  upgraded_type = PT_TYPE_VARNCHAR;
+		}
+	      else
+		{
+		  upgraded_type = PT_TYPE_VARCHAR;
+		}
+
+	      new_att =
+		      pt_wrap_with_cast_op (parser, arg_array[0], upgraded_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	      if (new_att == NULL)
+		{
+		  break;
+		}
+	      node->info.function.arg_list = arg_array[0] = new_att;
+	      arg_type = arg1_type = upgraded_type;
+	    }
+	  else
+	    {
+	      arg_type = arg1_type;
+	    }
+
+
+	  if (arg2_type != PT_TYPE_INTEGER)
+	    {
+	      new_att =
+		      pt_wrap_with_cast_op (parser, arg_array[1], PT_TYPE_INTEGER, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	      if (new_att == NULL)
+		{
+		  break;
+		}
+	      arg_array[0]->next = arg_array[1] = new_att;
+	      arg2_type = PT_TYPE_INTEGER;
+
+	    }
+
+	  if (arg3_type != PT_TYPE_INTEGER)
+	    {
+	      new_att =
+		      pt_wrap_with_cast_op (parser, arg_array[2], PT_TYPE_INTEGER, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	      if (new_att == NULL)
+		{
+		  break;
+		}
+	      arg_array[1]->next = arg_array[2] = new_att;
+	      arg3_type = PT_TYPE_INTEGER;
+	    }
+
+	  /* set result type and precision */
+	  if (arg_type == PT_TYPE_NCHAR || arg_type == PT_TYPE_VARNCHAR)
+	    {
+	      node->type_enum = PT_TYPE_VARNCHAR;
+	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARNCHAR);
+	      node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	    }
+	  else if (arg_type == PT_TYPE_BIT || arg_type == PT_TYPE_VARBIT)
+	    {
+	      node->type_enum = PT_TYPE_VARBIT;
+	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
+	      node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	    }
+	  else
+	    {
+	      arg_type = node->type_enum = PT_TYPE_VARCHAR;
+	      node->data_type = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+	      node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	    }
+	  /* validate and/or set arg4 */
+	  if (! (PT_IS_STRING_TYPE (arg4_type)))
+	    {
+	      new_att = pt_wrap_with_cast_op (parser, arg_array[3], arg_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	      if (new_att == NULL)
+		{
+		  break;
+		}
+	      arg_array[2]->next = arg_array[3] = new_att;
+	    }
+	  /* final check of arg and arg4 type matching */
+	  if ((arg4_type == PT_TYPE_VARNCHAR || arg4_type == PT_TYPE_NCHAR)
+	      && (arg_type == PT_TYPE_VARCHAR || arg_type == PT_TYPE_CHAR))
+	    {
+	      arg_type = PT_TYPE_NONE;
+	      PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
+			   fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
+			   pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
+			   pt_show_type_enum (arg4_orig_type));
+	    }
+	  else if ((arg_type == PT_TYPE_VARNCHAR || arg_type == PT_TYPE_NCHAR)
+		   && (arg4_type == PT_TYPE_VARCHAR || arg4_type == PT_TYPE_CHAR))
+	    {
+	      arg_type = PT_TYPE_NONE;
+	      PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
+			   fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
+			   pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
+			   pt_show_type_enum (arg4_orig_type));
+	    }
+	  else if ((arg_type == PT_TYPE_VARBIT || arg_type == PT_TYPE_BIT)
+		   && (arg4_type != PT_TYPE_VARBIT && arg4_type != PT_TYPE_BIT))
+	    {
+	      arg_type = PT_TYPE_NONE;
+	      PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
+			   fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
+			   pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
+			   pt_show_type_enum (arg4_orig_type));
+	    }
+	  else if ((arg4_type == PT_TYPE_VARBIT || arg4_type == PT_TYPE_BIT)
+		   && (arg_type != PT_TYPE_VARBIT && arg_type != PT_TYPE_BIT))
+	    {
+	      arg_type = PT_TYPE_NONE;
+	      PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
+			   fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
+			   pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
+			   pt_show_type_enum (arg4_orig_type));
+	    }
+	}
+	break;
+
+	case F_ELT:
+	{
+	  PT_NODE *new_att = NULL;
+	  PT_NODE *arg = arg_list, *prev_arg = arg_list;
+	  int max_precision = 0;
+
+	  /* check and cast the type for the index argument. */
+	  if (!PT_IS_DISCRETE_NUMBER_TYPE (arg->type_enum))
+	    {
+	      new_att = pt_wrap_with_cast_op (parser, arg, PT_TYPE_BIGINT, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+
+	      if (new_att)
+		{
+		  prev_arg = arg_list = arg = new_att;
+		  node->info.function.arg_list = arg_list;
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+
+	  /*
+	   * Look for the first argument of character string type and obtain its category (CHAR/NCHAR). All other
+	   * arguments should be converted to this type, which is also the return type. */
+
+	  arg_type = PT_TYPE_NONE;
+	  arg = arg->next;
+
+	  while (arg && arg_type == PT_TYPE_NONE)
+	    {
+	      if (PT_IS_CHAR_STRING_TYPE (arg->type_enum))
+		{
+		  if (arg->type_enum == PT_TYPE_CHAR || arg->type_enum == PT_TYPE_VARCHAR)
+		    {
+		      arg_type = PT_TYPE_VARCHAR;
+		    }
+		  else
+		    {
+		      arg_type = PT_TYPE_VARNCHAR;
+		    }
+		}
+	      else
+		{
+		  arg = arg->next;
+		}
+	    }
+
+	  if (arg_type == PT_TYPE_NONE)
+	    {
+	      /* no [N]CHAR [VARYING] argument passed; convert them all to VARCHAR */
+	      arg_type = PT_TYPE_VARCHAR;
+	    }
+
+	  /* take the maximum precision among all value arguments */
+	  arg = arg_list->next;
+
+	  while (arg)
+	    {
+	      int precision = TP_FLOATING_PRECISION_VALUE;
+
+	      precision = pt_character_length_for_node (arg, arg_type);
+	      if (max_precision != TP_FLOATING_PRECISION_VALUE)
+		{
+		  if (precision == TP_FLOATING_PRECISION_VALUE || max_precision < precision)
+		    {
+		      max_precision = precision;
+		    }
+		}
+
+	      arg = arg->next;
+	    }
+
+	  /* cast all arguments to [N]CHAR VARYING(max_precision) */
+	  arg = arg_list->next;
+	  while (arg)
+	    {
+	      if ((arg->type_enum != arg_type) ||
+		  (arg->data_type && arg->data_type->info.data_type.precision != max_precision))
+		{
+		  PT_NODE *new_attr = pt_wrap_with_cast_op (parser, arg, arg_type,
+				      max_precision, 0, NULL);
+
+		  if (new_attr)
+		    {
+		      prev_arg->next = arg = new_attr;
+		    }
+		  else
+		    {
+		      break;
+		    }
+		}
+
+	      arg = arg->next;
+	      prev_arg = prev_arg->next;
+	    }
+
+	  /* Return the selected data type and precision */
+
+	  node->data_type = pt_make_prim_data_type (parser, arg_type);
+
+	  if (node->data_type)
+	    {
+	      node->type_enum = arg_type;
+	      node->data_type->info.data_type.precision = max_precision;
+	      node->data_type->info.data_type.dec_precision = 0;
+	    }
+	}
+	break;
+
+	default:
+	  /* otherwise, f(x) has same type as x */
+	  node->type_enum = arg_type;
+	  node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
+	  break;
+	}
+      /* to prevent recheck of function return type at pt_eval_function_type_old() */
+      node->info.function.is_type_checked = true;
+    }
+
+  /* collation checking */
+  arg_list = node->info.function.arg_list;
+  switch (fcode)
+    {
+    case PT_GROUP_CONCAT:
+    {
+      PT_COLL_INFER coll_infer1;
+      PT_NODE *new_node;
+      PT_TYPE_ENUM sep_type;
+
+      (void) pt_get_collation_info (arg_list, &coll_infer1);
+
+      sep_type = (arg_list->next) ? arg_list->next->type_enum : PT_TYPE_NONE;
+      if (PT_HAS_COLLATION (sep_type))
+	{
+	  assert (arg_list->next != NULL);
+
+	  new_node =
+		  pt_coerce_node_collation (parser, arg_list->next, coll_infer1.coll_id, coll_infer1.codeset, false, false,
+					    PT_COLL_WRAP_TYPE_FOR_MAYBE (sep_type), PT_TYPE_NONE);
+
+	  if (new_node == NULL)
+	    {
+	      goto error_collation;
+	    }
+
+	  arg_list->next = new_node;
+	}
+
+      if (arg_list->type_enum != PT_TYPE_MAYBE)
+	{
+	  new_node =
+		  pt_coerce_node_collation (parser, node, coll_infer1.coll_id, coll_infer1.codeset, true, false,
+					    PT_COLL_WRAP_TYPE_FOR_MAYBE (arg_list->type_enum), PT_TYPE_NONE);
+
+	  if (new_node == NULL)
+	    {
+	      goto error_collation;
+	    }
+
+	  node = new_node;
+	}
+      else if (node->data_type != NULL)
+	{
+	  /* argument is not determined, collation of result will be resolved at execution */
+	  node->data_type->info.data_type.collation_flag = TP_DOMAIN_COLL_LEAVE;
+	}
+    }
+    break;
+
+    case F_INSERT_SUBSTRING:
+    {
+      PT_TYPE_ENUM arg1_type = PT_TYPE_NONE, arg4_type = PT_TYPE_NONE;
+      PT_NODE *arg_array[NUM_F_INSERT_SUBSTRING_ARGS];
+      int num_args = 0;
+      PT_COLL_INFER coll_infer1, coll_infer4;
+      INTL_CODESET common_cs = LANG_SYS_CODESET;
+      int common_coll = LANG_SYS_COLLATION;
+      PT_NODE *new_node;
+      int args_w_coll = 0;
+
+      coll_infer1.codeset = LANG_SYS_CODESET;
+      coll_infer4.codeset = LANG_SYS_CODESET;
+      coll_infer1.coll_id = LANG_SYS_COLLATION;
+      coll_infer4.coll_id = LANG_SYS_COLLATION;
+      coll_infer1.coerc_level = PT_COLLATION_NOT_APPLICABLE;
+      coll_infer4.coerc_level = PT_COLLATION_NOT_APPLICABLE;
+      coll_infer1.can_force_cs = true;
+      coll_infer4.can_force_cs = true;
+
+      if (pt_node_list_to_array (parser, arg_list, arg_array, NUM_F_INSERT_SUBSTRING_ARGS, &num_args) != NO_ERROR)
+	{
+	  break;
+	}
+
+      if (num_args != NUM_F_INSERT_SUBSTRING_ARGS)
+	{
+	  assert (false);
+	  break;
+	}
+
+      arg1_type = arg_array[0]->type_enum;
+      arg4_type = arg_array[3]->type_enum;
+
+      if (PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE)
+	{
+	  if (pt_get_collation_info (arg_array[0], &coll_infer1))
+	    {
+	      args_w_coll++;
+	    }
+
+	  if (arg1_type != PT_TYPE_MAYBE)
+	    {
+	      common_coll = coll_infer1.coll_id;
+	      common_cs = coll_infer1.codeset;
+	    }
+	}
+
+      if (PT_HAS_COLLATION (arg4_type) || arg4_type == PT_TYPE_MAYBE)
+	{
+	  if (pt_get_collation_info (arg_array[3], &coll_infer4))
+	    {
+	      args_w_coll++;
+	    }
+
+	  if (arg1_type != PT_TYPE_MAYBE)
+	    {
+	      common_coll = coll_infer4.coll_id;
+	      common_cs = coll_infer4.codeset;
+	    }
+	}
+
+      if (coll_infer1.coll_id == coll_infer4.coll_id)
+	{
+	  assert (coll_infer1.codeset == coll_infer4.codeset);
+	  common_coll = coll_infer1.coll_id;
+	  common_cs = coll_infer1.codeset;
+	}
+      else
+	{
+	  if (pt_common_collation (&coll_infer1, &coll_infer4, NULL, args_w_coll, false, &common_coll, &common_cs) !=
+	      0)
+	    {
+	      goto error_collation;
+	    }
+	}
+
+      /* coerce collation of arguments */
+      if ((common_coll != coll_infer1.coll_id || common_cs != coll_infer1.codeset)
+	  && (PT_HAS_COLLATION (arg1_type) || arg1_type == PT_TYPE_MAYBE))
+	{
+	  new_node =
+		  pt_coerce_node_collation (parser, arg_array[0], common_coll, common_cs, coll_infer1.can_force_cs, false,
+					    PT_COLL_WRAP_TYPE_FOR_MAYBE (arg1_type), PT_TYPE_NONE);
+	  if (new_node == NULL)
+	    {
+	      goto error_collation;
+	    }
+
+	  node->info.function.arg_list = arg_array[0] = new_node;
+	}
+
+      /* coerce collation of arguments */
+      if ((common_coll != coll_infer4.coll_id || common_cs != coll_infer4.codeset)
+	  && (PT_HAS_COLLATION (arg4_type) || arg4_type == PT_TYPE_MAYBE))
+	{
+	  new_node =
+		  pt_coerce_node_collation (parser, arg_array[3], common_coll, common_cs, coll_infer4.can_force_cs, false,
+					    PT_COLL_WRAP_TYPE_FOR_MAYBE (arg4_type), PT_TYPE_NONE);
+	  if (new_node == NULL)
+	    {
+	      goto error_collation;
+	    }
+
+	  arg_array[2]->next = arg_array[3] = new_node;
+	}
+
+      if ((arg_array[3]->type_enum == PT_TYPE_MAYBE || PT_IS_CAST_MAYBE (arg_array[3]))
+	  && (arg_array[0]->type_enum == PT_TYPE_MAYBE || PT_IS_CAST_MAYBE (arg_array[0])) && node->data_type != NULL)
+	{
+	  node->data_type->info.data_type.collation_flag = TP_DOMAIN_COLL_LEAVE;
+	}
+      else
+	{
+	  new_node =
+		  pt_coerce_node_collation (parser, node, common_coll, common_cs, true, false, PT_TYPE_NONE, PT_TYPE_NONE);
+	  if (new_node == NULL)
+	    {
+	      goto error_collation;
+	    }
+
+	  node = new_node;
+	}
+    }
+    break;
+
+    default:
+      node = pt_check_function_collation (parser, node);
+      break;
+    }
+
+  return node;
+
+error_collation:
+  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
+	      fcode_get_lowercase_name (fcode));
+
+  return node;
+}
+
+
+/*
+ * pt_check_function_collation () - checks the collation of function
+ *				    (PT_FUNCTION)
+ *
+ *   return: error code
+ *   parser(in): parser context
+ *   node(in/out): a parse tree function node
+ *
+ */
+static PT_NODE *
+pt_check_function_collation (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  PT_NODE *arg_list, *arg, *prev_arg, *new_node;
+  PT_COLL_INFER common_coll_infer, res_coll_infer;
+  bool need_arg_coerc = false;
+  TP_DOMAIN_COLL_ACTION res_collation_flag = TP_DOMAIN_COLL_LEAVE;
+  FUNC_CODE fcode;
+
+  assert (node != NULL);
+  assert (node->node_type == PT_FUNCTION);
+
+  if (node->info.function.arg_list == NULL)
+    {
+      return node;
+    }
+
+  fcode = node->info.function.function_type;
+  arg_list = node->info.function.arg_list;
+  prev_arg = NULL;
+
+  if (fcode == F_ELT)
+    {
+      if (arg_list->next == NULL)
+	{
+	  return node;
+	}
+      arg_list = arg_list->next;
+      prev_arg = arg_list;
+    }
+
+  arg = arg_list;
+
+  common_coll_infer.coll_id = -1;
+  common_coll_infer.codeset = INTL_CODESET_NONE;
+  common_coll_infer.can_force_cs = true;
+  common_coll_infer.coerc_level = PT_COLLATION_NOT_APPLICABLE;
+  while (arg != NULL)
+    {
+      PT_COLL_INFER arg_coll_infer;
+
+      arg_coll_infer.coll_id = -1;
+
+      if (arg->type_enum != PT_TYPE_MAYBE && ! (PT_IS_CAST_MAYBE (arg)))
+	{
+	  res_collation_flag = TP_DOMAIN_COLL_NORMAL;
+	}
+
+      if ((PT_HAS_COLLATION (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE)
+	  && pt_get_collation_info (arg, &arg_coll_infer))
+	{
+	  bool apply_common_coll = false;
+	  int common_coll;
+	  INTL_CODESET common_cs;
+
+	  if (common_coll_infer.coll_id != -1 || common_coll_infer.coll_id != arg_coll_infer.coll_id)
+	    {
+	      need_arg_coerc = true;
+	    }
+
+	  if (common_coll_infer.coll_id == -1)
+	    {
+	      apply_common_coll = true;
+	    }
+	  else
+	    {
+	      if (pt_common_collation (&common_coll_infer, &arg_coll_infer, NULL, 2, false, &common_coll, &common_cs) ==
+		  0)
+		{
+		  if (common_coll != common_coll_infer.coll_id)
+		    {
+		      apply_common_coll = true;
+		    }
+		}
+	      else
+		{
+		  goto error_collation;
+		}
+	    }
+
+	  if (apply_common_coll)
+	    {
+	      common_coll_infer = arg_coll_infer;
+	    }
+	}
+
+      arg = arg->next;
+    }
+
+  if (common_coll_infer.coll_id == -1)
+    {
+      return node;
+    }
+
+  arg = arg_list;
+  while (need_arg_coerc && arg != NULL)
+    {
+      PT_COLL_INFER arg_coll_infer;
+
+      arg_coll_infer.coll_id = -1;
+
+      if (! (PT_HAS_COLLATION (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE))
+	{
+	  prev_arg = arg;
+	  arg = arg->next;
+	  continue;
+	}
+
+      if (!pt_get_collation_info (arg, &arg_coll_infer))
+	{
+	  prev_arg = arg;
+	  arg = arg->next;
+	  continue;
+	}
+
+      if (common_coll_infer.coll_id != arg_coll_infer.coll_id)
+	{
+	  PT_NODE *save_next;
+
+	  save_next = arg->next;
+
+	  new_node =
+		  pt_coerce_node_collation (parser, arg, common_coll_infer.coll_id, common_coll_infer.codeset,
+					    arg_coll_infer.can_force_cs, false, PT_COLL_WRAP_TYPE_FOR_MAYBE (arg->type_enum),
+					    PT_TYPE_NONE);
+
+	  if (new_node != NULL)
+	    {
+	      arg = new_node;
+	      if (prev_arg == NULL)
+		{
+		  node->info.function.arg_list = arg;
+		}
+	      else
+		{
+		  prev_arg->next = arg;
+		}
+	      arg->next = save_next;
+	    }
+	}
+
+      prev_arg = arg;
+      arg = arg->next;
+    }
+
+  if (need_arg_coerc)
+    {
+      switch (fcode)
+	{
+	case F_SET:
+	case F_MULTISET:
+	case F_SEQUENCE:
+	  /* add the new data_type to the set of data_types */
+	  pt_add_type_to_set (parser, arg_list, &node->data_type);
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (PT_HAS_COLLATION (node->type_enum) && res_collation_flag == TP_DOMAIN_COLL_LEAVE && node->data_type != NULL)
+    {
+      node->data_type->info.data_type.collation_flag = res_collation_flag;
+    }
+  else if ((PT_HAS_COLLATION (node->type_enum) || node->type_enum == PT_TYPE_MAYBE)
+	   && pt_get_collation_info (node, &res_coll_infer) && res_coll_infer.coll_id != common_coll_infer.coll_id)
+    {
+      new_node =
+	      pt_coerce_node_collation (parser, node, common_coll_infer.coll_id, common_coll_infer.codeset, true, false,
+					PT_COLL_WRAP_TYPE_FOR_MAYBE (node->type_enum), PT_TYPE_NONE);
+      if (new_node != NULL)
+	{
+	  node = new_node;
+	}
+    }
+
+  return node;
+
+error_collation:
+  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
+	      fcode_get_lowercase_name (node->info.function.function_type));
+  return node;
+}
+
+
+/* pt_character_length_for_node() -
+    return: number of characters that a value of the given type can possibly
+	    occuppy when cast to a CHAR type.
+    node(in): node with type whose character length is to be returned.
+    coerce_type(in): string type that node will be cast to
+*/
+static int
+pt_character_length_for_node (PT_NODE *node, const PT_TYPE_ENUM coerce_type)
+{
+  int precision = DB_DEFAULT_PRECISION;
+
+  switch (node->type_enum)
+    {
+    case PT_TYPE_DOUBLE:
+      precision = TP_DOUBLE_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_FLOAT:
+      precision = TP_FLOAT_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_MONETARY:
+      precision = TP_MONETARY_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_BIGINT:
+      precision = TP_BIGINT_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_INTEGER:
+      precision = TP_INTEGER_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_SMALLINT:
+      precision = TP_SMALLINT_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_TIME:
+      precision = TP_TIME_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_DATE:
+      precision = TP_DATE_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_TIMESTAMP:
+      precision = TP_TIMESTAMP_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_TIMESTAMPLTZ:
+    case PT_TYPE_TIMESTAMPTZ:
+      precision = TP_TIMESTAMPTZ_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_DATETIME:
+      precision = TP_DATETIME_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_DATETIMETZ:
+    case PT_TYPE_DATETIMELTZ:
+      precision = TP_DATETIMETZ_AS_CHAR_LENGTH;
+      break;
+    case PT_TYPE_NUMERIC:
+      if (node->data_type == NULL)
+	{
+	  precision = DB_DEFAULT_NUMERIC_PRECISION + 1;	/* sign */
+	  break;
+	}
+
+      precision = node->data_type->info.data_type.precision;
+      if (precision == 0 || precision == DB_DEFAULT_PRECISION)
+	{
+	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	}
+      precision++;		/* for sign */
+
+      if (node->data_type->info.data_type.dec_precision
+	  && (node->data_type->info.data_type.dec_precision != DB_DEFAULT_SCALE
+	      || node->data_type->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE))
+	{
+	  precision++;		/* for decimal point */
+	}
+      break;
+    case PT_TYPE_CHAR:
+      if (node->data_type != NULL)
+	{
+	  precision = node->data_type->info.data_type.precision;
+	}
+
+      if (precision == DB_DEFAULT_PRECISION)
+	{
+	  precision = DB_MAX_CHAR_PRECISION;
+	}
+      break;
+    case PT_TYPE_VARCHAR:
+      if (node->data_type != NULL)
+	{
+	  precision = node->data_type->info.data_type.precision;
+	}
+
+      if (precision == DB_DEFAULT_PRECISION)
+	{
+	  precision = DB_MAX_VARCHAR_PRECISION;
+	}
+      break;
+    case PT_TYPE_NCHAR:
+      if (node->data_type != NULL)
+	{
+	  precision = node->data_type->info.data_type.precision;
+	}
+
+      if (precision == DB_DEFAULT_PRECISION)
+	{
+	  precision = DB_MAX_NCHAR_PRECISION;
+	}
+      break;
+    case PT_TYPE_VARNCHAR:
+      if (node->data_type != NULL)
+	{
+	  precision = node->data_type->info.data_type.precision;
+	}
+
+      if (precision == DB_DEFAULT_PRECISION)
+	{
+	  precision = DB_MAX_VARNCHAR_PRECISION;
+	}
+      break;
+    case PT_TYPE_NULL:
+    case PT_TYPE_NA:
+      precision = 0;
+      break;
+
+    default:
+      /* for host vars */
+      switch (coerce_type)
+	{
+	case PT_TYPE_VARCHAR:
+	  precision = DB_MAX_VARCHAR_PRECISION;
+	  break;
+	case PT_TYPE_VARNCHAR:
+	  precision = DB_MAX_VARNCHAR_PRECISION;
+	  break;
+	default:
+	  precision = TP_FLOATING_PRECISION_VALUE;
+	  break;
+	}
+      break;
+    }
+
+  return precision;
+}
+
 /*
  * pt_get_equivalent_type () - get the type to which a node should be
  *			       converted to in order to match an expression
@@ -1641,9 +2997,9 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
   switch (fcode)
     {
     // old functions
-    case PT_MIN:
-    case PT_MAX:
-    case PT_SUM:
+    // case PT_MIN:
+    // case PT_MAX:
+    // case PT_SUM:
 
     case PT_AVG:
     case PT_STDDEV:
@@ -1654,9 +3010,9 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
     case PT_VAR_SAMP:
 
     case PT_GROUPBY_NUM:
-    case PT_AGG_BIT_AND:
-    case PT_AGG_BIT_OR:
-    case PT_AGG_BIT_XOR:
+    // case PT_AGG_BIT_AND:
+    // case PT_AGG_BIT_OR:
+    // case PT_AGG_BIT_XOR:
     // case PT_GROUP_CONCAT:
     case PT_ROW_NUMBER:
     case PT_RANK:
@@ -1681,8 +3037,8 @@ pt_is_function_new_type_checking (FUNC_CODE fcode)
 
     case PT_CUME_DIST:
     case PT_PERCENT_RANK:
-    case PT_PERCENTILE_CONT:
-    case PT_PERCENTILE_DISC:
+    // case PT_PERCENTILE_CONT:
+    // case PT_PERCENTILE_DISC:
 
     case F_BENCHMARK:
     // JSON functions are migrated to new checking function
