@@ -1446,7 +1446,7 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 
 1361 No se encontró el archivo "%1$s".
 
-1362 Stored procedure compile error: %1$s
+1362 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
 1363 Ultimo error
 

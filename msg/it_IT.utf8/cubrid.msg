@@ -1446,7 +1446,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 1361 Il file "%1$s" non è stato trovato.
 
-1362 Stored procedure compile error: %1$s
+1362 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
 1363 Ultimo errore
 

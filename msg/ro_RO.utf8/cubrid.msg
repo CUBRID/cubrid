@@ -1446,7 +1446,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 1361 Fișierul "%1$s" nu a fost găsit.
 
-1362 Stored procedure compile error: %1$s
+1362 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
 1363 Ultima eroare
 

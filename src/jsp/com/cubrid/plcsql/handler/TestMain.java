@@ -40,6 +40,7 @@ import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.ServerAPI;
 import com.cubrid.plcsql.compiler.SqlSemantics;
 import com.cubrid.plcsql.compiler.StaticSqlCollector;
+import com.cubrid.plcsql.compiler.SyntaxError;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
@@ -57,16 +58,23 @@ import org.antlr.v4.runtime.tree.*;
 public class TestMain {
 
     public static CompileInfo compilePLCSQL(String in, boolean verbose) {
+
+        // System.out.println("[TEMP] text to the compiler");
+        // System.out.println(in);
+
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
         try {
             return compileInner(input, optionFlags, 0, null);
+        } catch (SyntaxError e) {
+            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
+            return err;
         } catch (SemanticError e) {
-            CompileInfo err = new CompileInfo(-1, e.lineNo, e.getMessage());
+            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
             return err;
         } catch (Throwable e) {
             Server.log(e);
-            CompileInfo err = new CompileInfo(-1, 0, "internal error");
+            CompileInfo err = new CompileInfo(-1, 0, 0, "internal error");
             return err;
         }
     }
@@ -120,8 +128,7 @@ public class TestMain {
 
             } catch (Throwable e) {
                 if (e instanceof SemanticError) {
-                    System.err.println(
-                            "Semantic Error on line " + ((SemanticError) e).lineNo + ":");
+                    System.err.println("Semantic Error on line " + ((SemanticError) e).line + ":");
                 }
 
                 e.printStackTrace();
@@ -155,6 +162,7 @@ public class TestMain {
         PcsParser parser = new PcsParser(tokens);
 
         SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
+        parser.removeErrorListeners();
         parser.addErrorListener(sei);
 
         if (verbose) {
@@ -168,7 +176,7 @@ public class TestMain {
         }
 
         if (sei.hasError) {
-            throw new RuntimeException("syntax error");
+            throw new SyntaxError(sei.line, sei.column, sei.msg);
         }
 
         sqlTemplate[0] = lexer.getCreateSqlTemplate();
@@ -285,7 +293,7 @@ public class TestMain {
                 if (ss.errCode == 0) {
                     staticSqls.put(ctx, ss);
                 } else {
-                    throw new SemanticError(Misc.getLineOf(ctx), ss.errMsg); // s410
+                    throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s410
                 }
             }
         }
@@ -339,7 +347,10 @@ public class TestMain {
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {
 
-        boolean hasError = false;
+        boolean hasError;
+        int line;
+        int column;
+        String msg;
 
         @Override
         public void syntaxError(
@@ -349,7 +360,11 @@ public class TestMain {
                 int charPositionInLine,
                 String msg,
                 RecognitionException e) {
-            hasError = true;
+
+            this.hasError = true;
+            this.line = line;
+            this.column = charPositionInLine + 1; // charPositionInLine starts from 0
+            this.msg = msg;
         }
     }
 }

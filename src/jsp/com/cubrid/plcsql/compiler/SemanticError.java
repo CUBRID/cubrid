@@ -32,10 +32,19 @@ package com.cubrid.plcsql.compiler;
 
 public class SemanticError extends RuntimeException {
 
-    public final int lineNo;
+    public final int line;
+    public final int column;
 
-    public SemanticError(int lineNo, String msg) {
+    public SemanticError(int line, int column, String msg) {
         super(msg);
-        this.lineNo = lineNo;
+        this.line = line;
+        this.column = column;
+    }
+
+    public SemanticError(int[] lineColumn, String msg) {
+        super(msg);
+        assert lineColumn.length == 2;
+        this.line = lineColumn[0];
+        this.column = lineColumn[1];
     }
 }

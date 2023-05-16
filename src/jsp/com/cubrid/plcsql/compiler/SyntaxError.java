@@ -28,20 +28,16 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+public class SyntaxError extends RuntimeException {
 
-public abstract class AstNode {
+    public final int line;
+    public final int column;
 
-    public final ParserRuleContext ctx;
-
-    public abstract String toJavaCode();
-
-    public abstract <R> R accept(AstVisitor<R> visitor);
-
-    public AstNode(ParserRuleContext ctx) {
-        this.ctx = ctx;
+    public SyntaxError(int line, int column, String msg) {
+        super(msg);
+        this.line = line;
+        this.column = column;
     }
 }

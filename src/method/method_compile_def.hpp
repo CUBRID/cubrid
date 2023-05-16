@@ -47,6 +47,7 @@ namespace cubmethod
 
     int err_code;
     int err_line;
+    int err_column;
     std::string err_msg;
 
     std::string translated_code;

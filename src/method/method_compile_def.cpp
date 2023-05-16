@@ -32,6 +32,7 @@ namespace cubmethod
   compile_info::compile_info ()
     : err_code (-1)
     , err_line (0)
+    , err_column (0)
   {
     //
   }
@@ -43,6 +44,7 @@ namespace cubmethod
     if (err_code < 0)
       {
 	serializator.pack_int (err_line);
+	serializator.pack_int (err_column);
 	serializator.pack_string (err_msg);
       }
     else
@@ -62,6 +64,7 @@ namespace cubmethod
     if (err_code < 0)
       {
 	size += serializator.get_packed_int_size (size); // err_line
+	size += serializator.get_packed_int_size (size); // err_column
 	size += serializator.get_packed_string_size (err_msg, size); // err_msg
       }
     else
@@ -82,6 +85,7 @@ namespace cubmethod
     if (err_code < 0)
       {
 	deserializator.unpack_int (err_line);
+	deserializator.unpack_int (err_column);
 	deserializator.unpack_string (err_msg);
       }
     else

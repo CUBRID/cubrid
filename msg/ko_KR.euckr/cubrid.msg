@@ -1446,7 +1446,7 @@ $ LOADDB
 
 1361 파일 "%1$s"을(를) 찾을 수 없습니다.
 
-1362 Stored procedure compile error: %1$s
+1362 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
 1363 마지막 에러
 

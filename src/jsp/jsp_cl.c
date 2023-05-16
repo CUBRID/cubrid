@@ -546,7 +546,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  const char *name, *decl, *impl, *comment = NULL;
+  const char *name, *decl, *comment = NULL;
 
   PT_MISC_TYPE type;
   PT_NODE *param_list, *p;
@@ -593,8 +593,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
   lang = PT_NODE_SP_LANG (statement);
   if (lang == SP_LANG_PLCSQL)
     {
-      impl = parser_print_tree (parser, statement);
-      err = plcsql_transfer_file (std::string (impl), false, compile_info);
+      std::string pl_code (statement->sql_user_text, statement->sql_user_text_len);
+      err = plcsql_transfer_file (pl_code, false, compile_info);
       if (err == NO_ERROR && compile_info.err_code == NO_ERROR)
 	{
 	  decl = compile_info.java_signature.c_str ();
@@ -612,10 +612,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  else
 	    {
 	      err_msg.assign (compile_info.err_msg);
-	      err_msg += " at ";
-	      err_msg += std::to_string (compile_info.err_line);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 1, err_msg.c_str ());
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_COMPILE_ERROR, 3, compile_info.err_line,
+		  compile_info.err_column, err_msg.c_str ());
+	  pt_record_error (parser, parser->statement_number, compile_info.err_line, compile_info.err_column, er_msg (),
+			   NULL);
 	}
     }
   else				/* SP_LANG_JAVA */
