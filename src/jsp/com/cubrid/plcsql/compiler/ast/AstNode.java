@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -39,6 +38,7 @@ public abstract class AstNode {
     public final ParserRuleContext ctx;
 
     public abstract String toJavaCode();
+
     public abstract <R> R accept(AstVisitor<R> visitor);
 
     public AstNode(ParserRuleContext ctx) {

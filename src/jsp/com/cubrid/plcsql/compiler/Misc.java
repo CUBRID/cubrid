@@ -59,7 +59,7 @@ public class Misc {
         }
         assert start != null;
 
-        return new int[] { start.getLine(), start.getCharPositionInLine() + 1 };
+        return new int[] {start.getLine(), start.getCharPositionInLine() + 1};
     }
 
     public static String getNormalizedText(ParseTree ctx) {
@@ -155,7 +155,7 @@ public class Misc {
 
     private static final String INDENT = "  "; // two spaces
 
-    private static final int[] UNKNOWN_LINE_COLUMN = new int[] { 0, 0 };
+    private static final int[] UNKNOWN_LINE_COLUMN = new int[] {0, 0};
 
     private static String getIndents(int indents) {
         StringBuffer sbuf = new StringBuffer();

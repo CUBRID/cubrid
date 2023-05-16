@@ -36,11 +36,11 @@ import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
-import com.cubrid.plcsql.compiler.SyntaxError;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.ServerAPI;
 import com.cubrid.plcsql.compiler.SqlSemantics;
 import com.cubrid.plcsql.compiler.StaticSqlCollector;
+import com.cubrid.plcsql.compiler.SyntaxError;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
@@ -59,8 +59,8 @@ public class TestMain {
 
     public static CompileInfo compilePLCSQL(String in, boolean verbose) {
 
-        //System.out.println("[TEMP] text to the compiler");
-        //System.out.println(in);
+        // System.out.println("[TEMP] text to the compiler");
+        // System.out.println(in);
 
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
@@ -128,8 +128,7 @@ public class TestMain {
 
             } catch (Throwable e) {
                 if (e instanceof SemanticError) {
-                    System.err.println(
-                            "Semantic Error on line " + ((SemanticError) e).line + ":");
+                    System.err.println("Semantic Error on line " + ((SemanticError) e).line + ":");
                 }
 
                 e.printStackTrace();
@@ -364,7 +363,7 @@ public class TestMain {
 
             this.hasError = true;
             this.line = line;
-            this.column = charPositionInLine + 1;   // charPositionInLine starts from 0
+            this.column = charPositionInLine + 1; // charPositionInLine starts from 0
             this.msg = msg;
         }
     }
