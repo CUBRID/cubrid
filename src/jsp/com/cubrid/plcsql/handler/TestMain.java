@@ -70,7 +70,7 @@ public class TestMain {
             CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
             return err;
         } catch (SemanticError e) {
-            CompileInfo err = new CompileInfo(-1, e.lineNo, 0, e.getMessage());
+            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
             return err;
         } catch (Throwable e) {
             Server.log(e);
@@ -129,7 +129,7 @@ public class TestMain {
             } catch (Throwable e) {
                 if (e instanceof SemanticError) {
                     System.err.println(
-                            "Semantic Error on line " + ((SemanticError) e).lineNo + ":");
+                            "Semantic Error on line " + ((SemanticError) e).line + ":");
                 }
 
                 e.printStackTrace();
@@ -294,7 +294,7 @@ public class TestMain {
                 if (ss.errCode == 0) {
                     staticSqls.put(ctx, ss);
                 } else {
-                    throw new SemanticError(Misc.getLineOf(ctx), ss.errMsg); // s410
+                    throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s410
                 }
             }
         }

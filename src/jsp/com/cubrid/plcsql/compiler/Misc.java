@@ -42,9 +42,9 @@ public class Misc {
         PROC,
     }
 
-    public static int getLineOf(ParserRuleContext ctx) {
+    public static int[] getLineColumnOf(ParserRuleContext ctx) {
         if (ctx == null) {
-            return 0;
+            return UNKNOWN_LINE_COLUMN;
         }
 
         Token start = null;
@@ -59,7 +59,7 @@ public class Misc {
         }
         assert start != null;
 
-        return start.getLine();
+        return new int[] { start.getLine(), start.getCharPositionInLine() + 1 };
     }
 
     public static String getNormalizedText(ParseTree ctx) {
@@ -154,6 +154,8 @@ public class Misc {
     // ----------------------------------------------
 
     private static final String INDENT = "  "; // two spaces
+
+    private static final int[] UNKNOWN_LINE_COLUMN = new int[] { 0, 0 };
 
     private static String getIndents(int indents) {
         StringBuffer sbuf = new StringBuffer();

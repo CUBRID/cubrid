@@ -234,7 +234,7 @@ public class SymbolStack {
         if (map == symbolTable.labels) {
             if (map.containsKey(name)) {
                 throw new SemanticError(
-                        decl.lineNo(), // s061
+                        Misc.getLineColumnOf(decl.ctx), // s061
                         "label " + name + " has already been declared in the same scope");
             }
         } else {
@@ -243,7 +243,7 @@ public class SymbolStack {
                     || symbolTable.funcs.containsKey(name)
                     || symbolTable.exceptions.containsKey(name)) {
                 throw new SemanticError(
-                        decl.lineNo(), // s062
+                        Misc.getLineColumnOf(decl.ctx), // s062
                         name + " has already been declared in the same scope");
             }
             if (symbolTable.scope.level == 1 && map.size() == 0) {
@@ -254,7 +254,7 @@ public class SymbolStack {
                         || map == symbolTable.funcs; // top-level procedure/function
                 if (cubridFuncs.containsKey(name)) {
                     throw new SemanticError(
-                            decl.lineNo(), // s063
+                            Misc.getLineColumnOf(decl.ctx), // s063
                             "procedure/function cannot be created with the same name as a built-in function");
                 }
             }

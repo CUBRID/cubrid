@@ -36,26 +36,12 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class AstNode {
 
-    public ParserRuleContext ctx;
+    public final ParserRuleContext ctx;
 
     public abstract String toJavaCode();
-
     public abstract <R> R accept(AstVisitor<R> visitor);
 
     public AstNode(ParserRuleContext ctx) {
-        if (ctx != null) {
-            this.ctx = ctx;
-            this.lineNo = Misc.getLineOf(ctx);
-        }
+        this.ctx = ctx;
     }
-
-    public int lineNo() {
-        return lineNo;
-    }
-
-    // ---------------------------------------------------
-    // Private
-    // ---------------------------------------------------
-
-    private int lineNo;
 }
