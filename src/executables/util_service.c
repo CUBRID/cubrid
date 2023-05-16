@@ -3950,50 +3950,13 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_START);
 
-  pids = da_create (100, sizeof (int));
-  if (pids == NULL)
-    {
-      status = ER_GENERIC_ERROR;
-      goto ret;
-    }
-
   status = us_hb_server_start (ha_conf, db_name);
   if (status != NO_ERROR)
     {
       goto ret;
     }
 
-  status = us_hb_copylogdb_start (pids, ha_conf, db_name, NULL, NULL);
-  if (status != NO_ERROR)
-    {
-      goto ret;
-    }
-
-  status = us_hb_applylogdb_start (pids, ha_conf, db_name, NULL, NULL);
-  if (status != NO_ERROR)
-    {
-      goto ret;
-    }
-
-  sleep (HB_START_WAITING_TIME_IN_SECS);
-  if (check_result == true)
-    {
-      for (i = 0; i < da_size (pids); i++)
-	{
-	  da_get (pids, i, &pid);
-	  if (is_terminated_process (pid))
-	    {
-	      status = ER_GENERIC_ERROR;
-	      break;
-	    }
-	}
-    }
-
 ret:
-  if (pids)
-    {
-      da_destroy (pids);
-    }
 
   print_result (PRINT_HA_PROCS_NAME, status, START);
   return status;
