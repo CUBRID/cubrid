@@ -10983,7 +10983,9 @@ skip_comment (char *ps)
     }
   return ps;
 }
+#endif
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 char *
 read_id (char *ps, char end_char)
 {
@@ -10995,7 +10997,9 @@ read_id (char *ps, char end_char)
   return ((*ps == end_char) ? (ps + 1) : ps);
 
 }
+#endif
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static char *
 read_string (char *ps, char end_char, bool no_escape)
 {
@@ -11052,7 +11056,9 @@ read_string (char *ps, char end_char, bool no_escape)
 
   return ps;
 }
+#endif
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static char *
 find_circle_at_char (bool ansi_quotes, bool no_escape, char *ps)
 {
@@ -11110,7 +11116,9 @@ find_circle_at_char (bool ansi_quotes, bool no_escape, char *ps)
 
   return NULL;
 }
+#endif
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static PARSER_VARCHAR *
 pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
