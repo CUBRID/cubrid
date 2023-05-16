@@ -334,7 +334,7 @@ static int us_hb_utils_stop (HA_CONF * ha_conf, const char *db_name, const char 
 static int us_hb_server_start (HA_CONF * ha_conf, const char *db_name);
 static int us_hb_server_stop (HA_CONF * ha_conf, const char *db_name);
 
-static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result);
+static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name);
 static int us_hb_process_stop (HA_CONF * ha_conf, const char *db_name);
 
 static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
@@ -3941,7 +3941,7 @@ us_hb_server_stop (HA_CONF * ha_conf, const char *db_name)
 }
 
 static int
-us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
+us_hb_process_start (HA_CONF * ha_conf, const char *db_name)
 {
   int status = NO_ERROR;
 
@@ -4632,7 +4632,7 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
 	}
     }
 
-  status = us_hb_process_start (ha_conf, db_name, true);
+  status = us_hb_process_start (ha_conf, db_name);
   if (status != NO_ERROR)
     {
       if (db_name == NULL)
