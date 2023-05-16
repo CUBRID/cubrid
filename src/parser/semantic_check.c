@@ -13735,7 +13735,9 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	      return 1;
 	    }
 
-	  if (pt_str_compare ((char *) PT_VALUE_GET_BYTES (p->info.expr.arg2), (char *) PT_VALUE_GET_BYTES (q->info.expr.arg2), CASE_INSENSITIVE))
+	  if (pt_str_compare
+	      ((char *) PT_VALUE_GET_BYTES (p->info.expr.arg2), (char *) PT_VALUE_GET_BYTES (q->info.expr.arg2),
+	       CASE_INSENSITIVE))
 	    {
 	      return 1;
 	    }
