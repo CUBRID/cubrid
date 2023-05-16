@@ -96,8 +96,8 @@ int expecting_pl_lang_spec = 0;
 %x PL_LANG_SPEC
 %x PLCSQL_TEXT
 
-
-
+ /* id letter */
+IDL       [a-zA-Z0-9_]
 
 %%
 
@@ -1589,18 +1589,28 @@ _[uU][tT][fF]8[']		{
                                                                 BEGIN(PLCSQL_TEXT);
                                                                 init_plcsql_lexing();
                                                                 return PLCSQL; }
+
 <PL_LANG_SPEC>[ \t\r]+					{ begin_token(yytext); }
 <PL_LANG_SPEC>\n					{ begin_token(yytext);
 								this_parser->line = yylineno;
 								this_parser->column = yycolumn = yycolumn_end = 0; }
+
 <PL_LANG_SPEC><<EOF>> 					{
                                                                 BEGIN(INITIAL);
                                                                 csql_yyerror("unterminated PL language spec");
                                                                 return UNTERMINATED_PL_LANG_SPEC; }
-<PL_LANG_SPEC>. 					{       BEGIN(PLCSQL_TEXT);
+
+<PL_LANG_SPEC>{IDL}+                                    {
+                                                                BEGIN(PLCSQL_TEXT);
                                                                 init_plcsql_lexing();
+                                                                yybuffer_pos -= csql_yyleng;
                                                                 yyless(0); }
 
+<PL_LANG_SPEC>.                                         {
+                                                                BEGIN(PLCSQL_TEXT);
+                                                                init_plcsql_lexing();
+                                                                yybuffer_pos -= csql_yyleng;
+                                                                yyless(0); }
 
  /* mode PLCSQL_TEXT */
 
@@ -1639,8 +1649,15 @@ _[uU][tT][fF]8[']		{
 
 <PLCSQL_TEXT>[bB][eE][gG][iI][nN]                       |
 <PLCSQL_TEXT>[iI][fF]                                   |
-<PLCSQL_TEXT>[cC][aA][sS][eE]                           |
 <PLCSQL_TEXT>[lL][oO][oO][pP]                           { begin_token(yytext);
+                                                                plcsql_begin_end_balance++;
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>[cC][aA][sS][eE]                           { begin_token(yytext);
+                                                                // case can start an expression and can appear in a balance 0 area
+                                                                if (plcsql_begin_end_balance == 0) {
+                                                                        plcsql_nest_level++;
+                                                                }
                                                                 plcsql_begin_end_balance++;
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
@@ -1675,6 +1692,10 @@ _[uU][tT][fF]8[']		{
                                                                         // increase the nest level only when it is not in a block statement
                                                                         plcsql_nest_level++;
                                                                 }
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+
+<PLCSQL_TEXT>{IDL}+                                     { begin_token(yytext);
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
 

@@ -81,7 +81,7 @@ public class StmtCursorFetch extends Stmt {
                     "{ // cursor fetch",
                     "  ResultSet rs = %'CURSOR'%.rs;",
                     "  if (rs == null) {",
-                    "    ; // do nothing   TODO: throw an exception?",
+                    "    throw new PROGRAM_ERROR();",
                     "  } else if (rs.next()) {",
                     "    %'SET-INTO-VARIABLES'%",
                     "  } else {",

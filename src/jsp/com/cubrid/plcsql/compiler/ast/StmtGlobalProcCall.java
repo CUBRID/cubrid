@@ -72,12 +72,15 @@ public class StmtGlobalProcCall extends Stmt {
 
     private static final String tmplStmt =
             Misc.combineLines(
-                    "{ // global procedure call: %'PROC-NAME'%",
+                    "try { // global procedure call: %'PROC-NAME'%",
                     "  String dynSql_%'LEVEL'% = \"%'DYNAMIC-SQL'%\";",
                     "  CallableStatement stmt_%'LEVEL'% = conn.prepareCall(dynSql_%'LEVEL'%);",
                     "  %'SET-USED-VALUES'%",
                     "  stmt_%'LEVEL'%.execute();",
                     "  stmt_%'LEVEL'%.close();",
+                    "} catch (SQLException e) {",
+                    "  Server.log(e);",
+                    "  throw new SQL_ERROR(e.getMessage());",
                     "}");
 
     private static String getDynSql(String name, int argCount) {

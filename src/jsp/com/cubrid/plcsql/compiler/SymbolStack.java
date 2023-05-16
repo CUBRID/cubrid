@@ -55,13 +55,11 @@ public class SymbolStack {
                     "$APP_ERROR", // for raise_application_error
                     "CASE_NOT_FOUND",
                     "CURSOR_ALREADY_OPEN",
-                    "DUP_VAL_ON_INDEX",
                     "INVALID_CURSOR",
-                    "LOGIN_DENIED",
                     "NO_DATA_FOUND",
                     "PROGRAM_ERROR",
-                    "ROWTYPE_MISMATCH",
                     "STORAGE_ERROR",
+                    "SQL_ERROR",
                     "TOO_MANY_ROWS",
                     "VALUE_ERROR",
                     "ZERO_DIVIDE");
