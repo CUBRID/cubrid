@@ -36,6 +36,7 @@ import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ParseTreeConverter;
 import com.cubrid.plcsql.compiler.ParseTreePrinter;
 import com.cubrid.plcsql.compiler.PcsLexerEx;
+import com.cubrid.plcsql.compiler.SyntaxError;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.ServerAPI;
 import com.cubrid.plcsql.compiler.SqlSemantics;
@@ -57,10 +58,17 @@ import org.antlr.v4.runtime.tree.*;
 public class TestMain {
 
     public static CompileInfo compilePLCSQL(String in, boolean verbose) {
+
+        System.out.println("[TEMP] text to the compiler");
+        System.out.println(in);
+
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
         try {
             return compileInner(input, optionFlags, 0, null);
+        } catch (SyntaxError e) {
+            CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
+            return err;
         } catch (SemanticError e) {
             CompileInfo err = new CompileInfo(-1, e.lineNo, 0, e.getMessage());
             return err;
@@ -155,6 +163,7 @@ public class TestMain {
         PcsParser parser = new PcsParser(tokens);
 
         SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
+        parser.removeErrorListeners();
         parser.addErrorListener(sei);
 
         if (verbose) {
@@ -168,7 +177,7 @@ public class TestMain {
         }
 
         if (sei.hasError) {
-            throw new RuntimeException("syntax error");
+            throw new SyntaxError(sei.line, sei.column, sei.msg);
         }
 
         sqlTemplate[0] = lexer.getCreateSqlTemplate();
@@ -339,7 +348,10 @@ public class TestMain {
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {
 
-        boolean hasError = false;
+        boolean hasError;
+        int line;
+        int column;
+        String msg;
 
         @Override
         public void syntaxError(
@@ -349,7 +361,11 @@ public class TestMain {
                 int charPositionInLine,
                 String msg,
                 RecognitionException e) {
-            hasError = true;
+
+            this.hasError = true;
+            this.line = line;
+            this.column = charPositionInLine + 1;   // charPositionInLine starts from 0
+            this.msg = msg;
         }
     }
 }
