@@ -1248,15 +1248,16 @@ csql_walk_statement (const char *str)
 		}
 	      else
 		{
-                  if (is_identifier_letter(*p))
-                    {
-                      // once an identifier letter is found, advance p while the next letter is also an identifir letter
-                      // in other words, consume the whole identifier
-                      while (p + 1 < str + str_length && is_identifier_letter(*(p + 1))) {
-                        p++;
-                      }
-                      continue;
-                    }
+		  if (is_identifier_letter (*p))
+		    {
+		      // once an identifier letter is found, advance p while the next letter is also an identifir letter
+		      // in other words, consume the whole identifier
+		      while (p + 1 < str + str_length && is_identifier_letter (*(p + 1)))
+			{
+			  p++;
+			}
+		      continue;
+		    }
 
 		  // keep the substate CSQL_SUBSTATE_PLCSQL_TEXT
 		  // break and proceed to the second switch
