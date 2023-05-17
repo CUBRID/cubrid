@@ -11319,6 +11319,18 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 
   switch (op)
     {
+#if 0
+    case PT_DIVIDE:
+      if (t1 == PT_TYPE_NUMERIC || t2 == PT_TYPE_NUMERIC)
+	{
+	  result_type = PT_TYPE_DOUBLE;
+	}
+      if (PT_IS_DISCRETE_NUMBER_TYPE (t1) && PT_IS_DISCRETE_NUMBER_TYPE (t2) )
+	{
+	  result_type = PT_TYPE_DOUBLE;
+	}
+      break;
+#endif
     case PT_MINUS:
     case PT_TIMES:
       if (result_type == PT_TYPE_SEQUENCE)
