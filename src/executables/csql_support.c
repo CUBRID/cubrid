@@ -102,6 +102,7 @@ typedef struct
 static CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0 };
 
 
+static bool is_identifier_letter (const char c);
 static bool match_word_ci (const char *word, const char **bufp);
 
 static void iq_pipe_handler (int sig_no);
@@ -1247,6 +1248,17 @@ csql_walk_statement (const char *str)
 		}
 	      else
 		{
+		  if (is_identifier_letter (*p))
+		    {
+		      // once an identifier letter is found, advance p while the next letter is also an identifir letter
+		      // in other words, consume the whole identifier
+		      while (p + 1 < str + str_length && is_identifier_letter (*(p + 1)))
+			{
+			  p++;
+			}
+		      continue;
+		    }
+
 		  // keep the substate CSQL_SUBSTATE_PLCSQL_TEXT
 		  // break and proceed to the second switch
 		}
@@ -1274,7 +1286,7 @@ csql_walk_statement (const char *str)
 
 	      substate = CSQL_SUBSTATE_PLCSQL_TEXT;
 
-	      // match if/case/loop if exists, but ignore them
+	      // match if/case/loop if exists, but just advance p and ignore them
 	      if (match_word_ci ("if", &p) || match_word_ci ("case", &p) || match_word_ci ("loop", &p))
 		{
 		  continue;
