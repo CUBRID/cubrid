@@ -1007,6 +1007,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public DeclRoutine visitRoutine_definition(Routine_definitionContext ctx) {
 
+        if (ctx.LANGUAGE() != null && symbolStack.getCurrentScope().level > 1) {
+            int[] lineColumn = Misc.getLineColumnOf(ctx);
+            throw new SyntaxError(lineColumn[0], lineColumn[1],
+                "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
+        }
+
         String name = Misc.getNormalizedText(ctx.identifier());
 
         boolean isFunction = (ctx.PROCEDURE() == null);

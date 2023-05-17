@@ -40,7 +40,7 @@ create_routine
 
 routine_definition
     : (PROCEDURE | FUNCTION) identifier ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
-      (IS | AS) seq_of_declare_specs? body (SEMICOLON)?
+      (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
     ;
 
 parameter_list
