@@ -206,10 +206,10 @@ void passive_tran_server::wait_replication_past_target_lsa (LOG_LSA lsa)
 }
 
 passive_tran_server::connection_handler *
-passive_tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
+passive_tran_server::create_connection_handler (tran_server &ts) const
 {
   // passive_tran_server::connection_handler
-  return new connection_handler (std::move (chn), ts);
+  return new connection_handler (ts);
 }
 
 void

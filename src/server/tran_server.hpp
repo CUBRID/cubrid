@@ -103,6 +103,8 @@ class tran_server
 
 	virtual ~connection_handler ();
 
+	void set_connection (cubcomm::channel &&chn);
+
 	void push_request (tran_to_page_request reqid, std::string &&payload);
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
@@ -112,7 +114,10 @@ class tran_server
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
       protected:
-	connection_handler (cubcomm::channel &&chn, tran_server &ts, request_handlers_map_t &&request_handlers);
+	connection_handler (tran_server &ts)
+	  : m_ts { ts }
+	  , m_is_disconnecting { false }
+	{ }
 
 	virtual request_handlers_map_t get_request_handlers ();
 
@@ -131,7 +136,7 @@ class tran_server
     };
 
   protected:
-    virtual connection_handler *create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const = 0;
+    virtual connection_handler *create_connection_handler (tran_server &ts) const = 0;
 
     // Booting functions that require specialization
     virtual bool get_remote_storage_config () = 0;
@@ -150,7 +155,7 @@ class tran_server
   private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
-    int connect_to_page_server (const cubcomm::node &node, const char *db_name);
+    int connect_to_page_server (int node_idx, const cubcomm::node &node, const char *db_name);
     void disconnect_page_server_async (const connection_handler *conn);
 
     int parse_server_host (const std::string &host);

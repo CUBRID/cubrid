@@ -242,11 +242,14 @@ tran_server::init_page_server_hosts (const char *db_name)
   exit_code = NO_ERROR;
   // use config to connect
   //
-  int valid_connection_count = 0;
+  m_page_server_conn_vec.resize (m_connection_list.size());
+  int valid_connection_count = 0, idx = 0;
   bool failed_conn = false;
   for (const cubcomm::node &node : m_connection_list)
     {
-      exit_code = connect_to_page_server (node, db_name);
+      /* create a empty connection_handler specialized for each tran serve type */
+      m_page_server_conn_vec[idx].reset (create_connection_handler (*this));
+      exit_code = connect_to_page_server (idx, node, db_name);
       if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
@@ -309,7 +312,7 @@ tran_server::get_boot_info_from_page_server ()
 }
 
 int
-tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_name)
+tran_server::connect_to_page_server (int node_idx, const cubcomm::node &node, const char *db_name)
 {
   auto ps_conn_error_lambda = [&node] ()
   {
@@ -353,7 +356,7 @@ tran_server::connect_to_page_server (const cubcomm::node &node, const char *db_n
 
   // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
   // moved as argument below
-  m_page_server_conn_vec.emplace_back (create_connection_handler (std::move (srv_chn), *this));
+  m_page_server_conn_vec[node_idx]->set_connection (std::move (srv_chn));
 
   return NO_ERROR;
 }
@@ -439,10 +442,8 @@ tran_server::uses_remote_storage () const
   return false;
 }
 
-tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts,
-    request_handlers_map_t &&request_handlers)
-  : m_ts { ts }
-  , m_is_disconnecting { false }
+void
+tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
@@ -452,7 +453,9 @@ tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tra
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
 
-  m_conn.reset (new page_server_conn_t (std::move (chn), std::move (request_handlers), tran_to_page_request::RESPOND,
+  assert (m_conn == nullptr);
+
+  m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
 					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
 
   assert (m_conn != nullptr);
