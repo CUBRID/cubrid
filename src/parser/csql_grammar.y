@@ -309,6 +309,8 @@ typedef enum
 
 FUNCTION_MAP *keyword_offset (const char *name);
 
+static PT_NODE* get_string_literal_node(const char* str);
+
 static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
 static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
                                                  size_t min_args, size_t max_args);
@@ -982,7 +984,6 @@ int g_original_buffer_len;
 %type <node> dblink_column_definition
 
 %type <node> pl_language_spec
-%type <node> plcsql_text
 
 /*}}}*/
 
@@ -992,6 +993,7 @@ int g_original_buffer_len;
 %type <cptr> of_integer_real_literal
 %type <cptr> integer_text
 %type <cptr> json_schema
+%type <cptr> plcsql_text
 %type <cptr> plcsql_text_part
 /*}}}*/
 
@@ -12428,7 +12430,7 @@ pl_language_spec
 			if (node)
 			  {
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = $1;
+			    node->info.sp_body.impl = get_string_literal_node($1);
 			    node->info.sp_body.direct = 1;
 			  }
 
@@ -12445,7 +12447,7 @@ pl_language_spec
 			if (node)
 			  {
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = $3;
+			    node->info.sp_body.impl = get_string_literal_node($3);
 			    node->info.sp_body.direct = 1;
 			  }
 
@@ -12476,59 +12478,22 @@ plcsql_text
         : plcsql_text plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, : plcsql_text plcsql_text_part);
 
-			PT_NODE *str = $1;
-			if (str)
-			  {
-			    str->info.value.data_value.str =
-			      pt_append_bytes (this_parser, str->info.value.data_value.str, $2,
-					       strlen ($2));
-			    str->info.value.text = NULL;
-			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, str);
-			  }
-
-			$$ = str;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                        $$ = pt_append_string(this_parser, $1, $2);
 
 		DBG_PRINT}}
         | plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
-			PT_NODE *node = NULL;
-			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
-			INTL_CODESET charset;
-			int collation_id;
-			bool force;
 
-			if (lang_get_parser_use_client_charset ())
-			  {
-			    charset = lang_get_client_charset ();
-			    collation_id = lang_get_client_collation ();
-			    force = false;
-			  }
-			else
-			  {
-			    charset = LANG_SYS_CODESET;
-			    collation_id = LANG_SYS_COLLATION;
-			    force = true;
-			  }
+                        char* bufp = parser_allocate_string_buffer(this_parser, strlen(g_query_string), sizeof(char));
+                        if (bufp == NULL)
+                          {
+                            PT_ERRORf (this_parser, NULL, "cannot alloc %d bytes for PL/CSQL text", strlen(g_query_string));
+                          }
 
-                        node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_CHAR,
-                                                              $1, charset);
-
-			if (node)
-			  {
-			    pt_value_set_charset_coll (this_parser, node,
-						       charset, collation_id,
-						       force);
-			    node->info.value.has_cs_introducer = force;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                        $$ = pt_append_string(this_parser, bufp, $1);
 
 		DBG_PRINT}}
         ;
-
 
 plcsql_text_part
         : PLCSQL_TEXT_SOME
@@ -22668,7 +22633,6 @@ char_string_literal
 		DBG_PRINT}}
 	| char_string
 		{{ DBG_TRACE_GRAMMAR(char_string_literal, | char_string);
-
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -22678,39 +22642,7 @@ char_string_literal
 char_string
 	: CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(char_string, : CHAR_STRING);
-
-			PT_NODE *node = NULL;
-			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
-			INTL_CODESET charset;
-			int collation_id;
-			bool force;
-
-			if (lang_get_parser_use_client_charset ())
-			  {
-			    charset = lang_get_client_charset ();
-			    collation_id = lang_get_client_collation ();
-			    force = false;
-			  }
-			else
-			  {
-			    charset = LANG_SYS_CODESET;
-			    collation_id = LANG_SYS_COLLATION;
-			    force = true;
-			  }
-
-                        node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_CHAR,
-                                                              $1, charset);
-
-			if (node)
-			  {
-			    pt_value_set_charset_coll (this_parser, node,
-						       charset, collation_id,
-						       force);
-			    node->info.value.has_cs_introducer = force;
-			  }
-
-			$$ = node;
+			$$ = get_string_literal_node($1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -27853,4 +27785,39 @@ pt_ct_check_select (char* p, char *perr_msg)
 
    sprintf(perr_msg, "Only SELECT statements are supported.");
    return false;
+}
+
+static PT_NODE*
+get_string_literal_node(const char* str) {
+    PT_NODE *node = NULL;
+    INTL_CODESET charset;
+    int collation_id;
+    bool force;
+
+    if (lang_get_parser_use_client_charset ())
+      {
+        charset = lang_get_client_charset ();
+        collation_id = lang_get_client_collation ();
+        force = false;
+      }
+    else
+      {
+        charset = LANG_SYS_CODESET;
+        collation_id = LANG_SYS_COLLATION;
+        force = true;
+      }
+
+    node = pt_create_char_string_literal (this_parser,
+                                          PT_TYPE_CHAR,
+                                          str, charset);
+
+    if (node)
+      {
+        pt_value_set_charset_coll (this_parser, node,
+                                   charset, collation_id,
+                                   force);
+        node->info.value.has_cs_introducer = force;
+      }
+
+    return node;
 }
