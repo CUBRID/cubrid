@@ -309,6 +309,8 @@ typedef enum
 
 FUNCTION_MAP *keyword_offset (const char *name);
 
+static PT_NODE* pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size);
+
 static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
 static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
                                                  size_t min_args, size_t max_args);
@@ -407,6 +409,7 @@ static char * pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p,
 static PT_NODE * pt_create_char_string_literal (PARSER_CONTEXT *parser,
 						const PT_TYPE_ENUM char_type,
 						const char *str,
+                                                const int opt_str_size,
 						const INTL_CODESET codeset);
 static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
 				       const PT_TYPE_ENUM type,
@@ -449,6 +452,7 @@ char *g_query_string;
 int g_query_string_len;
 int g_original_buffer_len;
 
+static char *g_plcsql_text;
 
 /*
  * The behavior of location propagation when a rule is matched must
@@ -538,6 +542,7 @@ int g_original_buffer_len;
 %type <boolean> opt_unique
 %type <boolean> opt_cascade
 %type <boolean> opt_cascade_constraints
+%type <number> plcsql_text
 %type <number> opt_replace
 %type <number> opt_of_inner_left_right
 %type <number> opt_class_type
@@ -982,7 +987,6 @@ int g_original_buffer_len;
 %type <node> dblink_column_definition
 
 %type <node> pl_language_spec
-%type <node> plcsql_text
 
 /*}}}*/
 
@@ -1794,6 +1798,7 @@ stmt
 			allow_attribute_ordering = false;
 			parser_hidden_incr_list = NULL;
 
+                        g_plcsql_text = NULL;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
 		DBG_PRINT}}
 	stmt_
@@ -12427,8 +12432,10 @@ pl_language_spec
 
 			if (node)
 			  {
+                            assert(g_plcsql_text != NULL);
+
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = $1;
+			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, $1);
 			    node->info.sp_body.direct = 1;
 			  }
 
@@ -12444,8 +12451,10 @@ pl_language_spec
 
 			if (node)
 			  {
+                            assert(g_plcsql_text != NULL);
+
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = $3;
+			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, $3);
 			    node->info.sp_body.direct = 1;
 			  }
 
@@ -12476,59 +12485,18 @@ plcsql_text
         : plcsql_text plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, : plcsql_text plcsql_text_part);
 
-			PT_NODE *str = $1;
-			if (str)
-			  {
-			    str->info.value.data_value.str =
-			      pt_append_bytes (this_parser, str->info.value.data_value.str, $2,
-					       strlen ($2));
-			    str->info.value.text = NULL;
-			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, str);
-			  }
-
-			$$ = str;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                        $$ = $1 + strlen($2);
 
 		DBG_PRINT}}
         | plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
-			PT_NODE *node = NULL;
-			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
-			INTL_CODESET charset;
-			int collation_id;
-			bool force;
 
-			if (lang_get_parser_use_client_charset ())
-			  {
-			    charset = lang_get_client_charset ();
-			    collation_id = lang_get_client_collation ();
-			    force = false;
-			  }
-			else
-			  {
-			    charset = LANG_SYS_CODESET;
-			    collation_id = LANG_SYS_COLLATION;
-			    force = true;
-			  }
-
-                        node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_CHAR,
-                                                              $1, charset);
-
-			if (node)
-			  {
-			    pt_value_set_charset_coll (this_parser, node,
-						       charset, collation_id,
-						       force);
-			    node->info.value.has_cs_introducer = force;
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                        assert(g_plcsql_text == NULL);
+                        g_plcsql_text = g_query_string + @$.buffer_pos;
+                        $$ = strlen($1);
 
 		DBG_PRINT}}
         ;
-
 
 plcsql_text_part
         : PLCSQL_TEXT_SOME
@@ -22668,7 +22636,6 @@ char_string_literal
 		DBG_PRINT}}
 	| char_string
 		{{ DBG_TRACE_GRAMMAR(char_string_literal, | char_string);
-
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -22678,39 +22645,7 @@ char_string_literal
 char_string
 	: CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(char_string, : CHAR_STRING);
-
-			PT_NODE *node = NULL;
-			PT_TYPE_ENUM typ = PT_TYPE_CHAR;
-			INTL_CODESET charset;
-			int collation_id;
-			bool force;
-
-			if (lang_get_parser_use_client_charset ())
-			  {
-			    charset = lang_get_client_charset ();
-			    collation_id = lang_get_client_collation ();
-			    force = false;
-			  }
-			else
-			  {
-			    charset = LANG_SYS_CODESET;
-			    collation_id = LANG_SYS_COLLATION;
-			    force = true;
-			  }
-
-                        node = pt_create_char_string_literal (this_parser,
-							      PT_TYPE_CHAR,
-                                                              $1, charset);
-
-			if (node)
-			  {
-			    pt_value_set_charset_coll (this_parser, node,
-						       charset, collation_id,
-						       force);
-			    node->info.value.has_cs_introducer = force;
-			  }
-
-			$$ = node;
+			$$ = pt_create_string_literal_node_w_charset_coll($1, -1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -22736,7 +22671,7 @@ char_string
 
 			node = pt_create_char_string_literal (this_parser,
 							      PT_TYPE_NCHAR,
-							      $1, charset);
+							      $1, -1, charset);
 
 			if (node && lang_get_parser_use_client_charset ())
 			  {
@@ -22756,7 +22691,7 @@ char_string
 			PT_NODE *node = NULL;
 
 			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
-							      $1, INTL_CODESET_RAW_BYTES);
+							      $1, -1, INTL_CODESET_RAW_BYTES);
 
 			if (node)
 			  {
@@ -22777,7 +22712,7 @@ char_string
 			PT_NODE *node = NULL;
 
 			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
-							      $1, INTL_CODESET_KSC5601_EUC);
+							      $1, -1, INTL_CODESET_KSC5601_EUC);
 
 			if (node)
 			  {
@@ -22798,7 +22733,7 @@ char_string
 			PT_NODE *node = NULL;
 
 			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
-							      $1, INTL_CODESET_ISO88591);
+							      $1, -1, INTL_CODESET_ISO88591);
 
 			if (node)
 			  {
@@ -22819,7 +22754,7 @@ char_string
 			PT_NODE *node = NULL;
 
 			node = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR,
-							      $1, INTL_CODESET_UTF8);
+							      $1, -1, INTL_CODESET_UTF8);
 
 			if (node)
 			  {
@@ -27154,9 +27089,9 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str,
 
 static PT_NODE *
 pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_type,
-			       const char *str, const INTL_CODESET codeset)
+			       const char *str, const int opt_str_size, const INTL_CODESET codeset)
 {
-  int str_size = strlen (str);
+  int str_size = opt_str_size < 0 ? strlen (str) : opt_str_size;
   PT_NODE *node = NULL;
   char *invalid_pos = NULL;
   int composed_size;
@@ -27853,4 +27788,40 @@ pt_ct_check_select (char* p, char *perr_msg)
 
    sprintf(perr_msg, "Only SELECT statements are supported.");
    return false;
+}
+
+static PT_NODE*
+pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size)
+{
+    PT_NODE *node = NULL;
+    INTL_CODESET charset;
+    int collation_id;
+    bool force;
+
+    if (lang_get_parser_use_client_charset ())
+      {
+        charset = lang_get_client_charset ();
+        collation_id = lang_get_client_collation ();
+        force = false;
+      }
+    else
+      {
+        charset = LANG_SYS_CODESET;
+        collation_id = LANG_SYS_COLLATION;
+        force = true;
+      }
+
+    node = pt_create_char_string_literal (this_parser,
+                                          PT_TYPE_CHAR,
+                                          str, opt_str_size, charset);
+
+    if (node)
+      {
+        pt_value_set_charset_coll (this_parser, node,
+                                   charset, collation_id,
+                                   force);
+        node->info.value.has_cs_introducer = force;
+      }
+
+    return node;
 }
