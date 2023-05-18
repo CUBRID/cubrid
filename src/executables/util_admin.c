@@ -927,7 +927,12 @@ static UTIL_MAP ua_Utility_Map[] = {
   {PARAMDUMP, SA_CS, 1, UTIL_OPTION_PARAMDUMP, "paramdump", ua_Paramdump_Option, ua_Paramdump_Option_Map},
   {STATDUMP, CS_ONLY, 1, UTIL_OPTION_STATDUMP, "statdump", ua_Statdump_Option, ua_Statdump_Option_Map},
   {CHANGEMODE, CS_ONLY, 1, UTIL_OPTION_CHANGEMODE, "changemode", ua_Changemode_Option, ua_Changemode_Option_Map},
-#if defined (ENABLE_UNUSED_FUNCTION)
+#if 0
+  /*
+   * In the newHA architecture, the execution of "copylogdb" and "applylogdb" is not supported.
+   * TODO: Once the DR (Disaster Recovery) concept is finalized, the codes related to "copylogdb" and "applylogdb" should be either removed or re-used.
+   */
+
   {COPYLOGDB, CS_ONLY, 1, UTIL_OPTION_COPYLOGDB, "copylogdb", ua_Copylog_Option, ua_Copylog_Option_Map},
   {APPLYLOGDB, CS_ONLY, 1, UTIL_OPTION_APPLYLOGDB, "applylogdb", ua_Applylog_Option, ua_Applylog_Option_Map},
 #endif

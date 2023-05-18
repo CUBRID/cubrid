@@ -235,7 +235,12 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {INFO, COMMAND_TYPE_INFO, MASK_BROKER | MASK_GATEWAY},
   {GET_SHARID, COMMAND_TYPE_GETID, MASK_BROKER},
   {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
-#if defined (ENABLE_UNUSED_FUNCTION)
+#if 0
+  /*
+   * In the newHA architecture, the execution of "copylogdb" and "applylogdb" is not supported.
+   * TODO: Once the DR (Disaster Recovery) concept is finalized, the codes related to "copylogdb" and "applylogdb" should be either removed or re-used.
+   */
+
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
