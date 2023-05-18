@@ -7732,7 +7732,8 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 	{
 	  if (scan_id->scan_stats.agg_index_name)
 	    {
-	      json_object_set_new (scan_stats, "aggregate optimized,", scan);
+	      json_object_set_new (scan, "alg_index", json_string (scan_id->scan_stats.agg_index_name));
+	      json_object_set_new (scan_stats, "agl", scan);
 	    }
 	  else
 	    {
