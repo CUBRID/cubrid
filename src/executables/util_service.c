@@ -4041,18 +4041,6 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
   /* stop javasp server */
   (void) process_javasp (STOP, 1, (const char **) &db_name, false, true, false, true);
 
-  status = us_hb_copylogdb_stop (ha_conf, db_name, NULL, NULL);
-  if (status != NO_ERROR)
-    {
-      goto ret;
-    }
-
-  status = us_hb_applylogdb_stop (ha_conf, db_name, NULL, NULL);
-  if (status != NO_ERROR)
-    {
-      goto ret;
-    }
-
   status = us_hb_server_stop (ha_conf, db_name);
 
 ret:
