@@ -11821,10 +11821,16 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   val->type_enum = PT_TYPE_CHAR;
   val->info.value.string_type = ' ';
 
-  parser->custom_print |= PT_PRINT_SUPPRESS_SERVER_NAME;
+  /*
+     It should be set custom print flag for excluding
+     server name from table-name@server-name for pure remote SQL.
+     It also should set flag not to convert to serial_next_value
+     or serial_current_value for ORACLE or other DBMS.
+   */
+  parser->custom_print |= PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV;
   val->info.value.data_value.str = pt_print_bytes (parser, node);
   PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
-  parser->custom_print &= ~PT_PRINT_SUPPRESS_SERVER_NAME;
+  parser->custom_print &= ~(PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV);
 
   if (into_spec)
     {

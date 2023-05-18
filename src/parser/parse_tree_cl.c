@@ -10117,50 +10117,68 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_CURRENT_VALUE:
-      q = pt_append_nulstring (parser, q, "serial_current_value(");
-
-      /* Only the column name is printed. */
-      if (p->info.expr.arg1->node_type == PT_DOT_)
+      if (parser->custom_print & PT_PRINT_SUPPRESS_SERIAL_CONV)
 	{
-	  dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
-	  while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
-	    {
-	      dot_node_ptr = dot_node_ptr->info.expr.arg2;
-	    }
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ".currval");
 	}
       else
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	}
+	  q = pt_append_nulstring (parser, q, "serial_current_value(");
 
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
+	  /* Only the column name is printed. */
+	  if (p->info.expr.arg1->node_type == PT_DOT_)
+	    {
+	      dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
+	      while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
+		{
+		  dot_node_ptr = dot_node_ptr->info.expr.arg2;
+		}
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	    }
+	  else
+	    {
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	    }
+
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       break;
 
     case PT_NEXT_VALUE:
-      q = pt_append_nulstring (parser, q, "serial_next_value(");
-
-      /* Only the column name is printed. */
-      if (p->info.expr.arg1->node_type == PT_DOT_)
+      if (parser->custom_print & PT_PRINT_SUPPRESS_SERIAL_CONV)
 	{
-	  dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
-	  while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
-	    {
-	      dot_node_ptr = dot_node_ptr->info.expr.arg2;
-	    }
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ".nextval");
 	}
       else
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	}
+	  q = pt_append_nulstring (parser, q, "serial_next_value(");
 
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ", ");
-      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, ")");
+	  /* Only the column name is printed. */
+	  if (p->info.expr.arg1->node_type == PT_DOT_)
+	    {
+	      dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
+	      while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
+		{
+		  dot_node_ptr = dot_node_ptr->info.expr.arg2;
+		}
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	    }
+	  else
+	    {
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	    }
+
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ", ");
+	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
+	  q = pt_append_varchar (parser, q, r2);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       break;
 
     case PT_TO_NUMBER:
