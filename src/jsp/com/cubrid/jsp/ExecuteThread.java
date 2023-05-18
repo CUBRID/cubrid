@@ -45,7 +45,7 @@ import com.cubrid.jsp.protocol.PrepareArgs;
 import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
-import com.cubrid.plcsql.handler.TestMain;
+import com.cubrid.plcsql.compiler.PlcsqlCompilerMain;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import com.cubrid.plcsql.predefined.sp.SpLib.SQL_ERROR;
 import java.io.BufferedInputStream;
@@ -320,7 +320,7 @@ public class ExecuteThread extends Thread {
 
         CompileInfo info = null;
         try {
-            info = TestMain.compilePLCSQL(inSource, verbose);
+            info = PlcsqlCompilerMain.compilePLCSQL(inSource, verbose);
             if (info.errCode == 0) {
                 Path javaFilePath =
                         ClassLoaderManager.getDynamicPath().resolve(info.className + ".java");

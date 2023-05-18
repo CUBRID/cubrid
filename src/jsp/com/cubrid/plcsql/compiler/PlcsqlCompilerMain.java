@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.plcsql.handler;
+package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
@@ -55,7 +55,7 @@ import java.util.Map;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
-public class TestMain {
+public class PlcsqlCompilerMain {
 
     public static CompileInfo compilePLCSQL(String in, boolean verbose) {
 
