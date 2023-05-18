@@ -1,7 +1,7 @@
 package com.cubrid.jsp.protocol;
 
 import com.cubrid.jsp.data.CUBRIDUnpacker;
-import com.cubrid.plcsql.compiler.ServerAPI.Question;
+import com.cubrid.plcsql.compiler.serverapi.ServerAPI.Question;
 import java.util.List;
 
 public class GlobalSemanticsResponse implements UnPackableObject {

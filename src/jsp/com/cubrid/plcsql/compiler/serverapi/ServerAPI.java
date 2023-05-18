@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.serverapi;
 
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
