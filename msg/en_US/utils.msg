@@ -117,8 +117,6 @@ Available admin utility-name:\n\
     paramdump\n\
     statdump\n\
     changemode\n\
-    copylogdb\n\
-    applylogdb\n\
     applyinfo\n\
     acldb\n\
     genlocale\n\
