@@ -142,15 +142,27 @@ tran_server::boot (const char *db_name)
 void
 tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
 {
+  int err_code = NO_ERROR;
   auto slock = std::shared_lock<std::shared_mutex> { m_main_conn_mtx };
-  if (!m_main_conn->is_connected ())
+  while (true)
     {
-      slock.unlock ();
-      (void) reset_main_connection ();
-      slock.lock ();
+      err_code = m_main_conn->push_request (reqid, std::move (payload));
+      if (err_code != NO_ERROR && !m_main_conn->is_connected ())
+	{
+	  // error and the connection is dead.
+	  slock.unlock (); // it will be locked exclusively inside reset_main_connection()
+	  err_code = reset_main_connection ();
+	  if (err_code == ER_CONN_NO_PAGE_SERVER_AVAILABLE)
+	    {
+	      break; // Nothing can be done. Just ignore for now. TODO
+	    }
+	  slock.lock ();
+	}
+      else
+	{
+	  break;
+	}
     }
-
-  m_main_conn->push_request (reqid, std::move (payload));
 }
 
 int
@@ -470,26 +482,30 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
+  // TODO For now, only here the conn can be removed, but it's removed somwhere soon in the case of abnormal disconnection. Then, this must be exclusive.
   m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
   {
     auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
+    // 누군가 제거했을 수도 있지만, 누군가 그 후 다시 붙혔을 수도 있다.. 그걸 없애버리면 안되지
     m_ts.disconnect_page_server_async (std::move (m_conn));
     assert (!is_connected ());
   }
 }
 
-void
+int
 tran_server::connection_handler::push_request (tran_to_page_request reqid, std::string &&payload)
 {
   auto slock = std::shared_lock<std::shared_mutex> { m_conn_mtx };
 
   if (!is_connected ())
     {
-      // Just forget the message as if the request is sent. There is already no guarantee that the receiver handles the request evne if a request is successfully sent.
-      return;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
     }
 
   m_conn->push (reqid, std::move (payload));
+
+  return NO_ERROR;
 }
 
 int

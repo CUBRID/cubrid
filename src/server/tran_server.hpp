@@ -107,7 +107,7 @@ class tran_server
 
 	void set_connection (cubcomm::channel &&chn);
 
-	void push_request (tran_to_page_request reqid, std::string &&payload);
+	int push_request (tran_to_page_request reqid, std::string &&payload);
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
 
 	const std::string get_channel_id () const;
