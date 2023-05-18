@@ -383,49 +383,9 @@ tran_server::disconnect_all_page_servers ()
 }
 
 void
-tran_server::disconnect_page_server_async (const connection_handler *conn)
+tran_server::disconnect_page_server_async (std::unique_ptr<page_server_conn_t> &&conn)
 {
-  bool main_conn_changed = false;
-  std::string prev_main_conn_id;
-  auto &conn_vec = m_page_server_conn_vec;
-  auto ulock = std::unique_lock<std::shared_mutex> (m_page_server_conn_vec_mtx);
-
-  auto conn_it = std::find_if (conn_vec.begin (), conn_vec.end (),
-			       [&conn] (std::unique_ptr<connection_handler> &conn_uptr)
-  {
-    return conn_uptr.get () == conn;
-  });
-
-  if (conn_it == conn_vec.end ())
-    {
-      return; // the connection is already cleared in disconnect_all_page_servers()
-    }
-
-  if (conn_it == conn_vec.begin ())
-    {
-      main_conn_changed = true;
-      prev_main_conn_id = (*conn_it)->get_channel_id ();
-    }
-
-  m_async_disconnect_handler.disconnect (std::move (*conn_it));
-  assert (*conn_it == nullptr);
-  conn_vec.erase (conn_it);
-
-  if (main_conn_changed)
-    {
-      if (conn_vec.empty ())
-	{
-	  er_log_debug (ARG_FILE_LINE, "The last connection is disconnected (%s). No main connection available.\n",
-			prev_main_conn_id.c_str ());
-	}
-      else
-	{
-	  er_log_debug (ARG_FILE_LINE, "The main connection is changed from %s to %s.\n",
-			prev_main_conn_id.c_str (), (*conn_vec.begin())->get_channel_id ().c_str ());
-	}
-      ulock.unlock ();
-      m_main_conn_cv.notify_all ();
-    }
+  m_async_disconnect_handler.disconnect (std::move (conn));
 }
 
 bool
@@ -492,7 +452,8 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
 {
   m_is_disconnecting.store (true);
   m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
-  m_ts.disconnect_page_server_async (this);
+  m_ts.disconnect_page_server_async (std::move (m_conn));
+  assert (m_conn == nullptr);
 }
 
 void
