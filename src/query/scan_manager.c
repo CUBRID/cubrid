@@ -7740,7 +7740,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 
       if (scan_id->type == S_HEAP_SCAN)
 	{
-	  if (scan_id->scan_stats.agg_optimized_scan)
+	  if (scan_id->scan_stats.agg_index_name)
 	    {
 	      json_object_set_new (scan_stats, "aggregate optimized,", scan);
 	    }
@@ -7831,14 +7831,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-      if (scan_id->scan_stats.agg_optimized_scan)
-	{
-	  fprintf (fp, "(aggregate optimized,");
-	}
-      else
-	{
-	  fprintf (fp, "(heap");
-	}
+      fprintf (fp, "(heap");
       break;
 
     case S_INDX_SCAN:
@@ -7897,8 +7890,13 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
-      fprintf (fp, ", readrows: %llu, rows: %llu)", (unsigned long long int) scan_id->scan_stats.read_rows,
+      fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
+      if (scan_id->scan_stats.agg_index_name)
+	{
+	  fprintf (fp, ", agl=%s", scan_id->scan_stats.agg_index_name);
+	}
+      fprintf (fp, ")");
       break;
 
     case S_INDX_SCAN:
