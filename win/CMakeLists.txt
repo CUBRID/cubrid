@@ -124,7 +124,7 @@ install(FILES
  )
  
  install(FILES
-   ${CMAKE_SOURCE_DIR}/win/external/RE2/bin/re2.dll
+   ${CMAKE_SOURCE_DIR}/win/3rdparty/RE2/bin/re2.dll
    DESTINATION ${CUBRID_BINDIR} COMPONENT Library
  )
  
