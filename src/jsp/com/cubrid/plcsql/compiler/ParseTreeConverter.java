@@ -1758,7 +1758,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         List<TypeSpec> columnTypeList;
         if (cursor.decl instanceof DeclCursor) {
             if (intoVars.nodes.size() != ((DeclCursor) cursor.decl).staticSql.selectList.size()) {
-                throw new SemanticError( // TODO: verify what happens in Oracle
+                throw new SemanticError(
                         Misc.getLineColumnOf(cursor.ctx), // s059
                         "the number of columns of the cursor must be equal to the number of into-variables");
             }

@@ -86,7 +86,6 @@ public class DeclCursor extends DeclId {
     private void setHostValuesMap(NodeList<DeclParam> paramList, Set<Expr> hostExprs) {
 
         // NOTE: hostExprs preserves its insertion order because it is the keys of a LinkedHashMap
-        // TODO: check this
 
         int paramSize = paramList.nodes.size();
         int hostExprSize = hostExprs == null ? 0 : hostExprs.size();

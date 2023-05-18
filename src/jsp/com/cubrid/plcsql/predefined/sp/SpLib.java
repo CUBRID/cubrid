@@ -2471,8 +2471,8 @@ public class SpLib {
             return convTimeToString((Time) e);
             /*
             } else if (e instanceof Timestamp) {
-                // e is DATETIME or TIMESTAMP
-                return convDatetimeToString((Timestamp) e); // TODO: wrong if it is a TIMESTAMP?
+                // e is DATETIME or TIMESTAMP. impossible to figure out for now
+                // TODO: match different Java types to DATETIME and TIMESTAMP, respectively
             */
         }
 
@@ -2785,8 +2785,6 @@ public class SpLib {
             // <00001>  cast( cast(-1 as bigint) as time): 12:00:0/ AM
             //
             // 1 row selected. (0.004910 sec) Committed. (0.000020 sec)
-
-            // TODO: figure out what to return
             throw new VALUE_ERROR();
         }
 
@@ -2800,7 +2798,6 @@ public class SpLib {
 
     private static Timestamp longToTimestamp(long l) {
         if (l < 0L) {
-            // TODO: check the following error and decide what to do for negative values
             //   select cast(cast(-100 as bigint) as timestamp);
             //   ERROR: Cannot coerce value of domain "bigint" to domain "timestamp"
             throw new VALUE_ERROR();
