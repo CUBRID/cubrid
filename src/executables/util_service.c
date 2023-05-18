@@ -88,10 +88,10 @@ typedef enum
   ACCESS_CONTROL,
   RESET,
   INFO,
-  GET_SHARID,
-  TEST,
   SC_COPYLOGDB,
   SC_APPLYLOGDB,
+  GET_SHARID,
+  TEST,
   REPLICATION
 } UTIL_SERVICE_COMMAND_E;
 
@@ -393,14 +393,14 @@ command_string (int command_type)
     case ACCESS_CONTROL:
       command = PRINT_CMD_ACL;
       break;
-    case TEST:
-      command = PRINT_CMD_TEST;
-      break;
     case SC_COPYLOGDB:
       command = PRINT_CMD_COPYLOGDB;
       break;
     case SC_APPLYLOGDB:
       command = PRINT_CMD_APPLYLOGDB;
+      break;
+    case TEST:
+      command = PRINT_CMD_TEST;
       break;
     case REPLICATION:
       command = PRINT_CMD_REPLICATION;
