@@ -1107,7 +1107,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                                     + id.name
                                     + " does not have a compatible type in the SQL statement");
                 } else {
-                    // no more use of the coercion: coercion (if not an identity) will be done in the
+                    // no more use of the coercion: coercion (if not an identity) will be done in
+                    // the
                     // server
                 }
             }

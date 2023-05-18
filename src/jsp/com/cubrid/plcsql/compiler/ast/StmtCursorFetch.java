@@ -85,7 +85,7 @@ public class StmtCursorFetch extends Stmt {
                     "  } else if (rs.next()) {",
                     "    %'SET-INTO-VARIABLES'%",
                     "  } else {",
-                    "    ;",    // TODO: setting nulls to into-variables?
+                    "    ;", // TODO: setting nulls to into-variables?
                     "  }",
                     "}");
 
