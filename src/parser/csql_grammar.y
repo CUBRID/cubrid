@@ -309,7 +309,7 @@ typedef enum
 
 FUNCTION_MAP *keyword_offset (const char *name);
 
-static PT_NODE* get_string_literal_node(const char* str, const int opt_str_size);
+static PT_NODE* pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size);
 
 static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
 static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
@@ -12435,7 +12435,7 @@ pl_language_spec
                             assert(g_plcsql_text != NULL);
 
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = get_string_literal_node(g_plcsql_text, $1);
+			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, $1);
 			    node->info.sp_body.direct = 1;
 			  }
 
@@ -12454,7 +12454,7 @@ pl_language_spec
                             assert(g_plcsql_text != NULL);
 
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = get_string_literal_node(g_plcsql_text, $3);
+			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, $3);
 			    node->info.sp_body.direct = 1;
 			  }
 
@@ -22645,7 +22645,7 @@ char_string_literal
 char_string
 	: CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(char_string, : CHAR_STRING);
-			$$ = get_string_literal_node($1, -1);
+			$$ = pt_create_string_literal_node_w_charset_coll($1, -1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
@@ -27791,7 +27791,8 @@ pt_ct_check_select (char* p, char *perr_msg)
 }
 
 static PT_NODE*
-get_string_literal_node(const char* str, const int opt_str_size) {
+pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size)
+{
     PT_NODE *node = NULL;
     INTL_CODESET charset;
     int collation_id;
