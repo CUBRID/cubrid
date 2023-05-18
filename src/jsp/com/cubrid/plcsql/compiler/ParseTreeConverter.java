@@ -771,7 +771,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(arg.ctx), // s010
                                 "argument "
-                                        + i
+                                        + (i + 1)
                                         + " to the function "
                                         + name
                                         + " must be assignable to because it is to an OUT parameter");
