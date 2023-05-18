@@ -18,13 +18,11 @@
 
 #include "async_disconnect_handler.hpp"
 #include "page_server.hpp"
-#include "tran_server.hpp"
 
 #include <cassert>
 #include <chrono>
 
 template class async_disconnect_handler<page_server::connection_handler>;
-template class async_disconnect_handler<tran_server::page_server_conn_t>;
 
 template <typename T_CONN_HANDLER>
 async_disconnect_handler<T_CONN_HANDLER>::async_disconnect_handler ()

@@ -35,8 +35,6 @@ static void assert_is_tran_server ();
 
 tran_server::~tran_server ()
 {
-  m_async_disconnect_handler.terminate ();
-
   assert (is_transaction_server () || m_page_server_conn_vec.empty ());
   if (is_transaction_server () && !m_page_server_conn_vec.empty ())
     {
@@ -376,16 +374,7 @@ tran_server::disconnect_all_page_servers ()
   // We assumes that no threads are waiting for response at this moment so that m_conn->stop_response_broker() is not needed.
   m_page_server_conn_vec.clear ();
 
-  // Wait until all disconnection reuqests are handled.
-  m_async_disconnect_handler.terminate ();
-
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
-}
-
-void
-tran_server::disconnect_page_server_async (std::unique_ptr<page_server_conn_t> &&conn)
-{
-  m_async_disconnect_handler.disconnect (std::move (conn));
 }
 
 int
@@ -443,6 +432,13 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
 
+  if (m_disconn_fut.valid ())
+    {
+      // 이전 연결이 있어서 끝나길 기다리는 중이라는 메시지 로깅
+      m_disconn_fut.get ();  // discon 이 끝날때까지 기다림
+    }
+  //set connection 이 multi-thread면 안된다.
+  // <--- 여기서 누가 끼어둘 수 있나?
   auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
 
   assert (m_conn == nullptr);
@@ -456,12 +452,10 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
 tran_server::connection_handler::~connection_handler ()
 {
-  send_disconnect_request ();
-  m_conn->stop_incoming_communication_thread ();
-  m_conn->stop_outgoing_communication_thread ();
-
-  er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s \n",
-		get_channel_id ().c_str ());
+  if (m_disconn_fut.valid ())
+    {
+      m_disconn_fut.get ();
+    }
 }
 
 tran_server::connection_handler::request_handlers_map_t
@@ -482,14 +476,18 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
-  // TODO For now, only here the conn can be removed, but it's removed somwhere soon in the case of abnormal disconnection. Then, this must be exclusive.
+  auto ulock = std::shared_lock<std::shared_mutex> { m_conn_mtx };
   m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
+
+  assert (!m_disconn_fut.valid ());
+  m_disconn_fut = std::async (std::launch::async, [this]
   {
     auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
-    // 누군가 제거했을 수도 있지만, 누군가 그 후 다시 붙혔을 수도 있다.. 그걸 없애버리면 안되지
-    m_ts.disconnect_page_server_async (std::move (m_conn));
-    assert (!is_connected ());
-  }
+    const std::string channel_id = get_channel_id ();
+    send_disconnect_request ();
+    m_conn.reset (nullptr);
+    er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s.", channel_id.c_str());
+  });
 }
 
 int

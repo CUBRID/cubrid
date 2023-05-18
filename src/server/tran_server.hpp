@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 #include <shared_mutex>
+#include <future>
 
 // forward declaration
 namespace cubpacking
@@ -88,11 +89,11 @@ class tran_server
     virtual void stop_outgoing_page_server_messages () = 0;
 
   protected:
-    using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
 
     class connection_handler
     {
       public:
+	using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
 	using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
 
 	connection_handler () = delete;
@@ -134,6 +135,7 @@ class tran_server
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
 	std::shared_mutex m_conn_mtx;
+	std::future<void> m_disconn_fut; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
     };
 
   protected:
@@ -158,15 +160,12 @@ class tran_server
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
     int connect_to_page_server (int node_idx, const cubcomm::node &node, const char *db_name);
-    void disconnect_page_server_async (std::unique_ptr<page_server_conn_t> &&conn);
     int reset_main_connection ();
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
-    async_disconnect_handler<page_server_conn_t> m_async_disconnect_handler;
-
     cubcomm::server_server m_conn_type;
 };
 
