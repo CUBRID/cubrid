@@ -108,7 +108,7 @@ class tran_server
 	void set_connection (cubcomm::channel &&chn);
 
 	void push_request (tran_to_page_request reqid, std::string &&payload);
-	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
+	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
 
 	const std::string get_channel_id () const;
 	bool is_connected () const;
@@ -133,6 +133,7 @@ class tran_server
 
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
+	std::shared_mutex m_conn_mtx;
     };
 
   protected:

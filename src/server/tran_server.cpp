@@ -431,6 +431,8 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
 
+  auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
+
   assert (m_conn == nullptr);
 
   m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
@@ -469,20 +471,39 @@ void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
   m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
-  m_ts.disconnect_page_server_async (std::move (m_conn));
-  assert (m_conn == nullptr);
+  {
+    auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
+    m_ts.disconnect_page_server_async (std::move (m_conn));
+    assert (!is_connected ());
+  }
 }
 
 void
 tran_server::connection_handler::push_request (tran_to_page_request reqid, std::string &&payload)
 {
+  auto slock = std::shared_lock<std::shared_mutex> { m_conn_mtx };
+
+  if (!is_connected ())
+    {
+      // Just forget the message as if the request is sent. There is already no guarantee that the receiver handles the request evne if a request is successfully sent.
+      return;
+    }
+
   m_conn->push (reqid, std::move (payload));
 }
 
 int
 tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
-    std::string &payload_out) const
+    std::string &payload_out)
 {
+  auto slock = std::shared_lock<std::shared_mutex> { m_conn_mtx };
+
+  if (!is_connected ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
   const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
   // NOTE: enhance error handling when:
   //  - more than one page server will be handled
@@ -491,7 +512,6 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
   if (error_code != NO_ERRORS)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
-      er_log_debug (ARG_FILE_LINE, "Error during send_recv message to page server. Server cannot be reached.");
       return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
     }
 
@@ -510,6 +530,7 @@ tran_server::connection_handler::send_disconnect_request ()
 const std::string
 tran_server::connection_handler::get_channel_id () const
 {
+  assert (is_connected ());
   return m_conn->get_underlying_channel_id ();
 }
 
