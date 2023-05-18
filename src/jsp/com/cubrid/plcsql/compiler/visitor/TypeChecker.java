@@ -653,7 +653,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     }
 
     @Override
-    public TypeSpec visitStmtBreak(StmtBreak node) {
+    public TypeSpec visitStmtExit(StmtExit node) {
         return null; // nothing to do
     }
 

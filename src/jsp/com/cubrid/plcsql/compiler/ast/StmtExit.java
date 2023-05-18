@@ -33,16 +33,16 @@ package com.cubrid.plcsql.compiler.ast;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtBreak extends Stmt {
+public class StmtExit extends Stmt {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtBreak(this);
+        return visitor.visitStmtExit(this);
     }
 
     public final DeclLabel declLabel;
 
-    public StmtBreak(ParserRuleContext ctx, DeclLabel declLabel) {
+    public StmtExit(ParserRuleContext ctx, DeclLabel declLabel) {
         super(ctx);
 
         this.declLabel = declLabel;
