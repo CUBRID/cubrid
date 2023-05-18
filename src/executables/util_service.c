@@ -90,11 +90,9 @@ typedef enum
   INFO,
   GET_SHARID,
   TEST,
-#if defined (ENABLE_UNUSED_FUNCTION)
   SC_COPYLOGDB,
   SC_APPLYLOGDB,
   REPLICATION
-#endif
 } UTIL_SERVICE_COMMAND_E;
 
 typedef enum
@@ -285,10 +283,8 @@ static int process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **arg
 static int process_heartbeat_deregister (int argc, const char **argv);
 static int process_heartbeat_status (int argc, const char **argv);
 static int process_heartbeat_reload (int argc, const char **argv);
-#if defined (ENABLE_UNUSED_FUNCTION)
 static int process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const char **argv);
 static int process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv);
-#endif
 
 static int proc_execute_internal (const char *file, const char *args[], bool wait_child, bool close_output,
 				  bool close_err, bool hide_cmd_args, int *pid);
@@ -400,7 +396,6 @@ command_string (int command_type)
     case TEST:
       command = PRINT_CMD_TEST;
       break;
-#if defined (ENABLE_UNUSED_FUNCTION)
     case SC_COPYLOGDB:
       command = PRINT_CMD_COPYLOGDB;
       break;
@@ -410,7 +405,6 @@ command_string (int command_type)
     case REPLICATION:
       command = PRINT_CMD_REPLICATION;
       break;
-#endif
     case STOP:
     default:
       command = PRINT_CMD_STOP;
@@ -4981,7 +4975,6 @@ process_heartbeat_reload (int argc, const char **argv)
 }
 
 #if !defined(WINDOWS)
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * process_heartbeat_util -
  *
@@ -5131,7 +5124,6 @@ ret:
   return status;
 }
 #endif
-#endif
 
 /*
  * process_heartbeat -
@@ -5186,7 +5178,6 @@ process_heartbeat (int command_type, int argc, const char **argv)
     case RELOAD:
       status = process_heartbeat_reload (argc, argv);
       break;
-#if defined (ENABLE_UNUSED_FUNCTION)
     case SC_COPYLOGDB:
     case SC_APPLYLOGDB:
       status = process_heartbeat_util (&ha_conf, command_type, argc, argv);
@@ -5194,7 +5185,6 @@ process_heartbeat (int command_type, int argc, const char **argv)
     case REPLICATION:
       status = process_heartbeat_replication (&ha_conf, argc, argv);
       break;
-#endif
     default:
       status = ER_GENERIC_ERROR;
       break;
