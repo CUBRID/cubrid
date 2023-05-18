@@ -1914,7 +1914,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         for (Using_elementContext c : ctx.using_element()) {
             Expr expr = visitExpression(c.expression());
-            if (c.OUT() != null) {
+            if (c.OUT() != null || c.INOUT() != null) {
                 if (expr instanceof ExprId && isAssignableTo((ExprId) expr)) {
                     // OK
                 } else {

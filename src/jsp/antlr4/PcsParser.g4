@@ -448,7 +448,7 @@ using_clause
     ;
 
 using_element
-    : (IN OUT? | OUT)? expression
+    : (IN OUT? | OUT | INOUT)? expression
     ;
 
 routine_name
