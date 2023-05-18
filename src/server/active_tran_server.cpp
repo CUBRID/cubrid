@@ -69,7 +69,6 @@ active_tran_server::compute_consensus_lsa ()
   std::vector<log_lsa> collected_saved_lsa;
 
   {
-    std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
     cur_node_cnt = m_page_server_conn_vec.size ();
     if (cur_node_cnt < quorum)
       {

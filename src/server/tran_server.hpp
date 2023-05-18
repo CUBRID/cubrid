@@ -62,7 +62,8 @@ class tran_server
   public:
     tran_server () = delete;
     tran_server (cubcomm::server_server conn_type)
-      : m_conn_type (conn_type)
+      : m_main_conn { nullptr }
+      , m_conn_type { conn_type }
     {
     }
     tran_server (const tran_server &) = delete;
@@ -110,14 +111,13 @@ class tran_server
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
 
 	const std::string get_channel_id () const;
-	bool is_disconnecting () const;
+	bool is_connected () const;
 
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
       protected:
 	connection_handler (tran_server &ts)
 	  : m_ts { ts }
-	  , m_is_disconnecting { false }
 	{ }
 
 	virtual request_handlers_map_t get_request_handlers ();
@@ -133,7 +133,6 @@ class tran_server
 
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
-	std::atomic<bool> m_is_disconnecting;
     };
 
   protected:
@@ -150,14 +149,16 @@ class tran_server
      */
     std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
-    std::shared_mutex m_page_server_conn_vec_mtx;
-    std::condition_variable_any m_main_conn_cv;
+
+    connection_handler *m_main_conn;
+    std::shared_mutex m_main_conn_mtx;
 
   private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
     int connect_to_page_server (int node_idx, const cubcomm::node &node, const char *db_name);
     void disconnect_page_server_async (std::unique_ptr<page_server_conn_t> &&conn);
+    int reset_main_connection ();
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
