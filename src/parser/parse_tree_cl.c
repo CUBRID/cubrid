@@ -18739,7 +18739,7 @@ pt_print_dblink_table_dml (PARSER_CONTEXT * parser, PT_NODE * p)
   /* For Query-cache:
    * Separate comments have been added 
    * for cases where there is no change in the query but information on the server has changed. */
-  q = pt_append_nulstring (parser, q, "\n /* DBLINK(");
+  q = pt_append_nulstring (parser, q, " /* DBLINK(");
 
   if (pt->url && pt->user && pt->pwd)
     {
