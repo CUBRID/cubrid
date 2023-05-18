@@ -152,13 +152,13 @@ public class SymbolStack {
     }
 
     public static DeclFunc getOperator(
-            List<Coerce> outCoercions, String name, TypeSpec... argTypes) {
+            List<Coercion> outCoercions, String name, TypeSpec... argTypes) {
         return getFuncOverload(outCoercions, operators, name, argTypes);
     }
 
     /*
     public static DeclFunc
-    getCubridFunc(List<Coerce> outCoercions, String name, TypeSpec... argTypes) {
+    getCubridFunc(List<Coercion> outCoercions, String name, TypeSpec... argTypes) {
         return getFuncOverload(outCoercions, cubridFuncs, name, argTypes);
     }
      */
@@ -369,7 +369,7 @@ public class SymbolStack {
      */
 
     private static DeclFunc getFuncOverload(
-            List<Coerce> outCoercions,
+            List<Coercion> outCoercions,
             Map<String, FuncOverloads> map,
             String name,
             TypeSpec... argTypes) {
@@ -464,7 +464,7 @@ public class SymbolStack {
             assert old == null;
         }
 
-        DeclFunc get(List<Coerce> outCoercions, List<TypeSpec> argTypes) {
+        DeclFunc get(List<Coercion> outCoercions, List<TypeSpec> argTypes) {
 
             List<TypeSpec> paramTypes = coercionScheme.getCoercions(outCoercions, argTypes, name);
             if (paramTypes == null) {
