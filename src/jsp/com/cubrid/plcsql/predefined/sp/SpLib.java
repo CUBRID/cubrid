@@ -212,12 +212,12 @@ public class SpLib {
             }
         }
 
-        public int rowCount() {
+        public long rowCount() {
             try {
                 if (!isOpen()) {
                     throw new INVALID_CURSOR();
                 }
-                return rs.getRow();
+                return (long) rs.getRow();
             } catch (SQLException e) {
                 Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
