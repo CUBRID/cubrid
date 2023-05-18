@@ -505,7 +505,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                     Misc.getLineColumnOf(node.ctx), // s212
                     "one of the values does not have a comparable type");
         }
-        assert op != null;
         assert outCoercions.size() == len;
 
         for (int i = 0; i < len; i++) {

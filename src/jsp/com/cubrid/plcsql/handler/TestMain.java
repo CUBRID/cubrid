@@ -79,69 +79,6 @@ public class TestMain {
         }
     }
 
-    public static void main(String[] args) {
-
-        if (args.length == 0) {
-            throw new RuntimeException("requires arguments (PL/CSQL file paths)");
-        }
-
-        int optionFlags = OPT_VERBOSE;
-
-        int i;
-        for (i = 0; i < args.length; i++) {
-            String arg = args[i];
-            if (arg.startsWith("-")) {
-                if ("-p".equals(arg)) {
-                    optionFlags |= OPT_PRINT_PARSE_TREE;
-                } else {
-                    throw new RuntimeException("unknown option " + arg);
-                }
-            } else {
-                break;
-            }
-        }
-
-        int total = (args.length - i);
-        int failCnt = 0;
-        for (int j = i; j < args.length; j++) {
-
-            int seq = j - i;
-            String infile = args[j];
-            System.out.println(String.format("file #%d: %s", seq, infile));
-
-            try {
-                // compile
-                CharStream input = CharStreams.fromFileName(infile);
-                CompileInfo info = compileInner(input, optionFlags, seq, infile);
-
-                // generate Java file
-                long t0 = System.currentTimeMillis();
-                PrintStream out = getJavaCodeOutStream(info.className);
-                out.println(String.format("// seq=%05d, input-file=%s", seq, infile));
-                out.print(info.translated);
-                out.close();
-                printElapsedTime("generating Java file", t0);
-
-                //
-                System.out.println("create statement: " + info.createStmt);
-                System.out.println(" - success");
-
-            } catch (Throwable e) {
-                if (e instanceof SemanticError) {
-                    System.err.println("Semantic Error on line " + ((SemanticError) e).line + ":");
-                }
-
-                e.printStackTrace();
-                System.err.println(" - failure");
-                failCnt++;
-            }
-        }
-
-        System.out.println(
-                String.format(
-                        "total: %d, success: %d, failure: %d", total, (total - failCnt), failCnt));
-    }
-
     // ------------------------------------------------------------------
     // Private
     // ------------------------------------------------------------------
@@ -186,23 +123,9 @@ public class TestMain {
     private static PrintStream getParseTreePrinterOutStream(int seq) {
 
         // create a output stream to print parse tree
-        String outfile = String.format("./pt/T%05d.pt", seq);
+        String outfile = Server.getRootPath().toString() +
+            File.separatorChar + "log" + File.separatorChar + "PL-parse-tree.txt";
         File g = new File(outfile);
-        try {
-            return new PrintStream(g);
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static PrintStream getJavaCodeOutStream(String className) {
-
-        String outfile = String.format("./pt/%s.java", className);
-        File g = new File(outfile);
-        if (g.exists()) {
-            throw new RuntimeException("file exists: " + outfile);
-        }
-
         try {
             return new PrintStream(g);
         } catch (FileNotFoundException e) {

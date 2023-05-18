@@ -471,7 +471,6 @@ public class SymbolStack {
                 return null; // no match
             } else {
                 assert argTypes.size() == outCoercions.size();
-                DeclFunc declFunc = overloads.get(paramTypes);
                 if (name.equals("opIn")) {
                     // opIn is the only operation that uses variadic parameters
                     TypeSpec ty = paramTypes.get(0);
@@ -480,7 +479,7 @@ public class SymbolStack {
                     paramTypes.add(new TypeSpecVariadic((TypeSpecSimple) ty));
                 }
 
-                declFunc = overloads.get(paramTypes);
+                DeclFunc declFunc = overloads.get(paramTypes);
                 assert declFunc != null
                         : paramTypes + " do not have a matching version of op " + name;
                 return declFunc;
