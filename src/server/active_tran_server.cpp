@@ -63,22 +63,26 @@ active_tran_server::get_oldest_active_mvccid_from_page_server ()
 log_lsa
 active_tran_server::compute_consensus_lsa ()
 {
-  const int total_node_cnt = m_connection_list.size ();
+  const int total_node_cnt = m_page_server_conn_vec.size ();
   const int quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
-  int cur_node_cnt;
+  int cur_node_cnt = 0;
   std::vector<log_lsa> collected_saved_lsa;
 
   {
-    cur_node_cnt = m_page_server_conn_vec.size ();
+    for (const auto &conn : m_page_server_conn_vec)
+      {
+	if (conn->is_connected ())
+	  {
+	    collected_saved_lsa.emplace_back (conn->get_saved_lsa ());
+	    cur_node_cnt++;
+	  }
+      }
+
     if (cur_node_cnt < quorum)
       {
 	quorum_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
 				  total_node_cnt, cur_node_cnt, quorum);
 	return NULL_LSA;
-      }
-    for (const auto &conn : m_page_server_conn_vec)
-      {
-	collected_saved_lsa.emplace_back (conn->get_saved_lsa ());
       }
   }
   /*

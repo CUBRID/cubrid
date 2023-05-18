@@ -248,14 +248,13 @@ tran_server::init_page_server_hosts (const char *db_name)
   exit_code = NO_ERROR;
   // use config to connect
   //
-  m_page_server_conn_vec.resize (m_connection_list.size());
-  int valid_connection_count = 0, idx = 0;
+  int valid_connection_count = 0;
   bool failed_conn = false;
   for (const cubcomm::node &node : m_connection_list)
     {
       /* create a empty connection_handler specialized for each tran serve type */
-      m_page_server_conn_vec[idx].reset (create_connection_handler (*this));
-      exit_code = connect_to_page_server (idx, node, db_name);
+      m_page_server_conn_vec.emplace_back (create_connection_handler (*this));
+      exit_code = connect_to_page_server (*m_page_server_conn_vec.back ().get (), node, db_name);
       if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
@@ -319,7 +318,7 @@ tran_server::get_boot_info_from_page_server ()
 }
 
 int
-tran_server::connect_to_page_server (int node_idx, const cubcomm::node &node, const char *db_name)
+tran_server::connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node, const char *db_name)
 {
   auto ps_conn_error_lambda = [&node] ()
   {
@@ -357,13 +356,12 @@ tran_server::connect_to_page_server (int node_idx, const cubcomm::node &node, co
       return ps_conn_error_lambda ();
     }
 
-  er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
-		srv_chn.get_channel_id ().c_str ());
-
-
   // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
   // moved as argument below
-  m_page_server_conn_vec[node_idx]->set_connection (std::move (srv_chn));
+  conn_handler.set_connection (std::move (srv_chn));
+
+  er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
+		srv_chn.get_channel_id ().c_str ());
 
   return NO_ERROR;
 }
