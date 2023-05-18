@@ -366,6 +366,7 @@ static void parser_restore_hvar (void);
 static void parser_save_found_Oracle_outer (void);
 static void parser_restore_found_Oracle_outer (void);
 
+static bool parser_is_null_alter_node ();
 static void parser_save_alter_node (PT_NODE * node);
 static PT_NODE *parser_get_alter_node (void);
 
@@ -440,13 +441,6 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-static void pt_get_deduplicate_key_mode_level(int mode_level, short* mode, short* level);
-
-#define COMPRESS_MODE_NOT_SET          (-1)
-#define MAKE_COMPRESS_MODE_LEVEL(m, l) ((m) | ((l) << 8))
-#define GET_COMPRESS_MODE(ml)   ((ml) & 0x000000FF)
-#define GET_COMPRESS_LEVEL(ml)  ((ml) >> 8)
-
 #define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
    if((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
@@ -456,9 +450,7 @@ static void pt_get_deduplicate_key_mode_level(int mode_level, short* mode, short
    } \
 } while(0)
 #else // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-#define COMPRESS_MODE_NOT_SET          (-1)
 #define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)
-#define MAKE_COMPRESS_MODE_LEVEL(m, l)  (-1)
 #endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
 #define push_msg(a) _push_msg(a, __LINE__)
@@ -578,7 +570,7 @@ int g_original_buffer_len;
 %type <boolean> opt_invisible
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
-%type <number> opt_with_online
+%type <number> online_parallel
 %type <number> comp_op
 %type <number> opt_of_all_some_any
 %type <number> set_op
@@ -637,8 +629,7 @@ int g_original_buffer_len;
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
-%type <number> opt_deduplicate_key_mode
-%type <number> opt_deduplicate_key_level
+%type <number> deduplicate_key_mod_level
 /*}}}*/
 
 /* define rule type (node) */
@@ -1055,6 +1046,11 @@ int g_original_buffer_len;
 %type <c2> alter_server_item
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
+%type <boolean> opt_fk_deduplicate_off
+%type <c3> opt_index_with_clause_no_online
+%type <c3> opt_index_with_clause
+%type <c3> index_with_item_list
+
 
 /*}}}*/
 
@@ -1684,7 +1680,7 @@ int g_original_buffer_len;
 %token <cptr> UTF8_STRING
 %token <cptr> IPV4_ADDRESS
 
-%token <cptr> DEDUPLICATE_KEY
+%token <cptr> DEDUPLICATE_
 
 /*}}}*/
 
@@ -2720,11 +2716,9 @@ create_stmt
 	  only_class_name				/* 10 */
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
-          opt_deduplicate_key_mode                      /* 13 */
-	  opt_with_online				/* 14 */
-	  opt_invisible					/* 15 */
-          opt_comment_spec				/* 16 */
-
+          opt_index_with_clause                         /* 13 */
+	  opt_invisible					/* 14 */
+	  opt_comment_spec				/* 15 */          
 		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2852,14 +2846,15 @@ create_stmt
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-                            pt_get_deduplicate_key_mode_level($13,  &node->info.index.dedup_key_mode, &node->info.index.dedup_key_level);
+                            node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+                            node->info.index.deduplicate_min_keys = CONTAINER_AT_2($13);
 #endif                            
-			    node->info.index.comment = $16;
+			    node->info.index.comment = $15;
 
-                            int with_online_ret = $14;  // 0 for normal, 1 for online no parallel,
+                            int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
-                            bool is_invisible = $15;
+                            bool is_invisible = $14;
 
                             if (is_online && is_invisible)
                               {
@@ -4762,33 +4757,6 @@ opt_with_fullscan
 
                 DBG_PRINT}}
         ;
-
-opt_with_online
-	: /* empty */
-		{{ DBG_TRACE_GRAMMAR(opt_with_online, : );
-			$$ = 0;
-
-		DBG_PRINT}}
-	| WITH ONLINE
-		{{ DBG_TRACE_GRAMMAR(opt_with_online, | WITH ONLINE);
-
-			$$ = 1;  // thread count is 0
-
-		DBG_PRINT}}
-	| WITH ONLINE PARALLEL unsigned_integer
-		{{ DBG_TRACE_GRAMMAR(opt_with_online, |  WITH ONLINE PARALLEL unsigned_integer);
-                        const int MIN_COUNT = 1;
-                        const int MAX_COUNT = 16;
-                        int thread_count = $4->info.value.data_value.i;
-                        if (thread_count < MIN_COUNT || thread_count > MAX_COUNT)
-                          {
-                            // todo - might be better to have a node here
-                            pt_cat_error (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX,
-                                          MSGCAT_SYNTAX_INVALID_PARALLEL_ARGUMENT, MIN_COUNT, MAX_COUNT);
-                          }
-			$$ = thread_count + 1;
-		DBG_PRINT}}
-	;
 
 opt_of_to_eq
 	: /* empty */
@@ -9744,7 +9712,7 @@ foreign_key_constraint
 	  KEY 						/* 2 */
 	  opt_identifier				/* 3 */
 	  '(' index_column_identifier_list ')'		/* 4, 5, 6 */
-          opt_deduplicate_key_mode                      /* 7 */
+          opt_fk_deduplicate_off                        /* 7 ,  Notice) Make sure not to specify it in the manual. */
 	  REFERENCES					/* 8 */
 	  user_specified_name				/* 9 */
 	  opt_paren_attr_list				/* 10 */
@@ -9760,7 +9728,8 @@ foreign_key_constraint
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-                            pt_get_deduplicate_key_mode_level($7,  &node->info.constraint.un.foreign_key.dedup_key_mode, &node->info.constraint.un.foreign_key.dedup_key_level);
+                            node->info.constraint.un.foreign_key.deduplicate_level = 
+                                  (($7 == true) ? DEDUPLICATE_KEY_LEVEL_OFF : prm_get_integer_value (PRM_ID_DEDUPLICATE_FK_LEVEL));
 #endif
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
@@ -10482,7 +10451,7 @@ attr_index_def
 	  identifier                /* 2 */
 	  index_column_name_list    /* 3 */
 	  opt_where_clause          /* 4 */
-          opt_deduplicate_key_mode  /* 5 */
+          opt_index_with_clause_no_online  /* 5 */
 	  opt_invisible             /* 6 */
           opt_comment_spec          /* 7 */
 		{{ DBG_TRACE_GRAMMAR(attr_index_def, : index_or_key identifier index_column_name_list opt_where_clause opt_comment_spec opt_invisible);
@@ -10538,7 +10507,9 @@ attr_index_def
 			      }
 			  }
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-                        pt_get_deduplicate_key_mode_level($5,  &node->info.index.dedup_key_mode, &node->info.index.dedup_key_level);
+                        assert(CONTAINER_AT_0($5) == 0);
+                        node->info.index.deduplicate_level = CONTAINER_AT_1($5);
+                        node->info.index.deduplicate_min_keys = CONTAINER_AT_2($5);
 #endif                            
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
@@ -10912,13 +10883,12 @@ column_other_constraint_def
 
 		DBG_PRINT}}
 	| opt_constraint_id			/* 1 */
-	  opt_foreign_key			/* 2 */
-          opt_deduplicate_key_mode              /* 3 */
-	  REFERENCES				/* 4 */
-	  class_name				/* 5 */
-	  opt_paren_attr_list			/* 6 */
-	  opt_ref_rule_list			/* 7 */
-	  opt_constraint_attr_list		/* 8 */
+	  opt_foreign_key			/* 2 */          
+	  REFERENCES				/* 3 */
+	  class_name				/* 4 */
+	  opt_paren_attr_list			/* 5 */
+	  opt_ref_rule_list			/* 6 */
+	  opt_constraint_attr_list		/* 7 */
 		{{ DBG_TRACE_GRAMMAR(column_other_constraint_def, | opt_constraint_id opt_foreign_key REFERENCES class_name ~);
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -10927,14 +10897,14 @@ column_other_constraint_def
 
 			if (constraint)
 			  {
-			    constraint->info.constraint.un.foreign_key.referenced_attrs = $6;
+			    constraint->info.constraint.un.foreign_key.referenced_attrs = $5;
 			    constraint->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
-			    constraint->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($7));	/* delete_action */
-			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
-			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
+			    constraint->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($6));	/* delete_action */
+			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($6));	/* update_action */
+			    constraint->info.constraint.un.foreign_key.referenced_class = $4;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)                            
-                            pt_get_deduplicate_key_mode_level($3,  &constraint->info.constraint.un.foreign_key.dedup_key_mode, &constraint->info.constraint.un.foreign_key.dedup_key_level);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)                                                        
+                            constraint->info.constraint.un.foreign_key.deduplicate_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_FK_LEVEL);
 #endif  
 
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
@@ -10942,14 +10912,14 @@ column_other_constraint_def
 
 			    constraint->info.constraint.name = $1;
 
-			    if (TO_NUMBER (CONTAINER_AT_0 ($8)))
+			    if (TO_NUMBER (CONTAINER_AT_0 ($7)))
 			      {
-				constraint->info.constraint.deferrable = (short)TO_NUMBER (CONTAINER_AT_1 ($8));
+				constraint->info.constraint.deferrable = (short)TO_NUMBER (CONTAINER_AT_1 ($7));
 			      }
 
-			    if (TO_NUMBER (CONTAINER_AT_2 ($8)))
+			    if (TO_NUMBER (CONTAINER_AT_2 ($7)))
 			      {
-				constraint->info.constraint.initially_deferred = (short)TO_NUMBER (CONTAINER_AT_3 ($8));
+				constraint->info.constraint.initially_deferred = (short)TO_NUMBER (CONTAINER_AT_3 ($7));
 			      }
 			  }
 
@@ -21587,45 +21557,129 @@ opt_encrypt_algorithm
       $$ = 2; }   /* TDE_ALGORITHM_ARIA */
   ;
 
-opt_deduplicate_key_mode
-        :  /* empty */
-	       { DBG_TRACE_GRAMMAR(opt_deduplicate_key_mode, : ); 
-                 $$ = COMPRESS_MODE_NOT_SET;
-               }
-        | DEDUPLICATE_KEY OFF_
-               { DBG_TRACE_GRAMMAR(opt_deduplicate_key_mode,  | DEDUPLICATE_KEY OFF_); 
-                 $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_OFF, DEDUPLICATE_KEY_LEVEL_NONE);
-               }
-        | DEDUPLICATE_KEY ON_ opt_deduplicate_key_level
-               { DBG_TRACE_GRAMMAR(opt_deduplicate_key_mode,  | DEDUPLICATE_KEY MEDIUM_ opt_deduplicate_key_level); 
-                 $$ = $3;
-               }        
+opt_fk_deduplicate_off
+        : /* empty */
+          { DBG_TRACE_GRAMMAR(opt_fk_deduplicate_off, : );
+            $$ = false; }
+        | WITH DEDUPLICATE_ '=' unsigned_integer
+          { DBG_TRACE_GRAMMAR(opt_fk_deduplicate_off,  | DEDUPLICATE_ '=' unsigned_integer); 
+           /* It can be entered through the table constraint clause of "CREATE TABLE" and the add constraint clause of "ALTER TABLE".
+            * If it is entered in the "CREATE TABLE" statement, an error is processed.
+           */          
+            if(parser_is_null_alter_node())
+            {
+                PT_ERROR (this_parser, $4, "\"WITH DEDUPLICATE\" is not supported.");
+            }
+            else if($4->info.value.data_value.i != DEDUPLICATE_KEY_LEVEL_OFF)
+            {
+               PT_ERROR (this_parser, $4, "Only \"WITH DEDUPLICATE=0\" is supported.");
+            }
+                 
+            $$ = true;
+          DBG_PRINT}
         ;
 
-opt_deduplicate_key_level
+opt_index_with_clause_no_online
         : /* empty */
-		{ DBG_TRACE_GRAMMAR(opt_deduplicate_key_level, : );                      
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)                                               
-                  $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_ON, DEDUPLICATE_KEY_LEVEL_NONE); 
-#else
-                  $$ = 0;                        
-#endif                  
-                }
-	| '(' UNSIGNED_INTEGER ')'
-		{ DBG_TRACE_GRAMMAR(opt_deduplicate_key_level, | (LEVEL UNSIGNED_INTEGER) ); 
-                  int int_val = -1;                  
-                  if (parse_int (&int_val, $2, 10) != 0)
-		      {
-			PT_ERRORmf (this_parser, $2, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_UNSIGNED_INT32, $2);
-		      }
-                  else if(int_val < DEDUPLICATE_KEY_LEVEL_MIN || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
-                      {                          
-                        PT_ERRORmf2 (this_parser, $2, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_LEVEL, 
-                                     DEDUPLICATE_KEY_LEVEL_MIN, DEDUPLICATE_KEY_LEVEL_MAX);
-                      }
-                  $$ = MAKE_COMPRESS_MODE_LEVEL(DEDUPLICATE_KEY_MODE_ON, int_val);
-                  DBG_PRINT}
+          { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
+            container_3 ctn;
+            memset(&ctn, 0x00, sizeof(ctn));       
+            ctn.c1 = 0; // not online
+            ctn.c2 = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+            ctn.c3 = prm_get_integer_value (PRM_ID_DEDUPLICATE_MIN_KEYS);
+            $$ = ctn; }
+        | WITH deduplicate_key_mod_level
+           { DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH deduplicate_key_mod_level );
+                container_3 ctn;
+		SET_CONTAINER_3(ctn, 0, $2, DEDUPLICATE_MIN_KEYS_UNUSE);
+		$$ = ctn;
+          }
+        ;
+
+opt_index_with_clause
+        : /* empty */
+          { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
+            container_3 ctn;
+            memset(&ctn, 0x00, sizeof(ctn));
+            ctn.c1 = 0; // not online
+            ctn.c2 = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+            ctn.c3 = prm_get_integer_value (PRM_ID_DEDUPLICATE_MIN_KEYS);
+            $$ = ctn; }
+        | WITH index_with_item_list
+          {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
+             $$ = $2;
+          DBG_PRINT}
+        ;
+
+index_with_item_list  
+        : online_parallel
+          { DBG_TRACE_GRAMMAR(index_with_item_list, : online_parallel );
+                container_3 ctn;                
+		SET_CONTAINER_3(ctn, $1, prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL), prm_get_integer_value (PRM_ID_DEDUPLICATE_MIN_KEYS));
+		$$ = ctn;
+          }
+        | online_parallel ',' deduplicate_key_mod_level
+          { DBG_TRACE_GRAMMAR(index_with_item_list, | online_parallel ',' deduplicate_key_mod_level );
+                container_3 ctn;
+		SET_CONTAINER_3(ctn, $1, $3, DEDUPLICATE_MIN_KEYS_UNUSE);
+		$$ = ctn;
+          }
+        | deduplicate_key_mod_level
+          { DBG_TRACE_GRAMMAR(index_with_item_list, | deduplicate_key_mod_level );
+                container_3 ctn;
+		SET_CONTAINER_3(ctn, 0, $1, DEDUPLICATE_MIN_KEYS_UNUSE);
+		$$ = ctn;
+          }
+        | deduplicate_key_mod_level ',' online_parallel
+          { DBG_TRACE_GRAMMAR(index_with_item_list, | deduplicate_key_mod_level ',' online_parallel ); 
+                container_3 ctn;
+		SET_CONTAINER_3(ctn, $3, $1, DEDUPLICATE_MIN_KEYS_UNUSE);
+		$$ = ctn;
+          }
+        ;        
+
+opt_equal
+        : /* empty */
+        | '='
+        ;
+
+online_parallel
+	: ONLINE
+	   {{ DBG_TRACE_GRAMMAR(online_parallel, : ONLINE);
+               $$ = 1;  // thread count is 0
+           DBG_PRINT}}
+	| ONLINE PARALLEL opt_equal unsigned_integer
+	   {{ DBG_TRACE_GRAMMAR(opt_ononline_parallelline, |  ONLINE PARALLEL opt_equal unsigned_integer);
+               const int MIN_COUNT = 1;
+               const int MAX_COUNT = 16;
+               int thread_count = $4->info.value.data_value.i;
+               if (thread_count < MIN_COUNT || thread_count > MAX_COUNT)
+                  {
+                    // todo - might be better to have a node here
+                    pt_cat_error (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX,
+                                  MSGCAT_SYNTAX_INVALID_PARALLEL_ARGUMENT, MIN_COUNT, MAX_COUNT);
+                  }
+		$$ = thread_count + 1;
+	   DBG_PRINT}}
 	;
+
+deduplicate_key_mod_level
+        : DEDUPLICATE_
+               { DBG_TRACE_GRAMMAR(deduplicate_key_mod_level,  : DEDUPLICATE_); 
+                 $$ = DEDUPLICATE_KEY_LEVEL_MAX;
+               DBG_PRINT}
+        | DEDUPLICATE_ '=' unsigned_integer
+               { DBG_TRACE_GRAMMAR(deduplicate_key_mod_level,  | DEDUPLICATE_ = unsigned_integer); 
+                  int int_val = $3->info.value.data_value.i;
+                  if(int_val < DEDUPLICATE_KEY_LEVEL_OFF || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
+                      {                          
+                        PT_ERRORmf2 (this_parser, $3, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_LEVEL, 
+                                     DEDUPLICATE_KEY_LEVEL_OFF, DEDUPLICATE_KEY_LEVEL_MAX);
+                      }
+
+                 $$ = int_val;
+               DBG_PRINT}
+        ;
 
 opt_comment_spec
 	: /* empty */
@@ -22382,7 +22436,7 @@ identifier
 	| DBLINK                 {{ DBG_TRACE_GRAMMAR(identifier, | DBLINK             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBNAME                 {{ DBG_TRACE_GRAMMAR(identifier, | DBNAME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
-       	| DEDUPLICATE_KEY        {{ DBG_TRACE_GRAMMAR(identifier, | DEDUPLICATE_KEY    ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 	
+       	| DEDUPLICATE_           {{ DBG_TRACE_GRAMMAR(identifier, | DEDUPLICATE_       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 	
         | DENSE_RANK             {{ DBG_TRACE_GRAMMAR(identifier, | DENSE_RANK         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DISK_SIZE              {{ DBG_TRACE_GRAMMAR(identifier, | DISK_SIZE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DONT_REUSE_OID         {{ DBG_TRACE_GRAMMAR(identifier, | DONT_REUSE_OID     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -25205,7 +25259,13 @@ parser_restore_found_Oracle_outer ()
   parser_found_Oracle_outer = parser_oracle_stack[--parser_oracle_sp];
 }
 
-static PT_NODE *parser_alter_node_saved;
+static PT_NODE *parser_alter_node_saved = NULL;
+
+static bool
+parser_is_null_alter_node ()
+{
+  return (parser_alter_node_saved == NULL);
+}
 
 static void
 parser_save_alter_node (PT_NODE * node)
@@ -27794,34 +27854,3 @@ pt_ct_check_select (char* p, char *perr_msg)
    return false;
 }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-static void pt_get_deduplicate_key_mode_level(int mode_level, short* mode, short* level)
-{   
-    int type, mod_val;
-
-    if(mode_level == COMPRESS_MODE_NOT_SET)
-    {
-        type = prm_get_bool_value (PRM_ID_DEDUPLICATE_KEY_MODE) ? DEDUPLICATE_KEY_MODE_ON : DEDUPLICATE_KEY_MODE_OFF;
-        mod_val = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
-    }   
-    else
-    {
-        type = GET_COMPRESS_MODE(mode_level);
-        mod_val = GET_COMPRESS_LEVEL(mode_level);
-    }   
-
-    switch(type)
-      {
-        case DEDUPLICATE_KEY_MODE_OFF :
-             *mode = DEDUPLICATE_KEY_MODE_NONE;
-             *level = DEDUPLICATE_KEY_LEVEL_NONE;
-             break;
-        case DEDUPLICATE_KEY_MODE_ON :
-             *mode = DEDUPLICATE_KEY_MODE_SET;
-             *level = mod_val;
-             break;
-        default:
-             assert(0);
-      }             
-}
-#endif

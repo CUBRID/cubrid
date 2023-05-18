@@ -2792,10 +2792,26 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
       if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
 	{
-	  if ((idx_info->prefix_length == NULL) && (idx_info->dedup_key_mode != DEDUPLICATE_KEY_MODE_NONE))
+	  if ((idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF) && (idx_info->prefix_length == NULL))
 	    {
-	      has_deduplicate_key_col = true;
-	      nnames++;
+	      if (idx_info->deduplicate_min_keys == DEDUPLICATE_MIN_KEYS_UNUSE)
+		{
+		  has_deduplicate_key_col = true;
+		  nnames++;
+		}
+	      else if (idx_info->function_expr)
+		{
+		  if ((nnames - idx_info->func_no_args + 1) <= idx_info->deduplicate_min_keys)
+		    {
+		      has_deduplicate_key_col = true;
+		      nnames++;
+		    }
+		}
+	      else if (nnames <= idx_info->deduplicate_min_keys)
+		{
+		  has_deduplicate_key_col = true;
+		  nnames++;
+		}
 	    }
 	}
 #endif
@@ -7519,7 +7535,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
     }
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  if (fk_info->dedup_key_mode != DEDUPLICATE_KEY_MODE_NONE)
+  if (fk_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
     {
       SM_CLASS *class_ = NULL;
       SM_CLASS_CONSTRAINT *free_cons = NULL;
@@ -7550,7 +7566,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
       if (check_cons == NULL || !classobj_check_attr_in_unique_constraint (check_cons, (char **) att_names, NULL))
 	{
 	  // adjust for FK: add deduplicate_key_attr column
-	  att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->dedup_key_level);
+	  att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->deduplicate_level);
 	}
 
       if (free_cons != NULL)

@@ -759,7 +759,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  assert (k == (n_attrs - 1));
 	  int level = GET_DEDUPLICATE_KEY_ATTR_LEVEL ((*attribute_p)->id);
-	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_MODE_SET, level);
+	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), level);
 
 	  /* Since there is no hidden column in the contents to be described in the REFERENCE clause. */
 	  n_attrs--;
@@ -801,15 +801,13 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
     }
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  if (reserved_col_buf[0])
+  if (constraint.type != SM_CONSTRAINT_FOREIGN_KEY)
     {
-      m_buf (" %s", reserved_col_buf);
-    }
-  else if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint.type))
-    {
-      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_MODE_NONE,
-				     DEDUPLICATE_KEY_LEVEL_NONE);
-      m_buf (" %s", reserved_col_buf);
+      // In case of PK (Unique Key also), reserved_col_buf will be empty.
+      if (reserved_col_buf[0])
+	{
+	  m_buf (" WITH %s", reserved_col_buf);
+	}
     }
 #endif
 

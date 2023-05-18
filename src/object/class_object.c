@@ -4136,7 +4136,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   int i, len, order;
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int new_len = 0;
-  int new_index_start, con_index_start;
+  int new_index_start = 0, con_index_start = 0;
   bool is_uk_new, is_compare_except_dedup_key = false;
 #endif
 
@@ -4219,6 +4219,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
       if (is_compare_except_dedup_key)
 	{
+	  // In comparison with UK, the information of the added key column is ignored and compared.      
 	  new_len = len;
 	  if (*attp)
 	    {
@@ -4237,6 +4238,18 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 		  namep++;
 		  new_len++;
 		  new_index_start--;
+		}
+	    }
+	}
+      else if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
+	{
+	  // In the case of FK, even if the key columns to be added are different, they are ignored.
+	  if (*namep && IS_DEDUPLICATE_KEY_ATTR_NAME (*namep))
+	    {
+	      if (*attp && IS_DEDUPLICATE_KEY_ATTR_NAME ((*attp)->header.name))
+		{
+		  attp++;
+		  namep++;
 		}
 	    }
 	}
@@ -4262,6 +4275,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 		}
 	    }
 #endif
+
 	  /* if not specified, ascending order */
 	  order = (asc_desc ? asc_desc[i] : 0);
 	  assert (order == 0 || order == 1);
@@ -4293,7 +4307,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	{
 	  /* expr_str are printed tree, identifiers are already lower case */
 	  if ((func_index_info->col_id != cons->func_index_info->col_id)
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE) && defined(NEW_DEV)
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	      || (new_index_start != con_index_start)
 #else
 	      || (func_index_info->attr_index_start != cons->func_index_info->attr_index_start)
@@ -8244,6 +8258,30 @@ classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared
     case SM_SHARE_INDEX:
       if (out_shared_cons_name != NULL)
 	{
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (constraint_type == DB_CONSTRAINT_FOREIGN_KEY)
+	    {
+	      int level;
+	      SM_ATTRIBUTE **attp = existing_con->attributes;
+	      const char **namep = att_names;
+	      while (*attp)
+		{
+		  if (IS_DEDUPLICATE_KEY_ATTR_NAME ((*attp)->header.name))
+		    {
+#ifndef NDEBUG
+		      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (*namep, level);
+		      assert (*namep == dk_get_deduplicate_key_attr_name (level));
+#endif
+		      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME ((*attp)->header.name, level);
+		      *namep = dk_get_deduplicate_key_attr_name (level);
+		      break;
+		    }
+
+		  attp++;
+		  namep++;
+		}
+	    }
+#endif
 	  *out_shared_cons_name = strdup (existing_con->name);
 	}
       break;
