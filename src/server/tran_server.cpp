@@ -266,6 +266,7 @@ tran_server::init_page_server_hosts (const char *db_name)
 	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
 	}
     }
+  reset_main_connection ();
 
   if (failed_conn && valid_connection_count > 0)
     {
@@ -401,7 +402,7 @@ tran_server::reset_main_connection ()
 
   m_main_conn = main_conn_cand->get ();
 
-  er_log_debug (ARG_FILE_LINE, "The main connection is changed from %s to %s.\n",
+  er_log_debug (ARG_FILE_LINE, "The main connection is set to %s.\n",
 		m_main_conn->get_channel_id ().c_str ());
 
   return NO_ERROR;
