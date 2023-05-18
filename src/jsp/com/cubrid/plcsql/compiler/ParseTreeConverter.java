@@ -1009,8 +1009,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         if (ctx.LANGUAGE() != null && symbolStack.getCurrentScope().level > 1) {
             int[] lineColumn = Misc.getLineColumnOf(ctx);
-            throw new SyntaxError(lineColumn[0], lineColumn[1],
-                "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
+            throw new SyntaxError(
+                    lineColumn[0],
+                    lineColumn[1],
+                    "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
         }
 
         String name = Misc.getNormalizedText(ctx.identifier());
