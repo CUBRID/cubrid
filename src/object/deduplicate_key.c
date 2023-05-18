@@ -47,7 +47,7 @@ static char dk_reserved_deduplicate_key_attr_name[COUNT_OF_DEDUPLICATE_KEY_LEVEL
 static DB_DOMAIN *
 get_reserved_index_attr_domain_type (int level)
 {
-  if (level == DEDUPLICATE_KEY_LEVEL_NONE)
+  if (level == DEDUPLICATE_KEY_LEVEL_MAX)
     {
       return &tp_Integer_domain;
     }
@@ -84,11 +84,10 @@ dk_or_attribute_initialized ()
 
   for (level = DEDUPLICATE_KEY_LEVEL_MIN; level <= DEDUPLICATE_KEY_LEVEL_MAX; level++)
     {
-
       att_id = MK_DEDUPLICATE_KEY_ATTR_ID (level);
       lv1 = GET_DEDUPLICATE_KEY_ATTR_LEVEL (att_id);
       attr_name = dk_get_deduplicate_key_attr_name (lv1);
-      GET_DEDUPLICATE_KEY_ATTR_MODE_LEVEL_FROM_NAME (attr_name, lv2);
+      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (attr_name, lv2);
       if (!IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
 	{
 	  assert (0);
@@ -161,7 +160,7 @@ dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
 
   if (prm_get_bool_value (PRM_ID_USE_DEDUPLICATE_KEY_MODE_OID_TEST))
     {
-      if (level == DEDUPLICATE_KEY_LEVEL_NONE)
+      if (level == DEDUPLICATE_KEY_LEVEL_MAX)
 	{
 	  db_make_int (value, (int) (OID_2_BIGINT (rec_oid) % SHRT_MAX));
 	}
@@ -182,7 +181,7 @@ dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
     }
 #endif
 
-  if (level == DEDUPLICATE_KEY_LEVEL_NONE)
+  if (level == DEDUPLICATE_KEY_LEVEL_MAX)
     {
       db_make_int (value, rec_oid->pageid);
     }
@@ -295,7 +294,7 @@ dk_find_sm_deduplicate_key_attribute (int att_id, const char *att_name)
     }
   else
     {
-      GET_DEDUPLICATE_KEY_ATTR_MODE_LEVEL_FROM_NAME (att_name, level);
+      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (att_name, level);
     }
 
   assert (level >= DEDUPLICATE_KEY_LEVEL_MIN && level <= DEDUPLICATE_KEY_LEVEL_MAX);
@@ -335,9 +334,9 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
 
   assert (nnames > 0);
   assert (asc_desc != NULL);
-  assert (idx_info->dedup_key_mode != DEDUPLICATE_KEY_MODE_NONE);
-  assert (idx_info->dedup_key_level >= DEDUPLICATE_KEY_LEVEL_MIN
-	  && idx_info->dedup_key_level <= DEDUPLICATE_KEY_LEVEL_MAX);
+  assert (idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF);
+  assert (idx_info->deduplicate_level >= DEDUPLICATE_KEY_LEVEL_MIN
+	  && idx_info->deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX);
 
   if (func_index_info)
     {
@@ -366,32 +365,28 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
     {
       attrs_prefix_length[deduplicate_key_col_pos] = -1;
     }
-  attnames[deduplicate_key_col_pos] = dk_get_deduplicate_key_attr_name (idx_info->dedup_key_level);
+  attnames[deduplicate_key_col_pos] = dk_get_deduplicate_key_attr_name (idx_info->deduplicate_level);
   asc_desc[deduplicate_key_col_pos] = (is_reverse ? 1 : 0);
 
   attnames[nnames + 1] = NULL;
 }
 
 char *
-dk_print_deduplicate_key_info (char *buf, int buf_size, int dedup_key_mode, int dedup_key_level)
+dk_print_deduplicate_key_info (char *buf, int buf_size, int deduplicate_level)
 {
   int len = 0;
 
+  assert (deduplicate_level >= DEDUPLICATE_KEY_LEVEL_MIN && deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX);
+
   buf[0] = '\0';
-  if (dedup_key_mode == DEDUPLICATE_KEY_MODE_NONE)
+
+  if (deduplicate_level == DEDUPLICATE_KEY_LEVEL_MAX)
     {
-      len = snprintf (buf, buf_size, "DEDUPLICATE_KEY OFF");
+      len = snprintf (buf, buf_size, "DEDUPLICATE");
     }
-  else if (dedup_key_mode == DEDUPLICATE_KEY_MODE_SET)
+  else
     {
-      if (dedup_key_level == DEDUPLICATE_KEY_LEVEL_NONE)
-	{
-	  len = snprintf (buf, buf_size, "DEDUPLICATE_KEY ON");
-	}
-      else
-	{
-	  len = snprintf (buf, buf_size, "DEDUPLICATE_KEY ON(%d)", dedup_key_level);
-	}
+      len = snprintf (buf, buf_size, "DEDUPLICATE=%d", deduplicate_level);
     }
 
   assert (len < buf_size);

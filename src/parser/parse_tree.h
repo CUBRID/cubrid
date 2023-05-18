@@ -2106,8 +2106,8 @@ struct pt_index_info
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  short dedup_key_mode;		/* refer to EN_COMPRESS_INDEX_MODE */
-  short dedup_key_level;	/* 0 : not use modular, others : mod by pow(2,dedup_key_level) */
+  short deduplicate_level;	/* 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
+  int deduplicate_min_keys;	/* 0 : Not Use */
 #endif
 };
 
@@ -3261,8 +3261,7 @@ struct pt_foreign_key_info
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  short dedup_key_mode;		/* refer to EN_COMPRESS_INDEX_MODE */
-  short dedup_key_level;	/* 0 : not use modular, others : mod by pow(2,dedup_key_level) */
+  short deduplicate_level;	/* 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
 #endif
 };
 
