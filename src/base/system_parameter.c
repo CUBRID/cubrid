@@ -6317,7 +6317,7 @@ SYSPRM_PARAM prm_Def[] = {
 #endif
   {PRM_ID_DEDUPLICATE_MIN_KEYS,
    PRM_NAME_DEDUPLICATE_MIN_KEYS,
-   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
    PRM_INTEGER,
    &prm_deduplicate_min_keys_flag,
    (void *) &prm_deduplicate_min_keys_default,
@@ -6341,7 +6341,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DEDUPLICATE_KEY_LEVEL,
    PRM_NAME_DEDUPLICATE_KEY_LEVEL,
-   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
    PRM_INTEGER,
    &prm_deduplicate_key_level_flag,
    (void *) &prm_deduplicate_key_level_default,
