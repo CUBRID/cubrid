@@ -449,6 +449,7 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
     {"Deduplicate_distinct_key", "int"},
 #endif
     {"Avg_num_value_per_key", "int"},
+    {"Avg_num_value_per_deduplicate_key", "int"},
     {"Num_leaf_page", "int"},
     {"Num_non_leaf_page", "int"},
     {"Num_ovf_page", "int"},
