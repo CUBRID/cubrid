@@ -7822,7 +7822,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-      fprintf (fp, "(heap");
+      if (scan_id->scan_stats.agg_index_name)
+	{
+	  fprintf (fp, "(");	/* aggregate optimization is not a scan */
+	}
+      else
+	{
+	  fprintf (fp, "(heap");
+	}
       break;
 
     case S_INDX_SCAN:
@@ -7873,7 +7880,13 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
     }
 
-  fprintf (fp, " time: %d, fetch: %llu, ioread: %llu", TO_MSEC (scan_id->scan_stats.elapsed_scan),
+  /* need space for the followed "time ... " except for aggregate optimization */
+  if (scan_id->scan_stats.agg_index_name == NULL)
+    {
+      fprintf (fp, " ");
+    }
+
+  fprintf (fp, "time: %d, fetch: %llu, ioread: %llu", TO_MSEC (scan_id->scan_stats.elapsed_scan),
 	   (unsigned long long int) scan_id->scan_stats.num_fetches,
 	   (unsigned long long int) scan_id->scan_stats.num_ioreads);
 
