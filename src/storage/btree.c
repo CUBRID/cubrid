@@ -8833,7 +8833,6 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	    {
 	      goto exit_on_error;
 	    }
-	  cpc->sum_rec_len += rec.length;
 
 	  /* read the current record key */
 	  if (btree_read_record (thread_p, btid, pg_ptr, &rec, &key1, &leaf_pnt, BTREE_LEAF_NODE, &clear_key, &offset,
@@ -8846,9 +8845,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  if (!btree_is_same_key_for_stats (env, &key1))
 	    {
 	      cpc->dis_key_cnt++;
+	      cpc->sum_rec_len += rec.length;
 	      cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
 	    }
 #else
+	  cpc->sum_rec_len += rec.length;
 	  cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
 #endif
 	  btree_clear_key_value (&clear_key, &key1);
@@ -8917,6 +8918,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 
   if (cpc->dis_key_cnt > 0)
     {
+      cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
       cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
       cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
       cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
@@ -9092,6 +9094,8 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "Deduplicate Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
 #endif
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
+  fprintf (fp, "Average Value Count Per Deduplicate Key: %d\n", cpc.avg_val_per_dedup_key);
+
   fprintf (fp, "Total Page Count: %d\n", cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
   fprintf (fp, "Leaf Page Count: %d\n", cpc.leaf_pg_cnt);
   fprintf (fp, "NonLeaf Page Count: %d\n", cpc.nleaf_pg_cnt);
@@ -22361,6 +22365,8 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
 
   // {"Avg_num_value_per_key", "int"}
   db_make_int (out_values[idx++], cpc.avg_val_per_key);
+  // {"Avg_num_value_per_deduplicate_key", "int"}
+  db_make_int (out_values[idx++], cpc.avg_val_per_dedup_key);
 
   // {"Num_leaf_page", "int"}
   db_make_int (out_values[idx++], cpc.leaf_pg_cnt);
