@@ -169,7 +169,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   // TODO: exits when a thread waiting on it (transaction or whatever) stops. It should wake up periodically and check it.
   m_main_conn_cv.wait_for (s_lock, timeout_1m, [&] ()
   {
-    if (m_page_server_conn_vec.empty())
+    if (m_page_server_conn_vec.empty ())
       {
 	err_code = ER_CONN_NO_PAGE_SERVER_AVAILABLE;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_NO_PAGE_SERVER_AVAILABLE, 0);
@@ -418,7 +418,7 @@ tran_server::disconnect_page_server_async (const connection_handler *conn)
       else
 	{
 	  er_log_debug (ARG_FILE_LINE, "The main connection is changed from %s to %s.\n",
-			prev_main_conn_id.c_str (), (*conn_vec.begin())->get_channel_id ().c_str ());
+			prev_main_conn_id.c_str (), (*conn_vec.begin ())->get_channel_id ().c_str ());
 	}
       ulock.unlock ();
       m_main_conn_cv.notify_all ();
@@ -485,7 +485,7 @@ tran_server::connection_handler::get_request_handlers ()
 }
 
 void
-tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
+tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &&)
 {
   m_is_disconnecting.store (true);
   m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.

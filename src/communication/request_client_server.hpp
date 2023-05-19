@@ -377,7 +377,7 @@ namespace cubcomm
     if (req_handle_it == m_request_handlers.end ())
       {
 	// no such handler
-	assert (false);
+	assert_release (false);
 	return;
       }
     er_log_recv_request (m_channel, static_cast<int> (msgid), message_size);

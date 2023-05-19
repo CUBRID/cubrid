@@ -52,7 +52,7 @@ class passive_tran_server : public tran_server
 	connection_handler () = delete;
 
 	connection_handler (cubcomm::channel &&chn, tran_server &ts)
-	  : tran_server::connection_handler (std::move (chn), ts, get_request_handlers())
+	  : tran_server::connection_handler (std::move (chn), ts, get_request_handlers ())
 	{}
 
 	connection_handler (const connection_handler &) = delete;
@@ -67,7 +67,7 @@ class passive_tran_server : public tran_server
 	request_handlers_map_t get_request_handlers () final override;
 
 	/* reuqest handlers */
-	void receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip);
+	void receive_log_prior_list (page_server_conn_t::sequenced_payload &&a_sp);
     };
 
   private:
