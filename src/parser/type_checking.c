@@ -4820,15 +4820,27 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       break;
 
     case PT_TYPE_NUMERIC:
-      if (PT_IS_DISCRETE_NUMBER_TYPE (node->type_enum))
+      switch (node->type_enum)
 	{
-	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	case PT_TYPE_SMALLINT:
+	  precision = DB_SMALLINT_PRECISION;
 	  scale = 0;
-	}
-      else
-	{
+	  break;
+
+	case PT_TYPE_INTEGER:
+	  precision = DB_INTEGER_PRECISION;
+	  scale = 0;
+	  break;
+
+	case PT_TYPE_BIGINT:
+	  precision = DB_BIGINT_PRECISION;
+	  scale = 0;
+	  break;
+
+	default:
 	  precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE;
+	  break;
 	}
       break;
 

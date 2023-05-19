@@ -571,13 +571,13 @@ extern "C"
 #define DB_DEFAULT_SCALE -1
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
-#define DB_DEFAULT_NUMERIC_PRECISION 15
+#define DB_DEFAULT_NUMERIC_PRECISION 38
 
 /* This constant defines the default scale of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_SCALE 0
 
 /* This constant defines the default scale of result of numeric division operation */
-#define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
+#define DB_DEFAULT_NUMERIC_DIVISION_SCALE 15
 
 /* These constants define the size of buffers within a DB_VALUE. */
 #define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))
