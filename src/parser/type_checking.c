@@ -4838,7 +4838,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	  break;
 
 	default:
-	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  precision = DB_MAX_NUMERIC_PRECISION;
 	  scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE;
 	  break;
 	}
