@@ -6089,8 +6089,6 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   int matches = 0, best_match = -1, i = 0;
   EXPRESSION_SIGNATURE sig;
 
-  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
-
   if (expr->node_type != PT_EXPR)
     {
       return NO_ERROR;
@@ -6218,13 +6216,6 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
   else
     {
       expr->type_enum = pt_expr_get_return_type (expr, sig);
-      if (op == PT_DIVIDE && oracle_style_divide)
-	{
-	  if (PT_IS_DISCRETE_NUMBER_TYPE (expr->type_enum))
-	    {
-	      expr->type_enum = PT_TYPE_DOUBLE;
-	    }
-	}
     }
 
   /* re-read arguments to include the wrapped-cast */
@@ -11308,6 +11299,8 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 {
   PT_TYPE_ENUM result_type;
 
+  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
+
   if (pt_is_op_hv_late_bind (op) && (t1 == PT_TYPE_MAYBE || t2 == PT_TYPE_MAYBE))
     {
       result_type = PT_TYPE_MAYBE;
@@ -11319,18 +11312,12 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 
   switch (op)
     {
-#if 0
     case PT_DIVIDE:
-      if (t1 == PT_TYPE_NUMERIC || t2 == PT_TYPE_NUMERIC)
+      if (oracle_style_divide && PT_IS_DISCRETE_NUMBER_TYPE (t1) && PT_IS_DISCRETE_NUMBER_TYPE (t2))
 	{
-	  result_type = PT_TYPE_DOUBLE;
-	}
-      if (PT_IS_DISCRETE_NUMBER_TYPE (t1) && PT_IS_DISCRETE_NUMBER_TYPE (t2) )
-	{
-	  result_type = PT_TYPE_DOUBLE;
+	  result_type = PT_TYPE_NUMERIC;
 	}
       break;
-#endif
     case PT_MINUS:
     case PT_TIMES:
       if (result_type == PT_TYPE_SEQUENCE)
