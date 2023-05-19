@@ -117,8 +117,6 @@ Nombre de utilidad admin disponible:\n\
     paramdump\n\
     statdump\n\
     changemode\n\
-    copylogdb\n\
-    applylogdb\n\
     applyinfo\n\
     acldb\n\
     genlocale\n\
@@ -241,9 +239,6 @@ uso: %2$s heartbeat <command> [args]\n\
 Comando disponible: \n\
     start          [database-name]\n\
     stop           [-h <host-name>] [-i] [database-name]\n\
-    copylogdb      <start|stop> [-h <host-name>] database-name node-name\n\
-    applylogdb     <start|stop> [-h <host-name>] database-name node-name\n\
-    replication    <start|stop> node-name\n\
     status         [-v] [-h <host-name>]\n\
     reload\n
 31 Argumento '%1$s' no es necesario.\n
