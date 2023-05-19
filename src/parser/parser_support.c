@@ -11385,7 +11385,7 @@ error_return:
 }
 
 static PT_NODE *
-pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *has_synonym, int *continue_walk)
+pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy, int *continue_walk)
 {
   char *class_name;
   char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -11430,10 +11430,6 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *has_sy
 	    {
 	      spec->info.spec.range_var = parser_new_node (parser, PT_NAME);
 	      spec->info.spec.range_var->info.name.original = pt_append_string (parser, NULL, synonym_name);
-	    }
-	  if (has_synonym)
-	    {
-	      *(bool *) has_synonym = true;
 	    }
 	}
     }
@@ -11494,9 +11490,8 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 {
   PT_NODE *insert, *spec;
   int remote_ins = 0;
-  bool has_synonym = false;
 
-  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
@@ -11506,13 +11501,6 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (spec->info.spec.remote_server_name)
     {
       remote_ins = 1;
-    }
-
-  if (has_synonym)
-    {
-      /* node need alias for insert */
-      parser_free_node (parser, node->info.insert.spec->info.spec.range_var);
-      node->info.insert.spec->info.spec.range_var = NULL;
     }
 
   pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
