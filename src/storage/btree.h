@@ -377,9 +377,9 @@ struct btree_capacity
   int64_t tot_val_cnt;		/* Total number of values stored in tree */
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int deduplicate_dis_key_cnt;
+  int avg_val_per_dedup_key;	/* Average number of values (OIDs) per deduplicate key */
 #endif
   int avg_val_per_key;		/* Average number of values (OIDs) per key */
-  int avg_val_per_dedup_key;	/* Average number of values (OIDs) per deduplicate key */
   int leaf_pg_cnt;		/* Leaf page count */
   int nleaf_pg_cnt;		/* NonLeaf page count */
   int tot_pg_cnt;		/* Total page count */
