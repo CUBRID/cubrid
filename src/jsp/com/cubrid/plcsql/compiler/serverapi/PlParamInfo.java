@@ -28,27 +28,54 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.serverapi;
 
-public class ServerConstants {
+import com.cubrid.jsp.data.CUBRIDUnpacker;
+import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.value.NullValue;
+import com.cubrid.jsp.value.Value;
 
-    // kinds of SQL statements that are supported in Static SQL
-    public static final int CUBRID_STMT_INSERT = 20; // REPLACE too
-    public static final int CUBRID_STMT_SELECT = 21;
-    public static final int CUBRID_STMT_UPDATE = 22;
-    public static final int CUBRID_STMT_DELETE = 23;
-    public static final int CUBRID_STMT_TRUNCATE = 52;
-    public static final int CUBRID_STMT_MERGE = 57;
+public class PlParamInfo {
 
-    // parameter mode flags - got from com.cubrid.jsp.impl.SUBindParameter
-    public static final byte PARAM_MODE_UNKNOWN = 0;
-    public static final byte PARAM_MODE_IN = 1;
-    public static final byte PARAM_MODE_OUT = 2;
+    public String name;
 
-    // CUBRID charset = got from got from com.cubrid.jsp.data.ColumnInfo::getJavaCharsetName()
-    public static final byte CUBRID_CHARSET_ASCII = 0;
-    public static final byte CUBRID_CHARSET_BINARY = 2;
-    public static final byte CUBRID_CHARSET_ISO_8859_1 = 3;
-    public static final byte CUBRID_CHARSET_EUC_KR = 4;
-    public static final byte CUBRID_CHARSET_UTF8 = 5;
+    public byte mode;
+
+    public int type;
+    public int prec;
+    public short scale;
+    public byte charset;
+
+    public Value value;
+
+    public PlParamInfo(String name, byte mode, int type, int prec, short scale, byte charset) {
+        this.name = name;
+        this.mode = mode;
+        this.type = type;
+        this.prec = prec;
+        this.scale = scale;
+        this.charset = charset;
+        this.value = new NullValue();
+    }
+
+    public PlParamInfo(CUBRIDUnpacker unpacker) {
+        this.mode = (byte) unpacker.unpackInt();
+        this.name = unpacker.unpackCString();
+
+        this.type = unpacker.unpackInt();
+        this.prec = unpacker.unpackInt();
+        this.scale = (short) unpacker.unpackInt();
+        this.charset = (byte) unpacker.unpackInt();
+
+        int has_value = unpacker.unpackInt();
+        if (has_value == 1) {
+            try {
+                int paramType = unpacker.unpackInt();
+                this.value = unpacker.unpackValue(paramType);
+            } catch (TypeMismatchException e) {
+                // TODO: error handling?
+                this.value = new NullValue();
+            }
+        }
+    }
 }

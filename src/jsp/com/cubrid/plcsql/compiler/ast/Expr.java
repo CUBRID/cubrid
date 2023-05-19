@@ -30,29 +30,29 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Coerce;
+import com.cubrid.plcsql.compiler.Coercion;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class Expr extends AstNode {
 
-    public Coerce coerce;
+    public Coercion coercion;
 
     public Expr(ParserRuleContext ctx) {
         super(ctx);
     }
 
-    public void setCoerce(Coerce c) {
-        this.coerce = c;
+    public void setCoercion(Coercion c) {
+        this.coercion = c;
     }
 
     public abstract String exprToJavaCode();
 
     @Override
     public final String toJavaCode() {
-        if (coerce == null) {
-            return "/* null coerce */ " + exprToJavaCode();
+        if (coercion == null) {
+            return "/* null coercion */ " + exprToJavaCode();
         } else {
-            return coerce.toJavaCode(exprToJavaCode());
+            return coercion.toJavaCode(exprToJavaCode());
         }
     }
 }

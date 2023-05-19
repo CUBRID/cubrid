@@ -83,7 +83,7 @@ public class ExprId extends Expr {
         }
     }
 
-    // TODO: coerce?
+    // TODO: coercion?
     public String toJavaCodeForOutParam() {
         if (decl instanceof DeclParamOut) {
             return String.format("%s", name);

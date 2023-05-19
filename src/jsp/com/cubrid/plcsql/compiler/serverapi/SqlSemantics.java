@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.serverapi;
 
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.ColumnInfo;

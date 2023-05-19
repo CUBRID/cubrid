@@ -36,6 +36,7 @@ import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.serverapi.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -771,7 +772,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(arg.ctx), // s010
                                 "argument "
-                                        + i
+                                        + (i + 1)
                                         + " to the function "
                                         + name
                                         + " must be assignable to because it is to an OUT parameter");
@@ -1215,10 +1216,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         if (ctx.expression() == null) {
             controlFlowBlocked = true; // s107-3
-            return new StmtBreak(ctx, declLabel);
+            return new StmtExit(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
-            CondStmt cs = new CondStmt(ctx, cond, new StmtBreak(ctx, declLabel));
+            CondStmt cs = new CondStmt(ctx, cond, new StmtExit(ctx, declLabel));
             return new StmtIf(ctx, true, new NodeList<CondStmt>().addNode(cs), null);
         }
     }
@@ -1757,7 +1758,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         List<TypeSpec> columnTypeList;
         if (cursor.decl instanceof DeclCursor) {
             if (intoVars.nodes.size() != ((DeclCursor) cursor.decl).staticSql.selectList.size()) {
-                throw new SemanticError( // TODO: verify what happens in Oracle
+                throw new SemanticError(
                         Misc.getLineColumnOf(cursor.ctx), // s059
                         "the number of columns of the cursor must be equal to the number of into-variables");
             }
@@ -1913,7 +1914,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         for (Using_elementContext c : ctx.using_element()) {
             Expr expr = visitExpression(c.expression());
-            if (c.OUT() != null) {
+            if (c.OUT() != null || c.INOUT() != null) {
                 if (expr instanceof ExprId && isAssignableTo((ExprId) expr)) {
                     // OK
                 } else {

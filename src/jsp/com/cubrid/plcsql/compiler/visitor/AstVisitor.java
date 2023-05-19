@@ -118,7 +118,7 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitStmtBlock(StmtBlock node);
 
-    public abstract R visitStmtBreak(StmtBreak node);
+    public abstract R visitStmtExit(StmtExit node);
 
     public abstract R visitStmtCase(StmtCase node);
 

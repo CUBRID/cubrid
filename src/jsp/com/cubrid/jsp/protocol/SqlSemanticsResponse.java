@@ -1,7 +1,7 @@
 package com.cubrid.jsp.protocol;
 
 import com.cubrid.jsp.data.CUBRIDUnpacker;
-import com.cubrid.plcsql.compiler.SqlSemantics;
+import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import java.util.ArrayList;
 import java.util.List;
 

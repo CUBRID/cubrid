@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Coerce;
+import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.Misc;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -70,14 +70,14 @@ public abstract class StmtSql extends Stmt {
         String setUsedExprStr = Common.getSetUsedExprStr(usedExprList);
 
         if (intoVarList == null) {
-            assert coerces == null;
+            assert coercions == null;
 
             return tmplDml.replace("%'KIND'%", dynamic ? "dynamic" : "static")
                     .replace("%'SQL'%", Misc.indentLines(sql.toJavaCode(), 1, true))
                     .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
                     .replace("%'LEVEL'%", "" + level);
         } else {
-            assert coerces != null;
+            assert coercions != null;
 
             String setResultsStr = getSetResultsStr(intoVarList);
             return tmplSelect
@@ -89,15 +89,15 @@ public abstract class StmtSql extends Stmt {
         }
     }
 
-    public void setCoerces(List<Coerce> coerces) {
-        this.coerces = coerces;
+    public void setCoercions(List<Coercion> coercions) {
+        this.coercions = coercions;
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private List<Coerce> coerces;
+    private List<Coercion> coercions;
 
     private static final String tmplDml =
             Misc.combineLines(
@@ -148,7 +148,7 @@ public abstract class StmtSql extends Stmt {
         StringBuffer sbuf = new StringBuffer();
 
         int size = intoVarList.size();
-        assert coerces.size() == size;
+        assert coercions.size() == size;
         assert dynamic || (columnTypeList != null && columnTypeList.size() == size);
 
         int i = 0;
@@ -165,7 +165,7 @@ public abstract class StmtSql extends Stmt {
                 sbuf.append("\n");
             }
 
-            Coerce c = coerces.get(i);
+            Coercion c = coercions.get(i);
             sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
 
             i++;

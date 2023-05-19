@@ -38,7 +38,7 @@ import java.util.List;
 public enum CoercionScheme {
     CompOp {
         public List<TypeSpec> getCoercions(
-                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+                List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
             assert argTypes.size() == 2;
 
             TypeSpec commonTy =
@@ -63,7 +63,7 @@ public enum CoercionScheme {
 
             List<TypeSpec> ret = new ArrayList<>();
             for (int i = 0; i < 2; i++) {
-                Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
+                Coercion c = Coercion.getCoercion(argTypes.get(i), commonTy);
                 assert c != null;
                 outCoercions.add(c);
                 ret.add(commonTy);
@@ -75,7 +75,7 @@ public enum CoercionScheme {
 
     NAryCompOp {
         public List<TypeSpec> getCoercions(
-                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+                List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
 
             // between, in
 
@@ -127,7 +127,7 @@ public enum CoercionScheme {
 
             List<TypeSpec> ret = new ArrayList<>();
             for (int i = 0; i < len; i++) {
-                Coerce c = Coerce.getCoerce(argTypes.get(i), wholeCommonTy);
+                Coercion c = Coercion.getCoercion(argTypes.get(i), wholeCommonTy);
                 assert c != null;
                 outCoercions.add(c);
                 ret.add(wholeCommonTy);
@@ -139,7 +139,7 @@ public enum CoercionScheme {
 
     ArithOp {
         public List<TypeSpec> getCoercions(
-                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+                List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
 
             if (argTypes.size() == 2) {
 
@@ -165,7 +165,7 @@ public enum CoercionScheme {
 
                     List<TypeSpec> ret = new ArrayList<>();
                     for (int i = 0; i < 2; i++) {
-                        Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
+                        Coercion c = Coercion.getCoercion(argTypes.get(i), commonTy);
                         assert c != null;
                         outCoercions.add(c);
                         ret.add(commonTy);
@@ -184,8 +184,8 @@ public enum CoercionScheme {
                             // date/time + string/number, or
                             // date/time - number
 
-                            outCoercions.add(Coerce.IDENTITY);
-                            Coerce c = Coerce.getCoerce(rType, TypeSpecSimple.BIGINT);
+                            outCoercions.add(Coercion.IDENTITY);
+                            Coercion c = Coercion.getCoercion(rType, TypeSpecSimple.BIGINT);
                             assert c != null;
                             outCoercions.add(c);
 
@@ -202,10 +202,10 @@ public enum CoercionScheme {
 
                             // string/number + date/time
 
-                            Coerce c = Coerce.getCoerce(lType, TypeSpecSimple.BIGINT);
+                            Coercion c = Coercion.getCoercion(lType, TypeSpecSimple.BIGINT);
                             assert c != null;
                             outCoercions.add(c);
-                            outCoercions.add(Coerce.IDENTITY);
+                            outCoercions.add(Coercion.IDENTITY);
 
                             List<TypeSpec> ret = new ArrayList<>();
                             ret.add(TypeSpecSimple.BIGINT);
@@ -232,7 +232,7 @@ public enum CoercionScheme {
                     targetTy = TypeSpecSimple.OBJECT; // see the comment in CompOp
                 }
 
-                Coerce c = Coerce.getCoerce(argType, targetTy);
+                Coercion c = Coercion.getCoercion(argType, targetTy);
                 assert c != null;
                 outCoercions.add(c);
 
@@ -249,7 +249,7 @@ public enum CoercionScheme {
 
     IntArithOp {
         public List<TypeSpec> getCoercions(
-                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+                List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
 
             if (argTypes.size() == 2) {
 
@@ -267,7 +267,7 @@ public enum CoercionScheme {
 
                 List<TypeSpec> ret = new ArrayList<>();
                 for (int i = 0; i < 2; i++) {
-                    Coerce c = Coerce.getCoerce(argTypes.get(i), commonTy);
+                    Coercion c = Coercion.getCoercion(argTypes.get(i), commonTy);
                     assert c != null;
                     outCoercions.add(c);
                     ret.add(commonTy);
@@ -289,7 +289,7 @@ public enum CoercionScheme {
                     targetTy = TypeSpecSimple.OBJECT; // see the comment in CompOp
                 }
 
-                Coerce c = Coerce.getCoerce(argType, targetTy);
+                Coercion c = Coercion.getCoercion(argType, targetTy);
                 assert c != null;
                 outCoercions.add(c);
 
@@ -306,7 +306,7 @@ public enum CoercionScheme {
 
     LogicalOp {
         public List<TypeSpec> getCoercions(
-                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+                List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
             // and, or, xor, not
             return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.BOOLEAN);
         }
@@ -314,7 +314,7 @@ public enum CoercionScheme {
 
     StringOp {
         public List<TypeSpec> getCoercions(
-                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+                List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
             // ||, like
             return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.STRING);
         }
@@ -322,7 +322,7 @@ public enum CoercionScheme {
 
     BitOp {
         public List<TypeSpec> getCoercions(
-                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+                List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
             // <<, >>, &, ^, |
             return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.BIGINT);
         }
@@ -330,7 +330,7 @@ public enum CoercionScheme {
 
     ObjectOp {
         public List<TypeSpec> getCoercions(
-                List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName) {
+                List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
             // is-null
             return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.OBJECT);
         }
@@ -341,7 +341,7 @@ public enum CoercionScheme {
     }
 
     public abstract List<TypeSpec> getCoercions(
-            List<Coerce> outCoercions, List<TypeSpec> argTypes, String opName);
+            List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName);
 
     // -----------------------------------------------------------------------
     // Setting for comparison operators
@@ -706,11 +706,11 @@ public enum CoercionScheme {
     }
 
     private static List<TypeSpec> getCoercionsToFixedType(
-            List<Coerce> outCoercions, List<TypeSpec> argTypes, TypeSpec targetType) {
+            List<Coercion> outCoercions, List<TypeSpec> argTypes, TypeSpec targetType) {
 
         List<TypeSpec> ret = new ArrayList<>();
         for (TypeSpec t : argTypes) {
-            Coerce c = Coerce.getCoerce(t, targetType);
+            Coercion c = Coercion.getCoercion(t, targetType);
             if (c == null) {
                 return null;
             } else {

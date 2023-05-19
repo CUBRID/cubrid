@@ -39,11 +39,11 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-public abstract class Coerce {
+public abstract class Coercion {
 
     public abstract String toJavaCode(String exprJavaCode);
 
-    public static Coerce getCoerce(TypeSpec from, TypeSpec to) {
+    public static Coercion getCoercion(TypeSpec from, TypeSpec to) {
 
         if (from instanceof TypeSpecPercent) {
             from = ((TypeSpecPercent) from).resolvedType;
@@ -76,16 +76,16 @@ public abstract class Coerce {
     // cases
     // ----------------------------------------------
 
-    public static class Identity extends Coerce {
+    public static class Identity extends Coercion {
         @Override
         public String toJavaCode(String exprJavaCode) {
             return exprJavaCode; // no coercion
         }
     }
 
-    public static Coerce IDENTITY = new Identity();
+    public static Coercion IDENTITY = new Identity();
 
-    public static class Cast extends Coerce {
+    public static class Cast extends Coercion {
         public TypeSpec to;
 
         public Cast(TypeSpec to) {
@@ -98,7 +98,7 @@ public abstract class Coerce {
         }
     }
 
-    public static class Conversion extends Coerce {
+    public static class Conversion extends Coercion {
         public String from;
         public String to;
 

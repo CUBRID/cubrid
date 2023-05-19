@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Coerce;
+import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.List;
@@ -66,15 +66,15 @@ public class StmtCursorFetch extends Stmt {
                 .replace("    %'SET-INTO-VARIABLES'%", Misc.indentLines(setIntoVarsStr, 2));
     }
 
-    public void setCoerces(List<Coerce> coerces) {
-        this.coerces = coerces;
+    public void setCoercions(List<Coercion> coercions) {
+        this.coercions = coercions;
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
-    private List<Coerce> coerces;
+    private List<Coercion> coercions;
 
     private static final String tmplStmt =
             Misc.combineLines(
@@ -85,14 +85,14 @@ public class StmtCursorFetch extends Stmt {
                     "  } else if (rs.next()) {",
                     "    %'SET-INTO-VARIABLES'%",
                     "  } else {",
-                    "    ; // TODO: what to do? setting nulls to into-variables?",
+                    "    ;", // TODO: setting nulls to into-variables?
                     "  }",
                     "}");
 
     private String getSetIntoVarsStr(List<ExprId> intoVarList) {
 
-        assert coerces != null;
-        assert coerces.size() == intoVarList.size();
+        assert coercions != null;
+        assert coercions.size() == intoVarList.size();
 
         int i = 0;
         StringBuffer sbuf = new StringBuffer();
@@ -108,7 +108,7 @@ public class StmtCursorFetch extends Stmt {
                 sbuf.append("\n");
             }
 
-            Coerce c = coerces.get(i);
+            Coercion c = coercions.get(i);
             sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
 
             i++;

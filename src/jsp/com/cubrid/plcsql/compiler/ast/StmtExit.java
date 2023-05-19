@@ -28,54 +28,38 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.jsp.data.CUBRIDUnpacker;
-import com.cubrid.jsp.exception.TypeMismatchException;
-import com.cubrid.jsp.value.NullValue;
-import com.cubrid.jsp.value.Value;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-public class PlParamInfo {
+public class StmtExit extends Stmt {
 
-    public String name;
-
-    public byte mode;
-
-    public int type;
-    public int prec;
-    public short scale;
-    public byte charset;
-
-    public Value value;
-
-    public PlParamInfo(String name, byte mode, int type, int prec, short scale, byte charset) {
-        this.name = name;
-        this.mode = mode;
-        this.type = type;
-        this.prec = prec;
-        this.scale = scale;
-        this.charset = charset;
-        this.value = new NullValue();
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtExit(this);
     }
 
-    public PlParamInfo(CUBRIDUnpacker unpacker) {
-        this.mode = (byte) unpacker.unpackInt();
-        this.name = unpacker.unpackCString();
+    public final DeclLabel declLabel;
 
-        this.type = unpacker.unpackInt();
-        this.prec = unpacker.unpackInt();
-        this.scale = (short) unpacker.unpackInt();
-        this.charset = (byte) unpacker.unpackInt();
+    public StmtExit(ParserRuleContext ctx, DeclLabel declLabel) {
+        super(ctx);
 
-        int has_value = unpacker.unpackInt();
-        if (has_value == 1) {
-            try {
-                int paramType = unpacker.unpackInt();
-                this.value = unpacker.unpackValue(paramType);
-            } catch (TypeMismatchException e) {
-                // TODO: error handling?
-                this.value = new NullValue();
-            }
+        this.declLabel = declLabel;
+    }
+
+    @Override
+    public String toJavaCode() {
+
+        if (declLabel == null) {
+            return "break;";
+        } else {
+            return String.format("break %s_%d;", declLabel.name, declLabel.scope.level);
         }
     }
+
+    // --------------------------------------------------
+    // Private
+    // --------------------------------------------------
+
 }
