@@ -205,7 +205,7 @@ return_statement
     ;
 
 procedure_call
-    : routine_name function_argument?
+    : (DBMS_OUTPUT '.')? routine_name function_argument?
     ;
 
 body

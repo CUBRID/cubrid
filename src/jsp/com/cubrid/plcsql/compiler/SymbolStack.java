@@ -130,12 +130,12 @@ public class SymbolStack {
             DeclProc dp =
                     new DeclProc(
                             null,
-                            "PUT_LINE",
+                            "$PUT_LINE",
                             new NodeList<DeclParam>()
                                     .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)),
                             null,
                             null);
-            putDeclTo(predefinedSymbols, "PUT_LINE", dp);
+            putDeclTo(predefinedSymbols, "$PUT_LINE", dp);
 
             // add constants TODO implement SQLERRM and SQLCODE properly
             DeclConst dc =

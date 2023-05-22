@@ -133,7 +133,7 @@ public class SpLib {
     public static Integer SQLCODE = null;
     public static Date SYSDATE = null;
 
-    public static void PUT_LINE(String s) {
+    public static void $PUT_LINE(String s) {
         DBMS_OUTPUT.putLine(s);
     }
 

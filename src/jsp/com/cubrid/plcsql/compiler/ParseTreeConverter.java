@@ -1820,6 +1820,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitProcedure_call(Procedure_callContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.routine_name());
+        if (ctx.DBMS_OUTPUT() != null && "PUT_LINE".equals(name)) {
+            // special treatment of 'put_line' procedure to ease migration from Oracle
+            // DBMS_OUTPUT is not an actual package but just a syntactic "ornament".
+            // NOTE: users cannot define a procedure of this name because of the prepended '$'
+            name = "$PUT_LINE";
+        }
+
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         DeclProc decl = symbolStack.getDeclProc(name);
