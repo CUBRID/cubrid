@@ -144,9 +144,9 @@ page_server::connection_handler::push_request (page_to_tran_request id, std::str
 }
 
 void
-page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip)
+page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  log_Gl.get_log_prior_receiver ().push_message (std::move (a_ip.pull_payload ()));
+  log_Gl.get_log_prior_receiver ().push_message (std::move (a_sp.pull_payload ()));
 }
 
 template<class F, class ... Args>
@@ -160,19 +160,19 @@ page_server::connection_handler::push_async_response (F &&a_func, tran_server_co
 }
 
 void
-page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  push_async_response (&logpb_respond_fetch_log_page_request, std::move (a_sp));
+  push_async_response (logpb_respond_fetch_log_page_request, std::move (a_sp));
 }
 
 void
-page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  push_async_response (&pgbuf_respond_data_fetch_page_request, std::move (a_sp));
+  push_async_response (pgbuf_respond_data_fetch_page_request, std::move (a_sp));
 }
 
 void
-page_server::connection_handler::handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   assert (m_server_type == transaction_server_type::ACTIVE);
   const MVCCID oldest_mvccid = m_ps.m_pts_mvcc_tracker.get_global_oldest_active_mvccid ();
@@ -185,15 +185,16 @@ page_server::connection_handler::handle_oldest_active_mvccid_request (tran_serve
 }
 
 void
-page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   m_prior_sender_sink_hook_func =
 	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
-  push_async_response (&log_pack_log_boot_info, std::move (a_sp), std::ref (m_prior_sender_sink_hook_func));
+
+  push_async_response (log_pack_log_boot_info, std::move (a_sp), std::ref (m_prior_sender_sink_hook_func));
 }
 
 void
-page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   // empty request message
 
@@ -207,7 +208,7 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 }
 
 void
-page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   assert (m_server_type == transaction_server_type::PASSIVE);
 
@@ -217,7 +218,7 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
 }
 
 void
-page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &)
+page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &&)
 {
   // if this instance acted as a prior sender sink - in other words, if this connection handler was for a
   // passive transaction server - it should have been disconnected beforehand
@@ -283,7 +284,7 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
  *        this message has no actual use currently. However, this mechanism will be reserved,
  *        because it can be used in the future when multiple PS's are supported. */
 void
-page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   /* It is simply a dummy value to check whether the TS (get_boot_info_from_page_server) receives the message well */
   DKNVOLS nvols_perm = VOLID_MAX;
@@ -567,7 +568,7 @@ page_server::disconnect_all_tran_servers ()
   constexpr auto millis_20 = std::chrono::milliseconds { 20 };
   while (!m_conn_cv.wait_for (ulock, millis_20, [this]
   {
-    return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty();
+    return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty ();
     }));
 
   ulock.unlock ();
