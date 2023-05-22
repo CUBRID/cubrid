@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -25,6 +24,10 @@
 
 #include "config.h"
 
+#if defined (WINDOWS)
+#include <io.h>
+#endif
+#include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,6 +62,8 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "connection_globals.h"
+#include "filesys.hpp"
+#include "filesys_temp.hpp"
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
@@ -279,7 +284,9 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->request_id = 0;
   conn->status = CONN_OPEN;
   conn->set_tran_index (NULL_TRAN_INDEX);
+  conn->init_pending_request ();
   conn->invalidate_snapshot = 1;
+  conn->in_method = false;
   err = css_get_next_client_id ();
   if (err < 0)
     {
@@ -288,6 +295,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->client_id = err;
   conn->db_error = 0;
   conn->in_transaction = false;
+  conn->in_flashback = false;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
   conn->ignore_repl_delay = false;
@@ -306,7 +314,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->session_id = DB_EMPTY_SESSION;
 #if defined(SERVER_MODE)
   conn->session_p = NULL;
-  conn->client_type = BOOT_CLIENT_UNKNOWN;
+  conn->client_type = DB_CLIENT_TYPE_UNKNOWN;
 #endif
 
   err = css_initialize_list (&conn->request_queue, 0);
@@ -366,6 +374,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     {
       conn->status = CONN_CLOSED;
       conn->stop_talk = false;
+      conn->in_flashback = false;
       conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
 
       if (conn->version_string)
@@ -448,7 +457,7 @@ css_init_conn_list (void)
       return err;
     }
 
-  /* 
+  /*
    * allocate NUM_MASTER_CHANNEL + the total number of
    *  conn entries
    */
@@ -838,7 +847,7 @@ css_decrement_num_conn (BOOT_CLIENT_TYPE client_type)
 {
   int i;
 
-  if (client_type == BOOT_CLIENT_UNKNOWN)
+  if (client_type == DB_CLIENT_TYPE_UNKNOWN)
     {
       return;
     }
@@ -1072,19 +1081,19 @@ css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid,
 CSS_CONN_ENTRY *
 css_connect_to_master_server (int master_port_id, const char *server_name, int name_length)
 {
-  char hname[MAXHOSTNAMELEN];
+  char hname[CUB_MAXHOSTNAMELEN];
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
   int response, response_buff;
   int server_port_id;
   int connection_protocol;
 #if !defined(WINDOWS)
-  char *pname;
+  std::string pname;
   int datagram_fd, socket_fd;
 #endif
 
   css_Service_id = master_port_id;
-  if (GETHOSTNAME (hname, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;
     }
@@ -1128,7 +1137,7 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       goto fail_end;
 
     case SERVER_REQUEST_ACCEPTED_NEW:
-      /* 
+      /*
        * Master requests a new-style connect, must go get
        * our port id and set up our connection socket.
        * For drivers, we don't need a connection socket and we
@@ -1157,38 +1166,35 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
 #else /* WINDOWS */
       /* send the "pathname" for the datagram */
       /* be sure to open the datagram first.  */
+      pname = std::filesystem::temp_directory_path ();
+      pname += "/cubrid_tcp_setup_server" + std::to_string (getpid ());
+      (void) unlink (pname.c_str ());	// make sure file is deleted
 
-      //on newer systems (e.g. fedora 25) the following line of code
-      //produces this warning: the use of `tempnam' is dangerous, better use `mkstemp'
-
-      pname = tempnam (NULL, "cubrid");
-      if (pname)
+      if (!css_tcp_setup_server_datagram (pname.c_str (), &socket_fd))
 	{
-	  if (css_tcp_setup_server_datagram (pname, &socket_fd)
-	      && (css_send_data (conn, rid, pname, strlen (pname) + 1) == NO_ERRORS)
-	      && (css_tcp_listen_server_datagram (socket_fd, &datagram_fd)))
-	    {
-	      (void) unlink (pname);
-	      /* don't use free_and_init on pname since it came from tempnam() */
-	      free (pname);
-	      css_free_conn (conn);
-	      return (css_make_conn (datagram_fd));
-	    }
-	  else
-	    {
-	      /* don't use free_and_init on pname since it came from tempnam() */
-	      free (pname);
-	      er_set_with_oserror (ER_ERROR_SEVERITY,
-				   ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-	      goto fail_end;
-	    }
-	}
-      else
-	{
-	  /* Could not create the temporary file */
+	  (void) unlink (pname.c_str ());
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
 	  goto fail_end;
 	}
+      if (css_send_data (conn, rid, pname.c_str (), pname.length () + 1) != NO_ERRORS)
+	{
+	  (void) unlink (pname.c_str ());
+	  close (socket_fd);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
+	}
+      if (!css_tcp_listen_server_datagram (socket_fd, &datagram_fd))
+	{
+	  (void) unlink (pname.c_str ());
+	  close (socket_fd);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  goto fail_end;
+	}
+      // success
+      (void) unlink (pname.c_str ());
+      css_free_conn (conn);
+      close (socket_fd);
+      return (css_make_conn (datagram_fd));
 #endif /* WINDOWS */
     }
 
@@ -1421,10 +1427,23 @@ css_abort_request (CSS_CONN_ENTRY * conn, unsigned short rid)
   header.request_id = htonl (rid);
   header.transaction_id = htonl (conn->get_tran_index ());
 
-  if (conn->invalidate_snapshot)
+  /**
+   * FIXME!!
+   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
+   *
+   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
+   * But The side effects described in CBRD-24157 occurred.
+   */
+  if (true)			// if (conn->invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }
+
+  if (conn->in_method)
+    {
+      flags |= NET_HEADER_FLAG_METHOD_MODE;
+    }
+
   header.flags = htons (flags);
   header.db_error = htonl (conn->db_error);
 
@@ -1499,7 +1518,8 @@ css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header)
   conn->db_error = (int) ntohl (local_header->db_error);
 
   flags = ntohs (local_header->flags);
-  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->in_method = flags & NET_HEADER_FLAG_METHOD_MODE ? true : false;
 
   return rc;
 }
@@ -2158,7 +2178,8 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
   transaction_id = ntohl (header->transaction_id);
   db_error = (int) ntohl (header->db_error);
   flags = ntohs (header->flags);
-  invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  bool in_method = flags & NET_HEADER_FLAG_METHOD_MODE ? true : false;
 
   r = rmutex_lock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
@@ -2173,6 +2194,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
   conn->set_tran_index (transaction_id);
   conn->db_error = db_error;
   conn->invalidate_snapshot = invalidate_snapshot;
+  conn->in_method = in_method;
 
   switch (type)
     {
@@ -2217,7 +2239,7 @@ css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id, co
       next = p->next_wait_thrd;
       p->next_wait_thrd = NULL;
 
-      /* When the resume_status is THREAD_CSS_QUEUE_SUSPENDED, it means the data waiting thread is still waiting on the 
+      /* When the resume_status is THREAD_CSS_QUEUE_SUSPENDED, it means the data waiting thread is still waiting on the
        * data queue. Otherwise, in case of THREAD_CSECT_WRITER_SUSPENDED, it means that the thread was timed out, is
        * trying to clear its queue buffer (see clear_wait_queue_entry_and_free_buffer function), and waiting for its
        * conn->csect. We don't need to wakeup the thread for this case. We may send useless signal for it, but it may
@@ -2337,7 +2359,7 @@ css_queue_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
       buffer = (char *) malloc (size);
     }
 
-  /* 
+  /*
    * check if there exists thread waiting for data.
    * Add to wake_thrd list.
    */
@@ -2576,6 +2598,7 @@ css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *requ
 
 	  conn->set_tran_index (p->transaction_id);
 	  conn->invalidate_snapshot = p->invalidate_snapshot;
+	  conn->in_method = p->in_method;
 	  conn->db_error = p->db_error;
 
 	  css_retire_net_header_entry (conn, buffer);
@@ -2702,6 +2725,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 	  *rc = data_entry->rc;
 	  conn->set_tran_index (data_entry->transaction_id);
 	  conn->invalidate_snapshot = data_entry->invalidate_snapshot;
+	  conn->in_method = data_entry->in_method;
 	  conn->db_error = data_entry->db_error;
 
 	  css_free_queue_entry (conn, data_entry);

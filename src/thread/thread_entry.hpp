@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -29,6 +28,7 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "error_context.hpp"
+#include "lockfree_transaction_def.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
@@ -44,10 +44,14 @@ struct adj_array;
 struct css_conn_entry;
 // from fault_injection.h
 struct fi_test_item;
+// from log_system_tran.hpp
+class log_system_tdes;
 // from log_compress.h
 struct log_zip;
 // from vacuum.h
 struct vacuum_worker;
+// from xasl_unpack_info.hpp
+struct xasl_unpack_info;
 
 // forward resource trackers
 namespace cubbase
@@ -64,6 +68,10 @@ namespace cubbase
 namespace cubsync
 {
   class critical_section_tracker;
+}
+namespace cubload
+{
+  class driver;
 }
 
 // for lock-free - FIXME
@@ -116,6 +124,7 @@ enum thread_type
   TT_SERVER,
   TT_WORKER,
   TT_DAEMON,
+  TT_LOADDB,
   TT_VACUUM_MASTER,
   TT_VACUUM_WORKER,
   TT_NONE
@@ -217,7 +226,7 @@ namespace cubthread
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
-      void *xasl_unpack_info_ptr;	/* XASL_UNPACK_INFO * */
+      xasl_unpack_info *xasl_unpack_info_ptr;     /* XASL_UNPACK_INFO * */
       int xasl_errcode;		/* xasl errorcode */
       int xasl_recursion_depth;
 
@@ -247,6 +256,8 @@ namespace cubthread
       char *log_data_ptr;
       int log_data_length;
 
+      bool no_logging;
+
       int net_request_index;	/* request index of net server functions */
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
@@ -263,12 +274,19 @@ namespace cubthread
       /* for lock free structures */
       lf_tran_entry *tran_entries[THREAD_TS_COUNT];
 
+      /* for supplemental log */
+      bool no_supplemental_log;
+      bool trigger_involved;
+      bool is_cdc_daemon;
+
 #if !defined(NDEBUG)
       fi_test_item *fi_test_array;
 
       int count_private_allocators;
 #endif
       int m_qlist_count;
+
+      cubload::driver *m_loaddb_driver;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();
@@ -299,9 +317,28 @@ namespace cubthread
 	return m_csect_tracker;
       }
 
+      log_system_tdes *get_system_tdes (void)
+      {
+	return m_systdes;
+      }
+      void set_system_tdes (log_system_tdes *sys_tdes)
+      {
+	m_systdes = sys_tdes;
+      }
+      void reset_system_tdes (void)
+      {
+	m_systdes = NULL;
+      }
+      void claim_system_worker ();
+      void retire_system_worker ();
+
       void end_resource_tracks (void);
       void push_resource_tracks (void);
       void pop_resource_tracks (void);
+
+      void assign_lf_tran_index (lockfree::tran::index idx);
+      lockfree::tran::index pull_lf_tran_index ();
+      lockfree::tran::index get_lf_tran_index ();
 
     private:
       void clear_resources (void);
@@ -318,6 +355,9 @@ namespace cubthread
       cubbase::alloc_tracker &m_alloc_tracker;
       cubbase::pgbuf_tracker &m_pgbuf_tracker;
       cubsync::critical_section_tracker &m_csect_tracker;
+      log_system_tdes *m_systdes;
+
+      lockfree::tran::index m_lf_tran_index;
   };
 
 } // namespace cubthread
@@ -362,6 +402,12 @@ inline void
 thread_trace_on (cubthread::entry *thread_p)
 {
   thread_p->on_trace = true;
+}
+
+inline void
+thread_trace_off (cubthread::entry *thread_p)
+{
+  thread_p->on_trace = false;
 }
 
 inline void

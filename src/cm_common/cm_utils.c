@@ -1,24 +1,23 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
 /*
- * cm_utils.c - 
+ * cm_utils.c -
  */
 
 #include "cm_utils.h"
@@ -31,6 +30,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <time.h>
 
 #if defined(WINDOWS)
 #include <process.h>
@@ -41,6 +41,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdarg.h>
+#include <sys/time.h>
 #endif
 
 static T_CMD_RESULT *new_cmd_result (void);
@@ -48,6 +49,7 @@ static void close_all_fds (int init_fd);
 
 #if defined(WINDOWS)
 static int is_master_start ();
+static int gettimeofday (struct timeval *tp, void *tzp);
 #endif
 
 #define CUBRID_SERVER_LOCK_EXT     "_lgat__lock"
@@ -396,7 +398,7 @@ cmd_server_status (void)
   char out_file[PATH_MAX];
   char cmd_name[PATH_MAX];
   const char *argv[5];
-  char tmpfile[100];
+  char tmpfile[PATH_MAX];
 
   res = new_servstat_result ();
   if (res == NULL)
@@ -411,7 +413,11 @@ cmd_server_status (void)
     }
 #endif
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_util_001.", getpid ());
+  if (make_temp_filename (tmpfile, "DBMT_util_001.", sizeof (tmpfile)) < 0)
+    {
+      cmd_result_free (res);
+      return NULL;
+    }
   (void) envvar_tmpdir_file (out_file, PATH_MAX, tmpfile);
   (void) envvar_bindir_file (cmd_name, PATH_MAX, UTIL_CUBRID);
 
@@ -513,11 +519,16 @@ read_server_status_output (T_SERVER_STATUS_RESULT * res, char *out_file)
       if (num_info > num_alloc)
 	{
 	  num_alloc += 5;
-	  info = (T_SERVER_STATUS_INFO *) realloc (info, sizeof (T_SERVER_STATUS_INFO) * num_alloc);
-	  if (info == NULL)
+	  T_SERVER_STATUS_INFO *const new_info
+	    = (T_SERVER_STATUS_INFO *) realloc (info, sizeof (T_SERVER_STATUS_INFO) * num_alloc);
+	  if (new_info == NULL)
 	    {
 	      fclose (fp);
 	      return;
+	    }
+	  else
+	    {
+	      info = new_info;
 	    }
 	}
       strcpy (info[num_info - 1].db_name, db_name);
@@ -750,3 +761,98 @@ cm_util_log_write_command (int argc, char *argv[])
 {
   return util_log_write_command (argc, argv);
 }
+
+/*
+ * Generate unique temp file name.
+ * {prefix}{second}_{usec}_{random number: 1..997}
+ */
+
+int
+make_temp_filename (char *tempfile, char *prefix, int size)
+{
+  struct timeval current_time;
+
+  if (tempfile == NULL || prefix == NULL || size < 1)
+    {
+      return -1;
+    }
+
+  srand (time (NULL));
+  if (gettimeofday (&current_time, NULL) < 0)
+    {
+      return -1;
+    }
+
+  snprintf (tempfile, size - 1, "%s%ld_%ld_%d", prefix, current_time.tv_sec, current_time.tv_usec, rand () % 997);
+
+  return 0;
+}
+
+int
+make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, int size)
+{
+  struct timeval current_time;
+
+  if (tempfile == NULL || tempdir == NULL || size < 1)
+    {
+      return -1;
+    }
+
+  srand (time (NULL));
+  if (gettimeofday (&current_time, NULL) < 0)
+    {
+      return -1;
+    }
+
+  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%d_%d", tempdir, prefix ? prefix : "", task_code,
+	    current_time.tv_sec, current_time.tv_usec, rand () % 997);
+
+  return 0;
+}
+
+#if defined (WINDOWS)
+/* Number of 100 nanosecond units from 1/1/1601 to 1/1/1970 */
+#define EPOCH_BIAS_IN_100NANOSECS 116444736000000000LL
+
+/*
+ * gettimeofday - Windows port of Unix gettimeofday(), from base/porting.c
+ *   return: none
+ *   tp(out): where time is stored
+ *   tzp(in): unused
+ */
+static int
+gettimeofday (struct timeval *tp, void *tzp)
+{
+/*
+ * Rapid calculation divisor for 10,000,000
+ * x/10000000 == x/128/78125 == (x>>7)/78125
+ */
+#define RAPID_CALC_DIVISOR 78125
+
+  union
+  {
+    unsigned __int64 nsec100;	/* in 100 nanosecond units */
+    FILETIME ft;
+  } now;
+
+  GetSystemTimeAsFileTime (&now.ft);
+
+  /*
+   * Optimization for sec = (long) (x / 10000000);
+   * where "x" is number of 100 nanoseconds since 1/1/1970.
+   */
+  tp->tv_sec = (long) (((now.nsec100 - EPOCH_BIAS_IN_100NANOSECS) >> 7) / RAPID_CALC_DIVISOR);
+
+  /*
+   * Optimization for usec = (long) (x % 10000000) / 10;
+   * Let c = x / b,
+   * An alternative for MOD operation (x % b) is: (x - c * b),
+   *   which consumes less time, specially, for a 64 bit "x".
+   */
+  tp->tv_usec =
+    ((long) (now.nsec100 - EPOCH_BIAS_IN_100NANOSECS - (((unsigned __int64) (tp->tv_sec * RAPID_CALC_DIVISOR)) << 7))) /
+    10;
+
+  return 0;
+}
+#endif

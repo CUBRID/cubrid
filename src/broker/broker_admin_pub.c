@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -79,7 +78,7 @@
 #define DB_EMPTY_SESSION        (0)
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
-#define ADMIN_ERR_MSG_SIZE	1024
+#define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
 #define MAKE_VERSION(MAJOR, MINOR)	(((MAJOR) << 8) | (MINOR))
 
@@ -245,7 +244,8 @@ admin_isstarted_cmd (int master_shm_id)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 int
-admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool acl_flag, char *acl_file)
+admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool acl_flag, char *acl_file,
+		 char *admin_log_file)
 {
   int i;
   int res = 0;
@@ -257,7 +257,11 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (br_num <= 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      strcpy (admin_err_msg, "Cannot start CUBRID Gateway. (number of gateway is 0)");
+#else
       strcpy (admin_err_msg, "Cannot start CUBRID Broker. (number of broker is 0)");
+#endif
       return -1;
     }
   chdir ("..");
@@ -267,6 +271,26 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   broker_create_dir (get_cubrid_file (FID_SQL_LOG_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_SLOW_LOG_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_CUBRID_ERR_DIR, path, BROKER_PATH_MAX));
+
+  if (admin_log_file != NULL)
+    {
+      char buf[BROKER_PATH_MAX] = { 0, };
+
+#if defined (WINDOWS)
+      if (_fullpath (buf, admin_log_file, BROKER_PATH_MAX) == NULL)
+	{
+	  buf[0] = '\0';
+	}
+#else
+      snprintf (buf, BROKER_PATH_MAX, "%s", admin_log_file);
+#endif /* WINDOWS */
+
+      if (buf[0] != '\0')
+	{
+	  broker_create_dir (dirname (buf));
+	}
+    }
+
 #if !defined(WINDOWS)
   broker_create_dir (get_cubrid_file (FID_SQL_LOG2_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_SOCK_DIR, path, BROKER_PATH_MAX));
@@ -281,8 +305,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
       if (strlen (path) + strlen (br_info[i].name) + 1 + NUM_OF_DIGITS (br_info[i].appl_server_max_num) >
 	  MEMBER_SIZE (struct sockaddr_un, sun_path) - 1)
 	{
-	  snprintf (admin_err_msg, sizeof (admin_err_msg) - 1, "The socket path is too long (>%d): %s",
-		    MEMBER_SIZE (struct sockaddr_un, sun_path), path);
+	  snprintf_dots_truncate (admin_err_msg, sizeof (admin_err_msg) - 1, "The socket path is too long (>%d): %s",
+				  MEMBER_SIZE (struct sockaddr_un, sun_path), path);
 	  return -1;
 	}
 #endif /* !WINDOWS */
@@ -303,7 +327,11 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (shm_br == NULL)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      strcpy (admin_err_msg, "failed to initialize gateway shared memory");
+#else
       strcpy (admin_err_msg, "failed to initialize broker shared memory");
+#endif
       return -1;
     }
 
@@ -340,7 +368,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
 	      if (shm_proxy_p == NULL)
 		{
-		  sprintf (admin_err_msg, "%s: failed to initialize proxy shared memory.", br_info->name);
+		  sprintf (admin_err_msg, "%s: failed to initialize proxy shared memory.", br_info[i].name);
 
 		  res = -1;
 		  break;
@@ -356,7 +384,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  shm_as_p = broker_shm_initialize_shm_as (&(shm_br->br_info[i]), shm_proxy_p);
 	  if (shm_as_p == NULL)
 	    {
-	      sprintf (admin_err_msg, "%s: failed to initialize appl server shared memory.", br_info->name);
+	      sprintf (admin_err_msg, "%s: failed to initialize appl server shared memory.", br_info[i].name);
 
 	      res = -1;
 	      break;
@@ -472,7 +500,11 @@ admin_stop_cmd (int master_shm_id)
 #if !defined(WINDOWS)
   if (shm_br->owner_uid != getuid ())
     {
+#if defined(FOR_ODBC_GATEWAY)
+      strcpy (admin_err_msg, "Cannot stop CUBRID Gateway. (Not owner)\n");
+#else
       strcpy (admin_err_msg, "Cannot stop CUBRID Broker. (Not owner)\n");
+#endif
       return -1;
     }
 #endif /* WINDOWS */
@@ -486,7 +518,11 @@ admin_stop_cmd (int master_shm_id)
 	  res = br_inactivate (&(shm_br->br_info[i]));
 	  if (res < 0)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Cannot inactivate gateway [%s]", shm_br->br_info[i].name);
+#else
 	      sprintf (admin_err_msg, "Cannot inactivate broker [%s]", shm_br->br_info[i].name);
+#endif
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
@@ -540,7 +576,11 @@ admin_add_cmd (int master_shm_id, const char *broker)
     }
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker);
+#endif
       uw_shm_detach (shm_br);
       return -1;
     }
@@ -624,7 +664,11 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
     }
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]\n", broker);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]\n", broker);
+#endif
       goto restart_error;
     }
   if (shm_br->br_info[br_index].shard_flag == ON)
@@ -732,8 +776,8 @@ admin_restart_cmd (int master_shm_id, const char *broker, int as_index)
 
   if (ut_is_appl_server_ready (pid, &shm_appl->as_info[as_index].service_ready_flag) == false)
     {
-      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Could not start the application server: %s\n",
-		shm_appl->appl_server_name);
+      snprintf_dots_truncate (admin_err_msg, ADMIN_ERR_MSG_SIZE, "Could not start the application server: %s\n",
+			      shm_appl->appl_server_name);
       goto restart_error;
     }
 
@@ -807,7 +851,11 @@ admin_drop_cmd (int master_shm_id, const char *broker)
     }
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker);
+#endif
       uw_shm_detach (shm_br);
       return -1;
     }
@@ -896,7 +944,11 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 	{
 	  if (shm_br->br_info[i].service_flag == ON)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Gateway[%s] is already running", broker_name);
+#else
 	      sprintf (admin_err_msg, "Broker[%s] is already running", broker_name);
+#endif
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
@@ -981,8 +1033,11 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 
   if (i >= shm_br->num_broker)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker_name);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
-
+#endif
       res = -1;
     }
 
@@ -1015,7 +1070,11 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
 #if !defined(WINDOWS)
   if (shm_br->owner_uid != getuid ())
     {
+#if defined(FOR_ODBC_GATEWAY)
+      strcpy (admin_err_msg, "Cannot stop gateway. (Not owner)");
+#else
       strcpy (admin_err_msg, "Cannot stop broker. (Not owner)");
+#endif
       return -1;
     }
 #endif /* !WINDOWS */
@@ -1026,7 +1085,11 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
 	{
 	  if (shm_br->br_info[i].service_flag == OFF)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Gateway[%s] is not running", broker_name);
+#else
 	      sprintf (admin_err_msg, "Broker[%s] is not running", broker_name);
+#endif
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
@@ -1035,7 +1098,11 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
 	      res = br_inactivate (&(shm_br->br_info[i]));
 	      if (res < 0)
 		{
+#if defined(FOR_ODBC_GATEWAY)
+		  sprintf (admin_err_msg, "Cannot inactivate gateway [%s]", broker_name);
+#else
 		  sprintf (admin_err_msg, "Cannot inactivate broker [%s]", broker_name);
+#endif
 		  uw_shm_detach (shm_br);
 		  return -1;
 		}
@@ -1054,7 +1121,11 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
 
   if (i >= shm_br->num_broker)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker_name);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
+#endif
       uw_shm_detach (shm_br);
       return -1;
     }
@@ -1088,7 +1159,11 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
 	{
 	  if (shm_br->br_info[i].service_flag == OFF)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Gateway[%s] is not running", broker_name);
+#else
 	      sprintf (admin_err_msg, "Broker[%s] is not running", broker_name);
+#endif
 	      uw_shm_detach (shm_br);
 	      return -1;
 	    }
@@ -1102,7 +1177,11 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
 
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find gateway [%s]", broker_name);
+#else
       sprintf (admin_err_msg, "Cannot find broker [%s]", broker_name);
+#endif
       uw_shm_detach (shm_br);
       return -1;
     }
@@ -1265,8 +1344,13 @@ make_sp_value (SP_VALUE * value_p, char *shard_key)
 static void
 print_usage (void)
 {
+#if defined(FOR_ODBC_GATEWAY)
+  printf ("shard_getid -b <gateway-name> [-f] shard-key\n");
+  printf ("\t-b shard gateway name\n");
+#else
   printf ("shard_getid -b <broker-name> [-f] shard-key\n");
   printf ("\t-b shard broker name\n");
+#endif
   printf ("\t-f full information\n");
 }
 
@@ -1325,7 +1409,11 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
 
   if (strcmp (broker_name, "") == 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Gateway name is null.\n");
+#else
       sprintf (admin_err_msg, "Broker name is null.\n");
+#endif
       print_usage ();
       goto getid_error;
     }
@@ -1344,7 +1432,11 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
 	{
 	  if (shm_br->br_info[i].service_flag == OFF)
 	    {
+#if defined(FOR_ODBC_GATEWAY)
+	      sprintf (admin_err_msg, "Gateway [%s] is not running.\n", broker_name);
+#else
 	      sprintf (admin_err_msg, "Broker [%s] is not running.\n", broker_name);
+#endif
 	      goto getid_error;
 	    }
 	  else
@@ -1357,7 +1449,11 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
 
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find shard gateway [%s].\n", broker_name);
+#else
       sprintf (admin_err_msg, "Cannot find shard broker [%s].\n", broker_name);
+#endif
       goto getid_error;
     }
 
@@ -1539,7 +1635,11 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
   shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Gateway is not started.");
+#else
       sprintf (admin_err_msg, "Broker is not started.");
+#endif
       goto set_conf_error;
     }
 
@@ -1554,13 +1654,21 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
     }
   if (br_index < 0)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Cannot find Gateway [%s]", br_name);
+#else
       sprintf (admin_err_msg, "Cannot find Broker [%s]", br_name);
+#endif
       goto set_conf_error;
     }
 
   if (shm_br->br_info[br_index].service_flag == OFF)
     {
+#if defined(FOR_ODBC_GATEWAY)
+      sprintf (admin_err_msg, "Gateway [%s] is not running.", br_name);
+#else
       sprintf (admin_err_msg, "Broker [%s] is not running.", br_name);
+#endif
       goto set_conf_error;
     }
 
@@ -1924,7 +2032,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
     {
       int size;
 
-      /* 
+      /*
        * Use "KB" as unit, because MAX_ACCESS_LOG_MAX_SIZE uses this unit.
        * the range of the config value should be verified to avoid the invalid setting.
        */
@@ -2010,7 +2118,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
       br_info_p->jdbc_cache = val;
       shm_as_p->jdbc_cache = val;
     }
-  else if (strcasecmp (conf_name, "JDBC_CACHE_ONLY_HINT") == 0)
+  else if (strcasecmp (conf_name, "JDBC_CACHE_HINT_ONLY") == 0)
     {
       int val;
 
@@ -2199,8 +2307,8 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
 	  goto set_conf_error;
 	}
 
-      strncpy (br_info_p->preferred_hosts, host_name, host_name_len);
-      strncpy (shm_as_p->preferred_hosts, host_name, host_name_len);
+      strcpy (br_info_p->preferred_hosts, host_name);
+      strcpy (shm_as_p->preferred_hosts, host_name);
     }
   else if (strcasecmp (conf_name, "MAX_PREPARED_STMT_COUNT") == 0)
     {
@@ -2575,7 +2683,11 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
 	}
       if (br_index == -1)
 	{
+#if defined(FOR_ODBC_GATEWAY)
+	  sprintf (admin_err_msg, "Cannot find gateway [%s]\n", broker_name);
+#else
 	  sprintf (admin_err_msg, "Cannot find broker [%s]\n", broker_name);
+#endif
 	  uw_shm_detach (shm_br);
 	  return -1;
 	}
@@ -2770,7 +2882,11 @@ admin_acl_reload_cmd (int master_shm_id, const char *broker_name)
 	}
       if (br_index == -1)
 	{
+#if defined(FOR_ODBC_GATEWAY)
+	  sprintf (admin_err_msg, "Cannot find gateway [%s]\n", broker_name);
+#else
 	  sprintf (admin_err_msg, "Cannot find broker [%s]\n", broker_name);
+#endif
 	  uw_shm_detach (shm_br);
 	  return -1;
 	}
@@ -2929,7 +3045,11 @@ br_activate (T_BROKER_INFO * br_info, int master_shm_id, T_SHM_BROKER * shm_br)
 
       if (IS_APPL_SERVER_TYPE_CAS (br_info->appl_server))
 	{
+#if defined(FOR_ODBC_GATEWAY)
+	  broker_exe_name = NAME_CAS_GATEWAY;
+#else
 	  broker_exe_name = NAME_CAS_BROKER;
+#endif
 	}
       else
 	{
@@ -3378,7 +3498,7 @@ proxy_activate (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p, T_SHM_APPL
       proxy_info_p = shard_shm_find_proxy_info (shm_proxy_p, i);
 
       snprintf (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN - 1, "%s/%s_%d.access", CUBRID_BASE_DIR,
-		br_info_p->name, i);
+		br_info_p->name, (i + 1));
       dir_repath (proxy_info_p->access_log_file, CONF_LOG_FILE_LEN);
 
       proxy_info_p->cur_proxy_log_mode = br_info_p->proxy_log_mode;
@@ -3527,6 +3647,7 @@ static char **
 make_env (char *env_file, int *env_num)
 {
   char **env = NULL;
+  char **new_env = NULL;
   int num, read_num;
   FILE *env_fp;
   char read_buf[BUFSIZ], col1[128], col2[128];
@@ -3551,11 +3672,24 @@ make_env (char *env_file, int *env_num)
 	continue;
 
       if (env == NULL)
-	env = (char **) malloc (sizeof (char *));
+	{
+	  env = (char **) malloc (sizeof (char *));
+	  if (env == NULL)
+	    break;
+	}
       else
-	env = (char **) realloc (env, sizeof (char *) * (num + 1));
-      if (env == NULL)
-	break;
+	{
+	  new_env = (char **) realloc (env, sizeof (char *) * (num + 1));
+	  if (new_env == NULL)
+	    {
+	      for (num--; num >= 0; num--)
+		FREE_MEM (env[num]);
+	      FREE_MEM (env);
+	      env = NULL;
+	      break;
+	    }
+	  env = new_env;
+	}
 
       env[num] = (char *) malloc (strlen (col1) + strlen (col2) + 2);
       if (env[num] == NULL)

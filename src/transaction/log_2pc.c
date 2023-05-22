@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -23,7 +22,30 @@
 
 #ident "$Id$"
 
+#include "log_2pc.h"
+
 #include "config.h"
+#if defined(SERVER_MODE)
+#include "connection_error.h"
+#endif /* SERVER_MODE */
+#include "error_manager.h"
+#include "lock_manager.h"
+#include "log_append.hpp"
+#include "log_comm.h"
+#include "log_impl.h"
+#include "log_lsa.hpp"
+#include "log_manager.h"
+#include "memory_alloc.h"
+#include "page_buffer.h"
+#include "storage_common.h"
+#include "system_parameter.h"
+
+#if !defined(WINDOWS)
+#include "tcp.h"		/* for css_gethostid */
+#else /* !WINDOWS */
+#include "wintcp.h"
+#include "porting.h"
+#endif /* !WINDOWS */
 
 #include <stddef.h>
 #include <string.h>
@@ -32,27 +54,6 @@
 
 /* The following two are for getpid */
 #include <sys/types.h>
-
-#include "log_manager.h"
-#include "log_impl.h"
-#include "log_comm.h"
-#include "lock_manager.h"
-#include "memory_alloc.h"
-#include "storage_common.h"
-#include "page_buffer.h"
-#include "error_manager.h"
-#include "system_parameter.h"
-#if defined(SERVER_MODE)
-#include "connection_error.h"
-#include "thread_compat.hpp"
-#endif /* SERVER_MODE */
-#if !defined(WINDOWS)
-#include "tcp.h"		/* for css_gethostid */
-#else /* !WINDOWS */
-#include "wintcp.h"
-#include "porting.h"
-#endif /* !WINDOWS */
-
 
 #if !defined(SERVER_MODE)
 #define	CSS_ENABLE_INTERRUPTS
@@ -72,9 +73,6 @@ struct log_2pc_global_data
 struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
 static int log_2pc_get_num_participants (int *partid_len, void **block_particps_ids);
-#if defined (ENABLE_UNUSED_FUNCTION)
-static int log_2pc_lookup_particp (void *look_particp_id, int num_particps, void *block_particps_ids);
-#endif
 static int log_2pc_make_global_tran_id (TRANID tranid);
 static bool log_2pc_check_duplicate_global_tran_id (int gtrid);
 static int log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type,
@@ -84,9 +82,6 @@ static void log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE decsion);
 static LOG_TDES *log_2pc_find_tran_descriptor (int gtrid);
 static int log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_TDES * client_tdes);
-#if defined (ENABLE_UNUSED_FUNCTION)
-static int log_2pc_broadcast_decision_participant (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int particp_index);
-#endif
 static void log_2pc_recovery_prepare (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_lsa,
 				      LOG_PAGE * log_page_p);
 static int log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -108,54 +103,13 @@ static void log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thre
  *      APPLICATION (I.E, BETWEEN COORDINATOR AND PARTICIPANTS OR VICE VERSA)
  */
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
- * log_2pc_define_funs - Define the user 2pc functions
- *
- * return:
- *
- *   get_participants(in):
- *   lookup_participant(in):
- *   sprintf_participant(in):
- *   dump_participants(in):
- *   send_prepare(in):
- *   send_commit(in):
- *   send_abort(in):
- *      functions for 2PC communication (See prototype.. too many to describe
- *                                      here)
- *
- * NOTE:Define the functions used for communication between the
- *              coordinator (this code or your application) and the
- *              participants (your application or this code).
- *              See description blocks of each function for it uses.
- */
-void
-log_2pc_define_funs (int (*get_participants) (int *particp_id_length, void **block_particps_ids),
-		     int (*lookup_participant) (void *particp_id, int num_particps, void *block_particps_ids),
-		     char *(*sprintf_participant) (void *particp_id),
-		     void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id),
-		     int (*send_prepare) (int gtrid, int num_particps, void *block_particps_ids),
-		     bool (*send_commit) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids),
-		     bool (*send_abort) (int gtrid, int num_particps, int *particp_indices, void *block_particps_ids,
-					 int collect))
-{
-  log_2pc_Userfun.get_participants = get_participants;
-  log_2pc_Userfun.lookup_participant = lookup_participant;
-  log_2pc_Userfun.sprintf_participant = sprintf_participant;
-  log_2pc_Userfun.dump_participants = dump_participants;
-  log_2pc_Userfun.send_prepare = send_prepare;
-  log_2pc_Userfun.send_commit = send_commit;
-  log_2pc_Userfun.send_abort = send_abort;
-}
-#endif
-
-/*
- * log_2pc_find_particps - Find all particpants
+ * log_2pc_find_particps - Find all participants
  *
  * return:  number of participants
  *
  *   partid_len(in): Length of each participant (Set as a side effect)
- *   block_particps_ids(in): An array of particpant ids where each particpant id
+ *   block_particps_ids(in): An array of participant ids where each participant id
  *                        is of length "partid_len" (Set as a side effect)
  *
  * NOTE:Find the participants of the current transaction. If the
@@ -193,32 +147,6 @@ log_2pc_get_num_participants (int *partid_len, void **block_particps_ids)
 
   return num_particps;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * log_2pc_lookup_particp - LOOK UP FOR A PARTICIPANT
- *
- * return: index
- *
- *   look_particp_id(in): Desired participant identifier
- *   num_particps(in): Number of participants at block_particps_ids
- *   block_particps_ids(in): An array of particpant ids. The length of each
- *                        element should be known by the callee.
- *
- * NOTE:Locate the given participant identifier on the block. If it is
- *              not found (-1) is returned.
- */
-static int
-log_2pc_lookup_particp (void *look_particp_id, int num_particps, void *block_particps_ids)
-{
-  if (log_2pc_Userfun.lookup_participant == NULL)
-    {
-      return -1;
-    }
-
-  return (*log_2pc_Userfun.lookup_participant) (look_particp_id, num_particps, block_particps_ids);
-}
-#endif
 
 /*
  * log_2pc_sprintf_particp - A STRING VERSION OF PARTICIPANT-ID
@@ -404,7 +332,7 @@ log_get_global_tran_id (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes != NULL)
     {
-      if (tdes->gtrid == LOG_2PC_NULL_GTRID && log_is_tran_distributed (tdes) == true)
+      if (tdes->gtrid == LOG_2PC_NULL_GTRID && log_2pc_is_tran_distributed (tdes) == true)
 	{
 	  tdes->gtrid = log_2pc_make_global_tran_id (tdes->trid);
 	}
@@ -467,14 +395,18 @@ log_2pc_make_global_tran_id (TRANID tranid)
 
 
   /* FOLD the TRANSACTION IDENTIFIER INTO TWO */
-  hash = *(unsigned short *) &tranid;
-  hash = (hash << 5) - hash + *((unsigned short *) &tranid + 1);
+  unsigned short ushort_one;
+  unsigned short ushort_two;
+  memcpy (&ushort_one, &tranid, sizeof (unsigned short));
+  memcpy (&ushort_two, (char *) (&tranid) + sizeof (unsigned short), sizeof (unsigned short));
+  hash = ushort_one;
+  hash = (hash << 5) - hash + ushort_two;
 
   /* Don't use more than two byte */
   unsig_gtrid = (unsig_gtrid << 16) + (hash % SHRT_MAX);
 
 
-  /* 
+  /*
    * Make sure that another 2PC transaction does not have this identifier.
    * If there is one, subtract one and check again. Note that the identifier
    * may be duplicated in a remote site, we do not have control about this.
@@ -548,26 +480,26 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
   /* Start the first phase of 2PC. Prepare to commit or voting phase */
   if (tdes->state == TRAN_ACTIVE)
     {
-      /* 
+      /*
        * Start prepare to commit at coordinator site
        * Note: that the transient classnames table entries should have
        * already been taken care of.
        */
 
-      /* 
+      /*
        * Release share locks types and record that the 2PC has started.
        * NOTE: that log_2pc_append_start flushes the log and change the state
        *       of the transaction 2PC collecting votes
        */
 
-      /* 
+      /*
        * Start the 2PC for this coordinator
        */
       log_2pc_append_start (thread_p, tdes);
 
       if (execute_2pc_type == LOG_2PC_EXECUTE_FULL)
 	{
-	  /* 
+	  /*
 	   * This is the coordinatoor root
 	   */
 	  lock_unlock_all_shared_get_all_exclusive (thread_p, NULL);
@@ -593,7 +525,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
     }
   else
     {
-      /* 
+      /*
        * We are not in the right mode for the prepare to commit phase
        */
       *decision = false;
@@ -620,7 +552,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 
   if (*decision == true)
     {
-      /* 
+      /*
        * DECISION is COMMIT
        * The coordinator and all participants of distributed transaction
        * have agreed to commit the transaction. The commit decision is
@@ -629,7 +561,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 
       log_2pc_append_decision (thread_p, tdes, LOG_2PC_COMMIT_DECISION);
 
-      /* 
+      /*
        * The transaction has been declared as 2PC commit. We could execute the
        * LOCAL COMMIT AND THE REMOTE COMMITS IN PARALLEL, however our
        * communication subsystem does not support asynchronous communication
@@ -643,7 +575,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
       (void) log_commit_local (thread_p, tdes, false, false);
 
       tdes->state = state;	/* Revert to 2PC state... */
-      /* 
+      /*
        * If the following function fails, the transaction will be dangling
        * and we need to retry sending the decision at another point.
        * We have already decided and log the decision in the log file.
@@ -655,7 +587,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
     }
   else
     {
-      /* 
+      /*
        * DECISION is ABORT
        * The coordinator and/or some of the participants of distributed
        * transaction could not agree to commit the transaction. The abort
@@ -664,7 +596,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
        * the current site has decide to abort.
        */
 
-      /* 
+      /*
        * If the transaction is active and there are not acknowledgments
        * needed, the abort for the distributed transaction was decided
        * without using the 2PC
@@ -675,7 +607,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 	  log_2pc_append_decision (thread_p, tdes, LOG_2PC_ABORT_DECISION);
 	}
 
-      /* 
+      /*
        * The transaction has been declared as 2PC abort. We could execute the
        * LOCAL ABORT AND THE REMOTE ABORTS IN PARALLEL, however our
        * communication subsystem does not support asynchronous communication
@@ -692,12 +624,12 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 	{
 	  tdes->state = state;	/* Revert to 2PC state... */
 	}
-      /* 
+      /*
        * Execute the abort at participants sites at this time.
        */
       if (tdes->coord->ack_received)
 	{
-	  /* 
+	  /*
 	   * Current site was also a coordinator site (of course not the root
 	   * coordinator). Thus, we need to collect acknowledgments.
 	   *
@@ -710,7 +642,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Abort was decided without using the 2PC protocol at this site.
 	   * That is, the participants are not prepare to commit). Therefore,
 	   * there is no need to collect acknowledgments.
@@ -741,7 +673,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
  *
  */
 TRAN_STATE
-log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
+log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
 {
   TRAN_STATE state;
 
@@ -752,7 +684,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execut
       TR_TABLE_CS_EXIT (thread_p);
     }
 
-  /* 
+  /*
    * PHASE I of 2PC: Guarantee commitment (i.e., coordinator and participants
    *                 are Voting)
    */
@@ -768,7 +700,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execut
     }
   else
     {
-      /* 
+      /*
        * We are currently not executing the first phase of 2PC. The decsion is
        * already known
        */
@@ -782,7 +714,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execut
 	}
     }
 
-  /* 
+  /*
    * PHASE II of 2PC: Inform decsion to participants (i.e., either commit or
    *                  abort)
    */
@@ -814,7 +746,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execut
  *              transaction identifier such as XID of XA interface.
  */
 int
-log_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int size)
+log_2pc_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int size)
 {
   LOG_TDES *tdes;
   int i;
@@ -881,7 +813,7 @@ log_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int si
  *              calling 'db_2pc_prepared_transactions' to support xa_recover()
  */
 int
-log_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer, int size)
+log_2pc_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer, int size)
 {
   LOG_TDES *tdes;
   int i;
@@ -1066,7 +998,7 @@ log_2pc_find_tran_descriptor (int gtrid)
   LOG_TDES *tdes;
   int i;
 
-  /* 
+  /*
    * Check if the client_user has a 2PC prepare index. If it does, attach
    * this index to the given user.
    */
@@ -1095,20 +1027,20 @@ log_2pc_find_tran_descriptor (int gtrid)
 static int
 log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_TDES * client_tdes)
 {
-  /* 
+  /*
    * Abort the current client transaction, then attach to the desired
    * transaction.
    */
   (void) log_abort (thread_p, NULL_TRAN_INDEX);
 
-  /* 
+  /*
    * Copy the contents of the 2PC transaction descriptor over the
    * client transaction index.
    */
   tdes->isloose_end = false;
   tdes->isolation = client_tdes->isolation;
   tdes->wait_msecs = client_tdes->wait_msecs;
-  /* 
+  /*
    * The client identification remains the same. So there is not a need
    * to set clientids.
    */
@@ -1163,7 +1095,7 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   if (LOG_ISTRAN_2PC (client_tdes))
     {
-      /* 
+      /*
        * The current transaction is in the middle of the 2PC protocol, we
        * cannot attach at this moment
        */
@@ -1202,108 +1134,6 @@ error:
   return NULL_TRAN_INDEX;
 
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * log_2pc_append_recv_ack - Acknowledgement received from a participant
- *
- * return:
- *
- *   particp_index(in): index of the participant that sent the acknowledgement
- *
- * NOTE:This function is invoked when an acknowledgement of a commit
- *              or abort decision is received for the current distributed
- *              transaction. A log record for this effect is logged to make
- *              the acknowledgement as known permanently.
- */
-int
-log_2pc_append_recv_ack (THREAD_ENTRY * thread_p, int particp_index)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_REC_2PC_PARTICP_ACK *received_ack;
-  int tran_index;
-  LOG_LSA start_lsa;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return ER_LOG_UNKNOWN_TRANINDEX;
-    }
-
-  if ((tdes->coord == NULL) || (tdes->coord->ack_received == NULL)
-      || (!LOG_ISTRAN_2PC_INFORMING_PARTICIPANTS (tdes) && (tdes->state != TRAN_UNACTIVE_2PC_COMMIT_DECISION)
-	  && (tdes->state != TRAN_UNACTIVE_2PC_ABORT_DECISION)))
-    {
-      /* 
-       * May be a system error since transaction is not collecting
-       * acknowledgement from participants. No participant is expected to send
-       * acknowledgement.
-       */
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "log_2pc_recvack: Transaction %d " "(index = %d) is not expecting acknowledgement."
-		    " Its state is %s\n", tdes->trid, tdes->tran_index, log_state_string (tdes->state));
-#endif /* CUBRID_DEBUG */
-      return ER_FAILED;
-    }
-
-  if (tdes->coord->num_particps < particp_index || particp_index < 0)
-    {
-      /* 
-       * It is a system error since the given participant index is greater than
-       * the expected range (which is from 0 to num_particps - 1).
-       */
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "log_2pc_recvack: Wrong " " Participant index = %d for distributed transaction = %d"
-		    " (index = %d). Valid participant indices are from = %d" " to %d", particp_index, tdes->trid,
-		    tdes->tran_index, 0, tdes->coord->num_particps - 1);
-#endif /* CUBRID_DEBUG */
-      return ER_FAILED;
-    }
-
-  if (tdes->coord->ack_received[particp_index] == true)
-    {
-      /* May be a system error since this participant has already sent its acknowledgement. */
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "log_2pc_recvack: Participant %d" " of transaction %d (index = %d) has already sent its"
-		    " acknowledgement. It may be a system error. Operation is" " ignored.\n", tdes->trid,
-		    tdes->tran_index);
-#endif /* CUBRID_DEBUG */
-      return ER_FAILED;
-    }
-
-  /* Set the ack_received flag for this participant */
-  tdes->coord->ack_received[particp_index] = true;
-
-  LOG_CS_ENTER (thread_p);
-
-  /* Enter Log record for this acknowledgement */
-  start_lsa = logpb_start_append (thread_p, LOG_2PC_RECV_ACK, tdes);
-
-  /* ADD the data header */
-  LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (*received_ack));
-  received_ack = (LOG_REC_2PC_PARTICP_ACK *) LOG_APPEND_PTR ();
-
-  received_ack->particp_index = particp_index;
-  LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (*received_ack));
-  /* 
-   * END append
-   * Don't need to flush, if there is a need the participant will be contacted
-   * again.
-   */
-  logpb_end_append (thread_p);
-  logpb_flush_pages (thread_p, &start_lsa);
-  assert (LOG_CS_OWN (thread_p));
-
-  LOG_CS_EXIT (thread_p);
-
-  return NO_ERROR;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * log_2pc_prepare_global_tran - Prepare the transaction to commit
@@ -1353,7 +1183,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   if (!LOG_ISTRAN_ACTIVE (tdes))
     {
-      /* 
+      /*
        * May be a system error since transaction is not active.. cannot be
        * prepared to committed
        */
@@ -1367,7 +1197,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   if (tdes->topops.last >= 0)
     {
-      /* 
+      /*
        * This is likely a system error since the transaction is being prepared
        * to commit when there are system permanent operations attached to it.
        * We assume that the transaction finished those top actions and that a
@@ -1416,7 +1246,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
     }
   TR_TABLE_CS_EXIT (thread_p);
 
-  /* 
+  /*
    * Check if the current site is not only a participant but also a
    * coordinator for some other participnats. If the current site is a
    * coordinator of the transaction,its participants must prepare to commit
@@ -1427,9 +1257,9 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
    */
 
   tdes->gtrid = gtrid;
-  if (log_is_tran_distributed (tdes))
+  if (log_2pc_is_tran_distributed (tdes))
     {
-      /* 
+      /*
        * Site is also a coordinator, so we need to execute a nested 2PC
        */
       state = log_2pc_commit (thread_p, tdes, LOG_2PC_EXECUTE_PREPARE, &decision);
@@ -1443,7 +1273,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   lock_unlock_all_shared_get_all_exclusive (thread_p, &acq_locks);
 
-  /* 
+  /*
    * Indicate that we are willing to commit the transaction
    */
 
@@ -1468,7 +1298,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   prepared = (LOG_REC_2PC_PREPCOMMIT *) node->data_header;
 
-  memcpy (prepared->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
+  memcpy (prepared->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
   prepared->gtrid = gtrid;
   prepared->gtrinfo_length = tdes->gtrinfo.info_length;
   prepared->num_object_locks = acq_locks.nobj_locks;
@@ -1482,7 +1312,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
       free_and_init (acq_locks.obj);
     }
 
-  /* 
+  /*
    * END append. The log need to be flushed since we need to guarantee
    * the commitment of the transaction if the coordinator requests commit
    */
@@ -1516,7 +1346,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
  *              record.
  */
 void
-log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, LOG_TDES * tdes, LOG_LSA * log_lsa,
+log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, LOG_LSA * log_lsa,
 		      LOG_PAGE * log_page_p)
 {
   LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
@@ -1527,7 +1357,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, LOG_TDES * tde
 
   prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_page_p->area + log_lsa->offset);
 
-  logtb_set_client_ids_all (&tdes->client, 0, NULL, prepared->user_name, NULL, NULL, NULL, -1);
+  tdes->client.set_system_internal_with_user (prepared->user_name);
 
   tdes->gtrid = prepared->gtrid;
   tdes->gtrinfo.info_length = prepared->gtrinfo_length;
@@ -1626,28 +1456,6 @@ log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data)
   lock_dump_acquired (fp, &acq_locks);
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * log_2pc_dump_acqpage_locks - DUMP THE ACQUIRED PAGE LOCKS
- *
- * return: nothing
- *
- *   length(in): Length to dump in bytes
- *   data(in): The data being logged
- *
- * NOTE:Dump the acquired page lock structure.
- */
-void
-log_2pc_dump_acqpage_locks (FILE * fp, int length, void *data)
-{
-  LK_ACQUIRED_LOCKS acq_locks;
-
-  acq_locks.nobj_locks = 0;
-  acq_locks.obj = NULL;
-  lock_dump_acquired (fp, &acq_locks);
-}
-#endif
-
 /*
  * log_2pc_append_start - APPEND A VOTING LOG RECORD FOR THE 2PC PROTOCOL
  *
@@ -1678,20 +1486,20 @@ log_2pc_append_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   start_2pc = (LOG_REC_2PC_START *) node->data_header;
 
-  memcpy (start_2pc->user_name, tdes->client.db_user, DB_MAX_USER_LENGTH);
+  memcpy (start_2pc->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
   start_2pc->gtrid = tdes->gtrid;
   start_2pc->num_particps = tdes->coord->num_particps;
   start_2pc->particp_id_length = tdes->coord->particp_id_length;
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  /* 
+  /*
    * END append
    * We need to flush the log so that we can find the participants of the
    * 2PC in the event of a crash. This is needed since the participants do
    * not know about the coordinator or other participants. Participants will
    * always wait for the coordinators. We do not have a full 2PC in which
-   * particpants know about each other and the coordiantor.
+   * participants know about each other and the coordinator.
    */
   tdes->state = TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES;
   logpb_flush_pages (thread_p, &start_lsa);
@@ -1735,7 +1543,7 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE d
     {
       tdes->state = TRAN_UNACTIVE_2PC_COMMIT_DECISION;
 
-      /* 
+      /*
        * END append
        * We need to flush the log so that we can find the decision if a
        * participant needed in the event of a crash. If the decision is not
@@ -1747,7 +1555,7 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE d
     {
       tdes->state = TRAN_UNACTIVE_2PC_ABORT_DECISION;
 
-      /* 
+      /*
        * END append
        * We do not need to flush the log since if the decision is not found in
        * the log, abort is assumed.
@@ -1769,8 +1577,8 @@ log_2pc_append_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE d
  * NOTE:This function is used to allocate and initialize coordinator
  *              related information about participants.
  */
-LOG_TDES *
-log_2pc_alloc_coord_info (LOG_TDES * tdes, int num_particps, int particp_id_length, void *block_particps_ids)
+log_tdes *
+log_2pc_alloc_coord_info (log_tdes * tdes, int num_particps, int particp_id_length, void *block_particps_ids)
 {
   /* Initialize the coordinator information */
   tdes->coord = (LOG_2PC_COORDINATOR *) malloc (sizeof (LOG_2PC_COORDINATOR));
@@ -1800,7 +1608,7 @@ log_2pc_alloc_coord_info (LOG_TDES * tdes, int num_particps, int particp_id_leng
  *              about participants.
  */
 void
-log_2pc_free_coord_info (LOG_TDES * tdes)
+log_2pc_free_coord_info (log_tdes * tdes)
 {
   if (tdes->coord != NULL)
     {
@@ -1818,202 +1626,6 @@ log_2pc_free_coord_info (LOG_TDES * tdes)
     }
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * log_2pc_crash_participant - A participant aborted its local part of the global
- *                          transaction, or went down
- *
- * return: nothing
- *
- * NOTE:This function informs the transaction manager that one or
- *              more of the participanting sites of the current global
- *              transaction (whose coordinator is this site) has either went
- *              down, or decided to unilaterally abort their local part of
- *              this global transaction. As a result, this global transaction
- *              is aborted by this function, if it was in active state. If the
- *              transaction was already in two phase commit protocol, then
- *              this function does not take any action here as this condition
- *              will be handled naturally by the two phase commit protocol.
- */
-void
-log_2pc_crash_participant (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  char *client_prog_name;	/* Client program name for transaction */
-  char *client_user_name;	/* Client user name for transaction */
-  char *client_host_name;	/* Client host for transaction */
-  int client_pid;		/* Client process identifier for transaction */
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return;
-    }
-
-  if (log_is_tran_distributed (tdes) == false)
-    {
-      /* It is a system error since transaction is not a coordinator. */
-#if defined(CUBRID_DEBUG)
-      er_log_debug (ARG_FILE_LINE,
-		    "log_2pc_particp_crash: Transaction %d " "(index = %d) is not a global one; and thus has no "
-		    "participants that could abort. It is in state: %s\n", tdes->trid, tdes->tran_index,
-		    log_state_string (tdes->state));
-#endif /* CUBRID_DEBUG */
-      return;
-    }
-
-  tdes->coord->ack_received = NULL;
-
-  /* If the coordinator info has not been recorded in the tdes, do it now */
-
-  /* If the transaction is active it needs to be aborted; Otherwise (i.e. the transaction is in 2PC protocol), no
-   * action needs to be taken here; 2PC protocol will consider this condition */
-
-  (void) log_abort (thread_p, tran_index);
-
-  /* Put an error code recording this situation */
-  (void) logtb_find_client_name_host_pid (tdes->tran_index, &client_prog_name, &client_user_name, &client_host_name,
-					  &client_pid);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, tdes->tran_index, client_user_name,
-	  client_host_name, client_pid);
-}
-
-/*
- * log_2pc_broadcast_decision_participant -
- *
- * return:
- *
- *   tdes(in):
- *   particp_index(in):
- *
- * Note:
- */
-static int
-log_2pc_broadcast_decision_participant (THREAD_ENTRY * thread_p, LOG_TDES * tdes, int particp_index)
-{
-  int *temp;
-  int local_tran_index;
-  int i;
-
-  if (tdes->coord->ack_received[particp_index] == false)
-    {
-      temp = (int *) calloc (sizeof (int), tdes->coord->num_particps);
-      if (temp == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      for (i = 0; i < tdes->coord->num_particps; i++)
-	{
-	  temp[i] = true;
-	}
-
-      temp[particp_index] = false;
-
-      local_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
-
-      if (LOG_ISTRAN_COMMITTED (tdes))
-	{
-	  /* 
-	   * Decision was commit. Broadcast the commit to the participant
-	   */
-
-	  /* 
-	   * Note that this communication needs to be synchronous (i.e. we
-	   * should wait for the return of the function call
-	   *
-	   * If the following function fails, the transaction will be
-	   * dangling and we need to retry sending the decision at another
-	   * point.
-	   * We have already decided and log the decision in the log file.
-	   */
-	  (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-					       tdes->coord->block_particps_ids);
-	  if (tdes->coord->ack_received[particp_index] == true)
-	    {
-	      (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
-	    }
-	}
-      else
-	{
-	  /* 
-	   * Decsion was abort. Broadcast the abort to the participant
-	   */
-
-	  /* 
-	   * Note that this communication needs to be syncronous (i.e. we
-	   * should wait for the return of the function call
-	   *
-	   * If the following function fails, the transaction will be
-	   * dangling and we need to retry sending the decision at another
-	   * point.
-	   * We have already decided and log the decision in the log file.
-	   */
-	  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, temp,
-					      tdes->coord->block_particps_ids, true);
-	  if (tdes->coord->ack_received[particp_index] == true)
-	    {
-	      (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
-	    }
-	}			/* else */
-
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, local_tran_index);
-      free_and_init (temp);
-    }
-
-  return ER_FAILED;
-}
-
-/*
- * log_2pc_send_decision_participant - Send decision of blocked transactions to just
- *                               reconnected participant
- *
- * return: nothing
- *
- *   particp_id(in): info to identify the participant to reconnect
- *
- * NOTE:For all distributed loose end transactions which have
- *              "partic-id" as a participant, the decisions are sent to this
- *              participant.
- *              This function is used when a participant is restarted.
- */
-void
-log_2pc_send_decision_participant (THREAD_ENTRY * thread_p, void *particp_id)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int particp_index;
-  int i;
-
-  for (i = 0;; i++)
-    {
-
-      TR_TABLE_CS_ENTER (thread_p);
-
-      if ((i >= log_Gl.trantable.num_total_indices || log_Gl.trantable.num_coord_loose_end_indices <= 0))
-	{
-	  TR_TABLE_CS_EXIT (thread_p);
-	  break;
-	}
-
-      TR_TABLE_CS_EXIT (thread_p);
-
-      tdes = LOG_FIND_TDES (i);
-      if (tdes != NULL && LOG_ISTRAN_2PC_INFORMING_PARTICIPANTS (tdes) && tdes->isloose_end)
-	{
-	  particp_index =
-	    log_2pc_lookup_particp (particp_id, tdes->coord->num_particps, tdes->coord->block_particps_ids);
-	  if (particp_index != -1)
-	    {
-	      (void) log_2pc_broadcast_decision_participant (thread_p, tdes, particp_index);
-	    }
-	}
-    }
-}
-#endif
-
 /*
  * log_2pc_recovery_prepare -
  *
@@ -2028,7 +1640,7 @@ log_2pc_send_decision_participant (THREAD_ENTRY * thread_p, void *particp_id)
 static void
 log_2pc_recovery_prepare (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  /* 
+  /*
    * This is a particpant of the distributed transaction. We
    * need to continue looking since this participant may be
    * a non root coordinator
@@ -2077,10 +1689,10 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*start_2pc), log_lsa, log_page_p);
 
   start_2pc = ((LOG_REC_2PC_START *) ((char *) log_page_p->area + log_lsa->offset));
-  /* 
+  /*
    * Obtain the participant information for this coordinator
    */
-  logtb_set_client_ids_all (&tdes->client, 0, NULL, start_2pc->user_name, NULL, NULL, NULL, -1);
+  tdes->client.set_system_internal_with_user (start_2pc->user_name);
   tdes->gtrid = start_2pc->gtrid;
 
   num_particps = start_2pc->num_particps;
@@ -2125,9 +1737,9 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
 
   if (*ack_count > 0 && ack_list != NULL)
     {
-      /* 
-       * Some participant acknowledgemnts have already been
-       * received. Copy this acknowledgment into the transaction
+      /*
+       * Some participant acknowledgements have already been
+       * received. Copy this acknowledgement into the transaction
        * descriptor.
        */
       for (i = 0; i < *ack_count; i++)
@@ -2170,7 +1782,7 @@ log_2pc_expand_ack_list (THREAD_ENTRY * thread_p, int *ack_list, int *ack_count,
       /* allocate space */
       if (*size_ack_list == 0)
 	{
-	  /* 
+	  /*
 	   * Initialize the temporary area. Assume no more than 10
 	   * participants
 	   */
@@ -2273,7 +1885,7 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
       break;
 
     case LOG_2PC_RECV_ACK:
-      /* 
+      /*
        * Coordiantor site: The distributed transaction is in the
        * second phase of the 2PC, that is, coordinator has notfied
        * the decision to participants and some of them as acknowledge
@@ -2288,8 +1900,8 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
 
     case LOG_COMPENSATE:
     case LOG_RUN_POSTPONE:
-    case LOG_WILL_COMMIT:
     case LOG_COMMIT_WITH_POSTPONE:
+    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
     case LOG_2PC_COMMIT_DECISION:
     case LOG_2PC_ABORT_DECISION:
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
@@ -2319,7 +1931,7 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
     case LOG_END_OF_LOG:
-      /* 
+      /*
        * Either the prepare to commit or start 2PC record should
        * have already been found by now. Otherwise, it is likely that the
        * transaction is not a distributed transaction that has loose end
@@ -2373,7 +1985,7 @@ log_2pc_recovery_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE record_ty
  *              transaction is read by the redo phase of the recovery process.
  */
 void
-log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * upto_chain_lsa)
+log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_LSA * upto_chain_lsa)
 {
   LOG_RECORD_HEADER *log_rec;	/* Pointer to log record */
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -2394,7 +2006,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LS
     }
 
   /* For a transaction that was prepared to commit at the time of the crash, make sure that its global transaction
-   * identifier is obtained from the log and that the update_type locks that were acquired before the time of the crash 
+   * identifier is obtained from the log and that the update_type locks that were acquired before the time of the crash
    * are reacquired. */
 
   if (tdes->gtrid == LOG_2PC_NULL_GTRID)
@@ -2410,7 +2022,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LS
       search_2pc_start = true;
     }
 
-  /* 
+  /*
    * Follow the undo tail chain starting at upto_chain_tail finding all
    * 2PC related information
    */
@@ -2454,7 +2066,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LS
 #endif /* CUBRID_DEBUG */
     }
 
-  /* 
+  /*
    * Now the client should attach to this prepared transaction and
    * provide the decision (commit/abort). Until then this thread
    * is suspended.
@@ -2462,7 +2074,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LS
 
   if (search_2pc_start)
     {
-      /* 
+      /*
        * A 2PC start log record was not found for the coordinator
        */
       if (tdes->state != TRAN_UNACTIVE_2PC_PREPARE)
@@ -2489,7 +2101,7 @@ log_2pc_recovery_analysis_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LS
 static void
 log_2pc_recovery_collecting_participant_votes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  /* 
+  /*
    * This is a participant which has not decided the fate of the
    * distributed transaction. Abort the transaction
    */
@@ -2513,12 +2125,12 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
   TRAN_STATE state;
 
-  /* 
+  /*
    * An abort decision has already been taken and the system crash
    * during the local abort. Retry it
    */
 
-  /* 
+  /*
    * The transaction has been declared as 2PC abort. We can execute
    * the LOCAL ABORT AND THE REMOTE ABORTS IN PARALLEL, however our
    * communication subsystem does not support asynchronous communication
@@ -2539,7 +2151,7 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   /* Try to reconnect to participants that have not sent ACK. yet */
 
-  /* 
+  /*
    * If the following function fails, the transaction will be dangling and we
    * need to retry sending the decision at another point.
    * We have already decided and log the decision in the log file.
@@ -2572,7 +2184,7 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   (void) log_commit_local (thread_p, tdes, false, false);
   tdes->state = state;		/* Revert to 2PC state... */
 
-  /* 
+  /*
    * If the following function fails, the transaction will be dangling and we
    * need to retry sending the decision at another point.
    * We have already decided and log the decision in the log file.
@@ -2596,7 +2208,7 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 static void
 log_2pc_recovery_committed_informing_participants (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  /* 
+  /*
    * Broadcast the commit to the participants that has not sent an
    * acknowledgement yet.
    *
@@ -2622,7 +2234,7 @@ log_2pc_recovery_committed_informing_participants (THREAD_ENTRY * thread_p, LOG_
 static void
 log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  /* 
+  /*
    * Broadcast the abort to the participants that has not sent an
    * acknowledgement yet.
    *
@@ -2652,7 +2264,7 @@ log_2pc_recovery (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  /* 
+  /*
    * Try to finish distributed transaction that are in the uncertain phase
    * of the two phase commit
    */
@@ -2684,17 +2296,19 @@ log_2pc_recovery (THREAD_ENTRY * thread_p)
 
 	case TRAN_UNACTIVE_WILL_COMMIT:
 	case TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE:
-	  /* 
+	  /*
 	   * All the local postpone actions had been completed; there are
 	   * not any client postpone actions. Thus, we can inform the
 	   * participants at this time.
 	   */
 
 	  tdes->state = TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
-	  /* 
+	  /*
 	   * Let it fall thru the
 	   * TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS case
 	   */
+
+	  /* FALLTHRU */
 
 	case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
 	  log_2pc_recovery_committed_informing_participants (thread_p, tdes);
@@ -2746,7 +2360,7 @@ log_is_tran_in_2pc (THREAD_ENTRY * thread_p)
 #endif
 
 /*
- * log_is_tran_distributed - IS THIS A COORDINATOR OF A DISTRIBUTED TRANSACTION
+ * log_2pc_is_tran_distributed - IS THIS A COORDINATOR OF A DISTRIBUTED TRANSACTION
  *
  * return:
  *
@@ -2756,7 +2370,7 @@ log_is_tran_in_2pc (THREAD_ENTRY * thread_p)
  *              is, coordinator information is initialized by this function.
  */
 bool
-log_is_tran_distributed (LOG_TDES * tdes)
+log_2pc_is_tran_distributed (log_tdes * tdes)
 {
   int num_particps = 0;		/* Number of participating sites */
   int particp_id_length;	/* Length of a particp_id */
@@ -2780,7 +2394,7 @@ log_is_tran_distributed (LOG_TDES * tdes)
 }
 
 /*
- * log_clear_and_is_tran_distributed - FIND IF TRANSACTION IS DISTRIBUTED AFTER
+ * log_2pc_clear_and_is_tran_distributed - FIND IF TRANSACTION IS DISTRIBUTED AFTER
  *                               CLEARING OLD COORDINATOR INFORMATION.
  *
  * return:
@@ -2795,8 +2409,8 @@ log_is_tran_distributed (LOG_TDES * tdes)
  *              not inform me of new participants.
  */
 bool
-log_clear_and_is_tran_distributed (LOG_TDES * tdes)
+log_2pc_clear_and_is_tran_distributed (log_tdes * tdes)
 {
   log_2pc_free_coord_info (tdes);
-  return log_is_tran_distributed (tdes);
+  return log_2pc_is_tran_distributed (tdes);
 }

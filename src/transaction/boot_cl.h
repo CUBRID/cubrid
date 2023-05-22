@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -46,7 +45,7 @@
 extern VOLID boot_User_volid;
 #if defined(CS_MODE)
 /* Server host connected */
-extern char boot_Host_connected[MAXHOSTNAMELEN];
+extern char boot_Host_connected[CUB_MAXHOSTNAMELEN];
 #endif /* CS_MODE */
 
 extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
@@ -60,11 +59,14 @@ extern void boot_server_die_or_changed (void);
 extern void boot_client_all_finalize (bool iserfinal);
 #if defined(CS_MODE)
 extern char *boot_get_host_connected (void);
+#if defined(ENABLE_UNUSED_FUNCTION)
 extern HA_SERVER_STATE boot_get_ha_server_state (void);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern const char *boot_get_lob_path (void);
 #endif /* CS_MODE */
 
 extern char *boot_get_host_name (void);
+extern char *boot_get_ip (void);
 
 #if defined(SA_MODE)
 extern int boot_build_catalog_classes (const char *dbname);

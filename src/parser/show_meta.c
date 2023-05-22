@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -33,6 +32,7 @@
 #include <limits.h>
 #include <ctype.h>
 
+#include "authenticate.h"
 #include "show_meta.h"
 #include "error_manager.h"
 #include "parser.h"
@@ -87,6 +87,7 @@ static SHOWSTMT_METADATA *metadata_of_timezones (void);
 static SHOWSTMT_METADATA *metadata_of_full_timezones (void);
 static SHOWSTMT_METADATA *metadata_of_tran_tables (void);
 static SHOWSTMT_METADATA *metadata_of_threads (void);
+static SHOWSTMT_METADATA *metadata_of_page_buffer_status (void);
 
 static SHOWSTMT_METADATA *
 metadata_of_volume_header (void)
@@ -398,9 +399,9 @@ metadata_of_index_header (SHOW_ONLY_ALL flag)
     {"Btid", "varchar(64)"},
     {"Node_level", "int"},
     {"Max_key_len", "int"},
-    {"Num_oids", "int"},
-    {"Num_nulls", "int"},
-    {"Num_keys", "int"},
+    {"Num_oids", "bigint"},
+    {"Num_nulls", "bigint"},
+    {"Num_keys", "bigint"},
     {"Topclass_oid", "varchar(64)"},
     {"Unique", "int"},
     {"Overflow_vfid", "varchar(32)"},
@@ -443,19 +444,25 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
     {"Index_name", "varchar(256)"},
     {"Btid", "varchar(64)"},
     {"Num_distinct_key", "int"},
-    {"Total_value", "int"},
+    {"Total_value", "bigint"},
     {"Avg_num_value_per_key", "int"},
     {"Num_leaf_page", "int"},
     {"Num_non_leaf_page", "int"},
+    {"Num_ovf_page", "int"},
     {"Num_total_page", "int"},
     {"Height", "int"},
     {"Avg_key_len", "int"},
     {"Avg_rec_len", "int"},
     {"Total_space", "varchar(64)"},
-    {"Total_used_space", "varchar(64)"},
-    {"Total_free_space", "varchar(64)"},
-    {"Avg_num_page_key", "int"},
-    {"Avg_page_free_space", "varchar(64)"}
+    {"Total_used_space_non_ovf", "varchar(64)"},
+    {"Total_free_space_non_ovf", "varchar(64)"},
+    {"Total_used_space_ovf", "varchar(64)"},
+    {"Total_free_space_ovf", "varchar(64)"},
+    {"Avg_num_key_per_page_non_ovf", "int"},
+    {"Avg_free_space_per_page_non_ovf", "varchar(64)"},
+    {"Avg_num_ovf_page_per_key", "int"},
+    {"Avg_free_space_per_page_ovf", "varchar(64)"},
+    {"Max_num_ovf_page_a_key", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
@@ -688,6 +695,42 @@ metadata_of_threads (void)
   return &md;
 }
 
+static SHOWSTMT_METADATA *
+metadata_of_page_buffer_status (void)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Hit_rate", "numeric(13,10)"},
+    {"Num_hit", "bigint"},
+    {"Num_page_request", "bigint"},
+    {"Pool_size", "int"},
+    {"Page_size", "int"},
+    {"Free_pages", "int"},
+    {"Victim_candidate_pages", "int"},
+    {"Clean_pages", "int"},
+    {"Dirty_pages", "int"},
+    {"Num_index_pages", "int"},
+    {"Num_data_pages", "int"},
+    {"Num_system_pages", "int"},
+    {"Num_temp_pages", "int"},
+    {"Num_pages_created", "bigint"},
+    {"Num_pages_written", "bigint"},
+    {"Pages_written_rate", "numeric(20,10)"},
+    {"Num_pages_read", "bigint"},
+    {"Pages_read_rate", "numeric(20,10)"},
+    {"Num_flusher_waiting_threads", "int"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static SHOWSTMT_METADATA md = {
+    SHOWSTMT_PAGE_BUFFER_STATUS, true /* only_for_dba */ , "show page buffer status",
+    cols, DIM (cols), orderby, DIM (orderby), NULL, 0, NULL, NULL
+  };
+  return &md;
+}
+
 /*
  * showstmt_get_metadata() -  return show statement column infos
  *   return:-
@@ -723,7 +766,7 @@ showstmt_get_attributes (SHOWSTMT_TYPE show_type)
 }
 
 /*
- * pt_check_show_heap () - check table exists or not 
+ * pt_check_show_heap () - check table exists or not
  *   return: PT_NODE pointer
  *
  *   parser(in):
@@ -867,7 +910,7 @@ on_error:
 
 /*
  * free_db_attribute_list () : free DB_ATTRIBUTE list for each show statement
- *   return: 
+ *   return:
  *   md(in/out):
  */
 static void
@@ -929,6 +972,7 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_FULL_TIMEZONES] = metadata_of_full_timezones ();
   show_Metas[SHOWSTMT_TRAN_TABLES] = metadata_of_tran_tables ();
   show_Metas[SHOWSTMT_THREADS] = metadata_of_threads ();
+  show_Metas[SHOWSTMT_PAGE_BUFFER_STATUS] = metadata_of_page_buffer_status ();
 
   for (i = 0; i < DIM (show_Metas); i++)
     {

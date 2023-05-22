@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -56,7 +55,10 @@ enum
 
 /* Slotted page header flags */
 #define SPAGE_HEADER_FLAG_NONE		0x0	/* No flags */
-#define SPAGE_HEADER_FLAG_ALL_VISIBLE	0x1	/* All records are visible */
+#define SPAGE_HEADER_FLAG_ALL_VISIBLE	0x1	/* All records are visible */	/* unused */
+
+#define SPAGE_SLOT_SIZE   (sizeof(SPAGE_SLOT))
+#define SPAGE_HEADER_SIZE (sizeof(SPAGE_HEADER))
 
 typedef struct spage_header SPAGE_HEADER;
 struct spage_header
@@ -70,7 +72,7 @@ struct spage_header
   int cont_free;		/* Contiguous free space on page */
   int offset_to_free_area;	/* Byte offset from the beginning of the page to the first free byte area on the page. */
   int reserved1;
-  int flags;			/* Page flags */
+  int flags;			/* Page flags: Always SPAGE_HEADER_FLAG_NONE, not currently used */
   unsigned int is_saving:1;	/* True if saving is need for recovery (undo) */
   unsigned int need_update_best_hint:1;	/* True if we should update best pages hint for this page. See
 					 * heap_stats_update. */
@@ -90,11 +92,10 @@ struct spage_slot
   unsigned int record_type:4;	/* Record type (REC_HOME, REC_NEWHOME, ...) described by slot. */
 };
 
-extern int spage_boot (THREAD_ENTRY * thread_p);
+extern void spage_boot (THREAD_ENTRY * thread_p);
 extern void spage_finalize (THREAD_ENTRY * thread_p);
 extern void spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry);
-extern int spage_slot_size (void);
-extern int spage_header_size (void);
+
 extern int spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern int spage_get_free_space_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool * need_update);
 extern void spage_set_need_update_best_hint (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool need_update);

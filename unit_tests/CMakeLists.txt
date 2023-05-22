@@ -1,19 +1,19 @@
 #
-# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
-#
-#   This program is free software; you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
-#   the Free Software Foundation; either version 2 of the License, or
-#   (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software
-#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#  Copyright 2008 Search Solution Corporation
+#  Copyright 2016 CUBRID Corporation
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
 #
 
 # unit tests logic:
@@ -31,16 +31,10 @@ option (UNIT_TEST_MEMORY_ALLOC  "Unit testing: memory allocation")
 option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
-option (UNIT_TEST_REPLICATION "Unit testing: replication")
 option (UNIT_TEST_PACKING "Unit testing: packing")
-option (UNIT_TEST_STREAM "Unit testing: stream")
-option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
-option (UNIT_TEST_TRANS_CHN "Unit testing: transfer channel module")
-option (UNIT_TEST_DDL_CL "Unit testing: ddl proxy client module")
-option (UNIT_TEST_REPLICATION "Unit testing: replication channels module")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
-
+option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 
 message("  unit_tests/...")
 
@@ -69,52 +63,22 @@ if (UNIT_TESTS OR UNIT_TEST_THREAD)
   add_subdirectory(thread)
 endif(UNIT_TESTS OR UNIT_TEST_THREAD)
 
-if (UNIT_TESTS OR UNIT_TEST_COMM_CHN)
-  message("    communication_channel")
-  add_subdirectory(communication_channel)
-endif(UNIT_TESTS OR UNIT_TEST_COMM_CHN)
-
 if (UNIT_TESTS OR UNIT_TEST_PACKING)
   message("    packing")
   add_subdirectory(packing)
 endif(UNIT_TESTS OR UNIT_TEST_PACKING)
-
-if (UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
-  message("    transfer_channel")
-  add_subdirectory(transfer_channel)
-endif(UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
 
 if (UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
   message("    object_factory")
   add_subdirectory(object_factory)
 endif(UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
 
-if (UNIT_TESTS OR UNIT_TEST_DDL_CL)
-  message("    ddl_proxy_client")
-  add_subdirectory(ddl_proxy_client)
-endif(UNIT_TESTS OR UNIT_TEST_DDL_CL)
-
-if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
-  message("    replication_channels")
-  add_subdirectory(replication_channels)
-endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)
-
 if (UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
   message("    resource_tracker")
   add_subdirectory(resource_tracker)
 endif(UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
 
-if (UNIT_TESTS OR UNIT_TEST_STREAM)
-  message("    stream")
-  add_subdirectory(stream)
-endif(UNIT_TESTS OR UNIT_TEST_STREAM)
-
 if (UNIT_TESTS OR UNIT_TEST_MONITOR)
   message("    monitor")
   add_subdirectory(monitor)
 endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
-
-if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
-  message("    replication")
-  add_subdirectory(replication)
-endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)

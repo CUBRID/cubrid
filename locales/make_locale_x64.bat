@@ -1,18 +1,21 @@
 @echo off
-REM Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+
 REM
-REM   This program is free software; you can redistribute it and/or modify 
-REM   it under the terms of the GNU General Public License as published by 
-REM   the Free Software Foundation; either version 2 of the License, or
-REM   (at your option) any later version. 
-REM
-REM  This program is distributed in the hope that it will be useful, 
-REM  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-REM  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-REM  GNU General Public License for more details. 
-REM
-REM  You should have received a copy of the GNU General Public License 
-REM  along with this program; if not, write to the Free Software 
+REM  Copyright 2008 Search Solution Corporation
+REM  Copyright 2016 CUBRID Corporation
+REM 
+REM   Licensed under the Apache License, Version 2.0 (the "License");
+REM   you may not use this file except in compliance with the License.
+REM   You may obtain a copy of the License at
+REM 
+REM       http://www.apache.org/licenses/LICENSE-2.0
+REM 
+REM   Unless required by applicable law or agreed to in writing, software
+REM   distributed under the License is distributed on an "AS IS" BASIS,
+REM   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+REM   See the License for the specific language governing permissions and
+REM   limitations under the License.
+REM 
 REM  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 set APP_NAME=%0

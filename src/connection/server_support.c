@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -26,15 +25,13 @@
 #include "server_support.h"
 
 #include "config.h"
-#include "multi_thread_stream.hpp"
+#include "load_worker_manager.hpp"
+#include "log_append.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
-#include "stream_transfer_receiver.hpp"
-#include "replication_master_senders_manager.hpp"
-#include "communication_server_channel.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,8 +62,10 @@
 #include "message_catalog.h"
 #include "critical_section.h"
 #include "lock_manager.h"
+#include "log_lsa.hpp"
 #include "log_manager.h"
 #include "network.h"
+#include "object_representation.h"
 #include "jsp_sr.h"
 #include "show_scan.h"
 #if defined(WINDOWS)
@@ -94,6 +93,7 @@
 
 #define RMUTEX_NAME_TEMP_CONN_ENTRY "TEMP_CONN_ENTRY"
 
+static bool css_Server_shutdown_inited = false;
 static struct timeval css_Shutdown_timeout = { 0, 0 };
 
 static char *css_Master_server_name = NULL;	/* database identifier */
@@ -111,7 +111,6 @@ static HA_SERVER_STATE ha_Server_state = HA_SERVER_STATE_IDLE;
 static bool ha_Repl_delay_detected = false;
 
 static int ha_Server_num_of_hosts = 0;
-static char ha_Server_master_hostname[MAXHOSTNAMELEN];
 
 #define HA_LOG_APPLIER_STATE_TABLE_MAX  5
 typedef struct ha_log_applier_state_table HA_LOG_APPLIER_STATE_TABLE;
@@ -206,7 +205,6 @@ private:
 static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
 
 static void css_setup_server_loop (void);
-static int css_check_conn (CSS_CONN_ENTRY * p);
 static void css_set_shutdown_timeout (int timeout);
 static int css_get_master_request (SOCKET master_fd);
 static int css_process_master_request (SOCKET master_fd);
@@ -232,7 +230,6 @@ static int css_process_new_connection_request (void);
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
-static void css_process_new_slave (SOCKET master_fd);
 
 static void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
@@ -257,6 +254,7 @@ static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_
 static bool css_get_connection_thread_pooling_configuration (void);
 static cubthread::wait_seconds css_get_connection_thread_timeout_configuration (void);
 static bool css_get_server_request_thread_pooling_configuration (void);
+static int css_get_server_request_thread_core_count_configruation (void);
 static cubthread::wait_seconds css_get_server_request_thread_timeout_configuration (void);
 static void css_start_all_threads (void);
 // *INDENT-ON*
@@ -320,7 +318,7 @@ css_setup_server_loop (void)
   (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
 #endif /* not WINDOWS */
 
-#if defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX)
+#if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX))
   if (!jsp_jvm_is_loaded ())
     {
       (void) os_set_signal_handler (SIGFPE, SIG_IGN);
@@ -345,7 +343,7 @@ css_setup_server_loop (void)
  *   return:
  *   p(in):
  */
-static int
+int
 css_check_conn (CSS_CONN_ENTRY * p)
 {
 #if defined(WINDOWS)
@@ -567,12 +565,6 @@ css_process_master_request (SOCKET master_fd)
       break;
     case SERVER_GET_EOF:
       css_process_get_eof_request (master_fd);
-      break;
-    case SERVER_RECEIVE_MASTER_HOSTNAME:
-      css_process_master_hostname ();
-      break;
-    case SERVER_CONNECT_NEW_SLAVE:
-      css_process_new_slave (master_fd);
       break;
 #endif
     default:
@@ -803,57 +795,6 @@ css_process_get_eof_request (SOCKET master_fd)
 #endif
 }
 
-// *INDENT-OFF*
-int
-css_process_master_hostname ()
-{
-  int hostname_length, error;
-  cubcomm::server_channel chn (css_Master_server_name);
-
-  error = css_receive_heartbeat_data (css_Master_conn, (char *) &hostname_length, sizeof (int));
-  if (error != NO_ERRORS)
-    {
-      return error;
-    }
-
-  if (hostname_length == 0)
-    {
-      return NO_ERRORS;
-    }
-  else if (hostname_length < 0)
-    {
-      return ER_FAILED;
-    }
-
-  error = css_receive_heartbeat_data (css_Master_conn, ha_Server_master_hostname, hostname_length);
-  if (error != NO_ERRORS)
-    {
-      return error;
-    }
-  ha_Server_master_hostname[hostname_length] = '\0';
-
-  assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
-
-#if 0
-  /* TODO[arnia] deactivate for now this new replication
-   * code and reactivate it later, when merging with razvan
-   */
-  //create slave replication channel and connect to hostname
-  error = chn.connect (ha_Server_master_hostname, css_Master_port_id);
-  if (error != NO_ERRORS)
-    {
-      assert (false);
-      return error;
-    }
-#endif
-
-  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
-		ha_Server_master_hostname);
-
-  return NO_ERRORS;
-}
-// *INDENT-ON*
-
 /*
  * css_close_connection_to_master() -
  *   return:
@@ -1073,7 +1014,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	{
 	  /* There's an interesting race condition among client, worker thread and connection handler.
 	   * Please find CBRD-21375 for detail and also see sboot_notify_unregister_client.
-	   * 
+	   *
 	   * We have to synchronize here with worker thread which may be in sboot_notify_unregister_client
 	   * to let it have a chance to send reply to client.
 	   */
@@ -1334,6 +1275,18 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
   css_register_handler_routines (css_internal_connection_handler, NULL /* disabled */ , connection_error_function);
 }
 
+bool
+css_is_shutdowning_server ()
+{
+  return css_Server_shutdown_inited;
+}
+
+void
+css_start_shutdown_server ()
+{
+  css_Server_shutdown_inited = true;
+}
+
 /*
  * css_init() -
  *   return:
@@ -1367,14 +1320,14 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #endif /* WINDOWS */
 
   // initialize worker pool for server requests
-  const std::size_t MAX_WORKERS = css_get_max_conn () + 1;	// = css_Num_max_conn in connection_sr.c
-  const std::size_t MAX_TASK_COUNT = 2 * MAX_WORKERS;	// not that it matters...
-  const std::size_t MAX_CONNECTIONS = css_get_max_conn () + 1;
+#define MAX_WORKERS css_get_max_workers ()
+#define MAX_TASK_COUNT css_get_max_task_count ()
+#define MAX_CONNECTIONS css_get_max_connections ()
 
   // create request worker pool
   css_Server_request_worker_pool =
     cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, "transaction workers", NULL,
-						   cubthread::system_core_count (),
+						   css_get_server_request_thread_core_count_configruation (),
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
 						   css_get_server_request_thread_pooling_configuration (),
@@ -1434,45 +1387,36 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
 shutdown:
-  /* 
+  /*
    * start to shutdown server
    */
+  css_start_shutdown_server ();
 
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
   /* stop vacuum threads. */
-  vacuum_stop (thread_p);
+  vacuum_stop_workers (thread_p);
+
+  // stop load sessions
+  cubload::worker_manager_stop_all ();
 
   /* we should flush all append pages before stop log writer */
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
+  logpb_force_flush_pages (thread_p);
 
 #if !defined(NDEBUG)
-  pthread_mutex_lock (&log_Gl.prior_info.prior_lsa_mutex);
-  if (!LSA_EQ (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa))
-    {
-      LOG_PRIOR_NODE *node;
-
-      assert (LSA_LT (&log_Gl.append.nxio_lsa, &log_Gl.prior_info.prior_lsa));
-      node = log_Gl.prior_info.prior_list_header;
-      while (node != NULL)
-	{
-	  /* All active transaction and vacuum workers should have been stopped. Only system transactions are still
-	   * running. */
-	  assert (node->log_header.trid == LOG_SYSTEM_TRANID);
-	  node = node->next;
-	}
-    }
-  pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
+  /* All active transaction and vacuum workers should have been stopped. Only system transactions are still running. */
+  assert (!log_prior_has_worker_log_records (thread_p));
 #endif
-
-  LOG_CS_EXIT (thread_p);
 
   // stop log writers
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
+  if (prm_get_bool_value (PRM_ID_STATS_ON))
+    {
+      perfmon_er_log_current_stats (thread_p);
+    }
   css_Server_request_worker_pool->er_log_stats ();
   css_Connection_worker_pool->er_log_stats ();
 
@@ -1858,7 +1802,7 @@ css_pack_server_name (const char *server_name, int *name_length)
 	  return NULL;
 	}
 
-      /* 
+      /*
        * here we changed the 2nd string in packed_name from
        * rel_release_string() to rel_major_release_string()
        * solely for the purpose of matching the name of the cubrid driver.
@@ -2173,7 +2117,7 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
       break;
 
     case HA_SERVER_STATE_TO_BE_STANDBY:
-      /* 
+      /*
        * If the server's state is 'to-be-standby',
        * new connection request will be rejected for HA fail-back action.
        */
@@ -2183,7 +2127,7 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
 		  "Connection rejected. " "The server is changing to standby mode.");
 	  err = ERR_CSS_ERROR_FROM_SERVER;
 	}
-      /* 
+      /*
        * If all connected clients are released (by reset-on-commit),
        * change the state to 'standby' as a completion of HA fail-back action.
        */
@@ -2419,7 +2363,7 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	      tdes = log_Gl.trantable.all_tdes[i];
 	      if (tdes != NULL && tdes->trid != NULL_TRANID)
 		{
-		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.host_name, boot_Host_name,
+		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
 							       tdes->client.client_type))
 		    {
 		      logtb_slam_transaction (thread_p, tdes->tran_index);
@@ -2678,46 +2622,6 @@ xacl_reload (THREAD_ENTRY * thread_p)
 }
 #endif
 
-static void
-css_process_new_slave (SOCKET master_fd)
-{
-
-  SOCKET new_fd;
-  unsigned short rid;
-  cubcomm::channel chn;
-
-  /* receive new socket descriptor from the master */
-  new_fd = css_open_new_socket_from_master (master_fd, &rid);
-  if (IS_INVALID_SOCKET (new_fd))
-    {
-      assert (false);
-      return;
-    }
-  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
-		new_fd, ha_Server_state);
-
-  assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
-
-#if 0
-  /* TODO[arnia] deactivate for now this new replication
-   * code and reactivate it later, when merging with razvan
-   */
-  css_error_code rc = chn.accept (new_fd);
-  assert (rc == NO_ERRORS);
-
-  // *INDENT-OFF*
-  cubreplication::master_senders_manager::add_stream_sender
-    (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
-  // *INDENT-ON*
-#endif
-}
-
-const char *
-get_master_hostname ()
-{
-  return ha_Server_master_hostname;
-}
-
 /*
  * css_get_client_id() - returns the unique client identifier
  *   return: returns the unique client identifier, on error, returns -1
@@ -2828,8 +2732,10 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref)
   //       randomly pushed to cores that are full. some of those tasks may belong to threads holding locks. as a
   //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
   //
+  conn_ref.add_pending_request ();
+
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
-                                            static_cast<size_t> (conn_ref.idx));
+                                            static_cast<size_t> (conn_ref.idx), conn_ref.in_method);
 }
 
 void
@@ -2841,11 +2747,14 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 void
 css_server_task::execute (context_type &thread_ref)
 {
-  thread_ref.conn_entry = &m_conn;
+  m_conn.start_request ();
 
-  if (thread_ref.conn_entry->session_p != NULL)
+  thread_ref.conn_entry = &m_conn;
+  session_state *session_p = thread_ref.conn_entry->session_p;
+
+  if (session_p != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
     }
   else
     {
@@ -2859,7 +2768,6 @@ css_server_task::execute (context_type &thread_ref)
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_internal_request_handler (thread_ref, m_conn);
 
-  thread_ref.private_lru_index = -1;
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
@@ -2868,14 +2776,18 @@ void
 css_server_external_task::execute (context_type &thread_ref)
 {
   thread_ref.conn_entry = m_conn;
-  if (thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_p != NULL)
+
+  session_state *session_p = thread_ref.conn_entry != NULL ? thread_ref.conn_entry->session_p : NULL;
+  if (session_p != NULL)
     {
-      thread_ref.private_lru_index = session_get_private_lru_idx (thread_ref.conn_entry->session_p);
+      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
     }
   else
     {
       assert (thread_ref.private_lru_index == -1);
     }
+
+  thread_ref.m_status = cubthread::entry::status::TS_RUN;
 
   // TODO: We lock tran_index_lock because external task expects it to be locked.
   //       However, I am not convinced we really need this
@@ -2883,8 +2795,8 @@ css_server_external_task::execute (context_type &thread_ref)
 
   m_task->execute (thread_ref);
 
-  thread_ref.private_lru_index = -1;
   thread_ref.conn_entry = NULL;
+  thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
 
 void
@@ -3329,6 +3241,19 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
   return count;
 }
 
+size_t css_get_max_workers ()
+{
+  return css_get_max_conn () + 1; // = css_Num_max_conn in connection_sr.c
+}
+size_t css_get_max_task_count ()
+{
+  return 2 * css_get_max_workers ();	// not that it matters...
+}
+size_t css_get_max_connections ()
+{
+  return css_get_max_conn () + 1;
+}
+
 static bool
 css_get_connection_thread_pooling_configuration (void)
 {
@@ -3347,6 +3272,12 @@ static bool
 css_get_server_request_thread_pooling_configuration (void)
 {
   return prm_get_bool_value (PRM_ID_THREAD_WORKER_POOLING);
+}
+
+static int
+css_get_server_request_thread_core_count_configruation (void)
+{
+  return prm_get_integer_value (PRM_ID_THREAD_CORE_COUNT);
 }
 
 static cubthread::wait_seconds

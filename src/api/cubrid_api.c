@@ -1,24 +1,23 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
-/* 
- * cubrid_api.c - 
+/*
+ * cubrid_api.c -
  */
 
 #include "config.h"
@@ -78,7 +77,7 @@ do {                          \
 /* ------------------------------------------------------------------------- */
 
 /*
- * ci_create_connection - 
+ * ci_create_connection -
  *    return:
  *    conn():
  */
@@ -89,7 +88,7 @@ ci_create_connection (CI_CONNECTION * conn)
 }
 
 /*
- * ci_conn_connect - 
+ * ci_conn_connect -
  *    return:
  *    conn():
  *    host():
@@ -119,7 +118,7 @@ ci_conn_connect (CI_CONNECTION conn, const char *host, unsigned short port, cons
 }
 
 /*
- * ci_conn_close - 
+ * ci_conn_close -
  *    return:
  *    conn():
  */
@@ -149,7 +148,7 @@ ci_conn_close (CI_CONNECTION conn)
 }
 
 /*
- * ci_conn_create_statement - 
+ * ci_conn_create_statement -
  *    return:
  *    conn():
  *    stmt():
@@ -170,7 +169,7 @@ ci_conn_create_statement (CI_CONNECTION conn, CI_STATEMENT * stmt)
 }
 
 /*
- * ci_conn_set_option - 
+ * ci_conn_set_option -
  *    return:
  *    conn():
  *    option():
@@ -199,7 +198,7 @@ ci_conn_set_option (CI_CONNECTION conn, CI_CONNECTION_OPTION option, void *arg, 
 }
 
 /*
- * ci_conn_get_option - 
+ * ci_conn_get_option -
  *    return:
  *    conn():
  *    option():
@@ -228,7 +227,7 @@ ci_conn_get_option (CI_CONNECTION conn, CI_CONNECTION_OPTION option, void *arg, 
 }
 
 /*
- * ci_conn_commit - 
+ * ci_conn_commit -
  *    return:
  *    conn():
  */
@@ -248,7 +247,7 @@ ci_conn_commit (CI_CONNECTION conn)
 }
 
 /*
- * ci_conn_rollback - 
+ * ci_conn_rollback -
  *    return:
  *    conn():
  */
@@ -268,7 +267,7 @@ ci_conn_rollback (CI_CONNECTION conn)
 }
 
 /*
- * ci_conn_get_error - 
+ * ci_conn_get_error -
  *    return:
  *    conn():
  *    err():
@@ -297,7 +296,7 @@ ci_conn_get_error (CI_CONNECTION conn, int *err, char *msg, size_t size)
 }
 
 /*
- * ci_stmt_close - 
+ * ci_stmt_close -
  *    return:
  *    stmt():
  */
@@ -334,7 +333,7 @@ ci_stmt_close (CI_STATEMENT stmt)
 }
 
 /*
- * ci_stmt_add_batch_query - 
+ * ci_stmt_add_batch_query -
  *    return:
  *    stmt():
  *    sql():
@@ -362,7 +361,7 @@ ci_stmt_add_batch_query (CI_STATEMENT stmt, const char *sql, size_t len)
 }
 
 /*
- * ci_stmt_add_batch - 
+ * ci_stmt_add_batch -
  *    return:
  *    stmt():
  */
@@ -382,7 +381,7 @@ ci_stmt_add_batch (CI_STATEMENT stmt)
 }
 
 /*
- * ci_stmt_clear_batch - 
+ * ci_stmt_clear_batch -
  *    return:
  *    stmt():
  */
@@ -402,7 +401,7 @@ ci_stmt_clear_batch (CI_STATEMENT stmt)
 }
 
 /*
- * ci_stmt_execute_immediate - 
+ * ci_stmt_execute_immediate -
  *    return:
  *    stmt():
  *    sql():
@@ -433,7 +432,7 @@ ci_stmt_execute_immediate (CI_STATEMENT stmt, char *sql, size_t len, CI_RESULTSE
 
 
 /*
- * ci_stmt_execute - 
+ * ci_stmt_execute -
  *    return:
  *    stmt():
  *    rs():
@@ -461,7 +460,7 @@ ci_stmt_execute (CI_STATEMENT stmt, CI_RESULTSET * rs, int *r)
 }
 
 /*
- * ci_stmt_execute_batch - 
+ * ci_stmt_execute_batch -
  *    return:
  *    stmt():
  *    br():
@@ -488,7 +487,7 @@ ci_stmt_execute_batch (CI_STATEMENT stmt, CI_BATCH_RESULT * br)
 }
 
 /*
- * ci_stmt_get_option - 
+ * ci_stmt_get_option -
  *    return:
  *    stmt():
  *    option():
@@ -517,7 +516,7 @@ ci_stmt_get_option (CI_STATEMENT stmt, CI_STATEMENT_OPTION option, void *arg, si
 }
 
 /*
- * ci_stmt_set_option - 
+ * ci_stmt_set_option -
  *    return:
  *    stmt():
  *    option():
@@ -546,7 +545,7 @@ ci_stmt_set_option (CI_STATEMENT stmt, CI_STATEMENT_OPTION option, void *arg, si
 }
 
 /*
- * ci_stmt_prepare - 
+ * ci_stmt_prepare -
  *    return:
  *    stmt():
  *    sql():
@@ -574,7 +573,7 @@ ci_stmt_prepare (CI_STATEMENT stmt, const char *sql, size_t len)
 }
 
 /*
- * ci_stmt_register_out_parameter - 
+ * ci_stmt_register_out_parameter -
  *    return:
  *    stmt():
  *    index():
@@ -601,7 +600,7 @@ ci_stmt_register_out_parameter (CI_STATEMENT stmt, int index)
 }
 
 /*
- * ci_stmt_get_resultset_metadata - 
+ * ci_stmt_get_resultset_metadata -
  *    return:
  *    stmt():
  *    r():
@@ -628,7 +627,7 @@ ci_stmt_get_resultset_metadata (CI_STATEMENT stmt, CI_RESULTSET_METADATA * r)
 }
 
 /*
- * ci_stmt_get_parameter_metadata - 
+ * ci_stmt_get_parameter_metadata -
  *    return:
  *    stmt():
  *    r():
@@ -655,7 +654,7 @@ ci_stmt_get_parameter_metadata (CI_STATEMENT stmt, CI_PARAMETER_METADATA * r)
 }
 
 /*
- * ci_stmt_get_parameter - 
+ * ci_stmt_get_parameter -
  *    return:
  *    stmt():
  *    index():
@@ -688,7 +687,7 @@ ci_stmt_get_parameter (CI_STATEMENT stmt, int index, CI_TYPE type, void *addr, s
 }
 
 /*
- * ci_stmt_set_parameter - 
+ * ci_stmt_set_parameter -
  *    return:
  *    stmt():
  *    index():
@@ -718,7 +717,7 @@ ci_stmt_set_parameter (CI_STATEMENT stmt, int index, CI_TYPE type, void *val, si
 }
 
 /*
- * ci_stmt_get_resultset - 
+ * ci_stmt_get_resultset -
  *    return:
  *    stmt():
  *    res():
@@ -745,7 +744,7 @@ ci_stmt_get_resultset (CI_STATEMENT stmt, CI_RESULTSET * res)
 }
 
 /*
- * ci_stmt_affected_rows - 
+ * ci_stmt_affected_rows -
  *    return:
  *    stmt():
  *    out():
@@ -826,7 +825,7 @@ ci_stmt_get_start_line (CI_STATEMENT stmt, int *line)
 }
 
 /*
- * ci_stmt_next_result - 
+ * ci_stmt_next_result -
  *    return:
  *    stmt():
  *    exist_result():
@@ -853,7 +852,7 @@ ci_stmt_next_result (CI_STATEMENT stmt, bool * exist_result)
 }
 
 /*
- * ci_stmt_get_first_error - 
+ * ci_stmt_get_first_error -
  *    return:
  *    stmt():
  *    line():
@@ -884,7 +883,7 @@ ci_stmt_get_first_error (CI_STATEMENT stmt, int *line, int *col, int *errcode, c
 }
 
 /*
- * ci_stmt_get_next_error - 
+ * ci_stmt_get_next_error -
  *    return:
  *    stmt():
  *    line():
@@ -915,7 +914,7 @@ ci_stmt_get_next_error (CI_STATEMENT stmt, int *line, int *col, int *errcode, ch
 }
 
 /*
- * ci_res_get_resultset_metadata - 
+ * ci_res_get_resultset_metadata -
  *    return:
  *    res():
  *    r():
@@ -948,7 +947,7 @@ ci_res_get_resultset_metadata (CI_RESULTSET res, CI_RESULTSET_METADATA * r)
 }
 
 /*
- * ci_res_fetch - 
+ * ci_res_fetch -
  *    return:
  *    res():
  *    offset():
@@ -970,7 +969,7 @@ ci_res_fetch (CI_RESULTSET res, int offset, CI_FETCH_POSITION pos)
 }
 
 /*
- * ci_res_fetch_tell - 
+ * ci_res_fetch_tell -
  *    return:
  *    res():
  *    offset():
@@ -997,7 +996,7 @@ ci_res_fetch_tell (CI_RESULTSET res, int *offset)
 }
 
 /*
- * ci_res_clear_updates - 
+ * ci_res_clear_updates -
  *    return:
  *    res():
  */
@@ -1017,7 +1016,7 @@ ci_res_clear_updates (CI_RESULTSET res)
 }
 
 /*
- * ci_res_delete_row - 
+ * ci_res_delete_row -
  *    return:
  *    res():
  */
@@ -1037,7 +1036,7 @@ ci_res_delete_row (CI_RESULTSET res)
 }
 
 /*
- * ci_res_get_value - 
+ * ci_res_get_value -
  *    return:
  *    res():
  *    index():
@@ -1069,7 +1068,7 @@ ci_res_get_value (CI_RESULTSET res, int index, CI_TYPE type, void *addr, size_t 
 }
 
 /*
- * ci_res_get_value_by_name - 
+ * ci_res_get_value_by_name -
  *    return:
  *    res():
  *    name():
@@ -1102,7 +1101,7 @@ ci_res_get_value_by_name (CI_RESULTSET res, const char *name, CI_TYPE type, void
 }
 
 /*
- * ci_res_update_value - 
+ * ci_res_update_value -
  *    return:
  *    res():
  *    index():
@@ -1132,7 +1131,7 @@ ci_res_update_value (CI_RESULTSET res, int index, CI_TYPE type, void *addr, size
 }
 
 /*
- * ci_res_apply_row - 
+ * ci_res_apply_row -
  *    return:
  *    res():
  */
@@ -1152,7 +1151,7 @@ ci_res_apply_row (CI_RESULTSET res)
 }
 
 /*
- * ci_res_close - 
+ * ci_res_close -
  *    return:
  *    res():
  */
@@ -1172,7 +1171,7 @@ ci_res_close (CI_RESULTSET res)
 }
 
 /*
- * ci_batch_res_query_count - 
+ * ci_batch_res_query_count -
  *    return:
  *    br():
  *    count():
@@ -1199,7 +1198,7 @@ ci_batch_res_query_count (CI_BATCH_RESULT br, int *count)
 }
 
 /*
- * ci_batch_res_get_result - 
+ * ci_batch_res_get_result -
  *    return:
  *    br():
  *    index():
@@ -1258,7 +1257,7 @@ ci_batch_res_get_error (CI_BATCH_RESULT br, int index, int *err_code, char *err_
 }
 
 /*
- * ci_pmeta_get_count - 
+ * ci_pmeta_get_count -
  *    return:
  *    pmeta():
  *    count():
@@ -1285,7 +1284,7 @@ ci_pmeta_get_count (CI_PARAMETER_METADATA pmeta, int *count)
 }
 
 /*
- * ci_pmeta_get_info - 
+ * ci_pmeta_get_info -
  *    return:
  *    pmeta():
  *    index():
@@ -1315,7 +1314,7 @@ ci_pmeta_get_info (CI_PARAMETER_METADATA pmeta, int index, CI_PMETA_INFO_TYPE ty
 }
 
 /*
- * ci_rmeta_get_count - 
+ * ci_rmeta_get_count -
  *    return:
  *    rmeta():
  *    count():
@@ -1372,7 +1371,7 @@ ci_rmeta_get_info (CI_RESULTSET_METADATA rmeta, int index, CI_RMETA_INFO_TYPE ty
 }
 
 /*
- * ci_oid_delete - 
+ * ci_oid_delete -
  *    return:
  *    oid():
  */
@@ -1402,7 +1401,7 @@ ci_oid_delete (CI_OID * oid)
 }
 
 /*
- * ci_oid_get_classname - 
+ * ci_oid_get_classname -
  *    return:
  *    oid():
  *    name():
@@ -1434,7 +1433,7 @@ ci_oid_get_classname (CI_OID * oid, char *name, size_t size)
 }
 
 /*
- * ci_oid_get_resultset - 
+ * ci_oid_get_resultset -
  *    return:
  *    oid():
  *    rs():
@@ -1469,7 +1468,7 @@ ci_oid_get_resultset (CI_OID * oid, CI_RESULTSET * rs)
 }
 
 /*
- * ci_collection_new - 
+ * ci_collection_new -
  *    return:
  *    conn():
  *    coll():
@@ -1495,7 +1494,7 @@ ci_collection_new (CI_CONNECTION conn, CI_COLLECTION * coll)
 }
 
 /*
- * ci_collection_free - 
+ * ci_collection_free -
  *    return:
  *    coll():
  */
@@ -1522,7 +1521,7 @@ ci_collection_free (CI_COLLECTION coll)
 }
 
 /*
- * ci_collection_length - 
+ * ci_collection_length -
  *    return:
  *    coll():
  *    length():
@@ -1553,7 +1552,7 @@ ci_collection_length (CI_COLLECTION coll, long *length)
 }
 
 /*
- * ci_collection_insert - 
+ * ci_collection_insert -
  *    return:
  *    coll():
  *    pos():
@@ -1585,7 +1584,7 @@ ci_collection_insert (CI_COLLECTION coll, long pos, CI_TYPE type, void *ptr, siz
 }
 
 /*
- * ci_collection_update - 
+ * ci_collection_update -
  *    return:
  *    coll():
  *    pos():
@@ -1617,7 +1616,7 @@ ci_collection_update (CI_COLLECTION coll, long pos, CI_TYPE type, void *ptr, siz
 }
 
 /*
- * ci_collection_delete - 
+ * ci_collection_delete -
  *    return:
  *    coll():
  *    pos():
@@ -1646,7 +1645,7 @@ ci_collection_delete (CI_COLLECTION coll, long pos)
 }
 
 /*
- * ci_collection_get_elem_domain_info - 
+ * ci_collection_get_elem_domain_info -
  *    return:
  *    coll():
  *    pos():
@@ -1678,7 +1677,7 @@ ci_collection_get_elem_domain_info (CI_COLLECTION coll, long pos, CI_TYPE * type
 }
 
 /*
- * ci_collection_get - 
+ * ci_collection_get -
  *    return:
  *    coll():
  *    pos():

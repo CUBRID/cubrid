@@ -1,3 +1,20 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
 // ParseStatus.cpp: implementation of the CParseStatus class.
 //
 //////////////////////////////////////////////////////////////////////
@@ -80,7 +97,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 
 	if( !sResult )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -97,7 +114,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -108,7 +125,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 	{
 		delete sTmp;
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -120,7 +137,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 		delete sStrRes;
 		delete sTmp;
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -148,7 +165,7 @@ DBNAME_Ptr CParseStatus::pGetDBList( )
 
 	delete sTmp;
 	delete sResult;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 	delete cReg;
 
@@ -250,7 +267,7 @@ bool CParseStatus::bStatusUniCAS()
 
 	if( !sResult )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -263,14 +280,14 @@ bool CParseStatus::bStatusUniCAS()
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return false;
 	}
 
 	delete sResult;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 	delete cReg;
 	return true;
@@ -313,7 +330,7 @@ bool CParseStatus::bStatusMaster()
 
 	if( !sResult )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -326,14 +343,14 @@ bool CParseStatus::bStatusMaster()
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return false;
 	}
 
 	delete sResult;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 	delete cReg;
 	return true;
@@ -361,7 +378,7 @@ bool CParseStatus::bStatusServer()
 
 	if( !sResult )
 	{
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return NULL;
@@ -374,14 +391,14 @@ bool CParseStatus::bStatusServer()
 	if( !sTmp )
 	{
 		delete sResult;
-		delete sFullName;
+		delete[] sFullName;
 		delete sPath;
 		delete cReg;
 		return false;
 	}
 
 	delete sResult;
-	delete sFullName;
+	delete[] sFullName;
 	delete sPath;
 	delete cReg;
 	return true;

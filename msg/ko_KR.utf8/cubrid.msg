@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -25,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 저작권 정보\n
 5 '%1$s'은(는) integer 인자 값이 아닙니다.
 6 '%1$s'은(는) floating 인자 값이 아닙니다.
@@ -184,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 데이터베이스 "%1$s" 이(가) 없거나, 파일 "databases.txt"를 액세스할 수 없습니다.
 117 데이터베이스에 대한 절대 경로가 너무 깁니다. 경로 "%1$s"와 이름 "%2$s"을(를) 합한 길이는 %3$d 으로, 이는 %4$d 보다 작아야 합니다.
 118 현재 작업 디렉터리를 정할 수 없습니다.
-119 로컬 호스트 이름을 찾을 수 없습니다.
+119 /etc/hosts에서 ("%1$s")를 찾을 수 없습니다. /etc/hosts의 권한 또는 호스트명이 있는지 확인해주세요.
 120 볼륨의 최대 개수(%1$d)를 초과했습니다.
 121 데이터베이스의 영구 볼륨 "%1$s"을(를) 제거하려고 합니다.
 122 시스템 메시지 카탈로그를 사용할 수 없습니다. 
@@ -415,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 master 서버와의 pipe를 생성할 수 없습니다.
 348 service나 포트 번호를 명시해야 합니다.
 349 알 수 없는 TCP 서비스 입니다: %1$s.
-350 호스트 "%1$s"의 이름을 이용하여 호스트를 찾을 수 없습니다.
+350 /etc/hosts에서 ("%1$s")를 찾을 수 없습니다. /etc/hosts의 권한 또는 호스트명이 있는지 확인해주세요.
 351 TCP socket을 생성할 수 없습니다.
 352 tcp_open: 예약된 TCP 포트를 얻을 수 없습니다.
 353 호스트 "%1$s"의 master 서버에 접속할 수 없습니다.
@@ -903,7 +904,7 @@ $ LOADDB
 834 to_number() 함수에 주어진 source 문자열 "%1$s"과 format 문자열 "%2$s"이 매칭되지 않습니다.
 835 정의되지 않은 통계 아이템입니다.
 836 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 시간을 초과하였습니다.
-837 데이터베이스 객체(클래스/뷰/트리거/serial 등)을 소유한 사용자는 삭제할 수 없습니다.
+837 데이터베이스 객체(클래스/뷰/트리거/serial/server/synonym 등)을 소유한 사용자는 삭제할 수 없습니다.
 838 동시에 %1$d개를 초과하는 인덱스 스캔을 열 수 없습니다.
 839 "%1$s": 알 수 없는 시스템 파라미터 이거나 값이 잘못되었습니다.
 840 시스템 파라미터 "%1$s"를 바꿀 수 없습니다.
@@ -987,7 +988,7 @@ $ LOADDB
 918 외래키가 참조하는 클래스 '%1$s'가 존재하지 않습니다.
 919 외래키가 참조하는 클래스 '%1$s'가 기본키를 가지고 있지 않습니다.
 920 외래키 '%1$s'에 기본키 멤버 '%2$s'가 포함되어 있지 않습니다.
-921 외래키 멤버 '%1$s'의 도메인이 기본키 멤버 '%2$s'의 도메인과 다릅니다.
+921 외래키 멤버 '%1$s'의 도메인이 기본키 멤버 '%2$s'의 도메인과 다릅니다. (%3$s: %4$s vs. %5$s)
 922 외래키 '%1$s'는 제약조건에 위배되었습니다. 위배된 값 '%2$s'.
 923 외래키 '%2$s'에 참조되는 기본키 '%1$s'는 삭제할 수 없습니다.
 924 수정/삭제 연산이 외래키 '%1$s'에 의해 제약되었습니다.
@@ -1051,7 +1052,7 @@ $ LOADDB
 982 트랜잭션 %1$d에 인터럽트 설정
 983 해당 테이블에 대해 허용되지 않는 작업이 시도되었습니다. REUSE_OID 옵션이 정의된 테이블 내 레코드를 참조할 수 없습니다.
 984 설정 파일 "%1$s"의 "[%2$s]" 섹션에서 %3$s가 "%4$s"로 설정되어 있으면 "[%5$s]" 섹션에서 "%6$s"로 설정할 수 없습니다. 
-985 "databases.txt"에 다중 호스트가 설정된 경우에는 데이터베이스 연결 문자열에 호스트 이름이 지정되어야 합니다.
+985 "databases.txt"에 다중 호스트가 설정된 경우에는 데이터베이스 연결 문자열에 호스트 이름이 지정되어야 합니다. ex) csql demodb@localhost
 986 CUBRID heartbeat 기능을 시작합니다.
 987 CUBRID heartbeat 기능을 정지합니다.
 988 노드 이벤트: %1$s.
@@ -1194,7 +1195,7 @@ $ LOADDB
 1125 Overflow key 파일이 생성 되었습니다. 클래스 %3$s%4$s의 인덱스 %1$s%2$s. 키: %5$s%6$s.
 1126 새로운 overflow 페이지가 생성 되었습니다. 클래스 %3$s%4$s의 인덱스 %1$s%2$s. 키: %5$s%6$s.
 1127 빈 overflow 페이지가 삭제 되었습니다. 클래스 %3$s%4$s의 인덱스 %1$s%2$s. 키: %5$s%6$s.
-1128 로그 복구가 시작되었습니다. 적용될 로그 개수: %1$lld. 로그 페이지: %2$lld ~ %3$lld.
+1128 로그 복구가 시작되었습니다.
 1129 로그 복구가 완료되었습니다.
 1130 락 횟수가 %1$d 를 초과하여 트랜잭션이 취소되었습니다.
 1131 내부 에러: 볼륨 "%2$s"의 페이지 "%1$d"에 오류가 생겼을 수 있습니다.\n%3$s
@@ -1263,18 +1264,18 @@ $ LOADDB
 1194 클래스 %3$d|%4$d|%5$d 에 대한 잠금이 즉시 부여되지 않았기 때문에 파일 %1$d|%2$d 에 대해서 검사할 수 없습니다.
 1195 CTE의 재귀 부분은 GROUP BY 절이 없는 집계 함수를 포함할 수 없습니다.
 1196 CTE 수행 중에 반복 수행 최대 횟수 %1$d를 초과했습니다.
-1197 Invalid json: %1$s (%2$d)
-1198 A json object must be provided
-1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path
-1201 Json object name cannot be NULL.
-1202 Json PATH "%1$s" does not exist in %2$s
-1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
-1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
-1206 Reserved error for JSON.
-1207 Reserved error for JSON.
-1208 Reserved error for JSON.
+1197 유효하지 않은 json: %1$s (%2$d)
+1198 json 오브젝트가 주어지지 않았습니다
+1199 주어진 JSON 은 JSON schema에 대해 유효하지 않습니다. (스키마 경로: %1$s, 키워드: %2$s, JSON 경로: %3$s)
+1200 유효하지 않은 JSON 경로
+1201 Json 오브젝트 이름으로 NULL은 허용되지 않습니다.
+1202 Json 경로 "%1$s"은 %2$s 내에 존재하지 않습니다.
+1203 경로 %1$s 상에 유효하지 않은 JSON 타입이 있습니다. %2$s 을(를) 기대하지만 %3$s이 주어졌습니다.
+1204 중복된 Json KEY "%1$s"
+1205 유효하지 않은 타입 %1$s. JSON 문서와 호환되는 데이터 타입(STRING 또는 JSON)이어야 합니다.
+1206 Json 경로 "%1$s" 은 Json ARRAY의 원소를 지정하지 않고 있습니다.
+1207 유효하지 않은 JSON 경로. 인덱스가 시스템 파라미터 json_max_array_idx 보다 더 큽니다.
+1208 유효하지 않은 one/all 인자. one/all 인자는 "one", "all" 둘 중의 하나이어야 합니다.
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
@@ -1302,12 +1303,150 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Double Write Buffer is disabled.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1236 Double Write Buffer 는 활성화되지 않았습니다.
+1237 %1$s의 %3$s인 %2$s의 상태를 변경할 수 없습니다.
+1238 JSON_TABLE 컬럼 '%1$s'의 값이 없습니다.
+1239 경로 "%2$s" 상의 JSON "%1$s" 의 값을 JSON_TABLE 컬럼 "%3$s"의 도메인 "%4$s"으로 변환할 수 없습니다.
+1240 상속 계층구조 상의 테이블에 온라인 인덱스를 생성할 수 없습니다.
+1241 해당 XASL 은 재컴파일 되어야 합니다.
+1242 상속 계층구조 상의 테이블에 파티션을 생성할 수 없습니다.
+1243 에러로 인해서 인덱스 로딩이 취소되었습니다.
+1244 shared 속성을 포함한 오브젝트 파일은 CS 모드에서 로딩할 수 없습니다.
+1245 class 속성을 포함한 오브젝트 파일은 CS 모드에서 로딩할 수 없습니다.
+1246 /etc/hosts에서 ("%1$s")의 정보를 확인할 수 없습니다.. /etc/hosts의 권한 또는 호스트명이 있는지 확인해주세요.
+1247 복구 시점(%1$s)은 반드시 백업 시점(%2$s) 이후로 지정해야 합니다. 
+1248 올바른 형식의 키 파일이 아닙니다. : %1$s
+1249 지정된 키를 찾을 수 없습니다 (인덱스: %1$d).
+1250 데이터베이스에 등록된 마스터 키와 정보가 일치하지 않습니다. 등록된 키 인덱스: %1$d
+1251 TDE 암호화를 수행 중에 문제가 발생했습니다.
+1252 TDE 복호화를 수행 중에 문제가 발생했습니다.
+1253 TDE 모듈이 로드 (load)되지 않았습니다.
+1254 키 생성에 실패했습니다.
+1255 TDE 모듈 로드 (load)에 실패했습니다. TDE 기능을 사용할 수 없습니다.\n\
+ 키 파일 (_keys)의 경로와 키 파일이 올바른 키를 포함하고 있는지 확인하세요.
+1256 키 파일 (_keys)을 복사할 수 없습니다. 복사된 데이터베이스에서 TDE 기능을 사용할 수 없습니다.\n
+1257 키 파일 (_keys)을 백업할 수 없습니다. 이 백업볼륨을 통해 복구된 데이터베이스에서 TDE 기능을 사용할 수 없습니다.\n
+1258 데이터베이스에 설정된 키를 "%1$s"에서 찾을 수 없습니다. 백업 볼륨의 키 파일을 참조합니다.
+1259 데이터베이스의 키 파일 "%1$s"를 "$2%s"로 변경합니다.
+1260 키 파일 "%1$s"를 데이터베이스의 키 파일 "%2$s"로 복사합니다.
+1261 복구된 키 파일의 첫번째 키 (키 인덱스: %1$d, 생성 시간: %2$s)가 등록되었습니다.
+1262 키 파일 (_keys)이 가득 찼습니다.
+1263 로그 페이지 (pageid: %1$lld) 암호화에 실패했습니다. 해당 페이지는 더 이상 암호화되지 않습니다.
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
+1284 %1$s 의 기본키는 외래키 참조로 인해 truncate될 수 없습니다.
+1285 외래키 (%1$s) 의 ON DELETE action이 CASCADE가 아니기 때문에 truncate할 수 없습니다.
 
-1240 마지막 에러
+1286 입력한 시간에 맞는 로그 LSA를 찾을 수 없습니다. (입력 시간 : %1$s).
+1287 로그 정보를 추출하는 동안 시간이 초과되었습니다. (경과시간 : %1$d 초, timeout 시간 : %2$d 초)
+1288 내부적으로 지원하지 않는 로그 레코드에 대한 로그 정보는 생성하지 않습니다.
+1289 유효하지 않은 트랜잭션에 대한 로그 정보는 생성하지 않습니다. (trid: %1$d)
+1290 유효하지 않은 로그 LSA (%1$lld|%2$d)입니다. 해당 로그 LSA로 로그 정보를 추출할 수 없습니다.
+1291 로그 정보를 추출하기 위해 서버에 연결할 수 없습니다. 'supplemental_log' 매개변수를 설정하여 다시 시도하십시오.
+1292 (%1$s) 시간에 근사한 로그 LSA를 찾을 수 없습니다. 조정된 시간(%2$s)에 맞춰 로그 LSA를 반환합니다.
+1293 로그 정보를 생성하기 위한 로그 LSA는 현재 NULL을 가리킵니다. 로그 정보를 추출하기 위한 로그 페이지를 가져올 수 없습니다. 
+1294 로그 정보가 생성되었습니다. (유형: "%1$s").
+1295 유효하지 않은 테이블에 대한 로그 정보는 생성하지 않습니다. (class OID : %1$d|%2$d|%3$d)
+
+1296 Log recovery: ANALYSIS 단계가 시작되었습니다.
+1297 Log recovery: REDO 단계가 시작되었습니다. redo할 로그 페이지 수: %1$lld, redo할 로그 레코드 수: %2$lld.
+1298 Log recovery: UNDO 단계가 시작되었습니다. undo할 로그 페이지 수: %1$lld, undo할 트랜잭션 수: %2$d.
+1299 Log recovery: %1$s 단계를 마무리 중입니다.
+1300 Log recovery: %1$s 단계가 끝났습니다.
+1301 Log recovery: %1$s 진행도: (%2$lld/%3$lld), %4$.2f 퍼센트, 경과 시간: %5$.2f (s), 추정 남은 시간: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - 명시된 열의 개수가 올바르지 않습니다.
+1304 dblink - _db_server 카탈로그를 찾을 수 없습니다.
+1305 dblink - "%1$s" 서버를 찾을 수 없습니다.
+1306 dblink - "%1$s" 서버는 이미 존재합니다.
+1307 dblink - 서버 객체에 대한 소유권이 없습니다.
+1308 dblink - %1$s 타입은 지원하지 않습니다.
+1309 dblink - 유효하지 않은 바인드 파라메터입니다.
+1310 dblink - 암호화할 비밀번호의 길이가 최댓값을 넘어섰습니다.
+1311 dblink - 암호화된 비밀번호의 길이가 올바르지 않습니다.
+1312 dblink - 암호화된 비밀번호의 체크섬이 일치하지 않습니다.
+1313 dblink - 암호 문자열의 형식이 올바르지 않습니다.
+1314 dblink - 암호화된 비밀번호를 복호화하는 데 실패했습니다.. error=%1$d".
+1315 dblink - 비밀번호를 암호화하는 데 실패했습니다. error=%1$d".
+1316 dblink - 이름이 "%1$s"인 서버가 여러 개 있습니다.
+1317 dblink - 소유권을 갖는 "%1$s" 서버가 없습니다. 
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 매개 변수 바인딩 오류.
+1320 잘못된 ODBC Handle 입니다.
+1321 데이터 형식 변환 오류.
+1322 %1$s(%2$d) 타입은 지원하지 않습니다.
+1323 잘못된 Statement Handle 입니다.
+1324 Connection Handle이 잘못되었습니다.
+1325 Connection URL이 존재하지 않습니다.
+1326 유효하지 않은 Numeric 값입니다.
+1327 "%1$s" 열의 정밀도 값이 잘못되었습니다.
+
+1328 잘못된 Descriptor Handle 입니다.
+1329 지원하지 않는 DBMS 입니다.
+1330 환경 핸들을 할당할 수 없습니다.
+1331 NULL 열 바인더가 참조되었습니다.
+
+1332 액티브 로그 볼륨 (%1$s)에서 문제를 발견할 수 없어 재생성할 수 없습니다. 액티브 로그 볼륨을 제거할 경우에 예측할 수 없는 문제가 발생할 수 있으며, 되돌릴 수 없습니다.
+
+1333 플래시백을 시작할 시간(%1$s)이 잘못되었습니다. 플래시백 시작 시간을 (%2$s)와 (%3$s) 사이로 설정해야 합니다.
+1334 플래시백 할 클래스를 찾을 수 없습니다(%1$s).
+1335 플래시백 할 트랜잭션이 너무 많습니다. %1$d개 미만의 트랜잭션이 플래시백될 수 있습니다.
+1336 클래스의 스키마가 변경되어 해당 클래스에 대하여 플래시백을 지원할 수 없습니다(클래스 명: %1$s, OID: %2$d|%3$d|%4$d).
+1337 아카이브 로그 볼륨이 삭제되어 해당 로그 레코드가 존재하지 않습니다(lsa : %1$lld|%2$d).
+1338 플래시백이 이미 실행 중입니다. 플래시백은 동시에 두 명 이상의 사용자가 실행할 수 없습니다.
+
+1339 Stored Procedure에서 지원하지 않는 인수 타입입니다: %1$s
+1340 Stored Procedure에서 지원하지 않는 결과 타입입니다: %1$s
+
+1341 권한 부여 내부 함수에 잘못된 인자 발생.
+1342 AUTO_INCREMENT는 소유자 변경을 허용하지 않습니다.
+1343 RENAME은 소유자 변경을 허용하지 않습니다.
+1344 DBA, DBA 그룹의 구성원 및 소유자가 CREATE SERIAL을 수행할 수 있습니다.
+1345 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TRIGGER를 수행할 수 있습니다.
+
+1346 공개 동의어 "%1$s"이(가) 이미 존재합니다.
+1347 공개 동의어 "%1$s"이(가) 존재하지 않습니다.
+1348 동의어 "%1$s"이(가) 이미 존재합니다.
+1349 동의어 "%1$s"이(가) 존재하지 않습니다.
+1350 잘못된 Synonym 값입니다.
+
+1351 함수 표현식 문자열의 최대 길이는 %1$d이어야 합니다.
+
+1352 명시된 열의 개수가 올바르지 않습니다.
+
+1353 CAS 내부 에러 : %1$d 
+1354 CAS 내부 에러 : %1$d, %2$s
+
+1355 "%4$s"파일 %3$d번째 줄에서 %1$s "%2$s" 은(는) 잘못된 형식입니다.
+1356 "%3$s 파일 %2$d번째 줄에서 호스트 명 "%1$s"은(는) 너무 깁니다, 호스트 명의 길이는 256자 보다 작거나 같아야 합니다.
+1357 "%3$s" 파일 %2$d번째 줄에서 호스트 명 "%1$s"은(는) 이미 있습니다. 하나의 호스트 명은(는) 중복되어 다른 IP 주소를 가질 수 없습니다. 
+1358 "%2$s" 파일 %1$d번째 줄에서 IP 주소와 호스트 명 둘 다 완전하게 작성되어야 합니다.
+1359 cubrid_hosts.conf 파일에서 "%1$s"을(를) 찾을 수 없습니다.
+1360 user defined host를 사용하는 도중에 에러가 발생하였습니다.
+
+1361 파일 "%1$s"을(를) 찾을 수 없습니다.
+
+1362 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1463,7 +1602,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 잘못된 형식의 sessiontimezone\n sessiontimezone
 126 테이블과 뷰 커맨트의 최대 길이는 %1$d 바이트입니다.
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
-128 Invalid number of arguments for JSON_OBJECTAGG
+128 JSON_OBJECTAGG 인자의 갯수가 잘못되었습니다.
+129 PARALLEL 인자 값은 %1$d에서 %2$d까지 허용됩니다.
+130 dblink - Server name cannot contain periods.
+131 잘못된 형식의 alter synonym 구문입니다.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 잘못된 형식의 create synonym 구문입니다.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 잘못된 형식의 drop synonym 구문입니다.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 잘못된 형식의 rename synonym 구문입니다.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 ALTER SYNONYM에 대해 지정된 옵션이 없습니다.
+136 Server의 DBNAME 최대 길이는 %1$d 바이트입니다.
+137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -1766,6 +1914,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 재귀 CTE  '%1$s’는 재귀 질의에서 직접 참조되어야 합니다.
 299 CTE '%1$s’의 에러: 비재귀 부분과 재귀 부분은 반드시 UNION ALL로 연결되어야 합니다.
 300 DEFAULT 절에 부질의는 허용되지 않습니다.
+301 함수 %1$s()에 대한 정의를 찾을 수 없습니다.
+302 호환되지 않는 데이터 타입 %1$s, %2$s을 기대합니다.
+303 잘못된 인자 갯수 %1$d.
+304 함수 %1$s()에 대해 호환되는 함수 정의를 찾을 수 없습니다.
+305 함수 인자와 함수 정의 %1$s 은 호환되지 않습니다.
+306 dblink - 필수 정보가 누락되었습니다.
+307 dblink - %1$s 타입은 지원하지 않습니다.
+308 DBA, DBA 그룹의 구성원 및 소유자가 CREATE TABLE/VIEW를 수행할 수 있습니다.
+309 잘못된 동의어 이름 "%1$s".\n  시스템 클래스/뷰 이름은 동의어 이름이 될 수 없습니다.
+310 DBA, DBA 그룹의 구성원 및 소유자가 %1$s을(를) 수행할 수 있습니다.
+311 공개 동의어 "%1$s"이(가) 이미 존재합니다.
+312 공개 동의어 "%1$s"이(가) 존재하지 않습니다.
+313 동의어 "%1$s"이(가) 이미 존재합니다.
+314 동의어 "%1$s"이(가) 존재하지 않습니다.
+315 이름 바꾸기는 소유자를 변경할 수 없습니다.
+316 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
@@ -1848,6 +2012,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 유효하지 않은 Isolation 수준: %1$s 스키마, %2$s 객체.
 80 트랜잭션 격리도는 'read committed', 'repeatable read', 'serializable' 중의 하나여야 합니다.
 81 '%1$s'은 auto_increment 객체로서 serial 객체처럼 변경할 수 없습니다.
+82 유효하지 않은 JSON: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 잘못된 캐시 ***

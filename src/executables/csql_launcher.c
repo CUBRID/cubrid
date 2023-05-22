@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -119,6 +118,7 @@ main (int argc, char *argv[])
   CSQL_ARGUMENT csql_arg;
   DSO_HANDLE util_library;
   CSQL csql;
+  int check_output_style = 0;
   bool explicit_single_line = false;
 
   GETOPT_LONG csql_option[] = {
@@ -137,11 +137,17 @@ main (int argc, char *argv[])
     {CSQL_NO_PAGER_L, 0, 0, CSQL_NO_PAGER_S},
     {CSQL_NO_SINGLE_LINE_L, 0, 0, CSQL_NO_SINGLE_LINE_S},
     {CSQL_SYSADM_L, 0, 0, CSQL_SYSADM_S},
+    {CSQL_SYSADM_REBUILD_CATALOG_L, 0, 0, CSQL_SYSADM_REBUILD_CATALOG_S},
     {CSQL_WRITE_ON_STANDBY_L, 0, 0, CSQL_WRITE_ON_STANDBY_S},
     {CSQL_STRING_WIDTH_L, 1, 0, CSQL_STRING_WIDTH_S},
     {CSQL_NO_TRIGGER_ACTION_L, 0, 0, CSQL_NO_TRIGGER_ACTION_S},
     {CSQL_PLAIN_OUTPUT_L, 0, 0, CSQL_PLAIN_OUTPUT_S},
     {CSQL_SKIP_COL_NAMES_L, 0, 0, CSQL_SKIP_COL_NAMES_S},
+    {CSQL_SKIP_VACUUM_L, 0, 0, CSQL_SKIP_VACUUM_S},
+    {CSQL_QUERY_OUTPUT_L, 0, 0, CSQL_QUERY_OUTPUT_S},
+    {CSQL_QUERY_COLUMN_DELIMITER_L, 1, 0, CSQL_QUERY_COLUMN_DELIMITER_S},
+    {CSQL_QUERY_COLUMN_ENCLOSURE_L, 1, 0, CSQL_QUERY_COLUMN_ENCLOSURE_S},
+    {CSQL_LOADDB_OUTPUT_L, 0, 0, CSQL_LOADDB_OUTPUT_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -151,6 +157,11 @@ main (int argc, char *argv[])
   csql_arg.single_line_execution = true;
   csql_arg.string_width = 0;
   csql_arg.trigger_action_flag = true;
+  csql_arg.plain_output = false;
+  csql_arg.query_output = false;
+  csql_arg.loaddb_output = false;
+  csql_arg.column_delimiter = -1;
+  csql_arg.column_enclosure = -1;
   utility_make_getopt_optstring (csql_option, option_string);
 
   while (1)
@@ -247,6 +258,10 @@ main (int argc, char *argv[])
 	  csql_arg.sysadm = true;
 	  break;
 
+	case CSQL_SYSADM_REBUILD_CATALOG_S:
+	  csql_arg.sysadm_rebuild_catalog = true;
+	  break;
+
 	case CSQL_WRITE_ON_STANDBY_S:
 	  csql_arg.write_on_standby = true;
 	  break;
@@ -278,6 +293,59 @@ main (int argc, char *argv[])
 	  csql_arg.skip_column_names = true;
 	  break;
 
+	case CSQL_SKIP_VACUUM_S:
+	  csql_arg.skip_vacuum = true;
+	  break;
+
+	case CSQL_QUERY_OUTPUT_S:
+	  csql_arg.query_output = true;
+	  break;
+
+	case CSQL_QUERY_COLUMN_DELIMITER_S:
+	  {
+	    int len = strlen (optarg);
+
+	    if (len == 1)
+	      {
+		csql_arg.column_delimiter = optarg[0];
+	      }
+	    else if (len >= 2 && optarg[0] == '\\')
+	      {
+		if (optarg[1] == 't')
+		  {
+		    csql_arg.column_delimiter = '\t';
+		  }
+		else if (optarg[1] == 'n')
+		  {
+		    csql_arg.column_delimiter = '\n';
+		  }
+		else
+		  {
+		    csql_arg.column_delimiter = optarg[1];
+		  }
+	      }
+	    else
+	      {
+		csql_arg.column_delimiter = ',';
+	      }
+	  }
+	  break;
+
+	case CSQL_QUERY_COLUMN_ENCLOSURE_S:
+	  if (strlen (optarg) >= 1)
+	    {
+	      csql_arg.column_enclosure = optarg[0];
+	    }
+	  else
+	    {
+	      csql_arg.column_enclosure = '\'';
+	    }
+	  break;
+
+	case CSQL_LOADDB_OUTPUT_S:
+	  csql_arg.loaddb_output = true;
+	  break;
+
 	case VERSION_S:
 	  utility_csql_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_CSQL_NAME, PRODUCT_STRING);
 	  goto exit_on_end;
@@ -306,9 +374,62 @@ main (int argc, char *argv[])
     {
       csql_arg.skip_column_names = false;
       csql_arg.plain_output = false;
+      csql_arg.query_output = false;
+      csql_arg.loaddb_output = false;
     }
 
-  if (csql_arg.sysadm && (csql_arg.user_name == NULL || strcasecmp (csql_arg.user_name, "DBA")))
+  if (csql_arg.plain_output == true)
+    {
+      check_output_style++;
+    }
+
+  if (csql_arg.query_output == true)
+    {
+      if (csql_arg.column_delimiter == -1)
+	{
+	  csql_arg.column_delimiter = ',';
+	}
+
+      if (csql_arg.column_enclosure == -1)
+	{
+	  csql_arg.column_enclosure = '\'';
+	}
+      check_output_style++;
+    }
+  else if (csql_arg.column_delimiter != -1 || csql_arg.column_enclosure != -1)
+    {
+      /* delimiter and enclosure can only use with query_output option */
+      goto print_usage;
+    }
+
+  if (csql_arg.loaddb_output == true)
+    {
+      csql_arg.column_delimiter = ' ';
+      csql_arg.column_enclosure = '\'';
+      check_output_style++;
+    }
+
+  if (check_output_style > 1)
+    {
+      /* can't use -p, -q, and --loaddb-output together */
+      goto print_usage;
+    }
+
+  if (csql_arg.sysadm_rebuild_catalog)
+    {
+      if (!csql_arg.sa_mode)
+	{
+	  goto print_usage;
+	}
+
+      if (csql_arg.in_file_name == NULL && csql_arg.command == NULL)
+	{
+	  goto print_usage;
+	}
+    }
+
+  if ((csql_arg.sysadm || csql_arg.sysadm_rebuild_catalog)
+      && (csql_arg.user_name == NULL || strcasecmp (csql_arg.user_name, "DBA")))
     {
       /* sysadm is allowed only to DBA */
       goto print_usage;
@@ -320,9 +441,14 @@ main (int argc, char *argv[])
       goto print_usage;
     }
 
-  if (csql_arg.sa_mode && csql_arg.cs_mode)
+  if (csql_arg.sa_mode && (csql_arg.cs_mode || csql_arg.write_on_standby))
     {
       /* Don't allow both at once. */
+      goto print_usage;
+    }
+  else if (!csql_arg.sa_mode && csql_arg.skip_vacuum)
+    {
+      /* Don't allow to skip vacuum on CS mode */
       goto print_usage;
     }
   else if (explicit_single_line && csql_arg.single_line_execution == false)

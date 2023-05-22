@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -83,6 +82,101 @@
     { \
       error = code; \
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 4, arg1, arg2, arg3, arg4); \
+    } \
+  while (0)
+
+#define ERROR5(error, code, arg1, arg2, arg3, arg4, arg5) \
+  do \
+    { \
+      error = code; \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, code, 5, arg1, arg2, arg3, arg4, arg5); \
+    } \
+  while (0)
+
+#define ERROR_SET_WARNING(error, code) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, (code), 0); \
+    } \
+  while (0)
+
+#define ERROR_SET_WARNING_1ARG(error, code, arg1) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, (code), 1, (arg1)); \
+    } \
+  while (0)
+
+#define ERROR_SET_WARNING_2ARGS(error, code, arg1, arg2) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, (code), 2, (arg1), (arg2)); \
+    } \
+  while (0)
+
+#define ERROR_SET_WARNING_3ARGS(error, code, arg1, arg2, arg3) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, (code), 3, (arg1), (arg2), (arg3)); \
+    } \
+  while (0)
+
+#define ERROR_SET_WARNING_4ARGS(error, code, arg1, arg2, arg3, arg4) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, (code), 4, (arg1), (arg2), (arg3), (arg4)); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR(error, code) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (code), 0); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR_1ARG(error, code, arg1) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (code), 1, (arg1)); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR_2ARGS(error, code, arg1, arg2) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (code), 2, (arg1), (arg2)); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR_3ARGS(error, code, arg1, arg2, arg3) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (code), 3, (arg1), (arg2), (arg3)); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR_4ARGS(error, code, arg1, arg2, arg3, arg4) \
+  do \
+    { \
+      (error) = (code); \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (code), 4, (arg1), (arg2), (arg3), (arg4)); \
+    } \
+  while (0)
+
+#define ERROR_SET_ERROR_ONLY(code) \
+  do \
+    { \
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (code), 0); \
     } \
   while (0)
 

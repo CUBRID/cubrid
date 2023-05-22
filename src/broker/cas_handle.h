@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -34,6 +33,21 @@
 #else /* CAS_FOR_MYSQL */
 #include "cas_db_inc.h"
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+#if defined(CAS_FOR_CGW)
+/* 
+* If SIZEOF_LONG_INT is not defined in sqltypes.h, build including unixodbc_conf.h.
+* When building including unixodbc_conf.h, "warning: "PACKAGE_STRING" is displayed.
+* So I added the following code before including sqltypes.h to remove of the build warning.
+*/
+#if !defined (SIZEOF_LONG_INT)
+#define SIZEOF_LONG_INT 8
+#endif
+
+#include <sqltypes.h>
+#include <sql.h>
+#include <sqlext.h>
+#endif /* CAS_FOR_CGW */
 
 #define SRV_HANDLE_QUERY_SEQ_NUM(SRV_HANDLE)    \
         ((SRV_HANDLE) ? (SRV_HANDLE)->query_seq_num : 0)
@@ -147,6 +161,16 @@ struct t_query_result
 #endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 };
 
+#if defined (CAS_FOR_CGW)
+typedef struct t_cgw_handle T_CGW_HANDLE;
+struct t_cgw_handle
+{
+  SQLHENV henv;
+  SQLHDBC hdbc;
+  SQLHSTMT hstmt;
+};
+#endif /* CAS_FOR_CGW */
+
 typedef struct t_srv_handle T_SRV_HANDLE;
 struct t_srv_handle
 {
@@ -200,6 +224,12 @@ struct t_srv_handle
 #if defined(CAS_FOR_MYSQL)
   bool has_mysql_last_insert_id;
 #endif				/* CAS_FOR_MYSQL */
+#if defined (CAS_FOR_CGW)
+  T_CGW_HANDLE *cgw_handle;
+  int total_tuple_count;
+  int stmt_type;
+  bool is_cursor_open;
+#endif				/* CAS_FOR_CGW */
 };
 
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num);
@@ -214,6 +244,8 @@ extern void hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void hm_srv_handle_set_pooled (void);
 #endif
+
+extern void hm_set_current_srv_handle (int h_id);
 
 extern int hm_srv_handle_get_current_count (void);
 extern void hm_srv_handle_unset_prepare_flag_all (void);

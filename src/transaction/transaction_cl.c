@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -47,6 +46,7 @@
 #include "work_space.h"
 #include "server_interface.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "db_query.h"
 #include "boot_cl.h"
 #include "virtual_object.h"
@@ -59,6 +59,8 @@
 
 #if defined(WINDOWS)
 #include "wintcp.h"
+#else /* WINDOWS */
+#include "tcp.h"
 #endif /* WINDOWS */
 
 int tm_Tran_index = NULL_TRAN_INDEX;
@@ -84,11 +86,11 @@ int tm_Tran_latest_query_status;
  *
  * 0 means "unlimited", and negative value means "do not calculate timeout".
  *
- * tm_Is_libcas indicates fn_xxx functions called by libcas_main(i.e, JSP).
+ * tm_libcas_depth indicates the depth of callback_xxx functions called by method_callback (Java SP)
  */
 static UINT64 tm_Query_begin = 0;
 static int tm_Query_timeout = 0;
-static bool tm_Is_libcas = false;
+static int tm_libcas_depth = 0;
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:
@@ -383,6 +385,8 @@ tran_commit (bool retain_lock)
 
   tran_reset_latest_query_status ();
 
+  tran_reset_libcas_function ();
+
   return error_code;
 }
 
@@ -410,7 +414,7 @@ tran_abort (void)
   int error_code = NO_ERROR;
   bool query_end_notify_server;
 
-  /* 
+  /*
    * inform the trigger manager of the event, triggers can't prevent a
    * rollback, might not want to do this if we're being unilaterally
    * aborted ?
@@ -497,6 +501,8 @@ tran_abort (void)
 
   tran_reset_latest_query_status ();
 
+  tran_reset_libcas_function ();
+
   return error_code;
 }
 
@@ -514,7 +520,7 @@ tran_unilaterally_abort (void)
 {
   int error_code = NO_ERROR;
   char user_name[L_cuserid + 1];
-  char host[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
   int pid;
 
   /* Get the user name, host, and process identifier */
@@ -522,7 +528,7 @@ tran_unilaterally_abort (void)
     {
       strcpy (user_name, "(unknown)");
     }
-  if (GETHOSTNAME (host, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (host, CUB_MAXHOSTNAMELEN) != 0)
     {
       /* unknown error */
       strcpy (host, "(unknown)");
@@ -912,7 +918,7 @@ tran_2pc_prepare_global_tran (int gtrid)
       break;
 
     case TRAN_UNACTIVE_COMMITTED:
-      /* 
+      /*
        * The transaction was committed. There is not a need for 2PC prepare.
        * This could happen for read only transactions
        */
@@ -1034,7 +1040,7 @@ tran_free_list_upto_savepoint (const char *savept_name)
     }
 
   /* not 'found' is not necessarily an error.  We may be rolling back to a system-defined savepoint rather than a
-   * user-defined savepoint.  In that case, the name would not appear on the user savepoint list and the list should be 
+   * user-defined savepoint.  In that case, the name would not appear on the user savepoint list and the list should be
    * preserved.  We should be able to guarantee that any rollback to a system-defined savepoint will affect only the
    * latest atomic command and not overlap any user-defined savepoint.  That is, system invoked partial rollbacks
    * should never rollback farther than the last user-defined savepoint. */
@@ -1207,7 +1213,7 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE s
   /* tell the schema manager to flush any transaction caches */
   sm_transaction_boundary ();
 
-  /* 
+  /*
    * We need to start all over since we do not know what set of objects are
    * going to be rolled back.. Thuis, we need to remove any kind of hints
    * cached in the workspace.
@@ -1237,7 +1243,7 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE s
       if (savepoint_type == SYSTEM_SAVEPOINT && state == TRAN_UNACTIVE_UNKNOWN && error_code != NO_ERROR
 	  && !tran_has_updated ())
 	{
-	  /* 
+	  /*
 	   * maybe transaction has been unilaterally aborted by the system
 	   * and ER_LK_UNILATERALLY_ABORTED was overwritten by a consecutive error.
 	   */
@@ -1312,7 +1318,7 @@ tran_get_query_timeout (void)
 void
 tran_begin_libcas_function (void)
 {
-  tm_Is_libcas = true;
+  tm_libcas_depth++;
 }
 
 /*
@@ -1322,7 +1328,18 @@ tran_begin_libcas_function (void)
 void
 tran_end_libcas_function (void)
 {
-  tm_Is_libcas = false;
+  tm_libcas_depth--;
+  assert (tm_libcas_depth >= 0);
+}
+
+/*
+ * tran_reset_libcas_function() -
+ *   return: void
+ */
+void
+tran_reset_libcas_function (void)
+{
+  tm_libcas_depth = 0;
 }
 
 /*
@@ -1332,7 +1349,17 @@ tran_end_libcas_function (void)
 bool
 tran_is_in_libcas (void)
 {
-  return tm_Is_libcas;
+  return tm_libcas_depth > 0;
+}
+
+/*
+ * tran_get_libcas_depth() -
+ *   return: int
+ */
+int
+tran_get_libcas_depth (void)
+{
+  return tm_libcas_depth;
 }
 
 /*
@@ -1409,7 +1436,7 @@ tran_set_latest_query_status (int end_query_result, int tran_state, int should_c
       tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::ABORTED;
     }
 
-  if (should_conn_reset == true)
+  if (should_conn_reset != 0)
     {
       assert (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
 	      || tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);

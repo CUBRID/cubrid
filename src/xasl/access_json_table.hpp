@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -35,7 +34,7 @@
 // forward declarations
 struct db_value;
 struct tp_domain;
-struct regu_variable_node;
+class regu_variable_node;
 class JSON_DOC;
 class JSON_ITERATOR;
 
@@ -61,6 +60,7 @@ namespace cubxasl
 
 	void init ();
 	int evaluate (const JSON_DOC &input, size_t ordinality);
+	void clear_xasl (bool is_final_clear = true);
 
       private:
 	int evaluate_extract (const JSON_DOC &input);
@@ -75,26 +75,22 @@ namespace cubxasl
     {
       char *m_path;
       size_t m_ordinality;                    // will be used to count the row ordinality
-      bool m_need_inc_ordinality;
       column *m_output_columns;   // columns part of output only
       size_t m_output_columns_size;
       node *m_nested_nodes;       // nested nodes
       size_t m_nested_nodes_size;
       size_t m_id;                            // identifier for each node
       JSON_ITERATOR *m_iterator;
-      json_table_expand_type m_expand_type;
+      bool m_is_iterable_node;
 
       node (void);
 
       void init ();
       void clear_columns (bool is_final_clear);
       void clear_iterators (bool is_final_clear);
-      void clear_tree (bool is_final_clear);
-
-      bool check_need_expand () const;
-      static bool str_ends_with (const std::string &str, const std::string &end);
-      void set_parent_path ();
+      void clear_xasl (bool is_final_clear = true);
       void init_iterator ();
+      void init_ordinality ();
     };
 
     struct spec_node
@@ -106,6 +102,7 @@ namespace cubxasl
       spec_node ();
 
       void init ();
+      void clear_xasl (bool is_final_clear = true);
     };
 
   } // namespace json_table

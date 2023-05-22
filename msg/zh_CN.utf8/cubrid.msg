@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -25,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 版权信息\n
 5 非整型参数值 `%1$s'
 6 非浮点型参数值 `%1$s'
@@ -184,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 数据库 "%1$s" 是未知的, 或是文件"databases.txt"无法被访问.
 117 数据库的绝对路径太长. 路径 "%1$s" 加上名字 "%2$s" 的组合长度为 %3$d; 组合的长度必须小于 %4$d.
 118 定位当前工作目录失败.
-119 无法找到本地主机名.
+119 在/etc/hosts中找不到("%1$s")。请检查文件的权限或是否有主机名。
 120 超出了卷 (%1$d) 的最大数目.
 121 试图从数据库删除永久性的卷 "%1$s".
 122 无法访问系统消息目录.
@@ -415,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 无法建立一条到master服务的管道.
 348 必须指定服务或端口标识.
 349 未知的TCP服务: %1$s.
-350 通过主机名 "%1$s" 获取本地主机时错误. 没有找到主机.
+350 在/etc/hosts中找不到("%1$s")。请检查文件的权限或是否有主机名.
 351 无法创建TCP套接字.
 352 tcp_open: 无法得到一个保留的tcp端口.
 353 在主机 "%1$s" 无法创建连到master服务的连接.
@@ -903,7 +904,7 @@ $ LOADDB
 834 在给to_number()的源字符串 "%1$s" 和格式字符串之间 "%2$s" 存在一些匹配不一致.
 835 未定义的统计项目.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 无法删除拥有数据库对象(类/触发器/序列 等等)的用户. 
+837 您不能删除拥有数据库对象(类/触发器/序列/服务器/同义词等)的用户。
 838 无法同时打开多于 %1$d index scans.
 839 "%1$s": 未知的系统参数或错误的值.
 840 无法改变系统参数 "%1$s".
@@ -987,7 +988,7 @@ $ LOADDB
 918 被外键引用的类 '%1$s' 不存在.
 919 被外键引用的类 '%1$s' 没有主键.
 920 外键 '%1$s' 不包含主键成员 '%2$s'.
-921 外键成员 '%1$s' 的domain不同于主键成员 '%2$s'.
+921 外键成员 '%1$s' 的domain不同于主键成员 '%2$s'. (%3$s: %4$s vs. %5$s)
 922 外键 '%1$s' 的约束是无效的, 基于值 '%2$s'.
 923 主键 '%1$s' 被外键 '%2$s' 所引用, 不支持被删除.
 924 Update/Delete 操作被外键 '%1$s' 限制.
@@ -1051,7 +1052,7 @@ $ LOADDB
 982 为事务 %1$d 设置中断.
 983 可重用 OID 类的实例是 non-referable 的. 这项操作在 non-referable 的实例上不被允许.
 984 无法设置 %3$s 为 "%6$s" 在 "[%5$s]" 部分, 当它被设置为 "%4$s" 在 "[%2$s]" section of the configuration file "%1$s".
-985 数据库连接字符串中的主机名应当被指明，当在 "databases.txt" 设定有多个主机时.
+985 数据库连接字符串中的主机名应当被指明，当在 "databases.txt" 设定有多个主机时. ex) csql demodb@localhost
 986 CUBRID heartbeat 函数启动.
 987 CUBRID heartbeat 函数停止.
 988 结点事件: %1$s.
@@ -1194,7 +1195,7 @@ $ LOADDB
 1125 创建溢出键文件. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 创建新的溢出页. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 删除空的溢出页. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 日志恢复已经开始. 已经被应用的日志记录数为: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 日志恢复已经开始.
 1129 日志恢复结束.
 1130 事务被终止, 因为事务锁数超过 %1$d.
 1131 内部错误: 卷 "%2$s" 的页 %1$d 可能被破坏.\n%3$s
@@ -1263,19 +1264,19 @@ $ LOADDB
 1194 无法检查文件 %1$d|%2$d , 因为在类 %3$d|%4$d|%5$d 上的锁未被授权.
 1195 CTE的递归部分不能包含没有GROUP BY子句的聚合函数.
 1196 已达到CTE执行的最大递归次数%1$d.
-1197 Invalid json: %1$s (%2$d)
-1198 A json object must be provided
-1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path
-1201 Json object name cannot be NULL.
+1197 无效的JSON: %1$s (%2$d).
+1198 必须提供一个JSON对象.
+1199 所提供的JSON不符合JSON schema(无效的schema path: %1$s, 关键字: %2$s, 无效的JSON path: %3$s).
+1200 无效的JSON path.
+1201 JSON对象名称不能为NULL.
 
-1202 Json PATH "%1$s" does not exist in %2$s
-1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
-1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
-1206 Reserved error for JSON.
-1207 Reserved error for JSON.
-1208 Reserved error for JSON.
+1202 JSON PATH "%1$s" 在 %2$s 中不存在.
+1203 Path %1$s处的JSON类型无效。期望 %2$s, 实际 %3$s.
+1204 重复的JSON KEY "%1$s".
+1205 无效的类型 %1$s . 期望提供JSON document兼容的数据类型 (STRING 或 JSON).
+1206 JSON PATH "%1$s" 对应的不是JSON ARRAY的元素.
+1207 无效的JSON path. 下标超过了系统参数json_max_array_idx的值.
+1208 one/all 参数无效. one/all参数必须为"one"或"all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
@@ -1303,12 +1304,150 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Double Write Buffer is disabled.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1236 双写缓冲区(Double Write Buffer)被禁用.
+1237 无法更改 %1$s 状态，因为 %2$s 是 %3$s.
+1238 JSON_TABLE '%1$s' 列缺少值.
+1239 无法将路径 "%2$s" 对应的JSON "%1$s" 强制转换为 "%4$s" 域的 "%3$s" JSON_TABLE列.
+1240 在属于层次结构链的类上不允许使用在线索引.
+1241 XASL树需要重新编译.
+1242 无法在属于hierarchy chain的类上创建分区.
+1243 错误后索引加载被中止.
+1244 CS模式下不支持从对象文件中加载SHARED属性更新..
+1245 CS模式下不支持从对象文件中加载类属性更新.
+1246 在/etc/hosts中无法获取("%1$s")的地址和规范名称。请检查文件的权限或是否有主机名。
+1247 被指定的时间 (%1$s) 必须在所指定的备份的时间(%2$s) 之后.
+1248 无效的密钥文件：%1$s
+1249 找不到密钥（索引：%1$d）。
+1250 数据库上设置的主密钥与给定的密钥不匹配。在数据库上设置的键索引：%1$d
+1251 TDE加密时出错。
+1252 TDE解密时出错。
+1253 TDE模块未加载。
+1254 无法创建密钥。
+1255 无法加载TDE模块。您不能使用TDE功能。\n\
+检查密钥文件（_keys）的路径，并确保它包含正确的密钥。
+1256 无法复制密钥文件（_keys）。您不能在复制的数据库上使用TDE功能。
+1257 无法备份密钥文件（_keys）。您不能基于此备份卷在还原的数据库上使用TDE功能。
+1258 在%1$s中找不到数据库上的密钥集。将使用备份卷中的密钥文件。
+1259 将密钥文件从“%1$s”重命名为“%2$s”。
+1260 将密钥文件“%1$s”复制到“%2$s”。
+1261 恢复的密钥文件的第一个密钥（密钥索引：%1$d，创建时间：%2$s）已设置。
+1262 密钥文件已满。
+1263 无法对日志页面进行TDE加密（页面ID：%1$lld）。不再尝试加密此页面。
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
+1284 由于在 %1$s 上引用了主键，因此无法截断表。 使用 CASCADE 选项重试。
+1285 无法级联截断，因为外键 (%1$s) 的 ON DELETE 操作未设置为 CASCADE。
 
-1240 最后一个错误.
+1286 在提取时找不到日志 lsa。 （输入时间：%1$s）。
+1287 尝试提取日志信息超时。 （已用时间：%1$d 秒，提取超时：%2$d 秒）
+1288 跳过为内部不支持的日志记录生成日志信息。
+1289 跳过为无效交易生成日志信息。 （三：%1$d）
+1290 提取日志信息的日志 lsa (%1$lld|%2$d) 无效。
+1291 无法连接到服务器以提取日志信息。设置“supplemental_log”参数再试一次。
+1292 当时找不到日志 lsa (%1$s)。日志 lsa 调整到时间 (%2$s)。
+1293 生成日志信息时无法获取日志页面。生成日志信息的日志 lsa 指示 NULL。
+1294 日志信息已生成。 （类型：“%1$s”）。
+1295 跳过为无效表生成日志信息。 （class OID ：%1$d|%2$d|%3$d）
+
+1296 日志恢复: 开始分析阶段。
+1297 日志恢复: REDO阶段开始。 重做日志页面: %1$lld，重做日志记录: %2$lld。
+1298 日志恢复: 启动 UNDE 阶段。 要撤消的日志页面: %1$lld，要撤消的事务处理: %2$d。
+1299 日志恢复: %1$s 阶段已完成。
+1300 日志恢复: %1$s 阶段已完成。
+1301 日志恢复：%1$s 进度：(%2$lld/%3$lld)，%4$.2f 百分比，已用时间：%5$.2f (s)，估计剩余时间：%6$.2f (s)。
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - not supported type %1$s.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 not supported type %1$s(%2$d).
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 A null column binder was referenced.
+
+1332 活动日志卷 (%1$s) 过于健全，无法重新创建。 如果删除活动日志，可能会导致意外且不可逆转的问题。
+
+1333 开始闪回的时间无效 (%1$s)。 时间需要设置在 (%2$s) 和 (%3$s) 之间。
+1334 找不到要闪回的类 (%1$s)。
+1335 闪回的事务太多。 少于 %1$d 笔交易可以被闪回。
+1336 无法支持此类的闪回（名称：%1$s，OID：%2$d|%3$d|%4$d）。 类架构已更改。
+1337 日志记录不存在 (lsa : %1$lld|%2$d)。 存档日志卷已被删除。
+1338 闪回已在运行。 Flashback 不能由多个用户同时运行。
+
+1339 不支持的存储过程的参数类型: %1$s
+1340 不支持的存储过程的返回类型: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
+
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Invalid number of columns specified.
+
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 %1$s "%2$s" 在文件 "%4$s" 的第 %3$d 行的格式无效。
+1356 主机名 "%1$s" 太长，它应该小于或等于文件 "%3$s" 的第 %2$d 行的 256。
+1357 主机名 "%1$s" 已经存在，主机名不能与文件 "%3$s" 的第 %2$d 行的其他 IP 地址重复。
+1358 IP 地址和主机名都必须完全写入文件"%2$s"的第 %1$d 行。
+1359 无法在 cubrid_hosts.conf 中查找"%1$s"。
+1360 使用用户定义的主机时发生错误。
+
+1361 找不到文件"%1$s"。
+
+1362 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1464,7 +1603,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 非法使用 sessiontimezone\n sessiontimezone
 126 一个class或vclass的comment的最大长度是 %1$d 字节.
 127 一个comment的最大长度是 %1$d 字节.
-128 Invalid number of arguments for JSON_OBJECTAGG
+128 JSON_OBJECTAGG参数个数不匹配.
+129 PARALLEL数必须在 %1$d 和 %2$d 之间.
+130 dblink - Server name cannot contain periods.
+131 ALTER SYNONYM 的使用无效.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 CREATE SYNONYM 的使用无效.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 DROP SYNONYM 的使用无效.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 RENAME SYNONYM 的使用无效.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 没有为 ALTER SYNONYM 指定选项。
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
@@ -1767,6 +1915,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 递归的CTE'%1$s'必须直接在其递归查询中引用.
 299 CTE'%1$s'错误: 非递归部分和递归部分必须使用UNION ALL连接.
 300 DEFAULT子句中不允许使用子查询.
+301 没有找到 %1$s() 函数签名.
+302 不兼容的参数类型 %1$s , 期望类型为: %2$s.
+303 为期待的参数个数 %1$d.
+304 没有找到与 %1$s() 函数兼容的签名.
+305 函数签名 %1$s 与函数参数不匹配.
+306 dblink - 缺少必需的信息.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
@@ -1849,6 +2013,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 无效的隔离等级: %1$s 结构(schema), %2$s 实例.
 80 MVCC中的隔离级别值必须是 'read committed', 'repeatable read' 或 'serializable'.
 81 '%1$s' 是一个 'auto_increment' 对象, 不允许改变成一个序列.
+82 无效的JSON: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 无效的缓存 ***

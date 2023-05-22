@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -34,12 +33,14 @@
 #endif /* SERVER_MODE */
 
 #include "config.h"
-
 #include "error_manager.h"
 #include "work_space.h"
 #include "storage_common.h"
 #include "locator.h"
 #include "replication.h"
+
+// forward declarations
+struct log_lsa;
 
 #define ONE_MFLUSH    true
 #define MANY_MFLUSHES false
@@ -123,6 +124,8 @@ extern LIST_MOPS *locator_get_all_nested_mops (MOP mop, int prune_level, DB_FETC
 extern void locator_free_list_mops (LIST_MOPS * mops);
 extern void locator_synch_isolation_incons (void);
 extern void locator_set_sig_interrupt (int set);
+extern int locator_get_sig_interrupt ();
+
 extern MOBJ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid);
 extern MOBJ locator_has_heap (MOP class_mop);
 
@@ -134,7 +137,7 @@ extern int locator_assign_all_permanent_oids (void);
 
 extern int locator_decache_all_lock_instances (MOP class_mop);
 
-extern int locator_get_append_lsa (LOG_LSA * lsa);
+extern int locator_get_append_lsa (struct log_lsa *lsa);
 extern int locator_flush_replication_info (REPL_INFO * repl_info);
 
 extern LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name, OID * class_oid);

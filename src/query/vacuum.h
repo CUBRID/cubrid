@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -31,6 +30,9 @@
 #include "dbtype_def.h"
 #include "disk_manager.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
+#include "log_postpone_cache.hpp"
+#include "porting_inline.hpp"
 #include "recovery.h"
 #include "storage_common.h"
 #include "system_parameter.h"
@@ -85,8 +87,6 @@ enum vacuum_worker_state
   VACUUM_WORKER_STATE_INACTIVE,	/* Vacuum worker is inactive */
   VACUUM_WORKER_STATE_PROCESS_LOG,	/* Vacuum worker processes log data */
   VACUUM_WORKER_STATE_EXECUTE,	/* Vacuum worker executes cleanup based on processed data */
-  VACUUM_WORKER_STATE_TOPOP,	/* Vacuum worker started a system operation. */
-  VACUUM_WORKER_STATE_RECOVERY	/* Vacuum worker needs to be recovered. */
 };
 typedef enum vacuum_worker_state VACUUM_WORKER_STATE;
 
@@ -101,29 +101,12 @@ struct vacuum_heap_object
   OID oid;			/* Object OID. */
 };
 
-enum vacuum_cache_postpone_status
-{
-  VACUUM_CACHE_POSTPONE_NO,
-  VACUUM_CACHE_POSTPONE_YES,
-  VACUUM_CACHE_POSTPONE_OVERFLOW
-};
-typedef enum vacuum_cache_postpone_status VACUUM_CACHE_POSTPONE_STATUS;
-
-typedef struct vacuum_cache_postpone_entry VACUUM_CACHE_POSTPONE_ENTRY;
-struct vacuum_cache_postpone_entry
-{
-  LOG_LSA lsa;
-  char *redo_data;
-};
-#define VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT 10
-
 /* VACUUM_WORKER - Vacuum worker information */
 typedef struct vacuum_worker VACUUM_WORKER;
 struct vacuum_worker
 {
   VACUUM_WORKER_STATE state;	/* Current worker state */
   INT32 drop_files_version;	/* Last checked dropped files version */
-  struct log_tdes *tdes;	/* Transaction descriptor used for system operations. */
 
   /* Buffers that need to be persistent over vacuum jobs (to avoid memory reallocation). */
   struct log_zip *log_zip_p;	/* Zip structure used to unzip log data */
@@ -138,14 +121,6 @@ struct vacuum_worker
   // page buffer private lru list
   int private_lru_index;
 
-  /* Caches postpones to avoid reading them from log after commit top operation with postpone. Otherwise, log critical
-   * section may be required which will slow the access on merged index nodes. */
-  VACUUM_CACHE_POSTPONE_STATUS postpone_cache_status;
-  char *postpone_redo_data_buffer;
-  char *postpone_redo_data_ptr;
-  VACUUM_CACHE_POSTPONE_ENTRY postpone_cached_entries[VACUUM_CACHE_POSTPONE_ENTRIES_MAX_COUNT];
-  int postpone_cached_entries_count;
-
   char *prefetch_log_buffer;	/* buffer for prefetching log pages */
   LOG_PAGEID prefetch_first_pageid;	/* first prefetched log pageid */
   LOG_PAGEID prefetch_last_pageid;	/* last prefetch log pageid */
@@ -157,19 +132,15 @@ struct vacuum_worker
 
 // inline vacuum functions replacing old macros
 STATIC_INLINE VACUUM_WORKER *vacuum_get_vacuum_worker (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool vacuum_is_thread_vacuum (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool vacuum_is_thread_vacuum_worker (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool vacuum_is_thread_vacuum_master (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool vacuum_is_skip_undo_allowed (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE LOG_TDES *vacuum_get_worker_tdes (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool vacuum_is_thread_vacuum (const THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool vacuum_is_thread_vacuum_worker (const THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool vacuum_is_thread_vacuum_master (const THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE VACUUM_WORKER_STATE vacuum_get_worker_state (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void vacuum_set_worker_state (THREAD_ENTRY * thread_p, VACUUM_WORKER_STATE state)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool vacuum_worker_state_is_inactive (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool vacuum_worker_state_is_process_log (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool vacuum_worker_state_is_execute (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool vacuum_worker_state_is_topop (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool vacuum_worker_state_is_recovery (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool vacuum_is_process_log_for_vacuum (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 /* Get vacuum worker from thread entry */
@@ -181,43 +152,24 @@ vacuum_get_vacuum_worker (THREAD_ENTRY * thread_p)
 }
 
 bool
-vacuum_is_thread_vacuum (THREAD_ENTRY * thread_p)
+vacuum_is_thread_vacuum (const THREAD_ENTRY * thread_p)
 {
   assert (thread_p != NULL);
   return thread_p != NULL && (thread_p->type == TT_VACUUM_MASTER || thread_p->type == TT_VACUUM_WORKER);
 }
 
 bool
-vacuum_is_thread_vacuum_worker (THREAD_ENTRY * thread_p)
+vacuum_is_thread_vacuum_worker (const THREAD_ENTRY * thread_p)
 {
   assert (thread_p != NULL);
   return thread_p != NULL && thread_p->type == TT_VACUUM_WORKER;
 }
 
 bool
-vacuum_is_thread_vacuum_master (THREAD_ENTRY * thread_p)
+vacuum_is_thread_vacuum_master (const THREAD_ENTRY * thread_p)
 {
   assert (thread_p != NULL);
   return thread_p != NULL && thread_p->type == TT_VACUUM_MASTER;
-}
-
-/* Is thread a vacuum worker and undo logging can be skipped */
-// todo: is this really needed?
-bool
-vacuum_is_skip_undo_allowed (THREAD_ENTRY * thread_p)
-{
-  if (!vacuum_is_thread_vacuum_worker (thread_p))
-    {
-      return false;
-    }
-  return vacuum_get_worker_state (thread_p) != VACUUM_WORKER_STATE_TOPOP;
-}
-
-/* Get a vacuum worker's transaction descriptor */
-LOG_TDES *
-vacuum_get_worker_tdes (THREAD_ENTRY * thread_p)
-{
-  return vacuum_get_vacuum_worker (thread_p)->tdes;
 }
 
 /* Get a vacuum worker's state */
@@ -252,18 +204,6 @@ vacuum_worker_state_is_execute (THREAD_ENTRY * thread_p)
   return vacuum_get_worker_state (thread_p) == VACUUM_WORKER_STATE_EXECUTE;
 }
 
-bool
-vacuum_worker_state_is_topop (THREAD_ENTRY * thread_p)
-{
-  return vacuum_get_worker_state (thread_p) == VACUUM_WORKER_STATE_TOPOP;
-}
-
-bool
-vacuum_worker_state_is_recovery (THREAD_ENTRY * thread_p)
-{
-  return vacuum_get_worker_state (thread_p) == VACUUM_WORKER_STATE_RECOVERY;
-}
-
 // todo: remove me; check LOG_CS_OWN
 bool
 vacuum_is_process_log_for_vacuum (THREAD_ENTRY * thread_p)
@@ -277,18 +217,18 @@ vacuum_is_process_log_for_vacuum (THREAD_ENTRY * thread_p)
 #define VACUUM_IS_THREAD_VACUUM_MASTER vacuum_is_thread_vacuum_master
 
 extern int vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * vacuum_data_vfid,
-			      VFID * dropped_files_vfid);
+			      VFID * dropped_files_vfid, bool is_restore);
 extern void vacuum_finalize (THREAD_ENTRY * thread_p);
 extern int vacuum_boot (THREAD_ENTRY * thread_p);
-extern void vacuum_stop (THREAD_ENTRY * thread_p);
+extern void vacuum_stop_workers (THREAD_ENTRY * thread_p);
+extern void vacuum_stop_master (THREAD_ENTRY * thread_p);
 extern int xvacuum (THREAD_ENTRY * thread_p);
-extern MVCCID vacuum_get_global_oldest_active_mvccid (void);
+extern void xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 
 extern int vacuum_create_file_for_vacuum_data (THREAD_ENTRY * thread_p, VFID * vacuum_data_vfid);
 extern int vacuum_data_load_and_recover (THREAD_ENTRY * thread_p);
 extern VACUUM_LOG_BLOCKID vacuum_get_log_blockid (LOG_PAGEID pageid);
-extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, MVCCID oldest_mvccid,
-					   MVCCID newest_mvccid);
+extern void vacuum_produce_log_block_data (THREAD_ENTRY * thread_p);
 extern int vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID vacuum_min_log_pageid_to_keep (THREAD_ENTRY * thread_p);
 extern bool vacuum_is_safe_to_remove_archives (void);
@@ -302,14 +242,7 @@ extern int vacuum_rv_undoredo_data_set_link (THREAD_ENTRY * thread_p, LOG_RCV * 
 extern void vacuum_rv_undoredo_data_set_link_dump (FILE * fp, int length, void *data);
 extern int vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data);
-
-extern void vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p, char *data_header, char *rcv_data,
-						 int rcv_data_length);
-extern void vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
-extern bool vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone_lsa);
 extern int vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern VACUUM_WORKER *vacuum_rv_get_worker_by_trid (THREAD_ENTRY * thread_p, TRANID trid);
-extern void vacuum_rv_finish_worker_recovery (THREAD_ENTRY * thread_p, TRANID trid);
 
 extern int vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
 			     MVCCID threshold_mvccid, HFID * hfid, bool * reusable, bool was_interrupted);
@@ -337,15 +270,12 @@ extern DISK_ISVALID vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_
 extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
 
-extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
-
-extern void vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, thread_type & save_type);
-extern void vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type);
-
 extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined (SERVER_MODE)
 extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
 #endif /* SERVER_MODE */
 
 extern int vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p);
+
+extern void vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p);
 #endif /* _VACUUM_H_ */

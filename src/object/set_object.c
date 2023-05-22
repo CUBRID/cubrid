@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -30,12 +29,16 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "set_object.h"
+#include "area_alloc.h"
+#if !defined (SERVER_MODE)
+#include "authenticate.h"
+#endif // not SERVER_MODE
+#include "db_value_printer.hpp"
+#include "dbtype.h"
 #include "error_manager.h"
 #include "object_primitive.h"
-#include "object_print.h"
-#include "dbtype.h"
-
+#include "object_representation.h"
+#include "set_object.h"
 
 #if !defined(SERVER_MODE)
 #include "locator_cl.h"
@@ -196,6 +199,12 @@ set_area_final (void)
       area_destroy (Set_Obj_Area);
       Set_Obj_Area = NULL;
     }
+}
+
+void
+set_area_reset ()
+{
+  Set_Ref_Area = Set_Obj_Area = NULL;
 }
 
 /* VALUE BLOCK RESOURCE */
@@ -533,7 +542,7 @@ col_move_nulls (COL * col)
 	{
 	  bottom++;
 	}
-      /* here we must satisfy the loop exit condition, or bottom indexes a NULL, and top does not. If that is the case, 
+      /* here we must satisfy the loop exit condition, or bottom indexes a NULL, and top does not. If that is the case,
        * we switch bottom and top values. */
       if (bottom < top)
 	{
@@ -825,7 +834,7 @@ col_new (long size, int settype)
       col->sorted = 1;		/* start off assuming sort */
       col->may_have_temporary_oids = 0;
 
-      /* Pre-allocate arrays when size is available, this is particularly important for sequences.  When pre-allocating 
+      /* Pre-allocate arrays when size is available, this is particularly important for sequences.  When pre-allocating
        * sets & multisets, must set the size back down as the elements do not logically exist yet */
       err = col_expand (col, size - 1);
       if (err)
@@ -916,7 +925,7 @@ non_null_index (COL * col, long lower, long upper)
 	  lowblock = highblock = midblock;
 	}
     }
-  /* here lowblock should point to a block containing one of the end points of the non-NULL to NULL transitions. If the 
+  /* here lowblock should point to a block containing one of the end points of the non-NULL to NULL transitions. If the
    * first value is NULL, the non-null index is one less than the index of that value. (could be -1). */
   offset = 0;
   while (offset < COL_BLOCK_SIZE && !DB_IS_NULL (&col->array[lowblock][offset]))
@@ -1066,7 +1075,7 @@ col_is_all_null (COL * col)
 {
   long i;
 
-  /* 
+  /*
    *  The collection pointer should be verified before this function is
    *  called.  But, just in case it isn't well say that a NULL collection
    *  or a collection of size o is all NULL's.
@@ -1076,7 +1085,7 @@ col_is_all_null (COL * col)
       return 1;
     }
 
-  /* 
+  /*
    *  In ordered collections, NULL's are at the end.  So if the first
    *  element is NULL, all of them must be.
    */
@@ -1134,7 +1143,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	{
 	  /* append to end */
 	  /* ANSI puts NULLs at end of set collections for comparison */
-	  /* 
+	  /*
 	   * since NULL is not equal to NULL, the insertion index
 	   * returned for sequences might as well be at the end where
 	   * its checp to insert.
@@ -1143,7 +1152,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * hack, if the collection contains temporary OIDs, we're forced to
 	   * use a linear search as the numeric OID can change without warning.
 	   * Unfortunate but not very easy to perform effeciently without segmenting
@@ -1165,7 +1174,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	    }
 #endif
 
-	  /* 
+	  /*
 	   * Unsorted sets were introduced to deal with temporary/permanent
 	   * oids on the client, but are now also used as an optimization for
 	   * multisets, which are now sorted only on demand. Sorting them
@@ -1179,7 +1188,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	      insertindex = non_null_index (col, 0, col->lastinsert);
 	      if (insertindex < 0)
 		{
-		  /* 
+		  /*
 		   * all set values were NULL. Will not find val.
 		   * insert at beginning.
 		   */
@@ -1531,7 +1540,7 @@ col_delete (COL * col, long colindex)
   /* Now that we're finished shifting the DB_VALUES down by one, we need to NULL the un-used DB_VALUE at the end so
    * that we know that it's available for use later (i.e. we don't want to run pr_clear_value() on it later because it
    * may contain pointers to data which was copied to other DB_VALUEs during the shift operations).
-   * 
+   *
    * Also, just in case the DB_VALUE pointed to an object, set the object pointer to NULL so that the GC doesn't get
    * confused. - JB */
   PRIM_SET_NULL (INDEX (col, (col->size - 1)));
@@ -1610,7 +1619,7 @@ col_add (COL * col, DB_VALUE * val)
       if (i < col->size - COL_BLOCK_SIZE)
 	{
 	  /* heuristic to avoid quadratic set creation. if we are moving more than a block, its likely we are entering
-	   * quadratic behavior. Simply insert at the end, and mark the set unsorted. It will be sorted later on demand 
+	   * quadratic behavior. Simply insert at the end, and mark the set unsorted. It will be sorted later on demand
 	   * if need be, and this sort will be logarithmic instead of quadratic. */
 	  i = col->size;
 	  col->sorted = 0;
@@ -1787,7 +1796,7 @@ col_permanent_oids (COL * col)
 	}
       else
 	{
-	  /* Whip through the elements building a lockset for any temporary objects. If none are found, there's nothing 
+	  /* Whip through the elements building a lockset for any temporary objects. If none are found, there's nothing
 	   * to do. */
 	  tcount = 0;
 
@@ -4328,7 +4337,7 @@ setobj_clear (COL * col)
 void
 setobj_free (COL * col)
 {
-  register DB_COLLECTION *start, *r;
+  DB_COLLECTION *start, *r;
 
   if (col == NULL)
     {
@@ -4469,7 +4478,7 @@ setobj_sort (COL * col)
  */
 
 int
-setobj_find_temporary_oids (SETOBJ * col, LC_OIDSET * oidset)
+setobj_find_temporary_oids (setobj * col, LC_OIDSET * oidset)
 {
   int error;
   DB_VALUE *val;
@@ -4671,9 +4680,9 @@ swizzle_value (DB_VALUE * val, int input)
   else
     {
 #if !defined(SERVER_MODE)
-      /* If we're on the client, and this is a value being extracted, convert it to a DB_OBJECT* reference. We could do 
-       * this on input too in order to get better type checking.  Since this only happens in the internal functions for 
-       * building VOBJ sequences and those sequences have the wildcard domain, we don't really need to swizzle the OIDs 
+      /* If we're on the client, and this is a value being extracted, convert it to a DB_OBJECT* reference. We could do
+       * this on input too in order to get better type checking.  Since this only happens in the internal functions for
+       * building VOBJ sequences and those sequences have the wildcard domain, we don't really need to swizzle the OIDs
        * or do type checking. */
       if (!db_on_server && !input)
 	{
@@ -4714,7 +4723,7 @@ assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest, bool implicit_coer
   TP_DOMAIN *domain;
   DB_VALUE temp;
 
-  /* On the client, always swizzle incoming OID's so we can properly check their domains.  On the server, we'll have to 
+  /* On the client, always swizzle incoming OID's so we can properly check their domains.  On the server, we'll have to
    * trust it until tp_domain_check understands how to do domain verification using just OIDs. Do this into a temp
    * buffer so we can leave the input value constant. This will only change for OID-OBJECT conversion which don't have
    * to be freed. */
@@ -6125,7 +6134,7 @@ setobj_print (FILE * fp, COL * col)
   fprintf (fp, "{");
   for (i = 0; i < col->size; i++)
     {
-      help_fprint_value (NULL, fp, INDEX (col, i));
+      db_fprint_value (fp, INDEX (col, i));
       if (i < col->size - 1)
 	{
 	  fprintf (fp, ", ");
@@ -6141,10 +6150,12 @@ setobj_print (FILE * fp, COL * col)
  *      return: DB_TYPE
  *  set(in) : set object
  *
+ * NOTE: setobj_type is special; it is declared in dbtype.h because dbtype_function.i requires it and it is exposed
+ *       to other libraries/executable (e.g. cas/cub_cas) and to C-compiled unit csql_grammar.c.
+ *       therefore, struct setobj is used instead of SETOBJ/COL aliases.
  */
-
 DB_TYPE
-setobj_type (COL * set)
+setobj_type (struct setobj *set)
 {
   if (set)
     {
@@ -6292,7 +6303,7 @@ setobj_release (COL * set)
 }
 
 /*
- * setobj_build_domain_from_col() - builds a set domain (a chained list of 
+ * setobj_build_domain_from_col() - builds a set domain (a chained list of
  *				    domains) from a collection object
  *  return: new domain constructed from the domains in the collection or NULL
  *	    if the domain couldn't be build

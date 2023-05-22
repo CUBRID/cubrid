@@ -1,19 +1,19 @@
 #
-# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
-#
-#   This program is free software; you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
-#   the Free Software Foundation; either version 2 of the License, or
-#   (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software
-#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#  Copyright 2008 Search Solution Corporation
+#  Copyright 2016 CUBRID Corporation
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
 #
 
 set(LIBCUBRIDESQL_SOURCES
@@ -182,7 +182,7 @@ add_executable(cubrid_rel ${CUBRID_REL_SOURCES})
 target_link_libraries(cubrid_rel LINK_PRIVATE cubridsa)
 
 
-set(LOADJAVA_SOURCES ${EXECUTABLES_DIR}/loadjava.c)
+set(LOADJAVA_SOURCES ${EXECUTABLES_DIR}/loadjava.cpp)
 SET_SOURCE_FILES_PROPERTIES(
   ${LOADJAVA_SOURCES}
   PROPERTIES LANGUAGE CXX
@@ -193,10 +193,23 @@ endif(WIN32)
 add_executable(loadjava ${LOADJAVA_SOURCES})
 if(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridsa)
+  target_link_libraries(loadjava PUBLIC stdc++fs)
 else(UNIX)
   target_link_libraries(loadjava LINK_PRIVATE cubridcs)
 endif(UNIX)
 
+set(JAVASP_SERVER_SOURCES 
+  ${EXECUTABLES_DIR}/javasp.cpp
+)
+SET_SOURCE_FILES_PROPERTIES(
+  ${JAVASP_SERVER_SOURCES}
+  PROPERTIES LANGUAGE CXX
+)
+if(WIN32)
+  list(APPEND JAVASP_SERVER_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
+endif(WIN32)
+add_executable(cub_javasp ${JAVASP_SERVER_SOURCES})
+target_link_libraries(cub_javasp LINK_PRIVATE cubridsa)
 
 set(CUB_ADMIN_SOURCES
   ${EXECUTABLES_DIR}/util_admin.c
@@ -277,24 +290,6 @@ if(WIN32)
   target_link_libraries(gencat LINK_PRIVATE ws2_32)
 endif(WIN32)
 
-set(DDL_PROXY_CLIENT_SOURCES
-  ${EXECUTABLES_DIR}/ddl_proxy_client.cpp
-  ${EXECUTABLES_DIR}/util_support.c
-  )
-
-SET_SOURCE_FILES_PROPERTIES(
-  ${DDL_PROXY_CLIENT_SOURCES}
-  PROPERTIES LANGUAGE CXX
-  )
-
-add_executable(ddl_proxy_client ${DDL_PROXY_CLIENT_SOURCES})
-target_compile_definitions(ddl_proxy_client PRIVATE ${COMMON_DEFS})
-target_link_libraries(ddl_proxy_client LINK_PRIVATE cubridcs)
-
-if(WIN32)
-target_link_libraries(ddl_proxy_client LINK_PRIVATE ws2_32)
-endif(WIN32)
-
 if(UNIX)
   set(UNITTESTS_LF_SOURCES
     ${BASE_DIR}/porting.c
@@ -350,33 +345,6 @@ if(UNIX)
   target_link_libraries(unittests_bit LINK_PRIVATE cubrid)
 endif(UNIX)
 
-
-# compat utils
-if(UNIX)
-  SET_SOURCE_FILES_PROPERTIES(
-    ${EXECUTABLES_DIR}/util_front.c
-    PROPERTIES LANGUAGE CXX
-  )
-  add_executable(addvoldb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(backupdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(checkdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(commdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(compactdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(copydb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(createdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(deletedb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(installdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(killtran ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(loaddb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(lockdb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(optimizedb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(renamedb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(restoredb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(spacedb ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(sqlx ${EXECUTABLES_DIR}/util_front.c)
-  add_executable(unloaddb ${EXECUTABLES_DIR}/util_front.c)
-endif(UNIX)
-
 # install
 install(TARGETS
   cubridesql
@@ -387,40 +355,13 @@ install(TARGETS
   cub_commdb
   cubrid_rel
   loadjava
+  cub_javasp
   cub_admin
   cubrid_esql
-  ddl_proxy_client
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
-
-# install compats
-if(UNIX)
-  install(TARGETS
-    addvoldb
-    backupdb
-    checkdb
-    commdb
-    compactdb
-    copydb
-    createdb
-    deletedb
-    installdb
-    killtran
-    loaddb
-    lockdb
-    optimizedb
-    renamedb
-    restoredb
-    spacedb
-    sqlx
-    unloaddb
-    RUNTIME DESTINATION ${CUBRID_COMPATDIR} COMPONENT Application
-    )
-  # TODO: compat scripts start|stop_cubrid?
-endif(UNIX)
-
 
 # install pdb files for debugging on windows
 if(WIN32)

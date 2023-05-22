@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -27,7 +26,9 @@
 #ident "$Id$"
 
 #if defined (CS_MODE)
-#include "log_impl.h"
+#include "log_common_impl.h"
+#include "log_lsa.hpp"
+#include "log_storage.hpp"
 #endif /* CS_MODE */
 
 #define LA_RETRY_ON_ERROR(error) \
@@ -41,6 +42,7 @@
    (error == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG)      || \
    (error == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG)       || \
    (error == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG)     || \
+   (error == ER_TDE_CIPHER_IS_NOT_LOADED)             || \
    (error == ER_LK_DEADLOCK_CYCLE_DETECTED))
 
 typedef enum
@@ -51,13 +53,17 @@ typedef enum
 } REPL_FILTER_TYPE;
 
 #if defined (CS_MODE)
-int la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool check_applied_info,
-		       bool check_copied_info, bool check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
-		       LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa);
+int la_get_applied_log_info (const char *database_name, const char *log_path, bool check_replica_info,
+			     bool verbose, LOG_LSA * applied_final_lsa);
+int la_get_copied_log_info (const char *database_name, const char *log_path, INT64 page_num, bool verbose,
+			    LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa);
 int la_apply_log_file (const char *database_name, const char *log_path, const int max_mem_size);
 void la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose);
 void la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool verbose);
 void la_print_delay_info (LOG_LSA working_lsa, LOG_LSA target_lsa, float process_rate);
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+extern int la_start_dk_sharing ();
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
 extern bool la_force_shutdown (void);
 #endif /* CS_MODE */

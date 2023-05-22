@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -37,6 +36,7 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "xasl.h"
+#include "execute_statement.h"
 
 /*
  * prepare_query () - Prepares a query for later (and repetitive)
@@ -98,7 +98,7 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
  *   var_cnt(in)        : number of host variables
  *   varptr(in) : array of host variables (query input parameters)
  *   list_idp(out)      : query result file id (QFILE_LIST_ID)
- *   flag(in)   : flag 
+ *   flag(in)   : flag
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
  */
@@ -115,6 +115,11 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
   if (qo_need_skip_execution ())
     {
       return NO_ERROR;
+    }
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      cdc_Trigger_involved = false;
     }
 
   query_timeout = tran_get_query_timeout ();
@@ -141,7 +146,7 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
  *   var_cnt(in)        : number of input values for positional variables
  *   varptr(in) : pointer to the array of input values
  *   result(out): pointer to result list id pointer
- *   flag(in)   : flag 
+ *   flag(in)   : flag
  *
  * Note: Prepares and executes a query, and the result is returned
  *       through a list id (actually the list file).
@@ -162,6 +167,16 @@ prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, i
       *result = NULL;
 
       return NO_ERROR;
+    }
+
+  if (do_Trigger_involved && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      cdc_Trigger_involved = true;
+      flag |= TRIGGER_IS_INVOLVED;
+    }
+  else
+    {
+      cdc_Trigger_involved = false;
     }
 
   query_timeout = tran_get_query_timeout ();

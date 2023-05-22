@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -71,9 +70,19 @@
 #include "object_representation.h"
 #include "connection_cl.h"
 
+#include "db_set_function.h"
 #include "dbi.h"
+#include "parse_tree.h"
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "object_primitive.h"
+#include "ddl_log.h"
+#include "api_compat.h"
+#include "method_callback.hpp"
+
+#if defined (CAS_FOR_CGW)
+#include "cas_cgw.h"
+#endif
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -162,9 +171,9 @@ struct t_class_table
 typedef struct t_attr_table T_ATTR_TABLE;
 struct t_attr_table
 {
-  char *class_name;
-  char *attr_name;
-  char *source_class;
+  const char *class_name;
+  const char *attr_name;
+  const char *source_class;
   int precision;
   short scale;
   short attr_order;
@@ -176,15 +185,17 @@ struct t_attr_table
   char unique;
   char set_domain;
   char is_key;
-  char *comment;
+  const char *comment;
 };
 
-extern void histo_print (FILE * stream);
-extern void histo_clear (void);
+#if defined(CAS_FOR_CGW)
+T_COL_BINDER *col_binding = NULL;
+T_COL_BINDER *col_binding_buff = NULL;
+#endif
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
-#endif /* !LIBCAS_FOR_JSP */
+#endif
 
 static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val, T_NET_BUF * net_buf, char desired_type);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * obj,
@@ -199,8 +210,13 @@ static int get_attr_name (DB_OBJECT * obj, char ***ret_attr_name);
 static int get_attr_name_from_argv (int argc, void **argv, char ***ret_attr_name);
 static int oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int num_attr, char **attr_name);
 static int oid_data_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num, char **attr_name);
+#if defined(CAS_FOR_CGW)
+static int cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_type,
+					     T_BROKER_VERSION client_version, T_NET_BUF * net_buf);
+#else
 static int prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_RESULT * q_result,
 					 T_NET_BUF * net_buf, T_BROKER_VERSION client_version);
+#endif /* CAS_FOR_CGW */
 static void prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, char charset,
 				     const char *col_name, const char *default_value, char auto_increment,
 				     char unique_key, char primary_key, char reverse_index, char reverse_unique,
@@ -216,6 +232,9 @@ static void set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec
 	    int result_set_idx, T_NET_BUF *);
 */
 static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
+#if defined(CAS_FOR_CGW)
+static int cgw_fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
+#endif /* CAS_FOR_CGW */
 static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_attribute (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_method (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
@@ -224,7 +243,10 @@ static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T
 static int fetch_trigger (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_privilege (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_foreign_keys (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
-static void add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size, unsigned char ext_type, int *net_size);
+#if defined(CAS_FOR_CGW)
+static int fetch_not_supported (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
+#endif /* CAS_FOR_CGW */
+static void add_res_data_bytes (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type, int *net_size);
 static void add_res_data_string (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type,
 				 unsigned char charset, int *net_size);
 static void add_res_data_string_safe (T_NET_BUF * net_buf, const char *str, unsigned char ext_type,
@@ -281,7 +303,7 @@ static int sch_imported_keys (T_NET_BUF * net_buf, char *class_name, void **resu
 static int sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, char *pktable_name,
 						 char *fktable_name, void **result);
 static int class_type (DB_OBJECT * class_obj);
-static int class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
+static int class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
 			    T_ATTR_TABLE * attr_table);
 static int set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * priv_table, int index);
 static int sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_buf);
@@ -291,13 +313,11 @@ static short constraint_dbtype_to_castype (int db_const_type);
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args, int is_first_out);
 static void prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info);
 static int fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
-static int create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, DB_QUERY_TYPE * column_info,
-						unsigned int query_seq_num);
 #define check_class_chn(s) 0
 static int get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id);
 static bool has_stmt_result_set (char stmt_type);
-static bool check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle);
-static char *convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string);
+static bool check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle);
+static const char *convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string);
 static void serialize_collection_as_string (DB_VALUE * col, char **out);
 static void add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
 static void add_fk_info_after (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
@@ -320,6 +340,7 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
@@ -358,6 +379,30 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_JSON,		/* 40 */
 };
 
+#if defined (CAS_FOR_CGW)
+static T_FETCH_FUNC fetch_func[] = {
+  cgw_fetch_result,		/* query */
+  fetch_not_supported,		/* SCH_CLASS */
+  fetch_not_supported,		/* SCH_VCLASS */
+  fetch_not_supported,		/* SCH_QUERY_SPEC */
+  fetch_not_supported,		/* SCH_ATTRIBUTE */
+  fetch_not_supported,		/* SCH_CLASS_ATTRIBUTE */
+  fetch_not_supported,		/* SCH_METHOD */
+  fetch_not_supported,		/* SCH_CLASS_METHOD */
+  fetch_not_supported,		/* SCH_METHOD_FILE */
+  fetch_not_supported,		/* SCH_SUPERCLASS */
+  fetch_not_supported,		/* SCH_SUBCLASS */
+  fetch_not_supported,		/* SCH_CONSTRAINT */
+  fetch_not_supported,		/* SCH_TRIGGER */
+  fetch_not_supported,		/* SCH_CLASS_PRIVILEGE */
+  fetch_not_supported,		/* SCH_ATTR_PRIVILEGE */
+  fetch_not_supported,		/* SCH_DIRECT_SUPER_CLASS */
+  fetch_not_supported,		/* SCH_PRIMARY_KEY */
+  fetch_not_supported,		/* SCH_IMPORTED_KEYS */
+  fetch_not_supported,		/* SCH_EXPORTED_KEYS */
+  fetch_not_supported,		/* SCH_CROSS_REFERENCE */
+};
+#else
 static T_FETCH_FUNC fetch_func[] = {
   fetch_result,			/* query */
   fetch_result,			/* SCH_CLASS */
@@ -380,6 +425,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_EXPORTED_KEYS */
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
 };
+#endif /* CAS_FOR_CGW */
 
 static char database_name[MAX_HA_DBINFO_LENGTH] = "";
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
@@ -402,7 +448,10 @@ static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
 int
 ux_check_connection (void)
 {
-#ifndef LIBCAS_FOR_JSP
+#if defined(CAS_FOR_CGW)
+  return cgw_is_database_connected ();
+#endif
+
   if (ux_is_database_connected ())
     {
       if (db_ping_server (0, NULL) < 0)
@@ -420,9 +469,9 @@ ux_check_connection (void)
 	      char dbuser[SRV_CON_DBUSER_SIZE];
 	      char dbpasswd[SRV_CON_DBPASSWD_SIZE];
 
-	      strncpy (dbname, database_name, sizeof (dbname) - 1);
-	      strncpy (dbuser, database_user, sizeof (dbuser) - 1);
-	      strncpy (dbpasswd, database_passwd, sizeof (dbpasswd) - 1);
+	      strncpy_bufsize (dbname, database_name);
+	      strncpy_bufsize (dbuser, database_user);
+	      strncpy_bufsize (dbpasswd, database_passwd);
 
 	      cas_log_debug (ARG_FILE_LINE,
 			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,
@@ -437,11 +486,9 @@ ux_check_connection (void)
     {
       return -1;
     }
-#endif /* !LIBCAS_FOR_JSP */
   return 0;
 }
 
-#ifndef LIBCAS_FOR_JSP
 SESSION_ID
 ux_get_session_id (void)
 {
@@ -488,12 +535,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	{
 	  if (shm_appl->replica_only_flag)
 	    {
-	      client_type = 12;	/* DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY in db.h */
+	      client_type = DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_replica_only_broker");
 	    }
 	  else
 	    {
-	      client_type = 5;	/* DB_CLIENT_TYPE_READ_ONLY_BROKER in db.h */
+	      client_type = DB_CLIENT_TYPE_READ_ONLY_BROKER;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_only_broker");
 	    }
 	}
@@ -501,12 +548,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	{
 	  if (shm_appl->replica_only_flag)
 	    {
-	      client_type = 13;	/* DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY in db.h */
+	      client_type = DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_replica_only_broker");
 	    }
 	  else
 	    {
-	      client_type = 6;	/* DB_CLIENT_TYPE_SLAVE_ONLY_BROKER in db.h */
+	      client_type = DB_CLIENT_TYPE_SLAVE_ONLY_BROKER;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_only_broker");
 	    }
 	}
@@ -514,12 +561,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	{
 	  if (shm_appl->replica_only_flag)
 	    {
-	      client_type = 11;	/* DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY */
+	      client_type = DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY;
 	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_write_replica_only_broker");
 	    }
 	  else
 	    {
-	      client_type = 4;	/* DB_CLIENT_TYPE_BROKER in db.h */
+	      client_type = DB_CLIENT_TYPE_BROKER;
 	    }
 	}
 
@@ -613,11 +660,13 @@ connect_error:
 
   return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, p);
 }
-#endif /* !LIBCAS_FOR_JSP */
 
 int
 ux_is_database_connected (void)
 {
+#if defined(CAS_FOR_CGW)
+  return cgw_is_database_connected () == 0 ? 1 : 0;
+#endif
   return (database_name[0] != '\0');
 }
 
@@ -706,22 +755,25 @@ ux_set_default_setting ()
 void
 ux_database_shutdown ()
 {
+#if !defined(CAS_FOR_CGW)
   db_shutdown ();
   cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
-#ifndef LIBCAS_FOR_JSP
+
   as_info->database_name[0] = '\0';
   as_info->database_host[0] = '\0';
   as_info->database_user[0] = '\0';
   as_info->database_passwd[0] = '\0';
   as_info->last_connect_time = 0;
-#endif /* !LIBCAS_FOR_JSP */
+
   memset (database_name, 0, sizeof (database_name));
   memset (database_user, 0, sizeof (database_user));
   memset (database_passwd, 0, sizeof (database_passwd));
   cas_default_isolation_level = 0;
   cas_default_lock_timeout = -1;
+#endif /* CAS_FOR_CGW */
 }
 
+#if !defined(CAS_FOR_CGW)
 int
 ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 	    unsigned int query_seq_num)
@@ -739,6 +791,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   int is_first_out = 0;
   char *tmp;
   int result_cache_lifetime;
+  PT_NODE *statement = NULL;
 
   if ((flag & CCI_PREPARE_UPDATABLE) && (flag & CCI_PREPARE_HOLDABLE))
     {
@@ -748,6 +801,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     }
 
   srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
+
   if (srv_h_id < 0)
     {
       err_code = srv_h_id;
@@ -756,7 +810,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
 
-  ALLOC_COPY (srv_handle->sql_stmt, sql_stmt);
+  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
   if (srv_handle->sql_stmt == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -825,6 +879,15 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  goto prepare_error;
 	}
 
+      if (session->statements && (statement = session->statements[0]))
+	{
+	  if (logddl_set_stmt_type (statement->node_type) && session->parser->original_buffer)
+	    {
+	      logddl_set_sql_text ((char *) session->parser->original_buffer,
+				   strlen (session->parser->original_buffer));
+	    }
+	}
+
       stmt_id = db_compile_statement (session);
       if (stmt_id < 0)
 	{
@@ -854,6 +917,14 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       goto prepare_error;
     }
 
+  if (session->statements && (statement = session->statements[0]))
+    {
+      if (logddl_set_stmt_type (statement->node_type) && session->parser->original_buffer)
+	{
+	  logddl_set_sql_text ((char *) session->parser->original_buffer, strlen (session->parser->original_buffer));
+	}
+    }
+
   updatable_flag = flag & CCI_PREPARE_UPDATABLE;
   if (updatable_flag)
     {
@@ -874,7 +945,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   if (stmt_id < 0)
     {
       stmt_type = get_stmt_type (sql_stmt);
-      if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_MAX_STMT_TYPE)
+      if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_STMT_SELECT && stmt_type != CUBRID_MAX_STMT_TYPE)
 	{
 	  db_close_session (session);
 	  session = NULL;
@@ -958,16 +1029,177 @@ prepare_error:
     {
       db_close_session (session);
     }
-
   return err_code;
 }
+
+#endif
+
+#if defined(CAS_FOR_CGW)
+int
+ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+		unsigned int query_seq_num)
+{
+  T_SRV_HANDLE *srv_handle = NULL;
+  int srv_h_id = -1;
+  int err_code;
+  int num_markers;
+  char stmt_type;
+  T_BROKER_VERSION client_version = req_info->client_version;
+  int result_cache_lifetime;
+
+  if ((flag & CCI_PREPARE_UPDATABLE) && (flag & CCI_PREPARE_HOLDABLE))
+    {
+      /* do not allow updatable, holdable results */
+      err_code = ERROR_INFO_SET (CAS_ER_HOLDABLE_NOT_ALLOWED, CAS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
+  srv_h_id = hm_new_srv_handle (&srv_handle, query_seq_num);
+
+  if (srv_h_id < 0)
+    {
+      err_code = srv_h_id;
+      goto prepare_error;
+    }
+
+  err_code = cgw_get_handle (&srv_handle->cgw_handle);
+  if (err_code < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
+  srv_handle->schema_type = -1;
+  srv_handle->auto_commit_mode = auto_commit_mode;
+
+  if (cgw_get_dbms_type () == SUPPORTED_DBMS_ORACLE)
+    {
+      char *is_cublink = NULL;
+      is_cublink = strstr (sql_stmt, REWRITE_DELIMITER_CUBLINK);
+      if (is_cublink != NULL)
+	{
+	  char *rewrite_sql = NULL;
+	  err_code = cgw_rewrite_query (sql_stmt, &rewrite_sql);
+	  if (err_code == ER_FAILED)
+	    {
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto prepare_error;
+	    }
+	  else if (err_code == ERR_REWRITE_FAILED)
+	    {
+	      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
+	    }
+	  else
+	    {
+	      srv_handle->sql_stmt = rewrite_sql;
+	    }
+	}
+      else
+	{
+	  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
+	}
+    }
+  else
+    {
+      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
+    }
+
+  if (srv_handle->sql_stmt == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
+  sql_stmt = srv_handle->sql_stmt;
+
+  if (flag & CCI_PREPARE_QUERY_INFO)
+    {
+      srv_handle->query_info_flag = TRUE;
+    }
+  else
+    {
+      srv_handle->query_info_flag = FALSE;
+    }
+
+  if (flag & CCI_PREPARE_UPDATABLE)
+    {
+      srv_handle->is_updatable = TRUE;
+    }
+  else
+    {
+      srv_handle->is_updatable = FALSE;
+    }
+
+  num_markers = get_num_markers (sql_stmt);
+  srv_handle->num_markers = num_markers;
+  srv_handle->prepare_flag = flag;
+
+  if (get_stmt_type (sql_stmt) != CUBRID_STMT_SELECT)
+    {
+      goto prepare_error;
+    }
+
+  err_code = cgw_sql_prepare ((SQLCHAR *) sql_stmt);
+  if (err_code < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
+  net_buf_cp_int (net_buf, srv_h_id, NULL);
+
+  result_cache_lifetime = -1;
+  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
+
+  stmt_type = get_stmt_type (sql_stmt);
+  net_buf_cp_byte (net_buf, stmt_type);
+
+  net_buf_cp_int (net_buf, num_markers, NULL);
+
+  err_code = cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, stmt_type, client_version, net_buf);
+
+  if (err_code < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
+  srv_handle->is_prepared = TRUE;
+  srv_handle->num_q_result = 1;
+  srv_handle->cur_result = NULL;
+  srv_handle->cur_result_index = 0;
+
+  if (flag & CCI_PREPARE_HOLDABLE)
+    {
+      srv_handle->is_holdable = true;
+    }
+
+  return srv_h_id;
+
+prepare_error:
+  NET_BUF_ERR_SET (net_buf);
+
+  if (auto_commit_mode == TRUE)
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+
+  errors_in_transaction++;
+
+  if (srv_handle)
+    {
+      hm_srv_handle_free (srv_h_id);
+    }
+  return err_code;
+}
+#endif /* CAS_FOR_CGW */
 
 int
 ux_end_tran (int tran_type, bool reset_con_status)
 {
-  int err_code;
+  int err_code = 0;
 
-#ifndef LIBCAS_FOR_JSP
+
   if (!as_info->cur_statement_pooling)
     {
       if (tran_type == CCI_TRAN_COMMIT)
@@ -993,10 +1225,9 @@ ux_end_tran (int tran_type, bool reset_con_status)
 	}
     }
 
-#else /* !LIBCAS_FOR_JSP */
-  hm_srv_handle_free_all (true);
-#endif /* !LIBCAS_FOR_JSP */
 
+
+#if !defined (CAS_FOR_CGW)
   if (tran_type == CCI_TRAN_COMMIT)
     {
       err_code = db_commit_transaction ();
@@ -1023,27 +1254,39 @@ ux_end_tran (int tran_type, bool reset_con_status)
   if (err_code >= 0)
     {
       unset_xa_prepare_flag ();
-#ifndef LIBCAS_FOR_JSP
+
       if (reset_con_status)
 	{
 	  assert_release (as_info->con_status == CON_STATUS_IN_TRAN || as_info->con_status == CON_STATUS_OUT_TRAN);
 	  as_info->con_status = CON_STATUS_OUT_TRAN;
 	  as_info->transaction_start_time = (time_t) 0;
 	}
-#endif /* !LIBCAS_FOR_JSP */
+
     }
   else
     {
       errors_in_transaction++;
     }
 
-#ifndef LIBCAS_FOR_JSP
+
   if (cas_get_db_connect_status () == -1	/* DB_CONNECTION_STATUS_RESET */
       || need_reconnect_on_rctime ())
     {
       as_info->reset_flag = TRUE;
     }
-#endif /* !LIBCAS_FOR_JSP */
+
+
+#endif /* CAS_FOR_CGW */
+
+#if defined(CAS_FOR_CGW)
+  T_CGW_HANDLE *cgw_handle = NULL;
+  cgw_get_handle (&cgw_handle);
+  if (cgw_handle)
+    {
+      cgw_endtran (cgw_handle->hdbc, tran_type);
+    }
+  err_code = 0;
+#endif
 
   return err_code;
 }
@@ -1104,6 +1347,156 @@ ux_get_last_insert_id (T_NET_BUF * net_buf)
   return NO_ERROR;
 }
 
+#if defined (CAS_FOR_CGW)
+int
+ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
+		T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
+{
+  int err_code = 0;
+  int num_bind = 0;
+  T_BROKER_VERSION client_version = req_info->client_version;
+  char stmt_type;
+  ODBC_BIND_INFO *bind_data_list = NULL;
+
+  if (srv_handle->is_prepared == FALSE)
+    {
+      err_code = cgw_sql_prepare ((SQLCHAR *) srv_handle->sql_stmt);
+
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+    }
+
+  num_bind = srv_handle->num_markers;
+
+  if (num_bind > 0)
+    {
+      err_code = cgw_make_bind_value (srv_handle->cgw_handle, num_bind, argc, argv, &bind_data_list);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+    }
+
+  if (srv_handle->is_prepared == FALSE)
+    {
+      err_code = cgw_sql_prepare ((SQLCHAR *) srv_handle->sql_stmt);
+
+      if (err_code != SQL_SUCCESS && err_code != SQL_SUCCESS_WITH_INFO)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+
+      err_code = cgw_set_commit_mode (srv_handle->cgw_handle->hdbc, srv_handle->auto_commit_mode);
+      if (err_code != NO_ERROR)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+    }
+  srv_handle->is_from_current_transaction = true;
+
+  err_code = cgw_set_commit_mode (srv_handle->cgw_handle->hdbc, srv_handle->auto_commit_mode);
+  if (err_code != NO_ERROR)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto execute_error;
+    }
+
+  err_code = cgw_execute (srv_handle);
+  if (err_code < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto execute_error;
+    }
+
+  stmt_type = get_stmt_type (srv_handle->sql_stmt);
+  srv_handle->stmt_type = stmt_type;
+  update_query_execution_count (as_info, stmt_type);
+
+  srv_handle->max_col_size = max_col_size;
+  srv_handle->num_q_result = 1;
+  srv_handle->cur_result_index = 1;
+  srv_handle->max_row = max_row;
+  srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.
+
+  if (do_commit_after_execute (*srv_handle))
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+
+  if (bind_data_list)
+    {
+      FREE_MEM (bind_data_list);
+    }
+
+  err_code = cgw_set_execute_info (srv_handle, net_buf, srv_handle->stmt_type);
+  if (err_code != NO_ERROR)
+    {
+      goto execute_error;
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V2))
+    {
+      int result_cache_lifetime = -1;
+      char include_column_info;
+
+      if (srv_handle->num_q_result == 1)
+	{
+	  include_column_info = 0;
+	}
+      else
+	{
+	  include_column_info = 1;
+	}
+
+      net_buf_cp_byte (net_buf, include_column_info);
+
+      if (include_column_info == 1)
+	{
+	  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
+	  net_buf_cp_byte (net_buf, srv_handle->stmt_type);
+	  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+
+	  err_code =
+	    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, stmt_type, client_version, net_buf);
+	  if (err_code != NO_ERROR)
+	    {
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto execute_error;
+	    }
+	}
+    }
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_int (net_buf, shm_shard_id, NULL);
+    }
+
+  return err_code;
+
+execute_error:
+  NET_BUF_ERR_SET (net_buf);
+
+  if (srv_handle->auto_commit_mode)
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+
+  errors_in_transaction++;
+
+  if (bind_data_list)
+    {
+      FREE_MEM (bind_data_list);
+    }
+  return err_code;
+}
+#else /* CAS_FOR_CGW */
+
 int
 ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 	    T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
@@ -1116,9 +1509,9 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
   DB_SESSION *session;
   T_BROKER_VERSION client_version = req_info->client_version;
   bool recompile = false;
-#ifndef LIBCAS_FOR_JSP
+
   char stmt_type;
-#endif /* !LIBCAS_FOR_JSP */
+
 
   hm_qresult_end (srv_handle, FALSE);
 
@@ -1220,21 +1613,23 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       db_set_client_cache_time (session, stmt_id, clt_cache_time);
     }
 
-#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
   err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
   if (err_code != NO_ERROR)
     {
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
-#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
 
+  hm_set_current_srv_handle (srv_handle->id);
   n = db_execute_and_keep_statement (session, stmt_id, &result);
+  hm_set_current_srv_handle (-1);
 
-#ifndef LIBCAS_FOR_JSP
+
   stmt_type = db_get_statement_type (session, stmt_id);
   update_query_execution_count (as_info, stmt_type);
-#endif /* !LIBCAS_FOR_JSP */
+
 
   if (n < 0)
     {
@@ -1312,9 +1707,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       if (srv_handle->is_holdable == true)
 	{
 	  srv_handle->q_result->is_holdable = true;
-#if !defined(LIBCAS_FOR_JSP)
 	  as_info->num_holdable_results++;
-#endif
 	}
     }
 
@@ -1414,7 +1807,9 @@ execute_error:
     }
   return err_code;
 }
+#endif /* !CAS_FOR_CGW */
 
+#if !defined(CAS_FOR_CGW)
 int
 ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 		T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
@@ -1533,22 +1928,23 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  db_set_client_cache_time (session, stmt_id, clt_cache_time);
 	}
 
-#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto execute_all_error;
 	}
-#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+      hm_set_current_srv_handle (srv_handle->id);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       n = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
+      hm_set_current_srv_handle (-1);
 
-#ifndef LIBCAS_FOR_JSP
+
       update_query_execution_count (as_info, stmt_type);
-#endif /* !LIBCAS_FOR_JSP */
+
 
       if (n < 0)
 	{
@@ -1630,9 +2026,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  if (srv_handle->is_holdable == true)
 	    {
 	      q_result->is_holdable = true;
-#if !defined(LIBCAS_FOR_JSP)
 	      as_info->num_holdable_results++;
-#endif
 	    }
 	}
     }
@@ -1745,11 +2139,13 @@ execute_all_error:
     }
   return err_code;
 }
+#endif /* !CAS_FOR_CGW */
 
 extern DB_VALUE *db_get_hostvars (DB_SESSION * session);
 extern void jsp_set_prepare_call ();
 extern void jsp_unset_prepare_call ();
 
+#if !defined(CAS_FOR_CGW)
 int
 ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 		 T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
@@ -1764,9 +2160,9 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
   DB_SESSION *session;
   T_BROKER_VERSION client_version = req_info->client_version;
   T_PREPARE_CALL_INFO *call_info;
-#ifndef LIBCAS_FOR_JSP
+
   char stmt_type;
-#endif /* !LIBCAS_FOR_JSP */
+
 
   call_info = srv_handle->prepare_call_info;
   srv_handle->query_info_flag = FALSE;
@@ -1799,14 +2195,16 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   stmt_id = srv_handle->q_result->stmt_id;
 
+  hm_set_current_srv_handle (srv_handle->id);
   jsp_set_prepare_call ();
   n = db_execute_and_keep_statement (session, stmt_id, &result);
   jsp_unset_prepare_call ();
+  hm_set_current_srv_handle (-1);
 
-#ifndef LIBCAS_FOR_JSP
+
   stmt_type = db_get_statement_type (session, stmt_id);
   update_query_execution_count (as_info, stmt_type);
-#endif /* !LIBCAS_FOR_JSP */
+
 
   if (n < 0)
     {
@@ -1850,9 +2248,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
   if (srv_handle->is_holdable == true)
     {
       srv_handle->q_result->is_holdable = true;
-#if !defined(LIBCAS_FOR_JSP)
       as_info->num_holdable_results++;
-#endif
     }
 
   if (value_list)
@@ -1923,7 +2319,9 @@ execute_error:
     }
   return err_code;
 }
+#endif /* !CAS_FOR_CGW */
 
+#if !defined(CAS_FOR_CGW)
 int
 ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1935,6 +2333,9 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "next_result %s%d", "error:", err_info.err_number);
+
       goto next_result_error;
     }
 
@@ -1973,13 +2374,23 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
   srv_handle->cur_result = cur_result;
   (srv_handle->cur_result_index)++;
 
+  if (!has_stmt_result_set (cur_result->stmt_type))
+    {
+      if (check_auto_commit_after_getting_result (srv_handle) == true)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	}
+    }
+
   return 0;
 
 next_result_error:
   NET_BUF_ERR_SET (net_buf);
   return err_code;
 }
+#endif /* !CAS_FOR_CGW */
 
+#if !defined(CAS_FOR_CGW)
 int
 ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, char auto_commit_mode)
 {
@@ -1998,6 +2409,8 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, argc, &num_query_offset);	/* result msg. num_query */
+
+  logddl_set_execute_type (LOGDDL_RUN_EXECUTE_BATCH_FUNC);
 
   for (query_index = 0; query_index < argc; query_index++)
     {
@@ -2033,25 +2446,29 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
+      if (logddl_set_stmt_type (stmt_type) && sql_stmt)
+	{
+	  logddl_set_sql_text (sql_stmt, sql_size /*(int) strlen (sql_stmt) */ );
+	}
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
 
-#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
       if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
 	{
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
-#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
 
       res_count = db_execute_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
-#ifndef LIBCAS_FOR_JSP
+
       update_query_execution_count (as_info, stmt_type);
-#endif /* LIBCAS_FOR_JSP */
+
 
       if (res_count < 0)
 	{
@@ -2086,6 +2503,8 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  db_commit_transaction ();
 	}
+      logddl_set_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_commit" : "");
+      logddl_write ();
       continue;
 
     batch_error:
@@ -2094,6 +2513,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       err_code = db_error_code ();
       if (err_code < 0)
 	{
+	  logddl_set_err_code (err_code);
 	  if (auto_commit_mode == FALSE
 	      && (ER_IS_SERVER_DOWN_ERROR (err_code) || ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)))
 	    {
@@ -2136,6 +2556,8 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  db_abort_transaction ();
 	}
+      logddl_set_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_rollback" : "");
+      logddl_write ();
 
       if (err_code == ER_INTERRUPTED)
 	{
@@ -2148,16 +2570,21 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
     {
       net_buf_cp_int (net_buf, shm_shard_id, NULL);
     }
-
+  logddl_write_end ();
   return 0;
 
 execute_batch_error:
   NET_BUF_ERR_SET (net_buf);
   errors_in_transaction++;
 
+  logddl_set_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_rollback" : "");
+  logddl_write ();
+  logddl_write_end ();
   return err_code;
 }
+#endif /* !CAS_FOR_CGW */
 
+#if !defined(CAS_FOR_CGW)
 int
 ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2179,6 +2606,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   DB_VALUE val;
   DB_OBJECT *ins_obj_p;
   T_BROKER_VERSION client_version = req_info->client_version;
+  int retried_query_num = 0;
 
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
@@ -2267,29 +2695,45 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	}
 
-#if !defined (LIBCAS_FOR_JSP) && !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
+#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto exec_db_error;
 	}
-#endif /* !LIBCAS_FOR_JSP && !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+
+      hm_set_current_srv_handle (srv_handle->id);
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       res_count = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
+      hm_set_current_srv_handle (-1);
+
       if (stmt_type < 0)
 	{
 	  stmt_type = db_get_statement_type (session, stmt_id);
 	}
-#ifndef LIBCAS_FOR_JSP
+
       update_query_execution_count (as_info, stmt_type);
-#endif /* LIBCAS_FOR_JSP */
+
 
       if (res_count < 0)
 	{
+	  if (res_count == ER_QPROC_INVALID_XASLNODE && retried_query_num != num_query)
+	    {
+	      err_code = recompile_statement (srv_handle);
+	      if (err_code < 0)
+		{
+		  goto exec_db_error;
+		}
+	      session = (DB_SESSION *) srv_handle->session;
+	      retried_query_num = num_query;
+	      num_query--;
+	      continue;
+	    }
 	  goto exec_db_error;
 	}
 
@@ -2433,6 +2877,7 @@ execute_array_error:
     }
   return err_code;
 }
+#endif /* !CAS_FOR_CGW */
 
 void
 ux_get_tran_setting (int *lock_wait, int *isol_level)
@@ -2480,7 +2925,6 @@ ux_set_lock_timeout (int lock_timeout)
 void
 ux_set_cas_change_mode (int mode, T_NET_BUF * net_buf)
 {
-#if !defined(LIBCAS_FOR_JSP)
   int prev_mode;
 
   prev_mode = as_info->cas_change_mode;
@@ -2488,10 +2932,6 @@ ux_set_cas_change_mode (int mode, T_NET_BUF * net_buf)
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, prev_mode, NULL);	/* result msg */
-#else
-  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-  net_buf_cp_int (net_buf, CAS_CHANGE_MODE_UNKNOWN, NULL);	/* result msg */
-#endif
 }
 
 int
@@ -2504,6 +2944,9 @@ ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch
   if (srv_handle == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch %s%d", "error:", err_info.err_number);
+
       goto fetch_error;
     }
 
@@ -2639,25 +3082,38 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
   int err_code;
   int count;
   char *err_str = NULL;
+#if !defined(CAS_FOR_CGW)
   T_QUERY_RESULT *cur_result;
-
+#endif /* CAS_FOR_CGW */
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor srv_h_id %d %s%d", srv_h_id, "error:",
+		     err_info.err_number);
+
       goto cursor_error;
     }
-
+#if defined(CAS_FOR_CGW)
+  count = srv_handle->total_tuple_count;
+#else
   cur_result = (T_QUERY_RESULT *) srv_handle->cur_result;
   if (cur_result == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor %s%d current result is null", "error:",
+		     err_info.err_number);
+
       goto cursor_error;
     }
 
   count = cur_result->tuple_count;
+#endif /* CAS_FOR_CGW */
+
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-  net_buf_cp_int (net_buf, count, NULL);	/* result msg */
+  net_buf_cp_int (net_buf, (int) count, NULL);	/* result msg */
 
   return 0;
 
@@ -2684,6 +3140,11 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST || srv_handle->cur_result == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor %s%d%s",
+		     "error:", err_info.err_number,
+		     (srv_handle == NULL) ? "" : (srv_handle->cur_result == NULL) ? " current result is null" : "");
+
       goto cursor_update_error;
     }
 
@@ -2727,6 +3188,10 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
       err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, desired_type);
       if (err_code < 0)
 	{
+	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
+	    {
+	      cas_log_write (0, false, "cursor_update %s%d", "error:", err_info.err_number);
+	    }
 	  goto cursor_update_error;
 	}
 
@@ -2778,17 +3243,18 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
     {
       return;
     }
-
+#if defined(CAS_FOR_CGW)
+  cgw_cursor_close (srv_handle);
+#else
   ux_free_result (srv_handle->q_result[idx].result);
   srv_handle->q_result[idx].result = NULL;
 
   if (srv_handle->q_result[idx].is_holdable == true)
     {
       srv_handle->q_result[idx].is_holdable = false;
-#if !defined(LIBCAS_FOR_JSP)
       as_info->num_holdable_results--;
-#endif
     }
+#endif /* CAS_FOR_CGW */
 }
 
 int
@@ -3044,6 +3510,10 @@ ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf)
       err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, attr_type);
       if (err_code < 0)
 	{
+	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
+	    {
+	      cas_log_write (0, false, "oid_put %s%d", "error:", err_info.err_number);
+	    }
 	  dbt_abort_object (otmpl);
 	  goto oid_put_error;
 	}
@@ -3245,6 +3715,10 @@ ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf)
     {
       errors_in_transaction++;
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_query_info srv_h_id %d %s%d", srv_h_id,
+		     "error:", err_info.err_number);
+
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
@@ -3304,6 +3778,10 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_parameter_info srv_h_id %d %s%d", srv_h_id,
+		     "error:", err_info.err_number);
+
       goto parameter_info_error;
     }
 
@@ -3682,8 +4160,8 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 {
   DB_VALUE *def = NULL;
   int err;
-  char *default_value_string = NULL, *default_expr_format = NULL;
-  const char *default_value_expr_type_string = NULL;
+  char *default_value_string = NULL;
+  const char *default_value_expr_type_string = NULL, *default_expr_format = NULL;
   const char *default_value_expr_op_string = NULL;
 
   *alloc = false;
@@ -3766,7 +4244,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
     case DB_TYPE_VARNCHAR:
       {
 	int def_size = db_get_string_size (def);
-	char *def_str_p = db_get_string (def);
+	const char *def_str_p = db_get_string (def);
 	if (def_str_p)
 	  {
 	    default_value_string = (char *) malloc (def_size + 3);
@@ -3790,7 +4268,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 	if (err == NO_ERROR)
 	  {
 	    int def_size = db_get_string_size (&tmp_val);
-	    char *def_str_p = db_get_string (&tmp_val);
+	    const char *def_str_p = db_get_string (&tmp_val);
 
 	    default_value_string = (char *) malloc (def_size + 1);
 	    if (default_value_string != NULL)
@@ -3977,8 +4455,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  {
 	    intl_char_count ((unsigned char *) value, val_size, lang_get_client_charset (), &val_length);
 	    err_code =
-	      db_make_varchar (&db_val, val_length, value, val_size, lang_get_client_charset (),
-			       lang_get_client_collation ());
+	      db_make_char (&db_val, -1, value, val_size, lang_get_client_charset (), lang_get_client_collation ());
 	    db_string_put_cs_and_collation (&db_val, lang_get_client_charset (), lang_get_client_collation ());
 	    db_val.need_clear = is_composed;
 	  }
@@ -4487,10 +4964,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
       {
-	DB_C_BIT bit;
 	int length = 0;
 
-	bit = db_get_bit (val, &length);
+	DB_CONST_C_BIT bit = db_get_bit (val, &length);
 	length = (length + 7) / 8;
 	if (max_col_size > 0)
 	  {
@@ -4503,7 +4979,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       {
-	DB_C_CHAR str;
+	DB_CONST_C_CHAR str;
 	int dummy = 0;
 	int bytes_size = 0;
 	int decomp_size;
@@ -4554,7 +5030,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:
       {
-	DB_C_NCHAR nchar;
+	DB_CONST_C_NCHAR nchar;
 	int dummy = 0;
 	int bytes_size = 0;
 	int decomp_size;
@@ -4604,13 +5080,12 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_ENUMERATION:
       {
-	char *str;
 	int bytes_size = 0;
 	int decomp_size;
 	char *decomposed = NULL;
 	bool need_decomp = false;
 
-	str = db_get_enum_string (val);
+	const char *str = db_get_enum_string (val);
 	bytes_size = db_get_enum_string_size (val);
 	if (max_col_size > 0)
 	  {
@@ -4863,7 +5338,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       {
 	DB_DOMAIN *char_domain;
 	DB_VALUE v;
-	char *str;
+	const char *str;
 	int len, err;
 	char buf[128];
 
@@ -5011,10 +5486,10 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 
     case DB_TYPE_RESULTSET:
       {
-	int h_id;
+	DB_BIGINT query_id;
 
-	h_id = db_get_resultset (val);
-	add_res_data_int (net_buf, h_id, ext_col_type, &data_size);
+	query_id = db_get_resultset (val);
+	add_res_data_bigint (net_buf, query_id, ext_col_type, &data_size);
       }
       break;
 
@@ -5035,9 +5510,9 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	str = db_get_json_raw_body (val);
 	bytes_size = strlen (str);
 
-	/* no matter which column type is returned to client (JSON or STRING, depending on client version), 
+	/* no matter which column type is returned to client (JSON or STRING, depending on client version),
 	 * the data is always encoded as string */
-	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
+	add_res_data_string (net_buf, str, bytes_size, 0, INTL_CODESET_UTF8, &data_size);
 	db_private_free (NULL, str);
       }
       break;
@@ -5292,6 +5767,243 @@ oid_data_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num, char **attr_na
   return 0;
 }
 
+#if defined (CAS_FOR_CGW)
+static int
+cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  T_OBJECT tuple_obj;
+  int err_code = 0;
+  int num_tuple_msg_offset;
+  int num_tuple = 0;
+  int net_buf_size;
+  char fetch_end_flag = 0;
+  SQLSMALLINT num_cols;
+  SQLLEN total_row_count = 0;
+  T_BROKER_VERSION client_version = req_info->client_version;
+
+  if (result_set_idx < 0 || result_set_idx > 1)
+    {
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_RESULT_SET, CAS_ERROR_INDICATOR);
+    }
+
+
+  if (srv_handle->is_cursor_open == false)
+    {
+      err_code = cgw_execute (srv_handle);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+    }
+  else if (srv_handle->is_cursor_open && cursor_pos == 1 && srv_handle->cursor_pos > 1)
+    {
+      err_code = cgw_cursor_close (srv_handle);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+
+      err_code = cgw_execute (srv_handle);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+    }
+
+  net_buf_cp_int (net_buf, (int) total_row_count, &num_tuple_msg_offset);
+
+  err_code = cgw_get_num_cols (srv_handle->cgw_handle->hstmt, &num_cols);
+
+  if (err_code < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto fetch_error;
+    }
+
+  if (col_binding == NULL)
+    {
+      if (col_binding_buff)
+	{
+	  cgw_cleanup_binder (col_binding_buff);
+	  col_binding_buff = NULL;
+	}
+
+      err_code = cgw_col_bindings (srv_handle->cgw_handle->hstmt, num_cols, &col_binding, &col_binding_buff);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+    }
+
+  if (cas_shard_flag == ON)
+    {
+      net_buf_size = SHARD_NET_BUF_SIZE;
+    }
+  else
+    {
+      net_buf_size = NET_BUF_SIZE;
+    }
+
+  num_tuple = 0;
+
+  memset ((char *) &tuple_obj, 0, sizeof (T_OBJECT));
+
+  while (CHECK_NET_BUF_SIZE (net_buf, net_buf_size))
+    {				/* currently, don't check fetch_count */
+
+      if (col_binding_buff->is_exist_col_data)
+	{
+	  err_code = cgw_cur_tuple (net_buf, col_binding_buff, cursor_pos);
+	  if (err_code < 0)
+	    {
+	      goto fetch_error;
+	    }
+	}
+      else
+	{
+	  err_code = cgw_row_data (srv_handle->cgw_handle->hstmt);
+	  if (err_code < 0)
+	    {
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto fetch_error;
+	    }
+
+	  if (err_code == SQL_NO_DATA_FOUND)
+	    {
+	      fetch_end_flag = 1;
+
+	      if (col_binding)
+		{
+		  cgw_cleanup_binder (col_binding);
+		  col_binding = NULL;
+		}
+
+	      if (col_binding_buff)
+		{
+		  cgw_cleanup_binder (col_binding_buff);
+		  col_binding_buff = NULL;
+		}
+
+	      err_code = cgw_cursor_close (srv_handle);
+	      if (err_code < 0)
+		{
+		  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+		  goto fetch_error;
+		}
+
+
+	      if (check_auto_commit_after_getting_result (srv_handle) == true)
+		{
+		  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+		}
+	      break;
+	    }
+
+	  err_code = cgw_cur_tuple (net_buf, col_binding, cursor_pos);
+	  if (err_code < 0)
+	    {
+	      goto fetch_error;
+	    }
+	}
+
+      num_tuple++;
+      cursor_pos++;
+      if (srv_handle->max_row > 0 && cursor_pos > srv_handle->max_row)
+	{
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
+	    {
+	      err_code = cgw_cursor_close (srv_handle);
+	      if (err_code < 0)
+		{
+		  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+		  goto fetch_error;
+		}
+	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	    }
+	  break;
+	}
+
+      err_code = cgw_row_data (srv_handle->cgw_handle->hstmt);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+
+      if (err_code == SQL_NO_DATA_FOUND)
+	{
+	  fetch_end_flag = 1;
+
+	  if (col_binding)
+	    {
+	      cgw_cleanup_binder (col_binding);
+	      col_binding = NULL;
+	    }
+
+	  if (col_binding_buff)
+	    {
+	      cgw_cleanup_binder (col_binding_buff);
+	      col_binding_buff = NULL;
+	    }
+
+	  err_code = cgw_cursor_close (srv_handle);
+	  if (err_code < 0)
+	    {
+	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	      goto fetch_error;
+	    }
+
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
+	    {
+	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	    }
+	  break;
+	}
+
+      err_code = cgw_copy_tuple (col_binding, col_binding_buff);
+      if (err_code < 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto fetch_error;
+	}
+    }
+
+  /* Be sure that cursor is closed, if query executed with commit and not holdable. */
+  assert (!tran_was_latest_query_committed () || srv_handle->is_holdable == true || err_code == DB_CURSOR_END);
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
+    {
+      net_buf_cp_byte (net_buf, fetch_end_flag);
+    }
+
+  net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
+
+  srv_handle->cursor_pos = cursor_pos;
+
+  return 0;
+
+fetch_error:
+  if (col_binding)
+    {
+      cgw_cleanup_binder (col_binding);
+      col_binding = NULL;
+    }
+
+  if (col_binding_buff)
+    {
+      cgw_cleanup_binder (col_binding_buff);
+      col_binding_buff = NULL;
+    }
+
+  return err_code;
+}
+#endif /* CAS_FOR_CGW */
+
 static int
 fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
 	      T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -5362,7 +6074,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 
 	  net_buf_cp_int (net_buf, 0, NULL);
 
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5445,7 +6157,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       cursor_pos++;
       if (srv_handle->max_row > 0 && cursor_pos > srv_handle->max_row)
 	{
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5461,7 +6173,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	{
 	  fetch_end_flag = 1;
 
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5486,7 +6198,6 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 
   srv_handle->cursor_pos = cursor_pos;
 
-  db_obj = NULL;
   return 0;
 }
 
@@ -5566,7 +6277,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   DB_VALUE val_class, val_attr;
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *db_attr;
-  char *class_name, *attr_name, *p;
+  const char *attr_name;
+  const char *class_name, *p;
   T_ATTR_TABLE attr_info;
   T_BROKER_VERSION client_version = req_info->client_version;
   char *default_value_string = NULL;
@@ -5768,7 +6480,7 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
   DB_DOMAIN *domain;
   char *name;
   int db_type;
-  char arg_str[128];
+  std::string arg_str;
   int num_args;
   T_BROKER_VERSION client_version = req_info->client_version;
 
@@ -5822,7 +6534,6 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       add_res_data_short (net_buf, cas_type, 0, NULL);
 
       /* 3. arg domain */
-      arg_str[0] = '\0';
       num_args = db_method_arg_count (tmp_p);
       for (j = 1; j <= num_args; j++)
 	{
@@ -5838,10 +6549,10 @@ fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	    {
 	      cas_type = set_extended_cas_type (CCI_U_TYPE_UNKNOWN, (DB_TYPE) db_type);
 	    }
-
-	  sprintf (arg_str, "%s%d ", arg_str, cas_type);
+	  arg_str.push_back (cas_type);
+	  arg_str.push_back (' ');
 	}
-      add_res_data_string (net_buf, arg_str, strlen (arg_str), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+      add_res_data_string (net_buf, arg_str.c_str (), arg_str.size (), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
       tuple_num++;
       cursor_pos++;
@@ -6394,8 +7105,18 @@ fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, 
   return 0;
 }
 
+
+#if defined(CAS_FOR_CGW)
+static int
+fetch_not_supported (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  return ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+}
+#endif /* CAS_FOR_CGW */
+
 static void
-add_res_data_bytes (T_NET_BUF * net_buf, char *str, int size, unsigned char ext_type, int *net_size)
+add_res_data_bytes (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -7007,12 +7728,84 @@ get_stmt_type (char *stmt)
     {
       return CUBRID_STMT_EVALUATE;
     }
+  else if (strncasecmp (stmt, "select", 6) == 0)
+    {
+      return CUBRID_STMT_SELECT;
+    }
   else
     {
       return CUBRID_MAX_STMT_TYPE;
     }
 }
 
+
+#if defined(CAS_FOR_CGW)
+static int
+cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_type,
+				  T_BROKER_VERSION client_version, T_NET_BUF * net_buf)
+{
+  int err_code;
+  int result_cache_lifetime = -1;
+  char updatable_flag = prepare_flag & CCI_PREPARE_UPDATABLE;
+  char *class_name = NULL;
+  SQLSMALLINT num_cols = 0;
+  int num_col_offset = 0;
+  int i = 1;
+  T_ODBC_COL_INFO col_info;
+
+  if (stmt_type == CUBRID_STMT_SELECT)
+    {
+      if (updatable_flag)
+	{
+	  updatable_flag = TRUE;
+	}
+
+      net_buf_cp_byte (net_buf, updatable_flag);
+      net_buf_cp_int (net_buf, (int) num_cols, &num_col_offset);
+
+      err_code = cgw_get_num_cols (hstmt, &num_cols);
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	}
+
+      for (i = 1; i <= num_cols; i++)
+	{
+	  err_code = cgw_get_col_info (hstmt, i, &col_info);
+	  if (err_code < 0)
+	    {
+	      return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	    }
+
+	  prepare_column_info_set (net_buf, col_info.data_type, col_info.scale, col_info.precision,
+				   col_info.charset, col_info.col_name, col_info.default_value,
+				   col_info.is_auto_increment, col_info.is_unique_key, col_info.is_primary_key,
+				   col_info.is_reverse_index, col_info.is_reverse_unique, col_info.is_foreign_key,
+				   col_info.is_shared, col_info.attr_name, col_info.class_name, col_info.is_not_null,
+				   client_version);
+	}
+
+      net_buf_overwrite_int (net_buf, num_col_offset, (int) num_cols);
+    }
+  else if (stmt_type == CUBRID_STMT_CALL || stmt_type == CUBRID_STMT_GET_STATS || stmt_type == CUBRID_STMT_EVALUATE)
+    {
+      updatable_flag = 0;
+      net_buf_cp_byte (net_buf, updatable_flag);
+      net_buf_cp_int (net_buf, 1, NULL);
+      prepare_column_info_set (net_buf, 0, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "", "", 0, 0, 0, 0, 0, 0, 0, "", "", 0,
+			       client_version);
+    }
+  else
+    {
+      updatable_flag = 0;
+      net_buf_cp_byte (net_buf, updatable_flag);
+      net_buf_cp_int (net_buf, 0, NULL);
+    }
+  return 0;
+}
+#endif /* CAS_FOR_CGW */
+
+#if !defined(CAS_FOR_CGW)
 static int
 prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_RESULT * q_result, T_NET_BUF * net_buf,
 			      T_BROKER_VERSION client_version)
@@ -7115,8 +7908,8 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 		  col_update_info[num_cols].updatable = FALSE;
 		  if (db_query_format_col_type (col) == DB_COL_NAME)
 		    {
-		      ALLOC_COPY (col_update_info[num_cols].attr_name, attr_name);
-		      ALLOC_COPY (col_update_info[num_cols].class_name, class_name);
+		      ALLOC_COPY_STRLEN (col_update_info[num_cols].attr_name, attr_name);
+		      ALLOC_COPY_STRLEN (col_update_info[num_cols].class_name, class_name);
 		      if (col_update_info[num_cols].attr_name != NULL && col_update_info[num_cols].class_name != NULL)
 			{
 			  col_update_info[num_cols].updatable = TRUE;
@@ -7155,11 +7948,11 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	      null_type_column[num_cols] = 1;
 	    }
 
-	  /* 
+	  /*
 	   * if (cas_type == CCI_U_TYPE_CHAR && precision < 0)
 	   *   precision = 0;
 	   */
-#ifndef LIBCAS_FOR_JSP
+
 	  if (shm_appl->max_string_length >= 0)
 	    {
 	      if (precision < 0 || precision > shm_appl->max_string_length)
@@ -7167,9 +7960,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 		  precision = shm_appl->max_string_length;
 		}
 	    }
-#else /* !LIBCAS_FOR_JSP */
-	  /* precision = DB_MAX_STRING_LENGTH; */
-#endif /* !LIBCAS_FOR_JSP */
+
 
 	  set_column_info (net_buf, cas_type, scale, precision, charset, col_name, attr_name, class_name,
 			   (char) db_query_format_is_non_null (col), client_version);
@@ -7211,6 +8002,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 
   return 0;
 }
+#endif /* CAS_FOR_CGW */
 
 static int
 execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_BROKER_VERSION client_version, char exec_flag)
@@ -7537,64 +8329,77 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
-  const char *case_stmt;
-  const char *where_vclass;
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  char *class_name_only = NULL;
 
   ut_tolower (class_name);
 
-  if (cas_client_type == CAS_CLIENT_CCI)
+  if (class_name)
     {
-      case_stmt = "CASE WHEN is_system_class = 'YES' THEN 0 \
-		      WHEN class_type = 'CLASS' THEN 2 \
-		      ELSE 1 END";
-    }
-  else
-    {
-      case_stmt = "CASE WHEN is_system_class = 'YES' THEN 0 \
-		      WHEN class_type = 'CLASS' THEN 2 \
-		      ELSE 1 END";
-    }
-  where_vclass = "class_type = 'VCLASS'";
+      char *dot = NULL;
+      int len = 0;
 
-  STRING_APPEND (sql_p, avail_size, "SELECT class_name, CAST(%s AS short), comment FROM db_class ", case_stmt);
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
+
+  // *INDENT-OFF*
+  STRING_APPEND (sql_p, avail_size,
+	"SELECT "
+	  "CASE "
+	    "WHEN is_system_class = 'NO' THEN LOWER (owner_name) || '.' || class_name "
+	    "ELSE class_name "
+	    "END AS unique_name, "
+	  "CAST ( "
+	      "CASE "
+		"WHEN is_system_class = 'YES' THEN 0 "
+		"WHEN class_type = 'CLASS' THEN 2 "
+		"ELSE 1 "
+		"END "
+	      "AS SHORT "
+	    "), "
+	  "comment "
+	"FROM "
+	  "db_class "
+	"WHERE 1 = 1 ");
+  // *INDENT-ON*
+
+  if (v_class_flag)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND class_type = 'VCLASS' ");
+    }
+
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
-      if (v_class_flag)
+      if (class_name_only)
 	{
-	  if (class_name)
-	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' AND %s", class_name,
-			     get_backslash_escape_string (), where_vclass);
-	    }
-	  else
-	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE %s", where_vclass);
-	    }
-	}
-      else
-	{
-	  if (class_name)
-	    {
-	      STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' ", class_name,
-			     get_backslash_escape_string ());
-	    }
+	  STRING_APPEND (sql_p, avail_size, "AND class_name LIKE '%s' ESCAPE '%s' ", class_name_only,
+			 get_backslash_escape_string ());
 	}
     }
   else
     {
-      if (class_name == NULL)
+      if (class_name_only == NULL)
 	{
-	  class_name = (char *) "";
+	  class_name_only = CONST_CAST (char *, "");
 	}
+      STRING_APPEND (sql_p, avail_size, "AND class_name = '%s' ", class_name_only);
+    }
 
-      if (v_class_flag)
-	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s' AND %s", class_name, where_vclass);
-	}
-      else
-	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s'", class_name);
-	}
+  if (*schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
     }
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
@@ -7616,43 +8421,80 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  char *class_name_only = NULL;
 
   ut_tolower (class_name);
   ut_tolower (attr_name);
 
-  STRING_APPEND (sql_p, avail_size, "SELECT class_name, attr_name FROM db_attribute WHERE ");
+  if (class_name)
+    {
+      char *dot = NULL;
+      int len = 0;
+
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
+
+  // *INDENT-OFF*
+  STRING_APPEND (sql_p, avail_size,
+	"SELECT "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
+	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "a.attr_name "
+	"FROM "
+	  "db_attribute a "
+	"WHERE 1 = 1 ");
+  // *INDENT-ON*
 
   if (class_attr_flag)
     {
-      STRING_APPEND (sql_p, avail_size, " attr_type = 'CLASS' ");
+      STRING_APPEND (sql_p, avail_size, "AND a.attr_type = 'CLASS' ");
     }
   else
     {
-      STRING_APPEND (sql_p, avail_size, " attr_type in {'INSTANCE', 'SHARED'} ");
+      STRING_APPEND (sql_p, avail_size, "AND a.attr_type in {'INSTANCE', 'SHARED'} ");
     }
 
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
-      if (class_name)
+      if (class_name_only)
 	{
-	  STRING_APPEND (sql_p, avail_size, " AND class_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, "AND a.class_name LIKE '%s' ESCAPE '%s' ", class_name_only,
 			 get_backslash_escape_string ());
 	}
     }
   else
     {
-      if (class_name == NULL)
+      if (class_name_only == NULL)
 	{
-	  class_name = (char *) "";
+	  class_name_only = CONST_CAST (char *, "");
 	}
-      STRING_APPEND (sql_p, avail_size, " AND class_name = '%s' ", class_name);
+      STRING_APPEND (sql_p, avail_size, "AND a.class_name = '%s' ", class_name_only);
     }
 
   if (pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH)
     {
       if (attr_name)
 	{
-	  STRING_APPEND (sql_p, avail_size, " AND attr_name LIKE '%s' ESCAPE '%s' ", attr_name,
+	  STRING_APPEND (sql_p, avail_size, "AND a.attr_name LIKE '%s' ESCAPE '%s' ", attr_name,
 			 get_backslash_escape_string ());
 	}
     }
@@ -7660,11 +8502,17 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
     {
       if (attr_name == NULL)
 	{
-	  attr_name = (char *) "";
+	  attr_name = CONST_CAST (char *, "");
 	}
-      STRING_APPEND (sql_p, avail_size, " AND attr_name = '%s' ", attr_name);
+      STRING_APPEND (sql_p, avail_size, "AND a.attr_name = '%s' ", attr_name);
     }
-  STRING_APPEND (sql_p, avail_size, " ORDER BY class_name, def_order");
+
+  if (*schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND a.owner_name = UPPER ('%s') ", schema_name);
+    }
+
+  STRING_APPEND (sql_p, avail_size, "ORDER BY a.class_name, a.def_order ");
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
@@ -7681,14 +8529,44 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 static int
 sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle)
 {
-  char sql_stmt[1024];
+  char sql_stmt[1024], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  const char *class_name_only = NULL;
 
-  if (class_name == NULL)
-    class_name = (char *) "";
   ut_tolower (class_name);
 
-  sprintf (sql_stmt, "SELECT vclass_def FROM db_vclass WHERE vclass_name = '%s'", class_name);
+  if (class_name)
+    {
+      char *dot = NULL;
+      int len = 0;
+
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
+  else
+    {
+      class_name_only = CONST_CAST (char *, "");
+    }
+
+  STRING_APPEND (sql_p, avail_size, "SELECT vclass_def FROM db_vclass WHERE vclass_name = '%s' ", class_name_only);
+
+  if (*schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
+    }
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
@@ -7859,6 +8737,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
   MOP tmp_obj;
   DB_OBJECT *obj_trigger_target = NULL;
   const char *name_trigger_target = NULL;
+  const char *only_name_trigger_target = NULL;
   TR_TRIGGER *trigger = NULL;
   int error = NO_ERROR;
   bool is_pattern_match;
@@ -7882,6 +8761,35 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
     }
   else
     {
+      char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+      char *class_name_only = NULL;
+      DB_OBJECT *owner = NULL;
+
+      {
+	char *dot = NULL;
+	int len = 0;
+
+	class_name_only = class_name;
+	dot = strchr (class_name, '.');
+	if (dot)
+	  {
+	    len = STATIC_CAST (int, dot - class_name);
+	    /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	    if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	      {
+		memcpy (schema_name, class_name, len);
+		schema_name[len] = '\0';
+
+		/* If the user does not exist, compare the entire class_name. */
+		owner = db_find_user (schema_name);
+		if (owner != NULL)
+		  {
+		    class_name_only = dot + 1;
+		  }
+	      }
+	  }
+      }
+
       for (tmp_t = tmp_trigger; tmp_t; tmp_t = tmp_t->next)
 	{
 	  tmp_obj = tmp_t->op;
@@ -7906,9 +8814,30 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	      break;
 	    }
 
+	  only_name_trigger_target = name_trigger_target;
+	  /* If the user does not exist, compare the entire class_name. */
+	  if (owner)
+	    {
+	      only_name_trigger_target = strchr (name_trigger_target, '.');
+	      if (only_name_trigger_target)
+		{
+		  only_name_trigger_target = only_name_trigger_target + 1;
+		}
+	      else
+		{
+		  assert (false);
+		}
+
+	      /* If the owner is different from the specified owner, skip it. */
+	      if (trigger->owner != owner)
+		{
+		  continue;
+		}
+	    }
+
 	  if (is_pattern_match)
 	    {
-	      if (str_like ((char *) name_trigger_target, class_name, '\\') == 1)
+	      if (str_like (CONST_CAST (char *, only_name_trigger_target), class_name_only, '\\') == 1)
 		{
 		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		  if (error != NO_ERROR)
@@ -7920,7 +8849,7 @@ sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 	    }
 	  else
 	    {
-	      if (strcmp (class_name, name_trigger_target) == 0)
+	      if (strcmp (class_name_only, only_name_trigger_target) == 0)
 		{
 		  error = ml_ext_add (&all_trigger, tmp_obj, NULL);
 		  if (error != NO_ERROR)
@@ -7987,16 +8916,66 @@ sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HAND
   else
     {
       DB_OBJLIST *obj_list, *obj_tmp;
+      char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+      char *class_name_only = NULL;
+      DB_OBJECT *owner = NULL;
+
+      if (class_name)
+	{
+	  char *dot = NULL;
+	  int len = 0;
+
+	  class_name_only = class_name;
+	  dot = strchr (class_name, '.');
+	  if (dot)
+	    {
+	      len = STATIC_CAST (int, dot - class_name);
+	      /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	      if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+		{
+		  memcpy (schema_name, class_name, len);
+		  schema_name[len] = '\0';
+
+		  owner = db_find_user (schema_name);
+		  /* If the user does not exist, compare the entire class_name. */
+		  if (owner != NULL)
+		    {
+		      class_name_only = dot + 1;
+		    }
+		}
+	    }
+	}
 
       obj_list = db_get_all_classes ();
 
       num_tuple = 0;
       for (obj_tmp = obj_list; obj_tmp; obj_tmp = obj_tmp->next)
 	{
-	  char *p;
+	  char *p, *q;
 
-	  p = (char *) db_get_class_name (obj_tmp->op);
-	  if (class_name != NULL && str_like (p, class_name, '\\') < 1)
+	  p = CONST_CAST (char *, db_get_class_name (obj_tmp->op));
+	  q = p;
+	  /* If the user does not exist, compare the entire class_name. */
+	  if (owner && db_is_system_class (obj_tmp->op) == FALSE)
+	    {
+	      /* p: unique_name, q: class_name */
+	      q = strchr (p, '.');
+	      if (q)
+		{
+		  q = q + 1;
+		}
+	      else
+		{
+		  assert (false);
+		}
+
+	      /* If the owner is different from the specified owner, skip it. */
+	      if (db_get_owner (obj_tmp->op) != owner)
+		{
+		  continue;
+		}
+	    }
+	  if (class_name_only != NULL && str_like (q, class_name_only, '\\') < 1)
 	    {
 	      continue;
 	    }
@@ -8131,9 +9110,10 @@ class_type (DB_OBJECT * class_obj)
 }
 
 static int
-class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag, T_ATTR_TABLE * attr_table)
+class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
+		 T_ATTR_TABLE * attr_table)
 {
-  char *p;
+  const char *p;
   int db_type;
   DB_DOMAIN *domain;
   DB_OBJECT *class_obj;
@@ -8141,7 +9121,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
   int precision;
   short scale;
 
-  p = (char *) db_attribute_name (attr);
+  p = db_attribute_name (attr);
 
   domain = db_attribute_domain (attr);
   db_type = TP_DOMAIN_TYPE (domain);
@@ -8149,7 +9129,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
   attr_table->class_name = class_name;
   attr_table->attr_name = p;
 
-  p = (char *) db_attribute_comment (attr);
+  p = db_attribute_comment (attr);
   attr_table->comment = p;
 
   if (TP_IS_SET_TYPE (db_type))
@@ -8213,7 +9193,7 @@ class_attr_info (char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char
     }
   else
     {
-      attr_table->source_class = (char *) db_get_class_name (class_obj);
+      attr_table->source_class = db_get_class_name (class_obj);
     }
 
   attr_table->attr_order = db_attribute_order (attr) + 1;
@@ -8299,9 +9279,9 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_bu
   num_result = db_execute_statement (session, stmt_id, &result);
   lang_set_parser_use_client_charset (true);
 
-#ifndef LIBCAS_FOR_JSP
+
   update_query_execution_count (as_info, stmt_type);
-#endif /* !LIBCAS_FOR_JSP */
+
 
   if (num_result < 0)
     {
@@ -8347,26 +9327,75 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
   int num_result = 0;
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  char *class_name_only = NULL;
 
   ut_tolower (class_name);
 
-  STRING_APPEND (sql_p, avail_size, "SELECT class_name, super_class_name \
-		    FROM db_direct_super_class ");
+  if (class_name)
+    {
+      char *dot = NULL;
+      int len = 0;
+
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
+
+  // *INDENT-OFF*
+  STRING_APPEND (sql_p, avail_size,
+	"SELECT "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
+	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
+	      ") = 'NO' THEN LOWER (a.super_owner_name) || '.' || a.super_class_name "
+	    "ELSE a.super_class_name "
+	    "END AS super_unique_name "
+	"FROM "
+	  "db_direct_super_class a "
+	"WHERE 1 = 1 ");
+  // *INDENT-ON*
+
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
-      if (class_name)
+      if (class_name_only)
 	{
-	  STRING_APPEND (sql_p, avail_size, "WHERE class_name LIKE '%s' ESCAPE '%s' ", class_name,
+	  STRING_APPEND (sql_p, avail_size, "AND a.class_name LIKE '%s' ESCAPE '%s' ", class_name_only,
 			 get_backslash_escape_string ());
 	}
     }
   else
     {
-      if (class_name == NULL)
+      if (class_name_only == NULL)
 	{
-	  class_name = (char *) "";
+	  class_name_only = CONST_CAST (char *, "");
 	}
-      STRING_APPEND (sql_p, avail_size, "WHERE class_name = '%s'", class_name);
+      STRING_APPEND (sql_p, avail_size, "AND a.class_name = '%s' ", class_name_only);
+    }
+
+  if (*schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND a.owner_name = UPPER ('%s') ", schema_name);
     }
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
@@ -8388,8 +9417,30 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   int avail_size = sizeof (sql_stmt) - 1;
   int num_result;
   DB_OBJECT *class_object;
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  char *class_name_only = NULL;
 
   ut_tolower (class_name);
+
+  if (class_name)
+    {
+      char *dot = NULL;
+      int len = 0;
+
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
 
   /* is it existing class? */
   class_object = db_find_class (class_name);
@@ -8400,13 +9451,38 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
       return 0;
     }
 
-  STRING_APPEND (sql_p, avail_size, "SELECT a.class_name, b.key_attr_name, b.key_order+1, a.index_name");
-  STRING_APPEND (sql_p, avail_size, " FROM db_index a, db_index_key b WHERE ");
-  STRING_APPEND (sql_p, avail_size, " a.class_name = b.class_name ");
-  STRING_APPEND (sql_p, avail_size, " AND a.index_name = b.index_name ");
-  STRING_APPEND (sql_p, avail_size, " AND a.is_primary_key = 'YES' ");
-  STRING_APPEND (sql_p, avail_size, " AND a.class_name = '%s'", class_name);
-  STRING_APPEND (sql_p, avail_size, " ORDER BY b.key_attr_name");
+  // *INDENT-OFF*
+  STRING_APPEND (sql_p, avail_size,
+	"SELECT "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT c.is_system_class "
+		"FROM db_class c "
+		"WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name "
+	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "b.key_attr_name, "
+	  "b.key_order + 1, "
+	  "a.index_name "
+	"FROM "
+	  "db_index a, "
+	  "db_index_key b "
+	"WHERE "
+	  "a.index_name = b.index_name "
+	  "AND a.class_name = b.class_name "
+	  "AND a.owner_name = b.owner_name "
+	  "AND a.is_primary_key = 'YES' "
+	  "AND a.class_name = '%s' ",
+	class_name_only);
+  // *INDENT-ON*
+
+  if (*schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND a.owner_name = UPPER ('%s') ", schema_name);
+    }
+
+  STRING_APPEND (sql_p, avail_size, "ORDER BY b.key_attr_name ");
 
   if ((num_result = sch_query_execute (srv_handle, sql_stmt, net_buf)) < 0)
     {
@@ -8559,7 +9635,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   if (fktable_obj == NULL)
     {
       /* The followings are possible situations.  - A table matching fktable_name does not exist.  - User has no
-       * authorization on the table.  - Other error we do not expect. In these cases, we will send an empty result. And 
+       * authorization on the table.  - Other error we do not expect. In these cases, we will send an empty result. And
        * this rule is also applied to CCI_SCH_EXPORTED_KEYS and CCI_SCH_CROSS_REFERENCE. */
       goto send_response;
     }
@@ -8730,7 +9806,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
     {
       if (find_cross_ref)
 	{
-	  if (WS_ISVID (fktable_obj) || oid_compare (WS_REAL_OID (fktable_obj), &(fk_info->self_oid)) != 0)
+	  if (WS_ISVID (fktable_obj) || OID_EQ (WS_REAL_OID (fktable_obj), &(fk_info->self_oid)) == false)
 	    {
 	      continue;
 	    }
@@ -8752,7 +9828,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 	    }
 	}
 
-      /* Traverse all constraints in foreign table to find a foreign key referring the primary key. If there is no one, 
+      /* Traverse all constraints in foreign table to find a foreign key referring the primary key. If there is no one,
        * return an error. */
       fk_attr = NULL;
       for (fk_const = db_get_constraints (fktable_obj); fk_const != NULL; fk_const = db_constraint_next (fk_const))
@@ -8958,6 +10034,10 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
     {
       int err_code;
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch_call %s%d prepare_call_info is null",
+		     "error:", err_info.err_number);
+
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
@@ -9043,50 +10123,55 @@ error:
   return err_code;
 }
 
-extern void *jsp_get_db_result_set (int h_id);
-extern void jsp_srv_handle_free (int h_id);
-
-static int
-ux_use_sp_out (int srv_h_id)
+int
+ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stmt_type, int num_column,
+					       DB_QUERY_TYPE * column_info, bool is_holdable)
 {
-  T_SRV_HANDLE *srv_handle;
-  T_QUERY_RESULT *q_result;
-  DB_QUERY_TYPE *column_info;
-  int new_handle_id = 0;
+  int srv_h_id = -1;
+  int err_code = NO_ERROR;
+  T_SRV_HANDLE *srv_handle = NULL;
+  T_QUERY_RESULT *q_result = NULL;
 
-  srv_handle = (T_SRV_HANDLE *) jsp_get_db_result_set (srv_h_id);
-  if (srv_handle == NULL || srv_handle->cur_result == NULL)
+  srv_h_id = hm_new_srv_handle (&srv_handle, -1);
+  if (srv_h_id < 0)
     {
-      jsp_srv_handle_free (srv_h_id);
-      return CAS_ER_SRV_HANDLE;
+      err_code = srv_h_id;
+      goto error;
     }
+  srv_handle->schema_type = -1;
 
-  q_result = (T_QUERY_RESULT *) srv_handle->cur_result;
-  if (srv_handle->session != NULL && q_result->stmt_id >= 0)
+  q_result = (T_QUERY_RESULT *) malloc (sizeof (T_QUERY_RESULT));
+  if (q_result == NULL)
     {
-      column_info = db_get_query_type_list ((DB_SESSION *) srv_handle->session, q_result->stmt_id);
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      goto error;
     }
-  else
+  hm_qresult_clear (q_result);
+  srv_handle->q_result = q_result;
+
+  q_result->result = result;
+  q_result->tuple_count = db_query_tuple_count ((DB_QUERY_RESULT *) result);
+  q_result->stmt_type = stmt_type;
+  q_result->col_updatable = FALSE;
+  q_result->include_oid = FALSE;
+  q_result->num_column = num_column;
+  q_result->column_info = column_info;
+  q_result->is_holdable = is_holdable;
+
+  srv_handle->cur_result = (void *) srv_handle->q_result;
+  srv_handle->cur_result_index = 1;
+  srv_handle->num_q_result = 1;
+  srv_handle->has_result_set = true;
+  srv_handle->max_row = q_result->tuple_count;
+
+  return srv_h_id;
+
+error:
+  if (srv_handle)
     {
-      column_info = NULL;
+      hm_srv_handle_free (srv_h_id);
     }
-
-  if (q_result->result != NULL && column_info != NULL)
-    {
-      new_handle_id = create_srv_handle_with_query_result (q_result, column_info, srv_handle->query_seq_num);
-      if (new_handle_id > 0)
-	{
-	  q_result->copied = TRUE;
-	}
-      else
-	{
-	  FREE_MEM (column_info);
-	}
-    }
-
-  jsp_srv_handle_free (srv_h_id);
-
-  return new_handle_id;
+  return err_code;
 }
 
 int
@@ -9404,7 +10489,7 @@ ux_get_generated_keys_error:
 }
 
 int
-ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
@@ -9415,12 +10500,27 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   int new_handle_id = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
 
-  new_handle_id = ux_use_sp_out (srv_h_id);
+  cubmethod::callback_handler * callback_handler = cubmethod::get_callback_handler ();
+  cubmethod::query_handler * query_handler = callback_handler->get_query_handler_by_query_id (query_id);
+  if (query_handler != nullptr)
+    {
+      const cubmethod::query_result & qresult = query_handler->get_result ();
+      DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session (), qresult.stmt_id);
+      new_handle_id = ux_create_srv_handle_with_method_query_result (qresult.result,
+								     qresult.stmt_type,
+								     qresult.num_column, column_info, true);
+    }
+
   srv_handle = hm_find_srv_handle (new_handle_id);
 
   if (srv_handle == NULL || srv_handle->cur_result == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "make_out_rs new_handle_id %d %s%d%s",
+		     new_handle_id, "error:", err_info.err_number,
+		     (srv_handle != NULL) ? " current result is null" : "");
+
       goto ux_make_out_rs_error;
     }
 
@@ -9428,6 +10528,10 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (q_result->stmt_type != CUBRID_STMT_SELECT)
     {
       err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "make_out_rs stmt_type %d %s%d",
+		     q_result->stmt_type, "error:", err_info.err_number);
+
       goto ux_make_out_rs_error;
     }
 
@@ -9461,6 +10565,10 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       if (col == NULL)
 	{
 	  err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "make_out_rs %s%d column_info is null", "error:",
+			 err_info.err_number);
+
 	  goto ux_make_out_rs_error;
 	}
 
@@ -9504,7 +10612,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	  q_result->null_type_column[i] = 1;
 	}
 
-#ifndef LIBCAS_FOR_JSP
+
       if (shm_appl->max_string_length >= 0)
 	{
 	  if (precision < 0 || precision > shm_appl->max_string_length)
@@ -9512,9 +10620,7 @@ ux_make_out_rs (int srv_h_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	      precision = shm_appl->max_string_length;
 	    }
 	}
-#else /* !LIBCAS_FOR_JSP */
-      /* precision = DB_MAX_STRING_LENGTH; */
-#endif /* !LIBCAS_FOR_JSP */
+
 
       set_column_info (net_buf, cas_type, scale, precision, charset, col_name, attr_name, class_name,
 		       (char) db_query_format_is_non_null (col), client_version);
@@ -9529,10 +10635,6 @@ ux_make_out_rs_error:
 static int
 get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
 {
-#ifdef LIBCAS_FOR_JSP
-  return -1;
-#else /* !LIBCAS_FOR_JSP */
-
   bool jdbc_cache_is_hint;
   int jdbc_cache_life_time = shm_appl->jdbc_cache_life_time;
 
@@ -9550,28 +10652,29 @@ get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
     }
 
   return jdbc_cache_life_time;
-#endif
 }
 
 int
 ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
 
-#ifndef LIBCAS_FOR_JSP
+
   int err_code;
   int elapsed_sec = 0, elapsed_msec = 0;
 
   if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
     {
-      cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(local)" : "(server)");
+      cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(server)" : "(local)");
       err_code = ux_end_tran (CCI_TRAN_COMMIT, true);
       cas_log_write (0, false, "auto_commit %d", err_code);
+      logddl_set_msg ("auto_commit %d", err_code);
     }
   else if (req_info->need_auto_commit == TRAN_AUTOROLLBACK)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
       err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true);
       cas_log_write (0, false, "auto_rollback %d", err_code);
+      logddl_set_msg ("auto_rollback %d", err_code);
     }
   else
     {
@@ -9618,7 +10721,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   query_timeout = 0;
 
   return err_code;
-#endif /* !LIBCAS_FOR_JSP */
+
 
   return -1;
 }
@@ -9642,7 +10745,7 @@ has_stmt_result_set (char stmt_type)
 }
 
 static bool
-check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
+check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle)
 {
   // To close an updatable cursor is dangerous since it lose locks and updating cursor is allowed before closing it.
 
@@ -9794,7 +10897,11 @@ cas_log_error_handler_asprint (char *buf, size_t bufsz, bool clear)
 int
 get_tuple_count (T_SRV_HANDLE * srv_handle)
 {
+#if defined(CAS_FOR_CGW)
+  return srv_handle->total_tuple_count;
+#else
   return srv_handle->q_result->tuple_count;
+#endif /* CAS_FOR_CGW */
 }
 
 /*****************************
@@ -9918,10 +11025,10 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
 }
 
 /* converting a DB_VALUE to a char taking care of nchar strings */
-static char *
+static const char *
 convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string)
 {
-  char *val_str = NULL;
+  const char *val_str = NULL;
   DB_TYPE val_type;
   int err, len;
 
@@ -9960,7 +11067,7 @@ serialize_collection_as_string (DB_VALUE * col, char **out)
   DB_VALUE value, value_string;
   int i, size;
   int needed_size = 0;
-  char *single_value = NULL;
+  const char *single_value = NULL;
 
   *out = NULL;
 
@@ -10088,7 +11195,6 @@ update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
 static bool
 need_reconnect_on_rctime (void)
 {
-#if !defined(LIBCAS_FOR_JSP)
   if (shm_appl->cas_rctime > 0 && db_need_reconnect ())
     {
       if ((time (NULL) - as_info->last_connect_time) > shm_appl->cas_rctime)
@@ -10096,14 +11202,13 @@ need_reconnect_on_rctime (void)
 	  return true;
 	}
     }
-#endif /* !LIBCAS_FOR_JSP */
+
   return false;
 }
 
 static void
 report_abnormal_host_status (int err_code)
 {
-#if !defined(LIBCAS_FOR_JSP)
   bool reset_after_endtran = false;
   char *hostlist[MAX_NUM_DB_HOSTS * 2 + 1];
   char **hostlist_p;
@@ -10205,7 +11310,7 @@ report_abnormal_host_status (int err_code)
 				 shm_appl->cas_rctime);
 	}
     }
-#endif /* !LIBCAS_FOR_JSP */
+
 }
 
 /*
@@ -10362,4 +11467,42 @@ do_commit_after_execute (const t_srv_handle & server_handle)
     {
       return true;
     }
+}
+
+static int
+recompile_statement (T_SRV_HANDLE * srv_handle)
+{
+  int err_code = 0;
+  int stmt_id = 0;
+  DB_SESSION *session = NULL;
+
+  session = db_open_buffer (srv_handle->sql_stmt);
+  if (!session)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      return err_code;
+    }
+
+  if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
+    {
+      db_session_set_xasl_cache_pinned (session, true, false);
+    }
+
+  stmt_id = db_compile_statement (session);
+  if (stmt_id < 0)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      return err_code;
+    }
+
+  if (srv_handle->session != NULL)
+    {
+      db_close_session ((DB_SESSION *) srv_handle->session);
+      srv_handle->session = NULL;
+    }
+
+  srv_handle->session = session;
+  srv_handle->q_result->stmt_id = stmt_id;
+
+  return err_code;
 }

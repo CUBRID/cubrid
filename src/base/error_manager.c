@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -38,6 +37,7 @@
 #endif /* !SERVER_MODE */
 #include "memory_alloc.h"
 #include "message_catalog.h"
+#include "object_representation.h"
 #if !defined (WINDOWS)
 #include "release_string.h"
 #endif // not WINDOWS
@@ -221,7 +221,7 @@ static const char *er_Builtin_msg[] = {
   NULL,
   /* ER_ER_HEADER */
   "Error in error subsystem (line %d): ",
-  /* 
+  /*
    * ER_ER_MISSING_MSG
    *
    * It's important that this message have no conversion specs, because
@@ -315,7 +315,7 @@ static bool er_Has_sticky_init = false;
 static bool er_Isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
 static int er_Print_to_console = ER_DO_NOT_PRINT;
-/* TODO : remove this when applylogdb and copylogdb are removed 
+/* TODO : remove this when applylogdb and copylogdb are removed
  * multithreaded client processes which start+end database (and error module) in a loop, may need to log errors on
  * other threads (while error module is stopped); this flag prevents assertion failure of error module initialization
 *  for such case */
@@ -446,7 +446,7 @@ er_event (void)
 static int
 er_event_init (void)
 {
-  int error = NO_ERROR;
+  volatile int error = NO_ERROR;
   const char *msg;
 
 #if !defined(WINDOWS)
@@ -613,7 +613,7 @@ er_fname_free (const void *key, void *data, void *args)
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * er_set_access_log_filename - set er_Accesslog_filename_buff, er_Accesslog_filename
- *   return: 
+ *   return:
  */
 static void
 er_set_access_log_filename (void)
@@ -632,14 +632,22 @@ er_set_access_log_filename (void)
 
   if (len < suffix_len || strncmp (&er_Msglog_filename[len - suffix_len], ER_MSG_LOG_FILE_SUFFIX, suffix_len) != 0)
     {
-      snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s%s", er_Msglog_filename, ER_ACCESS_LOG_FILE_SUFFIX);
+      if (snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s%s", er_Msglog_filename, ER_ACCESS_LOG_FILE_SUFFIX) < 0)
+	{
+	  er_Accesslog_filename = NULL;
+	  return;
+	}
       /* ex) server.log => server.log.access */
     }
   else
     {
       strncpy (tmp, er_Msglog_filename, PATH_MAX);
       tmp[len - suffix_len] = '\0';
-      snprintf (er_Accesslog_filename_buff, PATH_MAX, "%s%s", tmp, ER_ACCESS_LOG_FILE_SUFFIX);
+      if (snprintf (er_Accesslog_filename_buff, PATH_MAX - 1, "%s%s", tmp, ER_ACCESS_LOG_FILE_SUFFIX) < 0)
+	{
+	  er_Accesslog_filename = NULL;
+	  return;
+	}
       /* ex) server_log.err => server_log.access */
     }
 
@@ -759,7 +767,7 @@ er_init (const char *msglog_filename, int exit_ask)
       break;
     }
 
-  /* 
+  /*
    * Install event handler
    */
   if (prm_get_string_value (PRM_ID_EVENT_HANDLER) != NULL && *prm_get_string_value (PRM_ID_EVENT_HANDLER) != '\0')
@@ -770,7 +778,7 @@ er_init (const char *msglog_filename, int exit_ask)
 	}
     }
 
-  /* 
+  /*
    * Remember the name of the message log file
    */
   if (msglog_filename == NULL)
@@ -909,7 +917,7 @@ er_init (const char *msglog_filename, int exit_ask)
 
   log_file_lock.unlock ();
 
-  /* 
+  /*
    * Message catalog may be initialized by msgcat_init() during bootstrap.
    * But, try once more to call msgcat_init() because there could be
    * an exception case that get here before bootstrap.
@@ -925,7 +933,7 @@ er_init (const char *msglog_filename, int exit_ask)
     {
       /* cache the messages */
 
-      /* 
+      /*
        * Remember, we skip code 0.  If we can't find enough memory to
        * copy the silly message, things are going to be pretty tight
        * anyway, so just use the default version.
@@ -1304,7 +1312,7 @@ er_notify_event_on_error (int err_id)
  * er_print_callstack () - Print message with callstack (should help for
  *			   debug).
  *
- * return : 
+ * return :
  * const char * file_name (in) :
  * const int line_no (in) :
  * const char * fmt (in) :
@@ -1314,7 +1322,6 @@ void
 er_print_callstack (const char *file_name, const int line_no, const char *fmt, ...)
 {
   va_list ap;
-  int r = NO_ERROR;
 
   // *INDENT-OFF*
   // protect log file mutex
@@ -1414,7 +1421,7 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
   context &tl_context = context::get_thread_local_context ();
   // *INDENT-ON*
 
-  /* 
+  /*
    * Get the UNIX error message if needed. We need to get this as soon
    * as possible to avoid resetting the error.
    */
@@ -1443,14 +1450,14 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
   /* Initialize the area... */
   crt_error.set_error (err_id, severity, file_name, line_no);
 
-  /* 
+  /*
    * Get hold of the compiled format string for this message and get an
    * estimate of the size of the buffer required to print it.
    */
   er_fmt = er_find_fmt (err_id, num_args);
   if (er_fmt == NULL)
     {
-      /* 
+      /*
        * Assumes that er_find_fmt() has already called er_emergency().
        */
       ret_val = ER_FAILED;
@@ -1525,7 +1532,7 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
 	}
     }
 
-  /* 
+  /*
    * Do we want to stop the system on this error ... for debugging purposes?
    */
   if (prm_get_integer_value (PRM_ID_ER_STOP_ON_ERROR) == err_id)
@@ -1602,7 +1609,7 @@ er_log (int err_id)
   int tran_index;
   char *more_info_p;
   int ret;
-  char more_info[MAXHOSTNAMELEN + PATH_MAX + 64];
+  char more_info[CUB_MAXHOSTNAMELEN + PATH_MAX + 64];
   const char *log_file_name;
   const char *log_file_suffix;
   FILE **log_fh;
@@ -1632,7 +1639,7 @@ er_log (int err_id)
   /* Get the most detailed error message available */
   er_all (&err_id, &severity, &nlevels, &line_no, &file_name, &msg);
 
-  /* 
+  /*
    * Don't let the file of log messages get very long. Backup or go back to the top if need be.
    */
   if (*log_fh != stderr && *log_fh != stdout && ftell (*log_fh) > (int) prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
@@ -1665,7 +1672,7 @@ er_log (int err_id)
 
   if (*log_fh == stderr || *log_fh == stdout)
     {
-      /* 
+      /*
        * Try to avoid out of sequence stderr & stdout.
        *
        */
@@ -1697,9 +1704,9 @@ er_log (int err_id)
 
 #if defined (SERVER_MODE)
   {
-    char *prog_name = NULL;
-    char *user_name = NULL;
-    char *host_name = NULL;
+    const char *prog_name = NULL;
+    const char *user_name = NULL;
+    const char *host_name = NULL;
     int pid = 0;
 
     if (logtb_find_client_tran_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid) == NO_ERROR)
@@ -1832,8 +1839,8 @@ er_errid (void)
  * er_errid_if_has_error - Retrieve last error identifier set before
  *   return: error identifier
  *
- * Note: The function ignores an error with ER_WARNING_SEVERITY or 
- *       ER_NOTIFICATION_SEVERITY. 
+ * Note: The function ignores an error with ER_WARNING_SEVERITY or
+ *       ER_NOTIFICATION_SEVERITY.
  */
 int
 er_errid_if_has_error (void)
@@ -1985,7 +1992,6 @@ void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
   va_list ap;
-  int r = NO_ERROR;
 
 #if defined (CS_MODE) && !defined (NDEBUG)
   /* temporary workaround for HA process which may encounter missing er_module */
@@ -2209,11 +2215,11 @@ er_stack_push (void)
 }
 
 /*
- * er_stack_push_if_exists - Save the last error if exists onto the stack 
+ * er_stack_push_if_exists - Save the last error if exists onto the stack
  *
  * Note: Please notice the difference from er_stack_push.
- *       This function only pushes when an error was set, while er_stack_push always makes a room 
- *       and pushes the current entry. It will be used in conjunction with er_restore_last_error. 
+ *       This function only pushes when an error was set, while er_stack_push always makes a room
+ *       and pushes the current entry. It will be used in conjunction with er_restore_last_error.
  */
 void
 er_stack_push_if_exists (void)
@@ -2354,7 +2360,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec, int *position, in
   p = &simple_spec[1];
   q = conversion_spec;
 
-  /* 
+  /*
    * Skip leading flags...
    */
 
@@ -2363,7 +2369,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec, int *position, in
       *p++ = *q++;
     }
 
-  /* 
+  /*
    * Now look for a numeric field.  This could be either a position
    * specifier or a width specifier; we won't know until we find out
    * what follows it.
@@ -2379,7 +2385,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec, int *position, in
 
   if (*q == '$')
     {
-      /* 
+      /*
        * The number was a position specifier, so record that, skip the
        * '$', and start over depositing conversion spec characters at
        * the beginning of simple_spec.
@@ -2392,7 +2398,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec, int *position, in
 	}
       p = &simple_spec[1];
 
-      /* 
+      /*
        * Look for flags again...
        */
       while (*q == '-' || *q == '+' || *q == ' ' || *q == '#')
@@ -2400,7 +2406,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec, int *position, in
 	  *p++ = *q++;
 	}
 
-      /* 
+      /*
        * And then look for a width specifier...
        */
       n = 0;
@@ -2413,7 +2419,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec, int *position, in
       *width = n;
     }
 
-  /* 
+  /*
    * Look for an optional precision...
    */
   if (*q == '.')
@@ -2425,7 +2431,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec, int *position, in
 	}
     }
 
-  /* 
+  /*
    * And then for modifier flags...
    */
   if (*q == 'l' && *(q + 1) == 'l')
@@ -2459,7 +2465,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec, int *position, in
     }
   else if (*q == 'h')
     {
-      /* 
+      /*
        * Ignore this spec and use the class determined (later) by
        * examining the coversion code.  According to Plauger, the
        * standard dictates that stdarg.h be implemented so that short
@@ -2468,7 +2474,7 @@ er_study_spec (const char *conversion_spec, char *simple_spec, int *position, in
       *p++ = *q++;
     }
 
-  /* 
+  /*
    * Now copy the actual conversion code.
    */
   code = *p++ = *q++;
@@ -2539,7 +2545,7 @@ er_study_fmt (ER_FMT * fmt)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Set up the position parameter off by one so that we can
 	   * decrement it without checking later.
 	   */
@@ -2549,7 +2555,7 @@ er_study_fmt (ER_FMT * fmt)
 
 	  p += er_study_spec (&p[1], buf, &n, &width, &va_class);
 
-	  /* 
+	  /*
 	   * 'n' may have been modified by er_study_spec() if we ran
 	   * into a conversion spec with a positional component (e.g.,
 	   * %3$d).
@@ -2561,7 +2567,7 @@ er_study_fmt (ER_FMT * fmt)
 	      ER_SPEC *new_spec;
 	      int size;
 
-	      /* 
+	      /*
 	       * Grow the conversion spec array.
 	       */
 	      size = (n + 1) * sizeof (ER_SPEC);
@@ -2581,7 +2587,7 @@ er_study_fmt (ER_FMT * fmt)
 	}
     }
 
-  /* 
+  /*
    * Make sure that there were no "holes" left in the parameter space
    * (e.g., "%1$d" and "%3$d", but no "%2$d" spec), and that there were
    * no unknown conversion codes.  If there was a problem, we can't
@@ -2629,7 +2635,7 @@ er_estimate_size (ER_FMT * fmt, va_list * ap)
   va_list args;
   const char *str;
 
-  /* 
+  /*
    * fmt->fmt can be NULL if something went wrong while studying it.
    */
   if (fmt->fmt == NULL)
@@ -2691,7 +2697,7 @@ er_estimate_size (ER_FMT * fmt, va_list * ap)
 
 	default:
 	  er_log_debug (ARG_FILE_LINE, er_Cached_msg[ER_LOG_UNKNOWN_CODE], fmt->spec[i].code);
-	  /* 
+	  /*
 	   * Pray for protection...  We really shouldn't be able to get
 	   * here, since er_study_fmt() should protect us from it.
 	   */
@@ -2755,7 +2761,7 @@ er_find_fmt (int err_id, int num_args)
 
       if (fmt != NULL)
 	{
-	  /* 
+	  /*
 	   * Be sure that we have the same number of arguments before calling
 	   * er_estimate_size().  Because it uses straight va_arg() and friends
 	   * to grab its arguments, it is vulnerable to argument mismatches
@@ -2795,7 +2801,7 @@ er_create_fmt_msg (ER_FMT * fmt, int err_id, const char *msg)
 
   strcpy (fmt->fmt, msg);
 
-  /* 
+  /*
    * Now study the format specs and squirrel away info about them.
    */
   fmt->err_id = err_id;
@@ -2924,7 +2930,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
   crt_error.msg_area[0] = '\0';
   while ((q = strchr (p, '%')) && limit > 0)
     {
-      /* 
+      /*
        * Copy the text between the last conversion spec and the next.
        */
       span = CAST_STRLEN (q - p);
@@ -2933,7 +2939,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
       p = q + 2;
       limit -= span;
 
-      /* 
+      /*
        * Now convert and print the arg.
        */
       switch (q[1])
@@ -2974,7 +2980,7 @@ er_emergency (const char *file, int line, const char *fmt, ...)
 
   va_end (args);
 
-  /* 
+  /*
    * Now copy the message text following the last conversion spec,
    * making sure that we null-terminate the buffer (since strncat won't
    * do it if it reaches the end of the buffer).
@@ -3004,7 +3010,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
 
   assert (er_entry_p != NULL);
 
-  /* 
+  /*
    *                  *** WARNING ***
    *
    * This routine assumes that er_entry_p->msg_area is large enough to
@@ -3013,7 +3019,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
    * in for a bruising.
    */
 
-  /* 
+  /*
    * If there was trouble with the format for some reason, print out
    * something that seems a little reassuring.
    */
@@ -3025,7 +3031,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
 
   memcpy (&args, ap, sizeof (args));
 
-  /* 
+  /*
    * Make room for the args that we are about to print.  These have to
    * be snatched from the va_list in the proper order and stored in an
    * array so that we can have random access to them in order to
@@ -3048,7 +3054,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
       er_entry_p->nargs = fmt->nspecs;
     }
 
-  /* 
+  /*
    * Now grab the args and put them in er_msg->args.  The work that we
    * did earlier in er_study_fmt() tells us what the base type of each
    * va_list item is, and we use that info here.
@@ -3090,7 +3096,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
 	    }
 	  break;
 	default:
-	  /* 
+	  /*
 	   * There should be no way to get in here with any other code;
 	   * er_study_fmt() should have protected us from that.  If
 	   * we're here, it's likely that memory has been corrupted.
@@ -3100,7 +3106,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
 	}
     }
 
-  /* 
+  /*
    * Now do the printing.  Use sprintf to do the actual formatting,
    * this time using the simplified conversion specs we saved during
    * er_study_fmt().  This frees us from relying on sprintf (or
@@ -3115,7 +3121,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
   i = 0;
   while ((q = strchr (p, '%')))
     {
-      /* 
+      /*
        * Copy the text between the last conversion spec and the next
        * and then advance the pointers.
        */
@@ -3132,7 +3138,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
 	  continue;
 	}
 
-      /* 
+      /*
        * See if we've got a position specifier; it will look like a
        * sequence of digits followed by a '$'.  Anything else is
        * assumed to be part of a conversion spec.  If there is no
@@ -3148,7 +3154,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
 	}
       n = (*q == '$' && n) ? (n - 1) : i;
 
-      /* 
+      /*
        * Format the specified argument using the simplified
        * (non-positional) conversion spec that we produced earlier.
        */
@@ -3183,13 +3189,13 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
 	  sprintf (s, fmt->spec[n].spec, er_entry_p->args[n].string_value);
 	  break;
 	default:
-	  /* 
+	  /*
 	   * Can't get here.
 	   */
 	  break;
 	}
 
-      /* 
+      /*
        * Advance the pointers.  The conversion spec has to end with one
        * of the characters in the strcspn() argument, and none of
        * those characters can appear before the end of the spec.
@@ -3199,7 +3205,7 @@ er_vsprintf (er_message * er_entry_p, ER_FMT * fmt, va_list * ap)
       i += 1;
     }
 
-  /* 
+  /*
    * And get the last part of the fmt string after the last conversion
    * spec...
    */

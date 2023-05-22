@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -25,21 +24,20 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
-
 #include "object_representation_sr.h"
 
+#include "btree_load.h"
+#include "config.h"
+#include "dbtype.h"
 #include "error_manager.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "set_object.h"
-#include "btree_load.h"
-#include "dbtype.h"
-#include "object_primitive.h"
-#include "dbtype.h"
+
+#include <assert.h>
+#include <new>
+#include <stdio.h>
+#include <string.h>
 
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10
@@ -66,6 +64,25 @@ struct or_btree_property
   int length;
 };
 
+/* move the data inside the record */
+#define HEAP_MOVE_INSIDE_RECORD(rec, dest_offset, src_offset) \
+  do \
+    { \
+      assert ((rec) != NULL && (dest_offset) >= 0 && (src_offset) >= 0); \
+      assert (((rec)->length - (src_offset)) >= 0); \
+      assert (((rec)->area_size <= 0) || ((rec)->area_size >= (rec)->length)); \
+      assert (((rec)->area_size <= 0) \
+              || (((rec)->length + ((dest_offset) - (src_offset))) \
+                  <= (rec)->area_size)); \
+      if ((dest_offset) != (src_offset)) \
+        { \
+          memmove ((rec)->data + (dest_offset), (rec)->data + (src_offset), \
+                   (rec)->length - (src_offset)); \
+          (rec)->length = (rec)->length + ((dest_offset) - (src_offset)); \
+        } \
+    } \
+  while (0)
+
 static int or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * class_, BTID * btid,
 				    OID ** class_oids, HFID ** hfids, int *num_classes, int *max_classes,
 				    int *partition_local_index);
@@ -90,6 +107,19 @@ static OR_CLASSREP *or_get_current_representation (RECDES * record, int do_index
 static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid, int do_indexes);
 static const char *or_find_diskattr (RECDES * record, int attr_id);
 static int or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string);
+
+static char or_mvcc_get_flag (RECDES * record);
+static void or_mvcc_set_flag (RECDES * record, char flags);
+static INLINE MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
+static INLINE MVCCID or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_get_chn (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+  __attribute__ ((ALWAYS_INLINE));
+static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
+  __attribute__ ((ALWAYS_INLINE));
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -309,7 +339,9 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		  goto error;
 		}
 
+#if !defined (NDEBUG)
 	      (void) pgbuf_check_page_ptype (thread_p, root, PAGE_BTREE);
+#endif /* !NDEBUG */
 
 	      root_header = btree_get_root_header (thread_p, root);
 	      if (root_header == NULL)
@@ -320,7 +352,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
 	      /* construct BTID_INT structure */
 	      btid_int.sys_btid = &bt_statsp->btid;
-	      if (btree_glean_root_header_info (thread_p, root_header, &btid_int) != NO_ERROR)
+	      if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
 		{
 		  pgbuf_unfix_and_init (thread_p, root);
 		  goto error;
@@ -543,7 +575,7 @@ orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr)
 	}
       insert = i;
 
-      /* 
+      /*
        * check for array extension.
        * Add one in the comparison since a NULL_OID is set at the end of the
        * array
@@ -574,7 +606,7 @@ orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr)
 	  max = newsize;
 	}
 
-      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using 
+      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using
        * a bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
@@ -711,6 +743,24 @@ or_class_hfid (RECDES * record, HFID * hfid)
   hfid->hpgid = OR_GET_INT (ptr + ORC_HFID_PAGEID_OFFSET);
 }
 
+/*
+ * or_class_tde_algorithm, () - Extracts the tde algorithm from the disk representation of a class
+ *   return: void
+ *   record(in): packed disk record containing class
+ *   tde_algo (out): pointer to tde_algo to be filled in
+ *
+ */
+void
+or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo)
+{
+  char *ptr;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  *(int *) tde_algo = OR_GET_INT (ptr + ORC_CLASS_TDE_ALGORITHM);
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * or_class_statistics () - extracts the OID of the statistics instance for
@@ -779,7 +829,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
 	}
       insert = i;
 
-      /* 
+      /*
        * check for array extension.
        * Add one in the comparison since a NULL_OID is set at the end of the
        * array
@@ -811,7 +861,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
 	  max = newsize;
 	}
 
-      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using 
+      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using
        * a bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
@@ -896,7 +946,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * clas
 
   if (!found)
     {
-      /* check if we are dealing with a partition class in which the unique constraint stands as a local index and each 
+      /* check if we are dealing with a partition class in which the unique constraint stands as a local index and each
        * partition has it's own btree */
       if (or_rep->has_partition_info > 0 && partition_local_index != NULL)
 	{
@@ -908,7 +958,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * clas
 	}
     }
 
-  /* 
+  /*
    *  For each subclass, recurse ...
    *  Unfortunately, this information is not available in the OR_CLASSREP
    *  structure, so we'll digress into the RECDES structure for it.  It
@@ -924,7 +974,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * clas
 
   if (nsubs)
     {
-      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using 
+      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using
        * a bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
@@ -1420,7 +1470,7 @@ or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
   int error;
   int found, max, i;
   DB_VALUE value;
-  char *prop_name;
+  const char *prop_name;
 
   error = NO_ERROR;
   found = 0;
@@ -1542,7 +1592,7 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
   int pageid, slotid, volid, fileid;
   DB_SEQ *fk_seq;
   OR_FOREIGN_KEY *fk, *p = NULL;
-  char *fkname;
+  const char *fkname;
 
   size = set_size (fk_container);
 
@@ -1688,7 +1738,7 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
   DB_VALUE val1, val2;
   int error = NO_ERROR;
   int buffer_len = 0;
-  char *buffer = NULL;
+  const char *buffer = NULL;
   OR_PREDICATE *filter_predicate = NULL;
 
   index->filter_predicate = NULL;
@@ -1823,7 +1873,6 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   int i, j, e;
   int att_id, att_cnt;
   OR_ATTRIBUTE *att;
-  OR_ATTRIBUTE *ptr = NULL;
   OR_INDEX *index;
   DB_VALUE stat_val;
 
@@ -1863,7 +1912,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   index->func_index_info = NULL;
   index->index_status = OR_NO_INDEX;
 
-  /* 
+  /*
    * For each attribute ID in the set,
    *   Extract the attribute ID,
    *   Find the matching attribute and insert the pointer into the array.
@@ -1883,16 +1932,15 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
 	  att_id = db_get_int (&att_val);
 
-	  for (j = 0, att = rep->attributes, ptr = NULL; j < rep->n_attributes && ptr == NULL; j++, att++)
+	  for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 	    {
 	      if (att->id == att_id)
 		{
-		  ptr = att;
-		  index->atts[index->n_atts] = ptr;
+		  index->atts[index->n_atts] = att;
 		  (index->n_atts)++;
+		  break;
 		}
 	    }
-
 	}
 
       /* asc_desc info */
@@ -2070,11 +2118,12 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   int size;
 
   /* Find the attribute with the matching attribute ID */
-  for (i = 0, att = rep->attributes; i < rep->n_attributes && ptr == NULL; i++, att++)
+  for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
       if (att->id == att_id)
 	{
 	  ptr = att;
+	  break;
 	}
     }
 
@@ -2171,7 +2220,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       return;
     }
 
-  /* 
+  /*
    *  Assign the B-tree ID.
    *  For the first attribute name in the constraint,
    *    cache the constraint in the attribute.
@@ -2188,7 +2237,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
 
-  /* 
+  /*
    *  Assign the B-tree ID to the class.
    *  Cache the constraint in the class with pointer to the attributes.
    *  This is just a different way to store the BTID's.
@@ -2219,7 +2268,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
   int i;
   int n_btids;
 
-  /* 
+  /*
    *  The first thing to do is to determine how many unique and index
    *  BTIDs we have.  We need this up front so that we can allocate
    *  the OR_INDEX structure in the class (rep).
@@ -2316,7 +2365,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
   int n_shared_attrs, n_class_attrs;
   OR_BUF buf;
   DB_VALUE properties_val, def_expr_op, def_expr, def_expr_type, def_expr_format;
-  char *def_expr_format_str = NULL;
+  const char *def_expr_format_str = NULL;
   DB_SEQ *att_props = NULL, *def_expr_set = NULL;
 
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
@@ -2443,7 +2492,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;
 
-      OID_SET_NULL (&(att->auto_increment.serial_obj));
+      // *INDENT-OFF*
+      new (&att->auto_increment.serial_obj) std::atomic<or_aligned_oid> (oid_Null_oid);
+      // *INDENT-ON*
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
@@ -2903,7 +2954,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
   rep->class_attrs = NULL;
   rep->indexes = NULL;
 
-  /* at this point, disk_rep points to the beginning of the representation object and "fixed" points at the first fixed 
+  /* at this point, disk_rep points to the beginning of the representation object and "fixed" points at the first fixed
    * width attribute. */
 
   n_fixed = OR_GET_INT (fixed + ORC_REP_FIXED_COUNT_OFFSET);
@@ -2934,7 +2985,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
    * OR_VAR_TABLE_ELEMENT_OFFSET. */
   attset = disk_rep + OR_VAR_TABLE_ELEMENT_OFFSET (disk_rep, ORC_REP_ATTRIBUTES_INDEX);
 
-  /* Calculate the offset to the first fixed width attribute in instances of this class.  Save the start of this region 
+  /* Calculate the offset to the first fixed width attribute in instances of this class.  Save the start of this region
    * so we can calculate the total fixed witdh size. */
   start = offset = 0;
 
@@ -3164,7 +3215,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  OID_SET_NULL (&(att->classoid));
 	  BTID_SET_NULL (&(att->index));
 
-	  /* Extract the full domain for this attribute, think about caching here it will add some time that may not be 
+	  /* Extract the full domain for this attribute, think about caching here it will add some time that may not be
 	   * necessary. */
 	  if (OR_VAR_TABLE_ELEMENT_LENGTH (repatt, ORC_REPATT_DOMAIN_INDEX) == 0)
 	    {
@@ -3511,7 +3562,7 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 	  else if (DB_VALUE_TYPE (&cvalue) == DB_TYPE_STRING)
 	    {
 	      /* strdup, caller shall free it */
-	      char *cvalue_string = db_get_string (&cvalue);
+	      const char *cvalue_string = db_get_string (&cvalue);
 	      comment = strdup (cvalue_string);
 	    }
 	  else
@@ -3752,7 +3803,7 @@ or_find_diskattr (RECDES * record, int attr_id)
     {
       if (type_attr == 0)
 	{
-	  /* 
+	  /*
 	   * INSTANCE ATTRIBUTES
 	   *
 	   * find the start of the "set_of(attribute)" fix/variable attribute
@@ -3763,7 +3814,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 	}
       else if (type_attr == 1)
 	{
-	  /* 
+	  /*
 	   * SHARED ATTRIBUTES
 	   *
 	   * find the start of the "set_of(shared attributes)" attribute
@@ -3774,7 +3825,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * CLASS ATTRIBUTES
 	   *
 	   * find the start of the "set_of(class attributes)" attribute
@@ -3786,7 +3837,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 
       for (i = 0, found = false; i < n_attrs && found == false; i++)
 	{
-	  /* 
+	  /*
 	   * diskatt will now be pointing at the offset table for this attribute.
 	   * this is logically the "start" of this nested object.
 	   *
@@ -3834,14 +3885,14 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
   diskatt = (char *) or_find_diskattr (record, attr_id);
   if (diskatt != NULL)
     {
-      /* 
+      /*
        * diskatt now points to the attribute that we are interested in.
        * Get the attribute name.
        */
       offset = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index);
       attr = diskatt + offset;
 
-      /* 
+      /*
        * Get boundary of the attribute, that is, the offset of next attribute.
        * Regardless the next attribute exists or not,
        * the "offset_next" is always retrievable.
@@ -3849,7 +3900,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
        */
       offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
 
-      /* 
+      /*
        * kludge kludge kludge
        * This is now an encoded "varchar" string, we need to skip over the
        * length before returning it.  Note that this also depends on the
@@ -3874,7 +3925,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	}
       else
 	{
-	  OR_BUF_INIT (buffer, attr, -1);
+	  or_init (&buffer, attr, -1);
 
 	  rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
 	  if (rc != NO_ERROR)
@@ -3958,7 +4009,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
 {
   OR_FUNCTION_INDEX *fi_info = NULL;
   DB_VALUE val, val1;
-  char *buffer;
+  const char *buffer;
 
   index->func_index_info = NULL;
   if (fi_seq == NULL)
@@ -4066,4 +4117,561 @@ error:
     }
 
   return;
+}
+
+/*
+ * or_replace_rep_id () - replace representation id for record
+ * return : error code or NO_ERROR
+ * record (in/out): record
+ * repid (in)	  : new representation
+ *
+ * NOTE: This function is similar to or_set_rep_id but it determines
+ * the type of record based on MVCC flag and sets rep_id accordingly.
+ */
+int
+or_replace_rep_id (RECDES * record, int repid)
+{
+  OR_BUF orep, *buf;
+  unsigned int new_bits = 0;
+  int offset_size = 0;
+  char mvcc_flag;
+  bool is_bound_bit = false;
+
+  or_init (&orep, record->data, record->area_size);
+  buf = &orep;
+
+  mvcc_flag = or_mvcc_get_flag (record);
+  if (mvcc_flag == 0)
+    {
+      /* non-MVCC record */
+      /* read REPR_ID flags */
+      if (OR_GET_BOUND_BIT_FLAG (record->data))
+	{
+	  is_bound_bit = true;
+	}
+      offset_size = OR_GET_OFFSET_SIZE (record->data);
+
+      /* construct new REPR_ID element */
+      new_bits = repid;
+      if (is_bound_bit)
+	{
+	  new_bits |= OR_BOUND_BIT_FLAG;
+	}
+      OR_SET_VAR_OFFSET_SIZE (new_bits, offset_size);
+      buf->ptr = buf->buffer + OR_REP_OFFSET;
+    }
+  else
+    {
+      /* MVCC record */
+      new_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
+
+      /* Remove old repid */
+      new_bits &= ~OR_MVCC_REPID_MASK;
+
+      /* Add new repid */
+      new_bits |= (repid & OR_MVCC_REPID_MASK);
+
+      /* Set buffer pointer to the right position */
+      buf->ptr = buf->buffer + OR_REP_OFFSET;
+    }
+
+  /* write new REPR_ID to the record */
+  or_put_int (buf, new_bits);
+
+  return NO_ERROR;
+}
+
+/*
+ * or_mvcc_get_header () - Get mvcc record header from record data.
+ *
+ * return		: Void.
+ * record (in)		: Record descriptor.
+ * mvcc_header (out)	: MVCC Record header.
+ */
+int
+or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
+{
+  OR_BUF buf;
+  int rc = NO_ERROR;
+  int repid_and_flag_bits;
+
+  assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE && mvcc_header != NULL);
+
+  or_init (&buf, record->data, record->length);
+
+  repid_and_flag_bits = or_mvcc_get_repid_and_flags (&buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+  mvcc_header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
+  mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+
+  mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  mvcc_header->mvcc_ins_id = or_mvcc_get_insid (&buf, mvcc_header->mvcc_flag, &rc);
+  if (rc != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
+  if (rc != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  rc = or_mvcc_get_prev_version_lsa (&buf, mvcc_header->mvcc_flag, &(mvcc_header->prev_version_lsa));
+  if (rc != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+  return (rc == NO_ERROR && (rc = er_errid ()) == NO_ERROR) ? ER_FAILED : rc;
+}
+
+/*
+ * or_mvcc_set_header () - Updates record header
+ *
+ * return		: Void.
+ * record (in/out)	: Record descriptor.
+ * mvcc_rec_header (in) : MVCC Record header.
+ *
+ *  Note: This function assume that record area size is sufficiently large
+ *    to include additional MVCC data that may come from mvcc_rec_header.
+ */
+int
+or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
+{
+  OR_BUF orep, *buf;
+  int error = NO_ERROR;
+  int mvcc_old_flag = 0;
+  int repid_and_flag_bits = 0;
+  int old_mvcc_size = 0, new_mvcc_size = 0;
+
+  assert (record != NULL && record->data != NULL && record->length != 0 && record->length >= OR_MVCC_MIN_HEADER_SIZE);
+
+  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
+
+  mvcc_old_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+
+  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag];
+  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag];
+  if (old_mvcc_size != new_mvcc_size)
+    {
+      /* resize MVCC info inside recdes */
+      if (record->area_size < (record->length + new_mvcc_size - old_mvcc_size))
+	{
+	  /* TO DO - er_set */
+	  assert (false);
+	  goto exit_on_error;
+	}
+
+      HEAP_MOVE_INSIDE_RECORD (record, new_mvcc_size, old_mvcc_size);
+    }
+
+  or_init (&orep, record->data, record->area_size);
+  buf = &orep;
+
+  error =
+    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid,
+				 repid_and_flag_bits & OR_BOUND_BIT_FLAG, OR_GET_OFFSET_SIZE (record->data));
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = or_mvcc_set_chn (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = or_mvcc_set_insid (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = or_mvcc_set_delid (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+  return (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
+}
+
+/*
+ * or_mvcc_add_header () - Add header in record
+ *
+ * return		: Void.
+ * record (in/out)	: Record descriptor.
+ * mvcc_rec_header (in) : MVCC Record header.
+ *
+ *  Note: This function must be called when the record is build by adding
+ *    header and then data. This function will add record header only.
+ *    Later, record data must be added. Obvious, the caller must be sure that
+ *    the record area size is sufficiently large to include header and data.
+ *	  When called, record->length must be 0. When return, record->length
+ *    will contain the header size.
+ */
+int
+or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit, int variable_offset_size)
+{
+  OR_BUF orep, *buf;
+  int error = NO_ERROR;
+
+  assert (record != NULL && record->data != NULL && record->length == 0);
+
+  or_init (&orep, record->data, record->area_size);
+  buf = &orep;
+
+  error =
+    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid, bound_bit,
+				 variable_offset_size);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = or_mvcc_set_chn (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = or_mvcc_set_insid (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = or_mvcc_set_delid (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  record->length = CAST_BUFLEN (buf->ptr - buf->buffer);
+
+  return NO_ERROR;
+
+exit_on_error:
+  return (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
+}
+
+/*
+ * or_mvcc_set_log_lsa_to_record () - Sets the previus version LSA in record header.
+ *			    Assumes the previous version lsa is allocated in header
+ *
+ * return		 : error_code
+ * record (in/out)	 : record
+ * lsa (in) : lsa to be set
+ */
+int
+or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
+{
+  int mvcc_flags = or_mvcc_get_flag (record);
+  int lsa_offset = -1;
+
+  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (record == NULL || lsa == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
+		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
+
+  memcpy (record->data + lsa_offset, lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
+
+  return NO_ERROR;
+}
+
+/*
+ * or_mvcc_get_flag () - Gets MVCC flags.
+ *
+ * return	   : MVCC flags.
+ * record (in)	   : Record descriptor.
+ */
+static char
+or_mvcc_get_flag (RECDES * record)
+{
+  assert (record != NULL && record->data != NULL && record->length >= OR_HEADER_SIZE (record->data));
+
+  return (char) (OR_GET_MVCC_FLAG (record->data));
+}
+
+/*
+ * or_mvcc_set_flag () - Set mvcc flags to record header.
+ *
+ * return      : Void.
+ * record (in) : Record descriptor.
+ * flags (in)  : MVCC flags to set.
+ */
+static void
+or_mvcc_set_flag (RECDES * record, char flags)
+{
+  OR_BUF orep, *buf;
+  int repid_and_flag = 0;
+
+  assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE);
+
+  repid_and_flag = OR_GET_INT (record->data + OR_REP_OFFSET);
+
+  /* Remove old mvcc flags */
+  repid_and_flag &= ~OR_MVCC_FLAG_MASK;
+  /* Set new mvcc flags */
+  repid_and_flag += ((flags & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS);
+
+  or_init (&orep, record->data, record->area_size);
+  buf = &orep;
+  buf->ptr = buf->buffer + OR_REP_OFFSET;
+  or_put_int (buf, repid_and_flag);
+}
+
+/*
+ * or_mvcc_get_insid () - Get insert MVCCID from record data.
+ *
+ * return	   : Insert MVCCID.
+ * buf (in/out)	   : or buffer
+ * mvcc_falgs(in)  : MVCC flags
+ * error(out): NO_ERROR or error code
+ */
+STATIC_INLINE MVCCID
+or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_INSID))
+    {
+      return MVCCID_ALL_VISIBLE;
+    }
+  else if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
+    {
+      *error = or_underflow (buf);
+      return 0;
+    }
+  else
+    {
+      MVCCID insert_id = 0;
+      OR_GET_BIGINT (buf->ptr, &insert_id);
+      buf->ptr += OR_MVCCID_SIZE;
+      *error = NO_ERROR;
+      return insert_id;
+    }
+}
+
+/*
+ * or_mvcc_set_insid () - Set insert MVCCID into record data
+ *
+ * return	   : Insert MVCCID.
+ * buf (in/out)	   : or buffer
+ * mvcc_rec_header(in) : MVCC record header
+ */
+STATIC_INLINE int
+or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+{
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_INSID))
+    {
+      return NO_ERROR;
+    }
+
+  return or_put_bigint (buf, mvcc_rec_header->mvcc_ins_id);
+}
+
+/*
+ * or_mvcc_get_delid () - Get MVCC delid
+ *
+ * return	   : MVCC delid
+ * buf (in/out)	   : or buffer
+ * mvcc_falgs(in)  : MVCC flags
+ * error(out): NO_ERROR or error code
+ */
+STATIC_INLINE MVCCID
+or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
+{
+  MVCCID delid = MVCCID_NULL;
+
+  assert (buf != NULL && error != NULL);
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  *error = NO_ERROR;
+  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
+    {
+      /* MVCC DELID is active */
+      if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
+	{
+	  *error = or_underflow (buf);
+	  delid = MVCCID_NULL;
+	}
+      else
+	{
+	  OR_GET_BIGINT (buf->ptr, &(delid));
+	  buf->ptr += OR_MVCCID_SIZE;
+	}
+    }
+  return delid;
+}
+
+/*
+ * or_mvcc_get_chn () - Get MVCC chn
+ *
+ * return	   : MVCC chn
+ * buf (in/out)	   : or buffer
+ * mvcc_falgs(in)  : MVCC flags
+ * error(out): NO_ERROR or error code
+ */
+STATIC_INLINE int
+or_mvcc_get_chn (OR_BUF * buf, int *error)
+{
+  int chn = NULL_CHN;
+
+  assert (buf != NULL && error != NULL);
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  *error = NO_ERROR;
+
+  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
+    {
+      *error = or_underflow (buf);
+    }
+  else
+    {
+      chn = OR_GET_INT (buf->ptr);
+      buf->ptr += OR_INT_SIZE;
+    }
+
+  return chn;
+}
+
+/*
+ * or_mvcc_set_delid () - Set MVCC delete id
+ *
+ * return	      : error code
+ * buf (in/out)	      : or buffer
+ * mvcc_rec_header(in): MVCC record header
+ */
+STATIC_INLINE int
+or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+{
+  assert (buf != NULL);
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID))
+    {
+      return NO_ERROR;
+    }
+
+  return or_put_bigint (buf, mvcc_rec_header->mvcc_del_id);
+}
+
+/*
+ * or_mvcc_set_chn () - Set MVCC chn
+ *
+ * return	      : error code
+ * buf (in/out)	      : or buffer
+ * mvcc_rec_header(in): MVCC record header
+ */
+STATIC_INLINE int
+or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+{
+  assert (buf != NULL);
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+
+  return or_put_int (buf, mvcc_rec_header->chn);
+}
+
+/*
+ * or_mvcc_set_prev_version_lsa () - Set MVCC prev version LSA
+ *
+ * return	      : error code
+ * buf (in/out)	      : or buffer
+ * mvcc_rec_header(in): MVCC record header
+ */
+STATIC_INLINE int
+or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
+{
+  assert (buf != NULL);
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_PREV_VERSION))
+    {
+      return NO_ERROR;
+    }
+
+  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
+    {
+      return (or_overflow (buf));
+    }
+
+  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
+  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
+
+  return NO_ERROR;
+}
+
+/*
+ * or_mvcc_get_prev_version_lsa () - Get MVCC prev version LSA from buffer
+ *
+ * return	        : error code
+ * buf (in)	        : or buffer
+ * mvcc_flags(in)       : header mvcc flags
+ * prev_version_lsa(out): the LSA to previous version
+ * mvcc_rec_header(in)  : MVCC record header
+ */
+STATIC_INLINE int
+or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
+{
+  assert (buf != NULL);
+
+  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
+  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
+    {
+      LSA_SET_NULL (prev_version_lsa);
+      return NO_ERROR;
+    }
+
+  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
+    {
+      return (or_underflow (buf));
+    }
+
+  *prev_version_lsa = *(LOG_LSA *) buf->ptr;
+  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
+
+  return NO_ERROR;
 }

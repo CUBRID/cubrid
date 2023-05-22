@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -58,13 +57,13 @@ static int total_objects = 0;
 static int failed_objects = 0;
 static RECDES *Diskrec = NULL;
 
-static int compactdb_start (bool verbose_flag);
+static int compactdb_start (bool verbose_flag, char *input_filename, char **input_class_name, int input_class_length);
 static void process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag);
 static void process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, bool verbose_flag);
 static int process_set (THREAD_ENTRY * thread_p, DB_SET * set);
 static int process_value (THREAD_ENTRY * thread_p, DB_VALUE * value);
 static DB_OBJECT *is_class (OID * obj_oid, OID * class_oid);
-static int disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid);
+static int disk_update_instance (THREAD_ENTRY * thread_p, MOP classop, DESC_OBJ * obj, OID * oid);
 static RECDES *alloc_recdes (int length);
 static void free_recdes (RECDES * rec);
 static void disk_init (void);
@@ -72,6 +71,8 @@ static void disk_final (void);
 static int update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec);
 static void compact_usage (const char *argv0);
 
+extern int get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_class_list);
+extern int get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *num_class_mops);
 
 /*
  * compact_usage() - print an usage of the backup-utility
@@ -102,14 +103,42 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   int status = 0;
   const char *database_name;
   bool verbose_flag = 0;
+  char *input_filename = NULL;
+  char **tables = NULL;
+  int table_size = 0;
+  int i = 0;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   verbose_flag = utility_get_option_bool_value (arg_map, COMPACT_VERBOSE_S);
 
-  if (database_name == NULL || database_name[0] == '\0' || utility_get_option_string_table_size (arg_map) != 1)
+  if (database_name == NULL || database_name[0] == '\0' || utility_get_option_string_table_size (arg_map) < 1)
     {
       compact_usage (arg->argv0);
       return ER_GENERIC_ERROR;
+    }
+
+  input_filename = utility_get_option_string_value (arg_map, COMPACT_INPUT_CLASS_FILE_S, 0);
+
+  table_size = utility_get_option_string_table_size (arg_map);
+  if (table_size > 1 && input_filename != NULL)
+    {
+      compact_usage (arg->argv0);
+      return ER_GENERIC_ERROR;
+    }
+  else if (table_size > 1)
+    {
+      tables = (char **) malloc (sizeof (char *) * (table_size - 1));
+      if (tables == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILURE));
+	  return ER_GENERIC_ERROR;
+	}
+
+      for (i = 1; i < table_size; i++)
+	{
+	  tables[i - 1] = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i);
+	}
     }
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
@@ -123,7 +152,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      status = compactdb_start (verbose_flag);
+      status = compactdb_start (verbose_flag, input_filename, tables, table_size - 1);
       if (status != 0)
 	{
 	  util_log_write_errstr ("%s\n", db_error_string (3));
@@ -143,25 +172,56 @@ compactdb (UTIL_FUNCTION_ARG * arg)
  *    verbose_flag(in)
  */
 static int
-compactdb_start (bool verbose_flag)
+compactdb_start (bool verbose_flag, char *input_filename, char **input_class_names, int input_class_length)
 {
   LIST_MOPS *class_table = NULL;
   int i;
   MOBJ object = NULL;
-  HFID *hfid;
+  HFID *hfid = NULL;
   int status = 0;
-  THREAD_ENTRY *thread_p;
+  THREAD_ENTRY *thread_p = NULL;
+  MOP *class_mops = NULL;
+  int num_class_mops = 0;
+  bool skip_phase3 = false;
 
-  /* 
+  /*
    * Build class name table
    */
 
   if (prm_get_integer_value (PRM_ID_COMPACTDB_PAGE_RECLAIM_ONLY) != 2)
     {
-      class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ, NULL);
-      if (class_table == NULL)
+      if (input_filename && input_class_names && input_class_length > 0)
 	{
-	  return 1;		/* error */
+	  return ER_FAILED;
+	}
+
+      if (input_class_names && input_class_length > 0)
+	{
+	  status = get_class_mops (input_class_names, input_class_length, &class_mops, &num_class_mops);
+	  if (status != NO_ERROR)
+	    {
+	      goto clean;
+	    }
+	  skip_phase3 = true;
+	}
+      else if (input_filename)
+	{
+	  status = get_class_mops_from_file (input_filename, &class_mops, &num_class_mops);
+	  if (status != NO_ERROR)
+	    {
+	      goto clean;
+	    }
+	  skip_phase3 = true;
+	}
+      else
+	{
+	  class_table = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_READ, NULL);
+	  if (class_table == NULL)
+	    {
+	      goto clean;	/* error */
+	    }
+	  num_class_mops = class_table->num;
+	  class_mops = class_table->mops;
 	}
     }
 
@@ -181,15 +241,15 @@ compactdb_start (bool verbose_flag)
 
   thread_p = thread_get_thread_entry_info ();
 
-  /* 
+  /*
    * Dump the object definitions
    */
   disk_init ();
-  for (i = 0; i < class_table->num; i++)
+  for (i = 0; i < num_class_mops; i++)
     {
-      if (!WS_IS_DELETED (class_table->mops[i]) && class_table->mops[i] != sm_Root_class_mop)
+      if (!WS_IS_DELETED (class_mops[i]) && class_mops[i] != sm_Root_class_mop)
 	{
-	  process_class (thread_p, class_table->mops[i], verbose_flag);
+	  process_class (thread_p, class_mops[i], verbose_flag);
 	}
     }
   disk_final ();
@@ -201,7 +261,7 @@ compactdb_start (bool verbose_flag)
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILED),
 	      total_objects - failed_objects, total_objects);
       status = 1;
-      /* 
+      /*
        * TODO Processing should not continue in this case as we cannot be sure
        * that all references to deleted objects have been set to NULL. Most of
        * the code in the offline compactdb should be modified to check for
@@ -224,9 +284,9 @@ phase2:
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
     }
 
-  for (i = 0; i < class_table->num; i++)
+  for (i = 0; i < num_class_mops; i++)
     {
-      ws_find (class_table->mops[i], &object);
+      ws_find (class_mops[i], &object);
       if (object == NULL)
 	{
 	  continue;
@@ -247,6 +307,17 @@ phase2:
     }
 
 phase3:
+  if (skip_phase3)
+    {
+      goto clean;
+    }
+
+  if (verbose_flag)
+    {
+      printf ("\n");
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS3));
+    }
+
   catalog_reclaim_space (thread_p);
   db_commit_transaction ();
 
@@ -258,10 +329,26 @@ phase3:
     }
   db_commit_transaction ();
 
-  /* 
+  /*
    * Cleanup
    */
-  locator_free_list_mops (class_table);
+clean:
+  if (class_table)
+    {
+      locator_free_list_mops (class_table);
+    }
+  else
+    {
+      if (class_mops)
+	{
+	  for (i = 0; i < num_class_mops; i++)
+	    {
+	      class_mops[i] = NULL;
+	    }
+
+	  free_and_init (class_mops);
+	}
+    }
 
   return status;
 }
@@ -376,7 +463,7 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
     }
   desc_free (desc_obj);
 
-  /* 
+  /*
    * Now that the class has been processed, we can reclaim space in the catalog
    * and the schema.
    * Might be able to ignore failed objects here if we're sure that's
@@ -436,7 +523,7 @@ process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, boo
 	{
 	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UPDATING));
 	}
-      disk_update_instance (desc_obj->classop, desc_obj, obj_oid);
+      disk_update_instance (thread_p, desc_obj->classop, desc_obj, obj_oid);
     }
 }
 
@@ -559,12 +646,13 @@ is_class (OID * obj_oid, OID * class_oid)
 /*
  * disk_update_instance - update object instance
  *    return: number of processed instance. 0 is error.
+ *    thread_p(in): thread entry
  *    classop(in): class object
  *    obj(in): object instance
  *    oid(in): oid
  */
 static int
-disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
+disk_update_instance (THREAD_ENTRY * thread_p, MOP classop, DESC_OBJ * obj, OID * oid)
 {
   HEAP_OPERATION_CONTEXT update_context;
   HFID *hfid;
@@ -613,7 +701,7 @@ disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid)
 
   heap_create_update_context (&update_context, hfid, oid, WS_OID (classop), Diskrec, NULL,
 			      UPDATE_INPLACE_CURRENT_MVCCID);
-  if (heap_update_logical (NULL, &update_context) != NO_ERROR)
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CANT_UPDATE));
       return (0);
@@ -697,7 +785,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
 
   if (old_object)
     {
-      /* 
+      /*
        * 4th arg -> give up setting updated attr info
        * for replication..
        * 9rd arg -> data or schema, 10th arg -> max repl. log or not

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -38,11 +37,15 @@
 #include "file_io.h"
 #include "log_comm.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
 #include <time.h>
+
+// forward declarations
+struct bo_restart_arg;
 
 #define LOG_TOPOP_STACK_INIT_SIZE 1024
 
@@ -68,12 +71,13 @@ extern int log_get_num_pages_for_creation (int db_npages);
 extern int log_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 		       const char *prefix_logname, DKNPAGES npages);
 extern void log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			    const char *prefix_logname, int ismedia_crash, BO_RESTART_ARG * r_args);
+			    const char *prefix_logname, int ismedia_crash, bo_restart_arg * r_args);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int log_update_compatibility_and_release (THREAD_ENTRY * thread_p, float compatibility, char release[]);
 #endif
 extern void log_abort_all_active_transaction (THREAD_ENTRY * thread_p);
 extern void log_final (THREAD_ENTRY * thread_p);
+extern void log_stop_ha_delay_registration ();
 extern void log_restart_emergency (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				   const char *prefix_logname);
 extern void log_append_undoredo_data (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
@@ -103,10 +107,8 @@ extern void log_append_undoredo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX r
 					 PAGE_PTR pgptr, PGLENGTH offset, const RECDES * undo_recdes,
 					 const RECDES * redo_recdes);
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_append_undo_recdes (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				    const RECDES * recdes);
-#endif
 extern void log_append_undo_recdes2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VFID * vfid, PAGE_PTR pgptr,
 				     PGLENGTH offset, const RECDES * recdes);
 
@@ -147,6 +149,8 @@ extern int log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa,
 				     char *redo_rcv_data);
 extern int log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, DKNPAGES log_npages, FILE * outfp);
+extern bool log_is_active_log_sane (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
+				    const char *prefix_logname);
 extern PGLENGTH log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				      const char *prefix_logname);
 extern int log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -164,6 +168,15 @@ extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LO
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 
+extern void log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length,
+					  const void *data);
+extern int log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, OID * classoid,
+					LOG_LSA * undo_lsa, LOG_LSA * redo_lsa);
+
+extern int log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes);
+
+extern int log_append_supplemental_serial (THREAD_ENTRY * thread_p, const char *serial_name, int cached_num,
+					   OID * classoid, const OID * serial_oid);
 /*
  * FOR DEBUGGING
  */
@@ -213,5 +226,58 @@ extern void log_flush_daemon_get_stats (UINT64 * statsp);
 #endif // SERVER_MODE
 
 extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
+
+#if defined (SERVER_MODE)
+extern void cdc_daemons_init ();
+extern void cdc_daemons_destroy ();
+#endif
+
+extern LOG_PAGEID cdc_min_log_pageid_to_keep ();
+
+/* cdc functions */
+extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
+extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
+				  uint64_t * classoids, int num_class);
+extern int cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, int *total_length, int *num_log_info);
+extern int cdc_initialize ();
+extern int cdc_finalize ();
+extern int cdc_free_extraction_filter ();
+extern int cdc_cleanup ();
+extern void cdc_cleanup_consumer ();
+extern int cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa);
+extern int cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info);
+
+extern int cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
+extern int cdc_set_extraction_lsa (LOG_LSA * lsa);
+extern void cdc_reinitialize_queue (LOG_LSA * start_lsa);
+
+extern void cdc_pause_producer ();
+extern void cdc_wakeup_producer ();
+extern void cdc_kill_producer ();
+
+extern void cdc_pause_consumer ();
+extern void cdc_wakeup_consumer ();
+
+extern SCAN_CODE cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa,
+				      RECDES * undo_recdes);
+
+extern int cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recdes, LOG_LSA * redo_lsa,
+			   RECDES * redo_recdes, bool is_flashback);
+extern int cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYPE dml_type, OID classoid,
+				 RECDES * undo_recdes, RECDES * redo_recdes, CDC_LOGINFO_ENTRY * dml_entry,
+				 bool is_flashback);
+
+//
+// log critical section
+//
+
+void LOG_CS_ENTER (THREAD_ENTRY * thread_p);
+void LOG_CS_ENTER_READ_MODE (THREAD_ENTRY * thread_p);
+void LOG_CS_EXIT (THREAD_ENTRY * thread_p);
+void LOG_CS_DEMOTE (THREAD_ENTRY * thread_p);
+void LOG_CS_PROMOTE (THREAD_ENTRY * thread_p);
+
+bool LOG_CS_OWN (THREAD_ENTRY * thread_p);
+bool LOG_CS_OWN_WRITE_MODE (THREAD_ENTRY * thread_p);
 
 #endif /* _LOG_MANAGER_H_ */

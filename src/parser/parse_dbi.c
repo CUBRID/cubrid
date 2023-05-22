@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -45,6 +44,7 @@
 #include "set_object.h"
 #include "intl_support.h"
 #include "virtual_object.h"
+#include "object_primitive.h"
 #include "object_template.h"
 #include "db_json.hpp"
 
@@ -274,7 +274,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** se
 			   * the type we're looking for may still be the generic object. */
 			  if (cls != NULL)
 			    {
-			      found = !intl_identifier_casecmp (cls_nam, e_nam);
+			      found = !pt_user_specified_name_compare (cls_nam, e_nam);
 			    }
 			}
 		      else
@@ -336,7 +336,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** se
 	      else
 		{
 		  /* If the node has been parameterized by its data_type, node, copy ALL pertinent information into
-		   * this node. Datatype parameterization includes ALL the fields of a data_type node (ie, virt_object, 
+		   * this node. Datatype parameterization includes ALL the fields of a data_type node (ie, virt_object,
 		   * proxy_object, etc). */
 		  new_typ = parser_copy_tree_list (parser, typs->data_type);
 		}
@@ -366,7 +366,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** se
 			}
 		      new_typ->info.data_type.entity = entity;
 
-		      /* 
+		      /*
 		       * Make sure that everything on the entity list has the
 		       * same bloody spec_id.
 		       */
@@ -1097,7 +1097,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
       return NULL;
     }
 
-  /* 
+  /*
    * if it is an input host_variable then its associated DB_VALUE is in parser->host_variables[x] */
   if (value->node_type == PT_HOST_VAR && value->info.host_var.var_type == PT_HOST_IN)
     {
@@ -1201,7 +1201,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 	}
       else			/* if (db_value) */
 	{
-	  if (parser->set_host_var == 1)
+	  if (parser->flag.set_host_var == 1)
 	    {
 	      PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_HOSTVAR_INDEX_ERROR,
 			   value->info.host_var.index, parser->host_var_count);
@@ -1240,7 +1240,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
       value->info.value.db_value_is_initialized = true;
     }
 
-  /* 
+  /*
    * We want to make sure that none of the parameterized types can leave
    * here without the proper DATA_TYPE information tacked onto them.  A
    * common symptom of a screwup here is character strings that are
@@ -1879,7 +1879,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 	  name = dt->info.data_type.entity->info.name.original;
 	  assert (name != NULL);
 
-	  if (class_name != NULL && intl_identifier_casecmp (name, class_name) == 0)
+	  if (class_name != NULL && pt_user_specified_name_compare (name, class_name) == 0)
 	    {
 	      /* If the attribute domain is the name of the class being created, indicate with a -1. */
 	      class_obj = (DB_OBJECT *) TP_DOMAIN_SELF_REF;
@@ -2486,7 +2486,7 @@ pt_sort_in_desc_order (PT_NODE * vlist)
   PT_NODE *init_list = vlist, *c_addr, *p_addr;
   int t;
 
-  /* 
+  /*
    * bubble sort (yuck!) the linked list of nodes
    * in descending order.
    */
@@ -2751,6 +2751,8 @@ pt_node_to_cmd_type (PT_NODE * node)
 	{
 	  return CUBRID_STMT_GET_TIMEOUT;
 	}
+      assert (0);		// should not reach here
+      return CUBRID_STMT_NONE;
 
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
@@ -2854,7 +2856,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-      /* 
+      /*
        * Nothing more to do for these guys; their type is completely
        * described by the type_enum.  Why don't we care about precision
        * and dec_precision for these, if we care about DB_TYPE_INT?
@@ -2877,7 +2879,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
       dt = pt_bind_set_type (parser, node, val, data_type_added);
       break;
 
-      /* 
+      /*
        * All of the remaining cases need to tack a new DATA_TYPE node
        * onto the incoming node.  Most of the cases allocate it
        * themselves, but not all.
@@ -3007,8 +3009,7 @@ pt_bind_set_type (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *
     }
   set_type = NULL;
 
-  tmp.node_type = PT_DATA_TYPE;
-  parser_init_node (&tmp);
+  parser_init_node (&tmp, PT_DATA_TYPE);
   tmp.line_number = node->line_number;
   tmp.column_number = node->column_number;
 
@@ -3021,7 +3022,7 @@ pt_bind_set_type (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *
 
       pt_add_type_to_set (parser, &tmp, &set_type);
 
-      /* 
+      /*
        * pt_add_type_to_set will copy the data type we send it if it
        * needs to keep it, so it's our responsibility to clean up any
        * intermediate stuff that was produced by pt_bind_helper.
@@ -3094,7 +3095,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
       return;
     }
 
-  parser->set_host_var = 0;
+  parser->flag.set_host_var = 0;
 
   if (parser->host_var_count > count)
     {
@@ -3125,16 +3126,28 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	{
 	  pr_clone_value (val, hv);
 	}
-      else if (tp_value_cast_preserve_domain (val, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
+      else
 	{
-	  typ = TP_DOMAIN_TYPE (hv_dom);
-	  PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-		       pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ)));
-	  return;
+	  DB_TYPE val_type = db_value_type (val);
+
+	  if (tp_value_cast_preserve_domain (val, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
+	    {
+	      typ = TP_DOMAIN_TYPE (hv_dom);
+	      PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+			   pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ)));
+	      return;
+	    }
+	  if (TP_IS_CHAR_TYPE (hv_dom->type->id))
+	    {
+	      if (hv_dom->type->id != val_type && (val_type == DB_TYPE_VARCHAR || val_type == DB_TYPE_VARNCHAR))
+		{
+		  pr_clone_value (val, hv);
+		}
+	    }
 	}
     }
 
-  parser->set_host_var = 1;	/* OK */
+  parser->flag.set_host_var = 1;	/* OK */
 }
 
 /*
@@ -3152,7 +3165,7 @@ pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv)
   if (hv && hv->node_type == PT_HOST_VAR)
     {
       idx = hv->info.host_var.index;
-      if (idx >= 0 && idx < parser->host_var_count && parser->set_host_var)
+      if (idx >= 0 && idx < parser->host_var_count && parser->flag.set_host_var)
 	{
 	  val = &parser->host_variables[idx];
 	}
@@ -3394,7 +3407,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_MONETARY:
-      /* 
+      /*
        * Don't use db_make_monetary here, since it doesn't preserve the
        * currency info.
        */
@@ -3404,7 +3417,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_NCHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_nchar (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) value->info.value.data_value.str->bytes,
+      db_make_nchar (db_value, TP_FLOATING_PRECISION_VALUE,
+		     REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
 		     value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
@@ -3412,7 +3426,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_VARNCHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_varnchar (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) value->info.value.data_value.str->bytes,
+      db_make_varnchar (db_value, TP_FLOATING_PRECISION_VALUE,
+			REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
 			value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
@@ -3478,7 +3493,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_CHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_char (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_CHAR) value->info.value.data_value.str->bytes,
+      db_make_char (db_value, TP_FLOATING_PRECISION_VALUE,
+		    REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
 		    value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);
@@ -3486,7 +3502,8 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_VARCHAR:
       /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_varchar (db_value, TP_FLOATING_PRECISION_VALUE, (DB_C_CHAR) value->info.value.data_value.str->bytes,
+      db_make_varchar (db_value, TP_FLOATING_PRECISION_VALUE,
+		       REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
 		       value->info.value.data_value.str->length, codeset, collation_id);
       value->info.value.db_value_is_in_workspace = false;
       *more_type_info_needed = (value->data_type == NULL);

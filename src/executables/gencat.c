@@ -353,15 +353,20 @@ xmalloc (size_t len)
 static void *
 xrealloc (void *ptr, size_t size)
 {
-  if ((ptr = realloc (ptr, size)) == NULL)
+  void *const realloc_ptr = realloc (ptr, size);
+  if (realloc_ptr == NULL)
     {
 #if defined(WINDOWS)
       error (NOMEMORY);
 #else
       errx (1, NOMEMORY);
 #endif
+      return NULL;
     }
-  return (ptr);
+  else
+    {
+      return realloc_ptr;
+    }
 }
 
 static char *
@@ -674,12 +679,12 @@ MCParse (int fd)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * First check for (and eat) empty lines....
 	   */
 	  if (!*cptr)
 	    continue;
-	  /* 
+	  /*
 	   * We have a digit? Start of a message. Else,
 	   * syntax error.
 	   */
@@ -702,7 +707,7 @@ MCParse (int fd)
 	      warning (cptr, "neither blank line nor start of a message id");
 	      continue;
 	    }
-	  /* 
+	  /*
 	   * If no set directive specified, all messages
 	   * shall be in default message set NL_SETD.
 	   */
@@ -711,7 +716,7 @@ MCParse (int fd)
 	      setid = NL_SETD;
 	      MCAddSet (setid);
 	    }
-	  /* 
+	  /*
 	   * If we have a message ID, but no message,
 	   * then this means "delete this message id
 	   * from the catalog".

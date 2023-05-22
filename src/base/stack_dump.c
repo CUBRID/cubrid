@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -22,6 +21,8 @@
  */
 
 #ident "$Id$"
+
+#include "printer.hpp"
 
 #if defined(x86_SOLARIS)
 
@@ -126,14 +127,14 @@ read_safe (int fd, struct frame *fp, struct frame **savefp, uintptr_t * savepc)
 /*
  * log_stack_info -
  *   return:
- *   logfile(in):
+ *   output(in/out):
  *   pc(in):
  *   argc(in):
  *   argv(in):
  *   Pr(in):
  */
 static int
-log_stack_info (FILE * logfile, uintptr_t pc, ulong_t argc, long *argv, struct ps_prochandle *Pr)
+log_stack_info (print_output & output, uintptr_t pc, ulong_t argc, long *argv, struct ps_prochandle *Pr)
 {
   char buff[255];
   GElf_Sym sym;
@@ -152,26 +153,26 @@ log_stack_info (FILE * logfile, uintptr_t pc, ulong_t argc, long *argv, struct p
       start = pc;
     }
 
-  fprintf (logfile, "%-17s(", buff);
+  output ("%-17s(", buff);
 
   for (i = 0; i < argc; i++)
     {
-      fprintf (logfile, (i + 1 == argc) ? "%lx" : "%lx, ", argv[i]);
+      output ((i + 1 == argc) ? "%lx" : "%lx, ", argv[i]);
     }
 
-  fprintf (logfile, (start != pc) ? ") + %lx\n" : ")\n", (long) (pc - start));
-  fflush (logfile);
+  output ((start != pc) ? ") + %lx\n" : ")\n", (long) (pc - start));
+  output.flush ();
 
   return (0);
 }
 
 /*
- * er_dump_call_stack - dump call stack
+ * er_dump_call_stack_internal - dump call stack
  *   return: none
- *   logfile(in):
+ *   output(in/put):
  */
 void
-er_dump_call_stack (FILE * outfp)
+er_dump_call_stack_internal (print_output & output)
 {
   ucontext_t ucp;
   struct frame *fp, *savefp;
@@ -225,7 +226,7 @@ er_dump_call_stack (FILE * outfp)
       argc = argcount (savepc);
       argv = (long *) ((char *) savefp + sizeof (struct frame));
 
-      log_stack_info (outfp, savepc, argc, argv, Pr);
+      log_stack_info (output, savepc, argc, argv, Pr);
       fp = savefp;
     }
 
@@ -253,12 +254,12 @@ static int er_resolve_function_name (const void *address, const char *lib_file_n
 #define BUFFER_SIZE     1024
 
 /*
- * er_dump_call_stack - dump call stack
+ * er_dump_call_stack_internal - dump call stack
  *   return:
- *   outfp(in):
+ *   output(in/out):
  */
 void
-er_dump_call_stack (FILE * outfp)
+er_dump_call_stack_internal (print_output & output)
 {
   ucontext_t ucp;
   size_t frame_pointer_addr, next_frame_pointer_addr;
@@ -309,7 +310,7 @@ er_dump_call_stack (FILE * outfp)
 	    }
 	}
 
-      fprintf (outfp, "%s(%p): %s", dl_info.dli_fname, func_addr_p, func_name_p);
+      output ("%s(%p): %s", dl_info.dli_fname, func_addr_p, func_name_p);
 
       next_frame_pointer_addr = PEEK_DATA (frame_pointer_addr);
       nargs = (next_frame_pointer_addr - frame_pointer_addr - 8) / 4;
@@ -318,20 +319,20 @@ er_dump_call_stack (FILE * outfp)
 	  nargs = MAXARGS;
 	}
 
-      fprintf (outfp, " (");
+      output (" (");
       if (nargs > 0)
 	{
 	  for (i = 1; i <= nargs; i++)
 	    {
 	      arg = PEEK_DATA (frame_pointer_addr + 4 * (i + 1));
-	      fprintf (outfp, "%x", arg);
+	      output ("%x", arg);
 	      if (i < nargs)
 		{
-		  fprintf (outfp, ", ");
+		  output (", ");
 		}
 	    }
 	}
-      fprintf (outfp, ")\n");
+      output (")\n");
 
       if (next_frame_pointer_addr == 0)
 	{
@@ -342,7 +343,7 @@ er_dump_call_stack (FILE * outfp)
       frame_pointer_addr = next_frame_pointer_addr;
     }
 
-  fflush (outfp);
+  output.flush ();
 }
 
 #else /* __WORDSIZE == 32 */
@@ -361,12 +362,12 @@ er_dump_call_stack (FILE * outfp)
 #define BUFFER_SIZE     1024
 
 /*
- * er_dump_call_stack - dump call stack
+ * er_dump_call_stack_internal - dump call stack
  *   return:
- *   outfp(in):
+ *   output(in/out):
  */
 void
-er_dump_call_stack (FILE * outfp)
+er_dump_call_stack_internal (print_output & output)
 {
   void *return_addr[MAX_TRACE];
   int i, trace_count;
@@ -409,10 +410,10 @@ er_dump_call_stack (FILE * outfp)
 	    }
 	}
 
-      fprintf (outfp, "%s(%p): %s\n", dl_info.dli_fname, func_addr_p, func_name_p);
+      output ("%s(%p): %s\n", dl_info.dli_fname, func_addr_p, func_name_p);
     }
 
-  fflush (outfp);
+  output.flush ();
 }
 #endif /* __WORDSIZE == 32 */
 
@@ -484,13 +485,31 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p, char
 #include "stack_dump.h"
 
 /*
- * er_dump_call_stack - dump call stack
+ * er_dump_call_stack_internal - dump call stack
  *   return:
- *   outfp(in):
+ *   output(in/out):
  */
+void
+er_dump_call_stack_internal (print_output & output)
+{
+  output ("call stack dump: NOT available in this platform\n");
+}
+#endif /* X86_SOLARIS, LINUX */
+
 void
 er_dump_call_stack (FILE * outfp)
 {
-  fprintf (outfp, "call stack dump: NOT available in this platform\n");
+  file_print_output output (outfp);
+  er_dump_call_stack_internal (output);
 }
-#endif /* X86_SOLARIS, LINUX */
+
+char *
+er_dump_call_stack_to_string (void)
+{
+  string_print_output output;
+  er_dump_call_stack_internal (output);
+  char *ptr = strdup (output.get_buffer ());
+  output.clear ();
+
+  return ptr;
+}

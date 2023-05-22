@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -36,6 +35,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "dbtype_def.h"
 #include "sha1.h"
 #include "cache_time.h"
@@ -65,18 +65,6 @@
 enum
 { NULL_CHN = -1, CHN_UNKNOWN_ATCLIENT = -2 };
 
-/* Compose the full name of a database */
-
-#define COMPOSE_FULL_NAME(buf, buf_size, path, name) \
-  do { \
-    size_t len = strlen(path); \
-    if (len > 0 && path[len - 1] != PATH_SEPARATOR) { \
-      snprintf(buf, buf_size - 1, "%s%c%s", path, PATH_SEPARATOR, name); \
-    } else { \
-      snprintf(buf, buf_size - 1, "%s%s", path, name); \
-    } \
-  } while (0)
-
 /* Type definitions related to disk information	*/
 
 typedef INT16 VOLID;		/* Volume identifier */
@@ -98,78 +86,19 @@ typedef INT16 PGLENGTH;		/* Page length */
 typedef PAGEID FILEID;		/* File identifier */
 typedef INT32 LOLENGTH;		/* Length for a large object */
 
-/* Log address structure */
-
-struct log_lsa
-{
-  INT64 pageid:48;		/* Log page identifier : 6 bytes length */
-  INT64 offset:16;		/* Offset in page : 2 bytes length */
-  /* The offset field is defined as 16bit-INT64 type (not short), because of alignment in windows */
-};
-
-typedef struct log_lsa LOG_LSA;	/* Log address identifier */
-
-STATIC_INLINE void
-LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
-{
-  plsa1->pageid = plsa2->pageid;
-  plsa1->offset = plsa2->offset;
-}
-
-STATIC_INLINE void
-LSA_SET_NULL (LOG_LSA * lsa_ptr)
-{
-  lsa_ptr->pageid = NULL_PAGEID;
-  lsa_ptr->offset = NULL_OFFSET;
-}
-
-STATIC_INLINE void
-LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
-{
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-}
-
-#define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
-
-#define LSA_AS_ARGS(lsa_ptr) (long long int) (lsa_ptr)->pageid, (int) (lsa_ptr)->offset
-
-#define LSA_SET_INIT_NONTEMP(lsa_ptr) LSA_SET_NULL(lsa_ptr)
-#define LSA_SET_INIT_TEMP(lsa_ptr)\
-  do {									      \
-    (lsa_ptr)->pageid = NULL_PAGEID - 1;                                      \
-    (lsa_ptr)->offset = NULL_OFFSET - 1;                                      \
-  } while(0)
-
-#define LSA_ISNULL(lsa_ptr) ((lsa_ptr)->pageid == NULL_PAGEID)
-#define LSA_IS_INIT_NONTEMP(lsa_ptr) LSA_ISNULL(lsa_ptr)
-#define LSA_IS_INIT_TEMP(lsa_ptr) (((lsa_ptr)->pageid == NULL_PAGEID - 1) &&  \
-				  ((lsa_ptr)->offset == NULL_OFFSET - 1))
-
-#define LSA_LT(lsa_ptr1, lsa_ptr2)                                            \
-  ((lsa_ptr1) != (lsa_ptr2) &&                                                \
-   ((lsa_ptr1)->pageid < (lsa_ptr2)->pageid ||                                \
-    ((lsa_ptr1)->pageid == (lsa_ptr2)->pageid &&                              \
-     (lsa_ptr1)->offset < (lsa_ptr2)->offset)))                               \
-
-#define LSA_EQ(lsa_ptr1, lsa_ptr2)                                            \
-  ((lsa_ptr1) == (lsa_ptr2) ||                                                \
-    ((lsa_ptr1)->pageid == (lsa_ptr2)->pageid &&                              \
-     (lsa_ptr1)->offset == (lsa_ptr2)->offset))
-
-#define LSA_LE(lsa_ptr1, lsa_ptr2) (!LSA_LT(lsa_ptr2, lsa_ptr1))
-#define LSA_GT(lsa_ptr1, lsa_ptr2) LSA_LT(lsa_ptr2, lsa_ptr1)
-#define LSA_GE(lsa_ptr1, lsa_ptr2) LSA_LE(lsa_ptr2, lsa_ptr1)
-
 /* BOTH IO_PAGESIZE AND DB_PAGESIZE MUST BE MULTIPLE OF sizeof(int) */
 
 #define IO_DEFAULT_PAGE_SIZE    (16 * ONE_K)
 #define IO_MIN_PAGE_SIZE        (4 * ONE_K)
 #define IO_MAX_PAGE_SIZE        (16 * ONE_K)
 
-#define LOG_PAGESIZE            (db_log_page_size())
-#define IO_PAGESIZE             (db_io_page_size())
-#define DB_PAGESIZE             (db_page_size())
+extern PGLENGTH db_Io_page_size;
+extern PGLENGTH db_Log_page_size;
+extern PGLENGTH db_User_page_size;
+
+#define LOG_PAGESIZE            db_Log_page_size
+#define IO_PAGESIZE             db_Io_page_size
+#define DB_PAGESIZE             db_User_page_size
 
 #define IS_POWER_OF_2(x)        (((x) & ((x) - 1)) == 0)
 
@@ -256,63 +185,7 @@ typedef enum
 
 typedef UINT64 MVCCID;		/* MVCC ID */
 
-/* TYPE DEFINITIONS RELATED TO KEY AND VALUES */
 
-typedef enum			/* range search option */
-{
-  NA_NA,			/* v1 and v2 are N/A, so that no range is defined */
-  GE_LE,			/* v1 <= key <= v2 */
-  GE_LT,			/* v1 <= key < v2 */
-  GT_LE,			/* v1 < key <= v2 */
-  GT_LT,			/* v1 < key < v2 */
-  GE_INF,			/* v1 <= key (<= the end) */
-  GT_INF,			/* v1 < key (<= the end) */
-  INF_LE,			/* (the beginning <=) key <= v2 */
-  INF_LT,			/* (the beginning <=) key < v2 */
-  INF_INF,			/* the beginning <= key <= the end */
-  EQ_NA,			/* key = v1, v2 is N/A */
-
-  /* following options are reserved for the future use */
-  LE_GE,			/* key <= v1 || key >= v2 or NOT (v1 < key < v2) */
-  LE_GT,			/* key <= v1 || key > v2 or NOT (v1 < key <= v2) */
-  LT_GE,			/* key < v1 || key >= v2 or NOT (v1 <= key < v2) */
-  LT_GT,			/* key < v1 || key > v2 or NOT (v1 <= key <= v2) */
-  NEQ_NA			/* key != v1 */
-} RANGE;
-
-#define RANGE_REVERSE(range) \
-  do \
-    { \
-      switch (range) \
-	{ \
-	case GT_LE: \
-	  (range) = GE_LT; \
-	  break; \
-	case GE_LT: \
-	  (range) = GT_LE; \
-	  break; \
-	case GE_INF: \
-	  (range) = INF_LE; \
-	  break; \
-	case GT_INF: \
-	  (range) = INF_LT; \
-	  break; \
-	case INF_LE: \
-	  (range) = GE_INF; \
-	  break; \
-	case INF_LT: \
-	  (range) = GT_INF; \
-	  break; \
-	case NA_NA: \
-	case GE_LE: \
-	case GT_LT: \
-	case INF_INF: \
-	case EQ_NA: \
-	default: \
-	  /* No change. */ \
-	  break; \
-	} \
-    } while (0)
 
 /* File structure identifiers */
 
@@ -349,7 +222,7 @@ struct recdes
   int area_size;		/* Length of the allocated area. It includes only the data field. The value is negative
 				 * if data is inside buffer. For example, peeking in a slotted page. */
   int length;			/* Length of the data. Does not include the length and type fields */
-  INT16 type;			/* Type of record */
+  INT16 type;			/* Type of record (REC_HOME, REC_NEWHOME,... ) */
   char *data;			/* The data */
 };
 /* Replace existing data in record at offset_to_data and size old_data_size
@@ -407,20 +280,6 @@ struct recdes
 	  } \
       } \
   } while (false)
-
-/* MVCC RECORD HEADER */
-typedef struct mvcc_rec_header MVCC_REC_HEADER;
-struct mvcc_rec_header
-{
-  INT32 mvcc_flag:8;		/* MVCC flags */
-  INT32 repid:24;		/* representation id */
-  int chn;			/* cache coherency number */
-  MVCCID mvcc_ins_id;		/* MVCC insert id */
-  MVCCID mvcc_del_id;		/* MVCC delete id */
-  LOG_LSA prev_version_lsa;	/* log address of previous version */
-};
-#define MVCC_REC_HEADER_INITIALIZER \
-{ 0, 0, NULL_CHN, MVCCID_NULL, MVCCID_NULL, LSA_INITIALIZER }
 
 typedef struct lorecdes LORECDES;	/* Work area descriptor */
 struct lorecdes
@@ -490,6 +349,7 @@ typedef int TRANID;		/* Transaction identifier */
     } \
   while (0)
 
+#if 0				// not used
 /* back up MVCC ID */
 #define MVCCID_BACKWARD(id) \
   do \
@@ -497,7 +357,7 @@ typedef int TRANID;		/* Transaction identifier */
       (id)--; \
     } \
   while ((id) < MVCCID_FIRST)
-
+#endif
 
 #define COMPOSITE_LOCK(scan_op_type)	(scan_op_type != S_SELECT)
 #define READONLY_SCAN(scan_op_type)	(scan_op_type == S_SELECT)
@@ -519,24 +379,26 @@ typedef enum
   IS_LOCK = 4,			/* Intention Shared lock */
   S_LOCK = 5,			/* Shared lock */
   IX_LOCK = 6,			/* Intention exclusive lock */
-  SIX_LOCK = 7,			/* Shared and intention exclusive lock */
-  U_LOCK = 8,			/* Update lock */
-  X_LOCK = 9,			/* Exclusive lock */
-  SCH_M_LOCK = 10		/* Schema Modification Lock */
+  BU_LOCK = 7,			/* Bulk Update Lock */
+  SIX_LOCK = 8,			/* Shared and intention exclusive lock */
+  U_LOCK = 9,			/* Update lock */
+  X_LOCK = 10,			/* Exclusive lock */
+  SCH_M_LOCK = 11		/* Schema Modification Lock */
 } LOCK;
 
-extern LOCK lock_Conv[11][11];
+extern LOCK lock_Conv[12][12];
 
-#define LOCK_TO_LOCKMODE_STRING(lock) 			\
-  (((lock) ==NULL_LOCK) ? "NULL_LOCK" :			\
-   ((lock) ==  IS_LOCK) ? "  IS_LOCK" :			\
-   ((lock) ==   S_LOCK) ? "   S_LOCK" :			\
-   ((lock) ==  IX_LOCK) ? "  IX_LOCK" :			\
-   ((lock) == SIX_LOCK) ? " SIX_LOCK" :			\
-   ((lock) ==   U_LOCK) ? "   U_LOCK" :			\
-   ((lock) ==  SCH_S_LOCK) ? "  SCH_S_LOCK" :		\
-   ((lock) ==  SCH_M_LOCK) ? "  SCH_M_LOCK" :		\
-   ((lock) ==   X_LOCK) ? "   X_LOCK" : "UNKNOWN")
+#define LOCK_TO_LOCKMODE_STRING(lock) \
+  (((lock) == NULL_LOCK)  ? "  NULL_LOCK" : \
+   ((lock) == IS_LOCK)    ? "    IS_LOCK" : \
+   ((lock) == S_LOCK)     ? "     S_LOCK" : \
+   ((lock) == IX_LOCK)    ? "    IX_LOCK" : \
+   ((lock) == SIX_LOCK)   ? "   SIX_LOCK" : \
+   ((lock) == U_LOCK)     ? "     U_LOCK" : \
+   ((lock) == BU_LOCK)    ? "    BU_LOCK" : \
+   ((lock) == SCH_S_LOCK) ? " SCH_S_LOCK" : \
+   ((lock) == SCH_M_LOCK) ? " SCH_M_LOCK" : \
+   ((lock) == X_LOCK)     ? "     X_LOCK" : "UNKNOWN")
 
 /* CLASSNAME TO OID RETURN VALUES */
 
@@ -575,26 +437,7 @@ typedef enum
 				 * compared to. */
 } BTREE_SEARCH;
 
-/* TYPEDEFS FOR BACKUP/RESTORE */
 
-/* structure for passing arguments into boot_restart_server et. al. */
-typedef struct bo_restart_arg BO_RESTART_ARG;
-struct bo_restart_arg
-{
-  bool printtoc;		/* True to show backup's table of contents */
-  time_t stopat;		/* the recovery stop time if restarting from backup */
-  const char *backuppath;	/* Pathname override for location of backup volumes */
-  int level;			/* The backup level to use */
-  const char *verbose_file;	/* restoredb verbose msg file */
-  bool newvolpath;		/* true: restore the database and log volumes to the path specified in the
-				 * database-loc-file */
-  bool restore_upto_bktime;
-
-  bool restore_slave;		/* restore slave */
-  bool is_restore_from_backup;
-  INT64 db_creation;		/* database creation time */
-  LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
-};
 
 /* Magic default values */
 #define CUBRID_MAGIC_MAX_LENGTH                 25
@@ -605,18 +448,7 @@ struct bo_restart_arg
 #define CUBRID_MAGIC_LOG_INFO                   "CUBRID/LogInfo"
 #define CUBRID_MAGIC_DATABASE_BACKUP            "CUBRID/Backup_v2"
 #define CUBRID_MAGIC_DATABASE_BACKUP_OLD        "CUBRID/Backup"
-
-/* B+tree local statististical information for Uniqueness enforcement */
-typedef struct btree_unique_stats BTREE_UNIQUE_STATS;
-struct btree_unique_stats
-{
-  BTID btid;
-  int num_nulls;
-  int num_keys;
-  int num_oids;
-};
-
-#define UNIQUE_STAT_INFO_INCREMENT   10
+#define CUBRID_MAGIC_KEYS                       "CUBRID/Keys"
 
 /*
  * Typedefs related to the scan data structures
@@ -744,7 +576,7 @@ typedef enum
 {
   LOG_ERROR_IF_DELETED,		/* set error when locking deleted objects */
   LOG_WARNING_IF_DELETED	/* set warning when locking deleted objects - the case when it is expected and
-				 * accepted to find a deleted object; for example when er_clear() is used afterwards if 
+				 * accepted to find a deleted object; for example when er_clear() is used afterwards if
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
@@ -836,9 +668,6 @@ typedef enum
 /************************************************************************/
 /* storage common functions                                             */
 /************************************************************************/
-extern INT16 db_page_size (void);
-extern INT16 db_io_page_size (void);
-extern INT16 db_log_page_size (void);
 extern int db_set_page_size (INT16 io_page_size, INT16 log_page_size);
 extern INT16 db_network_page_size (void);
 extern void db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd);
@@ -847,7 +676,6 @@ extern int recdes_allocate_data_area (RECDES * rec, int size);
 extern void recdes_free_data_area (RECDES * rec);
 extern void recdes_set_data_area (RECDES * rec, char *data, int size);
 
-extern char *lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa);
 extern char *oid_to_string (char *buf, int buf_size, OID * oid);
 extern char *vpid_to_string (char *buf, int buf_size, VPID * vpid);
 extern char *vfid_to_string (char *buf, int buf_size, VFID * vfid);
@@ -974,6 +802,7 @@ typedef enum
   T_NEXT_VALUE,
   T_CAST,
   T_CAST_NOFAIL,
+  T_CAST_WRAP,
   T_CASE,
   T_EXTRACT,
   T_LOCAL_TRANSACTION_ID,
@@ -1059,15 +888,6 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
-  T_JSON_CONTAINS,
-  T_JSON_TYPE,
-  T_JSON_EXTRACT,
-  T_JSON_VALID,
-  T_JSON_QUOTE,
-  T_JSON_UNQUOTE,
-  T_JSON_LENGTH,
-  T_JSON_DEPTH,
-  T_JSON_PRETTY,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef enum
@@ -1104,10 +924,14 @@ typedef enum
 
   /* "normal" functions, arguments are values */
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
-  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE, F_JSON_MERGE_PATCH,
-  F_JSON_INSERT, F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS,
-  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS, F_JSON_ARRAY_INSERT, F_JSON_SEARCH,
-  F_JSON_CONTAINS_PATH,
+  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE, F_JSON_MERGE_PATCH, F_JSON_INSERT,
+  F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS, F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS,
+  F_JSON_ARRAY_INSERT, F_JSON_SEARCH, F_JSON_CONTAINS_PATH, F_JSON_EXTRACT, F_JSON_CONTAINS, F_JSON_DEPTH,
+  F_JSON_LENGTH, F_JSON_PRETTY, F_JSON_QUOTE, F_JSON_TYPE, F_JSON_UNQUOTE, F_JSON_VALID,
+
+  F_REGEXP_COUNT, F_REGEXP_INSTR, F_REGEXP_LIKE, F_REGEXP_REPLACE, F_REGEXP_SUBSTR,
+
+  F_BENCHMARK,
 
   /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
@@ -1118,6 +942,16 @@ typedef enum
   PT_PERCENTILE_CONT,
   PT_PERCENTILE_DISC
 } FUNC_TYPE;
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif				// c++
+  const char *fcode_get_lowercase_name (FUNC_TYPE ftype);
+  const char *fcode_get_uppercase_name (FUNC_TYPE ftype);
+#ifdef __cplusplus
+}
+#endif				// c++
 
 /************************************************************************/
 /* QUERY                                                                */
@@ -1221,6 +1055,7 @@ typedef enum
   SHOWSTMT_FULL_TIMEZONES,
   SHOWSTMT_TRAN_TABLES,
   SHOWSTMT_THREADS,
+  SHOWSTMT_PAGE_BUFFER_STATUS,
 
   /* append the new show statement types in here */
 
@@ -1313,23 +1148,25 @@ typedef enum
  *    This constant defines the maximum size in bytes of a class name,
  *    attribute name, method name, or any other named entity in the schema.
  */
-#define SM_MAX_IDENTIFIER_LENGTH 255
+#define SM_MAX_IDENTIFIER_LENGTH    DB_MAX_IDENTIFIER_LENGTH
+#define SM_MAX_USER_LENGTH          DB_MAX_USER_LENGTH
 
-#define SERIAL_ATTR_NAME          "name"
-#define SERIAL_ATTR_OWNER         "owner"
-#define SERIAL_ATTR_CURRENT_VAL   "current_val"
-#define SERIAL_ATTR_INCREMENT_VAL "increment_val"
-#define SERIAL_ATTR_MAX_VAL       "max_val"
-#define SERIAL_ATTR_MIN_VAL       "min_val"
-#define SERIAL_ATTR_CYCLIC        "cyclic"
-#define SERIAL_ATTR_STARTED       "started"
-#define SERIAL_ATTR_CLASS_NAME    "class_name"
-#define SERIAL_ATTR_ATT_NAME      "att_name"
-#define SERIAL_ATTR_CACHED_NUM    "cached_num"
-#define SERIAL_ATTR_COMMENT       "comment"
+#define SERIAL_ATTR_UNIQUE_NAME     "unique_name"
+#define SERIAL_ATTR_NAME            "name"
+#define SERIAL_ATTR_OWNER           "owner"
+#define SERIAL_ATTR_CURRENT_VAL     "current_val"
+#define SERIAL_ATTR_INCREMENT_VAL   "increment_val"
+#define SERIAL_ATTR_MAX_VAL         "max_val"
+#define SERIAL_ATTR_MIN_VAL         "min_val"
+#define SERIAL_ATTR_CYCLIC          "cyclic"
+#define SERIAL_ATTR_STARTED         "started"
+#define SERIAL_ATTR_CLASS_NAME      "class_name"
+#define SERIAL_ATTR_ATT_NAME        "att_name"
+#define SERIAL_ATTR_CACHED_NUM      "cached_num"
+#define SERIAL_ATTR_COMMENT         "comment"
 
-#define PEEK          true	/* Peek for a slotted record */
-#define COPY          false	/* Don't peek, but copy a slotted record */
+static const bool PEEK = true;	/* Peek for a slotted record */
+static const bool COPY = false;	/* Don't peek, but copy a slotted record */
 
 enum
 {
@@ -1352,12 +1189,12 @@ enum
   REC_BIGONE = 5,
 
 /* Slot does not describe any record.
- * A record was stored in this slot.  Slot cannot be reused. 
+ * A record was stored in this slot.  Slot cannot be reused.
  */
   REC_MARKDELETED = 6,
 
 /* Slot does not describe any record.
- * A record was stored in this slot.  Slot will be reused. 
+ * A record was stored in this slot.  Slot will be reused.
  */
   REC_DELETED_WILL_REUSE = 7,
 
@@ -1417,5 +1254,13 @@ typedef enum
   KILLSTMT_TRAN = 0,
   KILLSTMT_QUERY = 1,
 } KILLSTMT_TYPE;
+
+// query module
+typedef enum
+{
+  HS_NONE = 0,			/* no hash aggregation */
+  HS_ACCEPT_ALL,		/* accept tuples in hash table */
+  HS_REJECT_ALL			/* reject tuples, use normal sort-based aggregation */
+} AGGREGATE_HASH_STATE;
 
 #endif /* _STORAGE_COMMON_H_ */

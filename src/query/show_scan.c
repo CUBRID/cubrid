@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -38,6 +37,7 @@
 
 #include "query_manager.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "scan_manager.h"
 #include "show_scan.h"
 
@@ -92,7 +92,7 @@ static bool show_scan_Inited = false;
 static SHOW_REQUEST show_Requests[SHOWSTMT_END];
 
 /*
- *  showstmt_scan_init () - initialize the scan functions of 
+ *  showstmt_scan_init () - initialize the scan functions of
  *                          show statments.
  *   return: NULL
  */
@@ -228,6 +228,12 @@ showstmt_scan_init (void)
   req->next_func = showstmt_array_next_scan;
   req->end_func = showstmt_array_end_scan;
 
+  req = &show_Requests[SHOWSTMT_PAGE_BUFFER_STATUS];
+  req->show_type = SHOWSTMT_PAGE_BUFFER_STATUS;
+  req->start_func = pgbuf_start_scan;
+  req->next_func = showstmt_array_next_scan;
+  req->end_func = showstmt_array_end_scan;
+
   /* append to init other show statement scan function here */
 
 
@@ -270,7 +276,7 @@ showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 /*
  *  showstmt_start_scan () - before scan.
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   s_id(in):
  */
 int
@@ -296,7 +302,7 @@ showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 /*
  *  showstmt_end_scan () - after scan.
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   s_id(in):
  */
 int
@@ -322,7 +328,7 @@ showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 /*
  *   showstmt_alloc_array_context () - init context for db_values arrays
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   num_total(in):
  *   num_col(in):
  */
@@ -360,7 +366,7 @@ on_error:
 /*
  *  showstmt_free_array_context () - free context for db_values arrays
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   ctx(in):
  */
 void
@@ -389,7 +395,7 @@ showstmt_free_array_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * c
 /*
  *  showstmt_alloc_tuple_in_context () - alloc and return next tuple from context
  *   return:  tuple pointer
- *   thread_p(in): 
+ *   thread_p(in):
  *   ctx(in):
  */
 DB_VALUE *
@@ -510,6 +516,12 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   int msecs;
   DB_DATETIME time_val;
 
+  if (thrd->m_status == cubthread::entry::status::TS_DEAD)
+    {
+      // thread entry does not belong to a running thread; should not be shown in SHOW THREADS statement
+      return;
+    }
+
   vals = showstmt_alloc_tuple_in_context (caller_thread_p, ctx);
   if (vals == NULL)
     {
@@ -543,22 +555,22 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   idx++;
 
   /* Type */
-  db_make_string_by_const_str (&vals[idx], thread_type_to_string (thrd->type));
+  db_make_string (&vals[idx], thread_type_to_string (thrd->type));
   idx++;
 
   /* Status */
-  db_make_string_by_const_str (&vals[idx], thread_status_to_string (thrd->m_status));
+  db_make_string (&vals[idx], thread_status_to_string (thrd->m_status));
   idx++;
 
   /* Resume_status */
-  db_make_string_by_const_str (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
+  db_make_string (&vals[idx], thread_resume_status_to_string (thrd->resume_status));
   idx++;
 
   /* Net_request */
   ival = thrd->net_request_index;
   if (ival != -1)
     {
-      db_make_string_by_const_str (&vals[idx], net_server_request_name (ival));
+      db_make_string (&vals[idx], get_net_request_name (ival));
     }
   else
     {
@@ -731,7 +743,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
       idx++;
 
       /* Lockwait_state */
-      db_make_string_by_const_str (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
+      db_make_string (&vals[idx], lock_wait_state_to_string (thrd->lockwait_state));
       idx++;
     }
   else
@@ -797,7 +809,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
  * thread_start_scan () -  start scan function for show threads
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   type (in):
  *   arg_values(in):
  *   arg_cnt(in):

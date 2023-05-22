@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -36,6 +35,7 @@
 #include "utility.h"
 #include "error_manager.h"
 #include "file_hash.h"
+#include "filesys_temp.hpp"
 #include "memory_alloc.h"
 #include "object_representation.h"
 
@@ -183,7 +183,7 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
       entry_size = data_size + offsetof (FH_INFO, fh_intk_data) + offsetof (FH_ENTRY, info);
       break;
     default:
-      /* 
+      /*
        * this should be calling er_set
        * fprintf(stderr, "Invalid key type\n");
        */
@@ -192,7 +192,7 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
 
   if (page_size < entry_size)
     {
-      /* 
+      /*
        * should be calling er_set
        * fprintf(stderr, "Invalid page_size\n");
        */
@@ -214,19 +214,20 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
   est_size = fh_calculate_htsize (est_size);
 
   /* Open the hash file */
-  ht->hash_filename = (char *) malloc (PATH_MAX);
+  if (!hash_filename || hash_filename[0] == '\0')
+    {
+      auto[filename, filedes] = filesys::open_temp_filedes ("fhash_");
+      close (filedes);
+      ht->hash_filename = strdup (filename.c_str ());
+    }
+  else
+    {
+      ht->hash_filename = strdup (hash_filename);
+    }
   if (ht->hash_filename == NULL)
     {
       fh_destroy (ht);
       return NULL;
-    }
-  if (!hash_filename || hash_filename[0] == '\0')
-    {
-      tmpnam (ht->hash_filename);
-    }
-  else
-    {
-      strcpy (ht->hash_filename, hash_filename);
     }
 #if defined(SOLARIS) || defined(AIX) || (defined(I386) && defined(LINUX)) || (defined(HPUX) && (_LFS64_LARGEFILE == 1))
   ht->fd = open64 (ht->hash_filename, O_RDWR | O_CREAT | O_TRUNC, 0600);
@@ -265,7 +266,7 @@ fh_create (const char *name, int est_size, int page_size, int cached_pages, cons
   ht->pg_hdr = ht->pg_hdr_alloc = pg_hdr;
   memset (ht->pg_hdr, 0, size);
 
-  /* 
+  /*
    * Allocate the cached pages and fill in the page headers and
    * initialize each of the hash entries
    */
@@ -359,7 +360,7 @@ fh_get (FH_TABLE * ht, FH_KEY key, FH_DATA * data)
   FH_PAGE_HDR *pg_hdr;
   char *ptr;
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -455,7 +456,7 @@ fh_put (FH_TABLE * ht, FH_KEY key, FH_DATA data)
   FH_PAGE_HDR *pg_hdr;
   char *ptr;
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -595,7 +596,7 @@ fh_fetch_page (FH_TABLE * ht, int page)
 	}
     }
 
-  /* 
+  /*
    * If the page is the least recently used, make the previous page
    * the least recently used.
    */
@@ -603,7 +604,7 @@ fh_fetch_page (FH_TABLE * ht, int page)
     {
       ht->pg_hdr_last = pg_hdr->prev;
     }
-  /* 
+  /*
    * If the page is the most recently used, do nothing.
    * Otherwise, make the page the most recently used.
    */
@@ -652,7 +653,7 @@ fh_read_page (FH_TABLE * ht, int page)
 #endif
   int n;
 
-  /* 
+  /*
    * If a free page exists, use it.  Since pages are not freed, free
    * pages only exist after initialization until they are used.  Thus
    * the next page after the first free page is the next free page.

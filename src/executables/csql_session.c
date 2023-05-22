@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -30,10 +29,12 @@
 #include <signal.h>
 #include <assert.h>
 
+#include "csql.h"
+
 #include "class_description.hpp"
 #include "porting.h"
-#include "csql.h"
 #include "memory_alloc.h"
+#include "object_print.h"
 #include "util_func.h"
 #include "network_interface_cl.h"
 #include "unicode_support.h"
@@ -57,6 +58,7 @@
 static jmp_buf csql_Jmp_buf;
 
 static void csql_pipe_handler (int sig_no);
+static void csql_dump_alltran (volatile TRANS_INFO * info);
 
 
 #define CMD_EMPTY_FLAG	  0x00000000
@@ -99,6 +101,7 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"print_cmd", S_CMD_PRINT_CMD, CMD_EMPTY_FLAG},
   {"pager_cmd", S_CMD_PAGER_CMD, CMD_EMPTY_FLAG},
   {"nopager", S_CMD_NOPAGER_CMD, CMD_EMPTY_FLAG},
+  {"formatter_cmd", S_CMD_FORMATTER_CMD, CMD_EMPTY_FLAG},
   {"column-width", S_CMD_COLUMN_WIDTH, CMD_EMPTY_FLAG},
   {"string-width", S_CMD_STRING_WIDTH, CMD_EMPTY_FLAG},
   {"set", S_CMD_SET_PARAM, CMD_CHECK_CONNECT},
@@ -122,7 +125,11 @@ static SESSION_CMD_TABLE csql_Session_cmd_table[] = {
   {"historyread", S_CMD_HISTORY_READ, CMD_EMPTY_FLAG},
   {"historylist", S_CMD_HISTORY_LIST, CMD_EMPTY_FLAG},
 
-  {"trace", S_CMD_TRACE, CMD_CHECK_CONNECT}
+  {"trace", S_CMD_TRACE, CMD_CHECK_CONNECT},
+
+  {"singleline", S_CMD_SINGLELINE, CMD_EMPTY_FLAG},
+
+  {"connect", S_CMD_CONNECT, CMD_EMPTY_FLAG}
 };
 
 /*
@@ -723,6 +730,27 @@ error:
     }
 }
 
+static void
+csql_dump_alltran (volatile TRANS_INFO * info)
+{
+  FILE *p_stream;		/* pipe stream to pager */
+
+  if (setjmp (csql_Jmp_buf) == 0)
+    {
+      p_stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
+
+      fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
+      for (int i = 0; i < info->num_trans; i++)
+	{
+	  fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
+		   tran_get_tranlist_state_name (info->tran[i].state), info->tran[i].db_user,
+		   info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);
+	}
+
+      csql_pclose (p_stream, csql_Output_fp);
+    }
+}
+
 /*
  * csql_killtran() - kill a transaction
  *   return: none
@@ -733,7 +761,6 @@ csql_killtran (const char *argument)
 {
   TRANS_INFO *info = NULL;
   int tran_index = -1, i;
-  FILE *p_stream;		/* pipe stream to pager */
 #if !defined(WINDOWS)
   void (*csql_pipe_save) (int sig);
 #endif /* ! WINDOWS */
@@ -750,27 +777,13 @@ csql_killtran (const char *argument)
       goto error;
     }
 
-
   /* dump transaction */
   if (tran_index <= 0)
     {
 #if !defined(WINDOWS)
       csql_pipe_save = signal (SIGPIPE, &csql_pipe_handler);
 #endif /* ! WINDOWS */
-      if (setjmp (csql_Jmp_buf) == 0)
-	{
-	  p_stream = csql_popen (csql_Pager_cmd, csql_Output_fp);
-
-	  fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_TITLE_TEXT));
-	  for (i = 0; i < info->num_trans; i++)
-	    {
-	      fprintf (p_stream, csql_get_message (CSQL_KILLTRAN_FORMAT), info->tran[i].tran_index,
-		       tran_get_tranlist_state_name (info->tran[i].state), info->tran[i].db_user,
-		       info->tran[i].host_name, info->tran[i].process_id, info->tran[i].program_name);
-	    }
-
-	  csql_pclose (p_stream, csql_Output_fp);
-	}
+      csql_dump_alltran (info);
 #if !defined(WINDOWS)
       signal (SIGPIPE, csql_pipe_save);
 #endif /* ! WINDOWS */
@@ -801,7 +814,7 @@ csql_killtran (const char *argument)
 	}
     }
 
-  if (info)
+  if (info != NULL)
     {
       logtb_free_trans_info (info);
     }
@@ -810,7 +823,7 @@ csql_killtran (const char *argument)
 
 error:
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-  if (info)
+  if (info != NULL)
     {
       logtb_free_trans_info (info);
     }

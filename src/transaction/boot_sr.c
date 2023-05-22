@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -25,10 +24,12 @@
 
 #include "config.h"
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 #if defined(SOLARIS)
 #include <netdb.h>
@@ -44,7 +45,10 @@
 
 #include "boot_sr.h"
 
+#include "area_alloc.h"
+#include "btree.h"
 #include "chartype.h"
+#include "dbtran_def.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "object_primitive.h"
@@ -56,20 +60,29 @@
 #include "language_support.h"
 #include "message_catalog.h"
 #include "perf_monitor.h"
+#include "porting_inline.hpp"
 #include "set_object.h"
 #include "util_func.h"
 #include "intl_support.h"
 #include "serial.h"
 #include "server_interface.h"
+#include "jansson.h"
 #include "jsp_sr.h"
 #include "xserver_interface.h"
 #include "session.h"
 #include "event_log.h"
 #include "tz_support.h"
 #include "filter_pred_cache.h"
+#include "scan_manager.h"
 #include "slotted_page.h"
 #include "thread_manager.hpp"
 #include "double_write_buffer.h"
+#include "xasl_cache.h"
+#include "log_volids.hpp"
+#include "vacuum.h"
+#include "tde.h"
+#include "porting.h"
+#include "log_manager.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -98,9 +111,7 @@ struct boot_dbparm
   VFID trk_vfid;		/* Tracker of files */
   HFID hfid;			/* Heap file where this information is stored. It is only used for validation purposes */
   HFID rootclass_hfid;		/* Heap file where classes are stored */
-#if 1				/* TODO - not used */
   EHID classname_table;		/* The hash file of class names */
-#endif
   CTID ctid;			/* The catalog file */
   /* TODO: Remove me */
   VFID query_vfid;		/* Query file */
@@ -113,6 +124,7 @@ struct boot_dbparm
   int vacuum_log_block_npages;	/* Number of pages for vacuum data file */
   VFID vacuum_data_vfid;	/* Vacuum data file identifier */
   VFID dropped_files_vfid;	/* Vacuum dropped files file identifier */
+  HFID tde_keyinfo_hfid;	/* Heap file where tde key info (TDE_KEYINFO) is stored */
 };
 
 enum remove_temp_vol_action
@@ -136,7 +148,7 @@ BOOT_SERVER_STATUS boot_Server_status = BOOT_SERVER_DOWN;
 
 #if defined(SERVER_MODE)
 /* boot_cl.c:boot_Host_name[] if CS_MODE and SA_MODE */
-char boot_Host_name[MAXHOSTNAMELEN] = "";
+char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";
 #endif /* SERVER_MODE */
 
 /*
@@ -202,6 +214,8 @@ static INTL_CODESET boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, co
 STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 static int boot_after_copydb (THREAD_ENTRY * thread_p);
+
+static int boot_generate_tde_keys (THREAD_ENTRY * thread_p);
 
 /*
  * bo_server) -set server's status, UP or DOWN
@@ -956,11 +970,10 @@ boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid)
     {
       return;
     }
-  temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
-  if (temp_path == NULL)
+  temp_path = (char *) prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
+  if (temp_path == NULL || temp_path[0] == '\0')
     {
-      alloc_tempath[0] = '\0';
-      temp_path = alloc_tempath;
+      temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
@@ -1170,11 +1183,10 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
     {
       return;
     }
-  temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
-  if (temp_path == NULL)
+  temp_path = (char *) prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
+  if (temp_path == NULL || temp_path[0] == '\0')
     {
-      alloc_tempath[0] = '\0';
-      temp_path = alloc_tempath;
+      temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
@@ -1452,11 +1464,11 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 			 OID * rootclass_oid, HFID * rootclass_hfid, int client_lock_wait,
 			 TRAN_ISOLATION client_isolation)
 {
-  int tran_index = NULL_TRAN_INDEX;
+  volatile int tran_index = NULL_TRAN_INDEX;
   const char *log_prefix = NULL;
   DB_INFO *db = NULL;
   DB_INFO *dir = NULL;
-  int dbtxt_vdes = NULL_VOLDES;
+  volatile int dbtxt_vdes = NULL_VOLDES;
   char db_pathbuf[PATH_MAX];
   char vol_real_path[PATH_MAX];
   char log_pathbuf[PATH_MAX];
@@ -1471,7 +1483,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   void (*old_ctrl_c_handler) (int sig_no) = SIG_ERR;
   struct stat stat_buf;
   bool is_exist_volume;
-  char *db_path, *log_path, *lob_path, *p;
+  const char *db_path, *log_path, *lob_path;
+  char *p;
   THREAD_ENTRY *thread_p = NULL;
 
   assert (client_credential != NULL);
@@ -1549,9 +1562,9 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 #endif /* CUBRID_DEBUG */
 
-  if (client_credential->db_name == NULL)
+  if (client_credential->db_name.empty ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->db_name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->get_db_name ());
       goto exit_on_error;
     }
 
@@ -1596,7 +1609,6 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       goto exit_on_error;
     }
   boot_remove_useless_path_separator (log_path, log_pathbuf);
-  log_path = log_pathbuf;
 
   /*
    * for lob path,
@@ -1606,12 +1618,13 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   if (es_get_type (lob_path) == ES_NONE)
     {
       snprintf (lob_pathbuf, sizeof (lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, lob_path);
-      p = lob_path = strchr (lob_pathbuf, ':') + 1;
+      p = strchr (lob_pathbuf, ':') + 1;
     }
   else
     {
-      p = lob_path = strchr (strcpy (lob_pathbuf, lob_path), ':') + 1;
+      p = strchr (strcpy (lob_pathbuf, lob_path), ':') + 1;
     }
+  lob_path = p;
 
   if (lob_path == NULL)
     {
@@ -1633,7 +1646,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       else
 	{
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_path);
-	  if (mkdir (lob_path, 0777) < 0)
+	  if (mkdir (lob_path, 0700) < 0)
 	    {
 	      cub_dirname_r (lob_path, fixed_pathbuf, PATH_MAX);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);
@@ -1642,13 +1655,15 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	}
       boot_remove_useless_path_separator (lob_path, p);
     }
-  lob_path = lob_pathbuf;
 
   /*
    * Compose the full name of the database
    */
-  snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_path, PATH_SEPARATOR,
-	    client_credential->db_name);
+  if (snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_pathbuf, PATH_SEPARATOR,
+		client_credential->get_db_name ()) < 0)
+    {
+      assert_release (false);
+    }
 
   /*
    * Initialize error structure, critical section, slotted page, heap, and
@@ -1671,7 +1686,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       assert (thread_p == NULL);
     }
 
-  log_prefix = fileio_get_base_file_name (client_credential->db_name);
+  log_prefix = fileio_get_base_file_name (client_credential->get_db_name ());
 
   /*
    * Find logging information to create the log volume. If the page size is
@@ -1733,12 +1748,12 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	}
     }
 
-  if (dir != NULL && ((db = cfg_find_db_list (dir, client_credential->db_name)) != NULL))
+  if (dir != NULL && ((db = cfg_find_db_list (dir, client_credential->get_db_name ())) != NULL))
     {
       if (db_overwrite == false)
 	{
 	  /* There is a database with the same name and we cannot overwrite it */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->db_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_DATABASE_EXISTS, 1, client_credential->get_db_name ());
 	  goto exit_on_error;
 	}
       else
@@ -1774,7 +1789,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   error_code =
-    logpb_check_exist_any_volumes (thread_p, boot_Db_full_name, log_path, log_prefix, vol_real_path, &is_exist_volume);
+    logpb_check_exist_any_volumes (thread_p, boot_Db_full_name, log_pathbuf, log_prefix, vol_real_path,
+				   &is_exist_volume);
   if (error_code != NO_ERROR || is_exist_volume)
     {
       goto exit_on_error;
@@ -1811,8 +1827,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   if ((int) strlen (boot_Db_full_name) > DB_MAX_PATH_LENGTH - 1)
     {
       /* db_path + db_name is too long */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, db_path,
-	      client_credential->db_name, strlen (boot_Db_full_name), DB_MAX_PATH_LENGTH - 1);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 4, db_pathbuf,
+	      client_credential->get_db_name (), strlen (boot_Db_full_name), DB_MAX_PATH_LENGTH - 1);
       goto exit_on_error;
     }
 
@@ -1826,7 +1842,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     {
       tran_index =
 	boot_create_all_volumes (thread_p, client_credential, db_path_info->db_comments, db_npages, file_addmore_vols,
-				 log_path, (const char *) log_prefix, log_npages, client_lock_wait, client_isolation);
+				 log_pathbuf, (const char *) log_prefix, log_npages, client_lock_wait,
+				 client_isolation);
 
       if (tran_index != NULL_TRAN_INDEX && !boot_Init_server_is_canceled)
 	{
@@ -1853,16 +1870,18 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 		}
 	    }
 
-	  db = cfg_find_db_list (dir, client_credential->db_name);
+	  db = cfg_find_db_list (dir, client_credential->get_db_name ());
 
 	  /* Now create the entry in the database table */
 	  if (db == NULL)
 	    {
-	      db = cfg_add_db (&dir, client_credential->db_name, db_path, log_path, lob_path, db_path_info->db_host);
+	      db =
+		cfg_add_db (&dir, client_credential->get_db_name (), db_pathbuf, log_pathbuf, lob_pathbuf,
+			    db_path_info->db_host);
 	    }
 	  else
 	    {
-	      cfg_update_db (db, db_path, log_path, lob_path, db_path_info->db_host);
+	      cfg_update_db (db, db_pathbuf, log_pathbuf, lob_pathbuf, db_path_info->db_host);
 	    }
 
 	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobpath == NULL
@@ -1904,7 +1923,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 
   if (tran_index == NULL_TRAN_INDEX || boot_Init_server_is_canceled)
     {
-      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path, (const char *) log_prefix, true, true);
+      (void) boot_remove_all_volumes (thread_p, boot_Db_full_name, log_pathbuf, (const char *) log_prefix, true, true);
       if (boot_Init_server_is_canceled)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -1915,8 +1934,8 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	    {
 	      (void) unlink (boot_Db_full_name);
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, "volumes", client_credential->db_name,
-		  er_get_msglog_filename ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 3, "volumes",
+		  client_credential->get_db_name (), er_get_msglog_filename ());
 	}
 
       goto exit_on_error;
@@ -1931,20 +1950,16 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   // sessions state is required to continue
-  error_code = session_states_init (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      assert (false);
-      goto exit_on_error;
-    }
+  session_states_init (thread_p);
 
   /* print_version string */
 #if defined (NDEBUG)
-  strncpy (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_DATABASE_INIT),
-	   BOOT_FORMAT_MAX_LENGTH);
+  strncpy_size (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_DATABASE_INIT),
+		BOOT_FORMAT_MAX_LENGTH);
   fprintf (stdout, format, rel_name (), rel_build_number ());
 #else /* NDEBUG */
-  fprintf (stdout, "\n%s (%s) (%d debug build)\n\n", rel_name (), rel_build_number (), rel_bit_platform ());
+  fprintf (stdout, "\n%s (%s) (%d %s build)\n\n", rel_name (), rel_build_number (), rel_bit_platform (),
+	   rel_build_type ());
 #endif /* !NDEBUG */
 
   if (old_ctrl_c_handler != SIG_ERR)
@@ -2028,7 +2043,7 @@ boot_make_session_server_key (void)
  */
 int
 boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db_name, bool from_backup,
-		     CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args)
+		     CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args, bool skip_vacuum)
 {
   char log_path[PATH_MAX];
   const char *log_prefix;
@@ -2050,6 +2065,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   char db_lang[LANG_MAX_LANGNAME + 1];
   char timezone_checksum[32 + 1];
   const TZ_DATA *tzd;
+  char *mk_path;
+  int jsp_port;
+  bool jsp;
 
   /* language data is loaded in context of server */
   if (lang_init () != NO_ERROR)
@@ -2163,11 +2181,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  if (GETHOSTNAME (boot_Host_name, MAXHOSTNAMELEN) != 0)
+  if (GETHOSTNAME (boot_Host_name, CUB_MAXHOSTNAMELEN) != 0)
     {
       strcpy (boot_Host_name, "(unknown)");
     }
-  boot_Host_name[MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
+  boot_Host_name[CUB_MAXHOSTNAMELEN - 1] = '\0';	/* bullet proof */
 
   COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
   error_code = boot_make_session_server_key ();
@@ -2272,15 +2290,21 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
-  // Initialize java stored procedure server
-  error_code = jsp_start_server (db_name, db->pathname);
-  if (error_code != NO_ERROR)
+
+#if defined (SA_MODE)
+  // Initialize java stored procedure server for standalone mode
+  jsp = prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE);
+  if (jsp && !jsp_jvm_is_loaded ())
     {
-      goto error;
+      jsp_port = prm_get_integer_value (PRM_ID_JAVA_STORED_PROCEDURE_PORT);
+      error_code = jsp_start_server (db_name, db->pathname, jsp_port);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   /* *INDENT-OFF* */
-#if defined (SA_MODE)
   // thread_manager was not initialized
   assert (thread_p == NULL);
   cubthread::initialize (thread_p);
@@ -2336,11 +2360,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -2371,9 +2391,19 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+
+  error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid,
+				      r_args == NULL ? NULL : r_args->keys_file_path);
+  if (error_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_LOAD_FAIL, 0);
+      error_code = NO_ERROR;
+    }
+
   /* we need to manually add root class HFID to cache */
   error_code =
-    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
+			   boot_Db_parm->rootclass_name);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -2431,7 +2461,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       /* We need to load vacuum data and initialize vacuum routine before recovery. */
       error_code =
 	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
-			   &boot_Db_parm->dropped_files_vfid);
+			   &boot_Db_parm->dropped_files_vfid, r_args != NULL && r_args->is_restore_from_backup);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -2464,6 +2494,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 #if defined(SERVER_MODE)
   pgbuf_daemons_init ();
   dwb_daemons_init ();
+  cdc_daemons_init ();
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2666,7 +2697,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (r_args == NULL || r_args->is_restore_from_backup == false)
     {
       er_clear ();		/* forget any warning or error to start vacuumming */
-      xvacuum (thread_p);
+      if (!skip_vacuum)
+	{
+	  xvacuum (thread_p);
+	}
     }
 #endif
 
@@ -2682,11 +2716,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  error_code = session_states_init (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  session_states_init (thread_p);
 
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && from_backup == false)
@@ -2719,11 +2749,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (print_restart)
     {
 #if defined (NDEBUG)
-      strncpy (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_DATABASE_INIT),
-	       BOOT_FORMAT_MAX_LENGTH);
+      strncpy_size (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_DATABASE_INIT),
+		    BOOT_FORMAT_MAX_LENGTH);
       fprintf (stdout, format, rel_name ());
 #else /* NDEBUG */
-      fprintf (stdout, "\n%s (%s) (%d debug build)\n\n", rel_name (), rel_build_number (), rel_bit_platform ());
+      fprintf (stdout, "\n%s (%s) (%d %s build)\n\n", rel_name (), rel_build_number (), rel_bit_platform (),
+	       rel_build_type ());
 #endif /* !NDEBUG */
     }
 
@@ -2771,9 +2802,12 @@ error:
   session_states_finalize (thread_p);
   logtb_finalize_global_unique_stats_table (thread_p);
 
-  vacuum_stop (thread_p);
+  vacuum_stop_workers (thread_p);
+  vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+  cdc_daemons_destroy ();
+
   pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
 #endif
@@ -2870,14 +2904,172 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
       return NULL_TRAN_INDEX;
     }
 
-  if (boot_restart_server (thread_p, print_restart, db_name, true, &check_coll_and_timezone, r_args) != NO_ERROR)
+  if (boot_restart_server (thread_p, print_restart, db_name, true, &check_coll_and_timezone, r_args, false) != NO_ERROR)
     {
       return NULL_TRAN_INDEX;
     }
   else
     {
+      if (tde_is_loaded ())
+	{
+	  if (boot_reset_mk_after_restart_from_backup (thread_p, r_args) != NO_ERROR)
+	    {
+	      return NULL_TRAN_INDEX;
+	    }
+	}
       return LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     }
+}
+
+/*
+ * boot_reset_mk_after_restart_from_backup () - Reset after restarting from a backup volume
+ *
+ *  return          : Error code
+ *  thread_p (in)   : Thread entry
+ *  r_args(in)      : Restart argument structure contains various options
+ *
+ * There might be no proper master key after restoring database 
+ * even if we have a server mk file and the backup mk file (in the case of timed restore).
+ * 
+ * There are several cases but we simplify it into two case:
+ * (1) The master key set on the database can be found in the server _keys file
+ * (2) not (1), which means no server mk file or no master key in the server mk file.
+ *
+ * For (1), we do nothing.
+ * For (2), we copy backup mk file as the server mk file and set the first key in the key file
+ * as the master key for database.
+ */
+int
+boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args)
+{
+  TDE_KEYINFO keyinfo;
+  char mk_path[PATH_MAX] = { 0, };
+  char mk_path_old[PATH_MAX] = { 0, };
+  char ctime_buf[CTIME_MAX];
+  int time_str_len;
+  unsigned char master_key[TDE_MASTER_KEY_LENGTH];
+  time_t created_time;
+  int mk_index;
+  int server_mk_vdes = NULL_VOLDES;
+  int backup_mk_vdes = NULL_VOLDES;
+  int err = NO_ERROR;
+
+  assert (tde_is_loaded ());
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  err = tde_get_keyinfo (thread_p, &keyinfo);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* Check the mk file on the server */
+  tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
+
+  server_mk_vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, 2, false);
+  if (server_mk_vdes != NULL_VOLDES && tde_validate_keys_file (server_mk_vdes))
+    {
+      err = tde_load_mk (server_mk_vdes, &keyinfo, master_key);
+      if (err == NO_ERROR)
+	{
+	  /* case (1): There is the master key in the server key file:
+	   * Nothing to do */
+	  goto exit;
+	}
+    }
+
+  /* 
+   * case (2):
+   * There isn't the key set on the database in the server key file,
+   * So we just copy the backup file as a new server key file 
+   * and set the first key in the file as the master key.
+   */
+
+  /* No need to mount. The mk file from backup is not accessed by others */
+  backup_mk_vdes = fileio_open (r_args->keys_file_path, O_RDWR, 0600);
+  if (backup_mk_vdes == NULL_VOLDES)
+    {
+      /* not expected. if it doens't exist, loading tde must have failed and this function shoudn't have been called. */
+      assert (false);
+      ASSERT_ERROR_AND_SET (err);
+      goto exit;
+    }
+
+  if (tde_validate_keys_file (backup_mk_vdes) == false)
+    {
+      /* not expected. if it is not valid, loading tde must have failed and this function shoudn't have been called. */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_KEYS_FILE, 1, mk_path);
+      err = ER_TDE_INVALID_KEYS_FILE;
+      goto exit;
+    }
+
+  err = tde_find_first_mk (backup_mk_vdes, &mk_index, master_key, &created_time);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  fileio_close (backup_mk_vdes);
+  backup_mk_vdes = NULL_VOLDES;
+
+  /* if a server key file exists, move it */
+  if (server_mk_vdes != NULL_VOLDES)
+    {
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_KEY_FOUND_ONLY_FROM_BACKUP, 1, mk_path);
+
+      strcpy (mk_path_old, mk_path);
+      strcat (mk_path_old, "_old");
+      fileio_unformat_and_rename (thread_p, mk_path, mk_path_old);
+      server_mk_vdes = NULL_VOLDES;
+
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_MAKE_KEYS_FILE_OLD, 2, mk_path, mk_path_old);
+    }
+
+  err = tde_copy_keys_file (thread_p, mk_path, r_args->keys_file_path, false, false);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_COPY_KEYS_FILE, 2, r_args->keys_file_path, mk_path);
+
+  err = tde_change_mk (thread_p, mk_index, master_key, created_time);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  ctime_r (&created_time, ctime_buf);
+
+  time_str_len = strlen (ctime_buf);
+  if (time_str_len > 0 && ctime_buf[time_str_len - 1] == '\n')
+    {
+      ctime_buf[time_str_len - 1] = '\0';
+    }
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_TDE_RESTORE_CHANGE_MASTER_KEY, 2, mk_index, ctime_buf);
+
+  if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
+    {
+      ASSERT_ERROR ();
+      err = er_errid ();
+      goto exit;
+    }
+
+exit:
+  if (server_mk_vdes != NULL_VOLDES)
+    {
+      fileio_dismount (thread_p, server_mk_vdes);
+    }
+  if (backup_mk_vdes != NULL_VOLDES)
+    {
+      fileio_close (backup_mk_vdes);
+    }
+  return err;
 }
 
 /*
@@ -2909,7 +3101,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   /* Shutdown the system with the system transaction */
   logtb_set_to_system_tran_index (thread_p);
   log_abort_all_active_transaction (thread_p);
-  vacuum_stop (thread_p);
+  vacuum_stop_workers (thread_p);
 
   /* before removing temp vols */
   (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
@@ -2920,10 +3112,22 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
+  // ha delays are registered and logged, and must be stopped before vacuum master
+  log_stop_ha_delay_registration ();
+
+  // only after all logging is finished can this vacuum master be stopped; boot_remove_all_temp_volumes may add a final
+  // log entry
+  // hopefully, nothing else follows
+  vacuum_stop_master (thread_p);
+
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
+  cdc_daemons_destroy ();
 #endif
 
+#if defined (SA_MODE)
+  vacuum_sa_reflect_last_blockid (thread_p);
+#endif // SA_MODE
   log_final (thread_p);
 
   /* Since all pages were flushed, now it's safe to destroy DWB. */
@@ -2985,46 +3189,54 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 		       TRAN_ISOLATION client_isolation, TRAN_STATE * tran_state,
 		       BOOT_SERVER_CREDENTIAL * server_credential)
 {
+  // *INDENT-OFF*
   int tran_index;
-  char *db_user_save;
+  std::string db_user_save;
   char db_user_upper[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  bool skip_vacuum = false;
 #if defined(SA_MODE)
-  char *adm_prg_file_name = NULL;
+  std::string adm_prg_file_name;
   CHECK_ARGS check_coll_and_timezone = { true, true };
 #endif /* SA_MODE */
+  // *INDENT-ON*
 
 #if defined(SA_MODE)
-  if (client_credential != NULL && client_credential->program_name != NULL
-      && client_credential->client_type == BOOT_CLIENT_ADMIN_UTILITY)
+  if (client_credential != NULL && !client_credential->program_name.empty ()
+      && client_credential->client_type == DB_CLIENT_TYPE_ADMIN_UTILITY)
     {
-      adm_prg_file_name = client_credential->program_name + strlen (client_credential->program_name) - 1;
-      while (adm_prg_file_name > client_credential->program_name && *adm_prg_file_name != PATH_SEPARATOR)
+      auto const sep_index = client_credential->program_name.find_last_of (PATH_SEPARATOR);
+      if (sep_index != client_credential->program_name.npos)
 	{
-	  adm_prg_file_name--;
+	  adm_prg_file_name = client_credential->program_name.substr (sep_index + 1);
 	}
-
-      if (*adm_prg_file_name == PATH_SEPARATOR)
+      else
 	{
-	  adm_prg_file_name++;
+	  adm_prg_file_name = client_credential->program_name;
 	}
     }
-  if (adm_prg_file_name != NULL)
+  if (!adm_prg_file_name.empty ())
     {
-      if (strncasecmp (adm_prg_file_name, "synccolldb", strlen ("synccolldb")) == 0
-	  || strncasecmp (adm_prg_file_name, "migrate_", strlen ("migrate_")) == 0)
+      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0
+	  || strncasecmp (adm_prg_file_name.c_str (), "migrate_", strlen ("migrate_")) == 0)
 	{
 	  check_coll_and_timezone.check_db_coll = false;
 	}
-      if (strncasecmp (adm_prg_file_name, "gen_tz", strlen ("gen_tz")) == 0)
+      if (strncasecmp (adm_prg_file_name.c_str (), "gen_tz", strlen ("gen_tz")) == 0)
 	{
 	  check_coll_and_timezone.check_timezone = false;
 	}
     }
 
+  if (client_credential->client_type == DB_CLIENT_TYPE_SKIP_VACUUM_CSQL
+      || client_credential->client_type == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
+    {
+      skip_vacuum = true;
+    }
+
   /* If the server is not restarted, restart the server at this moment */
   if (!BO_IS_SERVER_RESTARTED ()
-      && boot_restart_server (thread_p, false, client_credential->db_name, false, &check_coll_and_timezone,
-			      NULL) != NO_ERROR)
+      && boot_restart_server (thread_p, false, client_credential->get_db_name (), false, &check_coll_and_timezone,
+			      NULL, skip_vacuum) != NO_ERROR)
     {
       *tran_state = TRAN_UNACTIVE_UNKNOWN;
       return NULL_TRAN_INDEX;
@@ -3041,10 +3253,10 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   /* Initialize scan function pointers of show statements */
   showstmt_scan_init ();
 
-  db_user_save = client_credential->db_user;
-  if (client_credential->db_user != NULL)
+  db_user_save = client_credential->get_db_user ();
+  if (!client_credential->db_user.empty ())
     {
-      intl_identifier_upper (client_credential->db_user, db_user_upper);
+      intl_identifier_upper (client_credential->get_db_user (), db_user_upper);
       client_credential->db_user = db_user_upper;
     }
 
@@ -3103,18 +3315,19 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	      return NULL_TRAN_INDEX;
 	    }
 	}
-      if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
+      if (client_credential->client_type == DB_CLIENT_TYPE_LOG_APPLIER)
 	{
 	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
 	}
 #endif /* SERVER_MODE */
 
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED, 4, client_credential->program_name,
-	      client_credential->process_id, client_credential->host_name, tran_index);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_CLIENT_CONNECTED, 4,
+	      client_credential->get_program_name (),
+	      client_credential->process_id, client_credential->get_host_name (), tran_index);
     }
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
-  CUBRID_CONN_START (thread_p->conn_entry->client_id, client_credential->db_user);
+  CUBRID_CONN_START (thread_p->conn_entry->client_id, client_credential->get_db_user ());
 #endif /* ENABLE_SYSTEMTAP */
 
   client_credential->db_user = db_user_save;
@@ -3166,7 +3379,7 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 	}
 
       /* check if the client was a log applier */
-      if (tdes->client.client_type == BOOT_CLIENT_LOG_APPLIER)
+      if (tdes->client.client_type == DB_CLIENT_TYPE_LOG_APPLIER)
 	{
 	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
 	}
@@ -3198,7 +3411,7 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
       perfmon_stop_watch (thread_p);
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
-      CUBRID_CONN_END (client_id, tdes->client.db_user);
+      CUBRID_CONN_END (client_id, tdes->client.get_db_user ());
 #endif /* ENABLE_SYSTEMTAP */
 
       /* Release the transaction index */
@@ -3417,7 +3630,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	}
     }
 
-  if (heap_get_hfid_from_class_oid (thread_p, oid, &hfid) != NO_ERROR || HFID_IS_NULL (&hfid))
+  if (heap_get_class_info (thread_p, oid, &hfid, NULL, NULL) != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       return DISK_ERROR;
     }
@@ -3734,13 +3947,14 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 int
 xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 	      bool delete_unneeded_logarchives, const char *backup_verbose_file, int num_threads,
-	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs)
+	      FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs,
+	      bool separate_keys)
 {
   int error_code;
 
   error_code =
     logpb_backup (thread_p, boot_Db_parm->nvols, backup_path, backup_level, delete_unneeded_logarchives,
-		  backup_verbose_file, num_threads, zip_method, zip_level, skip_activelog, sleep_msecs);
+		  backup_verbose_file, num_threads, zip_method, zip_level, skip_activelog, sleep_msecs, separate_keys);
   return error_code;
 }
 
@@ -3782,7 +3996,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   char new_lob_pathbuf[PATH_MAX];
   char new_volext_pathbuf[PATH_MAX];
   char fixed_pathbuf[PATH_MAX];
-  char new_db_server_host_buf[MAXHOSTNAMELEN + 1];
+  char new_db_server_host_buf[CUB_MAXHOSTNAMELEN + 1];
   char dbtxt_label[PATH_MAX];
   int dbtxt_vdes = NULL_VOLDES;
   int error_code = NO_ERROR;
@@ -3837,7 +4051,10 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   if (new_lob_path == NULL)
     {
       assert_release (new_db_path != NULL);
-      snprintf (new_lob_pathbuf2, sizeof (new_lob_pathbuf2), "%s%s/lob", LOB_PATH_DEFAULT_PREFIX, new_db_path);
+      if (snprintf (new_lob_pathbuf2, sizeof (new_lob_pathbuf2), "%s%s/lob", LOB_PATH_DEFAULT_PREFIX, new_db_path) < 0)
+	{
+	  assert_release (false);
+	}
       new_lob_path = new_lob_pathbuf2;
     }
 
@@ -3850,7 +4067,10 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	{
 	case ES_NONE:
 	  /* prepend default prefix */
-	  snprintf (new_lob_pathbuf, sizeof (new_lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, new_lob_path);
+	  if (snprintf (new_lob_pathbuf, sizeof (new_lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, new_lob_path) < 0)
+	    {
+	      assert_release (false);
+	    }
 	  new_lob_path = new_lob_pathbuf;
 	  es_type = ES_POSIX;
 	  p = (char *) strchr (new_lob_path, ':') + 1;
@@ -3883,7 +4103,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	  else
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, p);
-	      if (mkdir (p, 0777) < 0)
+	      if (mkdir (p, 0700) < 0)
 		{
 		  cub_dirname_r (p, fixed_pathbuf, PATH_MAX);
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);
@@ -3903,16 +4123,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 
   if (new_db_server_host == NULL)
     {
-#if 0				/* use Unix-domain socket for localhost */
-      if (GETHOSTNAME (new_db_server_host_buf, MAXHOSTNAMELEN) != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
-	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
-	  goto error;
-	}
-#else
       strcpy (new_db_server_host_buf, "localhost");
-#endif
       new_db_server_host = new_db_server_host_buf;
     }
 
@@ -3997,7 +4208,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	      goto error;
 	    }
 	  check_col_and_timezone.check_db_coll = false;
-	  error_code = boot_restart_server (thread_p, false, from_dbname, false, &check_col_and_timezone, NULL);
+	  error_code = boot_restart_server (thread_p, false, from_dbname, false, &check_col_and_timezone, NULL, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -4173,7 +4384,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
   DB_INFO *dir = NULL;
   DB_INFO *db = NULL;
   const char *newlog_prefix;
-  char new_db_server_host_buf[MAXHOSTNAMELEN + 1];
+  char new_db_server_host_buf[CUB_MAXHOSTNAMELEN + 1];
   char new_db_fullname[PATH_MAX];
   char new_db_pathbuf[PATH_MAX];
   char new_log_pathbuf[PATH_MAX];
@@ -4261,16 +4472,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 
   if (new_db_server_host == NULL)
     {
-#if 0				/* use Unix-domain socekt for localhost */
-      if (GETHOSTNAME (new_db_server_host_buf, MAXHOSTNAMELEN) != 0)
-	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
-	  error_code = ER_BO_UNABLE_TO_FIND_HOSTNAME;
-	  goto end;
-	}
-#else
       strcpy (new_db_server_host_buf, "localhost");
-#endif
       new_db_server_host = new_db_server_host_buf;
     }
 
@@ -4365,7 +4567,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 	  old_lob_path = boot_get_lob_path ();
 	  if (*old_lob_path != '\0')
 	    {
-	      new_lob_path = strncpy (new_lob_pathbuf, old_lob_path, PATH_MAX);
+	      new_lob_path = strncpy_bufsize (new_lob_pathbuf, old_lob_path);
 	    }
 
 	  cfg_delete_db (&dir, old_db_name);
@@ -4698,11 +4900,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   assert (client_credential != NULL);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -4762,13 +4960,9 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   boot_Db_parm->trk_vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->hfid.vfid.volid = LOG_DBFIRST_VOLID;
   boot_Db_parm->rootclass_hfid.vfid.volid = LOG_DBFIRST_VOLID;
-#if 1				/* TODO */
   boot_Db_parm->classname_table.vfid.volid = LOG_DBFIRST_VOLID;
-#endif
   boot_Db_parm->ctid.vfid.volid = LOG_DBFIRST_VOLID;
-#if 1				/* TODO */
   boot_Db_parm->ctid.xhid.vfid.volid = LOG_DBFIRST_VOLID;
-#endif
 
   (void) strncpy (boot_Db_parm->rootclass_name, ROOTCLASS_NAME, DB_SIZEOF (boot_Db_parm->rootclass_name));
   boot_Db_parm->nvols = 1;
@@ -4808,6 +5002,14 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       ASSERT_ERROR ();
       goto error;
     }
+
+  error_code = xheap_create (thread_p, &boot_Db_parm->tde_keyinfo_hfid, NULL, false);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
   error_code = heap_assign_address (thread_p, &boot_Db_parm->rootclass_hfid, NULL, &boot_Db_parm->rootclass_oid, 0);
   if (error_code != NO_ERROR)
     {
@@ -4818,20 +5020,19 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   oid_set_root (&boot_Db_parm->rootclass_oid);
   /* we need to manually add root class HFID to cache */
   error_code =
-    heap_insert_hfid_for_class_oid (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
+    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
+			   boot_Db_parm->rootclass_name);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
       goto error;
     }
 
-#if 1				/* TODO */
   if (xehash_create (thread_p, &boot_Db_parm->classname_table, DB_TYPE_STRING, -1, &boot_Db_parm->rootclass_oid, -1,
 		     false) == NULL)
     {
       goto error;
     }
-#endif
 
   /* Initialize structures for global unique statistics */
   error_code = logtb_initialize_global_unique_stats_table (thread_p);
@@ -4860,7 +5061,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   heap_create_insert_context (&heapop_context, &boot_Db_parm->hfid, &boot_Db_parm->rootclass_oid, &recdes, NULL);
 
   /* Insert and fetch location */
-  if (heap_insert_logical (thread_p, &heapop_context) != NO_ERROR)
+  if (heap_insert_logical (thread_p, &heapop_context, NULL) != NO_ERROR)
     {
       goto error;
     }
@@ -4930,7 +5131,13 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  logpb_flush_pages_direct (thread_p);
+  error_code = tde_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  logpb_force_flush_pages (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
   (void) fileio_synchronize_all (thread_p, false);
 
@@ -5049,6 +5256,11 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  goto error_rem_allvols;
 	}
       error_code = boot_get_db_parm (thread_p, boot_Db_parm, boot_Db_parm_oid);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
+      error_code = tde_cipher_initialize (thread_p, &boot_Db_parm->tde_keyinfo_hfid, NULL);
       if (error_code != NO_ERROR)
 	{
 	  goto error_rem_allvols;
@@ -5255,11 +5467,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  error_code = spage_boot (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      goto error_exit;
-    }
+  spage_boot (thread_p);
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -5346,7 +5554,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       /* We need initialize vacuum routine before recovery. */
       error_code =
 	vacuum_initialize (thread_p, boot_Db_parm->vacuum_log_block_npages, &boot_Db_parm->vacuum_data_vfid,
-			   &boot_Db_parm->dropped_files_vfid);
+			   &boot_Db_parm->dropped_files_vfid, false);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -5400,6 +5608,13 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   if (recreate_log == true)
     {
+      if (log_is_active_log_sane (thread_p, boot_Db_full_name, log_path, log_prefix))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_TOO_SANE_TO_RECREATE, 1, log_path);
+	  error_code = ER_LOG_TOO_SANE_TO_RECREATE;
+	  goto error_exit;
+	}
+
       if (log_npages <= 0)
 	{
 	  /* Use the default that is the size of the database */
@@ -5724,37 +5939,47 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
 {
   switch (type)
     {
-    case BOOT_CLIENT_SYSTEM_INTERNAL:
+    case DB_CLIENT_TYPE_SYSTEM_INTERNAL:
       return "SYSTEM_INTERNAL";
-    case BOOT_CLIENT_DEFAULT:
+    case DB_CLIENT_TYPE_DEFAULT:
       return "DEFAULT";
-    case BOOT_CLIENT_CSQL:
+    case DB_CLIENT_TYPE_CSQL:
       return "CSQL";
-    case BOOT_CLIENT_READ_ONLY_CSQL:
+    case DB_CLIENT_TYPE_READ_ONLY_CSQL:
       return "READ_ONLY_CSQL";
-    case BOOT_CLIENT_BROKER:
+    case DB_CLIENT_TYPE_BROKER:
       return "BROKER";
-    case BOOT_CLIENT_READ_ONLY_BROKER:
+    case DB_CLIENT_TYPE_READ_ONLY_BROKER:
       return "READ_ONLY_BROKER";
-    case BOOT_CLIENT_SLAVE_ONLY_BROKER:
+    case DB_CLIENT_TYPE_SLAVE_ONLY_BROKER:
       return "SLAVE_ONLY_BROKER";
-    case BOOT_CLIENT_ADMIN_UTILITY:
+    case DB_CLIENT_TYPE_ADMIN_UTILITY:
       return "ADMIN_UTILITY";
-    case BOOT_CLIENT_ADMIN_CSQL:
+    case DB_CLIENT_TYPE_ADMIN_CSQL:
       return "ADMIN_CSQL";
-    case BOOT_CLIENT_LOG_COPIER:
+    case DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG:
+      return "ADMIN_CSQL_REBUILD_CATALOG";
+    case DB_CLIENT_TYPE_LOG_COPIER:
       return "LOG_COPIER";
-    case BOOT_CLIENT_LOG_APPLIER:
+    case DB_CLIENT_TYPE_LOG_APPLIER:
       return "LOG_APPLIER";
-    case BOOT_CLIENT_RW_BROKER_REPLICA_ONLY:
+    case DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY:
       return "RW_BROKER_REPLICA_ONLY";
-    case BOOT_CLIENT_RO_BROKER_REPLICA_ONLY:
+    case DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY:
       return "RO_BROKER_REPLICA_ONLY";
-    case BOOT_CLIENT_SO_BROKER_REPLICA_ONLY:
+    case DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY:
       return "SO_BROKER_REPLICA_ONLY";
-    case BOOT_CLIENT_ADMIN_CSQL_WOS:
+    case DB_CLIENT_TYPE_ADMIN_CSQL_WOS:
       return "ADMIN_CSQL_WOS";
-    case BOOT_CLIENT_UNKNOWN:
+    case DB_CLIENT_TYPE_SKIP_VACUUM_CSQL:
+      return "SKIP_VACUUM_CSQL";
+    case DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL:
+      return "SKIP_VACUUM_ADMIN_CSQL";
+    case DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS:
+      return "ADMIN_COMPACTDB_WOS";
+    case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT:
+      return "ADMIN_LOADDB_COMPAT";
+    case DB_CLIENT_TYPE_UNKNOWN:
     default:
       return "UNKNOWN";
     }
@@ -5960,10 +6185,7 @@ boot_after_copydb (THREAD_ENTRY * thread_p)
   log_Gl.hdr.was_copied = false;
 
   // flush log and header to disk to make sure everything is saved
-  LOG_CS_ENTER (thread_p);
-  logpb_flush_pages_direct (thread_p);
-  logpb_flush_header (thread_p);
-  LOG_CS_EXIT (thread_p);
+  logpb_force_flush_header_and_pages (thread_p);
 
   er_log_debug (ARG_FILE_LINE, "Complete boot_after_copydb \n");
 

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -332,7 +331,7 @@ uc_start (char *err_msg)
       return -1;
     }
 
-  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file) < 0)
+  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, admin_log_file) < 0)
     {
       CP_ADMIN_ERR_MSG (err_msg);
       return -1;
@@ -1233,6 +1232,10 @@ get_as_type_str (char as_type)
     {
       return APPL_SERVER_CAS_MYSQL_TYPE_NAME;
     }
+  if (as_type == APPL_SERVER_CAS_CGW)
+    {
+      return APPL_SERVER_CAS_CGW_TYPE_NAME;
+    }
   return APPL_SERVER_CAS_TYPE_NAME;
 }
 
@@ -1250,6 +1253,10 @@ get_as_type (const char *type_str)
   if (strcasecmp (type_str, APPL_SERVER_CAS_MYSQL_TYPE_NAME) == 0)
     {
       return APPL_SERVER_CAS_MYSQL;
+    }
+  if (strcasecmp (type_str, APPL_SERVER_CAS_CGW_TYPE_NAME) == 0)
+    {
+      return APPL_SERVER_CAS_CGW;
     }
   return APPL_SERVER_CAS;
 }

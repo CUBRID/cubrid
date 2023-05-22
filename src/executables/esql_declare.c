@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -275,7 +274,7 @@ pp_add_spec_to_decl (LINK * p_spec, SYMBOL * decl_chain)
 
       decl_chain->etype = clone_end;
 
-      /* 
+      /*
        * If the declaration we're looking at is really a typedef,
        * record the symbol itself within the specifier.  This will
        * make it easier to point back to the symbol from other
@@ -425,12 +424,17 @@ pp_push_name_scope (void)
   if (new_scope >= pp_name_scope_limit)
     {
       int nframes = (int) (pp_name_scope_limit - pp_name_scope_base);
-      pp_name_scope_base = (SCOPE *) realloc (pp_name_scope_base, sizeof (SCOPE) * (nframes + NFRAMES));
-      if (pp_name_scope_base == NULL)
+      SCOPE *const realloc_pp_name_scope_base
+	= (SCOPE *) realloc (pp_name_scope_base, sizeof (SCOPE) * (nframes + NFRAMES));
+      if (realloc_pp_name_scope_base == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
 	  exit (1);
 	  return;
+	}
+      else
+	{
+	  pp_name_scope_base = realloc_pp_name_scope_base;
 	}
 
       pp_name_scope_limit = pp_name_scope_base + nframes + NFRAMES;
@@ -579,12 +583,17 @@ pp_push_spec_scope (void)
   if (p >= pp_spec_scope_limit)
     {
       int nframes = (int) (pp_spec_scope_limit - pp_spec_scope_base);
-      pp_spec_scope_base = (SPEC_STATE *) realloc (pp_spec_scope_base, sizeof (SPEC_STATE) * (nframes + NFRAMES));
-      if (pp_spec_scope_base == NULL)
+      SPEC_STATE *const realloc_pp_spec_scope_base
+	= (SPEC_STATE *) realloc (pp_spec_scope_base, sizeof (SPEC_STATE) * (nframes + NFRAMES));
+      if (realloc_pp_spec_scope_base == NULL)
 	{
 	  esql_yyverror (pp_get_msg (EX_MISC_SET, MSG_OUT_OF_MEMORY));
 	  exit (1);
 	  return;
+	}
+      else
+	{
+	  pp_spec_scope_base = realloc_pp_spec_scope_base;
 	}
 
       pp_spec_scope_limit = pp_spec_scope_base + nframes + NFRAMES;
@@ -701,7 +710,7 @@ pp_add_struct_spec (STRUCTDEF * sdef)
 
   if (sdef == NULL)
     {
-      /* 
+      /*
        * There was already some sort of error during parsing, and we've
        * wound up here in a sort of no-op mode.  Just ignore it.
        */
@@ -999,7 +1008,7 @@ pp_add_typedefed_spec (LINK * spec)
       return;
     }
 
-  /* 
+  /*
    * Reset any class info in the new spec; this is ok since this spec
    * will be cloned onto every declarator that it modifies, and then
    * reset before every future use.  The clones will keep any specific
@@ -1128,7 +1137,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
       vs_prepend (buf, TOK_SPACE);
       vs_prepend (buf, (char *) p->from_tdef->name);
 
-      /* 
+      /*
        * Now find the terminal specifier in the link chain and extract
        * any information about storage class specifiers.
        */
@@ -1225,7 +1234,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 		vs_free (&fields);
 		vs_free (&tmp);
 	      }
-	    /* 
+	    /*
 	     * Don't print the tags that we have invented for "anonymous"
 	     * structs.  Probably ought to encapsulate this better.
 	     */
@@ -1298,7 +1307,7 @@ pp_print_link (LINK * p, varstring * buf, int context, int preechoed)
 	    SYMBOL *arg;
 	    varstring tmp;
 
-	    /* 
+	    /*
 	     * If this is a complex declaration like
 	     *
 	     *      int (*f)(int);

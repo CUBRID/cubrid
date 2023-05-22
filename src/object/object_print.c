@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -24,55 +23,33 @@
 #ident "$Id$"
 
 #include "object_print.h"
-#include "config.h"
-#include "db_private_allocator.hpp"
-#include "db_value_printer.hpp"
-#include "mem_block.hpp"
 
-#include <stdlib.h>
-#include <float.h>
-#include <string.h>
-#include <ctype.h>
-#include <assert.h>
-
-
-#include "error_manager.h"
-#if !defined (SERVER_MODE)
+#include "authenticate.h"
 #include "chartype.h"
 #include "class_description.hpp"
-#include "misc_string.h"
 #include "dbi.h"
-#include "schema_manager.h"
-#include "trigger_description.hpp"
-#include "trigger_manager.h"
-#include "virtual_object.h"
-#include "set_object.h"
-#include "parse_tree.h"
-#include "parser.h"
-#include "transaction_cl.h"
+#include "dbtype.h"
+#include "error_manager.h"
+#include "locator_cl.h"
+#include "message_catalog.h"
 #include "msgcat_help.hpp"
 #include "network_interface_cl.h"
 #include "object_description.hpp"
-#include "object_printer.hpp"
 #include "object_print_util.hpp"
-#include "class_object.h"
-#include "work_space.h"
-#endif /* !defined (SERVER_MODE) */
+#include "object_printer.hpp"
+#include "printer.hpp"
+#include "schema_manager.h"
 #include "string_buffer.hpp"
-#include "dbtype.h"
+#include "trigger_description.hpp"
+#include "trigger_manager.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#if !defined(SERVER_MODE)
-
 #define MATCH_TOKEN(string, token) \
   ((string == NULL) ? 0 : intl_mbs_casecmp(string, token) == 0)
 
-extern unsigned int db_on_server;
-
-static char **obj_print_read_section (FILE * fp);
 static char *obj_print_next_token (char *ptr, char *buf);
 
 /* This will be in one of the language directories under $CUBRID/msg */
@@ -153,15 +130,15 @@ help_trigger_names (char ***names_ptr)
 /* These functions build help structures and print them to a file. */
 
 /*
- * help_fprint_obj () - Prints the description of a class or instance object
- *                      to the file.
+ * help_print_obj () - Prints the description of a class or instance object
+ *                      to a generic output.
  *   return: none
  *   fp(in):file pointer
  *   obj(in):class or instance to describe
  */
 
 void
-help_fprint_obj (FILE * fp, MOP obj)
+help_print_obj (print_output & output_ctx, MOP obj)
 {
   int i, status;
 
@@ -175,95 +152,95 @@ help_fprint_obj (FILE * fp, MOP obj)
     {
       if (locator_is_root (obj))
 	{
-	  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ROOTCLASS_TITLE));
+	  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ROOTCLASS_TITLE));
 	}
       else
 	{
 	  class_description cinfo;
 	  if (cinfo.init (obj, class_description::CSQL_SCHEMA_COMMAND) == NO_ERROR)
 	    {
-	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
-		       cinfo.class_type, cinfo.name);
+	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_TITLE),
+			  cinfo.class_type, cinfo.name);
 
 	      if (cinfo.supers != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUPER_CLASSES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUPER_CLASSES));
 		  for (i = 0; cinfo.supers[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.supers[i]);
+		      output_ctx ("  %s\n", cinfo.supers[i]);
 		    }
 		}
 	      if (cinfo.subs != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUB_CLASSES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_SUB_CLASSES));
 		  for (i = 0; cinfo.subs[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.subs[i]);
+		      output_ctx ("  %s\n", cinfo.subs[i]);
 		    }
 		}
 	      if (cinfo.attributes != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ATTRIBUTES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_ATTRIBUTES));
 		  for (i = 0; cinfo.attributes[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.attributes[i]);
+		      output_ctx ("  %s\n", cinfo.attributes[i]);
 		    }
 		}
 	      if (cinfo.methods != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHODS));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHODS));
 		  for (i = 0; cinfo.methods[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.methods[i]);
+		      output_ctx ("  %s\n", cinfo.methods[i]);
 		    }
 		}
 	      if (cinfo.class_attributes != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_ATTRIBUTES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_ATTRIBUTES));
 		  for (i = 0; cinfo.class_attributes[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.class_attributes[i]);
+		      output_ctx ("  %s\n", cinfo.class_attributes[i]);
 		    }
 		}
 	      if (cinfo.class_methods != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_METHODS));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_CLASS_METHODS));
 		  for (i = 0; cinfo.class_methods[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.class_methods[i]);
+		      output_ctx ("  %s\n", cinfo.class_methods[i]);
 		    }
 		}
 	      if (cinfo.resolutions != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_RESOLUTIONS));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_RESOLUTIONS));
 		  for (i = 0; cinfo.resolutions[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.resolutions[i]);
+		      output_ctx ("  %s\n", cinfo.resolutions[i]);
 		    }
 		}
 	      if (cinfo.method_files != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHOD_FILES));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_METHOD_FILES));
 		  for (i = 0; cinfo.method_files[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.method_files[i]);
+		      output_ctx ("  %s\n", cinfo.method_files[i]);
 		    }
 		}
 	      if (cinfo.query_spec != NULL)
 		{
-		  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_QUERY_SPEC));
+		  output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_QUERY_SPEC));
 		  for (i = 0; cinfo.query_spec[i] != NULL; i++)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.query_spec[i]);
+		      output_ctx ("  %s\n", cinfo.query_spec[i]);
 		    }
 		}
 	      if (cinfo.triggers.size () > 0)	//triggers
 		{
 		  /* fprintf(fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_TRIGGERS)); */
-		  fprintf (fp, "Triggers:\n");
+		  output_ctx ("Triggers:\n");
 		  for (size_t n = cinfo.triggers.size (), i = 0; i < n; ++i)
 		    {
-		      fprintf (fp, "  %s\n", cinfo.triggers[i]);
+		      output_ctx ("  %s\n", cinfo.triggers[i]);
 		    }
 		}
 	    }
@@ -279,51 +256,51 @@ help_fprint_obj (FILE * fp, MOP obj)
 
 	  if (tinfo.init (obj) == NO_ERROR)
 	    {
-	      fprintf (fp, "Trigger : %s", tinfo.name);
+	      output_ctx ("Trigger : %s", tinfo.name);
 	      if (tinfo.status)
 		{
-		  fprintf (fp, " (INACTIVE)\n");
+		  output_ctx (" (INACTIVE)\n");
 		}
 	      else
 		{
-		  fprintf (fp, "\n");
+		  output_ctx ("\n");
 		}
 
-	      fprintf (fp, "  %s %s ", tinfo.condition_time, tinfo.event);
+	      output_ctx ("  %s %s ", tinfo.condition_time, tinfo.event);
 	      if (tinfo.class_name != NULL)
 		{
 		  if (tinfo.attribute != NULL)
 		    {
-		      fprintf (fp, "%s ON %s ", tinfo.attribute, tinfo.class_name);
+		      output_ctx ("%s ON %s ", tinfo.attribute, tinfo.class_name);
 		    }
 		  else
 		    {
-		      fprintf (fp, "ON %s ", tinfo.class_name);
+		      output_ctx ("ON %s ", tinfo.class_name);
 		    }
 		}
 
-	      fprintf (fp, "PRIORITY %s\n", tinfo.priority);
+	      output_ctx ("PRIORITY %s\n", tinfo.priority);
 
 	      if (tinfo.condition)
 		{
-		  fprintf (fp, "  IF %s\n", tinfo.condition);
+		  output_ctx ("  IF %s\n", tinfo.condition);
 		}
 
 	      if (tinfo.action != NULL)
 		{
-		  fprintf (fp, "  EXECUTE ");
+		  output_ctx ("  EXECUTE ");
 		  if (strcmp (tinfo.condition_time, tinfo.action_time) != 0)
 		    {
-		      fprintf (fp, "%s ", tinfo.action_time);
+		      output_ctx ("%s ", tinfo.action_time);
 		    }
-		  fprintf (fp, "%s\n", tinfo.action);
+		  output_ctx ("%s\n", tinfo.action);
 		}
 
 	      if (tinfo.comment != NULL && tinfo.comment[0] != '\0')
 		{
-		  fprintf (fp, " ");
-		  help_fprint_describe_comment (fp, tinfo.comment);
-		  fprintf (fp, "\n");
+		  output_ctx (" ");
+		  help_print_describe_comment (output_ctx, tinfo.comment);
+		  output_ctx ("\n");
 		}
 	    }
 	}
@@ -333,20 +310,20 @@ help_fprint_obj (FILE * fp, MOP obj)
 
 	  if (oinfo.init (obj) == NO_ERROR)
 	    {
-	      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
-		       oinfo.classname);
+	      output_ctx (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_HELP, MSGCAT_HELP_OBJECT_TITLE),
+			  oinfo.classname);
 	      if (oinfo.attributes != NULL)
 		{
 		  for (i = 0; oinfo.attributes[i] != NULL; i++)
 		    {
-		      fprintf (fp, "%s\n", oinfo.attributes[i]);
+		      output_ctx ("%s\n", oinfo.attributes[i]);
 		    }
 		}
 	      if (oinfo.shared != NULL)
 		{
 		  for (i = 0; oinfo.shared[i] != NULL; i++)
 		    {
-		      fprintf (fp, "%s\n", oinfo.shared[i]);
+		      output_ctx ("%s\n", oinfo.shared[i]);
 		    }
 		}
 	    }
@@ -370,12 +347,12 @@ char **
 help_class_names (const char *qualifier)
 {
   DB_OBJLIST *mops, *m;
-  char **names, *tmp;
-  const char *cname;
+  char **names;
   int count, i, outcount;
   DB_OBJECT *requested_owner, *owner;
   char buffer[2 * DB_MAX_IDENTIFIER_LENGTH + 4];
-  DB_VALUE owner_name;
+  const char *unique_name;
+  const char *class_name;
 
   requested_owner = NULL;
   owner = NULL;
@@ -405,31 +382,27 @@ help_class_names (const char *qualifier)
 	{
 	  for (i = 0, m = mops; i < count; i++, m = m->next)
 	    {
-	      owner = db_get_owner (m->op);
-	      if (!requested_owner || ws_is_same_object (requested_owner, owner))
-		{
-		  cname = db_get_class_name (m->op);
-		  buffer[0] = '\0';
-		  if (!requested_owner && db_get (owner, "name", &owner_name) >= 0)
-		    {
-		      tmp = db_get_string (&owner_name);
-		      if (tmp)
-			{
-			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", tmp, cname);
-			}
-		      else
-			{
-			  snprintf (buffer, sizeof (buffer) - 1, "%s.%s", "unknown_user", cname);
-			}
-		      db_value_clear (&owner_name);
-		    }
-		  else
-		    {
-		      snprintf (buffer, sizeof (buffer) - 1, "%s", cname);
-		    }
+	      unique_name = db_get_class_name (m->op);
+	      buffer[0] = '\0';
 
+	      if (!requested_owner && sm_check_name (unique_name))
+		{
+		  snprintf (buffer, sizeof (buffer) - 1, "%s", unique_name);
 		  names[outcount++] = object_print::copy_string (buffer);
+		  continue;
 		}
+
+	      owner = db_get_owner (m->op);
+	      class_name = sm_remove_qualifier_name (unique_name);
+	      if (ws_is_same_object (requested_owner, owner) && sm_check_name (class_name))
+		{
+		  snprintf (buffer, sizeof (buffer) - 1, "%s", class_name);
+		  names[outcount++] = object_print::copy_string (buffer);
+		  continue;
+		}
+
+	      snprintf (buffer, sizeof (buffer) - 1, "%s", "unknown_class");
+	      names[outcount++] = object_print::copy_string (buffer);
 	    }
 	  names[outcount] = NULL;
 	}
@@ -634,6 +607,7 @@ help_print_info (const char *command, FILE * fpp)
       fpp = stdout;
     }
 
+  file_print_output output_ctx (fpp);
   if (MATCH_TOKEN (buffer, "schema"))
     {
       ptr = obj_print_next_token (ptr, buffer);
@@ -646,7 +620,7 @@ help_print_info (const char *command, FILE * fpp)
 	  class_mop = db_find_class (buffer);
 	  if (class_mop != NULL)
 	    {
-	      help_fprint_obj (fpp, class_mop);
+	      help_print_obj (output_ctx, class_mop);
 	    }
 	}
     }
@@ -728,69 +702,21 @@ help_print_info (const char *command, FILE * fpp)
     }
 }
 
-#endif /* defined (SERVER_MODE) */
-
 /*
- * help_fprint_value() -  Prints a description of the contents of a DB_VALUE
- *                        to the file
- *   return: none
- *   fp(in) : FILE stream pointer
- *   value(in) : value to print
- */
-void
-help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
-{
-/* *INDENT-OFF* */
-  db_private_allocator<char> private_allocator{thread_p};
-  string_buffer sb{
-    [&private_allocator] (mem::block& block, size_t len)
-    {
-      mem::block b{block.dim + len, private_allocator.allocate (block.dim + len)};
-      memcpy (b.ptr, block.ptr, block.dim);
-      private_allocator.deallocate (block.ptr);
-      block = std::move (b);
-    },
-    [&private_allocator] (mem::block& block)
-    {
-      private_allocator.deallocate (block.ptr);
-      block = {};
-    }
-  };
-/* *INDENT-ON* */
-
-  db_value_printer printer (sb);
-  printer.describe_value (value);
-  fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
-}
-
-/*
- * help_sprint_value() - This places a printed representation of the supplied value in a buffer.
- *   value(in) : value to describe
- *   sb(in/out) : auto resizable buffer to contain description
- */
-void
-help_sprint_value (const DB_VALUE * value, string_buffer & sb)
-{
-  db_value_printer printer (sb);
-  printer.describe_value (value);
-}
-
-/*
- * help_fprint_describe_comment() - Print description of a comment to a file.
+ * help_print_describe_comment() - Print description of a comment to a generic output.
  *   return: N/A
+ *   output_ctx(in/out) : output context
  *   comment(in) : a comment string to be printed
  */
 void
-help_fprint_describe_comment (FILE * fp, const char *comment)
+help_print_describe_comment (print_output & output_ctx, const char *comment)
 {
-#if !defined (SERVER_MODE)
+  /* TODO : optimize printing directly to string_buffer of output_ctx */
   string_buffer sb;
   object_printer printer (sb);
 
-  assert (fp != NULL);
   assert (comment != NULL);
 
   printer.describe_comment (comment);
-  fprintf (fp, "%.*s", int (sb.len ()), sb.get_buffer ());
-#endif /* !defined (SERVER_MODE) */
+  output_ctx ("%.*s", int (sb.len ()), sb.get_buffer ());
 }

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -35,6 +34,7 @@
 #include "jansson.h"
 
 #include "parser.h"
+#include "object_primitive.h"
 #include "optimizer.h"
 #include "query_planner.h"
 #include "query_graph.h"
@@ -45,11 +45,12 @@
 #include "parser_message.h"
 #include "intl_support.h"
 #include "storage_common.h"
+#include "xasl_analytic.hpp"
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "network_interface_cl.h"
-
 #include "dbtype.h"
+#include "regu_var.hpp"
 
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"
@@ -174,7 +175,7 @@ static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_examine_idx_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
 static int qo_examine_nl_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
-			       BITSET *, int);
+			       BITSET *, int, BITSET *);
 static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 				  BITSET *);
 static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
@@ -218,7 +219,7 @@ static QO_PLAN *qo_worst_new (QO_ENV *);
 static QO_PLAN *qo_cp_new (QO_INFO *, QO_PLAN *, QO_PLAN *, BITSET *, BITSET *);
 static QO_PLAN *qo_follow_new (QO_INFO *, QO_PLAN *, QO_TERM *, BITSET *, BITSET *);
 static QO_PLAN *qo_join_new (QO_INFO *, JOIN_TYPE, QO_JOINMETHOD, QO_PLAN *, QO_PLAN *, BITSET *, BITSET *, BITSET *,
-			     BITSET *, BITSET *);
+			     BITSET *, BITSET *, BITSET *);
 static QO_PLAN *qo_sort_new (QO_PLAN *, QO_EQCLASS *, SORT_TYPE);
 static QO_PLAN *qo_seq_scan_new (QO_INFO *, QO_NODE *);
 static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, QO_SCANMETHOD, BITSET *, BITSET *);
@@ -236,6 +237,7 @@ static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
+static int qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg);
 static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
@@ -385,7 +387,8 @@ typedef enum PRED_CLASS
   PC_HOST_VAR,
   PC_SUBQUERY,
   PC_SET,
-  PC_OTHER
+  PC_OTHER,
+  PC_MULTI_ATTR
 } PRED_CLASS;
 
 static double qo_or_selectivity (QO_ENV * env, double lhs_sel, double rhs_sel);
@@ -422,7 +425,7 @@ log3 (double n)
 
   if (!initialized)
     {
-      /* 
+      /*
        * I could check ln3 against 0, but I prefer to avoid the
        * floating point loads and comparison.
        */
@@ -577,11 +580,11 @@ qo_plan_compute_cost (QO_PLAN * plan)
   /* Compute the costs for all of the subqueries. Each of the pinned subqueries is intended to be evaluated once for
    * each row produced by this plan; the cost of each such evaluation in the fixed cost of the subquery plus one trip
    * through the result, i.e.,
-   * 
+   *
    * QO_PLAN_FIXED_COST(subplan) + QO_PLAN_ACCESS_COST(subplan)
-   * 
+   *
    * The cost info for the subplan has (probably) been squirreled away in a QO_SUMMARY structure reachable from the
-   * original select node. 
+   * original select node.
    */
 
   for (i = bitset_iterate (&(plan->subqueries), &iter); i != -1; i = bitset_next_member (&iter))
@@ -597,7 +600,7 @@ qo_plan_compute_cost (QO_PLAN * plan)
   (*(plan->vtbl)->cost_fn) (plan);
 
   /* Now add in the subquery costs; this cost is incurred for each row produced by this plan, so multiply it by the
-   * estimated cardinality and add it to the access cost. 
+   * estimated cardinality and add it to the access cost.
    */
   if (plan->info)
     {
@@ -623,8 +626,8 @@ qo_plan_compute_subquery_cost (PT_NODE * subquery, double *subq_cpu_cost, double
 
   if (subquery == NULL)
     {
-      /* This case is selected when a subquery wasn't optimized for some reason.  
-       * just take a guess. ---> NEED MORE CONSIDERATION 
+      /* This case is selected when a subquery wasn't optimized for some reason.
+       * just take a guess. ---> NEED MORE CONSIDERATION
        */
       *subq_cpu_cost = 5.0;
       *subq_io_cost = 5.0;
@@ -818,6 +821,33 @@ qo_set_orderby_skip (QO_PLAN * plan, void *arg)
   return NO_ERROR;
 }
 
+static int
+qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg)
+{
+  if (qo_is_interesting_order_scan (plan))
+    {
+      if (plan->plan_un.scan.index && plan->plan_un.scan.index->head)
+	{
+	  if (plan->plan_un.scan.index->head->use_descending)
+	    {
+	      /* We no longer need to set the USE_DESC_IDX hint if the planner wants a descending index, because the
+	       * requirement is copied to each scan_ptr's index info at XASL generation.
+	       * plan->info->env->pt_tree->info.query.q.select.hint |= PT_HINT_USE_IDX_DESC;
+	       */
+	    }
+	  else if (plan->plan_un.scan.index->head->orderby_skip || qo_is_index_mro_scan (plan))
+	    {
+	      if (plan->info->env != NULL)
+		{
+		  plan->info->env->pt_tree->info.query.q.select.hint &= ~PT_HINT_USE_IDX_DESC;
+		}
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * qo_validate_indexes_for_orderby () - wrapper function for
  *					qo_validate_index_for_orderby
@@ -911,7 +941,7 @@ qo_top_plan_new (QO_PLAN * plan)
 
       /* GROUP BY */
       /* if we have rollup, we do not skip the group by */
-      if (group_by && !group_by->with_rollup)
+      if (group_by && !group_by->flag.with_rollup)
 	{
 	  PT_NODE *group_sort_list = NULL;
 
@@ -1334,7 +1364,7 @@ qo_plan_print_analytic_eval (QO_PLAN * plan, FILE * f, int howfar)
 	      /* func info */
 	      fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "");
 	      fprintf (f, "func[%d]: ", i);
-	      fputs (pt_show_function (func->function), f);
+	      fputs (fcode_get_lowercase_name (func->function), f);
 
 	      /* func partition by */
 	      fputs (" partition by (", f);
@@ -1398,6 +1428,7 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   bitset_assign (&(plan->subqueries), &(QO_NODE_SUBQUERIES (node)));
   bitset_init (&(plan->plan_un.scan.terms), info->env);
   bitset_init (&(plan->plan_un.scan.kf_terms), info->env);
+  bitset_init (&(plan->plan_un.scan.hash_terms), info->env);
   plan->plan_un.scan.index_equi = false;
   plan->plan_un.scan.index_cover = false;
   plan->plan_un.scan.index_iss = false;
@@ -1405,6 +1436,7 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   plan->plan_un.scan.index = NULL;
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+  bitset_init (&(plan->plan_un.scan.multi_col_range_segs), info->env);
 
   return plan;
 }
@@ -1420,6 +1452,8 @@ qo_scan_free (QO_PLAN * plan)
 {
   bitset_delset (&(plan->plan_un.scan.terms));
   bitset_delset (&(plan->plan_un.scan.kf_terms));
+  bitset_delset (&(plan->plan_un.scan.hash_terms));
+  bitset_delset (&(plan->plan_un.scan.multi_col_range_segs));
 }
 
 
@@ -1523,7 +1557,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 {
   QO_PLAN *plan = NULL;
   BITSET_ITERATOR iter;
-  int t;
+  int t = -1;
   QO_ENV *env = info->env;
   QO_INDEX_ENTRY *index_entryp = NULL;
   QO_TERM *term = NULL;
@@ -1566,7 +1600,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
     }
   bitset_union (&remaining_terms, &(plan->sarged_terms));
 
-  /* 
+  /*
    * This is, in essence, the selectivity of the index.  We
    * really need to do a better job of figuring out the cost of
    * an indexed scan.
@@ -1581,6 +1615,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
     {
       /* set key-range terms */
       bitset_assign (&(plan->plan_un.scan.terms), range_terms);
+      bitset_assign (&(plan->plan_un.scan.multi_col_range_segs), &(index_entryp->multi_col_range_segs));
       for (t = bitset_iterate (range_terms, &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  term = QO_ENV_TERM (env, t);
@@ -1661,7 +1696,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	  bitset_intersect (&term_segs, &(QO_NODE_SEGS (node)));
 
 	  /* if the term is consisted by only the node's segments which appear in scan terms, it will be key-filter.
-	   * otherwise will be data filter 
+	   * otherwise will be data filter
 	   */
 	  if (!bitset_is_empty (&term_segs))
 	    {
@@ -1858,7 +1893,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	{
 	  /* When the index is a unique family and all of index columns are specified in the equal conditions, the
 	   * cardinality of the scan will 0 or 1. In this case we will make the scan cost to zero, thus to force the
-	   * optimizer to select this scan. 
+	   * optimizer to select this scan.
 	   */
 	  qo_zero_cost (planp);
 
@@ -1920,62 +1955,51 @@ qo_iscan_cost (QO_PLAN * planp)
   if (!is_null_sel)
     {
       assert (QO_NODE_NCARD (nodep) > 0);
-
       i = 0;
 
       for (t = bitset_iterate (&(planp->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
 	{
 	  termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+	  sel *= QO_TERM_SELECTIVITY (termp);
 
-	  if (i == 0)
-	    {			/* the first key-range term of the index scan */
-	      sel *= QO_TERM_SELECTIVITY (termp);
-	    }
-	  else
-	    {			/* apply heuristic factor */
-	      if (QO_TERM_SELECTIVITY (termp) < 0.1)
-		{
-		  sel *= QO_TERM_SELECTIVITY (termp) * pow ((double) n, 2);
-		}
-	      else
-		{
-		  sel *= QO_TERM_SELECTIVITY (termp);
-		}
-	    }
-
-	  /* check upper bound */
-	  sel = MIN (sel, 1.0);
-
-	  sel_limit = 0.0;	/* init */
-
-	  /* set selectivity limit */
-	  if (i < pkeys_num && cum_statsp->pkeys[i] > 1)
+	  /* each term can have multi index column. e.g.) (a,b) in .. */
+	  for (int j = 0; j < index_entryp->col_num; j++)
 	    {
-	      sel_limit = 1.0 / (double) cum_statsp->pkeys[i];
+	      if (BITSET_MEMBER (QO_TERM_SEGS (termp), index_entryp->seg_idxs[j]))
+		{
+		  i++;
+		}
+	    }
+	}
+      /* check upper bound */
+      sel = MIN (sel, 1.0);
+
+      sel_limit = 0.0;		/* init */
+
+      /* set selectivity limit */
+      if (i < pkeys_num && cum_statsp->pkeys[i] > 1)
+	{
+	  sel_limit = 1.0 / (double) cum_statsp->pkeys[i];
+	}
+      else
+	{			/* can not use btree partial-key statistics */
+	  if (cum_statsp->keys > 1)
+	    {
+	      sel_limit = 1.0 / (double) cum_statsp->keys;
 	    }
 	  else
-	    {			/* can not use btree partial-key statistics */
-	      if (cum_statsp->keys > 1)
+	    {
+	      if (QO_NODE_NCARD (nodep) > 1)
 		{
-		  sel_limit = 1.0 / (double) cum_statsp->keys;
-		}
-	      else
-		{
-		  if (QO_NODE_NCARD (nodep) > 1)
-		    {
-		      sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
-		    }
+		  sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
 		}
 	    }
-
-	  assert (sel_limit < 1.0);
-
-	  /* check lower bound */
-	  sel = MAX (sel, sel_limit);
-
-	  i++;
-	  n--;
 	}
+
+      assert (sel_limit < 1.0);
+
+      /* check lower bound */
+      sel = MAX (sel, sel_limit);
     }
 
   assert ((is_null_sel == false) || (is_null_sel == true && sel == 0.0));
@@ -1996,7 +2020,7 @@ qo_iscan_cost (QO_PLAN * planp)
   index_IO = ((ni_entryp)->n * height) + leaves;
 
   /* Index Skip Scan adds to the index IO cost the K extra BTREE searches it does to fetch the next value for the
-   * following BTRangeScan 
+   * following BTRangeScan
    */
   if (qo_is_index_iss_scan (planp))
     {
@@ -2442,7 +2466,7 @@ qo_sort_info (QO_PLAN * plan, FILE * f, int howfar)
       if (plan->order != QO_UNORDERED)
 	{
 #if 0
-	  /* 
+	  /*
 	   * Don't bother printing these out; they're almost always
 	   * superfluous from the standpoint of a naive user trying to
 	   * figure out what's going on.
@@ -2503,7 +2527,7 @@ qo_sort_cost (QO_PLAN * planp)
     {
       /* This plan won't actually incur any runtime cost because it won't actually exist (its sort spec will supersede
        * the sort spec of the subplan).  We can't just clobber the sort spec on the lower plan because it might be
-       * shared by others. 
+       * shared by others.
        */
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost;
       planp->fixed_io_cost = subplanp->fixed_io_cost;
@@ -2519,7 +2543,7 @@ qo_sort_cost (QO_PLAN * planp)
 	}
 
       /* SORT-LIMIT plan has the same cost as the subplan (since actually sorting items in memory is not a big
-       * drawback. Costs improvements will be applied when we consider joining this plan with other plans 
+       * drawback. Costs improvements will be applied when we consider joining this plan with other plans
        */
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost;
       planp->fixed_io_cost = subplanp->fixed_io_cost;
@@ -2541,7 +2565,7 @@ qo_sort_cost (QO_PLAN * planp)
 	}
 
       /* The cost (in io's) of just setting up a list file.  This is mostly to discourage the optimizer from choosing
-       * merge join for joins of little classes. 
+       * merge join for joins of little classes.
        */
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + subplanp->variable_cpu_cost + TEMP_SETUP_COST;
       planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
@@ -2559,7 +2583,7 @@ qo_sort_cost (QO_PLAN * planp)
 	      if (pages < (double) prm_get_integer_value (PRM_ID_SR_NBUFFERS))
 		{
 		  /* We can sort the result in memory without any additional io costs. Assume cpu costs are n*log(n) in
-		   * number of recors. 
+		   * number of recors.
 		   */
 		  sort_io = (double) QO_CPU_WEIGHT *objects * log2 (objects);
 		}
@@ -2567,12 +2591,12 @@ qo_sort_cost (QO_PLAN * planp)
 		{
 		  /* There are too many records to permit an in-memory sort, so io costs will be increased.  Assume
 		   * that the io costs increase by the number of pages required to hold the intermediate result.  CPU
-		   * costs increase as above. Model courtesy of Ender. 
+		   * costs increase as above. Model courtesy of Ender.
 		   */
 		  sort_io = pages * log3 (pages / 4.0);
 
 		  /* guess: apply IO caching for big size sort list. Disk IO cost cannot be greater than the 10% number
-		   * of the requested IO pages 
+		   * of the requested IO pages
 		   */
 		  if (subplanp->plan_type == QO_PLANTYPE_SCAN)
 		    {
@@ -2608,7 +2632,7 @@ qo_sort_cost (QO_PLAN * planp)
 static QO_PLAN *
 qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_PLAN * outer, QO_PLAN * inner,
 	     BITSET * join_terms, BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms,
-	     BITSET * pinned_subqueries)
+	     BITSET * pinned_subqueries, BITSET * hash_terms)
 {
   QO_PLAN *plan = NULL;
   QO_NODE *node = NULL;
@@ -2659,7 +2683,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 
       /* These checks are necessary because of restrictions in the current XASL implementation of nested loop joins.
        * Never put anything on the inner plan that isn't file-based (i.e., a scan of either a heap file or a list
-       * file). 
+       * file).
        */
       if (!VALID_INNER (inner))
 	{
@@ -2681,11 +2705,11 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
       plan->vtbl = &qo_merge_join_plan_vtbl;
 #if 0
       /* Don't do this anymore; it relies on symmetry, which definitely doesn't apply anymore with the advent of outer
-       * joins. 
+       * joins.
        */
 
       /* Arrange to always put the smallest cardinality on the outer term; this may lead to some savings given the
-       * current merge join implementation. 
+       * current merge join implementation.
        */
       if ((inner->info)->cardinality < (outer->info)->cardinality)
 	{
@@ -2698,14 +2722,14 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 
       /* The merge join result has the same nominal order as the two subjoins that feed it.  However, if it happens
        * that none of the segments in that order are to be projected from the result, the result is effectively
-       * *unordered*.  Check for that condition here. 
+       * *unordered*.  Check for that condition here.
        */
       plan->order =
 	bitset_intersects (&(QO_EQCLASS_SEGS (outer->order)),
 			   &((plan->info)->projected_segs)) ? outer->order : QO_UNORDERED;
 
       /* The current implementation of merge joins always produces a list file These two checks are necessary because
-       * of restrictions in the current XASL implementation of merge joins. 
+       * of restrictions in the current XASL implementation of merge joins.
        */
       if (outer->plan_type != QO_PLANTYPE_SORT)
 	{
@@ -2752,9 +2776,12 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   bitset_init (&(plan->plan_un.join.join_terms), info->env);
   bitset_init (&(plan->plan_un.join.during_join_terms), info->env);
   bitset_init (&(plan->plan_un.join.after_join_terms), info->env);
+  bitset_init (&(plan->plan_un.join.hash_terms), info->env);
 
   /* set join terms */
   bitset_assign (&(plan->plan_un.join.join_terms), join_terms);
+  /* set hash terms */
+  bitset_assign (&(plan->plan_un.join.hash_terms), hash_terms);
   /* add to out terms */
   bitset_union (&sarg_out_terms, &(plan->plan_un.join.join_terms));
 
@@ -2778,8 +2805,8 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   bitset_difference (&(plan->sarged_terms), &sarg_out_terms);
 
   /* Make sure that the pinned subqueries and the sargs are placed on the same node: by now the pinned subqueries are
-   * very likely pinned here precisely because they're used by these sargs. Separating them (so that they get evaluated 
-   * in some different order) will yield incorrect results. 
+   * very likely pinned here precisely because they're used by these sargs. Separating them (so that they get evaluated
+   * in some different order) will yield incorrect results.
    */
   bitset_assign (&(plan->subqueries), pinned_subqueries);
 
@@ -2797,7 +2824,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
       && bitset_is_equivalent (&info->env->sort_limit_nodes, &info->nodes))
     {
       /* Consider creating a SORT_LIMIT plan over this plan only if it cannot skip order by. Since we know that we
-       * already have all ORDER BY nodes in this plan, we can verify orderby_skip at this point 
+       * already have all ORDER BY nodes in this plan, we can verify orderby_skip at this point
        */
       if (!qo_plan_is_orderby_skip_candidate (plan))
 	{
@@ -2811,9 +2838,9 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 
 #if 1				/* MERGE_ALWAYS_MAKES_LISTFILE */
   /* This is necessary to get the proper cost model for merge joins, which always build their result into a listfile
-   * right now.  At the moment the cost model for a merge plan just models the cost of producing the result tuples, but 
+   * right now.  At the moment the cost model for a merge plan just models the cost of producing the result tuples, but
    * not storing them into a listfile. We could push the cost into the merge plan itself, I suppose, but a rational
-   * implementation wouldn't impose this cost, and so I have hope that one day we'll be able to eliminate it. 
+   * implementation wouldn't impose this cost, and so I have hope that one day we'll be able to eliminate it.
    */
   if (join_method == QO_JOINMETHOD_MERGE_JOIN)
     {
@@ -3092,8 +3119,8 @@ qo_nljoin_cost (QO_PLAN * planp)
 	  /* inner IO cost cannot be greater than two times of the number of pages of the list file */
 	  inner_io_cost = pages2;
 
-	  /* The cost (in io's) of just handling a list file.  This is mostly to discourage the optimizer from choosing 
-	   * nl-join with temp inner for joins of little classes. 
+	  /* The cost (in io's) of just handling a list file.  This is mostly to discourage the optimizer from choosing
+	   * nl-join with temp inner for joins of little classes.
 	   */
 	  io_cost = inner->fixed_io_cost * 0.1;
 	  diff_cost = MIN (io_cost, diff_cost);
@@ -3123,13 +3150,13 @@ qo_nljoin_cost (QO_PLAN * planp)
     BITSET_ITERATOR iter;
 
     /* Compute the costs for all of the subqueries. Each of the pinned subqueries is intended to be evaluated once for
-     * each row produced by this plan; the cost of each such evaluation in the fixed cost of the subquery plus one trip 
+     * each row produced by this plan; the cost of each such evaluation in the fixed cost of the subquery plus one trip
      * through the result, i.e.,
-     * 
+     *
      * QO_PLAN_FIXED_COST(subplan) + QO_PLAN_ACCESS_COST(subplan)
-     * 
+     *
      * The cost info for the subplan has (probably) been squirreled away in a QO_SUMMARY structure reachable from the
-     * original select node. 
+     * original select node.
      */
 
     /* When computing the cost for a WORST_PLAN, we'll get in here without a backing info node; just work around it. */
@@ -3345,15 +3372,15 @@ qo_follow_cost (QO_PLAN * planp)
 
   if (cardinality < target_pages)
     {
-      /* If we expect to fetch fewer objects than there are pages in the target class, just assume that each fetch will 
-       * touch a new page. 
+      /* If we expect to fetch fewer objects than there are pages in the target class, just assume that each fetch will
+       * touch a new page.
        */
       fetch_ios = cardinality;
     }
   else if (prm_get_integer_value (PRM_ID_PB_NBUFFERS) >= target_pages)
     {
       /* We have more pointers to follow than pages in the target, but fewer target pages than buffer pages.  Assume
-       * that the page buffering will limit the number of of page fetches to the number of target pages. 
+       * that the page buffering will limit the number of of page fetches to the number of target pages.
        */
       fetch_ios = target_pages;
     }
@@ -3390,7 +3417,7 @@ qo_cp_new (QO_INFO * info, QO_PLAN * outer, QO_PLAN * inner, BITSET * sarged_ter
 		      QO_JOINMETHOD_NL_JOIN, outer, inner, &empty_terms /* join_terms */ ,
 		      &empty_terms /* duj_terms */ ,
 		      &empty_terms /* afj_terms */ ,
-		      sarged_terms, pinned_subqueries);
+		      sarged_terms, pinned_subqueries, &empty_terms /* hash_terms */ );
 
   bitset_delset (&empty_terms);
 
@@ -3798,7 +3825,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
 
       /* a plan does order by skip, the other does group by skip - prefer the group by skipping because it's done in
-       * the final step 
+       * the final step
        */
       if (qo_is_interesting_order_scan (a) && qo_is_interesting_order_scan (b))
 	{
@@ -4218,18 +4245,17 @@ cost_cmp:
     {
       return PLAN_COMP_EQ;
     }
-  if (af <= bf && aa <= ba)
+  if (af + aa <= bf + ba)
     {
       QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
       return PLAN_COMP_LT;
     }
-  if (bf <= af && ba <= aa)
+  else
     {
       QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
       return PLAN_COMP_GT;
     }
 
-  return PLAN_COMP_UNK;
 #endif /* OLD_CODE */
 }
 
@@ -4461,7 +4487,7 @@ qo_plan_discard (QO_PLAN * plan)
       QO_ENV *env;
       bool dump_enable;
 
-      /* 
+      /*
        * Be sure to capture dump_enable *before* we free the env
        * structure!
        */
@@ -4792,7 +4818,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
       break;
     }
 
-  /* 
+  /*
    * This relies on the fact that qo_plan_set_cost_fn is returning a
    * CONST string.  That way we don't need to dup it, and therefore we
    * won't leak it when the return value is discarded.
@@ -4800,7 +4826,7 @@ qo_set_cost (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * plan, DB_VALUE * 
   plan_string = qo_plan_set_cost_fn (plan_string, cost_string[0]);
   if (plan_string != NULL)
     {
-      db_make_string_by_const_str (result, plan_string);
+      db_make_string (result, plan_string);
     }
   else
     {
@@ -4882,7 +4908,7 @@ qo_dump_planvec (QO_PLANVEC * planvec, FILE * f, int indent)
 static QO_PLAN_COMPARE_RESULT
 qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 {
-  /* 
+  /*
    * Check whether the new plan is definitely better than any of the
    * others.  Keep it if it is, or if it is incomparable and we still
    * have room in the planvec.  Return true if we keep the plan, false
@@ -4910,7 +4936,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
       /* cmp : PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT */
       if (cmp == PLAN_COMP_GT)
 	{
-	  /* 
+	  /*
 	   * The new plan is better than the previous one in the i'th
 	   * slot.  Remove the old one, and if we haven't yet retained
 	   * the new one, put it in the freshly-available slot.  If we
@@ -4925,7 +4951,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 	      qo_plan_del_ref (planvec->plan[i]);
 	      planvec->plan[i] = (i < planvec->nplans) ? planvec->plan[planvec->nplans] : NULL;
 	      planvec->plan[planvec->nplans] = NULL;
-	      /* 
+	      /*
 	       * Back up `i' so that we examine this slot again.
 	       */
 	      i--;
@@ -4945,7 +4971,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 	}
       else if (cmp == PLAN_COMP_LT)
 	{
-	  /* 
+	  /*
 	   * The new plan is worse than some plan that we already have.
 	   * There is no point in checking any others; give up and get
 	   * out.
@@ -4954,7 +4980,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 	}
     }
 
-  /* 
+  /*
    * Ok, we've looked at all of the current plans.  It's possible to
    * get here and still not have retained the new plan if it couldn't
    * be determined whether it was definitely better or worse than any
@@ -4979,7 +5005,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 	  double vc, tc, p_vc, p_tc;
 	  QO_PLAN *p;
 
-	  /* 
+	  /*
 	   * We would like to keep this plan, but we're out of slots in
 	   * the planvec.  For now, we just throw out one plan with the
 	   * highest access cost.
@@ -5054,7 +5080,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * The new plan is worse than some plan that we already have.
 	       * There is no point in checking any others; give up and get
 	       * out.
@@ -5120,7 +5146,7 @@ qo_find_best_plan_on_planvec (QO_PLANVEC * planvec, double n)
   /* While initializing the cost to QO_INFINITY and starting the loop at i = 0 might look equivalent to this, it
    * actually loses if all of the elements in the vector have cost QO_INFINITY, because the comparison never succeeds
    * and we never make plan non-NULL.  This is very bad for those callers above who believe that we're returning
-   * something useful. 
+   * something useful.
    */
 
   best_plan = planvec->plan[0];
@@ -5211,7 +5237,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
 
   qo_init_planvec (&info->best_no_order);
 
-  /* 
+  /*
    * Set aside an array for ordered plans.  Each element of the array
    * holds a plan that is ordered according to the corresponding
    * equivalence class.
@@ -5282,7 +5308,7 @@ qo_free_info (QO_INFO * info)
 static void
 qo_detach_info (QO_INFO * info)
 {
-  /* 
+  /*
    * If the node hasn't already been detached, detach it now and give
    * up references to all plans that are no longer needed.
    */
@@ -5351,7 +5377,7 @@ qo_check_new_best_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 			}
 		    }
 		}
-	      /* 
+	      /*
 	       * Check to see if any of the ordered solutions can be made
 	       * cheaper by sorting this new plan.
 	       */
@@ -5420,7 +5446,7 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
       return 0;
     }
 
-  /* 
+  /*
    * If the cost of the new Plan already exceeds the cost of the best
    * known solution with the same order, there is no point in
    * remembering the new plan.
@@ -5439,7 +5465,7 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 	}
     }
 
-  /* 
+  /*
    * The only time we will keep an unordered plan is if it is cheaper
    * than any other plan we have seen so far (ordered or unordered).
    * Only ordered plans are kept in the _plan vector.
@@ -5450,7 +5476,7 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
     }
   else
     {
-      /* 
+      /*
        * If we get here, we are dealing with an ordered plan.  Check
        * whether we already have memo-ized a plan for this particular scan
        * order.  If so, see if this new plan is an improvement.
@@ -5637,12 +5663,12 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
 
   /* check whether we can build a nested loop join with a correlated index scan. That is, is the inner term a scan of a
    * single node, and can this join term be used as an index with respect to that node? If so, we can build a special
-   * kind of plan to exploit that. 
+   * kind of plan to exploit that.
    */
   if (join_type == JOIN_RIGHT)
     {
       /* if right outer join, select outer plan from the inner node and inner plan from the outer node, and do left
-       * outer join 
+       * outer join
        */
       n = qo_examine_correlated_index (info, JOIN_LEFT, inner, outer, afj_terms, sarged_terms, pinned_subqueries);
     }
@@ -5673,7 +5699,7 @@ exit:
 static int
 qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * nl_join_terms,
 		    BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries,
-		    int idx_join_plan_n)
+		    int idx_join_plan_n, BITSET * hash_terms)
 {
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
@@ -5763,7 +5789,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 
 #if 0				/* CHAINS_ONLY */
   /* If CHAINS_ONLY is defined, we want the optimizer constrained to produce only left-linear trees of joins, i.e., no
-   * inner term can itself be a join or a follow. 
+   * inner term can itself be a join or a follow.
    */
 
   if (inner_plan->plan_type != QO_PLANTYPE_SCAN)
@@ -5782,7 +5808,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 
 #if 0				/* JOIN_FOLLOW_RESTRICTION */
   /* Under this restriction, we are not permitted to produce plans that have follow nodes sandwiched between joins.
-   * Don't ask why. 
+   * Don't ask why.
    */
 
   if (outer_plan->plan_type == QO_PLANTYPE_FOLLOW && QO_PLAN_SUBJOINS (outer_plan))
@@ -5797,12 +5823,12 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 
   /* look for the best nested loop solution we can find.  Since the subnodes are already keeping track of the
    * lowest-cost plan they have seen, we needn't do any search here to find the cheapest nested loop join we can
-   * produce for this combination. 
+   * produce for this combination.
    */
   n =
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, outer_plan, inner_plan, nl_join_terms,
-					duj_terms, afj_terms, sarged_terms, pinned_subqueries));
+					duj_terms, afj_terms, sarged_terms, pinned_subqueries, hash_terms));
 
 exit:
 
@@ -5833,9 +5859,11 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
   int t;
   BITSET_ITERATOR iter;
   QO_TERM *term;
+  BITSET empty_terms;
+  bitset_init (&empty_terms, info->env);
 
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
-   * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work. 
+   * assumptions required by the fake terms won't be satisfied.  Nested loops are the only joins that will work.
    */
   if (bitset_intersects (sarged_terms, &(info->env->fake_terms)))
     {
@@ -5843,7 +5871,7 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
     }
 
   /* examine ways of producing ordered results.  For each ordering, check whether the inner and outer subresults can be
-   * produced in that order.  If so, check a merge join plan on that order. 
+   * produced in that order.  If so, check a merge join plan on that order.
    */
   for (t = bitset_iterate (sm_join_terms, &iter); t != -1; t = bitset_next_member (&iter))
     {
@@ -5910,7 +5938,7 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
 
 #ifdef CHAINS_ONLY
   /* If CHAINS_ONLY is defined, we want the optimizer constrained to produce only left-linear trees of joins, i.e., no
-   * inner term can itself be a join or a follow. 
+   * inner term can itself be a join or a follow.
    */
 
   if (inner_plan->plan_type != QO_PLANTYPE_SCAN)
@@ -5929,7 +5957,7 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
 
 #if 0				/* JOIN_FOLLOW_RESTRICTION */
   /* Under this restriction, we are not permitted to produce plans that have follow nodes sandwiched between joins.
-   * Don't ask why. 
+   * Don't ask why.
    */
 
   if (outer_plan->plan_type == QO_PLANTYPE_FOLLOW && QO_PLAN_SUBJOINS (outer_plan))
@@ -5945,7 +5973,8 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
   n =
     qo_check_plan_on_info (info,
 			   qo_join_new (info, join_type, QO_JOINMETHOD_MERGE_JOIN, outer_plan, inner_plan,
-					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries));
+					sm_join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
+					&empty_terms));
 
 exit:
 
@@ -6004,7 +6033,7 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
 
 #if 0				/* JOIN_FOLLOW_RESTRICTION */
   /* Under this restriction, we are not permitted to produce plans that have follow nodes sandwiched between joins.
-   * Don't ask why. 
+   * Don't ask why.
    */
 
   if (outer_plan->plan_type == QO_PLANTYPE_FOLLOW && QO_PLAN_SUBJOINS (outer_plan))
@@ -6052,7 +6081,7 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
   num_only_args = 0;		/* init */
 
   /* Iterate through the indexes attached to this node and look for ones which are a subset of the terms that we're
-   * interested in. For each applicable index, register a plans and compute the cost. 
+   * interested in. For each applicable index, register a plans and compute the cost.
    */
   for (i = 0; i < QO_NI_N (node_indexp); i++)
     {
@@ -6137,7 +6166,7 @@ qo_examine_follow (QO_INFO * info, QO_TERM * path_term, QO_INFO * head_info, BIT
 		   BITSET * pinned_subqueries)
 {
   PT_NODE *entity_spec;
-  /* 
+  /*
    * Examine the feasibility of a follow plan implementation for this
    * edge.  Don't build follow plans if the tail of the path is an rdb
    * proxy; these things *have* to be implemented via joins.
@@ -6165,7 +6194,7 @@ qo_examine_follow (QO_INFO * info, QO_TERM * path_term, QO_INFO * head_info, BIT
 static void
 qo_compute_projected_segs (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * projected)
 {
-  /* 
+  /*
    * Figure out which of the attributes of the nodes joined by the
    * terms in 'terms' need to be projected out of the join in order to
    * satisfy the needs of higher-level plans.  An attribute will need
@@ -6214,14 +6243,14 @@ qo_compute_projected_size (QO_PLANNER * planner, BITSET * segset)
   int i;
   int size;
 
-  /* 
+  /*
    * 8 bytes overhead per record.
    */
   size = 8;
 
   for (i = bitset_iterate (segset, &si); i != -1; i = bitset_next_member (&si))
     {
-      /* 
+      /*
        * Four bytes overhead for each field.
        */
       size += qo_seg_width (QO_ENV_SEG (planner->env, i)) + 4;
@@ -6239,7 +6268,7 @@ qo_compute_projected_size (QO_PLANNER * planner, BITSET * segset)
 static void
 qo_dump_info (QO_INFO * info, FILE * f)
 {
-  /* 
+  /*
    * Dump the contents of this node for debugging scrutiny.
    */
 
@@ -6479,6 +6508,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   QO_INFO *new_info = (QO_INFO *) NULL;
   int i, j;
   bool check_afj_terms = false;
+  bool is_dummy_term = false;
   BITSET_ITERATOR bi, bj;
   BITSET nl_join_terms;		/* nested-loop join terms */
   BITSET sm_join_terms;		/* sort merge join terms */
@@ -6582,7 +6612,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	}
     }
 
-  /* 
+  /*
    * STEP 1: set head_info, tail_info, visited_nodes, visited_rel_nodes
    */
 
@@ -6741,9 +6771,15 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    edge_cnt++;
 
 	    /* set join type */
-	    if (join_type == NO_JOIN)
-	      {			/* the first time */
+	    if (join_type == NO_JOIN || is_dummy_term)
+	      {
+		/* the first time except dummy term */
 		join_type = QO_TERM_JOIN_TYPE (term);
+		is_dummy_term = QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN ? true : false;
+	      }
+	    else if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
+	      {
+		/* The dummy join term is excluded from the outer join check. */
 	      }
 	    else
 	      {			/* already assigned */
@@ -6847,7 +6883,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 		/* If visited_nodes is the same as partition's nodes, then we have successfully generated one of the
 		 * graph permutations(i.e., we have considered every one of the nodes). only include after-join term
-		 * for this plan. 
+		 * for this plan.
 		 */
 		if (!bitset_is_equivalent (visited_nodes, &(QO_PARTITION_NODES (partition))))
 		  {
@@ -6937,7 +6973,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
    * nodes on which it depends are covered here.  However, it mustn't be pinned here if it is part of a term that
    * hasn't been pinned yet.  Doing so risks improperly pushing a subquery plan down through a merge join during XASL
    * generation, which results in an incorrect plan (the subquery has to be evaluated during the merge, rather than
-   * during the scan that feeds the merge). 
+   * during the scan that feeds the merge).
    */
   {
     QO_SUBQUERY *subq;
@@ -7061,9 +7097,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 #endif /* CORRELATED_INDEX */
 
 	/* STEP 5-3: examine nl-join */
+	/* sm_join_terms is a mergeable term for SM join. In hash list scan, mergeable term is used as hash term. */
+	/* The mergeable term and the hash term have the same characteristics. */
+	/* If the characteristics for mergeable terms are changed, the logic for hash terms should be separated. */
+	/* mergeable term : equi-term, symmetrical term, e.g. TBL1.a = TBL2.a, function(TAB1.a) = function(TAB2.a) */
 	kept +=
 	  qo_examine_nl_join (new_info, join_type, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
-			      &sarged_terms, &pinned_subqueries, idx_join_plan_n);
+			      &sarged_terms, &pinned_subqueries, idx_join_plan_n, &sm_join_terms);
 
 #if 1				/* MERGE_JOINS */
 	/* STEP 5-4: examine merge-join */
@@ -7079,7 +7119,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     /* At this point, kept indicates the number of worthwhile plans generated by examine_joins (i.e., plans that where
      * cheaper than some previous equivalent plan).  If that number is 0, then there is no point in continuing this
      * particular branch of permutations: we've already generated all of the suffixes once before, and with a better
-     * prefix to boot.  There is no possibility of finding a better plan with this prefix. 
+     * prefix to boot.  There is no possibility of finding a better plan with this prefix.
      */
     if (!kept)
       {
@@ -7093,14 +7133,14 @@ go_ahead_subvisit:
 
   /* If visited_nodes' cardinality is the same as join_unit, then we have successfully generated one of the graph
    * permutations (i.e., we have considered every one of the nodes). If not, we need to try to recursively generate
-   * suffixes. 
+   * suffixes.
    */
   if (bitset_cardinality (visited_nodes) >= planner->join_unit)
     {
       /* If this is the info node that corresponds to the final plan (i.e., every node in the partition is covered by
        * the plans at this node), *AND* we have something to put in it, then record that fact in the planner.  This
-       * permits more aggressive pruning, since we can immediately discard any plan (or subplan) that is no better than 
-       * the best known plan for the entire partition. 
+       * permits more aggressive pruning, since we can immediately discard any plan (or subplan) that is no better than
+       * the best known plan for the entire partition.
        */
       if (!planner->best_info)
 	{
@@ -7117,14 +7157,14 @@ go_ahead_subvisit:
 	  if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (node))))
 	    {
 	      /* node represents dependent tables, so there is no way this combination can work in isolation.  Give up
-	       * so we can try some other combinations. 
+	       * so we can try some other combinations.
 	       */
 	      continue;
 	    }
 	  if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node))))
 	    {
 	      /* All previous nodes participating in outer join spec should be joined before. QO_NODE_OUTER_DEP_SET()
-	       * represents all previous nodes which are dependents on the node. 
+	       * represents all previous nodes which are dependents on the node.
 	       */
 	      continue;
 	    }
@@ -7282,7 +7322,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 
   /* Now perform the actual search.  Entries in join_info will gradually be filled and refined within the calls to
    * examine_xxx_join(). When we finish, planner->best_info will hold information about the best ways discovered to
-   * perform the entire join. 
+   * perform the entire join.
    */
   for (i = bitset_iterate (remaining_nodes, &bi); i != -1; i = bitset_next_member (&bi))
     {
@@ -7292,15 +7332,15 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
       /* head node dependency check; */
       if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (head_node))))
 	{
-	  /* head node represents dependent tables, so there is no way this combination can work in isolation.  Give up 
-	   * so we can try some other combinations. 
+	  /* head node represents dependent tables, so there is no way this combination can work in isolation.  Give up
+	   * so we can try some other combinations.
 	   */
 	  continue;
 	}
       if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (head_node))))
 	{
 	  /* All previous nodes participating in outer join spec should be joined before. QO_NODE_OUTER_DEP_SET()
-	   * represents all previous nodes which are dependents on the node. 
+	   * represents all previous nodes which are dependents on the node.
 	   */
 	  continue;
 	}
@@ -7481,7 +7521,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
   BITSET_ITERATOR iter;
   QO_TERM *termp;
   QO_PLAN *inner_plan;
-  int i, t, last_t, j, n, seg;
+  int i, t, last_t, j, n, seg, rangelist_term_idx;
   bool found_rangelist;
   BITSET range_terms;
   BITSET empty_terms;
@@ -7490,7 +7530,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
   if (nodep != NULL && QO_NODE_IS_CLASS_HIERARCHY (nodep))
     {
       /* Class hierarchies are split into scan blocks which cannot be used for index joins. However, if the class
-       * hierarchy is a partitioning hierarchy, we can use an index join for inner joins 
+       * hierarchy is a partitioning hierarchy, we can use an index join for inner joins
        */
       if (!QO_NODE_IS_CLASS_PARTITIONED (nodep))
 	{
@@ -7518,6 +7558,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
     }
 
   found_rangelist = false;
+  rangelist_term_idx = -1;
   for (i = 0; i < index_entryp->nsegs; i++)
     {
       seg = index_entryp->seg_idxs[i];
@@ -7539,33 +7580,67 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 	      continue;		/* do not add to range_terms */
 	    }
 
-	  for (j = 0; j < termp->can_use_index; j++)
+	  if (QO_TERM_IS_FLAGED (termp, QO_TERM_MULTI_COLL_PRED))
 	    {
-	      /* found term */
-	      if (QO_SEG_IDX (termp->index_seg[j]) == seg)
+	      /* case of multi column term ex) (a,b) in ... */
+	      if (found_rangelist == true && QO_TERM_IDX (termp) != rangelist_term_idx)
 		{
-		  /* save last found term */
-		  last_t = t;
-
-		  /* found EQ term */
-		  if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
+		  break;	/* already found. give up */
+		}
+	      for (j = 0; j < termp->multi_col_cnt; j++)
+		{
+		  if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
 		    {
-		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
+		      found_rangelist = true;
+		      rangelist_term_idx = QO_TERM_IDX (termp);
+		    }
+		  /* found term */
+		  if (termp->multi_col_segs[j] == seg && BITSET_MEMBER (index_entryp->seg_equal_terms[i], t))
+		    /* multi col term is only indexable when term's class is TC_SARG. so can use seg_equal_terms */
+		    {
+		      /* save last found term */
+		      last_t = t;
+		      /* found EQ term */
+		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
 			{
-			  if (found_rangelist == true)
+			  bitset_add (&range_terms, t);
+			  bitset_add (&(index_entryp->multi_col_range_segs), seg);
+			  n++;
+			}
+		    }
+		}
+	    }
+	  else
+	    {
+	      for (j = 0; j < termp->can_use_index; j++)
+		{
+		  /* found term */
+		  if (QO_SEG_IDX (termp->index_seg[j]) == seg)
+		    {
+		      /* save last found term */
+		      last_t = t;
+
+		      /* found EQ term */
+		      if (QO_TERM_IS_FLAGED (termp, QO_TERM_EQUAL_OP))
+			{
+			  if (QO_TERM_IS_FLAGED (termp, QO_TERM_RANGELIST))
 			    {
-			      break;	/* already found. give up */
+			      if (found_rangelist == true)
+				{
+				  break;	/* already found. give up */
+				}
+
+			      /* is the first time */
+			      found_rangelist = true;
+			      rangelist_term_idx = QO_TERM_IDX (termp);
 			    }
 
-			  /* is the first time */
-			  found_rangelist = true;
+			  bitset_add (&range_terms, t);
+			  n++;
 			}
 
-		      bitset_add (&range_terms, t);
-		      n++;
+		      break;
 		    }
-
-		  break;
 		}
 	    }
 
@@ -7611,7 +7686,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 	    qo_check_plan_on_info (infop,
 				   qo_join_new (infop, join_type, QO_JOINMETHOD_IDX_JOIN, outer_plan, inner_plan,
 						&empty_terms, &empty_terms, afj_terms, &remaining_terms,
-						pinned_subqueries));
+						pinned_subqueries, &empty_terms));
 	}
     }
 
@@ -7722,10 +7797,16 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
 
   start_column = index_entryp->is_iss_candidate ? 1 : 0;
 
-
   for (i = start_column; i < nsegs - 1; i++)
     {
-      bitset_add (&range_terms, bitset_first_member (&(index_entryp->seg_equal_terms[i])));
+      t = bitset_first_member (&(index_entryp->seg_equal_terms[i]));
+      bitset_add (&range_terms, t);
+
+      /* add multi_col_range_segs */
+      if (QO_TERM_IS_FLAGED (QO_ENV_TERM (infop->env, t), QO_TERM_MULTI_COLL_PRED))
+	{
+	  bitset_add (&(index_entryp->multi_col_range_segs), index_entryp->seg_idxs[i]);
+	}
     }
 
   /* for each terms associated with the last segment */
@@ -7733,6 +7814,11 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
   for (; t != -1; t = bitset_next_member (&iter))
     {
       bitset_add (&range_terms, t);
+      /* add multi_col_range_segs */
+      if (QO_TERM_IS_FLAGED (QO_ENV_TERM (infop->env, t), QO_TERM_MULTI_COLL_PRED))
+	{
+	  bitset_add (&(index_entryp->multi_col_range_segs), index_entryp->seg_idxs[nsegs - 1]);
+	}
 
       /* generate index scan plan */
       planp = qo_index_scan_new (infop, nodep, ni_entryp, QO_SCANMETHOD_INDEX_SCAN, &range_terms, NULL);
@@ -7745,6 +7831,10 @@ qo_generate_index_scan (QO_INFO * infop, QO_NODE * nodep, QO_NODE_INDEX_ENTRY * 
 
       /* is it safe to ignore the result of qo_check_plan_on_info()? */
       bitset_remove (&range_terms, t);
+      if (QO_TERM_IS_FLAGED (QO_ENV_TERM (infop->env, t), QO_TERM_MULTI_COLL_PRED))
+	{
+	  bitset_remove (&(index_entryp->multi_col_range_segs), index_entryp->seg_idxs[nsegs - 1]);
+	}
     }
 
   bitset_assign (&seg_other_terms, &(index_entryp->seg_other_terms[nsegs - 1]));
@@ -7829,7 +7919,7 @@ qo_generate_sort_limit_plan (QO_ENV * env, QO_INFO * infop, QO_PLAN * subplan)
   if (subplan->order != QO_UNORDERED)
     {
       /* Do not put a SORT_LIMIT plan over an ordered plan because we have to keep the ordered principle. At best, we
-       * can place a SORT_LIMIT plan directly under an ordered one. 
+       * can place a SORT_LIMIT plan directly under an ordered one.
        */
       return 0;
     }
@@ -7948,7 +8038,7 @@ qo_search_planner (QO_PLANNER * planner)
   (planner->worst_plan)->info = planner->worst_info;
   (void) qo_plan_add_ref (planner->worst_plan);
 
-  /* 
+  /*
    * At this point, N (and node), S (and seg), E (and edge), and
    * EQ (and eqclass) have been initialized; we now need to set up the
    * various info vectors.
@@ -7984,7 +8074,7 @@ qo_search_planner (QO_PLANNER * planner)
 
   bitset_assign (&remaining_subqueries, &(planner->all_subqueries));
 
-  /* 
+  /*
    * Add appropriate scan plans for each node.
    */
   planner->node_info = NULL;
@@ -8031,7 +8121,7 @@ qo_search_planner (QO_PLANNER * planner)
       bitset_assign (&(QO_NODE_SUBQUERIES (node)), &subqueries);
     }
 
-  /* 
+  /*
    * Check all of the terms to determine which are eligible to serve as
    * index scans.
    */
@@ -8043,7 +8133,7 @@ qo_search_planner (QO_PLANNER * planner)
       node_index = QO_NODE_INDEXES (node);
 
       /* Set special_index_scan to true if spec if flagged as: 1. Scan for b-tree key info. 2. Scan for b-tree node
-       * info. These are special cases which need index scan forced. 
+       * info. These are special cases which need index scan forced.
        */
       special_index_scan = PT_SPEC_SPECIAL_INDEX_SCAN (QO_NODE_ENTITY_SPEC (node));
       if (special_index_scan)
@@ -8059,7 +8149,7 @@ qo_search_planner (QO_PLANNER * planner)
 	  continue;
 	}
 
-      /* 
+      /*
        *  It is possible that this node will not have indexes.  This would
        *  happen (for instance) if the node represented a derived table.
        *  There is no purpose looking for index scans for a node without
@@ -8081,12 +8171,12 @@ qo_search_planner (QO_PLANNER * planner)
 		}
 
 	      /* If the index is a candidate for index skip scan, then it will not have any terms for seg_equal or
-	       * seg_other[0], so we should skip that first column from initial checks. Set the start column to 1. 
+	       * seg_other[0], so we should skip that first column from initial checks. Set the start column to 1.
 	       */
 	      start_column = index_entry->is_iss_candidate ? 1 : 0;
 
 	      /* seg_terms will contain all the indexable terms that refer segments from this node; stops at the first
-	       * one that has no equals or other terms 
+	       * one that has no equals or other terms
 	       */
 	      BITSET_CLEAR (seg_terms);
 	      for (nsegs = start_column; nsegs < index_entry->nsegs; nsegs++)
@@ -8119,10 +8209,10 @@ qo_search_planner (QO_PLANNER * planner)
 		{
 		  assert (bitset_is_empty (&seg_terms));
 
-		  /* Currently, CUBRID does not allow null values in index. The filter index expression must contain at 
+		  /* Currently, CUBRID does not allow null values in index. The filter index expression must contain at
 		   * least one term different than "is null". Otherwise, the index will be empty. Having at least one
 		   * term different than "is null" in a filter index expression, the user knows from beginning that
-		   * null values can't appear when scan filter index. 
+		   * null values can't appear when scan filter index.
 		   */
 
 		  n =
@@ -8144,7 +8234,7 @@ qo_search_planner (QO_PLANNER * planner)
 
 		  /* if the index didn't normally skipped the order by, we try the new plan, maybe this will be better.
 		   * DO NOT generate a order by index if there is no order by! Skip generating index from order by if
-		   * multi_range_opt is true (multi range optimized plan is already better) 
+		   * multi_range_opt is true (multi range optimized plan is already better)
 		   */
 		  tree = QO_ENV_PT_TREE (info->env);
 		  if (tree == NULL)
@@ -8159,7 +8249,7 @@ qo_search_planner (QO_PLANNER * planner)
 		    }
 
 		  /* if the index didn't normally skipped the group/order by, we try the new plan, maybe this will be
-		   * better. DO NOT generate if there is no group/order by! 
+		   * better. DO NOT generate if there is no group/order by!
 		   */
 		  if (!n && !index_entry->groupby_skip && tree->info.query.q.select.group_by
 		      && qo_validate_index_for_groupby (info->env, ni_entry))
@@ -8184,7 +8274,7 @@ qo_search_planner (QO_PLANNER * planner)
 	  bitset_delset (&seg_terms);
 	}
 
-      /* 
+      /*
        * Create a sequential scan plan for each node.
        */
       if (normal_index_plan_n > 0)
@@ -8210,7 +8300,7 @@ qo_search_planner (QO_PLANNER * planner)
 	}
     }
 
-  /* 
+  /*
    * Now remaining_subqueries should contain only entries that depend
    * on more than one class.
    */
@@ -8236,7 +8326,7 @@ qo_search_planner (QO_PLANNER * planner)
   broken = false;
   for (i = 0; i < (signed) planner->P; ++i)
     {
-      /* 
+      /*
        * If any partition fails, give up.  We'll have to build an
        * unoptimized plan elsewhere.
        */
@@ -8253,58 +8343,50 @@ qo_search_planner (QO_PLANNER * planner)
   plan = broken ? NULL : qo_combine_partitions (planner, &remaining_subqueries);
 
   /* if we have use_desc_idx hint and order by or group by, do some checking */
-  if (plan)
+
+  if (plan == NULL)
     {
-      bool has_hint;
-      PT_HINT_ENUM *hint;
-      PT_NODE *node = NULL;
+      goto end;
+    }
 
-      if (plan->use_iscan_descending == true && qo_plan_multi_range_opt (plan) == false)
-	{
-	  qo_set_use_desc (plan);
-	}
+  if (plan->use_iscan_descending == true && qo_plan_multi_range_opt (plan) == false)
+    {
+      qo_set_use_desc (plan);
+    }
 
-      tree = QO_ENV_PT_TREE (planner->env);
-      assert (tree != NULL);
+  tree = QO_ENV_PT_TREE (planner->env);
+  assert (tree != NULL);
 
-      hint = &(tree->info.query.q.select.hint);
-      has_hint = (*hint & PT_HINT_USE_IDX_DESC) > 0;
-
+  if (tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC)
+    {
       /* check direction of the first order by column. */
-      node = tree->info.query.order_by;
-      if (node != NULL)
+      if (tree->info.query.order_by != NULL && tree->info.query.q.select.connect_by == NULL)
 	{
-	  if (tree->info.query.q.select.connect_by)
-	    {
-	      ;
-	    }
 	  /* if we have order by and the hint, we allow the hint only if we have order by descending on first column.
 	   * Otherwise we clear it */
-	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
+	  if (tree->info.query.order_by->info.sort_spec.asc_or_desc == PT_ASC)
 	    {
-	      *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
+	      tree->info.query.q.select.hint &= ~PT_HINT_USE_IDX_DESC;
 	    }
 	}
 
       /* check direction of the first order by column. */
-      node = tree->info.query.q.select.group_by;
-      if (node != NULL)
+      if (tree->info.query.q.select.group_by != NULL && tree->info.query.q.select.group_by->flag.with_rollup == false)
 	{
-	  if (node->with_rollup);
 	  /* if we have group by and the hint, we allow the hint only if we have group by descending on first column.
 	   * Otherwise we clear it */
-	  else if (has_hint && node->info.sort_spec.asc_or_desc == PT_ASC)
+	  if (tree->info.query.q.select.group_by->info.sort_spec.asc_or_desc == PT_ASC)
 	    {
-	      *hint = (PT_HINT_ENUM) (*hint & ~PT_HINT_USE_IDX_DESC);
+	      tree->info.query.q.select.hint &= ~PT_HINT_USE_IDX_DESC;
 	    }
 	}
     }
 
   /* some indexes may be marked with multi range optimization (as candidates) However, if the chosen top plan is not
    * marked as using multi range optimization it means that the optimization has been invalidated, or maybe another
-   * plan was chosen. Make sure to un-mark indexes in this case 
+   * plan was chosen. Make sure to un-mark indexes in this case
    */
-  if (plan != NULL && !qo_plan_multi_range_opt (plan))
+  if (!qo_plan_multi_range_opt (plan))
     {
       qo_walk_plan_tree (plan, qo_unset_multi_range_optimization, NULL);
       if (plan->info->env != NULL && plan->info->env->multi_range_opt_candidate)
@@ -8313,27 +8395,7 @@ qo_search_planner (QO_PLANNER * planner)
 	}
     }
 
-  if (plan != NULL && qo_is_interesting_order_scan (plan))
-    {
-      if (plan->plan_un.scan.index && plan->plan_un.scan.index->head)
-	{
-	  if (plan->plan_un.scan.index->head->use_descending)
-	    {
-	      /* We no longer need to set the USE_DESC_IDX hint if the planner wants a descending index, because the
-	       * requirement is copied to each scan_ptr's index info at XASL generation.
-	       * plan->info->env->pt_tree->info.query.q.select.hint |= PT_HINT_USE_IDX_DESC; 
-	       */
-	    }
-	  else if (plan->plan_un.scan.index->head->orderby_skip || qo_is_index_mro_scan (plan))
-	    {
-	      if (plan->info->env != NULL)
-		{
-		  plan->info->env->pt_tree->info.query.q.select.hint =
-		    (PT_HINT_ENUM) (plan->info->env->pt_tree->info.query.q.select.hint & ~PT_HINT_USE_IDX_DESC);
-		}
-	    }
-	}
-    }
+  qo_walk_plan_tree (plan, qo_unset_hint_use_desc_idx, NULL);
 
 end:
 
@@ -8353,7 +8415,7 @@ end:
 static void
 qo_clean_planner (QO_PLANNER * planner)
 {
-  /* 
+  /*
    * This cleans up everything that isn't needed for the surviving
    * plan.  In particular, it will give back all excess QO_PLAN
    * structures that we have allocated during the search.  All
@@ -8464,7 +8526,7 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
       QO_INFO *r_info, *f_info;
       QO_PLAN *r_plan, *f_plan;
       PT_NODE *entity;
-      bool found_f_edge, found_other_edge;
+      bool found_f_edge, found_other_edge, found_r_edge;
       BITSET_ITERATOR bi, bj, bt;
       QO_PLAN_COMPARE_RESULT cmp;
       BITSET derived_nodes;
@@ -8491,6 +8553,17 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
 	  if (entity->info.spec.derived_table)
 	    {			/* inline view */
 	      bitset_add (&derived_nodes, r);
+	      continue;		/* OK */
+	    }
+
+	  /*
+	   * The first node is not excluded up to 10 nodes.
+	   * In fact, the logic to exclude from the first node is not perfect because the cost of index scan is not compared.
+	   * TO_DO : remove routines related to excluding first node
+	   */
+	  if (nodes_cnt <= 10)
+	    {
+	      bitset_add (&first_nodes, r);
 	      continue;		/* OK */
 	    }
 
@@ -8521,7 +8594,7 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
 		  || (!QO_IS_LIMIT_NODE (env, r_node) && QO_IS_LIMIT_NODE (env, f_node)))
 		{
 		  /* Also keep the best plan from limit nodes, otherwise we might not get a chance to create a
-		   * SORT-LIMIT plan 
+		   * SORT-LIMIT plan
 		   */
 		  continue;
 		}
@@ -8557,6 +8630,48 @@ qo_search_partition_join (QO_PLANNER * planner, QO_PARTITION * partition, BITSET
 			{
 			  continue;	/* do not skip out index scan plan */
 			}
+		    }
+
+		  /* check for join-connectivity of r_node to f_node */
+		  found_r_edge = found_other_edge = false;	/* init */
+		  for (t = bitset_iterate (&remaining_terms, &bt); t != -1 && !found_other_edge;
+		       t = bitset_next_member (&bt))
+		    {
+		      term = QO_ENV_TERM (env, t);
+
+		      if (!QO_IS_EDGE_TERM (term))
+			{
+			  continue;
+			}
+
+		      if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (r_node)))
+			{
+			  continue;
+			}
+
+		      /* check for f_node's edges */
+		      if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (f_node)))
+			{
+			  /* edge between f_node and r_node */
+
+			  for (i = 0; i < QO_TERM_CAN_USE_INDEX (term) && !found_r_edge; i++)
+			    {
+			      if (QO_NODE_IDX (QO_SEG_HEAD (QO_TERM_INDEX_SEG (term, i))) == QO_NODE_IDX (r_node))
+				{
+				  found_r_edge = true;	/* indexable edge */
+				}
+			    }
+			}
+		      else
+			{
+			  /* edge between f_node and other_node */
+			  found_other_edge = true;
+			}
+		    }
+
+		  if (!found_r_edge || found_other_edge)
+		    {
+		      continue;	/* do not skip out having other edge or non-inner index scan */
 		    }
 
 		  /* do not add r_node to the first_nodes */
@@ -8747,7 +8862,7 @@ qo_search_partition (QO_PLANNER * planner, QO_PARTITION * partition, QO_EQCLASS 
   nodes_cnt = bitset_cardinality (&(QO_PARTITION_NODES (partition)));
 
   /* nodes are multi if there is a join to be done. If not, this is just a degenerate search to determine which of the
-   * indexes (if available) to use for the (single) class involved in the query. 
+   * indexes (if available) to use for the (single) class involved in the query.
    */
   if (nodes_cnt > 1)
     {
@@ -8776,8 +8891,8 @@ qo_search_partition (QO_PLANNER * planner, QO_PARTITION * partition, QO_EQCLASS 
       QO_PARTITION_PLAN (partition) = NULL;
     }
 
-  /* Now clean up after ourselves.  Free all of the plans that aren't part of the winner for this partition, but retain 
-   * the nodes: they contain information that the winning plan requires. 
+  /* Now clean up after ourselves.  Free all of the plans that aren't part of the winner for this partition, but retain
+   * the nodes: they contain information that the winning plan requires.
    */
 
   if (nodes_cnt > 1)
@@ -8824,7 +8939,7 @@ sort_partitions (QO_PLANNER * planner)
       for (j = 0; j < i; ++j)
 	{
 	  j_part = &planner->partition[j];
-	  /* 
+	  /*
 	   * If the higher partition (i_part) supplies something that
 	   * the lower partition (j_part) needs, swap them.
 	   */
@@ -8865,7 +8980,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
   bitset_init (&sarged_terms, planner->env);
   bitset_init (&subqueries, planner->env);
 
-  /* 
+  /*
    * Order the partitions by dependency information.  We could probably
    * undertake a more sophisticated search here that takes the
    * remaining sargable terms into account, but this code is probably
@@ -8879,7 +8994,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
       (QO_PARTITION_PLAN (&planner->partition[i]))->refcount--;
     }
 
-  /* 
+  /*
    * DON'T initialize these until after the sorting is done.
    */
   plan = QO_PARTITION_PLAN (partition);
@@ -8926,7 +9041,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
       BITSET_CLEAR (sarged_terms);
     }
 
-  /* 
+  /*
    * Now finalize the topmost node of the tree.
    */
   if (plan != NULL)
@@ -9181,7 +9296,7 @@ qo_not_selectivity (QO_ENV * env, double sel)
 static double
 qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
-  PT_NODE *lhs, *rhs;
+  PT_NODE *lhs, *rhs, *multi_attr;
   PRED_CLASS pc_lhs, pc_rhs;
   int lhs_icard, rhs_icard, icard;
   double selectivity;
@@ -9239,6 +9354,11 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    }
 
 	  break;
+
+	case PC_MULTI_ATTR:
+	  /* attr = (attr,attr) syntactic impossible case */
+	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	  break;
 	}
 
       break;
@@ -9276,8 +9396,147 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
 	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
 	  break;
+
+	case PC_MULTI_ATTR:
+	  /* const = (attr,attr) */
+	  multi_attr = rhs->info.function.arg_list;
+	  rhs_icard = 0;
+	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, multi_attr);
+	      if (icard <= 0)
+		{
+		  /* the only interesting case is PT_BETWEEN_EQ_NA */
+		  icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      if (rhs_icard == 0)
+		{
+		  /* first time */
+		  rhs_icard = icard;
+		}
+	      else
+		{
+		  rhs_icard *= icard;
+		}
+	    }
+	  if (rhs_icard != 0)
+	    {
+	      selectivity = (1.0 / rhs_icard);
+	    }
+	  else
+	    {
+	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
+	  break;
+	}
+      break;
+
+    case PC_MULTI_ATTR:
+      switch (pc_rhs)
+	{
+	case PC_ATTR:
+	  /* (attr,attr) = attr  syntactic impossible case */
+	  selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	  break;
+
+	case PC_CONST:
+	case PC_HOST_VAR:
+	case PC_SUBQUERY:
+	case PC_SET:
+	case PC_OTHER:
+	  /* (attr,attr) = const */
+
+	  multi_attr = lhs->info.function.arg_list;
+	  lhs_icard = 0;
+	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, multi_attr);
+	      if (icard <= 0)
+		{
+		  /* the only interesting case is PT_BETWEEN_EQ_NA */
+		  icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      if (lhs_icard == 0)
+		{
+		  /* first time */
+		  lhs_icard = icard;
+		}
+	      else
+		{
+		  lhs_icard *= icard;
+		}
+	    }
+	  if (lhs_icard != 0)
+	    {
+	      selectivity = (1.0 / lhs_icard);
+	    }
+	  else
+	    {
+	      selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
+	  break;
+
+	case PC_MULTI_ATTR:
+	  /* (attr,attr) = (attr,attr) */
+	  multi_attr = lhs->info.function.arg_list;
+	  lhs_icard = 0;
+	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, multi_attr);
+	      if (icard <= 0)
+		{
+		  /* the only interesting case is PT_BETWEEN_EQ_NA */
+		  icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      if (lhs_icard == 0)
+		{
+		  /* first time */
+		  lhs_icard = icard;
+		}
+	      else
+		{
+		  lhs_icard *= icard;
+		}
+	    }
+
+	  multi_attr = rhs->info.function.arg_list;
+	  rhs_icard = 0;
+	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, multi_attr);
+	      if (icard <= 0)
+		{
+		  /* the only interesting case is PT_BETWEEN_EQ_NA */
+		  icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      if (rhs_icard == 0)
+		{
+		  /* first time */
+		  rhs_icard = icard;
+		}
+	      else
+		{
+		  rhs_icard *= icard;
+		}
+	    }
+
+	  icard = MAX (lhs_icard, rhs_icard);
+	  if (icard != 0)
+	    {
+	      selectivity = (1.0 / icard);
+	    }
+	  else
+	    {
+	      selectivity = DEFAULT_EQUIJOIN_SELECTIVITY;
+	    }
+	  break;
 	}
 
+      break;
       break;
     }
 
@@ -9329,26 +9588,53 @@ static double
 qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PT_NODE *lhs, *arg1, *arg2;
-  PRED_CLASS pc1;
+  PRED_CLASS pc1, pc2;
   double total_selectivity, selectivity;
-  int lhs_icard, rhs_icard, icard;
+  int lhs_icard = 0, rhs_icard = 0, icard = 0;
   PT_NODE *range_node;
   PT_OP_TYPE op_type;
 
   lhs = pt_expr->info.expr.arg1;
 
-  /* the only interesting case is 'attr RANGE {...}' */
-  if (qo_classify (lhs) != PC_ATTR)
+  pc2 = qo_classify (lhs);
+
+  /* the only interesting case is 'attr RANGE {=1,=2}' or '(attr,attr) RANGE {={..},..}' */
+  if (pc2 == PC_MULTI_ATTR)
+    {
+      lhs = lhs->info.function.arg_list;
+      lhs_icard = 0;
+      for ( /* none */ ; lhs; lhs = lhs->next)
+	{
+	  /* get index cardinality */
+	  icard = qo_index_cardinality (env, lhs);
+	  if (icard <= 0)
+	    {
+	      /* the only interesting case is PT_BETWEEN_EQ_NA */
+	      icard = 1 / DEFAULT_EQUAL_SELECTIVITY;
+	    }
+	  if (lhs_icard == 0)
+	    {
+	      /* first time */
+	      lhs_icard = icard;
+	    }
+	  else
+	    {
+	      lhs_icard *= icard;
+	    }
+	}
+    }
+  else if (pc2 == PC_ATTR)
+    {
+      /* get index cardinality */
+      lhs_icard = qo_index_cardinality (env, lhs);
+    }
+  else
     {
       return DEFAULT_RANGE_SELECTIVITY;
     }
-
 #if 1				/* unused anymore - DO NOT DELETE ME */
   QO_ASSERT (env, !PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_FULL_RANGE));
 #endif
-
-  /* get index cardinality */
-  lhs_icard = qo_index_cardinality (env, lhs);
 
   total_selectivity = 0.0;
 
@@ -9433,44 +9719,73 @@ static double
 qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PRED_CLASS pc_lhs, pc_rhs;
-  int list_card = 0, icard;
-  double equal_selectivity, in_selectivity;
+  double list_card = 0, icard;
+  PT_NODE *lhs;
+  double equal_selectivity, in_selectivity, selectivity;
 
   /* determine the class of each side of the range */
   pc_lhs = qo_classify (pt_expr->info.expr.arg1);
   pc_rhs = qo_classify (pt_expr->info.expr.arg2);
 
-  /* The only interesting cases are: attr IN set or attr IN subquery */
-  if (pc_lhs == PC_ATTR && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY))
+  /* The only interesting cases are: attr IN set or (attr,attr) IN set or attr IN subquery */
+  if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR) && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY))
     {
-      /* check for index on the attribute.  */
-      icard = qo_index_cardinality (env, pt_expr->info.expr.arg1);
-
-      if (icard != 0)
+      if (pc_lhs == PC_MULTI_ATTR)
 	{
-	  equal_selectivity = (1.0 / icard);
+	  lhs = pt_expr->info.expr.arg1->info.function.arg_list;
+	  equal_selectivity = 1;
+	  for ( /* none */ ; lhs; lhs = lhs->next)
+	    {
+	      /* get index cardinality */
+	      icard = qo_index_cardinality (env, lhs);
+	      if (icard != 0)
+		{
+		  selectivity = (1.0 / icard);
+		}
+	      else
+		{
+		  selectivity = DEFAULT_EQUAL_SELECTIVITY;
+		}
+	      equal_selectivity *= selectivity;
+	    }
 	}
-      else
+      else if (pc_lhs == PC_ATTR)
 	{
-	  equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
-	}
+	  /* check for index on the attribute.  */
+	  icard = qo_index_cardinality (env, pt_expr->info.expr.arg1);
 
+	  if (icard != 0)
+	    {
+	      equal_selectivity = (1.0 / icard);
+	    }
+	  else
+	    {
+	      equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
+	    }
+	}
       /* determine cardinality of set or subquery */
       if (pc_rhs == PC_SET)
 	{
-	  list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.value.data_value.set);
+	  if (pt_is_function (pt_expr->info.expr.arg2))
+	    {
+	      list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.function.arg_list);
+	    }
+	  else
+	    {
+	      list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.value.data_value.set);
+	    }
 	}
-      if (pc_rhs == PC_SUBQUERY)
+      else if (pc_rhs == PC_SUBQUERY)
 	{
-#if 0
-/*right now we don't have the hook for the cardinality of subqueries, just use
- * a large number so that the selectivity will end up being capped at 0.5
- */
-	  list_card = pt_expr->info.select.est_card;
-#else
-	  list_card = 1000;
-#endif /* 0 */
-
+	  if (pt_expr->info.expr.arg2->info.query.xasl)
+	    {
+	      list_card = ((XASL_NODE *) pt_expr->info.expr.arg2->info.query.xasl)->cardinality;
+	    }
+	  else
+	    {
+	      /* legacy default list_card is 1000. Maybe it won't come in here */
+	      list_card = 1000;
+	    }
 	}
 
       /* compute selectivity--cap at 0.5 */
@@ -9517,6 +9832,34 @@ qo_classify (PT_NODE * attr)
     case PT_INTERSECTION:
     case PT_DIFFERENCE:
       return PC_SUBQUERY;
+
+    case PT_FUNCTION:
+      /* (attr,attr) or (?,?) */
+      if (PT_IS_SET_TYPE (attr))
+	{
+	  PT_NODE *func_arg;
+	  func_arg = attr->info.function.arg_list;
+	  for ( /* none */ ; func_arg; func_arg = func_arg->next)
+	    {
+	      if (func_arg->node_type == PT_NAME)
+		{
+		  /* none */
+		}
+	      else if (func_arg->node_type == PT_HOST_VAR)
+		{
+		  return PC_SET;
+		}
+	      else
+		{
+		  return PC_OTHER;
+		}
+	    }
+	  return PC_MULTI_ATTR;
+	}
+      else
+	{
+	  return PC_OTHER;
+	}
 
     default:
       return PC_OTHER;
@@ -9638,8 +9981,8 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
   index_class = index_entryp->class_;
 
   /* do a check on the first column - it should be present in the where clause check if exists a simple expression
-   * with PT_IS_NOT_NULL on the first key this should not contain OR operator and the PT_IS_NOT_NULL should contain the 
-   * column directly as parameter (PT_NAME) 
+   * with PT_IS_NOT_NULL on the first key this should not contain OR operator and the PT_IS_NOT_NULL should contain the
+   * column directly as parameter (PT_NAME)
    */
   for (t = 0; t < env->nterms && !term_notnull; t++)
     {
@@ -9675,7 +10018,7 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
 	      if (!intl_identifier_casecmp (node_name, QO_SEG_NAME (segp)))
 		{
 		  /* we have found a term with no OR and with IS_NOT_NULL on our key. The plan is ready for group by
-		   * skip! 
+		   * skip!
 		   */
 		  term_notnull = true;
 		  break;
@@ -9797,7 +10140,7 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
       env->bail_out = old_bail_out;
 
       /* if there is no isnull on the key, check that the key appears in some term and if so, make sure that that term
-       * doesn't have a OR 
+       * doesn't have a OR
        */
       if (key_term_status == 1)
 	{
@@ -9915,11 +10258,11 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
     }
 
   /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
-   * expression with this key column involved and also if we have other terms with the key. We must decide if there can 
+   * expression with this key column involved and also if we have other terms with the key. We must decide if there can
    * be NULLs in the results and if so, drop this index. 1. If the key cannot have null values, we have a winner. 2.
    * Otherwise, if we found a term isnull/isnotnull(key) we drop it (because we cannot evaluate if this yields true or
    * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
-   * have an OR following we have a winner again! (because we cannot have a null value). 
+   * have an OR following we have a winner again! (because we cannot have a null value).
    */
 final_:
   if (key_notnull)
@@ -10369,11 +10712,11 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
     }
 
   /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
-   * expression with this key column involved and also if we have other terms with the key. We must decide if there can 
+   * expression with this key column involved and also if we have other terms with the key. We must decide if there can
    * be NULLs in the results and if so, drop this index. 1. If the key cannot have null values, we have a winner. 2.
    * Otherwise, if we found a term isnull/isnotnull(key) we drop it (because we cannot evaluate if this yields true or
    * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
-   * have an OR following we have a winner again! (because we cannot have a null value). 
+   * have an OR following we have a winner again! (because we cannot have a null value).
    */
 final:
   if (key_notnull)
@@ -10563,7 +10906,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
     }
 
   /* we must have the first index column appear as the first sort column, so we pretend the number of index_equi
-   * columns is zero, to force it to match the sort list and the index columns one-for-one. 
+   * columns is zero, to force it to match the sort list and the index columns one-for-one.
    */
   if (qo_is_index_iss_scan (plan) || index_entryp->constraints->func_index_info != NULL)
     {
@@ -10707,7 +11050,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       /* is for group_by skip */
       if (group_by != NULL)
 	{
-	  assert (!group_by->with_rollup);
+	  assert (!group_by->flag.with_rollup);
 
 	  /* check for constant col's group node */
 	  pt_to_pos_descr_groupby (parser, &pos_descr, node, tree);
@@ -11152,7 +11495,7 @@ qo_plan_print_json (QO_PLAN * plan)
  *   plan(in):
  */
 void
-qo_top_plan_print_json (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * select, QO_PLAN * plan)
+qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan)
 {
   json_t *json;
   unsigned int save_custom;
@@ -11454,7 +11797,7 @@ qo_plan_print_text (FILE * fp, QO_PLAN * plan, int indent)
  *   plan(in):
  */
 void
-qo_top_plan_print_text (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * select, QO_PLAN * plan)
+qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan)
 {
   size_t sizeloc;
   char *ptr, *sql;

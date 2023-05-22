@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -25,22 +24,7 @@
 #define _DB_ADMIN_H_
 
 #if !defined(SERVER_MODE)
-#define DB_CLIENT_TYPE_DEFAULT          1
-#define DB_CLIENT_TYPE_CSQL             2
-#define DB_CLIENT_TYPE_READ_ONLY_CSQL   3
-#define DB_CLIENT_TYPE_BROKER           4
-#define DB_CLIENT_TYPE_READ_ONLY_BROKER 5
-#define DB_CLIENT_TYPE_SLAVE_ONLY_BROKER 6
-#define DB_CLIENT_TYPE_ADMIN_UTILITY    7
-#define DB_CLIENT_TYPE_ADMIN_CSQL       8
-#define DB_CLIENT_TYPE_LOG_COPIER       9
-#define DB_CLIENT_TYPE_LOG_APPLIER      10
-#define DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY   11
-#define DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY   12
-#define DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY   13
-#define DB_CLIENT_TYPE_ADMIN_CSQL_WOS   14	/* admin csql that can write on standby */
-#define DB_CLIENT_TYPE_MAX              DB_CLIENT_TYPE_ADMIN_CSQL_WOS
-extern int db_Client_type;
+#include "db_client_type.hpp"
 #endif
 
 #endif /* _DB_ADMIN_H */

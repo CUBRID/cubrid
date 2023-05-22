@@ -1,20 +1,19 @@
+dist: trusty
 language: cpp
-
-compiler:
-  - gcc
-
+env: CC=gcc-8 CXX=g++-8
 os:
 - linux
-
 addons:
   apt:
     sources:
-      kalakris-cmake
+      - kalakris-cmake
+      - ubuntu-toolchain-r-test
     packages:
+      - gcc-8
+      - g++-8
       - cmake
       - systemtap-sdt-dev
       - libelf-dev
-
 script:
   - cmake -E make_directory build
   - cmake -E chdir build cmake ..

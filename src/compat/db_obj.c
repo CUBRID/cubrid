@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -52,6 +51,7 @@
 #include "network_interface_cl.h"
 #include "transform.h"
 #include "dbtype.h"
+#include "printer.hpp"
 
 /*
  * OBJECT CREATION/DELETION
@@ -574,8 +574,8 @@ dbt_finish_object (DB_OTMPL * def)
 }
 
 /*
- * dbt_finish_object_and_decache_when_failure() - This function applies an 
- * object template and decache if it is failed to update object template. 
+ * dbt_finish_object_and_decache_when_failure() - This function applies an
+ * object template and decache if it is failed to update object template.
  * return : object pointer
  * def(in): object template
  */
@@ -1254,7 +1254,7 @@ db_print (DB_OBJECT * obj)
 
   if (obj != NULL)
     {
-      help_fprint_obj (stdout, obj);
+      help_print_obj (file_print_output::std_output (), obj);
     }
 }
 
@@ -1267,11 +1267,12 @@ db_print (DB_OBJECT * obj)
 void
 db_fprint (FILE * fp, DB_OBJECT * obj)
 {
+  file_print_output output (fp);
   CHECK_CONNECT_VOID ();
 
   if (fp != NULL && obj != NULL)
     {
-      help_fprint_obj (fp, obj);
+      help_print_obj (output, obj);
     }
 }
 
@@ -1351,7 +1352,7 @@ db_rename_trigger (DB_OBJECT * obj, const char *newname)
   CHECK_MODIFICATION_ERROR ();
 
   /* auditing will be done at tr_rename_trigger() */
-  retval = tr_rename_trigger (obj, newname, true);
+  retval = tr_rename_trigger (obj, newname, true, false);
   return retval;
 }
 

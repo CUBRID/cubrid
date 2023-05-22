@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -52,13 +51,20 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "log_applier.h"
+#include "log_lsa.hpp"
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "dynamic_array.h"
 #include "util_func.h"
+#include "xasl.h"
+#include "log_volids.hpp"
+#include "tde.h"
+#include "flashback_cl.h"
+#include "connection_support.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
+#include "network_histogram.hpp"
 
 #define PASSBUF_SIZE 12
 #define SPACEDB_NUM_VOL_PURPOSE 2
@@ -69,6 +75,10 @@
 	    ((VOL_PURPOSE == DB_PERMANENT_DATA_PURPOSE) ? "PERMANENT DATA"	\
 	    : (VOL_PURPOSE == DB_TEMPORARY_DATA_PURPOSE) ? "TEMPORARY DATA"     \
 	    : "UNKNOWN")
+
+#if defined(WINDOWS)
+#define STDIN_FILENO  _fileno (stdin)
+#endif
 
 typedef enum
 {
@@ -106,7 +116,7 @@ static void intr_handler (int sig_no);
 static void backupdb_sig_interrupt_handler (int sig_no);
 STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
 static void print_timestamp (FILE * outfp);
-static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level);
+static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bool full_sqltext);
 static int tranlist_cmp_f (const void *p1, const void *p2);
 static OID *util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_name, BTID * index_btid);
 
@@ -127,10 +137,11 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   bool no_check = false;
   bool check = true;
   int backup_num_threads;
-  bool compress_flag;
+  bool no_compress_flag;
   bool sa_mode;
-  FILEIO_ZIP_METHOD backup_zip_method = FILEIO_ZIP_NONE_METHOD;
-  FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
+  bool separate_keys;
+  FILEIO_ZIP_METHOD backup_zip_method = FILEIO_ZIP_LZ4_METHOD;
+  FILEIO_ZIP_LEVEL backup_zip_level = FILEIO_ZIP_LZ4_DEFAULT_LEVEL;
   bool skip_activelog = false;
   int sleep_msecs;
   struct stat st_buf;
@@ -155,10 +166,14 @@ backupdb (UTIL_FUNCTION_ARG * arg)
   no_check = utility_get_option_bool_value (arg_map, BACKUP_NO_CHECK_S);
   check = !no_check;
   backup_num_threads = utility_get_option_int_value (arg_map, BACKUP_THREAD_COUNT_S);
-  compress_flag = utility_get_option_bool_value (arg_map, BACKUP_COMPRESS_S);
-  skip_activelog = utility_get_option_bool_value (arg_map, BACKUP_EXCEPT_ACTIVE_LOG_S);
+  no_compress_flag = utility_get_option_bool_value (arg_map, BACKUP_NO_COMPRESS_S);
+
+  // BACKUP_EXCEPT_ACTIVE_LOG_S is obsoleted. This means backup will always include active log.
+  skip_activelog = false;
+
   sleep_msecs = utility_get_option_int_value (arg_map, BACKUP_SLEEP_MSECS_S);
   sa_mode = utility_get_option_bool_value (arg_map, BACKUP_SA_MODE_S);
+  separate_keys = utility_get_option_bool_value (arg_map, BACKUP_SEPARATE_KEYS_S);
 
   /* Range checking of input */
   if (backup_level < 0 || backup_level >= FILEIO_BACKUP_UNDEFINED_LEVEL)
@@ -182,10 +197,10 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       goto print_backup_usage;
     }
 
-  if (compress_flag)
+  if (no_compress_flag)
     {
-      backup_zip_method = FILEIO_ZIP_LZO1X_METHOD;
-      backup_zip_level = FILEIO_ZIP_LZO1X_DEFAULT_LEVEL;
+      backup_zip_method = FILEIO_ZIP_NONE_METHOD;
+      backup_zip_level = FILEIO_ZIP_NONE_LEVEL;
     }
 
   /* extra validation */
@@ -220,7 +235,27 @@ backupdb (UTIL_FUNCTION_ARG * arg)
 						     BACKUPDB_INVALID_PATH));
 	      goto error_exit;
 	    }
+#if !defined (WINDOWS)
+	  else if (separate_keys)	/* FIFO file and --separate_keys is exclusive */
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB,
+				      BACKUPDB_FIFO_KEYS_NOT_SUPPORTED));
+	      goto error_exit;
+	    }
+#endif /* !WINDOWS */
 	}
+    }
+
+  if (separate_keys)
+    {
+      util_log_write_warnstr (msgcat_message
+			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_USING_SEPARATE_KEYS));
+    }
+  else
+    {
+      util_log_write_warnstr (msgcat_message
+			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_BACKUPDB, BACKUPDB_NOT_USING_SEPARATE_KEYS));
     }
 
   /* error message log file */
@@ -282,13 +317,19 @@ backupdb (UTIL_FUNCTION_ARG * arg)
       /* resolve relative path */
       if (getcwd (dirname, PATH_MAX) != NULL)
 	{
-	  snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file);
+	  if (snprintf (verbose_file_realpath, PATH_MAX - 1, "%s/%s", dirname, backup_verbose_file) < 0)
+	    {
+	      assert (false);
+	      db_shutdown ();
+	      goto error_exit;
+	    }
 	  backup_verbose_file = verbose_file_realpath;
 	}
     }
 
   if (boot_backup (backup_path, (FILEIO_BACKUP_LEVEL) backup_level, remove_log_archives, backup_verbose_file,
-		   backup_num_threads, backup_zip_method, backup_zip_level, skip_activelog, sleep_msecs) != NO_ERROR)
+		   backup_num_threads, backup_zip_method, backup_zip_level, skip_activelog, sleep_msecs,
+		   separate_keys) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       db_shutdown ();
@@ -523,6 +564,10 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 
   for (i = 0; i < num_tables; i++)
     {
+      const char *class_name_p = NULL;
+      const char *class_name_only = NULL;
+      char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+
       if (da_get (darray, i, table) != NO_ERROR)
 	{
 	  free (oids);
@@ -535,7 +580,18 @@ util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_na
 	  continue;
 	}
 
-      sm_downcase_name (table, name, SM_MAX_IDENTIFIER_LENGTH);
+      sm_qualifier_name (table, owner_name, DB_MAX_USER_LENGTH);
+      class_name_only = sm_remove_qualifier_name (table);
+      if (strcasecmp (owner_name, "dba") == 0 && sm_check_system_class_by_name (class_name_only))
+	{
+	  class_name_p = class_name_only;
+	}
+      else
+	{
+	  class_name_p = table;
+	}
+
+      sm_user_specified_name (class_name_p, name, SM_MAX_IDENTIFIER_LENGTH);
       cls_mop = locator_find_class (name);
 
       obj = (MOBJ *) & cls_sm;
@@ -688,18 +744,25 @@ checkdb (UTIL_FUNCTION_ARG * arg)
 
   if (num_tables > 0)
     {
-      char n[SM_MAX_IDENTIFIER_LENGTH];
-      char *p;
+      char class_name_buf[SM_MAX_IDENTIFIER_LENGTH];
+      char *class_name;
 
       for (i = 0; i < num_tables; i++)
 	{
-	  p = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
-	  if (p == NULL)
+	  class_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+	  if (class_name == NULL)
 	    {
 	      continue;
 	    }
-	  strncpy (n, p, SM_MAX_IDENTIFIER_LENGTH);
-	  if (da_add (darray, n) != NO_ERROR)
+
+	  if (utility_check_class_name (class_name) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  strncpy_bufsize (class_name_buf, class_name);
+
+	  if (da_add (darray, class_name_buf) != NO_ERROR)
 	    {
 	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
 	      perror ("calloc");
@@ -1315,7 +1378,7 @@ doesmatch_transaction (const ONE_TRAN_INFO * tran, int *tran_index_list, int ind
  *   dump_level(in) :
  */
 static void
-dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level)
+dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level, bool full_sqltext)
 {
   int i;
   int num_valid = 0;
@@ -1335,13 +1398,13 @@ dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level)
 
   if (info != NULL && info->num_trans > 0)
     {
-      /* 
+      /*
        * remember that we have to print the messages one at a time, mts_
        * reuses the message buffer on each call.
        */
       for (i = 0; i < info->num_trans; i++)
 	{
-	  /* 
+	  /*
 	   * Display transactions in transaction table that seems to be valid
 	   */
 	  if (isvalid_transaction (&info->tran[i]))
@@ -1354,7 +1417,7 @@ dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level)
 		}
 
 	      num_valid++;
-	      print_tran_entry (&info->tran[i], dump_level);
+	      print_tran_entry (&info->tran[i], dump_level, full_sqltext);
 	    }
 	}
     }
@@ -1463,7 +1526,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 
   if (i >= info->num_trans)
     {
-      /* 
+      /*
        * There is not matches
        */
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_NO_MATCHES));
@@ -1477,7 +1540,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
       else
 	{
 	  ok = 0;
-	  /* 
+	  /*
 	   * display the transactin identifiers that we are about to kill
 	   */
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_READY_TO_KILL));
@@ -1490,7 +1553,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 	      if (doesmatch_transaction (&info->tran[i], tran_index_list, list_size, username, hostname, progname,
 					 sql_id))
 		{
-		  print_tran_entry (&info->tran[i], dump_level);
+		  print_tran_entry (&info->tran[i], dump_level, false);
 		}
 	    }
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
@@ -1523,7 +1586,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * Fail to kill the transaction
 		       */
 		      if (nfailures == 0)
@@ -1534,7 +1597,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 			  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TRANLIST, underscore));
 			}
 
-		      print_tran_entry (&info->tran[i], dump_level);
+		      print_tran_entry (&info->tran[i], dump_level, false);
 
 		      if (er_errid () != NO_ERROR)
 			{
@@ -1567,10 +1630,11 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
  *   include_query_info(in) :
  */
 static int
-print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
+print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bool full_sqltext)
 {
   char *buf = NULL;
-  char query_buf[32];
+  char *query_buf;
+  char tmp_query_buf[32];
 
   if (tran_info == NULL)
     {
@@ -1587,8 +1651,16 @@ print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level)
       if (tran_info->query_exec_info.query_stmt != NULL)
 	{
 	  /* print 31 string */
-	  strncpy (query_buf, tran_info->query_exec_info.query_stmt, 32);
-	  query_buf[31] = '\0';
+	  if (full_sqltext == true)
+	    {
+	      query_buf = tran_info->query_exec_info.query_stmt;
+	    }
+	  else
+	    {
+	      strncpy (tmp_query_buf, tran_info->query_exec_info.query_stmt, 32);
+	      tmp_query_buf[31] = '\0';
+	      query_buf = tmp_query_buf;
+	    }
 	}
     }
 
@@ -1632,12 +1704,14 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
+#if defined(NEED_PRIVILEGE_PASSWORD)
   const char *username;
   const char *password;
+#endif
   char *passbuf = NULL;
   TRANS_INFO *info = NULL;
   int error;
-  bool is_summary, include_query_info;
+  bool is_summary, include_query_info, full_sqltext = false;
   TRANDUMP_LEVEL dump_level = TRANDUMP_FULL_INFO;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
@@ -1651,17 +1725,22 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       goto print_tranlist_usage;
     }
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   username = utility_get_option_string_value (arg_map, TRANLIST_USER_S, 0);
   password = utility_get_option_string_value (arg_map, TRANLIST_PASSWORD_S, 0);
+#endif
   is_summary = utility_get_option_bool_value (arg_map, TRANLIST_SUMMARY_S);
   tranlist_Sort_column = utility_get_option_int_value (arg_map, TRANLIST_SORT_KEY_S);
   tranlist_Sort_desc = utility_get_option_bool_value (arg_map, TRANLIST_REVERSE_S);
+  full_sqltext = utility_get_option_bool_value (arg_map, TRANLIST_FULL_SQL_S);
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   if (username == NULL)
     {
       /* default : DBA user */
       username = "DBA";
     }
+#endif
 
   if (check_database_name (database_name) != NO_ERROR)
     {
@@ -1679,6 +1758,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+#if defined(NEED_PRIVILEGE_PASSWORD)
   error = db_restart_ex (arg->command_name, database_name, username, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (error != NO_ERROR)
     {
@@ -1686,7 +1766,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
 
       if (error == ER_AU_INVALID_PASSWORD && password == NULL)
 	{
-	  /* 
+	  /*
 	   * prompt for a valid password and try again, need a reusable
 	   * password prompter so we can use getpass() on platforms that
 	   * support it.
@@ -1721,8 +1801,17 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       db_shutdown ();
       goto error_exit;
     }
+#else
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", NULL) || db_restart (arg->command_name, TRUE, database_name))
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
+      goto error_exit;
+    }
+#endif
 
-  /* 
+  /*
    * Get the current state of transaction table information. All the
    * transaction kills are going to be based on this information. The
    * transaction information may be changed back in the server if there
@@ -1750,7 +1839,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       qsort ((void *) info->tran, info->num_trans, sizeof (ONE_TRAN_INFO), tranlist_cmp_f);
     }
 
-  (void) dump_trantb (info, dump_level);
+  (void) dump_trantb (info, dump_level, full_sqltext);
 
   if (info)
     {
@@ -1865,7 +1954,18 @@ killtran (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
+  /* disable password, if don't use kill option */
+  if (isbatch == 0)
+    {
+      if (dba_password != NULL)
+	{
+	  goto print_killtran_usage;
+	}
+      AU_DISABLE_PASSWORDS ();
+    }
+
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
   if (db_login ("DBA", dba_password) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
@@ -1878,7 +1978,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
     {
       if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
 	{
-	  /* 
+	  /*
 	   * prompt for a valid password and try again, need a reusable
 	   * password prompter so we can use getpass() on platforms that
 	   * support it.
@@ -1910,7 +2010,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  /* 
+  /*
    * Get the current state of transaction table information. All the
    * transaction kills are going to be based on this information. The
    * transaction information may be changed back in the server if there
@@ -1935,7 +2035,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
       TRANDUMP_LEVEL dump_level;
 
       dump_level = (include_query_exec_info) ? TRANDUMP_QUERY_INFO : TRANDUMP_SUMMARY;
-      dump_trantb (info, dump_level);
+      dump_trantb (info, dump_level, false);
     }
   else
     {
@@ -2571,7 +2671,6 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *log_path;
-  char log_path_buf[PATH_MAX];
   char *mode_name;
   int mode = -1;
   int error = NO_ERROR;
@@ -2582,7 +2681,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   char *binary_name;
   char executable_path[PATH_MAX];
 #endif
-  INT64 start_pageid;
+  INT64 start_pageid = 0;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -2601,10 +2700,6 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
   if (check_database_name (database_name))
     {
       goto error_exit;
-    }
-  if (log_path != NULL)
-    {
-      log_path = realpath (log_path, log_path_buf);
     }
   if (log_path == NULL)
     {
@@ -2672,6 +2767,13 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /*
+   * Force error log file system parameter as copylogdb;
+   * during a retry loop, `db_restart` will reset the error file name as :
+   * er_init (prm_get_string_value (PRM_ID_ER_LOG_FILE), ... ) 
+   */
+  sysprm_set_force (prm_get_name (PRM_ID_ER_LOG_FILE), er_msg_file);
+
   if (start_pageid < NULL_PAGEID && !HA_DISABLED ())
     {
       error = hb_process_init (database_name, log_path, HB_PTYPE_COPYLOGDB);
@@ -2719,13 +2821,6 @@ retry:
   /* PRM_LOG_BACKGROUND_ARCHIVING is always true in CUBRID HA */
   sysprm_set_to_default (prm_get_name (PRM_ID_LOG_BACKGROUND_ARCHIVING), true);
 
-  if (HA_DISABLED ())
-    {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COPYLOGDB, COPYLOGDB_MSG_NOT_HA_MODE));
-      (void) db_shutdown ();
-      goto error_exit;
-    }
-
   error = logwr_copy_log_file (database_name, log_path, mode, start_pageid);
   if (error != NO_ERROR)
     {
@@ -2754,7 +2849,7 @@ error_exit:
 
   if (logwr_force_shutdown () == false
       && (error == ER_NET_SERVER_CRASHED || error == ER_NET_CANT_CONNECT_SERVER || error == ER_BO_CONNECT_FAILED
-	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER))
+	  || error == ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER || error == ERR_CSS_TCP_CONNECT_TIMEDOUT))
     {
       (void) sleep (sleep_nsecs);
       /* sleep 1, 2, 4, 8, etc; don't wait for more than 1/2 min */
@@ -2836,10 +2931,6 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
       log_path = realpath (log_path, log_path_buf);
     }
   if (log_path == NULL)
-    {
-      goto print_applylog_usage;
-    }
-  if (max_mem_size > 500)
     {
       goto print_applylog_usage;
     }
@@ -3073,10 +3164,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name;
   const char *master_node_name;
-  char local_database_name[MAXHOSTNAMELEN];
-  char master_database_name[MAXHOSTNAMELEN];
-  bool check_applied_info, check_copied_info;
-  bool check_master_info, check_replica_info;
+  char local_database_name[CUB_MAXHOSTNAMELEN];
+  char master_database_name[CUB_MAXHOSTNAMELEN];
+  bool check_applied_info, check_applied_info_temp, check_copied_info, check_copied_info_temp;
+  bool check_master_info, check_master_info_temp, check_replica_info;
   bool verbose;
   const char *log_path;
   char log_path_buf[PATH_MAX];
@@ -3105,8 +3196,8 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
       goto print_applyinfo_usage;
     }
 
-  check_applied_info = check_copied_info = false;
-  check_replica_info = check_master_info = false;
+  check_applied_info_temp = check_applied_info = check_copied_info_temp = check_copied_info = false;
+  check_replica_info = check_master_info_temp = check_master_info = false;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -3124,21 +3215,22 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   master_node_name = utility_get_option_string_value (arg_map, APPLYINFO_REMOTE_NAME_S, 0);
   if (master_node_name != NULL)
     {
-      check_master_info = true;
+      check_master_info_temp = check_master_info = true;
     }
 
-  check_applied_info = utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
+  check_applied_info_temp = check_applied_info = utility_get_option_bool_value (arg_map, APPLYINFO_APPLIED_INFO_S);
   log_path = utility_get_option_string_value (arg_map, APPLYINFO_COPIED_LOG_PATH_S, 0);
   if (log_path != NULL)
     {
-      log_path = realpath (log_path, log_path_buf);
-    }
-  if (log_path != NULL)
-    {
-      check_copied_info = true;
+      check_copied_info_temp = check_copied_info = true;
     }
 
-  if (check_applied_info && (log_path == NULL))
+  if (!check_copied_info && !check_master_info)
+    {
+      goto print_applyinfo_usage;
+    }
+
+  if (!check_copied_info && check_applied_info)
     {
       goto print_applyinfo_usage;
     }
@@ -3148,6 +3240,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
   verbose = utility_get_option_bool_value (arg_map, APPLYINFO_VERBOSE_S);
 
   interval = utility_get_option_int_value (arg_map, APPLYINFO_INTERVAL_S);
+
   if (interval < 0)
     {
       goto print_applyinfo_usage;
@@ -3185,23 +3278,26 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
   do
     {
+      memset (local_database_name, 0x00, CUB_MAXHOSTNAMELEN);
+      strcpy (local_database_name, database_name);
+      strcat (local_database_name, "@localhost");
 
-      if (check_applied_info)
+      if (check_applied_info_temp)
 	{
-	  memset (local_database_name, 0x00, MAXHOSTNAMELEN);
-	  strcpy (local_database_name, database_name);
-	  strcat (local_database_name, "@localhost");
-
 	  db_clear_host_connected ();
 
+	  printf ("\n *** Applied Info. *** \n");
 	  if (check_database_name (local_database_name))
 	    {
 	      goto check_applied_info_end;
 	    }
-	  if (db_login ("DBA", NULL) != NO_ERROR)
+
+	  error = db_login ("DBA", NULL);
+	  if (error != NO_ERROR)
 	    {
 	      goto check_applied_info_end;
 	    }
+
 	  error = db_restart (arg->command_name, TRUE, local_database_name);
 	  if (error != NO_ERROR)
 	    {
@@ -3210,37 +3306,49 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 
 	  if (HA_DISABLED ())
 	    {
+	      check_applied_info_temp = false;
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_APPLYINFO,
 						     APPLYINFO_MSG_NOT_HA_MODE));
 	      goto check_applied_info_end;
 	    }
 
-	  error = la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
-				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
-				     &applied_final_lsa);
-	  (void) db_shutdown ();
-	}
-      else if (check_copied_info)
-	{
-	  memset (local_database_name, 0x00, MAXHOSTNAMELEN);
-	  strcpy (local_database_name, database_name);
-	  strcat (local_database_name, "@localhost");
-
-	  error = la_log_page_check (local_database_name, log_path, pageid, check_applied_info, check_copied_info,
-				     check_replica_info, verbose, &copied_eof_lsa, &copied_append_lsa,
-				     &applied_final_lsa);
+	  error = la_get_applied_log_info (database_name, log_path, check_replica_info, verbose, &applied_final_lsa);
+	  if (error != NO_ERROR)
+	    {
+	      check_applied_info_temp = false;
+	      error = NO_ERROR;
+	    }
 	}
 
     check_applied_info_end:
+
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  check_applied_info_temp = false;
+	  error = NO_ERROR;
 	}
-      error = NO_ERROR;
 
-      if (check_master_info)
+      if (check_copied_info_temp)
 	{
-	  memset (master_database_name, 0x00, MAXHOSTNAMELEN);
+	  error =
+	    la_get_copied_log_info (database_name, log_path, pageid, verbose, &copied_eof_lsa, &copied_append_lsa);
+	  if (error != NO_ERROR)
+	    {
+	      check_copied_info_temp = false;
+	      error = NO_ERROR;
+	    }
+	}
+
+      if (BOOT_IS_CLIENT_RESTARTED ())
+	{
+	  (void) db_shutdown ();
+	}
+
+      if (check_master_info_temp)
+	{
+	  printf ("\n ***  Active Info. *** \n");
+	  memset (master_database_name, 0x00, CUB_MAXHOSTNAMELEN);
 	  strcpy (master_database_name, database_name);
 	  strcat (master_database_name, "@");
 	  strcat (master_database_name, master_node_name);
@@ -3269,19 +3377,24 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	      goto check_master_info_end;
 	    }
 
-	  (void) db_shutdown ();
 	}
 
     check_master_info_end:
       if (error != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  check_master_info_temp = false;
+	  error = NO_ERROR;
 	}
-      error = NO_ERROR;
+
+      if (BOOT_IS_CLIENT_RESTARTED ())
+	{
+	  (void) db_shutdown ();
+	}
 
       /* print delay info */
       cur_time = time (NULL);
-      if (check_copied_info && check_master_info)
+      if (check_copied_info_temp && check_master_info_temp)
 	{
 	  if (!LSA_ISNULL (&initial_copied_append_lsa))
 	    {
@@ -3298,7 +3411,7 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  la_print_delay_info (copied_append_lsa, master_eof_lsa, process_rate);
 	}
 
-      if (check_applied_info)
+      if (check_applied_info_temp)
 	{
 	  if (!LSA_ISNULL (&initial_applied_final_lsa))
 	    {
@@ -3314,6 +3427,10 @@ applyinfo (UTIL_FUNCTION_ARG * arg)
 	  printf ("\n *** Delay in Applying Copied Log *** \n");
 	  la_print_delay_info (applied_final_lsa, copied_eof_lsa, process_rate);
 	}
+
+      check_copied_info_temp = check_copied_info;
+      check_applied_info_temp = check_applied_info;
+      check_master_info_temp = check_master_info;
 
       sleep (interval);
     }
@@ -3493,10 +3610,10 @@ int
 vacuumdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
-#if defined (SA_MODE)
   char er_msg_file[PATH_MAX];
-#endif /* SA_MODE */
-  const char *database_name;
+  const char *database_name, *output_file = NULL;
+  bool dump_flag;
+  FILE *outfp = NULL;
 
   if (utility_get_option_string_table_size (arg_map) < 1)
     {
@@ -3514,33 +3631,76 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  dump_flag = utility_get_option_bool_value (arg_map, VACUUM_DUMP_S);
+
+  if (dump_flag)
+    {
+      output_file = utility_get_option_string_value (arg_map, VACUUM_OUTPUT_FILE_S, 0);
+      if (output_file == NULL)
+	{
+	  outfp = stdout;
+	}
+      else
+	{
+	  outfp = fopen (output_file, "w");
+	  if (outfp == NULL)
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_BAD_OUTPUT),
+				     output_file);
+	      goto error_exit;
+	    }
+	}
+    }
+
 #if defined(SA_MODE)
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
-  sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "no");
 
   AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (dump_flag)
+    {
+      db_set_client_type (DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL);
+    }
+  else
+    {
+      sysprm_set_force (prm_get_name (PRM_ID_DISABLE_VACUUM), "no");
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+    }
   db_login ("DBA", NULL);
   if (db_restart (arg->command_name, TRUE, database_name) == NO_ERROR)
     {
-      if (db_set_isolation (TRAN_READ_COMMITTED) != NO_ERROR || cvacuum () != NO_ERROR)
+      (void) db_set_isolation (TRAN_READ_COMMITTED);
+
+      if (dump_flag)
 	{
-	  const char *tmpname;
+	  vacuum_dump (outfp);
 
-	  if ((tmpname = er_get_msglog_filename ()) == NULL)
+	  if (outfp != stdout)
 	    {
-	      tmpname = "/dev/null";
+	      fclose (outfp);
 	    }
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_FAILED),
-				 tmpname);
+	}
+      else
+	{
+	  if (cvacuum () != NO_ERROR)
+	    {
+	      const char *tmpname;
 
-	  util_log_write_errstr ("%s\n", db_error_string (3));
-	  db_shutdown ();
-	  goto error_exit;
+	      if ((tmpname = er_get_msglog_filename ()) == NULL)
+		{
+		  tmpname = "/dev/null";
+		}
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_FAILED), tmpname);
+
+	      util_log_write_errstr ("%s\n", db_error_string (3));
+	      db_shutdown ();
+	      goto error_exit;
+	    }
 	}
       db_shutdown ();
     }
@@ -3552,10 +3712,39 @@ vacuumdb (UTIL_FUNCTION_ARG * arg)
 
   return EXIT_SUCCESS;
 #else
-  fprintf (stderr,
-	   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB, VACUUMDB_MSG_CLIENT_SERVER_NOT_AVAILABLE),
-	   basename (arg->argv0));
-  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+  if (dump_flag)
+    {
+      /* error message log file */
+      snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+      er_init (er_msg_file, ER_NEVER_EXIT);
+
+      AU_DISABLE_PASSWORDS ();
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+      db_login ("DBA", NULL);
+
+      if (db_restart (arg->command_name, TRUE, database_name) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+
+      (void) db_set_isolation (TRAN_READ_COMMITTED);
+
+      vacuum_dump (outfp);
+      db_shutdown ();
+
+      if (outfp != stdout)
+	{
+	  fclose (outfp);
+	}
+    }
+  else
+    {
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_VACUUMDB,
+			       VACUUMDB_MSG_CLIENT_SERVER_NOT_AVAILABLE), basename (arg->argv0));
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+    }
 
   return EXIT_SUCCESS;
 #endif
@@ -3567,4 +3756,787 @@ print_check_usage:
 error_exit:
 
   return EXIT_FAILURE;
+}
+
+/*
+ * tde() - tde main routine
+ *   return: EXIT_SUCCESS/EXIT_FAILURE
+ */
+int
+tde (UTIL_FUNCTION_ARG * arg)
+{
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+  char mk_path[PATH_MAX] = { 0, };
+  const char *database_name;
+  const char *dba_password;
+  char *passbuf;
+  int error = NO_ERROR;
+  int vdes = NULL_VOLDES;
+  bool gen_op;
+  bool show_op;
+  bool print_val;
+  int change_op_idx;
+  int delete_op_idx;
+  int op_cnt = 0;
+
+  if (utility_get_option_string_table_size (arg_map) != 1)
+    {
+      goto print_tde_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_tde_usage;
+    }
+
+  gen_op = utility_get_option_bool_value (arg_map, TDE_GENERATE_KEY_S);
+  show_op = utility_get_option_bool_value (arg_map, TDE_SHOW_KEYS_S);
+  change_op_idx = utility_get_option_int_value (arg_map, TDE_CHANGE_KEY_S);
+  delete_op_idx = utility_get_option_int_value (arg_map, TDE_DELETE_KEY_S);
+
+  print_val = utility_get_option_bool_value (arg_map, TDE_PRINT_KEY_VALUE_S);
+  dba_password = utility_get_option_string_value (arg_map, TDE_DBA_PASSWORD_S, 0);
+
+  if (gen_op)
+    {
+      op_cnt++;
+    }
+  if (show_op)
+    {
+      op_cnt++;
+    }
+  if (change_op_idx != -1)
+    {
+      op_cnt++;
+    }
+  if (delete_op_idx != -1)
+    {
+      op_cnt++;
+    }
+
+  if (op_cnt != 1)
+    {
+      /* Only one and at least one operation has to be given */
+      /* -c -1 -d -1 -n is now allowed, but it's trivial */
+      goto print_tde_usage;
+    }
+
+  /* Checking input range, -1 means not the operation case */
+  if (change_op_idx < -1)
+    {
+      goto print_tde_usage;
+    }
+  if (delete_op_idx < -1)
+    {
+      goto print_tde_usage;
+    }
+
+  /* extra validation */
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", dba_password) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  /* first try to restart with the password given (possibly none) */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error)
+    {
+      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  passbuf = getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    {
+	      passbuf = (char *) NULL;
+	    }
+	  dba_password = passbuf;
+	  if (db_login ("DBA", dba_password) != NO_ERROR)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      error = db_restart (arg->command_name, TRUE, database_name);
+	    }
+	}
+
+      if (error)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+
+  if (tde_get_mk_file_path (mk_path) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
+    }
+
+  printf ("Key File: %s\n", mk_path);
+
+  /* 
+   * The file lock here is necessary to provide exclusiveness with backupdb in the current design.
+   */
+  vdes = fileio_mount (NULL, database_name, mk_path, LOG_DBTDE_KEYS_VOLID, 1, false);
+  if (vdes == NULL_VOLDES)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      db_shutdown ();
+      goto error_exit;
+    }
+  /* 
+   * There is no need to call fileio_dismount() for 'vdes' later in this function
+   * because it is dismounted in db_shutdown() 
+   * */
+
+  printf ("\n");
+  if (gen_op)
+    {
+      unsigned char master_key[TDE_MASTER_KEY_LENGTH];
+      int mk_index = -1;
+      time_t created_time;
+      char ctime_buf[CTIME_MAX];
+
+      if (tde_create_mk (master_key, &created_time) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+      if (tde_add_mk (vdes, master_key, created_time, &mk_index) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+      ctime_r (&created_time, ctime_buf);
+      printf ("SUCCESS: ");
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_GENERATED), mk_index, ctime_buf);
+      if (print_val)
+	{
+	  printf ("Key: ");
+	  tde_print_mk (master_key);
+	  printf ("\n");
+	}
+    }
+  else if (show_op)
+    {
+      int mk_index;
+      time_t created_time, set_time;
+      char ctime_buf1[CTIME_MAX];
+      char ctime_buf2[CTIME_MAX];
+
+      printf ("The current key set on %s:\n", database_name);
+      if (tde_get_mk_info (&mk_index, &created_time, &set_time) == NO_ERROR)
+	{
+	  ctime_r (&created_time, ctime_buf1);
+	  ctime_r (&set_time, ctime_buf2);
+
+	  printf ("Key Index: %d\n", mk_index);
+	  printf ("Created on %s", ctime_buf1);
+	  printf ("Set     on %s", ctime_buf2);
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_NO_SET_MK_INFO));
+	}
+      printf ("\n");
+      if (tde_dump_mks (vdes, print_val) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+    }
+  else if (change_op_idx != -1)
+    {
+      int prev_mk_idx;
+      time_t created_time, set_time;
+
+      if (tde_get_mk_info (&prev_mk_idx, &created_time, &set_time) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_CHANGING), prev_mk_idx,
+	      change_op_idx);
+      /* no need to check if the previous key exists or not. It is going to be checked on changing on server */
+      if (tde_change_mk_on_server (change_op_idx) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+
+      if (db_commit_transaction () != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+
+      printf ("SUCCESS: ");
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_CHANGED), prev_mk_idx,
+	      change_op_idx);
+    }
+  else if (delete_op_idx != -1)
+    {
+      int mk_index;
+      time_t created_time, set_time;
+
+      if (tde_get_mk_info (&mk_index, &created_time, &set_time) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+      if (mk_index == delete_op_idx)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s",
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE,
+						 TDE_MSG_MK_SET_ON_DATABASE_DELETE));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+      if (tde_delete_mk (vdes, delete_op_idx) != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("FAILURE: %s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+      printf ("SUCCESS: ");
+      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_MK_DELETED), delete_op_idx);
+    }
+
+  db_shutdown ();
+
+  return EXIT_SUCCESS;
+
+print_tde_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_TDE, TDE_MSG_USAGE), basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+error_exit:
+  return EXIT_FAILURE;
+}
+
+static void
+clean_stdin ()
+{
+  int c;
+
+  /* consumes all the values in the input buffer */
+  do
+    {
+      c = getchar ();
+    }
+  while (c != '\n' && c != EOF);
+}
+
+static time_t
+parse_date_string_to_time (char *date_string)
+{
+  assert (date_string != NULL);
+
+  time_t result = 0;
+  struct tm time_data = { };
+
+  if (sscanf
+      (date_string, "%d-%d-%d:%d:%d:%d", &time_data.tm_mday, &time_data.tm_mon, &time_data.tm_year, &time_data.tm_hour,
+       &time_data.tm_min, &time_data.tm_sec) != 6)
+    {
+      return 0;
+    }
+
+  if (time_data.tm_mday < 1 || time_data.tm_mday > 31
+      || time_data.tm_mon < 1 || time_data.tm_mon > 12
+      || time_data.tm_year < 1900
+      || time_data.tm_hour < 0 || time_data.tm_hour > 23
+      || time_data.tm_min < 0 || time_data.tm_min > 59 || time_data.tm_sec < 0 || time_data.tm_sec > 59)
+    {
+      return 0;
+    }
+
+  time_data.tm_mon -= 1;
+  time_data.tm_year -= 1900;
+  time_data.tm_isdst = -1;
+
+  result = mktime (&time_data);
+
+  return result < 0 ? 0 : result;
+}
+
+int
+flashback (UTIL_FUNCTION_ARG * arg)
+{
+#if defined (CS_MODE)
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
+
+  const char *database_name = NULL;
+  int num_tables = 0;
+  dynamic_array *darray = NULL;
+  int i = 0;
+  char table_name_buf[SM_MAX_IDENTIFIER_LENGTH];
+  char *table_name = NULL;
+
+  char *invalid_class = NULL;
+  int invalid_class_idx = 0;
+
+  time_t invalid_time = 0;
+
+  OID *oid_list = NULL;
+
+  const char *output_file = NULL;
+  FILE *outfp = NULL;
+  char *user = NULL;
+  const char *dba_password = NULL;
+
+  char *start_date = NULL;
+  char *end_date = NULL;
+  time_t start_time = 0;
+  time_t end_time = 0;
+
+  bool is_detail = false;
+  bool is_oldest = false;
+
+  char *passbuf = NULL;
+  int error = NO_ERROR;
+
+  int trid = 0;
+
+  int num_item = 5;
+  char *loginfo_list = NULL;
+
+  FLASHBACK_SUMMARY_INFO_MAP summary_info;
+  FLASHBACK_SUMMARY_INFO *summary_entry = NULL;
+
+  bool need_shutdown = false;
+
+  LOG_LSA start_lsa = LSA_INITIALIZER;
+  LOG_LSA end_lsa = LSA_INITIALIZER;
+
+  int timeout = 0;
+
+  time_t current_time = time (NULL);
+
+  num_tables = utility_get_option_string_table_size (arg_map) - 1;
+  if (num_tables < 1)
+    {
+      goto print_flashback_usage;
+    }
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_flashback_usage;
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  output_file = utility_get_option_string_value (arg_map, FLASHBACK_OUTPUT_S, 0);
+  user = utility_get_option_string_value (arg_map, FLASHBACK_USER_S, 0);
+  dba_password = utility_get_option_string_value (arg_map, FLASHBACK_DBA_PASSWORD_S, 0);
+  start_date = utility_get_option_string_value (arg_map, FLASHBACK_START_DATE_S, 0);
+  end_date = utility_get_option_string_value (arg_map, FLASHBACK_END_DATE_S, 0);
+  is_detail = utility_get_option_bool_value (arg_map, FLASHBACK_DETAIL_S);
+  is_oldest = utility_get_option_bool_value (arg_map, FLASHBACK_OLDEST_S);
+
+  /* create table list */
+  /* class existence and classoid will be found at server side. if is checked at utility side, it needs addtional access to the server through locator */
+  darray = da_create (num_tables, SM_MAX_IDENTIFIER_LENGTH);
+  if (darray == NULL)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+      goto error_exit;
+    }
+
+  /* start date check */
+  if (start_date != NULL && strlen (start_date) > 0)
+    {
+      start_time = parse_date_string_to_time (start_date);
+      if (start_time == 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
+	  goto error_exit;
+	}
+    }
+
+  /* end date check */
+  if (end_date != NULL && strlen (end_date) > 0)
+    {
+      end_time = parse_date_string_to_time (end_date);
+      if (end_time == 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_FORMAT));
+	  goto error_exit;
+	}
+    }
+
+  /* start time and end time setting.
+   * 1. 10 minutes before end time, if only end time is specified
+   * 2. 10 minutes after start time, if only start time is specified
+   * 3. if no time is specified, then get current execution time for end time */
+
+  if (start_time == 0 && end_time != 0)
+    {
+      start_time = end_time - 600;
+    }
+  else if (start_time != 0 && end_time == 0)
+    {
+      end_time = start_time + 600;
+    }
+  else if (start_time == 0 && end_time == 0)
+    {
+      end_time = time (NULL);
+      start_time = end_time - 600;
+    }
+
+  /* 1. start time < end time
+   * 2. start time is required to be set after db_creation time (server side check)
+   * 3. start time, and end time are required to be set within the log volume range (server side check) */
+  if (start_time >= end_time)
+    {
+      char sdate_buf[20];
+      char edate_buf[20];
+
+      if (start_date == NULL)
+	{
+	  strftime (sdate_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&start_time));
+	  start_date = sdate_buf;
+	}
+
+      if (end_date == NULL)
+	{
+	  strftime (edate_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&end_time));
+	  end_date = edate_buf;
+	}
+
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_DATE_RANGE),
+			     start_date, end_date);
+      goto error_exit;
+    }
+
+  /* output file check */
+  if (output_file == NULL)
+    {
+      outfp = stdout;
+    }
+  else
+    {
+      outfp = fopen (output_file, "w");
+      if (outfp == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_BAD_OUTPUT),
+				 output_file);
+
+	  goto error_exit;
+	}
+    }
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (db_login ("DBA", dba_password) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      goto error_exit;
+    }
+
+  /* first try to restart with the password given (possibly none) */
+  error = db_restart (arg->command_name, TRUE, database_name);
+  if (error)
+    {
+      if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
+	{
+	  /*
+	   * prompt for a valid password and try again, need a reusable
+	   * password prompter so we can use getpass() on platforms that
+	   * support it.
+	   */
+
+	  /* get password interactively if interactive mode */
+	  passbuf =
+	    getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_DBA_PASSWORD));
+	  if (passbuf[0] == '\0')	/* to fit into db_login protocol */
+	    {
+	      passbuf = (char *) NULL;
+	    }
+	  dba_password = passbuf;
+	  if (db_login ("DBA", dba_password) != NO_ERROR)
+	    {
+	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit;
+	    }
+	  else
+	    {
+	      error = db_restart (arg->command_name, TRUE, database_name);
+	    }
+	}
+
+      if (error)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	  goto error_exit;
+	}
+    }
+
+  need_shutdown = true;
+
+  if (!prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NO_SUPPLEMENTAL_LOG));
+      goto error_exit;
+    }
+
+  for (i = 0; i < num_tables; i++)
+    {
+      table_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, i + 1);
+
+      if (sm_check_system_class_by_name (table_name))
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+				  FLASHBACK_MSG_SYSTEM_CLASS_NOT_SUPPORTED), table_name);
+
+	  goto error_exit;
+	}
+
+      if (utility_check_class_name (table_name) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      strncpy_bufsize (table_name_buf, table_name);
+
+      if (da_add (darray, table_name_buf) != NO_ERROR)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+	  goto error_exit;
+	}
+    }
+
+  oid_list = (OID *) malloc (sizeof (OID) * num_tables);
+  if (oid_list == NULL)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
+      goto error_exit;
+    }
+
+  error =
+    flashback_get_and_show_summary (darray, user, start_time, end_time, &summary_info, &oid_list, &invalid_class,
+				    &invalid_time);
+  if (error != NO_ERROR)
+    {
+      /* print error message */
+      switch (error)
+	{
+	case ER_FLASHBACK_INVALID_TIME:
+	  {
+	    char db_creation_time[20];
+	    char current_time_buf[20];
+
+	    strftime (db_creation_time, 20, "%d-%m-%Y:%H:%M:%S", localtime (&invalid_time));
+	    strftime (current_time_buf, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
+
+	    PRINT_AND_LOG_ERR_MSG (msgcat_message
+				   (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TIME),
+				   current_time_buf, db_creation_time);
+	    break;
+	  }
+	case ER_FLASHBACK_INVALID_CLASS:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TABLE_NOT_EXIST),
+				 invalid_class);
+	  free_and_init (invalid_class);
+
+	  break;
+	case ER_FLASHBACK_EXCEED_MAX_NUM_TRAN_TO_SUMMARY:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TOO_MANY_TRANSACTION));
+	  break;
+	case ER_FLASHBACK_DUPLICATED_REQUEST:
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_DUPLICATED_REQUEST));
+
+	default:
+	  break;
+	}
+
+      goto error_exit;
+    }
+
+  if (summary_info.empty ())
+    {
+      goto error_exit;
+    }
+
+  timeout = prm_get_integer_value (PRM_ID_FLASHBACK_TIMEOUT);
+
+  while (summary_entry == NULL)
+    {
+      POLL_FD input_fd = { STDIN_FILENO, POLLIN | POLLPRI, 0 };
+
+      printf ("Enter transaction id (press -1 to quit): ");
+      fflush (stdout);
+
+      if (poll (&input_fd, 1, timeout * 1000))
+	{
+	  if (scanf ("%d", &trid) != 1)
+	    {
+	      /* When non integer value is input, the input buffer must be flushed. */
+	      clean_stdin ();
+
+	      continue;
+	    }
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_TIMEOUT), timeout);
+
+	  goto error_exit;
+	}
+
+      if (trid == -1)
+	{
+	  goto error_exit;
+	}
+
+      FLASHBACK_FIND_SUMMARY_ENTRY (trid, summary_info, summary_entry);
+      if (summary_entry == NULL)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_INVALID_TRANSACTION),
+				 trid);
+	}
+
+      printf ("\n");
+    }
+
+  start_lsa = summary_entry->start_lsa;
+  end_lsa = summary_entry->end_lsa;
+  user = summary_entry->user;
+
+  do
+    {
+      error =
+	flashback_get_loginfo (trid, user, oid_list, num_tables, &start_lsa, &end_lsa, &num_item, is_oldest,
+			       &loginfo_list, &invalid_class_idx);
+      if (error != NO_ERROR)
+	{
+	  switch (error)
+	    {
+	    case ER_FLASHBACK_SCHEMA_CHANGED:
+	      {
+		char classname[SM_MAX_IDENTIFIER_LENGTH];
+		da_get (darray, invalid_class_idx, classname);
+
+		PRINT_AND_LOG_ERR_MSG (msgcat_message
+				       (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+					FLASHBACK_MSG_TABLE_SCHEMA_CHANGED), classname);
+		break;
+	      }
+	    case ER_FLASHBACK_LOG_NOT_EXIST:
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK,
+				      FLASHBACK_MSG_LOG_VOLUME_NOT_EXIST));
+	      break;
+	    default:
+	      break;
+	    }
+
+	  goto error_exit;
+	}
+
+      error = flashback_print_loginfo (loginfo_list, num_item, darray, oid_list, is_detail, outfp);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+    }
+  while (!LSA_ISNULL (&start_lsa) && !LSA_ISNULL (&end_lsa) && LSA_LT (&start_lsa, &end_lsa));
+
+  db_shutdown ();
+
+  da_destroy (darray);
+
+  free_and_init (oid_list);
+
+  if (loginfo_list != NULL)
+    {
+      free_and_init (loginfo_list);
+    }
+
+  return EXIT_SUCCESS;
+
+print_flashback_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+error_exit:
+
+  if (need_shutdown)
+    {
+      db_shutdown ();
+    }
+
+  if (darray != NULL)
+    {
+      da_destroy (darray);
+    }
+
+  if (oid_list != NULL)
+    {
+      free_and_init (oid_list);
+    }
+
+  if (loginfo_list != NULL)
+    {
+      free_and_init (loginfo_list);
+    }
+
+  return EXIT_FAILURE;
+
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* !CS_MODE */
+
 }

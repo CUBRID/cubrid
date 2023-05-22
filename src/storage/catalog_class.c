@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -30,6 +29,7 @@
 
 #include "system_catalog.h"
 
+#include "btree.h"		// for single/multi ops
 #include "error_manager.h"
 #include "heap_file.h"
 #include "transform.h"
@@ -37,10 +37,12 @@
 #include "locator_sr.h"
 #include "xserver_interface.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "query_dump.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
+#include "string_opfunc.h"
 #include "thread_manager.hpp"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
@@ -53,8 +55,8 @@
     b = t; \
   } while (0)
 
-#define CATCLS_INDEX_NAME "i__db_class_class_name"
-#define CATCLS_INDEX_KEY   10
+#define CATCLS_INDEX_NAME "i__db_class_unique_name"
+#define CATCLS_INDEX_KEY   11
 
 #define CATCLS_OID_TABLE_SIZE   1024
 
@@ -572,16 +574,7 @@ catcls_guess_record_length (OR_VALUE * value_p)
     {
       data_type = DB_VALUE_DOMAIN_TYPE (&attrs_p[i].value);
       map_p = tp_Type_id_map[data_type];
-
-      if (map_p->data_lengthval != NULL)
-	{
-	  length += (*(map_p->data_lengthval)) (&attrs_p[i].value, 1);
-	}
-      else if (map_p->disksize)
-	{
-	  length += map_p->disksize;
-	}
-      /* else : is null-type */
+      length += map_p->get_disk_size_of_value (&attrs_p[i].value);
     }
 
   return (length);
@@ -691,9 +684,8 @@ catcls_find_oid_by_class_name (THREAD_ENTRY * thread_p, const char *name_p, OID 
   DB_VALUE key_val;
   int error = NO_ERROR;
 
-  error =
-    db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, (char *) name_p, (int) strlen (name_p), LANG_SYS_CODESET,
-		     LANG_SYS_COLLATION);
+  error = db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, name_p, (int) strlen (name_p), LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION);
   if (error != NO_ERROR)
     {
       return error;
@@ -990,6 +982,8 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   int size;
   OR_VALUE *resolution_p = NULL;
   OID class_oid;
+  const char *dot = NULL;
+  const char *class_name = NULL;
   int error = NO_ERROR;
 
   error = catcls_expand_or_value_by_def (value_p, &ct_Class);
@@ -1017,44 +1011,57 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   or_advance (buf_p, ORC_ATT_COUNT_OFFSET);
 
   /* attribute_count */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
 
   /* object_size */
   or_advance (buf_p, OR_INT_SIZE);
 
   /* shared_count */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[2].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[2].value, NULL, -1, true, NULL, 0);
 
   /* method_count */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[3].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[3].value, NULL, -1, true, NULL, 0);
 
   /* class_method_count */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[4].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[4].value, NULL, -1, true, NULL, 0);
 
   /* class_att_count */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[5].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[5].value, NULL, -1, true, NULL, 0);
 
   /* flags */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[6].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[6].value, NULL, -1, true, NULL, 0);
 
   /* class_type */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[7].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[7].value, NULL, -1, true, NULL, 0);
 
   /* owner */
-  (*(tp_Object.data_readval)) (buf_p, &attrs[8].value, NULL, -1, true, NULL, 0);
+  tp_Object.data_readval (buf_p, &attrs[8].value, NULL, -1, true, NULL, 0);
 
   /* collation_id */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[9].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[9].value, NULL, -1, true, NULL, 0);
+
+  /* tde_algorithm */
+  tp_Integer.data_readval (buf_p, &attrs[10].value, NULL, -1, true, NULL, 0);
 
   /* variable */
 
-  /* name */
-  attr_val_p = &attrs[10].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
+  /* unique_name */
+  attr_val_p = &attrs[11].value;
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
+  /* class_name */
+  class_name = db_get_string (attr_val_p);
+  assert (class_name != NULL);
+  dot = strchr (class_name, '.');
+  if (dot)
+    {
+      class_name = dot + 1;
+    }
+  db_make_string (&attrs[12].value, class_name);
+
   /* (class_of) */
-  if (catcls_find_class_oid_by_class_name (thread_p, db_get_string (&attrs[10].value), &class_oid) != NO_ERROR)
+  if (catcls_find_class_oid_by_class_name (thread_p, db_get_string (&attrs[11].value), &class_oid) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -1069,14 +1076,14 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   or_advance (buf_p, vars[ORC_REPRESENTATIONS_INDEX].length);
 
   /* sub_classes */
-  error = catcls_get_object_set (thread_p, buf_p, vars[ORC_SUBCLASSES_INDEX].length, &attrs[11]);
+  error = catcls_get_object_set (thread_p, buf_p, vars[ORC_SUBCLASSES_INDEX].length, &attrs[13]);
   if (error != NO_ERROR)
     {
       goto error;
     }
 
   /* super_classes */
-  error = catcls_get_object_set (thread_p, buf_p, vars[ORC_SUPERCLASSES_INDEX].length, &attrs[12]);
+  error = catcls_get_object_set (thread_p, buf_p, vars[ORC_SUPERCLASSES_INDEX].length, &attrs[14]);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1084,7 +1091,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* attributes */
   error =
-    catcls_get_subset (thread_p, buf_p, vars[ORC_ATTRIBUTES_INDEX].length, &attrs[13],
+    catcls_get_subset (thread_p, buf_p, vars[ORC_ATTRIBUTES_INDEX].length, &attrs[15],
 		       catcls_get_or_value_from_attribute);
   if (error != NO_ERROR)
     {
@@ -1093,7 +1100,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* shared_attributes */
   error =
-    catcls_get_subset (thread_p, buf_p, vars[ORC_SHARED_ATTRS_INDEX].length, &attrs[14],
+    catcls_get_subset (thread_p, buf_p, vars[ORC_SHARED_ATTRS_INDEX].length, &attrs[16],
 		       catcls_get_or_value_from_attribute);
   if (error != NO_ERROR)
     {
@@ -1102,7 +1109,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* class_attributes */
   error =
-    catcls_get_subset (thread_p, buf_p, vars[ORC_CLASS_ATTRS_INDEX].length, &attrs[15],
+    catcls_get_subset (thread_p, buf_p, vars[ORC_CLASS_ATTRS_INDEX].length, &attrs[17],
 		       catcls_get_or_value_from_attribute);
   if (error != NO_ERROR)
     {
@@ -1111,7 +1118,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* methods */
   error =
-    catcls_get_subset (thread_p, buf_p, vars[ORC_METHODS_INDEX].length, &attrs[16], catcls_get_or_value_from_method);
+    catcls_get_subset (thread_p, buf_p, vars[ORC_METHODS_INDEX].length, &attrs[18], catcls_get_or_value_from_method);
   if (error != NO_ERROR)
     {
       goto error;
@@ -1119,7 +1126,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* class_methods */
   error =
-    catcls_get_subset (thread_p, buf_p, vars[ORC_CLASS_METHODS_INDEX].length, &attrs[17],
+    catcls_get_subset (thread_p, buf_p, vars[ORC_CLASS_METHODS_INDEX].length, &attrs[19],
 		       catcls_get_or_value_from_method);
   if (error != NO_ERROR)
     {
@@ -1127,15 +1134,15 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
     }
 
   /* (apply attribute & method type) */
-  catcls_apply_component_type (&attrs[13], 0);
-  catcls_apply_component_type (&attrs[14], 2);
-  catcls_apply_component_type (&attrs[15], 1);
-  catcls_apply_component_type (&attrs[16], 0);
+  catcls_apply_component_type (&attrs[15], 0);
+  catcls_apply_component_type (&attrs[16], 2);
   catcls_apply_component_type (&attrs[17], 1);
+  catcls_apply_component_type (&attrs[18], 0);
+  catcls_apply_component_type (&attrs[19], 1);
 
   /* method_files */
   error =
-    catcls_get_subset (thread_p, buf_p, vars[ORC_METHOD_FILES_INDEX].length, &attrs[18],
+    catcls_get_subset (thread_p, buf_p, vars[ORC_METHOD_FILES_INDEX].length, &attrs[20],
 		       catcls_get_or_value_from_method_file);
   if (error != NO_ERROR)
     {
@@ -1160,18 +1167,18 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 	  goto error;
 	}
 
-      catcls_apply_resolutions (&attrs[13], resolution_p);
-      catcls_apply_resolutions (&attrs[14], resolution_p);
       catcls_apply_resolutions (&attrs[15], resolution_p);
       catcls_apply_resolutions (&attrs[16], resolution_p);
       catcls_apply_resolutions (&attrs[17], resolution_p);
+      catcls_apply_resolutions (&attrs[18], resolution_p);
+      catcls_apply_resolutions (&attrs[19], resolution_p);
       catcls_free_or_value (resolution_p);
       resolution_p = NULL;
     }
 
   /* query_spec */
   error =
-    catcls_get_subset (thread_p, buf_p, vars[ORC_QUERY_SPEC_INDEX].length, &attrs[19],
+    catcls_get_subset (thread_p, buf_p, vars[ORC_QUERY_SPEC_INDEX].length, &attrs[21],
 		       catcls_get_or_value_from_query_spec);
   if (error != NO_ERROR)
     {
@@ -1182,20 +1189,20 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   or_advance (buf_p, vars[ORC_TRIGGERS_INDEX].length);
 
   /* properties */
-  error = catcls_get_property_set (thread_p, buf_p, vars[ORC_PROPERTIES_INDEX].length, &attrs[20]);
+  error = catcls_get_property_set (thread_p, buf_p, vars[ORC_PROPERTIES_INDEX].length, &attrs[22]);
   if (error != NO_ERROR)
     {
       goto error;
     }
 
   /* comment */
-  attr_val_p = &attrs[21].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_COMMENT_INDEX].length, true, NULL, 0);
+  attr_val_p = &attrs[23].value;
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_COMMENT_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_CLASS_COMMENT_LENGTH);
 
   /* partition information */
   error =
-    catcls_get_subset (thread_p, buf_p, vars[ORC_PARTITION_INDEX].length, &attrs[22],
+    catcls_get_subset (thread_p, buf_p, vars[ORC_PARTITION_INDEX].length, &attrs[24],
 		       catcls_get_or_value_from_partition);
   if (error != NO_ERROR)
     {
@@ -1243,7 +1250,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   int size;
   int error = NO_ERROR;
   const char *default_expr_type_string = NULL;
-  char *def_expr_format_string = NULL;
+  const char *def_expr_format_string = NULL;
   bool with_to_char = false;
 
   error = catcls_expand_or_value_by_def (value_p, &ct_Attribute);
@@ -1271,17 +1278,17 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   or_advance (buf_p, OR_INT_SIZE);
 
   /* type */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[4].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[4].value, NULL, -1, true, NULL, 0);
 
   /* offset */
   or_advance (buf_p, OR_INT_SIZE);
 
   /* order */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[5].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[5].value, NULL, -1, true, NULL, 0);
 
   /* class */
   attr_val_p = &attrs[6].value;
-  (*(tp_Object.data_readval)) (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
+  tp_Object.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
@@ -1291,7 +1298,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
   /* flag */
   attr_val_p = &attrs[7].value;
-  (*(tp_Integer.data_readval)) (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
 
   /* for 'is_nullable', reverse NON_NULL flag */
   db_make_int (attr_val_p, (db_get_int (attr_val_p) & SM_ATTFLAG_NON_NULL) ? false : true);
@@ -1309,7 +1316,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
   /* name */
   attr_val_p = &attrs[1].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_ATT_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_ATT_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* default value */
@@ -1373,7 +1380,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   if (att_props != NULL)
     {
       size_t default_value_len = 0;
-      char *default_str_val = NULL;
+      const char *default_str_val = NULL;
 
       if (classobj_get_prop (att_props, "default_expr", &default_expr) > 0)
 	{
@@ -1434,6 +1441,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	      goto error;
 	    }
 	  len = strlen (default_expr_type_string);
+	  char *default_str_val_tmp = NULL;
 
 	  if (with_to_char)
 	    {
@@ -1444,8 +1452,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 		      + 6	/* parenthesis, a comma, a blank and quotes */
 		      + (def_expr_format_string ? strlen (def_expr_format_string) : 0));	/* nothing or format */
 
-	      default_str_val = (char *) db_private_alloc (thread_p, len + 1);
-	      if (default_str_val == NULL)
+	      default_str_val_tmp = (char *) db_private_alloc (thread_p, len + 1);
+	      if (default_str_val_tmp == NULL)
 		{
 		  pr_clear_value (&default_expr);
 		  pr_clear_value (&val);
@@ -1453,29 +1461,30 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 		  goto error;
 		}
 
-	      strcpy (default_str_val, default_expr_op_string);
-	      strcat (default_str_val, "(");
-	      strcat (default_str_val, default_expr_type_string);
+	      strcpy (default_str_val_tmp, default_expr_op_string);
+	      strcat (default_str_val_tmp, "(");
+	      strcat (default_str_val_tmp, default_expr_type_string);
 	      if (def_expr_format_string)
 		{
-		  strcat (default_str_val, ", \'");
-		  strcat (default_str_val, def_expr_format_string);
-		  strcat (default_str_val, "\'");
+		  strcat (default_str_val_tmp, ", \'");
+		  strcat (default_str_val_tmp, def_expr_format_string);
+		  strcat (default_str_val_tmp, "\'");
 		}
-	      strcat (default_str_val, ")");
+	      strcat (default_str_val_tmp, ")");
 	    }
 	  else
 	    {
-	      default_str_val = (char *) db_private_alloc (thread_p, len + 1);
-	      if (default_str_val == NULL)
+	      default_str_val_tmp = (char *) db_private_alloc (thread_p, len + 1);
+	      if (default_str_val_tmp == NULL)
 		{
 		  pr_clear_value (&default_expr);
 		  pr_clear_value (&val);
 		  error = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto error;
 		}
-	      strcpy (default_str_val, default_expr_type_string);
+	      strcpy (default_str_val_tmp, default_expr_type_string);
 	    }
+	  default_str_val = default_str_val_tmp;
 
 	  pr_clear_value (attr_val_p);	/* clean old default value */
 	  db_make_string (attr_val_p, default_str_val);
@@ -1552,7 +1561,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
   /* comment */
   attr_val_p = &attrs[10].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_ATT_COMMENT_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_ATT_COMMENT_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_COMMENT_LENGTH);
 
   if (vars)
@@ -1611,13 +1620,13 @@ catcls_get_or_value_from_attrid (THREAD_ENTRY * thread_p, OR_BUF * buf, OR_VALUE
     }
 
   /* id */
-  (*(tp_Integer.data_readval)) (buf, &attrs[0].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf, &attrs[0].value, NULL, -1, true, NULL, 0);
 
   or_advance (buf, (int) (start_ptr - buf->ptr) + vars[ORC_ATT_NAME_INDEX].offset);
 
   /* name */
   attr_val = &attrs[1].value;
-  (*(tp_String.data_readval)) (buf, attr_val, NULL, vars[ORC_ATT_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf, attr_val, NULL, vars[ORC_ATT_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val, DB_MAX_IDENTIFIER_LENGTH);
 
   /* go to the end */
@@ -1676,23 +1685,23 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
     }
 
   /* type */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
 
   /* precision */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[2].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[2].value, NULL, -1, true, NULL, 0);
 
   /* scale */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[3].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[3].value, NULL, -1, true, NULL, 0);
 
   /* codeset */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[4].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[4].value, NULL, -1, true, NULL, 0);
 
   /* collation id */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[5].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[5].value, NULL, -1, true, NULL, 0);
 
   /* class */
   attr_val_p = &attrs[6].value;
-  (*(tp_Object.data_readval)) (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
+  tp_Object.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
 
   if (!DB_IS_NULL (attr_val_p))
     {
@@ -1728,7 +1737,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
     {
       /* enumerations are stored as a collection of strings */
       TP_DOMAIN *string_dom = tp_domain_resolve_default (DB_TYPE_STRING);
-      PR_TYPE *seq_type = PR_TYPE_FROM_ID (DB_TYPE_SEQUENCE);
+      PR_TYPE *seq_type = pr_type_from_id (DB_TYPE_SEQUENCE);
 
       TP_DOMAIN *domain = tp_domain_construct (DB_TYPE_SEQUENCE, NULL, 0, 0, string_dom);
       if (domain == NULL)
@@ -1738,7 +1747,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
 	}
       domain = tp_domain_cache (domain);
 
-      (*(seq_type->data_readval)) (buf_p, &attrs[7].value, domain, -1, true, NULL, 0);
+      seq_type->data_readval (buf_p, &attrs[7].value, domain, -1, true, NULL, 0);
     }
 
   /* set_domain */
@@ -1821,7 +1830,7 @@ catcls_get_or_value_from_method (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
 
   /* class */
   attr_val_p = &attrs[4].value;
-  (*(tp_Object.data_readval)) (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
+  tp_Object.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
@@ -1834,7 +1843,7 @@ catcls_get_or_value_from_method (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
 
   /* name */
   attr_val_p = &attrs[1].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_METHOD_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_METHOD_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* signatures */
@@ -1902,11 +1911,11 @@ catcls_get_or_value_from_method_signiture (THREAD_ENTRY * thread_p, OR_BUF * buf
     }
 
   /* arg_count */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
 
   /* function_name */
   attr_val_p = &attrs[2].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_METHSIG_FUNCTION_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_METHSIG_FUNCTION_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* string_def */
@@ -1982,10 +1991,10 @@ catcls_get_or_value_from_method_argument (THREAD_ENTRY * thread_p, OR_BUF * buf_
     }
 
   /* type */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
 
   /* index */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[2].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[2].value, NULL, -1, true, NULL, 0);
 
   /* domain */
   error =
@@ -2050,7 +2059,7 @@ catcls_get_or_value_from_method_file (THREAD_ENTRY * thread_p, OR_BUF * buf_p, O
 
   /* class */
   attr_val_p = &attrs[1].value;
-  (*(tp_Object.data_readval)) (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
+  tp_Object.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
@@ -2060,7 +2069,7 @@ catcls_get_or_value_from_method_file (THREAD_ENTRY * thread_p, OR_BUF * buf_p, O
 
   /* name */
   attr_val_p = &attrs[2].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_METHFILE_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_METHFILE_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* properties */
@@ -2120,7 +2129,7 @@ catcls_get_or_value_from_resolution (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR
 
   /* class */
   attr_val_p = &attrs[0].value;
-  (*(tp_Object.data_readval)) (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
+  tp_Object.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
   error = catcls_convert_class_oid_to_oid (thread_p, attr_val_p);
   if (error != NO_ERROR)
     {
@@ -2129,16 +2138,16 @@ catcls_get_or_value_from_resolution (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR
     }
 
   /* type */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[2].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[2].value, NULL, -1, true, NULL, 0);
 
   /* name */
   attr_val_p = &attrs[3].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* alias */
   attr_val_p = &attrs[1].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   if (vars)
@@ -2195,7 +2204,7 @@ catcls_get_or_value_from_query_spec (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR
 
   /* specification */
   attr_val_p = &attrs[1].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_QUERY_SPEC_SPEC_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_QUERY_SPEC_SPEC_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
 
   if (vars)
@@ -2483,7 +2492,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 				  goto error;
 				}
 
-			      buffer = db_get_string (&temp);
+			      // use const_cast since of a limitation of or_unpack_* functions which do not accept const
+			      buffer = CONST_CAST (char *, db_get_string (&temp));
 			      ptr = buffer;
 			      ptr = or_unpack_domain (ptr, &fi_domain, NULL);
 
@@ -2726,7 +2736,7 @@ catcls_get_object_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p, int expected_siz
 
   for (i = 0; i < count; i++)
     {
-      (*(tp_Object.data_readval)) (buf_p, &oid_val, NULL, -1, true, NULL, 0);
+      tp_Object.data_readval (buf_p, &oid_val, NULL, -1, true, NULL, 0);
 
       error = catcls_convert_class_oid_to_oid (thread_p, &oid_val);
       if (error != NO_ERROR)
@@ -2794,7 +2804,7 @@ catcls_get_property_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p, int expected_s
       db_value_put_null (&vals[i]);
     }
 
-  (*(tp_Sequence.data_readval)) (buf_p, &prop_val, NULL, expected_size, true, NULL, 0);
+  tp_Sequence.data_readval (buf_p, &prop_val, NULL, expected_size, true, NULL, 0);
   prop_seq_p = db_get_set (&prop_val);
 
   for (i = 0; i < SM_PROPERTY_NUM_INDEX_FAMILY; i++)
@@ -3054,7 +3064,7 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      /* Currently, we have reached here the situation where an instance has already been removed by the same
-	       * transaction. One example is when dropping a partition. The instances corresponding the partitions will 
+	       * transaction. One example is when dropping a partition. The instances corresponding the partitions will
 	       * first be removed, which implies that the class OID can no longer be found and will be set to NULL. */
 	      er_clear ();
 	    }
@@ -3158,7 +3168,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
 	}
       else
 	{
-	  (*((*tp_Type_id_map[data_type]).data_writeval)) (buf_p, &attrs[i].value);
+	  (*tp_Type_id_map[data_type]).data_writeval (buf_p, &attrs[i].value);
 	  OR_ENABLE_BOUND_BIT (bound_bits, i);
 	}
     }
@@ -3189,7 +3199,7 @@ catcls_put_or_value_into_buffer (OR_VALUE * value_p, int chn, OR_BUF * buf_p, OI
       offset = (int) (buf_p->ptr - buf_p->buffer - header_size);
 
       data_type = variable_p[i].type;
-      (*((*tp_Type_id_map[data_type]).data_writeval)) (buf_p, &var_attrs[i].value);
+      (*tp_Type_id_map[data_type]).data_writeval (buf_p, &var_attrs[i].value);
 
       OR_PUT_OFFSET (offset_p, offset);
       offset_p += BIG_VAR_OFFSET_SIZE;
@@ -3239,6 +3249,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   int i, pad, size, rc;
   int error = NO_ERROR;
   char mvcc_flags;
+  int offset_size;
 
   fixed_p = repr_p->fixed;
   n_fixed = repr_p->n_fixed;
@@ -3248,8 +3259,10 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   attrs = value_p->sub.value;
   n_attrs = n_fixed + n_variable;
 
+  offset_size = OR_GET_OFFSET_SIZE (buf_p->ptr);
+
   /* header */
-  assert (OR_GET_OFFSET_SIZE (buf_p->ptr) == BIG_VAR_OFFSET_SIZE);
+  assert (offset_size == BIG_VAR_OFFSET_SIZE || offset_size == SHORT_VAR_OFFSET_SIZE);
 
   repr_id_bits = or_mvcc_get_repid_and_flags (buf_p, &rc);
   /* get bound_bits_flag and skip other MVCC header fields */
@@ -3289,7 +3302,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
     }
 
   /* get the offsets relative to the end of the header (beginning of variable table) */
-  vars = or_get_var_table (buf_p, n_variable, catcls_unpack_allocator);
+  vars = or_get_var_table_internal (buf_p, n_variable, catcls_unpack_allocator, offset_size);
   if (vars == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -3314,7 +3327,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
 
       if (bound_bits_flag && OR_GET_BOUND_BIT (bound_bits, i))
 	{
-	  (*((*tp_Type_id_map[data_type]).data_readval)) (buf_p, &attrs[i].value, NULL, -1, true, NULL, 0);
+	  (*tp_Type_id_map[data_type]).data_readval (buf_p, &attrs[i].value, NULL, -1, true, NULL, 0);
 	}
       else
 	{
@@ -3346,7 +3359,7 @@ catcls_get_or_value_from_buffer (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
   for (i = 0; i < n_variable; i++)
     {
       data_type = variable_p[i].type;
-      (*((*tp_Type_id_map[data_type]).data_readval)) (buf_p, &var_attrs[i].value, NULL, vars[i].length, true, NULL, 0);
+      (*tp_Type_id_map[data_type]).data_readval (buf_p, &var_attrs[i].value, NULL, vars[i].length, true, NULL, 0);
       error = catcls_expand_or_value_by_subset (thread_p, &var_attrs[i]);
       if (error != NO_ERROR)
 	{
@@ -3476,10 +3489,8 @@ catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record_p, OID
   OR_BUF *buf_p, repr_buffer;
   REPR_ID repr_id;
   DISK_REPR *repr_p = NULL;
-  int error;
 
-  error = catalog_get_last_representation_id (thread_p, class_oid_p, &repr_id);
-  if (error != NO_ERROR)
+  if (catalog_get_last_representation_id (thread_p, class_oid_p, &repr_id) != NO_ERROR)
     {
       goto error;
     }
@@ -3488,7 +3499,6 @@ catcls_get_or_value_from_record (THREAD_ENTRY * thread_p, RECDES * record_p, OID
   if (repr_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      error = er_errid ();
       goto error;
     }
 
@@ -3820,7 +3830,7 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, true, SINGLE_ROW_INSERT, scan_p, false, false,
-				   hfid_p, NULL) != NO_ERROR)
+				   hfid_p, NULL, false, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -3862,7 +3872,7 @@ static int
 catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p, HFID * hfid_p, HEAP_SCANCACHE * scan_p)
 {
   HEAP_OPERATION_CONTEXT delete_context;
-  RECDES record;
+  RECDES record = RECDES_INITIALIZER;
   OR_VALUE *value_p = NULL;
   OR_VALUE *attrs;
   int i;
@@ -3872,7 +3882,6 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
   int error = NO_ERROR;
 
   assert (oid_p != NULL && class_oid_p != NULL && hfid_p != NULL && scan_p != NULL);
-  record.data = NULL;
 
 #if defined(SERVER_MODE)
   if (lock_object (thread_p, oid_p, class_oid_p, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
@@ -3913,7 +3922,7 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
 
   /* for replication */
   if (locator_add_or_remove_index (thread_p, &record, oid_p, class_oid_p, false, SINGLE_ROW_DELETE, scan_p, false,
-				   false, hfid_p, NULL) != NO_ERROR)
+				   false, hfid_p, NULL, false, false) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -3959,7 +3968,7 @@ static int
 catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p, OID * class_oid_p, HFID * hfid_p,
 			HEAP_SCANCACHE * scan_p, UPDATE_INPLACE_STYLE force_in_place)
 {
-  RECDES record, old_record;
+  RECDES record = RECDES_INITIALIZER, old_record = RECDES_INITIALIZER;
   OR_VALUE *old_value_p = NULL;
   OR_VALUE *attrs, *old_attrs;
   OR_VALUE *subset_p, *attr_p;
@@ -3967,9 +3976,6 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   bool uflag = false;
   int i, j, k;
   int error = NO_ERROR;
-
-  record.data = NULL;
-  old_record.data = NULL;
 
   if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
     {
@@ -4402,6 +4408,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
+	      (void) heap_scancache_end (thread_p, &scan);
 	      return error;
 	    }
 
@@ -4455,7 +4462,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
 /*
  * catcls_get_server_compat_info () - get the language id, charset id and
- *				      timezone checksum stored in the 
+ *				      timezone checksum stored in the
  *				      "db_root" system table
  *   return: NO_ERROR, or error code
  *   thread_p(in)  : thread context
@@ -4588,7 +4595,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
   scan_cache_inited = false;
 
   /* read values of the single record in heap */
-  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       error = ER_FAILED;
@@ -4606,7 +4613,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto exit;
@@ -4628,7 +4635,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 	    }
 	  else if (heap_value->attrid == lang_att_id)
 	    {
-	      char *lang_str = NULL;
+	      const char *lang_str = NULL;
 	      size_t lang_str_len;
 
 	      if (DB_IS_NULL (&heap_value->dbvalue))
@@ -4655,7 +4662,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 	    }
 	  else if (heap_value->attrid == timezone_id)
 	    {
-	      char *checksum = NULL;
+	      const char *checksum = NULL;
 	      size_t checksum_len;
 
 	      if (DB_IS_NULL (&heap_value->dbvalue))
@@ -4675,7 +4682,7 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
 		{
 		  /* Copying length 0 from NULL pointer fails when DUMA is enabled. */
 		  assert (checksum != NULL);
-		  strncpy (timezone_checksum, checksum, checksum_len);
+		  strcpy (timezone_checksum, checksum);
 		}
 	      timezone_checksum[checksum_len] = '\0';
 	    }
@@ -4702,7 +4709,7 @@ exit:
  *   return:
  *   thread_p(in): thred entry
  *   value(in): new values
- *   old_value_p(in): old values 
+ *   old_value_p(in): old values
  *   uflag(in): update necessary flag
  *   force_in_place(in): UPDATE_INPLACE style
  */
@@ -5030,7 +5037,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
   scan_cache_inited = false;
 
   /* read values of all records in heap */
-  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       error = ER_FAILED;
@@ -5059,7 +5066,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
       HEAP_ATTRVALUE *heap_value = NULL;
       LANG_COLL_COMPAT *curr_coll;
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto exit;
@@ -5090,7 +5097,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 	    }
 	  else if (heap_value->attrid == coll_name_att_id)
 	    {
-	      char *lang_str = NULL;
+	      const char *lang_str = NULL;
 	      size_t lang_str_len;
 
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue)) == DB_TYPE_STRING);
@@ -5110,7 +5117,7 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
 	    }
 	  else if (heap_value->attrid == checksum_att_id)
 	    {
-	      char *checksum_str = NULL;
+	      const char *checksum_str = NULL;
 	      size_t str_len;
 
 	      assert (DB_VALUE_DOMAIN_TYPE (&(heap_value->dbvalue)) == DB_TYPE_STRING);
@@ -5251,7 +5258,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_hfid_from_class_oid (thread_p, &class_oid, &hfid);
+  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
   if (error != NO_ERROR || HFID_IS_NULL (&hfid))
     {
       error = ER_FAILED;
@@ -5269,7 +5276,7 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
     {
       HEAP_ATTRVALUE *heap_value = NULL;
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, NULL, &attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto exit;
@@ -5389,16 +5396,16 @@ catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
     }
 
   /* type */
-  (*(tp_Integer.data_readval)) (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[1].value, NULL, -1, true, NULL, 0);
 
   /* name */
   attr_val_p = &attrs[2].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_NAME_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_NAME_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
 
   /* expr */
   attr_val_p = &attrs[3].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_EXPR_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_EXPR_INDEX].length, true, NULL, 0);
   assert (DB_IS_NULL (attr_val_p) || db_get_string_length (attr_val_p) <= DB_MAX_PARTITION_EXPR_LENGTH);
 
   /* values */
@@ -5411,7 +5418,7 @@ catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
   /* comment */
   attr_val_p = &attrs[5].value;
-  (*(tp_String.data_readval)) (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_COMMENT_INDEX].length, true, NULL, 0);
+  tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_PARTITION_COMMENT_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_SPEC_LENGTH);
 
   if (vars)

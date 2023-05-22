@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -40,7 +39,9 @@
 #include "oid.h"
 #include "disk_manager.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "file_io.h"
+#include "tde.h"
 
 #if defined (SERVER_MODE)
 #define AUTO_ADD_VOL_EXPAND_NPAGES        (20)
@@ -86,6 +87,26 @@ struct check_args
 
 extern void boot_server_status (BOOT_SERVER_STATUS status);
 
+/* structure for passing arguments into boot_restart_server et. al. */
+typedef struct bo_restart_arg BO_RESTART_ARG;
+struct bo_restart_arg
+{
+  bool printtoc;		/* True to show backup's table of contents */
+  time_t stopat;		/* the recovery stop time if restarting from backup */
+  const char *backuppath;	/* Pathname override for location of backup volumes */
+  int level;			/* The backup level to use */
+  const char *verbose_file;	/* restoredb verbose msg file */
+  bool newvolpath;		/* true: restore the database and log volumes to the path specified in the
+				 * database-loc-file */
+  bool restore_upto_bktime;
+
+  bool restore_slave;		/* restore slave */
+  bool is_restore_from_backup;
+  INT64 db_creation;		/* database creation time */
+  LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
+  char keys_file_path[PATH_MAX];	/* Master Key File (_keys) path for TDE. If it is not NULL, it is used, not the keys spcified system parameter or from default path */
+};
+
 #if defined(SERVER_MODE)
 /* in xserver_interface.h */
 extern void boot_donot_shutdown_server_at_exit (void);
@@ -103,9 +124,10 @@ extern VOLID boot_find_next_permanent_volid (THREAD_ENTRY * thread_p);
 extern int boot_reset_db_parm (THREAD_ENTRY * thread_p);
 
 extern int boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db_name, bool from_backup,
-				CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args);
+				CHECK_ARGS * check_coll_and_timezone, BO_RESTART_ARG * r_args, bool skip_vacuum);
 extern int xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const char *db_name,
 				      BO_RESTART_ARG * r_args);
+extern int boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args);
 extern bool xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final);
 extern int xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char *new_db_name,
 		       const char *new_db_path, const char *new_log_path, const char *new_lob_path,

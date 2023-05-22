@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -64,16 +63,22 @@
 	  }			\
 	} while (0)
 
-#define ALLOC_COPY(PTR, STR)			\
+#define ALLOC_N_COPY(PTR, STR, SIZE)		\
 	do {					\
 	  if (STR == NULL)			\
 	    PTR = NULL;				\
 	  else {				\
-	    PTR = (char *) MALLOC(strlen(STR) + 1);	\
+	    PTR = (char *) MALLOC(SIZE);			\
 	    if (PTR) {				\
-	      strcpy(PTR, STR);			\
+	      strncpy(PTR, STR, SIZE);		\
+	      PTR[SIZE - 1] = '\0';		\
 	    }					\
 	  }					\
+	} while (0)
+
+#define ALLOC_COPY_STRLEN(PTR, STR)			\
+	do {					\
+	  ALLOC_N_COPY(PTR, STR, strlen(STR) + 1); \
 	} while (0)
 
 #if defined(WINDOWS)
@@ -89,19 +94,6 @@
 	  (X) = INVALID_SOCKET;	\
 	} while (0)
 #endif
-
-#define ALLOC_N_COPY(PTR, STR, SIZE)		\
-	do {					\
-	  if (STR == NULL)			\
-	    PTR = NULL;				\
-	  else {				\
-	    PTR = MALLOC(SIZE);			\
-	    if (PTR) {				\
-	      strncpy(PTR, STR, SIZE);		\
-	      PTR[SIZE - 1] = '\0';		\
-	    }					\
-	  }					\
-	} while (0)
 
 #if defined(WINDOWS)
 #define SLEEP_SEC(X)                    Sleep((X) * 1000)
@@ -156,6 +148,15 @@ typedef size_t T_SOCKLEN;
 #else
 typedef socklen_t T_SOCKLEN;
 #endif
+
+enum
+{
+  FN_STATUS_NONE = -2,
+  FN_STATUS_IDLE = -1,
+  FN_STATUS_CONN = 0,
+  FN_STATUS_BUSY = 1,
+  FN_STATUS_DONE = 2
+};
 
 /* default charset for JDBC : ISO8859-1 */
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)

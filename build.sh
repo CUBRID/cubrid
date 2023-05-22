@@ -1,20 +1,20 @@
 #!/bin/bash
 #
-# Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-#
-#   This program is free software; you can redistribute it and/or modify 
-#   it under the terms of the GNU General Public License as published by 
-#   the Free Software Foundation; either version 2 of the License, or
-#   (at your option) any later version. 
-#
-#  This program is distributed in the hope that it will be useful, 
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-#  GNU General Public License for more details. 
-#
-#  You should have received a copy of the GNU General Public License 
-#  along with this program; if not, write to the Free Software 
-#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#  Copyright 2008 Search Solution Corporation
+#  Copyright 2016 CUBRID Corporation
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
 #
 
 # Build and package script for CUBRID
@@ -29,6 +29,7 @@ script_dir=$(dirname $(readlink -f $0))
 # variables for options
 build_target="x86_64"
 build_mode="release"
+build_generator="make"
 source_dir=`pwd`
 default_java_dir="/usr/lib/jvm/java"
 java_dir=""
@@ -52,6 +53,8 @@ version=""
 last_checking_msg=""
 output_packages=""
 without_cmserver=""
+without_jdbc="false"
+with_cci="true"
 
 function print_check ()
 {
@@ -122,12 +125,13 @@ function build_initialize ()
   minor_version=$(echo $version | cut -d . -f 2)
   patch_version=$(echo $version | cut -d . -f 3)
   extra_version=$(echo $version | cut -d . -f 4)
+  major_start_date='2019-12-12'
   if [ "x$extra_version" != "x" ]; then
     serial_number=$(echo $extra_version | cut -d - -f 1)
   elif [ -d $source_dir/.git ]; then
-    serial_number=$(cd $source_dir && git rev-list --count HEAD 2> /dev/null)
-    [ $? -ne 0 ] && serial_number=$(cd $source_dir && git log --oneline | wc -l)
-    hash_tag=$(cd $source_dir && git rev-parse --short HEAD)
+    serial_number=$(cd $source_dir && git rev-list --after $major_start_date --count HEAD | awk '{ printf "%04d", $1 }' 2> /dev/null)
+    [ $? -ne 0 ] && serial_number=$(cd $source_dir && git log --after $major_start_date --oneline | wc -l)
+    hash_tag=$(cd $source_dir && git rev-parse --short=7 HEAD)
     extra_version="$serial_number-$hash_tag"
   else
     extra_version=0000-unknown
@@ -174,6 +178,13 @@ function build_clean ()
       rm -rf $build_dir/*
     fi
   fi
+
+  if [ -f $source_dir/cubrid-cci/BUILD_NUMBER ]; then
+    if [ -f $source_dir/cubrid-cci/CCI-VERSION-DIST ]; then
+      rm $source_dir/cubrid-cci/CCI-VERSION-DIST
+    fi
+  fi
+
   print_result "OK"
 }
 
@@ -187,10 +198,31 @@ function build_configure ()
   fi
   print_result "OK"
 
+  print_check "Checking CCI directory"
+  if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
+    print_check "CCI source path is not exist. It must be built for dblink"
+    if [ -d $source_dir/.git/modules/cubrid-cci ]; then
+      git submodule deinit -f cubrid-cci
+    fi
+    git submodule init cubrid-cci
+    git submodule update cubrid-cci
+  fi
+  configure_options="$configure_options -DWITH_CCI=true"
+
   print_check "Checking manager server directory"
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
     without_cmserver="true"
     print_error "Manager server source path is not exist. It will not be built"
+  else
+    if [ "$with_cci" = "false" ]; then
+      print_error "Manager server source path is exist, but Manager server requires cci header, It will not be built"
+    fi
+  fi
+
+  print_check "Checking JDBC directory"
+  if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
+    without_jdbc="true"
+    print_error "JDBC source path is not exist. It will not be built"
   fi
 
   print_check "Setting environment variables"
@@ -236,7 +268,14 @@ function build_configure ()
   else
     configure_dir="$source_dir"
   fi
-  cmake -E chdir $build_dir cmake $configure_prefix $configure_options $source_dir
+
+  generate_opt=""
+  if [ "$build_generator" = "ninja" ]; then
+    generate_opt="-G Ninja"
+  fi
+	
+  cmake -E chdir $build_dir cmake $configure_prefix $configure_options $source_dir $generate_opt
+
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Configuring failed"
 }
 
@@ -260,7 +299,14 @@ function build_install ()
 {
   # make install
   print_check "Installing"
-  cmake --build $build_dir --target install
+
+  chdir_command="cmake -E chdir $build_dir"
+  if [ "$build_generator" = "ninja" ]; then
+    $chdir_command ninja install
+	else
+    $chdir_command make install
+  fi
+
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Installation failed"
 }
 
@@ -277,6 +323,20 @@ function build_package ()
   if [ ! -d "$source_dir/cubridmanager" -o ! -d "$source_dir/cubridmanager/server" ]; then
     without_cmserver="true"
     print_error "Manager server source path is not exist. It will not be packaged"
+  fi
+
+  print_check "Checking JDBC directory"
+  if [ ! -d "$source_dir/cubrid-jdbc" -o ! -d "$source_dir/cubrid-jdbc/src" ]; then
+    without_jdbc="true"
+    print_error "JDBC source path is not exist. It will not be packaged"
+  fi
+  
+  print_check "Checking CCI directory"
+  if [ ! -d "$source_dir/cubrid-cci" -o ! -d "$source_dir/cubrid-cci/src" ]; then
+    with_cci="false"
+    print_error "CCI source path is not exist. It will not be packaged"
+  else 
+    with_cci="true"
   fi
 
   if [ ! -d $output_dir ]; then
@@ -298,10 +358,25 @@ function build_package ()
 	  archive_cmd="zip -q $build_dir/$package_name -@"
 	fi
 	# add VERSION-DIST instead of VERSION file for full version string
-	(cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
-	  (git ls-files -o VERSION-DIST ; git ls-files &&
-	    (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|") | sed -e "/^VERSION$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
-	    rm cubrid-$version VERSION-DIST)
+  if [ -d $source_dir/.git -a -f $source_dir/VERSION ]; then
+	  (cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
+	    (git ls-files -o VERSION-DIST ; git ls-files &&
+	      (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|" &&
+	      ([ "$without_jdbc" = "true" ] || (cd $source_dir/cubrid-jdbc  && git ls-files -o output/VERSION-DIST; git ls-files) | sed -e "/^VERSION$/d" | sed -e "s|^|cubrid-jdbc/|") &&
+	      ([ "$with_cci" = "false" ] || (cd $source_dir/cubrid-cci  && git ls-files -o CCI-VERSION-DIST; git ls-files) | sed -e "/^BUILD_NUMBER$/d" | sed -e "s|^|cubrid-cci/|")) |
+              sed -e "/^VERSION$/d" -e "/^cubrid-jdbc$/d" -e "/^cubrid-cci$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
+	      rm cubrid-$version VERSION-DIST)
+  else
+    #Only handles packaging process when build to packaging file.
+    if [ "$package" = "src" ]; then
+      echo "-- Packaging Source to tar.gz"
+      (cd $source_dir && tar czf $build_dir/$package_name --exclude build_${build_target}_${build_mode} -C ${source_dir%/*} ${source_dir##*/})
+    else
+      echo "-- Packaging Source to ZIP"
+      (cd ${source_dir%/*} && zip --symlinks -rq $build_dir/$package_name ${source_dir##*/} -x \*build_${build_target}_${build_mode}\* && cd $source_dir)
+    fi
+  fi
+
 	if [ $? -eq 0 ]; then
 	  output_packages="$output_packages $package_name"
 	  [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
@@ -315,10 +390,14 @@ function build_package ()
 	fi
 
 	if [ "$package" = "cci" ]; then
-          package_basename="$product_name-CCI-$version-Linux.$build_target"
-        else
-          package_basename="$product_name-$version-Linux.$build_target"
-        fi
+	  if [ "$with_cci" = "true" ]; then
+	    cci_version=$(cat $source_dir/cubrid-cci/CCI-VERSION-DIST)
+            package_basename="$product_name-CCI-$cci_version-Linux.$build_target"
+	  fi
+  else
+    package_basename="$product_name-$version-Linux.$build_target"
+  fi
+  
 	if [ ! "$build_mode" = "release" ]; then
 	  package_basename="$package_basename-$build_mode"
 	fi
@@ -329,8 +408,10 @@ function build_package ()
 	  package_name="$package_basename.sh"
 	  (cd $build_dir && cpack -G STGZ -B $output_dir)
 	elif [ "$package" = "cci" ]; then
-	  package_name="$package_basename.tar.gz"
-	  (cd $build_dir && cpack -G TGZ -D CPACK_COMPONENTS_ALL="CCI" -B $output_dir)
+	  if [ "$with_cci" = "true" ]; then
+	    package_name="$package_basename.tar.gz"
+	    (cd $build_dir && cpack -G TGZ -D CPACK_COMPONENTS_ALL="CCI" -B $output_dir)
+	  fi
 	elif [ "$package" = "rpm" ]; then
 	  package_name="$package_basename.rpm"
 	  (cd $build_dir && cpack -G RPM -B $output_dir)
@@ -344,10 +425,13 @@ function build_package ()
 	fi
       ;;
       jdbc)
-	package_name="JDBC-$build_number-$product_name_lower"
-	jar_files=$(cd $build_dir/jdbc && ls $package_name*.jar)
-	cp $build_dir/jdbc/$package_name*.jar $output_dir
-	[ $? -eq 0 ] && output_packages="$output_packages $jar_files"
+        if [ "$without_jdbc" = "false" ]; then
+          jar_files=$(ls $source_dir/cubrid-jdbc/JDBC-*.jar)
+          jdbc_version=$(cat $source_dir/cubrid-jdbc/output/VERSION-DIST)
+          package_name="JDBC-$jdbc_version-$product_name_lower"
+          cp $source_dir/cubrid-jdbc/JDBC-*.jar $output_dir
+          [ $? -eq 0 ] && output_packages="$output_packages $jar_files"
+        fi
       ;;
     esac
     [ $? -eq 0 ] && print_result "OK [$package_name]" || print_fatal "Packaging for $package failed"
@@ -385,6 +469,7 @@ function show_usage ()
   echo "  -m      Set build mode(release, debug or coverage); [default: release]"
   echo "  -i      Increase build number; [default: no]"
   echo "  -a      Run autogen.sh before build; [default: yes]"
+  echo "  -g      Specifies the generator for a build (make, ninja); [default: make]"
   echo "  -c opts Set configure options; [default: NONE]"
   echo "  -s path Set source path; [default: current directory]"
   echo "  -b path Set build path; [default: <source path>/build_<mode>_<target>]"
@@ -414,10 +499,11 @@ function show_usage ()
 
 function get_options ()
 {
-  while getopts ":t:m:is:b:p:o:aj:c:z:vh" opt; do
+  while getopts ":t:m:g:is:b:p:o:aj:c:z:vh" opt; do
     case $opt in
       t ) build_target="$OPTARG" ;;
       m ) build_mode="$OPTARG" ;;
+      g ) build_generator="$OPTARG" ;;
       s ) source_dir="$OPTARG" ;;
       b ) build_dir="$OPTARG" ;;
       p ) prefix_dir="$OPTARG" ;;
@@ -452,6 +538,11 @@ function get_options ()
     *) show_usage; print_fatal "Mode [$build_mode] is not valid mode" ;;
   esac
 
+  case $build_generator in
+    make|ninja);;
+    *) show_usage; print_fatal "Generator [$build_generator] is not valid mode" ;;
+  esac
+
   if [ "x$build_dir" = "x" ]; then
     build_dir="$source_dir/build_${build_target}_${build_mode}"
   fi
@@ -484,7 +575,7 @@ function get_options ()
 	packages="src zip_src tarball shell cci jdbc rpm"
 	;;
       *)
-	packages="tarball shell cci"
+	packages="tarball shell jdbc cci"
 	;;
     esac
   fi
@@ -505,7 +596,7 @@ function get_options ()
 function build_dist ()
 {
   if [ "$build_mode" = "coverage" ]; then
-    print_error "Pakcages with coverage mode is not supported. Skip"
+    print_error "Packages with coverage mode is not supported. Skip"
     return 0
   fi
 

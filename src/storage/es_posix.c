@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -111,11 +110,16 @@ es_make_dirs (const char *dirname1, const char *dirname2)
 
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
 retry:
-  snprintf (dirbuf, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2);
+  if (snprintf (dirbuf, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2)
+      < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
   ret = mkdir (dirbuf, 0755);
   if (ret < 0 && errno == ENOENT)
     {
-      snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1);
+      n = snprintf (dirbuf, PATH_MAX - 1, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1);
       ret = mkdir (dirbuf, 0755);
       if (ret == 0 || errno == EEXIST)
 	{
@@ -123,9 +127,14 @@ retry:
 	}
     }
 #else
-  snprintf (dirbuf, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1);
-  ret = mkdir (dirbuf, 0755);
+  if (snprintf (dirbuf, PATH_MAX - 1, "%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1) < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
+  ret = mkdir (dirbuf, 0744);
 #endif
+
   if (ret < 0 && errno != EEXIST)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", dirbuf);
@@ -148,7 +157,7 @@ es_rename_path (char *src, char *tgt, char *metaname)
   char *s, *t;
 
   assert (metaname != NULL);
-  /* 
+  /*
    * src: /.../ces_000/ces_tmp.123456789
    *                  ^
    *                  s
@@ -160,14 +169,14 @@ es_rename_path (char *src, char *tgt, char *metaname)
     {
       return;
     }
-  /* 
+  /*
    * tgt: /.../ces_000/ces_tmp.123456789
    *                  ^
    *                  t
    */
   t = tgt + (s - src) + 1;
 
-  /* 
+  /*
    * tgt: /.../ces_000/ces_tmp.123456789
    *                          ^
    *                          s
@@ -236,20 +245,25 @@ int
 xes_posix_create_file (char *new_path)
 {
   int fd;
-  int ret;
+  int ret, n;
   char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
 
 retry:
   es_get_unique_name (dirname1, dirname2, "ces_temp", filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2,
-	    PATH_SEPARATOR, filename);
+  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
+		dirname2, PATH_SEPARATOR, filename);
 #else
   /* default */
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
+  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
+  if (n < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_create_file(): %s\n", new_path);
+  es_log ("xes_posix_create_file(): %s\n", new_path);
 
 #if defined (WINDOWS)
   fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
@@ -300,9 +314,9 @@ xes_posix_write_file (const char *path, const void *buf, size_t count, off_t off
   ssize_t nbytes;
   size_t total = 0;
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_write_file(%s, count %d offset %ld)\n", path, count, offset);
+  es_log ("xes_posix_write_file(%s, count %d offset %ld)\n", path, count, offset);
 
-  /* 
+  /*
    * TODO: This block of codes prevents partial update or writing at advanced
    * position or something like that.
    * This restriction is introduced due to OwFS's capability.
@@ -381,7 +395,7 @@ xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
   ssize_t nbytes;
   size_t total = 0;
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_read_file(%s, count %d offset %ld)\n", path, count, offset);
+  es_log ("xes_posix_read_file(%s, count %d offset %ld)\n", path, count, offset);
 
 #if defined (WINDOWS)
   fd = open (path, O_RDONLY | O_BINARY);
@@ -453,7 +467,7 @@ xes_posix_delete_file (const char *path)
 {
   int ret;
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_delete_file(%s)\n", path);
+  es_log ("xes_posix_delete_file(%s)\n", path);
 
   ret = unlink (path);
   if (ret < 0)
@@ -477,7 +491,7 @@ xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
 {
 #define ES_POSIX_COPY_BUFSIZE		(4096 * 4)	/* 16K */
 
-  int rd_fd, wr_fd;
+  int rd_fd, wr_fd, n;
   ssize_t ret;
   char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
   char buf[ES_POSIX_COPY_BUFSIZE];
@@ -498,14 +512,19 @@ retry:
   /* create a target file */
   es_get_unique_name (dirname1, dirname2, metaname, filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, dirname2,
-	    PATH_SEPARATOR, filename);
+  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
+		dirname2, PATH_SEPARATOR, filename);
 #else
   /* default */
-  snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
+  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
+  if (n < 0)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
+  es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
 
 #if defined (WINDOWS)
   wr_fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
@@ -585,7 +604,7 @@ xes_posix_rename_file (const char *src_path, const char *metaname, char *new_pat
 
   es_rename_path ((char *) src_path, new_path, (char *) metaname);
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
+  es_log ("xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
 
   ret = os_rename_file (src_path, new_path);
 
@@ -605,7 +624,7 @@ xes_posix_get_file_size (const char *path)
   int ret;
   struct stat pstat;
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_get_file_size(%s)\n", path);
+  es_log ("xes_posix_get_file_size(%s)\n", path);
 
   ret = stat (path, &pstat);
   if (ret < 0)
@@ -631,7 +650,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
   ssize_t nbytes;
   size_t total = 0;
 
-  er_log_debug (ARG_FILE_LINE, "es_local_read_file(%s, count %d offset %ld)\n", path, count, offset);
+  es_log ("es_local_read_file(%s, count %d offset %ld)\n", path, count, offset);
 
 #if defined (WINDOWS)
   fd = open (path, O_RDONLY | O_BINARY);
@@ -696,7 +715,7 @@ es_local_get_file_size (const char *path)
   int ret;
   struct stat pstat;
 
-  er_log_debug (ARG_FILE_LINE, "es_local_get_file_size(%s)\n", path);
+  es_log ("es_local_get_file_size(%s)\n", path);
 
   ret = stat (path, &pstat);
   if (ret < 0)

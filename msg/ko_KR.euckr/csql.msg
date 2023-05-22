@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -41,12 +42,16 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -l, --line-output            한 라인 내에 값 표시\n\
   -r, --read-only              읽기 전용 모드\n\
   -t, --plain-output           스크립트 사용에 용이한 포맷으로 결과 값 출력 (-c와 -i 옵션 사용 시 적용)\n\
+  -q, --query-output           질의문 만둘기에 용이한 포맷으로 결과 값 출력 (-c와 -i 옵션 사용 시 적용)\n\
+  -d, --loaddb-output          loaddb로 만들기에 용이한 포맷으로 결과 값 출력 (-c와 -i 옵션 사용 시 적용)\n\
   -N, --skip-column-names      결과 값 컬럼 이름 숨김 (-c와 -i 옵션 사용 시 적용)\n\
       --string-width           각 문자열 컬럼 값을 출력할 길이\n\
       --no-auto-commit         자동 커밋 안 함\n\
       --no-pager               페이지 단위로 표시 안 함\n\
       --no-single-line         단일 라인 실행 안 함\n\
       --no-trigger-action      트리거 실행 안함\n\
+      --delimiter=ARG          컬럼간 구분자 (-q에서만 사용 가능)\n\
+      --enclosure=ARG          결과 문자열 엔글러저 (-q에서만 사용 가능)\n\
 \n\
 추가적인 정보는 http://www.cubrid.org 에서 얻을 수 있습니다.\n
 41 %1$s: 환경 변수 %2$s_MODE 의 값이 틀림. \n%3$s 또는 %4$s 이어야 합니다.\n
@@ -87,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d 개의 트랜잭션이 %2$s.
 83 %1$d 개의 트랜잭션이 %2$s.
+84 너무 적은 인자가 주어짐.
 
 145 <도움말: 클래스 스키마>
 146 없음
@@ -107,6 +113,7 @@ $ These 3 should be blank
 194 명령어 옵션 조합이 잘못되었습니다.
 196 미정의 에러 발생.
 197 출력이 재지정된 경우에는 ';edit' 명령어를 사용할 수 없습니다.
+198 포맷 실패.
 
 203 <%1$s> 
 204 <상위 클래스> 
@@ -147,7 +154,7 @@ $ csql help messages
    ;EXit                        - 종료.\n\
 \n\
    ;CLear                       - 명령어 버퍼 내용을 지움.\n\
-   ;EDIT                        - 명령어 버퍼 편집.\n\
+   ;EDIT   [format/fmt]         - 명령어 버퍼 [포맷 후] 편집.\n\
    ;LISt                        - 명령어 버퍼 내용 출력.\n\
 \n\
    ;RUn                         - 명령어 버퍼 실행.\n\
@@ -155,12 +162,15 @@ $ csql help messages
    ;COMmit                      - 진행 중인 트랜잭션 커밋.\n\
    ;ROllback                    - 진행 중인 트랜잭션 철회.\n\
    ;AUtocommit [ON|OFF]         - 자동 커밋 모드 설정|해제.\n\
-   ;REStart                     - 데이터베이스 재시작.\n\
+   ;REStart                     - CSQL 세션에서 현재 데이터베이스에 다시 연결.\n\
+   ;CHeckpoint                  - 체크포인트를 실행합니다(--sysadm으로 접속한 경우만 해당).\n\
+   ;Killtran                    - 트랜잭션 상태 정보를 확인하거나 특정 트랜잭션을 종료.(--sysadm으로 접속한 경우만 해당).\n\
 \n\
    ;SHELL_Cmd    [shell-cmd]    - 내정된 쉘을 설정하거나 보여줌.\n\
    ;EDITOR_Cmd   [editor-cmd]   - 내정된 편집기를 설정하거나 보여줌.\n\
    ;PRINT_Cmd    [print-cmd]    - 내정된 프린트 명령어를 설정하거나 보여줌.\n\
    ;PAger_cmd    [pager-cmd]    - 내정된 페이지 구분기를 설정하거나 보여줌.\n\
+   ;FOrmatter_cmd [formatter-cmd] - 내정된 포맷터를 설정하거나 보여줌.\n\
 \n\
    ;DATE                        - 지역 날짜, 시간 출력.\n\
    ;DATAbase                    - 접근 중인 데이터베이스 이름 출력.\n\
@@ -177,6 +187,13 @@ $ csql help messages
    ;HISTORYList                 - 수행된 쿼리 리스트 보기.\n\
    ;HISTORYRead <history_num>   - 히스토리 번호에 해당되는 쿼리를 명령어 버퍼에 올림.\n\
    ;TRAce [ON|OFF] [text/json]  - 쿼리 자동 트레이스 설정|해제.\n\
+   ;SIngleline [ON|OFF]         - 싱글 라인 모드 활성화|비활성화.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - 현재 또는 다른 데이터베이스에 사용자 이름으로 연결.\n\
+   ;.Hist [ON/OFF]              - CSQL에서 통계 정보 수집 시작|중지(DBA 만 가능).\n\
+   ;.Clear_hist                 - 버퍼에 있는 CSQL 통계 정보를 삭제.\n\
+   ;.Dump_hist                  - CSQL에서 CSQL 통계 정보를 표시.\n\
+   ;.X_hist                     - 통계 데이터를 초기화하여 CSQL에서 CSQL 통계 정보를 표시.\n\
    ;HElp                        - 도움말 메시지 출력.\n\n
 
 232 <제약사항> 

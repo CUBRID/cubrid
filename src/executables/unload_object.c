@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -41,8 +40,10 @@
 #define	SIGALRM	14
 #endif /* WINDOWS */
 
+#include "authenticate.h"
 #include "utility.h"
 #include "load_object.h"
+#include "log_lsa.hpp"
 #include "file_hash.h"
 #include "db.h"
 #include "memory_hash.h"
@@ -52,6 +53,8 @@
 #include "locator.h"
 #include "transform_cl.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
+#include "object_representation.h"
 #include "set_object.h"
 
 #include "message_catalog.h"
@@ -95,14 +98,14 @@ static char *class_processed = NULL;
 static OID null_oid;
 
 static const char *prohibited_classes[] = {
-  "db_authorizations",		/* old name for db_root */
-  "db_root",
-  "db_user",
-  "db_authorization",
-  "db_password",
-  "db_trigger",
-  "db_serial",
-  "db_ha_apply_info",
+  CT_AUTHORIZATIONS_NAME,	/* old name for db_root */
+  CT_ROOT_NAME,
+  CT_USER_NAME,
+  CT_AUTHORIZATION_NAME,
+  CT_PASSWORD_NAME,
+  CT_TRIGGER_NAME,
+  CT_SERIAL_NAME,
+  CT_HA_APPLY_INFO_NAME,
   /* catalog classes */
   CT_CLASS_NAME,
   CT_ATTRIBUTE_NAME,
@@ -122,6 +125,9 @@ static const char *prohibited_classes[] = {
   CT_PARTITION_NAME,
   CT_COLLATION_NAME,
   CT_CHARSET_NAME,
+  CT_DUAL_NAME,
+  CT_DB_SERVER_NAME,
+  CT_SYNONYM_NAME,
   /* catalog vclasses */
   CTV_CLASS_NAME,
   CTV_SUPER_CLASS_NAME,
@@ -141,33 +147,35 @@ static const char *prohibited_classes[] = {
   CTV_PARTITION_NAME,
   CTV_DB_COLLATION_NAME,
   CTV_DB_CHARSET_NAME,
+  CTV_DB_SERVER_NAME,
+  CTV_SYNONYM_NAME,
   NULL
 };
 
-static int class_objects = 0;
-static int total_objects = 0;
+static int64_t class_objects = 0;
+static int64_t total_objects = 0;
 static int failed_objects = 0;
 
-static int approximate_class_objects = 0;
+static int64_t approximate_class_objects = 0;
 static char *gauge_class_name;
-static int total_approximate_class_objects = 0;
+static int64_t total_approximate_class_objects = 0;
 
 
 #define OBJECT_SUFFIX "_objects"
 
 #define HEADER_FORMAT 	"-------------------------------+--------------------------------\n""    %-25s  |  %23s \n""-------------------------------+--------------------------------\n"
-#define MSG_FORMAT 		"    %-25s  |  %10d (%3d%% / %3d%%)"
+#define MSG_FORMAT 		"    %-25s  |  %10ld (%3d%% / %5d%%)"
 static FILE *unloadlog_file = NULL;
 
 
-static int get_estimated_objs (HFID * hfid, int *est_objects);
+static int get_estimated_objs (HFID * hfid, int64_t * est_objects);
 static int set_referenced_subclasses (DB_OBJECT * class_);
 static bool check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_refp);
 static void extractobjects_cleanup (void);
 static void extractobjects_term_handler (int sig);
 static bool mark_referenced_domain (SM_CLASS * class_ptr, int *num_set);
 static void gauge_alarm_handler (int sig);
-static int process_class (int cl_no);
+static int process_class (extract_context & ctxt, int cl_no);
 static int process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class);
 static int process_set (DB_SET * set);
 static int process_value (DB_VALUE * value);
@@ -182,7 +190,7 @@ static int all_classes_processed (void);
  *    est_objects(out): estimated number of object
  */
 static int
-get_estimated_objs (HFID * hfid, int *est_objects)
+get_estimated_objs (HFID * hfid, int64_t * est_objects)
 {
   int ignore_npages;
   int nobjs = 0;
@@ -194,7 +202,7 @@ get_estimated_objs (HFID * hfid, int *est_objects)
 
   *est_objects += nobjs;
 
-  return nobjs;
+  return 0;
 }
 
 /*
@@ -240,7 +248,7 @@ set_referenced_subclasses (DB_OBJECT * class_)
     }
   else
     {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
       fprintf (stdout, "cls_no_ptr is NULL\n");
 #endif /* CUBRID_DEBUG */
     }
@@ -251,7 +259,7 @@ set_referenced_subclasses (DB_OBJECT * class_)
       goto exit_on_error;
     }
 
-  if (check_reference_chain == true)
+  if (check_reference_chain)
     {
       mark_referenced_domain (class_ptr, &num_set);
     }
@@ -390,8 +398,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 
   for (attribute = class_ptr->shared; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
-      if (check_referenced_domain (attribute->domain, true /* do marking */ ,
-				   num_set) != false)
+      if (check_referenced_domain (attribute->domain, true /* do marking */ , num_set))
 	{
 	  return false;
 	}
@@ -399,8 +406,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 
   for (attribute = class_ptr->class_attributes; attribute != NULL; attribute = (SM_ATTRIBUTE *) attribute->header.next)
     {
-      if (check_referenced_domain (attribute->domain, true /* do marking */ ,
-				   num_set) != false)
+      if (check_referenced_domain (attribute->domain, true /* do marking */ , num_set))
 	{
 	  return false;
 	}
@@ -412,8 +418,7 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 	{
 	  continue;
 	}
-      if (check_referenced_domain (attribute->domain, true /* do marking */ ,
-				   num_set) != false)
+      if (check_referenced_domain (attribute->domain, true /* do marking */ , num_set))
 	{
 	  return false;
 	}
@@ -423,16 +428,16 @@ mark_referenced_domain (SM_CLASS * class_ptr, int *num_set)
 
 
 /*
- * extractobjects - dump the database in loader format.
+ * extract_objects - dump the database in loader format.
  *    return: 0 for success. 1 for error
  *    exec_name(in): utility name
  */
 int
-extractobjects (const char *exec_name)
+extract_objects (extract_context & ctxt, const char *output_dirname)
 {
   int i, error;
   HFID *hfid;
-  int est_objects = 0;
+  int64_t est_objects = 0;
   int cache_size;
   SM_CLASS *class_ptr;
   const char **cptr;
@@ -449,6 +454,9 @@ extractobjects (const char *exec_name)
 #endif
   LOG_LSA lsa;
   char unloadlog_filename[PATH_MAX];
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name = NULL;
+  char owner_str[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
   /* register new signal handlers */
   prev_intr_handler = os_set_signal_handler (SIGINT, extractobjects_term_handler);
@@ -470,7 +478,7 @@ extractobjects (const char *exec_name)
       return 1;
     }
 
-  /* 
+  /*
    * Open output file
    */
   if (output_dirname == NULL)
@@ -489,12 +497,12 @@ extractobjects (const char *exec_name)
 	{
 	  return 1;
 	}
-      snprintf (output_filename, PATH_MAX - 1, "%s/%s%s", output_dirname, output_prefix, OBJECT_SUFFIX);
+      snprintf (output_filename, PATH_MAX - 1, "%s/%s%s", output_dirname, ctxt.output_prefix, OBJECT_SUFFIX);
 
       obj_out->fp = fopen_ex (output_filename, "wb");
       if (obj_out->fp == NULL)
 	{
-	  fprintf (stderr, "%s: %s.\n\n", exec_name, strerror (errno));
+	  fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
 	  free_and_init (output_filename);
 	  return errno;
 	}
@@ -518,7 +526,7 @@ extractobjects (const char *exec_name)
 #endif /* WINDOWS */
       }
 
-    /* 
+    /*
      * Determine the IO buffer size by specifying a multiple of the
      * natural block size for the device.
      * NEED FUTURE OPTIMIZATION
@@ -532,7 +540,7 @@ extractobjects (const char *exec_name)
     obj_out->count = 0;		/* init */
   }
 
-  /* 
+  /*
    * The user indicates which classes are to be processed by
    * using -i with a file that contains a list of classes.
    * If the -i option is not used, it means process all classes.
@@ -570,7 +578,7 @@ extractobjects (const char *exec_name)
   memset (class_referenced, 0, (class_table->num + 7) / 8);
   memset (class_processed, 0, (class_table->num + 7) / 8);
 
-  /* 
+  /*
    * Create the class hash table
    * Its purpose is to hash a class OID to the index into the
    * class_table->mops array.
@@ -585,15 +593,16 @@ extractobjects (const char *exec_name)
   has_obj_ref = false;		/* init */
   num_cls_ref = 0;		/* init */
 
-  /* 
+  /*
    * Total the number of objects & mark requested classes.
    */
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   fprintf (stdout, "----- all class dump -----\n");
 #endif /* CUBRID_DEBUG */
   for (i = 0; i < class_table->num; i++)
     {
-      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop)
+      if (WS_IS_DELETED (class_table->mops[i]) || class_table->mops[i] == sm_Root_class_mop
+	  || db_is_vclass (class_table->mops[i]))
 	{
 	  continue;
 	}
@@ -620,9 +629,17 @@ extractobjects (const char *exec_name)
 	}
       if (*cptr == NULL)
 	{
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 	  fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
 #endif /* CUBRID_DEBUG */
+
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+	  if ((ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	      && strcasecmp (owner_name, ctxt.login_user) != 0)
+	    {
+	      continue;
+	    }
 
 	  fh_put (cl_table, ws_oid (class_table->mops[i]), &i);
 	  if (input_filename)
@@ -647,13 +664,18 @@ extractobjects (const char *exec_name)
 		}
 	    }
 	  else
-	    MARK_CLASS_REQUESTED (i);
+	    {
+	      MARK_CLASS_REQUESTED (i);
+	    }
 
 	  if (!datafile_per_class && (!required_class_only || IS_CLASS_REQUESTED (i)))
 	    {
+	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), owner_str,
+				sizeof (owner_str));
+
 	      if (text_print
-		  (obj_out, NULL, 0, "%cid %s%s%s %d\n", '%', PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
-		   i) != NO_ERROR)
+		  (obj_out, NULL, 0, "%cid %s%s%s%s %d\n", '%', owner_str,
+		   PRINT_IDENTIFIER (class_name), i) != NO_ERROR)
 		{
 		  status = 1;
 		  goto end;
@@ -672,9 +694,9 @@ extractobjects (const char *exec_name)
 			  /* false -> don't set */
 			  if ((has_obj_ref = check_referenced_domain (attribute->domain, false, &num_cls_ref)) == true)
 			    {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->header.name), db_attribute_name (attribute));
+				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -689,9 +711,9 @@ extractobjects (const char *exec_name)
 			  /* false -> don't set */
 			  if ((has_obj_ref = check_referenced_domain (attribute->domain, false, &num_cls_ref)) == true)
 			    {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->header.name), db_attribute_name (attribute));
+				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -711,9 +733,9 @@ extractobjects (const char *exec_name)
 								 &num_cls_ref);
 			  if (has_obj_ref == true)
 			    {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 			      fprintf (stdout, "found OBJECT domain: %s%s%s->%s\n",
-				       PRINT_IDENTIFIER (class_ptr->header.name), db_attribute_name (attribute));
+				       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_attribute_name (attribute));
 #endif /* CUBRID_DEBUG */
 			      break;
 			    }
@@ -738,7 +760,7 @@ extractobjects (const char *exec_name)
 
   OR_PUT_NULL_OID (&null_oid);
 
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   fprintf (stdout, "has_obj_ref = %d, num_cls_ref = %d\n", has_obj_ref, num_cls_ref);
 #endif /* CUBRID_DEBUG */
 
@@ -787,7 +809,7 @@ extractobjects (const char *exec_name)
 	{
 	  if (num_cls_ref != num_set)
 	    {
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 	      fprintf (stdout, "num_cls_ref = %d, num_set = %d\n", num_cls_ref, num_set);
 #endif /* CUBRID_DEBUG */
 	      status = 1;
@@ -796,7 +818,7 @@ extractobjects (const char *exec_name)
 	}
     }
 
-#if defined(CUBRID_DEBUG)
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   {
     int total_req_cls = 0;
     int total_ref_cls = 0;
@@ -817,7 +839,8 @@ extractobjects (const char *exec_name)
 		status = 1;
 		goto end;
 	      }
-	    fprintf (stdout, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+	    SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+	    fprintf (stdout, "%s%s%s.%s%s%s\n", PRINT_IDENTIFIER (owner_name), PRINT_IDENTIFIER (class_name));
 	    total_ref_cls++;
 	  }
       }
@@ -826,10 +849,12 @@ extractobjects (const char *exec_name)
   }
 #endif /* CUBRID_DEBUG */
 
-  /* 
+  /*
    * Lock all unloaded classes with IS_LOCK
+   *   - If there is only view, num_unload_classes can be 0.
    */
-  if (locator_fetch_set (num_unload_classes, unload_class_table, DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
+  if (num_unload_classes
+      && locator_fetch_set (num_unload_classes, unload_class_table, DB_FETCH_READ, DB_FETCH_READ, true) == NULL)
     {
       status = 1;
       goto end;
@@ -837,7 +862,7 @@ extractobjects (const char *exec_name)
 
   locator_get_append_lsa (&lsa);
 
-  /* 
+  /*
    * Estimate the number of objects.
    */
 
@@ -849,27 +874,24 @@ extractobjects (const char *exec_name)
   cache_size = cached_pages * page_size / (DB_SIZEOF (OID) + DB_SIZEOF (int));
   est_size = est_size > cache_size ? est_size : cache_size;
 
-  /* 
+  /*
    * Create the hash table
    */
-  if (has_obj_ref || num_cls_ref > 0)
-    {				/* found any referenced domain */
-      obj_table =
-	fh_create ("object hash", est_size, page_size, cached_pages, hash_filename, FH_OID_KEY, DB_SIZEOF (int),
-		   oid_hash, oid_compare_equals);
+  obj_table =
+    fh_create ("object hash", est_size, page_size, cached_pages, hash_filename, FH_OID_KEY, DB_SIZEOF (int),
+	       oid_hash, oid_compare_equals);
 
-      if (obj_table == NULL)
-	{
-	  status = 1;
-	  goto end;
-	}
+  if (obj_table == NULL)
+    {
+      status = 1;
+      goto end;
     }
 
-  /* 
+  /*
    * Dump the object definitions
    */
   total_approximate_class_objects = est_objects;
-  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", output_prefix);
+  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", ctxt.output_prefix);
   unloadlog_file = fopen (unloadlog_filename, "w+");
   if (unloadlog_file != NULL)
     {
@@ -899,7 +921,7 @@ extractobjects (const char *exec_name)
 		      goto end;
 		    }
 
-		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, output_prefix,
+		  snprintf (outfile, PATH_MAX - 1, "%s/%s_%s%s", output_dirname, ctxt.output_prefix,
 			    sm_ch_name ((MOBJ) class_ptr), OBJECT_SUFFIX);
 
 		  obj_out->fp = fopen_ex (outfile, "wb");
@@ -910,7 +932,7 @@ extractobjects (const char *exec_name)
 		    }
 		}
 
-	      ret_val = process_class (i);
+	      ret_val = process_class (ctxt, i);
 
 	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
 		{
@@ -979,7 +1001,7 @@ end:
     {
       fclose (unloadlog_file);
     }
-  /* 
+  /*
    * Cleanup
    */
   free_and_init (unload_class_table);
@@ -1023,20 +1045,21 @@ gauge_alarm_handler (int sig)
   return;
 }
 
-
 /*
  * process_class - dump one class in loader format
  *    return: NO_ERROR, if successful, error number, if not successful.
  *    cl_no(in): class object index for class_table
  */
 static int
-process_class (int cl_no)
+process_class (extract_context & ctxt, int cl_no)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_ = class_table->mops[cl_no];
   int i = 0;
   int v = 0;
   SM_CLASS *class_ptr;
+  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char *class_name = NULL;
   SM_ATTRIBUTE *attribute;
   LC_COPYAREA *fetch_area;	/* Area where objects are received */
   HFID *hfid;
@@ -1057,8 +1080,11 @@ process_class (int cl_no)
   time_t start = 0;
 #endif
   int total;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
-  /* 
+  LC_FETCH_VERSION_TYPE fetch_type = latest_image_flag ? LC_FETCH_CURRENT_VERSION : LC_FETCH_MVCC_VERSION;
+
+  /*
    * Only process classes that were requested or classes that were
    * referenced via requested classes.
    */
@@ -1099,10 +1125,14 @@ process_class (int cl_no)
 	}
       if (v == 0)
 	{
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
 	  CHECK_PRINT_ERROR (text_print
-			     (obj_out, NULL, 0, "%cclass %s%s%s shared (%s%s%s", '%',
-			      PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
-			      PRINT_IDENTIFIER (attribute->header.name)));
+			     (obj_out, NULL, 0, "%cclass %s%s%s%s shared (%s%s%s", '%',
+			      output_owner, PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
@@ -1150,10 +1180,14 @@ process_class (int cl_no)
 	}
       if (v == 0)
 	{
+	  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
 	  CHECK_PRINT_ERROR (text_print
-			     (obj_out, NULL, 0, "%cclass %s%s%s class (%s%s%s", '%',
-			      PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
-			      PRINT_IDENTIFIER (attribute->header.name)));
+			     (obj_out, NULL, 0, "%cclass %s%s%s%s class (%s%s%s", '%',
+			      output_owner, PRINT_IDENTIFIER (class_name), PRINT_IDENTIFIER (attribute->header.name)));
 	}
       else
 	{
@@ -1189,8 +1223,12 @@ process_class (int cl_no)
       ++v;
     }
 
-  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s ("	/* new line */
-				 : "%cclass %s%s%s (", '%', PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr))));
+  SPLIT_USER_SPECIFIED_NAME (sm_ch_name ((MOBJ) class_ptr), owner_name, class_name);
+
+  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner, sizeof (output_owner));
+
+  CHECK_PRINT_ERROR (text_print (obj_out, NULL, 0, (v) ? "\n%cclass %s%s%s%s ("	/* new line */
+				 : "%cclass %s%s%s%s (", '%', output_owner, PRINT_IDENTIFIER (class_name)));
 
   v = 0;
   attribute = class_ptr->ordered_attributes;
@@ -1218,11 +1256,11 @@ process_class (int cl_no)
 	{
 	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
-      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
 	  fflush (stdout);
 	}
       goto exit_on_end;
@@ -1240,11 +1278,11 @@ process_class (int cl_no)
 	{
 	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
-      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
-	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), 0, 100, total);
+	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
 	  fflush (stdout);
 	}
       goto exit_on_end;
@@ -1277,7 +1315,7 @@ process_class (int cl_no)
   while (nobjects != nfetched)
     {
       if (locator_fetch_all
-	  (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
+	  (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {
@@ -1286,7 +1324,7 @@ process_class (int cl_no)
 
 	      for (i = 0; i < mobjs->num_objs; ++i)
 		{
-		  /* 
+		  /*
 		   * Process all objects for a requested class, but
 		   * only referenced objects for a referenced class.
 		   */
@@ -1568,7 +1606,7 @@ process_value (DB_VALUE * value)
 		break;
 	      }
 
-	    /* 
+	    /*
 	     * Lock referenced class with S_LOCK
 	     */
 	    error = NO_ERROR;	/* clear */
@@ -1608,14 +1646,14 @@ process_value (DB_VALUE * value)
 	      }
 	  }
 
-	/* 
+	/*
 	 * Output a reference indication if all classes are being processed,
 	 * or if a class_list is being used and references are being included,
 	 * or if a class_list is being used and the referenced class is a
 	 * requested class.  Otherwise, output "NULL".
 	 */
 
-	/* figure out what it means for this to be NULL, I think this happens only for the reserved system classes like 
+	/* figure out what it means for this to be NULL, I think this happens only for the reserved system classes like
 	 * db_user that are not dumped.  This is a problem because trigger objects for one, like to point directly at
 	 * the user object.  There will probably be others in time. */
 	error = fh_get (cl_table, &ref_class_oid, (FH_DATA *) (&cls_no_ptr));
@@ -1867,73 +1905,104 @@ ltrim (char *s)
 int
 get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
 {
-  int i, j, is_partition = 0, error;
-  int len_clsname = 0;
   FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
-  char class_name[DB_MAX_IDENTIFIER_LENGTH];
-  char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH];
-  MOP *sub_partitions = NULL;
-  char scan_format[16];
-  char *trimmed_buf;
+  char buffer[LINE_MAX];
+  int i = 0;			/* index of class_list */
+  int error = NO_ERROR;
 
   if (input_filename == NULL)
     {
-      return 0;
+      return NO_ERROR;
     }
 
   input_file = fopen (input_filename, "r");
   if (input_file == NULL)
     {
       perror (input_filename);
-      return 1;
+      return ER_GENERIC_ERROR;
     }
-  snprintf (scan_format, sizeof (scan_format), "%%%ds\n", (int) (sizeof (buffer) - 1));
-  i = 0;
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
+
+  while (fgets ((char *) buffer, LINE_MAX, input_file) != NULL)
     {
-      DB_OBJECT *class_;
+      DB_OBJECT *class_ = NULL;
+      MOP *sub_partitions = NULL;
+      int is_partition = 0;
+      int j = 0;		/* index of sub_partitions */
+      const char *dot = NULL;
+      char downcase_class_name[DB_MAX_IDENTIFIER_LENGTH];
+      int len = 0;
 
-      /* trim left */
-      trimmed_buf = ltrim (buffer);
-      len_clsname = (int) strlen (trimmed_buf);
+      trim (buffer);
 
-      /* get rid of \n at end of line */
-      if (len_clsname > 0 && trimmed_buf[len_clsname - 1] == '\n')
+      len = STATIC_CAST (int, strlen (buffer));
+      if (len < 1)
 	{
-	  trimmed_buf[len_clsname - 1] = 0;
-	  len_clsname--;
+	  /* empty string */
+	  continue;
 	}
 
-      if (len_clsname >= 1)
+      dot = strchr (buffer, '.');
+      if (dot)
 	{
-	  sscanf ((char *) buffer, scan_format, (char *) class_name);
+	  /* user specified name */
 
-	  sm_downcase_name (class_name, downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
-
-	  class_ = locator_find_class (downcase_class_name);
-	  if (class_ != NULL)
+	  /* user name of user specified name */
+	  len = STATIC_CAST (int, dot - buffer);
+	  if (len >= DB_MAX_USER_LENGTH)
 	    {
-	      class_list[i] = class_;
-	      error = sm_partitioned_class_type (class_, &is_partition, NULL, &sub_partitions);
-	      if (is_partition == 1 && sub_partitions != NULL)
-		{
-		  for (j = 0; sub_partitions[j]; j++)
-		    {
-		      i++;
-		      class_list[i] = sub_partitions[j];
-		    }
-		}
-	      if (sub_partitions != NULL)
-		{
-		  free_and_init (sub_partitions);
-		}
-	      i++;
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+						     UNLOADDB_MSG_EXCEED_MAX_USER_LEN), DB_MAX_USER_LENGTH - 1);
+	      fclose (input_file);
+	      return ER_GENERIC_ERROR;
 	    }
+
+	  /* class name of user specified name */
+	  len = STATIC_CAST (int, strlen (dot + 1));
+	}
+
+      if (len >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+						 UNLOADDB_MSG_EXCEED_MAX_LEN),
+				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
+	  fclose (input_file);
+	  return ER_GENERIC_ERROR;
+	}
+
+      sm_user_specified_name (buffer, downcase_class_name, DB_MAX_IDENTIFIER_LENGTH);
+
+      class_ = locator_find_class (downcase_class_name);
+      if (class_ != NULL)
+	{
+	  class_list[i] = class_;
+	  error = sm_partitioned_class_type (class_, &is_partition, NULL, &sub_partitions);
+	  if (error != NO_ERROR)
+	    {
+	      fclose (input_file);
+	      return error;
+	    }
+	  if (is_partition == 1 && sub_partitions != NULL)
+	    {
+	      for (j = 0; sub_partitions[j]; j++)
+		{
+		  i++;
+		  class_list[i] = sub_partitions[j];
+		}
+	    }
+	  if (sub_partitions != NULL)
+	    {
+	      free_and_init (sub_partitions);
+	    }
+	  i++;
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+						 UNLOADDB_MSG_CLASS_NOT_FOUND), downcase_class_name);
 	}
     }				/* while */
 
   fclose (input_file);
 
-  return 0;
+  return error;
 }

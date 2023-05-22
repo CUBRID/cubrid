@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -90,6 +89,7 @@ static ARG_MAP_TABLE ua_Backup_map[] = {
   {"-nc", "--" BACKUP_NO_CHECK_L},
   {"-mt", "--" BACKUP_THREAD_COUNT_L},
   {"-zip", "--" BACKUP_COMPRESS_L},
+  {"-nozip", "--" BACKUP_NO_COMPRESS_L},
   {"-ni", "--" BACKUP_EXCEPT_ACTIVE_LOG_L},
   {"-c", (char *) -1},
   {0, 0}
@@ -165,8 +165,10 @@ static ARG_MAP_TABLE ua_Check_map[] = {
 };
 
 static ARG_MAP_TABLE ua_Tranlist_map[] = {
+#if defined(NEED_PRIVILEGE_PASSWORD)
   {"-u", "--" TRANLIST_USER_L},
   {"-p", "--" TRANLIST_PASSWORD_L},
+#endif
   {"-s", "--" TRANLIST_SUMMARY_L},
   {"-k", "--" TRANLIST_SORT_KEY_L},
   {"-r", "--" TRANLIST_REVERSE_L},
@@ -198,6 +200,7 @@ static ARG_MAP_TABLE ua_Load_map[] = {
   {"-noref", "--" LOAD_NO_OID_L},
   {"-sf", "--" LOAD_SCHEMA_FILE_L},
   {"-if", "--" LOAD_INDEX_FILE_L},
+  {"-tf", "--" LOAD_TRIGGER_FILE_L},
   {"-of", "--" LOAD_DATA_FILE_L},
   {"-ef", "--" LOAD_ERROR_CONTROL_FILE_L},
   {"-nl", "--" LOAD_IGNORE_LOGGING_L},
@@ -215,6 +218,7 @@ static ARG_MAP_TABLE ua_Unload_map[] = {
   {"-od", "--" UNLOAD_OUTPUT_PATH_L},
   {"-so", "--" UNLOAD_SCHEMA_ONLY_L},
   {"-oo", "--" UNLOAD_DATA_ONLY_L},
+  {"-li", "--" UNLOAD_LATEST_IMAGE_L},
   {"-p", "--" UNLOAD_OUTPUT_PREFIX_L},
   {"-f", "--" UNLOAD_HASH_FILE_L},
   {"-v", "--" UNLOAD_VERBOSE_L},

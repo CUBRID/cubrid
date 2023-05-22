@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -36,7 +35,7 @@
 
 #include "cas_common.h"
 #include "broker_log_util.h"
-#include "cas_cci.h"
+#include "broker_cas_cci.h"
 
 static bool is_bind_with_size (char *buf, int *tot_val_size, int *info_size);
 
@@ -132,10 +131,36 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     {
       *info_size = (char *) (p + 1) - (char *) buf;
     }
-  if (tot_val_size)
+
+  switch (type)
     {
-      *tot_val_size = size;
+    case CCI_U_TYPE_CHAR:
+    case CCI_U_TYPE_STRING:
+    case CCI_U_TYPE_NCHAR:
+    case CCI_U_TYPE_VARNCHAR:
+      {
+	int len = strlen (p + 1);
+
+	if (p[len] == '\n')
+	  {
+	    p[len] = 0;
+	    len--;
+	  }
+
+	if (tot_val_size)
+	  {
+	    *tot_val_size = len + 1;
+	  }
+      }
+      break;
+    default:
+      if (tot_val_size)
+	{
+	  *tot_val_size = size;
+	}
+      break;
     }
+
   return true;
 
 error_on_val_size:
@@ -151,7 +176,7 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
 {
   char *msg;
   char *p, *q;
-  char size[256];
+  char size[256] = { 0, };
   char *value_p;
   char *size_begin;
   char *size_end;
@@ -214,7 +239,13 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     {
       *info_size = (char *) info_end - (char *) buf;
     }
-  if (tot_val_size)
+
+  if ((strncmp (p, "CHAR", 4) != 0) || (strncmp (p, "VARCHAR", 7) != 0) || (strncmp (p, "NCHAR", 5) != 0)
+      || (strncmp (p, "VARNCHAR", 8) != 0))
+    {
+      *tot_val_size = strlen (info_end);
+    }
+  else if (tot_val_size)
     {
       len = size_end - size_begin;
       if (len > (int) sizeof (size))

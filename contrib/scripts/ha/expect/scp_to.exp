@@ -5,8 +5,9 @@ set passwd [lindex $argv 1]
 set source [lindex $argv 2]
 set host [lindex $argv 3]
 set target [lindex $argv 4]
+set port [lindex $argv 5]
 
-spawn scp -r $source $user@$host:$target
+spawn scp -P $port -r $source $user@$host:$target
 expect {
   "(yes/no)?" {send "yes\r";exp_continue}
   "password:" {send "$passwd\r"}

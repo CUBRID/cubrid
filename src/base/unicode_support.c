@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -410,7 +409,7 @@ load_unicode_data (const LOCALE_DATA * ld)
   fp = fopen_ex (ld->unicode_data_file, "rt");
   if (fp == NULL)
     {
-      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->unicode_data_file);
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->unicode_data_file);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       status = ER_LOC_GEN;
       goto error;
@@ -478,9 +477,9 @@ load_unicode_data (const LOCALE_DATA * ld)
 	      cp_count = string_to_int_array (str_p, uc->upper_cp, INTL_CASING_EXPANSION_MULTIPLIER, " ");
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
-		  snprintf (err_msg, sizeof (err_msg) - 1,
-			    "Invalid line %d" " of file %s contains more than 2 characters for "
-			    "upper case definition", line_count, ld->unicode_data_file);
+		  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1,
+					  "Invalid line %d" " of file %s contains more than 2 characters for "
+					  "upper case definition", line_count, ld->unicode_data_file);
 		  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 		  status = ER_LOC_GEN;
 		  goto error;
@@ -495,9 +494,9 @@ load_unicode_data (const LOCALE_DATA * ld)
 
 	      if (cp_count > INTL_CASING_EXPANSION_MULTIPLIER)
 		{
-		  snprintf (err_msg, sizeof (err_msg) - 1,
-			    "Invalid line %d" " of file %s contains more than 2 characters for "
-			    "lower case definition", line_count, ld->unicode_data_file);
+		  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1,
+					  "Invalid line %d" " of file %s contains more than 2 characters for "
+					  "lower case definition", line_count, ld->unicode_data_file);
 		  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 		  status = ER_LOC_GEN;
 		  goto error;
@@ -867,7 +866,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	}
     }
 
-  /* Sort/group the decompositions in list_unicode_decomp_maps by the value of the first codepoint in each mapping. The 
+  /* Sort/group the decompositions in list_unicode_decomp_maps by the value of the first codepoint in each mapping. The
    * grouping is necessary for optimizing the future search for possible decompositions when putting a string in fully
    * composed form. */
   qsort (temp_list_unicode_decomp_maps, norm->unicode_mappings_count, sizeof (UNICODE_CP_MAPPING),
@@ -1236,7 +1235,7 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
 	    }
 	}
 
-      /* If no composition can be matched to start with the decoded codepoint, just copy the bytes corresponding to the 
+      /* If no composition can be matched to start with the decoded codepoint, just copy the bytes corresponding to the
        * codepoint from the input string to the output, adjust pointers and loop again. */
     match_not_found:
       if (!match_found)
@@ -1272,13 +1271,14 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
  *  Note : Input string is assumed UTF-8 character set.
  */
 bool
-unicode_string_need_decompose (char *str_in, const int size_in, int *decomp_size, const UNICODE_NORMALIZATION * norm)
+unicode_string_need_decompose (const char *str_in, const int size_in, int *decomp_size,
+			       const UNICODE_NORMALIZATION * norm)
 {
   int bytes_read, decomp_index, decomposed_size = 0;
   unsigned int cp;
-  char *src_cursor;
-  char *src_end;
-  char *next;
+  const char *src_cursor;
+  const char *src_end;
+  const char *next;
   bool can_decompose;
 
   if (!prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION) || norm == NULL)
@@ -1356,14 +1356,14 @@ no_decompose_cnt:
  * norm(in) : the unicode context in which the normalization is performed
  */
 void
-unicode_decompose_string (char *str_in, const int size_in, char *str_out, int *size_out,
+unicode_decompose_string (const char *str_in, const int size_in, char *str_out, int *size_out,
 			  const UNICODE_NORMALIZATION * norm)
 {
   int bytes_read, decomp_index;
   unsigned int cp;
-  char *src_cursor;
-  char *src_end;
-  char *next;
+  const char *src_cursor;
+  const char *src_end;
+  const char *next;
   char *dest_cursor;
 
   assert (prm_get_bool_value (PRM_ID_UNICODE_OUTPUT_NORMALIZATION) && norm != NULL);

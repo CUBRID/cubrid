@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -22,27 +21,19 @@
  */
 
 #include "db_value_printer.hpp"
-#include "tz_support.h"
+
 #include "db_date.h"
 #include "dbtype.h"
-#include "intl_support.h"
-#include "language_support.h"
-#include "numeric_opfunc.h"
+#include "memory_private_allocator.hpp"
 #include "object_primitive.h"
+#include "object_representation.h"
+#include "printer.hpp"
 #include "set_object.h"
 #include "string_buffer.hpp"
 #include "string_opfunc.h"
+#include "tz_support.h"
 #if !defined(SERVER_MODE)
 #include "virtual_object.h"
-#endif
-#include "work_space.h"
-#include "memory_alloc.h"
-
-#include <assert.h>
-#include <float.h>
-
-#if defined(SA_MODE)
-extern unsigned int db_on_server;
 #endif
 
 const char db_value_printer::DECIMAL_FORMAT[] = "%#.*g";
@@ -53,12 +44,12 @@ namespace
   // DB_VALUE of type DB_TYPE_BIT or DB_TYPE_VARBIT
   void describe_bit_string (string_buffer &buf, const db_value *value, bool pad_byte)
   {
-    unsigned char *bstring;
+    const unsigned char *bstring;
     int nibble_length, nibbles, count;
 
     assert (value != NULL);
 
-    bstring = (unsigned char *) db_get_string (value);
+    bstring = REINTERPRET_CAST (const unsigned char *, db_get_string (value));
     if (bstring == NULL)
       {
 	return;
@@ -114,6 +105,27 @@ void db_value_printer::describe_money (const db_monetary *value)
 }
 
 //--------------------------------------------------------------------------------
+void db_value_printer::describe_comment_value (const db_value *value)
+{
+  INTL_CODESET codeset = INTL_CODESET_NONE;
+  const char *src, *end;
+
+  codeset = db_get_string_codeset (value);
+  if (codeset != LANG_SYS_CODESET)
+    {
+      m_buf ("%s", lang_charset_introducer (codeset));
+    }
+
+  m_buf += '\'';
+
+  src = db_get_string (value);
+  end = src + db_get_string_size (value);
+  m_buf.add_bytes (end - src, src);
+
+  m_buf += '\'';
+}
+
+//--------------------------------------------------------------------------------
 void db_value_printer::describe_value (const db_value *value)
 {
   INTL_CODESET codeset = INTL_CODESET_NONE;
@@ -142,28 +154,9 @@ void db_value_printer::describe_value (const db_value *value)
 	case DB_TYPE_ENUMERATION:
 	  if (db_get_enum_string (value) == NULL && db_get_enum_short (value) != 0)
 	    {
-#if defined(SERVER_MODE)
 	      /* to print enum index as int */
 	      m_buf ("%d", (int)db_get_enum_short (value));
 	      break;
-#elif defined(SA_MODE)
-	      if (db_on_server)
-		{
-		  /* to print enum index as int */
-		  m_buf ("%d", (int)db_get_enum_short (value));
-		  break;
-		}
-	      else
-		{
-		  /* describe value should not be called on an enumeration which is not fully constructed */
-		  assert (false);
-		  m_buf ("''");
-		}
-#else /* CS_MODE */
-	      /* describe value should not be called on an enumeration which is not fully constructed */
-	      assert (false);
-	      m_buf ("''");
-#endif
 	    }
 	  else
 	    {
@@ -271,7 +264,7 @@ void db_value_printer::describe_data (const db_value *value)
   DB_SET      *set = 0;
   db_elo      *elo = 0;
   DB_MIDXKEY *midxkey;
-  char *src, *pos, *end;
+  const char *src, *pos, *end;
   double d;
   char line[1025];
   char *json_body = NULL;
@@ -303,11 +296,11 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_FLOAT:
-      describe_real (m_buf, db_get_float (value), DB_FLOAT_DECIMAL_PRECISION);
+      m_buf ("%f", (double) db_get_float (value));
       break;
 
     case DB_TYPE_DOUBLE:
-      describe_real (m_buf, db_get_double (value), DB_DOUBLE_DECIMAL_PRECISION);
+      m_buf ("%e", (double) db_get_double (value));
       break;
 
     case DB_TYPE_NUMERIC:
@@ -389,13 +382,14 @@ void db_value_printer::describe_data (const db_value *value)
 
     case DB_TYPE_VOBJ:
       m_buf ("vid:");
+    /* FALLTHRU */
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
       set = db_get_set (value);
       if (set != NULL)
 	{
-	  describe_set ((const db_collection *) set);
+	  describe_set (set);
 	}
       else
 	{
@@ -408,6 +402,7 @@ void db_value_printer::describe_data (const db_value *value)
       m_buf ("%s", json_body);
       db_private_free (NULL, json_body);
       break;
+
     case DB_TYPE_MIDXKEY:
       midxkey = db_get_midxkey (value);
       if (midxkey != NULL)
@@ -459,6 +454,7 @@ void db_value_printer::describe_data (const db_value *value)
       (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (value));
       m_buf (line);
       break;
+
     case DB_TYPE_TIMESTAMPLTZ:
       (void) db_timestampltz_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (value));
       m_buf (line);
@@ -565,7 +561,7 @@ void db_value_printer::describe_midxkey (const db_midxkey *midxkey, int help_Max
 }
 
 //--------------------------------------------------------------------------------
-void db_value_printer::describe_set (const db_collection *set, int help_Max_set_elements)
+void db_value_printer::describe_set (const db_set *set, int help_Max_set_elements)
 {
   DB_VALUE value;
   int size, end, i;
@@ -598,4 +594,65 @@ void db_value_printer::describe_set (const db_collection *set, int help_Max_set_
       m_buf (". . .");
     }
   m_buf += '}';
+}
+
+/*
+ * db_value_fprint() -  Prints a description of the contents of a DB_VALUE
+ *                        to the file
+ *   return: none
+ *   fp(in) : FILE stream pointer
+ *   value(in) : value to print
+ */
+void
+db_fprint_value (FILE *fp, const db_value *value)
+{
+  const size_t BUFFER_SIZE = 1024;
+  string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
+
+  db_value_printer printer (sb);
+  printer.describe_value (value);
+  fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
+}
+
+/*
+ * db_print_value() -  Prints a description of the contents of a DB_VALUE
+ *                        to the file
+ *   return: none
+ *   fp(in) : FILE stream pointer
+ *   value(in) : value to print
+ */
+void
+db_print_value (print_output &output_ctx, const db_value *value)
+{
+  string_buffer *p_sb;
+
+  /* TODO : change 'db_value_printer' to use print_output instead of string_buffer */
+  p_sb = output_ctx.grab_string_buffer ();
+
+  if (p_sb != NULL)
+    {
+      db_value_printer printer (*p_sb);
+      printer.describe_value (value);
+    }
+  else
+    {
+      const size_t BUFFER_SIZE = 1024;
+      string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
+
+      db_value_printer printer (sb);
+      printer.describe_value (value);
+      output_ctx ("%.*s", (int) sb.len (), sb.get_buffer ());
+    }
+}
+
+/*
+ * db_sprint_value() - This places a printed representation of the supplied value in a buffer.
+ *   value(in) : value to describe
+ *   sb(in/out) : auto resizable buffer to contain description
+ */
+void
+db_sprint_value (const db_value *value, string_buffer &sb)
+{
+  db_value_printer printer (sb);
+  printer.describe_value (value);
 }

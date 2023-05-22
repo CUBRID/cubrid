@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -47,6 +46,7 @@
 #endif
 #include "error_code.h"
 #include "dbtype.h"
+#include "byte_order.h"
 
 static int net_buf_realloc (T_NET_BUF * net_buf, int size);
 
@@ -83,7 +83,7 @@ int
 net_buf_cp_post_send_file (T_NET_BUF * net_buf, int size, char *filename)
 {
   FREE_MEM (net_buf->post_send_file);
-  ALLOC_COPY (net_buf->post_send_file, filename);
+  ALLOC_COPY_STRLEN (net_buf->post_send_file, filename);
   if (net_buf->post_send_file == NULL)
     {
       net_buf->err_code = CAS_ER_NO_MORE_MEMORY;
@@ -279,18 +279,17 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
 #ifdef CAS_DEBUG
   char msg_buf[1024];
 #endif
-#ifndef LIBCAS_FOR_JSP
+
 #if defined(CAS_CUBRID) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_ORACLE)
   T_BROKER_VERSION ver;
 #endif /* CAS_CUBRID || CAS_FOR_MYSQL || CAS_FOR_ORACLE */
-#endif /* !LIBCAS_FOR_JSP */
   size_t err_msg_len = 0;
   char err_msg[ERR_MSG_LENGTH];
 
   assert (err_code != NO_ERROR);
 
   net_buf_clear (net_buf);
-#ifndef LIBCAS_FOR_JSP
+
 #if defined(CAS_CUBRID) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_ORACLE)
   ver = as_info->clt_version;
   if (ver >= CAS_MAKE_VER (8, 3, 0))
@@ -310,9 +309,6 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
   /* shard_proxy do not use net_buf_error_msg_set. it is dummy code. */
   net_buf_cp_int (net_buf, err_indicator, NULL);
 #endif /* FOR SHARD_PROXY */
-#else /* !LIBCAS_FOR_JSP */
-  net_buf_cp_int (net_buf, err_indicator, NULL);
-#endif /* !LIBCAS_FOR_JSP */
   net_buf_cp_int (net_buf, err_code, NULL);
 
 #ifdef CAS_DEBUG
@@ -407,7 +403,7 @@ net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, ch
     {
       char *tmp_str;
 
-      ALLOC_COPY (tmp_str, name);
+      ALLOC_COPY_STRLEN (tmp_str, name);
       if (tmp_str == NULL)
 	{
 	  net_buf_cp_int (net_buf, 1, NULL);
@@ -796,14 +792,14 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
 {
   assert (err_buf);
 
-#if !defined(LIBCAS_FOR_JSP) && !defined(CUB_PROXY)
+#if !defined(CUB_PROXY)
   if (cas_shard_flag == ON)
     {
       if (err_msg == NULL)
 	{
 	  snprintf (err_buf, buf_size, "[SHARD/CAS ID-%d,%d]", shm_shard_id, shm_shard_cas_id + 1);
 	}
-      else if (strlen (err_msg) + MAX_SHARD_INFO_LENGTH >= buf_size)
+      else if ((int) strlen (err_msg) + MAX_SHARD_INFO_LENGTH >= buf_size)
 	{
 	  snprintf (err_buf, buf_size, "%s", err_msg);
 	}
@@ -813,7 +809,7 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
 	}
     }
   else
-#endif /* !LIBCAS_FOR_JSP && !CUB_PROXY */
+#endif /* !CUB_PROXY */
     {
       if (err_msg == NULL)
 	{
@@ -831,17 +827,16 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
   return strlen (err_buf);
 }
 
-/* net_buf_cp_cas_type_and_charset - 
+/* net_buf_cp_cas_type_and_charset -
  *			 sends the type information into a network buffer
  *		         The cas_type is expected to be encoded by function
  *			 'set_extended_cas_type'. The network buffer bytes will
- *			 be encoded as:  
+ *			 be encoded as:
  *			      MSB byte : 1CCR RHHH : C = collection code bits
  *					 R = reserved bits
  *					 H = charset
  *			      (please note the bit 7 is 1)
  *			      LSB byte : TTTT TTTT : T = type bits
- *			    
  */
 int
 net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type, unsigned char charset)

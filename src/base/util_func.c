@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -30,6 +29,7 @@
 #include <string.h>
 #include <signal.h>
 #include <assert.h>
+#include <chrono>
 #include <time.h>
 #include <stdarg.h>
 #include <sys/timeb.h>
@@ -60,6 +60,11 @@ static FILE *util_log_file_fopen (const char *path);
 static FILE *fopen_and_lock (const char *path);
 static int util_log_header (char *buf, size_t buf_len);
 static int util_log_write_internal (const char *msg, const char *prefix_str);
+
+// *INDENT-OFF*
+template <typename Duration>
+static void util_get_seconds_and_rest_since_epoch (std::chrono::seconds &secs, Duration &rest);
+// *INDENT-ON*
 
 /*
  * hashpjw() - returns hash value of given string
@@ -221,21 +226,15 @@ util_arm_signal_handlers (SIG_HANDLER sigint_handler, SIG_HANDLER sigquit_handle
 
   if (sigint_handler != NULL)
     {
-      if (os_set_signal_handler (SIGINT, SIG_IGN) != SIG_IGN)
-	{
-	  (void) os_set_signal_handler (SIGINT, system_interrupt_handler);
-	  user_interrupt_handler = sigint_handler;
-	}
+      (void) os_set_signal_handler (SIGINT, system_interrupt_handler);
+      user_interrupt_handler = sigint_handler;
     }
 #if !defined(WINDOWS)
   if (sigquit_handler != NULL)
     {
       /* Is this kind of test necessary for the quit signal ? */
-      if (os_set_signal_handler (SIGQUIT, SIG_IGN) != SIG_IGN)
-	{
-	  (void) os_set_signal_handler (SIGQUIT, system_quit_handler);
-	  user_quit_handler = sigquit_handler;
-	}
+      (void) os_set_signal_handler (SIGQUIT, system_quit_handler);
+      user_quit_handler = sigquit_handler;
     }
 #endif
 }
@@ -270,11 +269,15 @@ util_split_string (const char *str, const char *delim)
 	{
 	  break;
 	}
-      r = (char **) realloc (r, sizeof (char *) * (count + 1));
-      if (r == NULL)
+      char **const realloc_r = (char **) realloc (r, sizeof (char *) * (count + 1));
+      if (realloc_r == NULL)
 	{
 	  free (o);
 	  return NULL;
+	}
+      else
+	{
+	  r = realloc_r;
 	}
       r[count - 1] = strdup (v);
       r[count] = NULL;
@@ -505,6 +508,29 @@ util_log_write_errstr (const char *format, ...)
 }
 
 /*
+ * util_log_write_warnstr () -
+ *
+ * format (in) :
+ */
+int
+util_log_write_warnstr (const char *format, ...)
+{
+  int n;
+  char msg_buf[UTIL_LOG_MAX_MSG_SIZE];
+  va_list arg_list;
+
+  va_start (arg_list, format);
+  n = vsnprintf (msg_buf, UTIL_LOG_MAX_MSG_SIZE, format, arg_list);
+  if (n >= UTIL_LOG_MAX_MSG_SIZE)
+    {
+      msg_buf[UTIL_LOG_MAX_MSG_SIZE - 1] = '\0';
+    }
+  va_end (arg_list);
+
+  return util_log_write_internal (msg_buf, "WARNING: ");
+}
+
+/*
  * util_log_write_command () -
  *
  * argc (in) :
@@ -609,10 +635,10 @@ util_log_header (char *buf, size_t buf_len)
 {
   struct tm tm, *tm_p;
   time_t sec;
-  int millisec, len;
-  struct timeb tb;
+  int len;
   char *p;
   const char *pid;
+  int millisec;
 
   if (buf == NULL)
     {
@@ -620,9 +646,7 @@ util_log_header (char *buf, size_t buf_len)
     }
 
   /* current time */
-  (void) ftime (&tb);
-  sec = tb.time;
-  millisec = tb.millitm;
+  util_get_second_and_ms_since_epoch (&sec, &millisec);
 
   tm_p = localtime_r (&sec, &tm);
 
@@ -787,3 +811,29 @@ util_bsearch (const void *key, const void *base, int n_elems, unsigned int sizeo
   /* mid is the right position for key */
   return mid;
 }
+
+// *INDENT-OFF*
+template <typename Duration>
+void
+util_get_seconds_and_rest_since_epoch (std::chrono::seconds &secs, Duration &rest)
+{
+  using clock_t = std::chrono::system_clock;
+  using timept_secs = std::chrono::time_point<clock_t, std::chrono::seconds>;
+  auto now_timepoint = clock_t::now ();
+  timept_secs now_in_secs = std::chrono::time_point_cast<std::chrono::seconds> (now_timepoint);
+  secs = now_in_secs.time_since_epoch ();
+  rest = std::chrono::duration_cast<Duration> (now_timepoint - now_in_secs);
+}
+
+void
+util_get_second_and_ms_since_epoch (time_t * secs, int *msec)
+{
+  assert (secs != NULL && msec != NULL);
+  std::chrono::seconds secs_since_epoch;
+  std::chrono::milliseconds rest_in_msec;
+  util_get_seconds_and_rest_since_epoch<std::chrono::milliseconds> (secs_since_epoch, rest_in_msec);
+  *secs = static_cast<time_t> (secs_since_epoch.count ());
+  *msec = static_cast<int> (rest_in_msec.count ());
+  assert (*msec < 1000);
+}
+// *INDENT-ON*

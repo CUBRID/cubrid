@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -28,12 +27,18 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
+#include "load_session.hpp"
 #include "query_list.h"
 #include "query_manager.h"
+#include "system_parameter.h"
 #include "thread_compat.hpp"
 #include "tz_support.h"
+#include "method_runtime_context.hpp"
 
-extern int session_states_init (THREAD_ENTRY * thread_p);
+// forward definitions
+struct xasl_cache_ent;
+
+extern void session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
 extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id);
@@ -51,7 +56,7 @@ extern int session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARA
 extern int session_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1,
 					      char *info, int info_len);
 extern int session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
-					   XASL_CACHE_ENTRY ** xasl_entry);
+					   xasl_cache_ent ** xasl_entry);
 extern int session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name);
 extern int login_user (THREAD_ENTRY * thread_p, const char *username);
 extern int session_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values, const int count);
@@ -63,6 +68,7 @@ extern void session_states_dump (THREAD_ENTRY * thread_p);
 extern void session_store_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qentry_p);
 extern int session_load_query_entry_info (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qentry_p);
 extern int session_remove_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id);
+extern void session_remove_query_entry_all (THREAD_ENTRY * thread_p);
 extern int session_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_id);
 extern bool session_is_queryid_idle (THREAD_ENTRY * thread_p, const QUERY_ID query_id, QUERY_ID * max_query_id_uses);
 
@@ -79,4 +85,11 @@ extern TZ_REGION *session_get_session_tz_region (THREAD_ENTRY * thread_p);
 extern int session_get_number_of_holdable_cursors (void);
 extern int session_get_private_lru_idx (const void *session_p);
 extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
+
+extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p);
+extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
+
+extern int session_get_method_runtime_context (THREAD_ENTRY * thread_p,
+					       REFPTR (method_runtime_context, method_runtime_context_ref_ptr));
+extern void session_stop_attached_threads (void *session);
 #endif /* _SESSION_H_ */

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -42,6 +41,7 @@
 #define EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE  512
 
 /* These define the requests that the server will respond to */
+/* WARNING: should sync with net_server_request_name in network_common.cpp */
 enum net_server_request
 {
   NET_SERVER_REQUEST_START = 0,
@@ -115,6 +115,16 @@ enum net_server_request
   NET_SERVER_HEAP_HAS_INSTANCE,
   NET_SERVER_HEAP_RECLAIM_ADDRESSES,
 
+  NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES,
+
+  NET_SERVER_DBLINK_GET_CRYPT_KEY,
+
+  NET_SERVER_TDE_GET_DATA_KEYS,
+  NET_SERVER_TDE_IS_LOADED,
+  NET_SERVER_TDE_GET_MK_FILE_PATH,
+  NET_SERVER_TDE_GET_MK_INFO,
+  NET_SERVER_TDE_CHANGE_MK_ON_SERVER,
+
   NET_SERVER_LOG_RESET_WAIT_MSECS,
   NET_SERVER_LOG_RESET_ISOLATION,
   NET_SERVER_LOG_SET_INTERRUPT,
@@ -174,6 +184,8 @@ enum net_server_request
   NET_SERVER_QPROC_GET_SERVER_INFO,
   NET_SERVER_SERIAL_DECACHE,
 
+  NET_SERVER_SYNONYM_REMOVE_XASL_BY_OID,
+
   NET_SERVER_JSP_GET_SERVER_PORT,
 
   NET_SERVER_PRM_SET_PARAMETERS,
@@ -232,12 +244,38 @@ enum net_server_request
 
   NET_SERVER_LC_DEMOTE_CLASS_LOCK,
 
-  /* 
+  /* loaddb server requests */
+  NET_SERVER_LD_INIT,
+  NET_SERVER_LD_INSTALL_CLASS,
+  NET_SERVER_LD_LOAD_BATCH,
+  NET_SERVER_LD_FETCH_STATUS,
+  NET_SERVER_LD_DESTROY,
+  NET_SERVER_LD_INTERRUPT,
+  NET_SERVER_LD_UPDATE_STATS,
+
+  NET_SERVER_VACUUM_DUMP,
+
+  NET_SERVER_METHOD_FOLD_CONSTANTS,
+
+  NET_SERVER_SUPPLEMENT_STMT,
+
+  /* FOR CDC */
+  NET_SERVER_CDC_START_SESSION,
+  NET_SERVER_CDC_FIND_LSA,
+  NET_SERVER_CDC_GET_LOGINFO_METADATA,
+  NET_SERVER_CDC_GET_LOGINFO,
+  NET_SERVER_CDC_END_SESSION,
+
+  /* flashback */
+  NET_SERVER_FLASHBACK_GET_SUMMARY,
+  NET_SERVER_FLASHBACK_GET_LOGINFO,
+
+  /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
    */
   NET_SERVER_REQUEST_END,
-  /* 
+  /*
    * This request number must be preserved.
    */
   NET_SERVER_PING_WITH_HANDSHAKE = 999,
@@ -265,6 +303,9 @@ typedef enum
 
 /* Server startup */
 extern int net_server_start (const char *name);
-extern const char *net_server_request_name (int request);
+
+/* Misc */
+extern const char *get_capability_string (int cap, int cap_type);
+extern const char *get_net_request_name (int request);
 
 #endif /* _NETWORK_H_ */

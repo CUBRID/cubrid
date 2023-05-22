@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -29,13 +28,10 @@
 
 #include "config.h"
 
-
 #include "dbtype_def.h"
 #include "error_manager.h"
-#include "object_representation.h"
 #include "object_domain.h"	/* for TP_DOMAIN */
 #include "locator.h"		/* for LC_OIDSET */
-#include "area_alloc.h"
 
 #if !defined (SERVER_MODE)
 #include "parser.h"		/* for PT_OP_TYPE */
@@ -68,19 +64,7 @@
 #define OBJECT_HAS_TEMP_OID(obj) \
   ((WS_OID(obj) == NULL) ? 0 : OID_ISTEMP(WS_OID(obj)))
 
-
-typedef struct set_iterator
-{
-  struct set_iterator *next;	/* chain of iterators on this set */
-
-  DB_SET *ref;			/* set we're iterating over */
-  SETOBJ *set;			/* set object */
-  DB_VALUE_LIST *element;	/* current list element */
-  DB_VALUE *value;		/* current element pointer */
-  int position;			/* current element index */
-} SET_ITERATOR;
-
-  /* From set_object.h */
+typedef struct setobj SETOBJ;
 struct setobj
 {
 
@@ -109,14 +93,25 @@ struct setobj
   /* set if we can't guarantee that there are no temporary OID's in here */
   unsigned may_have_temporary_oids:1;
 };
+typedef SETOBJ COL;
 
-/* Creation */
-extern AREA *Set_Ref_Area;	/* Area for allocation of set reference structures */
-extern AREA *Set_Obj_Area;	/* Area for allocation of set object structures */
+typedef struct set_iterator
+{
+  struct set_iterator *next;	/* chain of iterators on this set */
+
+  DB_SET *ref;			/* set we're iterating over */
+  SETOBJ *set;			/* set object */
+  DB_VALUE_LIST *element;	/* current list element */
+  DB_VALUE *value;		/* current element pointer */
+  int position;			/* current element index */
+} SET_ITERATOR;
+
+
 
 extern DB_COLLECTION *set_create (DB_TYPE type, int initial_size);
 extern int set_area_init (void);
 extern void set_area_final (void);
+extern void set_area_reset ();
 extern DB_COLLECTION *set_create_basic (void);
 extern DB_COLLECTION *set_create_multi (void);
 extern DB_COLLECTION *set_create_sequence (int size);

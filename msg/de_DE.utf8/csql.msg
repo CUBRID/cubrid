@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -40,13 +41,17 @@ gültigen Optionen:\n\
   -c, --command=ARG            CSQL-Befehle\n\
   -l, --line-output            jeden Wert in einer Zeile anzeigen\n\
   -r, --read-only              Nur-Lese-Modus\n\
-  -t, --plain-output           Darstellungsarten ergeben in einem Drucker-freundlichen Format angezeigt  (funktioniert nur mit -c and -i)\n\
+  -t, --plain-output           Darstellungsarten ergeben in einem Drucker-freundlichen Format angezeigt (funktioniert nur mit -c and -i)\n\
+  -q, --query-output           Darstellungsarten ergeben in einem abfrage-freundlichen Format angezeigt (funktioniert nur mit -c und -i)\n\
+  -d, --loaddb-output          Darstellungsarten ergeben in einem loaddb-freundlichen Format angezeigt (funktioniert nur mit -c und -i)\n\
   -N, --skip-column-names      Spaltendarstellung in Ergebnisse nicht anzuzeigen (funktioniert nur mit -c and -i)\n\
       --string-width           jede Spalte der Art String in dieser Breite anzeigen\n\
       --no-auto-commit         Auto-Commit-Modus deaktivieren\n\
       --no-pager               Pager nicht verwenden\n\
       --no-single-line         Ausführung ausgerichtet auf einer Zeile deaktivieren\n\
       --no-trigger-action      deaktivieren Trigger Aktion\n\
+      --delimiter=ARG          Trennzeichen zwischen Spalte (funktioniert nur mit -q)\n\
+      --enclosure=ARG          Gehäuse für eine Ergebniszeichenfolge (funktioniert nur mit -q)\n\
 \n\
 Für weitere Informationen, siehe http://www.cubrid.org\n
 41 %1$s: der Umgebungswert von %2$s_MODE ist inkorrekt. \nEr sollte entweder %3$s oder %4$s sein.\n
@@ -87,6 +92,7 @@ $ Diese 3 sollten leer sein
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Zu wenig Argumente angegeben.
 
 145 <Hilfe: Schema einer Klasse>
 146 nichts
@@ -107,6 +113,7 @@ $ Diese 3 sollten leer sein
 194 Ungültige Kombination von Befehlszeilenargumente (Optionen).
 196 Ein unbekannter Fehler ist aufgetreten.
 197 ';edit' ist nicht zulässig, wenn die Ausgabe umgeleitet wurde.
+198 Formatieren fehlgeschlagen.
 
 203 <%1$s> 
 204 <Oberklassen> 
@@ -149,7 +156,7 @@ $ csql help messages
    ;EXit                        - Programm beenden.\n\
 \n\
    ;CLear                       - Befehlspuffer leeren.\n\
-   ;EDIT                        - System-Editor mit dem Befehlspuffer rufen.\n\
+   ;EDIT   [format/fmt]         - System-Editor [nach dem Formatierer] mit dem Befehlspuffer.\n\
    ;LISt                        - Inhalt eines Befehlspuffer anzeigen.\n\
 \n\
    ;RUn                         - SQL in Befehlspuffer ausführen.\n\
@@ -158,12 +165,15 @@ $ csql help messages
    ;COMmit                      - aktuelle Transaktion verpflichten.\n\
    ;ROllback                    - aktuelle Transaktion rückgängig machen.\n\
    ;AUtocommit [ON|OFF]         - aktivieren/deaktivieren des Auto-Commit-Modus.\n\
-   ;REStart                     - Datenbank neustarten.\n\
+   ;REStart                     - verbinden Sie sich erneut mit der aktuellen Datenbank in einer CSQL-Sitzung.\n\
+   ;CHeckpoint                  - führen Sie den Prüfpunkt aus (nur CSQL mit --sysadm).\n\
+   ;Killtran                    - informationen zum Transaktionsstatus prüfen oder eine bestimmte Transaktion beenden. (nur CSQL mit --sysadm).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - Standard-Shell, -Editor, -Printer und -Pager setzen\n\
-   ;EDITOR_Cmd   [editor-cmd]     Befehl für eine neue, oder die aktuelle Anzeigen\n\
-   ;PRINT_Cmd    [print-cmd]      einzeln, jeweils.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - Standard-Shell, -Editor, -Printer, -Pager und -Formatierer setzen\n\
+   ;EDITOR_Cmd    [editor-cmd]    Befehl für eine neue, oder die aktuelle Anzeigen\n\
+   ;PRINT_Cmd     [print-cmd]     einzeln, jeweils.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - lokale Uhrzeit und Datum anzeigen.\n\
    ;DATAbase                    - den Namen der zugegriffenen Datenbank anzeigen.\n\
@@ -181,6 +191,13 @@ $ csql help messages
    ;HISTORYList                 - Liste der ausgeführten Abfragen anzeigen.\n\
    ;HISTORYRead <history_num>   - Eintrag über die Verlaufszahl in den Befehlspuffer schreiben.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - Single-Line-Modus aktivieren/deaktivieren.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - sich als Benutzername mit der aktuellen oder anderen Datenbanken verbinden..\n\
+   ;.Hist [ON/OFF]              - sammeln von Statistikinformationen in CSQL starten/stoppen (nur verfügbarer DBA).\n\
+   ;.Clear_hist                 - löschen Sie die SQL Statistikinformationen im Puffer.\n\
+   ;.Dump_hist                  - anzeige der CSQL-Statistikinformationen in CSQL.\n\
+   ;.X_hist                     - anzeige der CSQL-Statistikinformationen in CSQL mit initialisierten Statistikdaten.\n\
    ;HElp                        - Hilfe anzeigen.\n\n
 
 232 <Beschränkungen> 

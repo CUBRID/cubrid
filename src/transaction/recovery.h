@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -29,15 +28,16 @@
 
 #include "error_manager.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "thread_compat.hpp"
 
 #include <stdio.h>
 
 typedef enum
 {
-  /* 
+  /*
    * RULE *********************************************
-   * 
+   *
    * NEW ENTRIES SHOULD BE ADDED AT THE BOTTON OF THE FILE TO AVOID FULL RECOMPILATIONS (e.g., the file can be utimed)
    * and to AVOID OLD DATABASES TO BE RECOVERED UNDER OLD FILE */
   RVDK_NEWVOL = 0,
@@ -179,8 +179,12 @@ typedef enum
 
   RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT = 124,
   RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE = 125,
+  RVHF_APPEND_PAGES_TO_HEAP = 126,
 
-  RV_LAST_LOGID = RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE,
+  RVPGBUF_SET_TDE_ALGORITHM = 127,
+  RVFL_FHEAD_SET_TDE_ALGORITHM = 128,
+
+  RV_LAST_LOGID = RVFL_FHEAD_SET_TDE_ALGORITHM,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -192,7 +196,7 @@ typedef struct log_rcv LOG_RCV;
 struct log_rcv
 {				/* Recovery information */
   MVCCID mvcc_id;		/* mvcc id */
-  PAGE_PTR pgptr;		/* Page to recover. Page should not be free by recovery functions, however it should be 
+  PAGE_PTR pgptr;		/* Page to recover. Page should not be free by recovery functions, however it should be
 				 * set dirty whenever is needed */
   PGLENGTH offset;		/* Offset/slot of data in the above page to recover */
   int length;			/* Length of data */
@@ -260,16 +264,5 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVHF_MARK_DELETED \
    || (idx) == RVFL_TRACKER_HEAP_REUSE \
    || (idx) == RVFL_TRACKER_UNREGISTER)
-
-#define RCV_IS_NEW_PAGE_INIT(idx) \
-  ((idx) == RVPGBUF_NEW_PAGE \
-   || (idx) == RVDK_FORMAT \
-   || (idx) == RVDK_INITMAP \
-   || (idx) == RVHF_NEWPAGE \
-   || (idx) == RVEH_INIT_BUCKET \
-   || (idx) == RVEH_INIT_NEW_DIR_PAGE \
-   || (idx) == RVBT_GET_NEWPAGE \
-   || (idx) == RVCT_NEWPAGE \
-   || (idx) == RVHF_CREATE_HEADER)
 
 #endif /* _RECOVERY_H_ */

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -24,8 +23,14 @@
 #ifndef _LOCK_FREE_H_
 #define _LOCK_FREE_H_
 
-#include "porting.h"
 #include "dbtype_def.h"
+#include "lockfree_bitmap.hpp"
+#include "porting.h"
+
+#include <cassert>
+#if !defined (WINDOWS)
+#include <pthread.h>
+#endif
 
 /*
  * Some common hash, copy and compare functions
@@ -39,12 +44,6 @@ extern int lf_callback_vpid_copy (void *src, void *dest);
  */
 #define VOLATILE_ACCESS(v,t)		(*((t volatile *) &(v)))
 
-/*
- * Address mark macros
- */
-#define ADDR_WITH_MARK(p)   ((void * volatile) (((long long volatile) p) | 0x1))
-#define ADDR_HAS_MARK(p)    (((long long volatile)p) & 0x1)
-#define ADDR_STRIP_MARK(p)  ((void * volatile)(((long long volatile)p) & (~((long long)0x1))))
 /*
  * Entry descriptor
  */
@@ -114,7 +113,6 @@ struct lf_entry_descriptor
  * Lock free transaction based memory garbage collector
  */
 #define LF_NULL_TRANSACTION_ID	      ULONG_MAX
-#define LF_BITFIELD_WORD_SIZE    (int) (sizeof (unsigned int) * 8)
 
 typedef struct lf_tran_system LF_TRAN_SYSTEM;
 typedef struct lf_tran_entry LF_TRAN_ENTRY;
@@ -151,51 +149,6 @@ struct lf_tran_entry
 
 #define LF_TRAN_ENTRY_INITIALIZER     { 0, LF_NULL_TRANSACTION_ID, NULL, NULL, NULL, -1, false }
 
-enum lf_bitmap_style
-{
-  LF_BITMAP_ONE_CHUNK = 0,
-  LF_BITMAP_LIST_OF_CHUNKS
-};
-typedef enum lf_bitmap_style LF_BITMAP_STYLE;
-
-typedef struct lf_bitmap LF_BITMAP;
-struct lf_bitmap
-{
-  /* bitfield for entries array */
-  unsigned int *bitfield;
-
-  /* capacity count */
-  int entry_count;
-
-  /* current used count */
-  int entry_count_in_use;
-
-  /* style */
-  LF_BITMAP_STYLE style;
-
-  /* threshold for usage */
-  float usage_threshold;
-
-  /* the start chunk index for round-robin */
-  unsigned int start_idx;
-};
-
-#define LF_BITMAP_FULL_USAGE_RATIO (1.0f)
-#define LF_BITMAP_95PERCENTILE_USAGE_RATIO (0.95f)
-
-#if defined (SERVER_MODE)
-#define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_95PERCENTILE_USAGE_RATIO
-#else
-#define LF_AREA_BITMAP_USAGE_RATIO LF_BITMAP_FULL_USAGE_RATIO
-#endif
-
-#define LF_BITMAP_IS_FULL(bitmap)                              \
-  (((float)VOLATILE_ACCESS((bitmap)->entry_count_in_use, int)) \
-        / (bitmap)->entry_count >= (bitmap)->usage_threshold)
-
-#define LF_BITMAP_COUNT_ALIGN(count) \
-    (((count) + (LF_BITFIELD_WORD_SIZE) - 1) & ~((LF_BITFIELD_WORD_SIZE) - 1))
-
 struct lf_tran_system
 {
   /* pointer array to thread dtran entries */
@@ -224,7 +177,7 @@ struct lf_tran_system
 };
 
 #define LF_TRAN_SYSTEM_INITIALIZER \
-  { NULL, 0, {NULL, 0, 0, LF_BITMAP_ONE_CHUNK, 1.0f, 0}, 0, 0, 100, 0, NULL }
+  { NULL, 0, {}, 0, 0, 100, 0, NULL }
 
 #define LF_TRAN_CLEANUP_NECESSARY(e) ((e)->tran_system->min_active_transaction_id > (e)->last_cleanup_id)
 
@@ -232,7 +185,7 @@ extern int lf_tran_system_init (LF_TRAN_SYSTEM * sys, int max_threads);
 extern void lf_tran_system_destroy (LF_TRAN_SYSTEM * sys);
 
 extern LF_TRAN_ENTRY *lf_tran_request_entry (LF_TRAN_SYSTEM * sys);
-extern int lf_tran_return_entry (LF_TRAN_ENTRY * entry);
+extern void lf_tran_return_entry (LF_TRAN_ENTRY * entry);
 extern void lf_tran_destroy_entry (LF_TRAN_ENTRY * entry);
 extern void lf_tran_compute_minimum_transaction_id (LF_TRAN_SYSTEM * sys);
 
@@ -400,14 +353,319 @@ extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, LF_TRAN_
 				     LF_HASH_TABLE * table);
 extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
 
-/* lock free bitmap */
-extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold);
-extern void lf_bitmap_destroy (LF_BITMAP * bitmap);
-extern int lf_bitmap_get_entry (LF_BITMAP * bitmap);
-extern int lf_bitmap_free_entry (LF_BITMAP * bitmap, int entry_idx);
-
 #if defined (UNITTEST_LF)
 extern void lf_reset_counters (void);
 #endif /* UNITTEST_LF */
+
+// C++ style lock-free hash
+// *INDENT-OFF*
+template <class Key, class T>
+class lf_hash_table_cpp
+{
+  public:
+    class iterator;
+
+    lf_hash_table_cpp ();
+
+    void init (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
+               lf_entry_descriptor &edes);
+    void destroy ();
+
+    T *find (lf_tran_entry *t_entry, Key &key);
+    bool find_or_insert (lf_tran_entry *t_entry, Key &key, T *&t);
+    bool insert (lf_tran_entry *t_entry, Key &key, T *&t);
+    bool insert_given (lf_tran_entry *t_entry, Key &key, T *&t);
+    bool erase (lf_tran_entry *t_entry, Key &key);
+    bool erase_locked (lf_tran_entry *t_entry, Key &key, T *&t);
+
+    void unlock (lf_tran_entry *t_entry, T *&t);
+
+    void clear (lf_tran_entry *t_entry);
+
+    T *freelist_claim (lf_tran_entry *t_entry);
+    void freelist_retire (lf_tran_entry *t_entry, T *&t);
+
+    void start_tran (lf_tran_entry *t_entry);
+    void end_tran (lf_tran_entry *t_entry);
+
+    size_t get_size () const;
+    size_t get_element_count () const;
+
+    lf_hash_table &get_hash_table ();
+    lf_freelist &get_freelist ();
+
+  private:
+    pthread_mutex_t *get_pthread_mutex (T *t);
+    template <typename F>
+    bool generic_insert (F &ins_func, lf_tran_entry *t_entry, Key &key, T *&t);
+
+    lf_freelist m_freelist;
+    lf_hash_table m_hash;
+};
+
+template <class Key, class T>
+class lf_hash_table_cpp<Key, T>::iterator
+{
+  public:
+    iterator () = default;
+    iterator (lf_tran_entry *t_entry, lf_hash_table_cpp & hash);
+    ~iterator ();
+
+    T *iterate ();
+    void restart ();
+
+  private:
+    lf_hash_table_iterator m_iter;
+    T *m_crt_val;
+};
+
+//
+// implementation
+//
+
+//
+// lf_hash_table_cpp
+//
+template <class Key, class T>
+lf_hash_table_cpp<Key, T>::lf_hash_table_cpp ()
+  : m_freelist LF_FREELIST_INITIALIZER
+  , m_hash LF_HASH_TABLE_INITIALIZER
+{
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::init (lf_tran_system &transys, int hash_size, int freelist_block_count,
+                                 int freelist_block_size, lf_entry_descriptor &edesc)
+{
+  if (lf_freelist_init (&m_freelist, freelist_block_count, freelist_block_size, &edesc, &transys) != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+  if (lf_hash_init (&m_hash, &m_freelist, hash_size, &edesc) != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::destroy ()
+{
+  lf_hash_destroy (&m_hash);
+  lf_freelist_destroy (&m_freelist);
+}
+
+template <class Key, class T>
+pthread_mutex_t *
+lf_hash_table_cpp<Key, T>::get_pthread_mutex (T *t)
+{
+  assert (m_freelist.entry_desc->using_mutex);
+  return (pthread_mutex_t *) (((char *) t) + m_freelist.entry_desc->of_mutex);
+}
+
+template <class Key, class T>
+T *
+lf_hash_table_cpp<Key, T>::find (lf_tran_entry *t_entry, Key &key)
+{
+  T *ret = NULL;
+  if (lf_hash_find (t_entry, &m_hash, &key, (void **) (&ret)) != NO_ERROR)
+    {
+      assert (false);
+    }
+  return ret;
+}
+
+template <class Key, class T>
+template <typename F>
+bool
+lf_hash_table_cpp<Key, T>::generic_insert (F &ins_func, lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  int inserted = 0;
+  if (ins_func (t_entry, &m_hash, &key, reinterpret_cast<void **> (&t), &inserted) != NO_ERROR)
+    {
+      assert (false);
+    }
+  return inserted != 0;
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::find_or_insert (lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  return generic_insert (lf_hash_find_or_insert, t_entry, key, t);
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::insert (lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  return generic_insert (lf_hash_insert, t_entry, key, t);
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::insert_given (lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  return generic_insert (lf_hash_insert_given, t_entry, key, t);
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::erase (lf_tran_entry *t_entry, Key &key)
+{
+  int success = 0;
+  if (lf_hash_delete (t_entry, &m_hash, &key, &success) != NO_ERROR)
+    {
+      assert (false);
+    }
+  return success != 0;
+}
+
+template <class Key, class T>
+bool
+lf_hash_table_cpp<Key, T>::erase_locked (lf_tran_entry *t_entry, Key &key, T *&t)
+{
+  int success = 0;
+  if (lf_hash_delete_already_locked (t_entry, &m_hash, &key, t, &success) != NO_ERROR)
+    {
+      assert (false);
+      pthread_mutex_unlock (get_pthread_mutex (t));
+    }
+  if (success != 0)
+    {
+      t = NULL;
+    }
+  return success != 0;
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::unlock (lf_tran_entry *t_entry, T *&t)
+{
+  assert (t != NULL);
+  if (m_freelist.entry_desc->using_mutex)
+    {
+      pthread_mutex_unlock (get_pthread_mutex (t));
+    }
+  else
+    {
+      lf_tran_end_with_mb (t_entry);
+    }
+  t = NULL;
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::clear (lf_tran_entry *t_entry)
+{
+  lf_hash_clear (t_entry, &m_hash);
+}
+
+template <class Key, class T>
+T *
+lf_hash_table_cpp<Key, T>::freelist_claim (lf_tran_entry *t_entry)
+{
+  return (T *) lf_freelist_claim (t_entry, &m_freelist);
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::freelist_retire (lf_tran_entry *t_entry, T *&t)
+{
+  lf_freelist_retire (t_entry, &m_freelist, t);
+  t = NULL;
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::start_tran (lf_tran_entry *t_entry)
+{
+  lf_tran_start_with_mb (t_entry, false);
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::end_tran (lf_tran_entry *t_entry)
+{
+  lf_tran_end_with_mb (t_entry);
+}
+
+template <class Key, class T>
+size_t
+lf_hash_table_cpp<Key, T>::get_size () const
+{
+  assert (m_hash.hash_size > 0);
+  return (size_t) m_hash.hash_size;
+}
+
+template <class Key, class T>
+size_t
+lf_hash_table_cpp<Key, T>::get_element_count () const
+{
+  int alloc_count = m_freelist.alloc_cnt;
+  int unused_count = m_freelist.available_cnt + m_freelist.retired_cnt;
+  if (alloc_count > unused_count)
+    {
+      return static_cast<size_t> (alloc_count - unused_count);
+    }
+  else
+    {
+      return 0;
+    }
+}
+
+template <class Key, class T>
+lf_hash_table &
+lf_hash_table_cpp<Key, T>::get_hash_table ()
+{
+  return m_hash;
+}
+
+template <class Key, class T>
+lf_freelist &
+lf_hash_table_cpp<Key, T>::get_freelist ()
+{
+  return m_freelist;
+}
+
+//
+// lf_hash_table_cpp::iterator
+//
+
+template <class Key, class T>
+lf_hash_table_cpp<Key, T>::iterator::iterator (lf_tran_entry *t_entry, lf_hash_table_cpp & hash)
+  : m_iter ()
+  , m_crt_val (NULL)
+{
+  lf_hash_create_iterator (&m_iter, t_entry, &hash.m_hash);
+}
+
+template <class Key, class T>
+lf_hash_table_cpp<Key, T>::iterator::~iterator ()
+{
+}
+
+template <class Key, class T>
+T *
+lf_hash_table_cpp<Key, T>::iterator::iterate ()
+{
+  return static_cast<T *> (lf_hash_iterate (&m_iter));
+}
+
+template <class Key, class T>
+void
+lf_hash_table_cpp<Key, T>::iterator::restart ()
+{
+  if (m_iter.tran_entry->transaction_id != LF_NULL_TRANSACTION_ID)
+    {
+      lf_tran_end_with_mb (m_iter.tran_entry);
+    }
+  m_crt_val = NULL;
+}
+
+// *INDENT-ON*
 
 #endif /* _LOCK_FREE_H_ */

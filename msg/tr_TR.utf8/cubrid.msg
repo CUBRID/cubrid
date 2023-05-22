@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -25,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 Telif Hakkı Bilgisi \n
 5 tamsayı argüman değeri bulunmamaktadır "%1$s"\n
 6 floating argüman değeri bulunmamaktadır "%1$s"\n
@@ -184,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Veritabanı "%1$s" bilinmiyor veya dosya "databases.txt" erişilemiyor.
 117 Veritabanı için mutlak Pathadı çok uzun. Path in birleştirilmiş toplam uzunluğu "%1$s" artı adı "%2$s" is %3$d; Kombine uzunluğundan daha az olması gerekir %4$d.
 118 Geçerli çalışma dizinini bulamadı.
-119 Yerel hostadı bulunamıyor.
+119 /etc/hosts içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
 120 Yoğunlukların maksimum sayısı (%1$d) değerini aştı.
 121 "%1$s" kaldırmak için çalışılıyor veritabanından kalıcı bir yoğunluk.
 122 Sistem mesajı kataloguna erişilemiyor.
@@ -415,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Ana sunucuya bir kanal kurulamadı.
 348 Servis veya port tanımlayıcı da belirtmeniz gerekir.
 349 TCP için bilinmeyen hizmet: %1$s.
-350 Hata "%1$s"  konağın adıyla yerel bilgisayardan alınıyor. Host bulunamadı.
+350 /etc/hosts içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
 351 TCP soketi oluşturulamıyor.
 352 tcp_open: Ayrılmış bir TCP bağlantı noktası alınamıyor.
 353 Ana sunucuya bağlantı yapamazsınız "%1$s".
@@ -903,7 +904,7 @@ $ LOADDB
 834 Kaynak dizesi arasında bazı uyumsuzluklar "%1$s" ve verilen "%2$s" biçim dizesi vardır to_number() .
 835 Tanımlanmamış istatistikler öğesi.
 836 SAYFASINDA LATCH (%1$d|%2$d) ZAMAN AŞIMI.
-837 Veritabanı nesneleri (sınıf / tetik / seri vs) sahibi olan kullanıcılara aittir iptal edemezsiniz.. 
+837 Veritabanı nesneleri (sınıf / tetik / seri / sunucu / synonym vb) sahibi olan kullanıcılara aittir iptal edemezsiniz..
 838 Eşzamanlı olarak taranan indeksi %1$d den daha fazla açılamaz .
 839 "%1$s": Bilinmeyen sistem parametresi veya bozuk bir değer.
 840 Sistem parametresi değiştiremezsiniz "%1$s".
@@ -987,7 +988,7 @@ $ LOADDB
 918 Yabancı anahtar tarafından yönlendirilen sınıf '%1$s' bulunmamaktadır.
 919 Yabancı anahtarının tarafından yönlendirilen birincil anahtarın sınıf '%1$s' bulunmamaktadır.
 920 Yabancı anahtar '%1$s' birincil anahtar üye '%2$s' içermez.
-921 Yabancı anahtar üye '%1$s' alanı birincil anahtar üye '%2$s' farklıdır.
+921 Yabancı anahtar üye '%1$s' alanı birincil anahtar üye '%2$s' farklıdır. (%3$s: %4$s vs. %5$s)
 922 Dış anahtar kelime: '%1$s' değeri nedeniyle, '%2$s' sınırı geçersiz.
 923 Birincil anahtar '%1$s' yabancı anahtar '%2$s' tarafından yönlendirilen iptal olması gerekmiyor.
 924 Güncelle/Sil işlemleri yabancı anahtar '%1$s' tarafından kısıtlanmıştır.
@@ -1051,7 +1052,7 @@ $ LOADDB
 982 İşlem %1$d ile kesme ayarlayın.
 983 Yeniden kullanılabilir bir OID sınıfının örnekleri olmayan başvurulabilir . Bu işleme olmayan başvurulabilir örnekler üzerinde izin verilmez.
 984 Bu yapılandırma dosyası "%1$s" "[%2$s]" bölümünde "%4$s" ayarlanır "[%5$s]" bölümde "%6$s"'ye %3$s ayarlayamazsınız.
-985 Multi ana bilgisayar "databases.txt" olarak ayarlandığında veritabanı bağlantısının dizesinde ana bilgisayar adı belirtilmelidir.
+985 Multi ana bilgisayar "databases.txt" olarak ayarlandığında veritabanı bağlantısının dizesinde ana bilgisayar adı belirtilmelidir. ex) csql demodb@localhost
 986 CUBRID sinyal özelliği başladı.
 987 CUBRID sinyal özelliği durdu.
 988 Düğüm olayı: %1$s.
@@ -1194,7 +1195,7 @@ $ LOADDB
 1125 Taşma anahtar dosyası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Yeni bir taşma sayfası oluştur. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Boş bir taşma sayfayı sil. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Oturum kurtarma başlatılır. Uygulanacak günlük kayıt sayısı: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Oturum kurtarma başlatılır.
 1129 Oturum kurtarma bitti.
 1130 İşlem kilit sayıları %1$d aştığı için işlem iptal edilir.
 1131 Dahili hata: Sayfa %1$d hacmi "%2$s"de bozulabilir.\n%3$s
@@ -1263,26 +1264,26 @@ $ LOADDB
 1194 Çünkü %3$d|%4$d|%5$d sınıfı kilidi hemen verilmez, %1$d|%2$d dosyası kontrol edilemez.
 1195 CTE'nin özyinelemeli kısmı, GROUP BY yan tümcesi olmayan toplama işlevlerini içermemelidir.
 1196 CTE yürütme azami özyinelemeli iterasyonlara ulaştı: %1$d.
-1197 Invalid json: %1$s (%2$d)
-1198 A json object must be provided
-1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path
-1201 Json object name cannot be NULL.
-1202 Json PATH "%1$s" does not exist in %2$s
-1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
-1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
-1206 Reserved error for JSON.
-1207 Reserved error for JSON.
-1208 Reserved error for JSON.
+1197 Geçersiz JSON: %1$s (%2$d)
+1198 Bir JSON nesnesi sağlanmalı
+1199 Sağlanan JSON, JSON şeması tarafından geçersiz kılındı (Geçersiz şema yolu: %1$s, Anahtar Kelime: %2$s, Geçersiz JSON yolu: %3$s)
+1200 Geçersiz JSON yolu
+1201 JSON nesne adı NULL olamaz.
+1202 '%2$s' de JSON yolu "%1$s" mevcut değil
+1203 %1$s yolunda geçersiz JSON tipi. Beklenen %2$s, ancak %3$s'ü buldu.
+1204 Json anahtarı "%1$s" kopya
+1205 Geçersiz tip %1$s. JSON belgesiyle uyumlu tip bekleniyor (STRING veya JSON).
+1206 JSON yolu "%1$s", JSON Dizisindeki bir hücreye yönelik değil.
+1207 Geçersiz JSON yolu. Dizin, "json_max_array_idx" sistem parametresi tarafından izin verilenden daha büyük.
+1208 Geçersiz one/all argümanı. Argüman bu iki değerden sadece birini alabilir: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
-1216 Invalid object id %1$d when trying to unpack.
+1215 %2$lld pozisyonunda stream %1$s'dan okunacak veri yok, %3$zu değeri.
+1216 Paketi açmaya çalışırken geçersiz nesne kimliği %1$d.
 1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
@@ -1302,12 +1303,150 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Double Write Buffer is disabled.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s".
+1236 Çift Yaz Tampon devre dışı.
+1237 %1$s bir durum değiştiremiyor çünkü %2$s bir %3$s.
+1238 JSON_TABLE '%1$s' sütunu için eksik değer.
+1239 "%2$s" yolundaki JSON "%1$s"'den, "%4$s" etki alanının JSON_TABLE "%3$s" sütununa değer zorlanamıyor.
+1240 Hiyerarşi zincirinin bir parçası olan sınıflarda ONLINE INDEX'e izin verilmez.
+1241 XASL ağacının yeniden derlenmesi gerekiyor.
+1242 Hiyerarşi zincirinin bir parçası olan bir sınıfta bölüm oluşturulamıyor.
+1243 Bir hatadan sonra INDEX yüklemesi iptal edildi.
+1244 SHARED niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
+1245 CLASS niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
+1246 /etc/hosts içindeki ("%1$s") adresi ve kurallı adı alınamıyor. Lütfen dosyanın iznini veya ana bilgisayar adı olup olmadığını kontrol edin.
+1247 Belirtilen zaman (%1$s) Belirtilen yedekleme süresi (%2$s) dan sonra olmalıdır.
+1248 Geçersiz Anahtar dosyası: %1$s
+1249 Anahtar bulunamıyor (dizin: %1$d).
+1250 Veritabanında ayarlanan ana anahtar ve verilenler eşleşmiyor. Veritabanında ayarlanan anahtar dizini: %1$d
+1251 TDE şifreleme sırasında hata.
+1252 TDE şifresini çözerken hata oluştu.
+1253 TDE Modülü yüklenmemiş.
+1254 Anahtar oluşturulamıyor.
+1255 TDE modülü yüklenemiyor. TDE özelliğini kullanamazsınız.\n\
+Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğinden emin olun.
+1256 Anahtar dosyası (_keys) kopyalanamıyor. Kopyalanan veri tabanında TDE özelliğini kullanamazsınız.
+1257 Anahtar dosyası (_keys) yedeklenemiyor. Bu yedekleme birimine bağlı olarak geri yüklenen veritabanında TDE özelliğini kullanamazsınız.
+1258 %1$s veritabanında anahtar kümesi bulunamıyor. Yedekleme birimindeki anahtar dosya kullanılacaktır.
+1259 "%1$s" anahtar dosyasını "%2$s" olarak yeniden adlandırın.
+1260 "%1$s" anahtar dosyasını "%2$s" klasörüne kopyalayın.
+1261 Geri yüklenen yedek anahtar dosyasındaki ilk anahtar (anahtar dizini: %1$d, oluşturma zamanı: %2$s) ayarlandı.
+1262 Anahtar dosyası dolu.
+1263 Günlük sayfasını TDE şifreleyemiyor (pageid: %1$lld). Artık bu sayfayı şifrelemeye çalışılmayacak.
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
+1284 %1$s üzerinde başvurulan birincil anahtar nedeniyle tablo kesilemiyor. CASCADE seçeneği ile tekrar deneyiniz.
+1285 Yabancı anahtarın ON DELETE eylemi (%1$s) CASCADE olarak ayarlanmadığından kademeli kesilemiyor.
 
-1240 Son Hata
+1286 Ayıklanacak zamanda log lsa bulunamıyor. (giriş zamanı: %1$s).
+1287 Günlük bilgisi çıkarılmaya çalışılırken zaman aşımına uğradı. (geçen süre: %1$d saniye, çıkarma zaman aşımı: %2$d saniye)
+1288 Dahili olarak desteklenmeyen günlük kaydı için günlük bilgisi oluşturmayı atlayın.
+1289 Geçersiz işlem için günlük bilgisi oluşturmayı atlayın. (üçlü : %1$d)
+1290 Günlük bilgilerini çıkarmak için geçersiz günlük lsa (%1$lld|%2$d).
+1291 Günlük bilgilerini çıkarmak için sunucuya bağlanılamıyor. 'supplemental_log' parametresini ayarlayarak tekrar deneyin.
+1292 O zaman (%1$s) günlük lsa bulunamıyor. Günlük lsa, zamana (%2$s) göre ayarlanır.
+1293 Günlük bilgileri üretilirken günlük sayfası alınamıyor. Günlük bilgisi oluşturmak için log lsa, NULL'u gösterir.
+1294 Günlük bilgisi oluşturuldu. (yazın: "%1$s").
+1295 Geçersiz tablo için günlük bilgisi oluşturmayı atlayın. (sınıf OID : %1$d|%2$d|%3$d)
+
+1296 Günlük kurtarma: ANALİZ Aşaması başlatıldı.
+1297 Günlük kurtarma: REDO Aşaması başlatıldı. Yeniden yapılacak günlük sayfaları: %1$lld, Yeniden yapılacak günlük kayıtları: %2$lld.
+1298 Günlük kurtarma: GERİ AL Aşaması başlatıldı. Geri alınacak günlük sayfaları: %1$lld, geri alınacak işlemler: %2$d.
+1299 Günlük kurtarma: %1$s Aşama tamamlanıyor.
+1300 Günlük kurtarma: %1$s Aşama tamamlandı.
+1301 Günlük kurtarma: %1$s ilerleme: (%2$lld/%3$lld), %4$.2f, geçen süre: %5$.2f (s), tahmini kalan süre: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - not supported type %1$s.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 not supported type %1$s(%2$d).
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 A null column binder was referenced.
+
+1332 Etkin günlük hacmi (%1$s) yeniden oluşturulamayacak kadar makul. Etkin günlüğü kaldırırsanız, beklenmeyen ve geri dönüşü olmayan bir soruna neden olabilir.
+
+1333 Geri dönüşü başlatmak için geçersiz süre (%1$s). Zamanın (%2$s) ile (%3$s) arasında ayarlanması gerekir.
+1334 Geri dönüş yapılacak sınıf bulunamadı (%1$s).
+1335 Geri dönüş için çok fazla işlem var. %1$d'den az işlem flashback olabilir.
+1336 Bu sınıf için geri dönüş desteklenemez (ad : %1$s , OID : %2$d|%3$d|%4$d). Sınıf şeması değiştirildi.
+1337 Günlük kaydı mevcut değil (lsa : %1$lld|%2$d). Arşiv günlüğü birimi silindi.
+1338 Flashback zaten çalışıyor. Flashback, aynı anda birden fazla kullanıcı tarafından çalıştırılamaz.
+
+1339 Desteklenmeyen bağımsız değişken türü saklı yordam: %1$s
+1340 Desteklenmeyen saklı yordam dönüş türü: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
+
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Invalid number of columns specified.
+
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 %1$s "%2$s", "%4$s" dosyasının %3$d satırında geçersiz biçim.
+1356 "%1$s" ana bilgisayar adı çok uzun, "%3$s" dosyasının %2$d satırında 256'dan küçük veya buna eşit olmalıdır.
+1357 "%1$s" ana bilgisayar adı zaten var, bir ana bilgisayar adı "%3$s" dosyasının %2$d satırındaki diğer IP adresleriyle çoğaltılamaz.
+1358 Hem IP adresi hem de ana bilgisayar adı, "%2$s" dosyasının %1$d satırına tamamen yazılmalıdır.
+1359 cubrid_hosts.conf dosyasında "%1$s" aranamıyor.
+1360 Kullanıcı tanımlı ana bilgisayar kullanılırken bir hata oluştu.
+
+1361 "%1$s" dosyası bulunamadı.
+
+1362 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1441,10 +1580,10 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 103 Dizin ipuçlarının geçersiz kullanımı
 104 Bit dizgesinin uzunluğu en fazla %1$d bittir.
 105 Sözdizim hatası: unexpected
-106 , bekliyor '{'
-107 , bekliyor SELECT veya '('
-108 , bekliyor
-109 beklenmedik
+106 , expecting '{'
+107 , expecting SELECT or '('
+108 , expecting
+109 unexpected
 110 IFADESININ SONUNA
 111 Çizgide %1$d, sütununda %2$d önce '%3$c%4$s'\n
 112 Çizgide %1$d, sütununda %2$d önce %3$s\n
@@ -1463,7 +1602,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 sessiontimezone geçersiz kullanımı\n sessiontimezone
 126 Bir class/vclass yorumun maksimum uzunluğu %1$d byte.
 127 Bir yorumun maksimum uzunluğu %1$d byte.
-128 Invalid number of arguments for JSON_OBJECTAGG
+128 JSON_OBJECTAGG için bağımsız değişken sayısı geçersiz
+129 PARALLEL count argümanı %1$d ve %2$d arasında olmalıdır.
+130 dblink - Server name cannot contain periods.
+131 ALTER SYNONYM geçersiz kullanımı.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 CREATE SYNONYM geçersiz kullanımı.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 DROP SYNONYM geçersiz kullanımı.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 RENAME SYNONYM geçersiz kullanımı.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 ALTER SYNONYM için herhangi bir seçenek belirtilmedi.
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
@@ -1766,6 +1914,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 Özyinelemeli CTE '%1$s', özyinelemeli sorgusunda doğrudan başvurulmalıdır.
 299 CTE '%1$s' hatası: yinelemesiz bölüm ve özyinelemeli bölüm UNION ALL ile bağlanmalıdır.
 300 DEFAULT yan tümcesi içinde alt sorguya izin verilmez.
+301 %1$s() fonksiyonu için bulunamadı imzalar
+302 Uyumsuz bağımsız değişken türü %1$s, beklenen tür: %2$s.
+303 Beklenmeyen argüman sayısı %1$d.
+304 %1$s() fonksiyonu için uyumlu bir imza bulunamadı
+305 İmza %1$s, argümanları ile uyumlu değildir.
+306 dblink - Gerekli bilgiler eksik.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sanal bellek yetersiz: %1$d bayt bölüm ayıramadı.
@@ -1848,6 +2012,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Geçersiz yalıtım düzeyi: %1$s şema, %2$s örnekleri.
 80 MVCC tecrit seviye değerlerini 'read committed', 'repeatable read' ya da 'serializable' olması gerekir.
 81 '%1$s' bir 'auto_increment' nesne olduğunu, seri olarak değiştirilebilir izin verilmez.
+82 Geçersiz JSON: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** geçersiz önbellek ***

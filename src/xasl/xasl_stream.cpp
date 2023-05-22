@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -25,40 +24,12 @@
 
 #include "memory_alloc.h"
 #include "object_representation.h"
+#include "xasl.h"
+#include "xasl_unpack_info.hpp"
 
 #if !defined(SERVER_MODE)
-static XASL_UNPACK_INFO *xasl_Unpack_info = NULL;
 static int stx_Xasl_errcode = NO_ERROR;
 #endif /* !SERVER_MODE */
-
-/*
- * stx_get_xasl_unpack_info_ptr () -
- *   return:
- */
-XASL_UNPACK_INFO *
-stx_get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p)
-{
-#if defined(SERVER_MODE)
-  return (XASL_UNPACK_INFO *) thread_p->xasl_unpack_info_ptr;
-#else /* SERVER_MODE */
-  return (XASL_UNPACK_INFO *) xasl_Unpack_info;
-#endif /* SERVER_MODE */
-}
-
-/*
- * stx_set_xasl_unpack_info_ptr () -
- *   return:
- *   ptr(in)    :
- */
-void
-stx_set_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *ptr)
-{
-#if defined (SERVER_MODE)
-  thread_p->xasl_unpack_info_ptr = ptr;
-#else
-  xasl_Unpack_info = ptr;
-#endif
-}
 
 /*
  * stx_get_xasl_errcode () -
@@ -100,7 +71,7 @@ stx_set_xasl_errcode (THREAD_ENTRY *thread_p, int errcode)
 int
 stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_stream_size)
 {
-  int n;
+  size_t n;
   XASL_UNPACK_INFO *unpack_info;
   int head_offset, body_offset;
 
@@ -111,7 +82,7 @@ stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_s
   body_offset = xasl_stream_size * UNPACK_SCALE;
   body_offset = xasl_stream_make_align (body_offset);
   unpack_info = (XASL_UNPACK_INFO *) db_private_alloc (thread_p, head_offset + body_offset);
-  stx_set_xasl_unpack_info_ptr (thread_p, unpack_info);
+  set_xasl_unpack_info_ptr (thread_p, unpack_info);
   if (unpack_info == NULL)
     {
       return ER_FAILED;
@@ -150,7 +121,7 @@ stx_mark_struct_visited (THREAD_ENTRY *thread_p, const void *ptr, void *str)
 {
   int new_lwm;
   int block_no;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   block_no = xasl_stream_get_ptr_block (ptr);
   new_lwm = xasl_unpack_info->ptr_lwm[block_no];
@@ -198,7 +169,7 @@ stx_get_struct_visited_ptr (THREAD_ENTRY *thread_p, const void *ptr)
 {
   int block_no;
   int element_no;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   block_no = xasl_stream_get_ptr_block (ptr);
 
@@ -227,10 +198,9 @@ stx_get_struct_visited_ptr (THREAD_ENTRY *thread_p, const void *ptr)
 void
 stx_free_visited_ptrs (THREAD_ENTRY *thread_p)
 {
-  int i;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
-  for (i = 0; i < MAX_PTR_BLOCKS; i++)
+  for (size_t i = 0; i < MAX_PTR_BLOCKS; i++)
     {
       xasl_unpack_info->ptr_lwm[i] = 0;
       xasl_unpack_info->ptr_max[i] = 0;
@@ -253,7 +223,7 @@ char *
 stx_alloc_struct (THREAD_ENTRY *thread_p, int size)
 {
   char *ptr;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   if (!size)
     {
@@ -343,7 +313,7 @@ stx_restore_string (THREAD_ENTRY *thread_p, char *&ptr)
       return NULL;
     }
 
-  char *bufptr = &stx_get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
+  char *bufptr = &get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
   if (ptr == NULL)
     {
       return NULL;
@@ -392,7 +362,7 @@ char *
 stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::column &jtc)
 {
   int temp_int;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &temp_int);
   jtc.m_function = (json_table_column_function) temp_int;
@@ -460,7 +430,7 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::node &jtn)
   jtn.m_id = (size_t) temp_int;
 
   ptr = or_unpack_int (ptr, &temp_int);
-  jtn.m_expand_type = (json_table_expand_type) temp_int;
+  jtn.m_is_iterable_node = (bool) temp_int;
 
   return ptr;
 }
@@ -537,7 +507,7 @@ xasl_stream_compare (const cubxasl::json_table::node &first, const cubxasl::json
       return false;
     }
 
-  if (first.m_expand_type != second.m_expand_type)
+  if (first.m_is_iterable_node != second.m_is_iterable_node)
     {
       return false;
     }

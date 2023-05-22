@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -32,11 +31,15 @@
 #include "memory_hash.h"
 #include "storage_common.h"
 #include "heap_file.h"
+#include "log_append.hpp"
+#include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "record_descriptor.hpp"
 #include "server_interface.h"
 #include "xserver_interface.h"
 #include "slotted_page.h"
 #include "dbtype.h"
+#include "xasl_cache.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -50,6 +53,7 @@ static int rc;
 /* attribute of db_serial class */
 typedef enum
 {
+  SERIAL_ATTR_UNIQUE_NAME_INDEX,
   SERIAL_ATTR_NAME_INDEX,
   SERIAL_ATTR_OWNER_INDEX,
   SERIAL_ATTR_CURRENT_VAL_INDEX,
@@ -125,7 +129,7 @@ static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
 					    int num_alloc);
 static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
-static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
+static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
 					const OID * serial_oidp, DB_VALUE * key_val);
@@ -138,7 +142,9 @@ static void serial_clear_value (SERIAL_CACHE_ENTRY * entry);
 static SERIAL_CACHE_ENTRY *serial_alloc_cache_entry (void);
 static SERIAL_CACHE_AREA *serial_alloc_cache_area (int num);
 static int serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p);
-static ATTR_ID serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index);
+// *INDENT-OFF*
+static int serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index, ATTR_ID &attrid);
+// *INDENT-ON*
 
 /*
  * xserial_get_current_value () -
@@ -195,7 +201,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
-  RECDES recdesc;
+  RECDES recdesc = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   ATTR_ID attrid;
   DB_VALUE *cur_val;
@@ -221,7 +227,10 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
     }
 
   /* retrieve attribute */
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   ret = heap_attrinfo_start (thread_p, oid_Serial_class_oid, 1, &attrid, &attr_info);
   if (ret != NO_ERROR)
@@ -231,7 +240,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
 
   attr_info_p = &attr_info;
 
-  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, NULL, attr_info_p);
+  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, attr_info_p);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -239,7 +248,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
 
   cur_val = heap_attrinfo_access (attrid, attr_info_p);
 
-  PR_SHARE_VALUE (cur_val, result_num);
+  pr_share_value (cur_val, result_num);
 
   heap_attrinfo_end (thread_p, attr_info_p);
 
@@ -462,11 +471,12 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 	}
 
       /* cur_val of db_serial is updated to last_cached_val of entry */
-      error = serial_update_cur_val_of_serial (thread_p, entry);
+      error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
+
     }
 
   /* get next value */
@@ -493,12 +503,12 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
  *   entry(in)    :
  */
 static int
-serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
+serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
 {
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
-  RECDES recdesc;
+  RECDES recdesc = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   DB_VALUE *val;
   DB_VALUE key_val;
@@ -538,7 +548,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
       goto exit_on_error;
     }
 
-  ret = heap_attrinfo_read_dbvalues (thread_p, &entry->oid, &recdesc, NULL, &attr_info);
+  ret = heap_attrinfo_read_dbvalues (thread_p, &entry->oid, &recdesc, &attr_info);
   if (ret != NO_ERROR)
     {
       heap_attrinfo_end (thread_p, &attr_info);
@@ -547,12 +557,18 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 
   attr_info_p = &attr_info;
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_UNIQUE_NAME_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_clone_value (val, &key_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   ret = heap_attrinfo_set (&entry->oid, attrid, &entry->last_cached_val, attr_info_p);
   if (ret != NO_ERROR)
@@ -566,6 +582,24 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
+    }
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
+    {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (tdes)
+	{
+	  if (!tdes->has_supplemental_log)
+	    {
+	      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					    tdes->client.get_db_user ());
+
+	      tdes->has_supplemental_log = true;
+	    }
+	}
+
+      (void) log_append_supplemental_serial (thread_p, db_get_string (&key_val), num_alloc, NULL, &entry->oid);
     }
 
   pr_clear_value (&key_val);
@@ -602,7 +636,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
-  RECDES recdesc;
+  RECDES recdesc = RECDES_INITIALIZER;
   HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
   DB_VALUE *val = NULL;
   DB_VALUE cur_val;
@@ -618,6 +652,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   SERIAL_CACHE_ENTRY *entry = NULL;
   ATTR_ID attrid;
   OID serial_class_oid;
+
+  bool is_started;
 
   db_make_null (&key_val);
 
@@ -646,11 +682,14 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       goto exit_on_error;
     }
 
-  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, NULL, &attr_info);
+  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, &attr_info);
 
   attr_info_p = &attr_info;
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CACHED_NUM_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CACHED_NUM_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   if (attrid == NOT_FOUND)
     {
       cached_num = 0;
@@ -661,53 +700,79 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       cached_num = db_get_int (val);
     }
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_NAME_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_UNIQUE_NAME_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
   pr_clone_value (val, &key_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &cur_val);
+  pr_share_value (val, &cur_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_INCREMENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_INCREMENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &inc_val);
+  pr_share_value (val, &inc_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_MAX_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_MAX_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &max_val);
+  pr_share_value (val, &max_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_MIN_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_MIN_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &min_val);
+  pr_share_value (val, &min_val);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &cyclic);
+  pr_share_value (val, &cyclic);
 
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &started);
+  pr_share_value (val, &started);
 
   db_make_null (&last_val);
+
+  is_started = db_get_int (&started);
 
   if (db_get_int (&started) == 0)
     {
       /* This is the first time to generate the serial value. */
       db_make_int (&started, 1);
-      attrid = serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX);
+      if (serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX, attrid) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
       assert (attrid != NOT_FOUND);
       ret = heap_attrinfo_set (serial_oidp, attrid, &started, attr_info_p);
       if (ret == NO_ERROR)
 	{
-	  PR_SHARE_VALUE (&cur_val, &next_val);
+	  pr_share_value (&cur_val, &next_val);
 	  if (cached_num > 1)
 	    {
 	      assert (1 <= num_alloc);
@@ -744,7 +809,10 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
     }
 
   /* Now update record */
-  attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   assert (attrid != NOT_FOUND);
   if (cached_num > 1 && !DB_IS_NULL (&last_val))
     {
@@ -767,8 +835,27 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       goto exit_on_error;
     }
 
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && thread_p->no_supplemental_log == false)
+    {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (tdes)
+	{
+	  if (!tdes->has_supplemental_log)
+	    {
+	      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER, strlen (tdes->client.get_db_user ()),
+					    tdes->client.get_db_user ());
+
+	      tdes->has_supplemental_log = true;
+	    }
+	}
+
+      (void) log_append_supplemental_serial (thread_p, db_get_string (&key_val), is_started ? num_alloc : num_alloc + 1,
+					     NULL, serial_oidp);
+    }
+
   /* copy result value */
-  PR_SHARE_VALUE (&next_val, result_num);
+  pr_share_value (&next_val, result_num);
 
   pr_clear_value (&key_val);
 
@@ -792,7 +879,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	    }
 	  else
 	    {
-	      PR_SHARE_VALUE (&next_val, &cur_val);
+	      pr_share_value (&next_val, &cur_val);
 	      serial_set_cache_entry (entry, &inc_val, &cur_val, &min_val, &max_val, &started, &cyclic, &last_val,
 				      cached_num);
 	    }
@@ -829,9 +916,10 @@ static int
 serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc, HEAP_CACHE_ATTRINFO * attr_info,
 			     const OID * serial_class_oidp, const OID * serial_oidp, DB_VALUE * key_val)
 {
-  RECDES new_recdesc;
-  char copyarea_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  int new_copyarea_length;
+  // *INDENT-OFF*
+  cubmem::stack_block<IO_MAX_PAGE_SIZE> copyarea;
+  // *INDENT-ON*
+  record_descriptor new_recdesc;
   SCAN_CODE scan;
   LOG_DATA_ADDR addr;
   int ret;
@@ -842,11 +930,11 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lock_mode = lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index);
+  lock_mode = lock_get_object_lock (serial_oidp, serial_class_oidp);
 
   /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
    * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
-   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication 
+   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication
    * log. */
   if (lock_mode != X_LOCK)
     {
@@ -858,9 +946,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
       repl_start_flush_mark (thread_p);
     }
 
-  new_copyarea_length = DB_PAGESIZE;
-  new_recdesc.data = PTR_ALIGN (copyarea_buf, MAX_ALIGNMENT);
-  new_recdesc.area_size = DB_PAGESIZE;
+  new_recdesc.set_external_buffer (copyarea);
 
   scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc);
   if (scan != S_SUCCESS)
@@ -870,22 +956,16 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
     }
 
   /* Log the changes */
-  new_recdesc.type = recdesc->type;
+  new_recdesc.set_type (recdesc->type);
   addr.offset = serial_oidp->slotid;
   addr.pgptr = pgptr;
 
-#if defined (DEBUG)
-  if (spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid, new_recdesc.length) == false)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_UPDATE_SERIAL, 0);
-      goto exit_on_error;
-    }
-#endif
+  assert (spage_is_updatable (thread_p, addr.pgptr, serial_oidp->slotid, (int) new_recdesc.get_size ()));
 
-  log_append_redo_recdes (thread_p, RVHF_UPDATE, &addr, &new_recdesc);
+  log_append_redo_recdes (thread_p, RVHF_UPDATE, &addr, &new_recdesc.get_recdes ());
 
   /* Now really update */
-  sp_success = spage_update (thread_p, addr.pgptr, serial_oidp->slotid, &new_recdesc);
+  sp_success = spage_update (thread_p, addr.pgptr, serial_oidp->slotid, &new_recdesc.get_recdes ());
   if (sp_success != SP_SUCCESS)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_UPDATE_SERIAL, 0);
@@ -958,7 +1038,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
     }
   else
     {
-      PR_SHARE_VALUE (inc_val, &add_val);
+      pr_share_value (inc_val, &add_val);
     }
 
   /* inc_val_flag (1 or 0) */
@@ -980,7 +1060,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	{
 	  if (db_get_int (cyclic))
 	    {
-	      PR_SHARE_VALUE (min_val, result_val);
+	      pr_share_value (min_val, result_val);
 	    }
 	  else
 	    {
@@ -1011,7 +1091,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	{
 	  if (db_get_int (cyclic))
 	    {
-	      PR_SHARE_VALUE (max_val, result_val);
+	      pr_share_value (max_val, result_val);
 	    }
 	  else
 	    {
@@ -1103,24 +1183,29 @@ serial_finalize_cache_pool (void)
  *
  *   attr_index(in) :
  */
-static ATTR_ID
-serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index)
+// *INDENT-OFF*
+static int
+serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index, ATTR_ID &attrid)
 {
+  attrid = NOT_FOUND;
+
   if (serial_Num_attrs < 0)
     {
-      if (serial_load_attribute_info_of_db_serial (thread_p) != NO_ERROR)
+      int error = serial_load_attribute_info_of_db_serial (thread_p);
+      if (error != NO_ERROR)
 	{
-	  return NOT_FOUND;
+          ASSERT_ERROR ();
+	  return error;
 	}
     }
 
-  if (attr_index < 0 || attr_index > serial_Num_attrs)
+  if (attr_index >= 0 && attr_index <= serial_Num_attrs)
     {
-      return NOT_FOUND;
+      attrid = serial_Attrs_id[attr_index];
     }
-
-  return serial_Attrs_id[attr_index];
+  return NO_ERROR;
 }
+// *INDENT-ON*
 
 /*
  * serial_load_attribute_info_of_db_serial () -
@@ -1146,6 +1231,7 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
     }
   if (heap_get_class_record (thread_p, &serial_Cache_pool.db_serial_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
+      heap_scancache_end (thread_p, &scan);
       return ER_FAILED;
     }
 
@@ -1175,7 +1261,11 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 	  goto exit_on_error;
 	}
 
-      if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
+      if (strcmp (attr_name_p, SERIAL_ATTR_UNIQUE_NAME) == 0)
+	{
+	  serial_Attrs_id[SERIAL_ATTR_UNIQUE_NAME_INDEX] = i;
+	}
+      else if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
 	{
 	  serial_Attrs_id[SERIAL_ATTR_NAME_INDEX] = i;
 	}
@@ -1387,8 +1477,8 @@ serial_alloc_cache_area (int num)
  * return	 : Error Code.
  * thread_p (in) : Thread entry.
  *
- * NOTE that workspace manager is unavailable when restarting from backup. 
- * It is possible to allow SA_MODE executables except restoredb to use the function, 
+ * NOTE that workspace manager is unavailable when restarting from backup.
+ * It is possible to allow SA_MODE executables except restoredb to use the function,
  * however, it is better not to use it in SA_MODE for clarity.
  */
 int
@@ -1401,8 +1491,8 @@ serial_cache_index_btid (THREAD_ENTRY * thread_p)
   oid_get_serial_oid (&serial_oid);
   assert (!OID_ISNULL (&serial_oid));
 
-  /* Now try to get index BTID. Serial index name is "pk_db_serial_name". */
-  error_code = heap_get_btid_from_index_name (thread_p, &serial_oid, "pk_db_serial_name", &serial_Cached_btid);
+  /* Now try to get index BTID. */
+  error_code = heap_get_btid_from_index_name (thread_p, &serial_oid, "pk_db_serial_unique_name", &serial_Cached_btid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1419,8 +1509,8 @@ serial_cache_index_btid (THREAD_ENTRY * thread_p)
  * return      : Void.
  * output (in) : Serial index btid.
  *
- * NOTE that workspace manager is unavailable when restarting from backup. 
- * It is possible to allow SA_MODE executables except restoredb to use the function, 
+ * NOTE that workspace manager is unavailable when restarting from backup.
+ * It is possible to allow SA_MODE executables except restoredb to use the function,
  * however, it is better not to use it in SA_MODE for clarity.
  */
 void

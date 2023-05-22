@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
  */
 #include "allocator_affix.hpp"
 #include "allocator_stack.hpp"
@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <chrono>
+#include <cstring>
 
 #define ERR(format, ...) printf ("ERR " format "\n", __VA_ARGS__)
 #define WRN(format, ...) printf ("WRN " format "\n", __VA_ARGS__)
@@ -46,27 +47,26 @@ struct suffix
   }
 };
 
-#define N 8192
+const size_t N = 8192;
 
 char stack_buf[sizeof (prefix) + N + sizeof (suffix)]; // working buffer
 allocator::stack stack_allocator (stack_buf, sizeof (stack_buf));
 allocator::affix<allocator::stack, prefix, suffix> affix_allocator (stack_allocator);
 
-#if 1 //bSolo: temporary until evolve above gcc 4.4.7
-void temp_extend (mem::block& block, size_t len)
+void temp_extend (cubmem::block &block, size_t len)
 {
-  mem::block b = affix_allocator.allocate (block.dim + len);
+  cubmem::block b = affix_allocator.allocate (block.dim + len);
   memcpy (b.ptr, block.ptr, block.dim);
-  affix_allocator.deallocate (std::move(block));
-  block = std::move(b);
+  affix_allocator.deallocate (std::move (block));
+  block = std::move (b);
 }
 
-void temp_dealloc (mem::block& block)
+void temp_dealloc (cubmem::block &block)
 {
-  affix_allocator.deallocate(std::move(block));
+  affix_allocator.deallocate (std::move (block));
 }
-#endif
 
+cubmem::block_allocator AFFIX_BLOCK_ALLOCATOR { temp_extend, temp_dealloc };
 
 class test_string_buffer
 {
@@ -81,23 +81,7 @@ class test_string_buffer
       : m_dim (8192)
       , m_len (0)
       , m_ref ((char *) calloc (m_dim, 1))
-#if 0 //bSolo: temporary until evolve above gcc 4.4.7
-      , m_sb{
-          [] (mem::block& block, size_t len)
-          {
-            mem::block b = affix_allocator.allocate (block.dim + len);
-            memcpy (b.ptr, block.ptr, block.dim);
-            affix_allocator.deallocate (std::move(block));
-            block = std::move(b);
-          },
-          [](mem::block& block)
-          {
-            affix_allocator.deallocate(std::move(block));
-          }
-        }
-#else
-      , m_sb{&temp_extend, &temp_dealloc}
-#endif
+      , m_sb {AFFIX_BLOCK_ALLOCATOR}
     {
     }
 
@@ -119,15 +103,23 @@ class test_string_buffer
 	      m_dim *= 2;
 	    }
 	  while (m_dim < m_len + len);
-	  m_ref = (char *) realloc (m_ref, m_dim);
+	  char *const realloc_m_ref = (char *) realloc (m_ref, m_dim);
+	  if (realloc_m_ref != nullptr)
+	    {
+	      m_ref = realloc_m_ref;
+	    }
+	  else
+	    {
+	      ERR ("[%s(%d)] StrBuf() realloc() new_len=%d", __FILE__, __LINE__, len);
+	    }
 	}
     }
 
-    void operator() (size_t size) // prepare for a test with a buffer of <size> bytes
+    void operator () (size_t size) // prepare for a test with a buffer of <size> bytes
     {
       m_len = 0;
       stack_allocator.~stack ();
-      m_sb.clear();
+      m_sb.clear ();
     }
 
     template<typename... Args> void format (const char *file, int line, Args &&... args)
@@ -150,12 +142,13 @@ class test_string_buffer
 	  ERR ("[%s(%d)] StrBuf() len()=%zu expect %zu", file, line, m_sb.len (), m_len);
 	  return;
 	}
-      if (strcmp (m_sb.get_buffer(), m_ref))//check content
+      if (strcmp (m_sb.get_buffer (), m_ref)) //check content
 	{
-	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect{\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
+	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect{\"%s\"}", file, line, m_sb.get_buffer (), m_ref);
 	  return;
 	}
-      if (affix_allocator.check (m_sb))//check overflow
+      const cubmem::block block { m_sb.len (), const_cast<char *> (m_sb.get_buffer ()) };
+      if (affix_allocator.check (block))//check overflow
 	{
 	  ERR ("[%s(%d)] StrBuf() memory corruption", file, line);
 	  return;
@@ -174,12 +167,13 @@ class test_string_buffer
 	  ERR ("[%s(%d)] StrBuf() len()=%zu expect %zu", file, line, m_sb.len (), m_len);
 	  return;
 	}
-      if (strcmp (m_sb.get_buffer(), m_ref) != 0)//check content
+      if (strcmp (m_sb.get_buffer (), m_ref) != 0) //check content
 	{
-	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect {\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
+	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect {\"%s\"}", file, line, m_sb.get_buffer (), m_ref);
 	  return;
 	}
-      if (affix_allocator.check (m_sb))
+      const cubmem::block block { m_sb.len (), const_cast<char *> (m_sb.get_buffer ()) };
+      if (affix_allocator.check (block))
 	{
 	  ERR ("[%s(%d)] StrBuf() memory corruption", file, line);
 	}
@@ -200,18 +194,17 @@ int main (int argc, char **argv)
   unsigned flags = 0;
   for (int i = 1; i < argc; ++i)
     {
-      unsigned command = argv[i][0] << 24 | argv[i][1] << 16 | argv[i][2] << 8 | argv[i][3]; // little endian
-      switch (command)
+      if (std::strcmp (argv[i], "help") == 0)
 	{
-	case 'help':
 	  flags |= FL_HELP;
-	  break;
-	case 'dbug':
+	}
+      else if (std::strcmp (argv[i], "dbug") == 0)
+	{
 	  flags |= FL_DEBUG;
-	  break;
-	case 'time':
+	}
+      else if (std::strcmp (argv[i], "time") == 0)
+	{
 	  flags |= FL_TIME;
-	  break;
 	}
     }
   if (flags & FL_HELP)
@@ -245,7 +238,7 @@ int main (int argc, char **argv)
 #if !defined (_MSC_VER) || (_MSC_VER >= 1700)
   if (flags & FL_TIME)
     {
-      printf ("%.9lf ms (iterations: %d)\n", std::chrono::duration<double, std::milli> (t1 - t0).count (), N);
+      printf ("%.9lf ms (iterations: %zu)\n", std::chrono::duration<double, std::milli> (t1 - t0).count (), N);
     }
 #endif
 

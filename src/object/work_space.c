@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -46,6 +45,7 @@
 #include "set_object.h"
 #include "virtual_object.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "class_object.h"
 #include "environment_variable.h"
 #include "db.h"
@@ -54,6 +54,7 @@
 #include "server_interface.h"
 #include "view_transform.h"
 #include "dbtype.h"
+#include "execute_statement.h"
 
 extern unsigned int db_on_server;
 
@@ -149,7 +150,7 @@ static AREA *Objlist_area = NULL;
  * checking on server, mark fetched object with the snapshot version and
  * don't re-fetch until snapshot version is changed.
  */
-static int ws_MVCC_snapshot_version = 0;
+static unsigned int ws_MVCC_snapshot_version = 0;
 
 /*
  * ws_area_init
@@ -260,6 +261,8 @@ ws_make_mop (const OID * oid)
       op->label_value_list = NULL;
       /* Initialize mvcc snapshot version to be sure it doesn't match with current mvcc snapshot version. */
       op->mvcc_snapshot_version = ws_get_mvcc_snapshot_version () - 1;
+
+      op->trigger_involved = 0;
 
       /* this is NULL only for the Null_object hack */
       if (oid != NULL)
@@ -443,6 +446,10 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
   for (p = ws_Mop_table[slot].head; p != NULL; prev = p, p = p->hash_link)
     {
       c = oid_compare (WS_OID (mop), WS_OID (p));
+      if (c > 0)
+	{
+	  continue;
+	}
 
       if (c == 0)
 	{
@@ -474,8 +481,7 @@ ws_insert_mop_on_hash_link (MOP mop, int slot)
 
 	  break;
 	}
-
-      if (c < 0)
+      else			/* if (c < 0) */
 	{
 	  break;
 	}
@@ -584,13 +590,9 @@ ws_mop_if_exists (OID * oid)
 	  for (mop = ws_Mop_table[slot].head; mop != NULL; mop = mop->hash_link)
 	    {
 	      c = oid_compare (oid, WS_OID (mop));
-	      if (c == 0)
+	      if (c <= 0)
 		{
-		  return mop;
-		}
-	      else if (c < 0)
-		{
-		  return NULL;
+		  return (c == 0) ? mop : NULL;
 		}
 	    }
 	}
@@ -652,11 +654,15 @@ ws_mop (const OID * oid, MOP class_mop)
 	  for (mop = ws_Mop_table[slot].head; mop != NULL; prev = mop, mop = mop->hash_link)
 	    {
 	      c = oid_compare (oid, WS_OID (mop));
-	      if (c == 0)
+	      if (c > 0)
+		{
+		  continue;
+		}
+	      else if (c == 0)
 		{
 		  if (mop->decached)
 		    {
-		      /* 
+		      /*
 		       * If a decached instance object has a class mop,
 		       * we need to clear the information related the class mop,
 		       * such as class_mop and class_link.
@@ -684,7 +690,7 @@ ws_mop (const OID * oid, MOP class_mop)
 		    }
 		  return mop;
 		}
-	      else if (c < 0)
+	      else		/* if (c < 0) */
 		{
 		  /* find the node which is greater than I */
 		  break;
@@ -764,7 +770,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
   switch (keytype)
     {
     case DB_TYPE_OBJECT:
-      /* 
+      /*
        * a non-virtual object mop
        * This will occur when reading the oid keys field of a vobject
        * if it was read thru some interface that automatically
@@ -796,7 +802,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
       db_make_object (keys, mop);
       break;
     case DB_TYPE_OID:
-      /* 
+      /*
        * a non-virtual object mop
        * This will occur when reading the oid keys field of a virtual object
        * if it was read through some interface that does NOT swizzle.
@@ -829,7 +835,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
 	      vid_info = WS_VID_INFO (mop);
 	      if (class_mop == mop->class_mop)
 		{
-		  /* 
+		  /*
 		   * NOTE, formerly called pr_value_equal. Don't coerce
 		   * with the new tp_value_equal function but that may
 		   * actually be desired here.
@@ -967,7 +973,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 		  /* Sets won't work as key components */
 		  mem = inst + att->offset;
 		  db_value_domain_init (&val, att->type->id, att->domain->precision, att->domain->scale);
-		  PRIM_GETMEM (att->type, att->domain, mem, &val);
+		  att->type->getmem (mem, att->domain, &val);
 		  if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING) && (db_get_string (value) == NULL))
 		    {
 		      db_make_null (value);
@@ -1242,7 +1248,7 @@ ws_disconnect_deleted_instances (MOP classop)
 
       if (m->object != NULL)
 	{
-	  /* 
+	  /*
 	   * there should be no cached object here ! since the class is gone,
 	   * we no longer no how to free this. If this becomes a normal case,
 	   * we'll have to wait and decache the class AFTER all the instances
@@ -1302,7 +1308,7 @@ emergency_remove_dirty (MOP op)
 {
   MOP mop, prev;
 
-  /* 
+  /*
    * make sure we can get to op's class dirty list because without that
    * there is no dirty list from which we can remove op.
    */
@@ -1333,7 +1339,7 @@ emergency_remove_dirty (MOP op)
 }
 
 /*
- * ws_unlink_from_commit_mops_list - 
+ * ws_unlink_from_commit_mops_list -
  *    return: void
  *    op(in): mop that needs to be unlinked from ws_Commit_mops list
  *
@@ -1501,7 +1507,7 @@ ws_cull_mops (void)
 		{
 		  if (mops->class_mop != sm_Root_class_mop)
 		    {
-		      /* 
+		      /*
 		       * Since we removed the GC'd MOPs from the resident
 		       * instance list before we started the hash table
 		       * map, we shouldn't see any at this point.  If
@@ -1517,7 +1523,7 @@ ws_cull_mops (void)
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * carefully remove the class from the resident
 		       * instance list and make sure no instances are
 		       * still going to be referencing this thing
@@ -1579,7 +1585,7 @@ void
 ws_release_user_instance (MOP mop)
 {
   /* to keep instances of system classes, for instance, db_serial's. This prevents from dangling references to serial
-   * objects during replication. The typical scenario is to update serials, cull mops which clears the mop up, and then 
+   * objects during replication. The typical scenario is to update serials, cull mops which clears the mop up, and then
    * truncate the table which leads updating the serial mop to reset its values. */
   if (db_is_system_class (mop->class_mop) > 0)
     {
@@ -1621,7 +1627,7 @@ ws_release_user_instance (MOP mop)
 void
 ws_dirty (MOP op)
 {
-  /* 
+  /*
    * don't add the root class to any dirty list. otherwise, later traversals
    * of that dirty list will loop forever.
    */
@@ -1632,7 +1638,13 @@ ws_dirty (MOP op)
     }
 
   WS_SET_DIRTY (op);
-  /* 
+
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+    {
+      WS_SET_TRIGGER_INVOLVED (op);
+    }
+
+  /*
    * add_class_object makes sure each class' dirty list (even an empty one)
    * is always terminated by the magical Null_object. Therefore, this test
    * "op->dirty_link == NULL" makes sure class objects are not added to
@@ -1656,7 +1668,7 @@ ws_dirty (MOP op)
     }
   else
     {
-      /* 
+      /*
        * add op to op's class' dirty list only if op is not yet there.
        * The preceding "op->dirty_link == NULL" asserts that op is not
        * on any dirty list so we can simply prepend op to op's class'
@@ -1680,7 +1692,7 @@ ws_dirty (MOP op)
 void
 ws_clean (MOP op)
 {
-  /* 
+  /*
    * because pinned objects can be in a state of direct modification, we
    * can't reset the dirty bit after a workspace panic flush because this
    * would lose any changes made to the pinned object after the flush
@@ -1762,7 +1774,7 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only)
       for (; op != Null_object && status == WS_MAP_CONTINUE; op = next)
 	{
 
-	  /* 
+	  /*
 	   * if we get here, then op must be dirty. So turn the static dirty
 	   * flag on (just in case we've been called from ws_has_updated).
 	   * ws_has_updated uses this static flag to check for the presence
@@ -1883,7 +1895,7 @@ add_class_object (MOP class_mop, MOP obj)
 
   if (class_mop == sm_Root_class_mop)
     {
-      /* 
+      /*
        * class MOP, initialize the object list, do this only if it isn't
        * already initialized, this may happen if the workspace is cleared
        * and nothing is cached.  In this case the class_link lists are still
@@ -2138,7 +2150,7 @@ ws_map_class (MOP class_op, MAPFUNC function, void *args)
 	  for (op = class_op->class_link; op != Null_object && status == WS_MAP_CONTINUE; op = save_class_link)
 	    {
 	      save_class_link = op->class_link;
-	      /* 
+	      /*
 	       * should we only call the function if the object has been
 	       * loaded ? what if it is deleted ?
 	       */
@@ -2315,7 +2327,7 @@ ws_init (void)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /* 
+  /*
    * area_init() must have been called earlier.
    * These need to all be returning errors !
    */
@@ -2438,7 +2450,7 @@ ws_final (void)
       /* this is for debugging only */
       fprintf (stdout, "*** Database client statistics before shutdown ***\n");
       ws_dump (stdout);
-      /* 
+      /*
        * Check for dangling allocations in the workspace.
        * First decache everything, must do this before the
        * MOP tables are destroyed.
@@ -2511,8 +2523,10 @@ ws_clear_internal (bool clear_vmop_keys)
 
 	  mop->lock = NULL_LOCK;
 	  mop->deleted = 0;
+	  mop->commit_link = NULL;
 	}
     }
+
   ws_Commit_mops = NULL;
   ws_filter_dirty ();
 }
@@ -2535,7 +2549,7 @@ ws_clear (void)
 bool
 ws_has_updated (void)
 {
-  /* 
+  /*
    * We used to be able to test the global dirty list (Dirty_objects) for
    * the presence of workspace updates. Now, we have to be a bit sneaky. To
    * do the same test, we set this static dirty flag to false and let the
@@ -2544,7 +2558,7 @@ ws_has_updated (void)
    */
   Ws_dirty = false;
 
-  /* 
+  /*
    * wouldn't need to filter the whole list but this seems like
    * a reasonable time to do this
    */
@@ -2589,7 +2603,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
       mop->object = obj;
       mop->class_mop = class_mop;
 
-      /* 
+      /*
        * must always call this when caching a class because we don't know
        * if there are any objects on disk
        */
@@ -2655,7 +2669,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
   return;
 
 abort_it:
-  /* 
+  /*
    * NULL the MOP since we're in an unknown state, this function
    * should be returning an error
    */
@@ -2850,11 +2864,14 @@ ws_identifier_with_check (MOP mop, const bool check_non_referable)
 	{
 	  goto end;
 	}
-      class_mop = is_class > 0 ? mop : ws_class_mop (mop);
-      if (sm_is_reuse_oid_class (class_mop))
+      else if (is_class == 0)
 	{
-	  /* should not return the oid of a non-referable instance */
-	  goto end;
+	  class_mop = ws_class_mop (mop);
+	  if (sm_is_reuse_oid_class (class_mop))
+	    {
+	      /* should not return the oid of a non-referable instance */
+	      goto end;
+	    }
 	}
     }
 
@@ -3256,7 +3273,7 @@ ws_map (MAPFUNC function, void *args)
 void
 ws_clear_hints (MOP mop, bool leave_pinned)
 {
-  /* 
+  /*
    * Don't decache non-updatable view objects because they cannot be
    * recreated.  Let garbage collection eventually decache them.
    */
@@ -3363,7 +3380,7 @@ ws_abort_mops (bool only_unpinned)
       next = mop->commit_link;
       mop->commit_link = NULL;	/* remove mop from commit link (it's done) */
 
-      /* 
+      /*
        * In some cases we cannot clear up pinned stuff, because we
        * may already be looping through the object or dirty list somewhere
        * in the calling chain, and we would be removing something out
@@ -3374,7 +3391,7 @@ ws_abort_mops (bool only_unpinned)
 	  /* always remove this so we can decache things without error */
 	  mop->pinned = 0;
 
-	  /* 
+	  /*
 	   * Decache all objects in commit link. Even though they are not
 	   * marked as dirty and do not have exclusive locks, they may have
 	   * been decached (and reset) during a partial rollback. Now we are
@@ -4972,7 +4989,7 @@ ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr)
  *
  * return : Current snapshot version.
  */
-int
+unsigned int
 ws_get_mvcc_snapshot_version (void)
 {
   return ws_MVCC_snapshot_version;
@@ -5065,6 +5082,12 @@ bool
 ws_is_same_object (MOP mop1, MOP mop2)
 {
   return (mop1 == mop2);
+}
+
+bool
+ws_is_trigger_involved ()
+{
+  return cdc_Trigger_involved;
 }
 
 /*

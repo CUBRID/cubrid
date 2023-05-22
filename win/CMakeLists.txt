@@ -1,19 +1,19 @@
 #
-# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
-#
-#   This program is free software; you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
-#   the Free Software Foundation; either version 2 of the License, or
-#   (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software
-#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#  Copyright 2008 Search Solution Corporation
+#  Copyright 2016 CUBRID Corporation
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
 #
 
 if(NOT WIN32)
@@ -108,23 +108,26 @@ install(TARGETS
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   )
 
-# install external pre-built DLLs
 install(FILES
-  ${CMAKE_SOURCE_DIR}/win/external/gcrypt/bin/gcrypt.dll
-  ${CMAKE_SOURCE_DIR}/win/external/gpg-error/bin/gpg-error.dll
-  DESTINATION ${CUBRID_BINDIR} COMPONENT Library
-  )
-install(FILES
-  ${CMAKE_SOURCE_DIR}/win/external/dll/jansson64.dll
+  ${CMAKE_SOURCE_DIR}/win/3rdparty/dll/jansson64.dll
   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   RENAME jansson.dll
   )
 install(FILES
-  ${CMAKE_SOURCE_DIR}/win/external/dll/libexpat64.dll
+  ${CMAKE_SOURCE_DIR}/win/3rdparty/dll/libexpat64.dll
   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   RENAME libexpat.dll
  )
-
+ install(FILES
+   ${CMAKE_SOURCE_DIR}/win/3rdparty/lz4/bin/liblz4.dll
+   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+ )
+ 
+ install(FILES
+   ${CMAKE_SOURCE_DIR}/win/3rdparty/RE2/bin/re2.dll
+   DESTINATION ${CUBRID_BINDIR} COMPONENT Library
+ )
+ 
 # install pdb files for debugging on windows
 install(DIRECTORY
   ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/

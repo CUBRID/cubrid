@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -48,6 +47,7 @@
 #endif
 
 #include "dbtype_def.h"
+#include "locale_support.h"
 
 #ifndef MB_LEN_MAX
 #define MB_LEN_MAX            1
@@ -123,9 +123,7 @@
   while (0)
 
 extern bool intl_Mbs_support;
-#if !defined (SERVER_MODE)
 extern bool intl_String_validation;
-#endif
 
 /* language identifier : we support built-in languages and user defined
  * languages (through locale definition);
@@ -195,49 +193,57 @@ typedef enum intl_codeset INTL_CODESET;
 extern "C"
 {
 #endif
-  extern int intl_char_count (unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
-  extern int intl_char_size (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
+  extern int intl_char_count (const unsigned char *src, int length_in_bytes, INTL_CODESET src_codeset, int *char_count);
+  extern int intl_char_size (const unsigned char *src, int length_in_chars, INTL_CODESET src_codeset, int *byte_count);
 
   extern int intl_tolower_iso8859 (unsigned char *s, int length);
   extern int intl_toupper_iso8859 (unsigned char *s, int length);
 
-  extern unsigned char *intl_nextchar_euc (unsigned char *s, int *curr_length);
-  extern unsigned char *intl_prevchar_euc (unsigned char *s, const unsigned char *s_start, int *prev_length);
-  extern unsigned char *intl_nextchar_utf8 (unsigned char *s, int *curr_length);
-  extern unsigned char *intl_prevchar_utf8 (unsigned char *s, const unsigned char *s_start, int *prev_length);
+  extern const unsigned char *intl_nextchar_euc (const unsigned char *s, int *curr_length);
+  extern const unsigned char *intl_prevchar_euc (const unsigned char *s, const unsigned char *s_start,
+						 int *prev_length);
+  extern const unsigned char *intl_nextchar_utf8 (const unsigned char *s, int *curr_length);
+  extern const unsigned char *intl_prevchar_utf8 (const unsigned char *s, const unsigned char *s_start,
+						  int *prev_length);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
   extern INTL_LANG intl_language (int category);
 #endif				/* ENABLE_UNUSED_FUNCTION */
   extern INTL_ZONE intl_zone (int category);
 
-  extern int intl_convert_charset (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset,
+  extern int intl_convert_charset (const unsigned char *src, int length_in_chars, INTL_CODESET src_codeset,
 				   unsigned char *dest, INTL_CODESET dest_codeset, int *unconverted);
 #if defined (ENABLE_UNUSED_FUNCTION)
-  extern int intl_char_size_pseudo_kor (unsigned char *src, int length_in_chars, INTL_CODESET src_codeset,
+  extern int intl_char_size_pseudo_kor (const unsigned char *src, int length_in_chars, INTL_CODESET src_codeset,
 					int *byte_count);
 #endif
-  extern unsigned char *intl_prev_char (unsigned char *s, const unsigned char *s_start, INTL_CODESET codeset,
-					int *prev_char_size);
+  extern const unsigned char *intl_prev_char (const unsigned char *s, const unsigned char *s_start,
+					      INTL_CODESET codeset, int *prev_char_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
-  extern unsigned char *intl_prev_char_pseudo_kor (unsigned char *s, const unsigned char *s_start, INTL_CODESET codeset,
-						   int *prev_char_size);
+  extern unsigned char *intl_prev_char_pseudo_kor (const unsigned char *s, const unsigned char *s_start,
+						   INTL_CODESET codeset, int *prev_char_size);
 #endif
-  extern unsigned char *intl_next_char (unsigned char *s, INTL_CODESET codeset, int *current_char_size);
+  extern const unsigned char *intl_next_char (const unsigned char *s, INTL_CODESET codeset, int *current_char_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
-  extern unsigned char *intl_next_char_pseudo_kor (unsigned char *s, INTL_CODESET codeset, int *current_char_size);
+  extern unsigned char *intl_next_char_pseudo_kor (const unsigned char *s, INTL_CODESET codeset,
+						   int *current_char_size);
 #endif
   extern int intl_cmp_char (const unsigned char *s1, const unsigned char *s2, INTL_CODESET codeset, int *char_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
-  extern int intl_cmp_char_pseudo_kor (unsigned char *s1, unsigned char *s2, INTL_CODESET codeset, int *char_size);
+  extern int intl_cmp_char_pseudo_kor (const unsigned char *s1, const unsigned char *s2, INTL_CODESET codeset,
+				       int *char_size);
 #endif
   extern void intl_pad_char (const INTL_CODESET codeset, unsigned char *pad_char, int *pad_size);
   extern int intl_pad_size (INTL_CODESET codeset);
-  extern int intl_upper_string_size (const void *alphabet, unsigned char *src, int src_size, int src_length);
-  extern int intl_upper_string (const void *alphabet, unsigned char *src, unsigned char *dst, int length_in_chars);
-  extern int intl_lower_string_size (const void *alphabet, unsigned char *src, int src_size, int src_length);
-  extern int intl_lower_string (const void *alphabet, unsigned char *src, unsigned char *dst, int length_in_chars);
-  extern int intl_reverse_string (unsigned char *src, unsigned char *dst, int length_in_chars, int size_in_bytes,
+  extern int intl_upper_string_size (const ALPHABET_DATA * alphabet, const unsigned char *src, int src_size,
+				     int src_length);
+  extern int intl_upper_string (const ALPHABET_DATA * alphabet, const unsigned char *src, unsigned char *dst,
+				int length_in_chars);
+  extern int intl_lower_string_size (const ALPHABET_DATA * alphabet, const unsigned char *src, int src_size,
+				     int src_length);
+  extern int intl_lower_string (const ALPHABET_DATA * alphabet, const unsigned char *src, unsigned char *dst,
+				int length_in_chars);
+  extern int intl_reverse_string (const unsigned char *src, unsigned char *dst, int length_in_chars, int size_in_bytes,
 				  INTL_CODESET codeset);
   extern bool intl_is_max_bound_chr (INTL_CODESET codeset, const unsigned char *chr);
   extern bool intl_is_min_bound_chr (INTL_CODESET codeset, const unsigned char *chr);
@@ -250,7 +256,9 @@ extern "C"
   extern int intl_identifier_casecmp (const char *str1, const char *str2);
   extern int intl_identifier_ncasecmp (const char *str1, const char *str2, const int len);
   extern int intl_identifier_cmp (const char *str1, const char *str2);
+#if defined(ENABLE_UNUSED_FUNCTION)
   extern int intl_identifier_namecmp (const char *str1, const char *str2);
+#endif
   extern int intl_identifier_lower_string_size (const char *src);
   extern int intl_identifier_lower (const char *src, char *dst);
   extern int intl_identifier_upper_string_size (const char *src);
@@ -283,8 +291,8 @@ extern "C"
   extern int intl_mbs_cmp (const char *mbs1, const char *mbs2);
 #endif
   extern int intl_mbs_ncasecmp (const char *mbs1, const char *mbs2, size_t n);
-#if !defined (SERVER_MODE)
   extern INTL_UTF8_VALIDITY intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET codeset);
+#if !defined (SERVER_MODE)
   extern bool intl_is_bom_magic (const char *buf, const int size);
 #endif
   extern int intl_cp_to_utf8 (const unsigned int codepoint, unsigned char *utf8_seq);
@@ -326,7 +334,7 @@ extern "C"
   extern char *intl_get_money_UTF8_symbol (const DB_CURRENCY currency);
   extern char *intl_get_money_ISO88591_symbol (const DB_CURRENCY currency);
   extern int intl_get_currency_symbol_position (const DB_CURRENCY currency);
-  extern int intl_count_utf8_chars (unsigned char *s, int length_in_bytes);
+  extern int intl_count_utf8_chars (const unsigned char *s, int length_in_bytes);
   extern INTL_UTF8_VALIDITY intl_check_utf8 (const unsigned char *buf, int size, char **pos);
   extern INTL_UTF8_VALIDITY intl_check_euckr (const unsigned char *buf, int size, char **pos);
   extern int intl_utf8_to_iso88591 (const unsigned char *in_buf, const int in_size, unsigned char **out_buf,

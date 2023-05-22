@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -38,7 +37,10 @@
 #include "parser.h"
 #include "release_string.h"
 #include "parser.h"
-#include "xasl.h"
+
+// forward definitions
+struct xasl_node;
+class regu_variable_node;
 
 /*
  * These #defines are used in conjunction with assert() to announce
@@ -109,7 +111,7 @@ struct qo_summary
   double fixed_cpu_cost, fixed_io_cost;
   double variable_cpu_cost, variable_io_cost;
   double cardinality;
-  XASL_NODE *xasl;
+  xasl_node *xasl;
 };
 
 typedef struct
@@ -121,7 +123,7 @@ typedef struct
   int keys;			/* number of keys */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int pkeys_size;		/* pkeys array size */
-  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] -> 
+  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[key_size-1] -> # of {a, b, ..., x} */
   bool valid_limits;
   bool is_indexed;
@@ -139,8 +141,8 @@ typedef enum
 
 typedef struct qo_limit_info
 {
-  REGU_VARIABLE *lower;
-  REGU_VARIABLE *upper;
+  regu_variable_node *lower;
+  regu_variable_node *upper;
 } QO_LIMIT_INFO;
 
 extern QO_NODE *lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity);
@@ -153,7 +155,7 @@ extern void qo_get_optimization_param (void *, QO_PARAM, ...);
 extern bool qo_need_skip_execution (void);
 extern void qo_set_optimization_param (void *, QO_PARAM, ...);
 extern QO_PLAN *qo_optimize_query (PARSER_CONTEXT *, PT_NODE *);
-extern XASL_NODE *qo_to_xasl (QO_PLAN *, XASL_NODE *);
+extern xasl_node *qo_to_xasl (QO_PLAN *, xasl_node *);
 extern void qo_plan_discard (QO_PLAN *);
 extern void qo_plan_dump (QO_PLAN *, FILE *);
 extern const char *qo_plan_set_cost_fn (const char *, int);
@@ -183,16 +185,16 @@ extern void qo_abort (QO_ENV *, const char *, int);
 
 extern double qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
-extern XASL_NODE *qo_add_hq_iterations_access_spec (QO_PLAN * plan, XASL_NODE * xasl);
+extern xasl_node *qo_add_hq_iterations_access_spec (QO_PLAN * plan, xasl_node * xasl);
 
-extern QO_LIMIT_INFO *qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
+extern QO_LIMIT_INFO *qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_node * xasl);
 
-extern QO_LIMIT_INFO *qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl,
+extern QO_LIMIT_INFO *qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_node * xasl,
 						      bool ignore_lower);
 
 extern bool qo_check_iscan_for_multi_range_opt (QO_PLAN * plan);
 extern bool qo_check_join_for_multi_range_opt (QO_PLAN * plan);
 extern int qo_find_subplan_using_multi_range_opt (QO_PLAN * plan, QO_PLAN ** result, int *join_idx);
-extern void qo_top_plan_print_json (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * select, QO_PLAN * plan);
-extern void qo_top_plan_print_text (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * select, QO_PLAN * plan);
+extern void qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan);
+extern void qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan);
 #endif /* _OPTIMIZER_H_ */

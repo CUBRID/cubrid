@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -25,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 Informations sur le copyright\n
 5 Valeur `%1$s' non entière pour argument 
 6 Valeur `%1$s' pas de type float pour argument
@@ -184,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Base de données "%1$s" est inconnu, ou le fichier "databases.txt" n'est pas accessible.
 117 Nom de chemin absolu pour la base de données est trop long. La longueur totale de le chemin "%1$s" et le nom "%2$s" est %3$d; la longueur combinée doit être inférieur à %4$d.
 118 Impossible de localiser le répertoire de travail courant.
-119 Impossible de trouver hôte local.
+119 Impossible de trouver ("%1$s") dans /etc/hosts. Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 120 Le nombre maximal de volumes (%1$d) a été dépassé.
 121 Tentative de supprimer "%1$s" un volume permanente de la base de données.
 122 Impossible d'accéder au catalogue de messages du système.
@@ -415,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Impossible de créer un pipe vers le serveur maître.
 348 Doit spécifier un service ou un identificateur de port.
 349 Service inconnu pour TCP: %1$s.
-350 Erreur de récupération de l'hôte local par le nom pour l'hôte "%1$s". Hôte introuvable.
+350 Impossible de trouver ("%1$s") dans /etc/hosts. Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 351 Impossible de créer un socket TCP.
 352 tcp_open: ne peut pas obtenir un port TCP réservé.
 353 Impossible d'établir la connexion au serveur maître sur l'hôte "%1$s".
@@ -903,7 +904,7 @@ $ LOADDB
 834 Il ya quelques incohérences entre la chaîne source "%1$s" et la chaîne de format "%2$s" donnée dans to_number().
 835 Objet de statistique pas defini.
 836 LATCH ON PAGE(%1$d|%2$d) a expiré.
-837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/verrou/serial etc). 
+837 Impossible de supprimer l'utilisateur qui possède des objets de base de données(classe/gâchette/serial/serveur/synonym etc).
 838  Impossible d'ouvrir plus de %1$d analyses d'index simultanément.
 839 "%1$s": Paramètre de système inconnu ou mauvaise valeur.
 840 Impossible de modifier le paramètres de système "%1$s".
@@ -987,7 +988,7 @@ $ LOADDB
 918 La classe '%1$s' refferencée par la clé étrangère n'existe pas.
 919 La classe '%1$s' refferencée par la clé étrangère ne possède pas la clé primaire.
 920 La clé étrangère '%1$s' ne comprend pas le membre de clé primaire '%2$s'.
-921 Le domaine de l'élément '%1$s' de clé étrangère est différente de celui de l'élément '%2$s' de clé primaire.
+921 Le domaine de l'élément '%1$s' de clé étrangère est différente de celui de l'élément '%2$s' de clé primaire. (%3$s: %4$s vs. %5$s)
 922 La contrainte de la clé étrangère '%1$s' est invalide, en raison de la valeur de '%2$s'.
 923 La clé primaire '%1$s' référencée par une clé étrangère '%2$s' n'est pas censé à être supprimé.
 924 Opérations de UPDATE/DELETE sont limitées par la clé étrangère '%1$s'.
@@ -1051,7 +1052,7 @@ $ LOADDB
 982 Interruption de la transaction %1$d.
 983 Instances d'une classe OID réutilisable ne sont pas attribuables. Cette opération est interdite sur les non-attribuables instances.
 984 Impossible de configurer %3$s à "%6$s" dans la section "[%5$s]" quand il est configuré sur "%4$s" dans la section "[%2$s]" du fichier de configuration "%1$s".
-985 Le nom d'hôte sur la chaîne de connexion de base de données doit être spécifié lors de multihôte est configuré dans "databases.txt".
+985 Le nom d'hôte sur la chaîne de connexion de base de données doit être spécifié lors de multihôte est configuré dans "databases.txt". ex) csql demodb@localhost
 986 Fonction heartbeat du CUBRID commencée.
 987 Fonction heartbeat du CUBRID arrêtée.
 988 Événement de noeud: %1$s.
@@ -1194,7 +1195,7 @@ $ LOADDB
 1125 Création du fichier de clé de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1126 Création d'une nouvelle page de débordement. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
 1127 Suppression d'une page de débordement vide. INDEX %1$s%2$s ON CLASS %3$s%4$s. clé: %5$s%6$s.
-1128 Reprise du journal est démarré. Le nombre d'enregistrements de journal à appliquer: %1$lld. Page du jurnal: %2$lld ~ %3$lld.
+1128 Reprise du journal est démarré.
 1129 Reprise du journal est finie.
 1130 Transaction est abandonnée parce que nombre de verrous de la transaction dépasse %1$d.
 1131 Erreur interne: La page %1$d du volume "%2$s" peut être corrompue.\n%3$s
@@ -1263,26 +1264,26 @@ $ LOADDB
 1194 Impossible de vérifier le fichier %1$d|%2$d car le verrou sur la classe %3$d|%4$d|%5$d n'est pas immédiatement accordé.
 1195 La partie récursive d'un CTE ne doit pas contenir de fonctions agrégées sans clause GROUP BY.
 1196 Récursions maximales %1$d atteint l'exécution de CTE.
-1197 Invalid json: %1$s (%2$d)
-1198 A json object must be provided
-1199 The provided JSON has been invalidated by the JSON schema (Invalid schema path: %1$s, Keyword: %2$s, Invalid provided JSON path: %3$s)
-1200 Invalid JSON path
-1201 Json object name cannot be NULL.
-1202 Json PATH "%1$s" does not exist in %2$s
-1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
-1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
-1206 Reserved error for JSON.
-1207 Reserved error for JSON.
-1208 Reserved error for JSON.
+1197 JSON invalide: %1$s (%2$d)
+1198 Un objet JSON doit être fourni.
+1199 Le JSON fourni a été invalidé par le schéma JSON (Chemin du schéma non valide: %1$s, Mot-clé: %2$s, Chemin JSON fourni non valide: %3$s)
+1200 Chemin JSON non valide.
+1201 Le nom d'objet JSON ne peut pas être NULL.
+1202 Chemin JSON "%1$s" n'existe pas dans %2$s
+1203 Type JSON non valide dans le chemin %1$s. %2$s attendu, mais %3$s trouvé.
+1204 La clé JSON "%1$s" est dupliquée.
+1205 Type non valide %1$s. Type de données compatible avec le document JSON attendu (STRING ou JSON).
+1206 Le chemin JSON "%1$s" ne pointe pas une cellule dans un tableau JSON.
+1207 Chemin JSON non valide. L'index est plus grand que celui autorisé par le paramètre système 'json_max_array_idx'.
+1208 Árgument non valide un / tout. L'argument one / all ne peut prendre que l'une de ces deux valeurs: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
-1216 Invalid object id %1$d when trying to unpack.
+1215 Plus de données à lire dans le flux %1$s à la position %2$lld, montant %3$zu.
+1216 Identifiant d'objet invalide %1$d lors de la tentative de décompression.
 1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
@@ -1302,12 +1303,150 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Double Write Buffer is disabled.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1236 Double Write Buffer est désactivé.
+1237 Impossible de changer le statut sur %1$s car %2$s est un %3$s.
+1238 Valeur manquante pour la colonne JSON_TABLE '%1$s'.
+1239 Impossible de contraindre la valeur de JSON "%1$s" du chemin "%2$s" dans la colonne JSON_TABLE "%3$s" du domaine "%4$s". 
+1240 Online index n'est pas autorisé sur les classes faisant partie d'une chaîne hiérarchique.
+1241 L'arbre XASL doit être recompilé.
+1242 Impossible de créer une partition sur une classe faisant partie d'une chaîne hiérarchique.
+1243 Le chargement de l'index a été abandonné après une erreur
+1244 Le chargement de mises à jour d'attributs partagés à partir de fichiers objet n'est pas pris en charge en mode CS.
+1245 Le chargement de mises à jour d'attributs de classe à partir de fichiers objets n'est pas pris en charge en mode CS.
+1246 Impossible d'obtenir l'adresse et le nom canonique de ("%1$s") dans /etc/hosts. Veuillez vérifier l'autorisation du fichier ou s'il existe le nom d'hôte.
+1247 Le temps (%1$s) spécifié doit être postérieure à l'heure (%2$s) de la sauvegarde spécifiée.
+1248 Fichier de clé non valide: %1$s
+1249 Impossible de trouver la clé (index: %1$d).
+1250 La clé principale définie dans la base de données et ce qui est donné ne correspondent pas. L'index de clé défini sur la base de données: %1$d
+1251 Erreur lors du cryptage TDE.
+1252 Erreur lors du décryptage TDE.
+1253 Le module TDE n'est pas chargé.
+1254 Impossible de créer une clé.
+1255 Impossible de charger le module TDE. Vous ne pouvez pas utiliser la fonction TDE.\n\
+Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la clé appropriée.
+1256 Impossible de copier le fichier de clé (_keys). Vous ne pouvez pas utiliser la fonction TDE sur la base de données copiée.
+1257 Impossible de sauvegarder le fichier de clé (_keys). Vous ne pouvez pas utiliser la fonction TDE sur la base de données restaurée en fonction de ce volume de sauvegarde.
+1258 Impossible de trouver le jeu de clés sur la base de données à partir de%1$s. Le fichier clé du volume de sauvegarde va être utilisé.
+1259 Renommez le fichier de clé de «%1$s» en «%2$s».
+1260 Copiez le fichier de clé "%1$s" dans "%2$s".
+1261 La première clé (index de clé : %1$d, heure de création : %2$s) sur le fichier de clé restauré a été définie.
+1262 Le fichier clé est plein.
+1263 Le chiffrement TDE de la page de journal échoue (pageid: %1$lld). Il ne sera plus essayé de crypter cette page.
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
+1284 Impossible de tronquer la table en raison de la clé primaire référencée sur %1$s. Essayez à nouveau avec l'option CASCADE.
+1285 Impossible de tronquer en cascade car l'action ON DELETE de la clé étrangère (%1$s) n'est pas définie sur CASCADE.
 
-1240 Dernière erreur
+1286 Impossible de trouver le journal lsa au moment de l'extraction. (temps d'entrée : %1$s).
+1287 Délai expiré lors de la tentative d'extraction des informations du journal. (temps écoulé : %1$d s, délai d'extraction : %2$d s)
+1288 Ignorer la production d'informations de journal pour un enregistrement de journal non pris en charge en interne.
+1289 Ignorer la production d'informations de journal pour une transaction non valide. (trid : %1$d)
+1290 Lsa du journal non valide (%1$lld|%2$d) pour extraire les informations du journal.
+1291 Impossible de se connecter au serveur pour extraire les informations du journal. Réessayez en définissant le paramètre 'supplemental_log'.
+1292 Impossible de trouver le journal lsa à ce moment (%1$s). Log lsa est ajusté à l'heure (%2$s).
+1293 Impossible d'obtenir la page de journal lors de la production d'informations de journal. Log lsa pour générer les informations de journal indique NULL.
+1294 Les informations du journal ont été générées. (tapez : "%1$s").
+1295 Ignorer la production d'informations de journal pour une table non valide. (class OID : %1$d|%2$d|%3$d)
+
+1296 Récupération des billes : la phase d'ANALYSE commence.
+1297 Récupération des logs : la phase REDO est lancée. Pages de log à refaire : %1$lld, enregistrements de log à refaire : %2$lld.
+1298 Récupération des logs : la phase de la DEOD est lancée. Pages de journal à défaire : %1$lld, transactions à défaire : %2$d.
+1299 Récupération des logs : %1$s La phase est en cours d'achèvement.
+1300 Récupération des billes : %1$s La phase est terminée.
+1301 Récupération du journal : %1$s progrès : (%2$lld/%3$lld), %4$.2f pourcent, temps écoulé : %5$.2f (s), temps restant estimé : %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - not supported type %1$s.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 not supported type %1$s(%2$d).
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 A null column binder was referenced.
+
+1332 Le volume de journal actif (%1$s) est trop sain pour être recréé. Si vous supprimez le journal actif, cela peut provoquer un problème inattendu et irréversible.
+
+1333 Heure invalide (%1$s) pour démarrer le flashback. Le temps doit être défini entre (%2$s) et (%3$s).
+1334 Impossible de trouver la classe à flashback (%1$s).
+1335 Trop de transactions pour revenir en arrière. Moins de %1$d transactions peuvent faire l'objet d'un flashback.
+1336 Impossible de prendre en charge le flashback pour cette classe (nom : %1$s , OID : %2$d|%3$d|%4$d). Le schéma de classe a été modifié.
+1337 L'enregistrement de journal n'existe pas (lsa : %1$lld|%2$d). Le volume du journal d'archivage a été supprimé.
+1338 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par plus d'un utilisateur à la fois.
+
+1339 Type d'argument de procédure stockée non pris en charge: %1$s
+1340 Type de retour de procédure stockée non pris en charge: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
+
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Invalid number of columns specified.
+
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 %1$s "%2$s" est un format invalide à la ligne %3$d du fichier "%4$s".
+1356 Le nom d'hôte "%1$s" est trop long, il doit être inférieur ou égal à 256 à la ligne %2$d du fichier "%3$s".
+1357 Le nom d'hôte "%1$s" existe déjà, un nom d'hôte ne peut pas être dupliqué avec d'autres adresses IP à la ligne %2$d du fichier "%3$s".
+1358 L'adresse IP et le nom d'hôte doivent être écrits entièrement à la ligne %1$d du fichier "%2$s".
+1359 Impossible de rechercher "%1$s" dans cubrid_hosts.conf.
+1360 Une erreur s'est produite lors de l'utilisation de l'hôte défini par l'utilisateur.
+
+1361 Le fichier "%1$s" est introuvable.
+
+1362 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1463,7 +1602,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 Utilisation non valide de sessiontimezone\n sessiontimezone
 126 La dimension maximale d'un commentaire class/vclass est %1$d octets.
 127 La dimension maximale d'un commentaire est %1$d octets.
-128 Invalid number of arguments for JSON_OBJECTAGG
+128 Nombre d'arguments non valide pour JSON_OBJECTAGG
+129 L'argument de compte PARALLELE doit être compris entre %1$d et %2$d.
+130 dblink - Server name cannot contain periods.
+131 Utilisation non valide de ALTER SYNONYM.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 Utilisation non valide de CREATE SYNONYM.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 Utilisation non valide de DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 Utilisation non valide de RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 Aucune option spécifiée pour ALTER SYNONYM.
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.
@@ -1766,6 +1914,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 Le CTE récursif '%1$s' doit être référencé directement dans sa requête récursive.
 299 Erreur dans CTE '%1$s': la partie non récursive et la partie récursive doivent être connectées avec UNION ALL.
 300 La sous-requête n'est pas autorisée dans la clause DEFAULT.
+301 Impossible de trouver les signatures pour la fonction %1$s()
+302 Type d'argument incompatible %1$s, le type attendu est: %2$s.
+303 Nombre d'arguments inattendu %1$d.
+304 Impossible de trouver une signature compatible pour la fonction %1$s()
+305 La signature %1$s n'est pas compatible avec les arguments de la fonction.
+306 dblink - Les informations requises sont manquantes.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.
@@ -1848,7 +2012,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Niveau d'isolement invalid: schéma %1$s, %2$s instances.
 80 La valeur de niveau d'isolement dans MVCC doit être 'read committed', 'repeatable read' ou 'serializable'.
 81 '%1$s' est un objet 'auto_increment', qui n'est pas autorisé à être modifié comme 'serial'.
-
+82 JSON invalide: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalide ***

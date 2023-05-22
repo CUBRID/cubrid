@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -35,7 +34,8 @@
 #include "util_func.h"
 #include "porting.h"
 #include "message_catalog.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
+#include "log_writer.h"
 #include "mprec.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
@@ -52,6 +52,93 @@ typedef enum
   NEW_DATABASE
 } DATABASE_NAME;
 
+typedef struct system_class_def SYSTEM_CLASS_DEF;
+struct system_class_def
+{
+  const char *name;
+  int len;
+};
+
+// *INDENT-OFF*
+static SYSTEM_CLASS_DEF system_classes[] = {
+  {"Rootclass", strlen ("Rootclass")},					// ROOTCLASS_NAME
+  {"dual", strlen ("dual")},						// CT_DUAL_NAME
+
+  /*
+   * authorization classes
+   *
+   * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
+   * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
+   * AU_USER_CLASS_NAME     = CT_USER_NAME
+   * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
+   * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
+   * AU_GRANT_CLASS_NAME
+   */
+  {"db_root", strlen ("db_root")},					// AU_ROOT_CLASS_NAME
+  {"db_user", strlen ("db_user")},					// AU_USER_CLASS_NAME
+  {"db_password", strlen ("db_password")},				// AU_PASSWORD_CLASS_NAME
+  {"db_authorization", strlen ("db_authorization")},			// AU_AUTH_CLASS_NAME
+  {"db_authorizations", strlen ("db_authorizations")},			// "db_authorizations"
+
+  /* currently, not implemented */
+  {"db_grant", strlen ("db_grant")},					// AU_GRANT_CLASS_NAME
+
+  /* 
+   * catalog classes
+   */
+  {"_db_class", strlen ("_db_class")},					// CT_CLASS_NAME
+  {"_db_attribute", strlen ("_db_attribute")}, 				// CT_ATTRIBUTE_NAME
+  {"_db_domain", strlen ("_db_domain")},				// CT_DOMAIN_NAME
+  {"_db_method", strlen ("_db_method")},				// CT_METHOD_NAME
+  {"_db_meth_sig", strlen ("_db_meth_sig")},				// CT_METHSIG_NAME
+  {"_db_meth_arg", strlen ("_db_meth_arg")},				// CT_METHARG_NAME
+  {"_db_meth_file", strlen ("_db_meth_file")},				// CT_METHFILE_NAME
+  {"_db_query_spec", strlen ("_db_query_spec")},			// CT_QUERYSPEC_NAME
+  {"_db_index", strlen ("_db_index")},					// CT_INDEX_NAME
+  {"_db_index_key", strlen ("_db_index_key")},				// CT_INDEXKEY_NAME
+  {"_db_data_type", strlen ("_db_data_type")},				// CT_DATATYPE_NAME
+  {"_db_auth", strlen ("_db_auth")},					// CT_CLASSAUTH_NAME
+  {"_db_partition", strlen ("_db_partition")},				// CT_PARTITION_NAME
+  {"_db_stored_procedure", strlen ("_db_stored_procedure")},		// CT_STORED_PROC_NAME
+  {"_db_stored_procedure_args", strlen ("_db_stored_procedure_args")},	// CT_STORED_PROC_ARGS_NAME
+  {"db_serial", strlen ("db_serial")},					// CT_SERIAL_NAME
+  {"db_ha_apply_info", strlen ("db_ha_apply_info")},			// CT_HA_APPLY_INFO_NAME
+  {"_db_collation", strlen ("_db_collation")},				// CT_COLLATION_NAME
+  {"_db_charset", strlen ("_db_charset")},				// CT_CHARSET_NAME
+  {"_db_server", strlen ("_db_server")},				// CT_DB_SERVER_NAME
+  {"_db_synonym", strlen ("_db_synonym")},				// CT_SYNONYM_NAME
+
+  {"db_trigger", strlen ("db_trigger")},				// CT_TRIGGER_NAME
+
+  /* currently, not implemented */
+  {"_db_resolution", strlen ("_db_resolution")},			// CT_RESOLUTION_NAME
+
+  /*
+   * catalog vclasses
+   */
+  {"db_class", strlen ("db_class")},					// CTV_CLASS_NAME
+  {"db_direct_super_class", strlen ("db_direct_super_class")},		// CTV_SUPER_CLASS_NAME
+  {"db_vclass", strlen ("db_vclass")},					// CTV_VCLASS_NAME
+  {"db_attribute", strlen ("db_attribute")},				// CTV_ATTRIBUTE_NAME
+  {"db_attr_setdomain_elm", strlen ("db_attr_setdomain_elm")},		// CTV_ATTR_SD_NAME
+  {"db_method", strlen ("db_method")},					// CTV_METHOD_NAME
+  {"db_meth_arg", strlen ("db_meth_arg")},				// CTV_METHARG_NAME
+  {"db_meth_arg_setdomain_elm", strlen ("db_meth_arg_setdomain_elm")},	// CTV_METHARG_SD_NAME
+  {"db_meth_file", strlen ("db_meth_file")},				// CTV_METHFILE_NAME
+  {"db_index", strlen ("db_index")},					// CTV_INDEX_NAME
+  {"db_index_key", strlen ("db_index_key")},				// CTV_INDEXKEY_NAME
+  {"db_auth", strlen ("db_auth")},					// CTV_AUTH_NAME
+  {"db_trig", strlen ("db_trig")},					// CTV_TRIGGER_NAME
+  {"db_partition", strlen ("db_partition")},				// CTV_PARTITION_NAME
+  {"db_stored_procedure", strlen ("db_stored_procedure")},		// CTV_STORED_PROC_NAME
+  {"db_stored_procedure_args", strlen ("db_stored_procedure_args")},	// CTV_STORED_PROC_ARGS_NAME
+  {"db_collation", strlen ("db_collation")},				// CTV_DB_COLLATION_NAME
+  {"db_charset", strlen ("db_charset")},				// CTV_DB_CHARSET_NAME
+  {"db_server", strlen ("db_server")},					// CTV_DB_SERVER_NAME
+  {"db_synonym", strlen ("db_synonym")}					// CTV_SYNONYM_NAME
+};
+// *INDENT-ON*
+
 static int utility_get_option_index (UTIL_ARG_MAP * arg_map, int arg_ch);
 static int check_database_name_local (const char *name, int existing_or_new_db);
 static char **util_split_ha_node (const char *str);
@@ -60,6 +147,7 @@ static char **util_split_ha_sync (const char *str);
 static int util_get_ha_parameters (char **ha_node_list_p, char **ha_db_list_p, char **ha_sync_mode_p,
 				   const char **ha_copy_log_base_p, int *ha_max_mem_size_p);
 static bool util_is_replica_node (void);
+static int utility_system_class_def_compare (const void *a, const void *b);
 
 /*
  * utility_initialize() - initialize cubrid library
@@ -313,6 +401,98 @@ utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map)
 }
 
 /*
+ * utility_check_class_name() - Check if class name is valid.
+ *   return: error code
+ *   class_name(in): the name of the class
+ */
+int
+utility_check_class_name (const char *class_name)
+{
+  int class_name_len = 0;
+  int sub_len = 0;
+  const char *dot = NULL;
+
+  if (class_name == NULL || class_name[0] == '\0')
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC, MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT));
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  class_name_len = STATIC_CAST (int, strlen (class_name));
+  if (class_name_len >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
+			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH, SM_MAX_USER_LENGTH,
+			    SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+      return ER_FAILED;
+    }
+
+  dot = strchr (class_name, '.');
+  if (dot == NULL)
+    {
+      /* owner name or class name is not specified */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), class_name);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT, class_name);
+      return ER_FAILED;
+    }
+
+  /* check length of owner name */
+  sub_len = STATIC_CAST (int, dot - class_name);
+  if (sub_len < 1)
+    {
+      /* owner name is not specified (e.g. '.class_name') */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), class_name);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT, class_name);
+      return ER_FAILED;
+    }
+
+  if (sub_len >= SM_MAX_USER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
+			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH, SM_MAX_USER_LENGTH,
+			    SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+      return ER_FAILED;
+    }
+
+  /* check length of class name */
+  sub_len = STATIC_CAST (int, strlen (dot + 1));
+  if (sub_len < 1)
+    {
+      /* class name is not specified (e.g. 'owner_name.') */
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+			      MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT), class_name);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT, class_name);
+      return ER_FAILED;
+    }
+
+  if (sub_len >= SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+			      MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
+			     SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH, SM_MAX_USER_LENGTH,
+			    SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * fopen_ex - open a file for variable architecture
  *    return: FILE *
  *    filename(in): path to the file to open
@@ -417,15 +597,55 @@ utility_localtime (const time_t * ts, struct tm *result)
 bool
 util_is_localhost (char *host)
 {
-  char localhost[PATH_MAX];
+  char localhost[CUB_MAXHOSTNAMELEN];
+  GETHOSTNAME (localhost, CUB_MAXHOSTNAMELEN);
 
-  GETHOSTNAME (localhost, PATH_MAX);
-  if (strcmp (host, localhost) == 0)
+  return are_hostnames_equal (host, localhost);
+}
+
+/**
+ * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
+ * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
+ *
+ * for example following hosts are equal:
+ *  "host-1"            "host-1"
+ *  "host-1"            "host-1.cubrid.org"
+ *  "host-1.cubrid.org" "host-1"
+ *  "host-1.cubrid.org" "host-1.cubrid.org"
+ *
+ * for example following hosts are not equal:
+ *  "host-1"            "host-2"
+ *  "host-1.cubrid.org" "host-2"
+ *  "host-1"            "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-1.cubrid.com"
+ *
+ * @param hostname_a first hostname
+ * @param hostname_b second hostname
+ *
+ * @return true if hostname_a is same as hostname_b
+ */
+bool
+are_hostnames_equal (const char *hostname_a, const char *hostname_b)
+{
+  const char *a;
+  const char *b;
+
+  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); ++a, ++b)
+    ;
+
+  if (*a == '\0' && *b != '\0')
     {
-      return true;
+      return *b == '.';
     }
-
-  return false;
+  else if (*a != '\0' && *b == '\0')
+    {
+      return *a == '.';
+    }
+  else
+    {
+      return *a == *b;
+    }
 }
 
 /*
@@ -571,7 +791,7 @@ util_is_replica_node (void)
 {
   bool is_replica_node = false;
   int i;
-  char local_host_name[MAXHOSTNAMELEN];
+  char local_host_name[CUB_MAXHOSTNAMELEN];
   char *ha_replica_list_p, **ha_replica_list_pp = NULL;
 
   ha_replica_list_p = prm_get_string_value (PRM_ID_HA_REPLICA_LIST);
@@ -1204,6 +1424,14 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
 	  if (p != 0)
 	    {
 	      name[p] = '\0';
+
+	      if (utility_check_class_name (name) != NO_ERROR)
+		{
+		  fclose (fp);
+		  /* The util_log_write_errid function is called inside the utility_check_class_name function. */
+		  return ER_GENERIC_ERROR;
+		}
+
 	      if (da_add (darray, name) != NO_ERROR)
 		{
 		  fclose (fp);
@@ -1223,12 +1451,82 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
       if (p == SM_MAX_IDENTIFIER_LENGTH)
 	{
 	  /* too long table name */
-	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-	  fclose (fp);
-	  return ER_GENERIC_ERROR;
+	  if (utility_check_class_name (name) != NO_ERROR)
+	    {
+	      fclose (fp);
+	      /* The util_log_write_errid function is called inside the utility_check_class_name function. */
+	      return ER_GENERIC_ERROR;
+	    }
 	}
     }
   fclose (fp);
 
   return NO_ERROR;
+}
+
+static int
+utility_system_class_def_compare (const void *a, const void *b)
+{
+  const SYSTEM_CLASS_DEF *sa = STATIC_CAST (const SYSTEM_CLASS_DEF *, a);
+  const SYSTEM_CLASS_DEF *sb = STATIC_CAST (const SYSTEM_CLASS_DEF *, b);
+
+  if (sa->len != sb->len)
+    {
+      return sa->len - sb->len;
+    }
+
+  return strcmp (sa->name, sb->name);
+}
+
+/*
+ * sm_check_system_class_by_name () - Checks whether the class name is
+ *    the same as the system class name.
+ * return: true if the system class name, false otherwise
+ * name(in): class name
+ */
+bool
+utility_check_system_class_name (const char *class_name)
+{
+  static int was_initialized = FALSE;
+  static int count = sizeof (system_classes) / sizeof (system_classes[0]);
+
+  SYSTEM_CLASS_DEF sa;
+  int cmp = 0;
+  int i = 0;
+
+  if (class_name == NULL || class_name[0] == '\0')
+    {
+      return false;
+    }
+
+  if (!was_initialized)
+    {
+      qsort (system_classes, count, sizeof (system_classes[0]), utility_system_class_def_compare);
+      was_initialized = TRUE;
+    }
+
+  /* The user-specified name is not a system class name. */
+  if (strchr (class_name, '.') != NULL)
+    {
+      return false;
+    }
+
+  sa.name = class_name;
+  sa.len = strlen (class_name);
+
+  if (sa.len > system_classes[count - 1].len)
+    {
+      return false;
+    }
+
+  for (i = 0; i < count; i++)
+    {
+      cmp = utility_system_class_def_compare (&sa, system_classes + i);
+      if (cmp <= 0)
+	{
+	  return (cmp == 0);
+	}
+    }
+
+  return false;
 }

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -46,7 +45,6 @@
 #define HB_DEFAULT_UNACCEPTABLE_PROC_RESTART_TIMEDIFF_IN_MSECS   (2*60*1000)
 #define HB_DEFAULT_CHANGEMODE_INTERVAL_IN_MSECS		(5*1000)
 #define HB_DEFAULT_MAX_HEARTBEAT_GAP                    (5)
-#define HB_DEFAULT_UPDATE_HOSTNAME_INTERVAL_IN_MSECS    (1*1000)
 #define HB_MIN_DIFF_CHECK_DISK_FAILURE_INTERVAL_IN_SECS (10)
 
 #define HB_JOB_TIMER_IMMEDIATELY                        (0)
@@ -126,13 +124,13 @@ struct hbp_header
   unsigned short len;
   unsigned int seq;
   char group_id[HB_MAX_GROUP_ID_LEN];
-  char orig_host_name[MAXHOSTNAMELEN];
-  char dest_host_name[MAXHOSTNAMELEN];
+  char orig_host_name[CUB_MAXHOSTNAMELEN];
+  char dest_host_name[CUB_MAXHOSTNAMELEN];
 };
 
 
 /*
- * heartbeat resource message body 
+ * heartbeat resource message body
  */
 
 /* process register */
@@ -143,12 +141,11 @@ struct hbp_proc_register
   int type;
   char exec_path[HB_MAX_SZ_PROC_EXEC_PATH];
   char args[HB_MAX_SZ_PROC_ARGS];
-  char argv[HB_MAX_NUM_PROC_ARGV][HB_MAX_SZ_PROC_ARGV];
 };
 
 
-/* 
- * externs 
+/*
+ * externs
  */
 extern const char *hb_process_type_string (int ptype);
 extern void hb_set_exec_path (char *exec_path);

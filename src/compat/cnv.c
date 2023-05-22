@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -716,7 +715,7 @@ us_time_value (int *the_hour, int *the_min, int *the_sec)
 	  cnv_fmt_analyze (cnv_fmt_next_token (), FL_LOCAL_TIME);
 	}
 
-      /* we used to use local_am_pm_value() here, but it wasn't flexible enough to handle 24 hour time strings (no "AM" 
+      /* we used to use local_am_pm_value() here, but it wasn't flexible enough to handle 24 hour time strings (no "AM"
        * or "PM" designator). */
 
       type = cnv_fmt_lex (&token);
@@ -3188,7 +3187,7 @@ fmt_add_decimal (ADJ_ARRAY * string, int *position)
   cnv_fmt_analyze (vstring, FL_LOCAL_NUMBER);
   while ((ttype = cnv_fmt_lex (&token)) == FT_MINUS || ttype == FT_PLUS || ttype == FT_CURRENCY);
 
-  /* 
+  /*
    * Add decimal only if at most one digit already exists. This allows us to
    * automatically add a decimal when interactive input begins, but then reject
    * attempt to drop decimal later (when we wouldn't know where to put it
@@ -4489,7 +4488,7 @@ tfmt_new (const char *format)
 
   assert (format);
 
-  /* 
+  /*
    * Initialize arrays for tokens and token strings. We must copy all token
    * strings, because the token.text pointer is reused when the next token
    * is scanned.
@@ -5947,7 +5946,7 @@ bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string,
   int string_index = 0;
   int byte_index;
   int bit_index;
-  char *bstring;
+  const char *bstring;
   int error = NO_ERROR;
   static char digits[16] = {
     '0', '1', '2', '3', '4', '5', '6', '7',
@@ -6333,7 +6332,7 @@ num_fmt_value (FLOAT_FORMAT * ffmt, const char *string, DB_VALUE * the_numeric)
 
 	      /* Yes, get value of fraction part. */
 	      error = nfmt_fractional_value (ffmt->fractional_type, ffmt->fractional_digits, fraction_part);
-	      /* 
+	      /*
 	       * Digit really missing? Or did invalid char stop scan prematurely?
 	       * Find out later. Important to ValueEditor to report
 	       * CNV_ERR_MISSING_FRACTION correctly!
@@ -6649,7 +6648,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	case DB_TYPE_CHAR:
 	  {
 	    int size = strlen (string);
-	    db_make_char (value, size, (char *) string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_char (value, size, string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + size;
 	    break;
 	  }
@@ -6657,7 +6656,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	case DB_TYPE_VARCHAR:
 	  {
 	    int size = strlen (string);
-	    db_make_varchar (value, size, (char *) string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_varchar (value, size, string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + size;
 	    break;
 	  }
@@ -6666,7 +6665,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	  {
 	    int size;
 	    intl_char_count ((unsigned char *) string, strlen (string), LANG_SYS_CODESET, &size);
-	    db_make_nchar (value, size, (char *) string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_nchar (value, size, string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + strlen (string);
 	    break;
 	  }
@@ -6675,7 +6674,7 @@ db_string_value (const char *string, int str_size, const char *format, DB_VALUE 
 	  {
 	    int char_count;
 	    intl_char_count ((unsigned char *) string, strlen (string), LANG_SYS_CODESET, &char_count);
-	    db_make_varnchar (value, char_count, (char *) string, char_count, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	    db_make_varnchar (value, char_count, string, char_count, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	    next = string + strlen (string);
 	    break;
 	  }
@@ -6990,9 +6989,14 @@ db_value_to_string (const DB_VALUE * value, const char *format)
   while ((error = db_value_string (value, format, buffer, max_size)) == CNV_ERR_STRING_TOO_LONG)
     {
       max_size += max_size / 2;	/* Grow by 1.5x */
-      if ((buffer = (char *) realloc (buffer, max_size)) == NULL)
+      static char *const realloc_buffer = (char *) realloc (buffer, max_size);
+      if (realloc_buffer == NULL)
 	{
 	  return NULL;
+	}
+      else
+	{
+	  buffer = realloc_buffer;
 	}
     }
 

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -41,7 +40,6 @@
 #include "misc_string.h"
 #include "dbi.h"
 #include "error_manager.h"
-#include "object_print.h"
 #include "memory_alloc.h"
 
 #if defined(WINDOWS)
@@ -99,6 +97,7 @@ extern "C"
     CSQL_SYSADM_PROMPT = 81,
     CSQL_TRANSACTIONS = 82,
     CSQL_TRANSACTION = 83,
+    CSQL_MSG_TOO_FEW_ARGS = 84,
 
     CSQL_HELP_SCHEMA_TITLE_TEXT = 145,
     CSQL_HELP_NONE_TEXT = 146,
@@ -119,6 +118,7 @@ extern "C"
     CSQL_E_INVALIDARGCOM_TEXT = 194,
     CSQL_E_UNKNOWN_TEXT = 196,
     CSQL_E_CANT_EDIT_TEXT = 197,
+    CSQL_E_FORMAT_TEXT = 198,
 
     CSQL_HELP_CLASS_HEAD_TEXT = 203,
     CSQL_HELP_SUPER_CLASS_HEAD_TEXT = 204,
@@ -171,7 +171,8 @@ extern "C"
     CSQL_ERR_INVALID_ARG_COMBINATION,
     CSQL_ERR_CANT_EDIT,
     CSQL_ERR_INFO_CMD_HELP,
-    CSQL_ERR_CLASS_NAME_MISSED
+    CSQL_ERR_CLASS_NAME_MISSED,
+    CSQL_ERR_FORMAT
   };
 
 /* session command numbers */
@@ -207,6 +208,7 @@ extern "C"
     S_CMD_PRINT_CMD,
     S_CMD_PAGER_CMD,
     S_CMD_NOPAGER_CMD,
+    S_CMD_FORMATTER_CMD,
     S_CMD_COLUMN_WIDTH,
     S_CMD_STRING_WIDTH,
 
@@ -236,7 +238,11 @@ extern "C"
     S_CMD_HISTORY_READ,
     S_CMD_HISTORY_LIST,
 
-    S_CMD_TRACE
+    S_CMD_TRACE,
+
+    S_CMD_SINGLELINE,
+
+    S_CMD_CONNECT
   } SESSION_CMD;
 
 /* iq_ function return status */
@@ -245,6 +251,13 @@ extern "C"
     CSQL_FAILURE = -1,
     CSQL_SUCCESS = 0
   };
+
+  typedef enum
+  {
+    CSQL_UNKNOWN_OUTPUT = 1,
+    CSQL_QUERY_OUTPUT,
+    CSQL_LOADDB_OUTPUT
+  } CSQL_OUTPUT_TYPE;
 
   typedef struct
   {
@@ -264,11 +277,17 @@ extern "C"
     bool nopager;
     bool continue_on_error;
     bool sysadm;
+    bool sysadm_rebuild_catalog;
     bool write_on_standby;
     bool trigger_action_flag;
     bool plain_output;
     bool skip_column_names;
+    bool skip_vacuum;
     int string_width;
+    bool query_output;
+    char column_delimiter;
+    char column_enclosure;
+    bool loaddb_output;
 #if defined(CSQL_NO_LONGGING)
     bool no_logging;
 #endif				/* CSQL_NO_LONGGING */
@@ -290,6 +309,7 @@ extern "C"
   extern char csql_Print_cmd[];
   extern char csql_Pager_cmd[];
   extern char csql_Scratch_text[];
+  extern char csql_Formatter_cmd[];
   extern int csql_Error_code;
 
 
@@ -308,7 +328,8 @@ extern "C"
 
   extern char *csql_get_real_path (const char *pathname);
   extern void csql_invoke_system (const char *command);
-  extern int csql_invoke_system_editor (void);
+  extern int csql_invoke_formatter (void);
+  extern int csql_invoke_system_editor (const char *argument);
   extern void csql_fputs (const char *str, FILE * fp);
   extern void csql_fputs_console_conv (const char *str, FILE * fp);
   extern FILE *csql_popen (const char *cmd, FILE * fd);
@@ -346,13 +367,16 @@ extern "C"
   extern void csql_help_info (const char *command, int aucommit_flag);
   extern void csql_killtran (const char *argument);
 
-  extern char *csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string);
+  extern char *csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_OUTPUT_TYPE output_type,
+					char cloumn_enclosure);
 
   extern char *csql_string_to_plain_string (const char *string_value, int length, int *result_length);
 
   extern int csql_set_column_width_info (const char *column_name, int column_width);
   extern int csql_get_column_width (const char *column_name);
 
+  extern char *string_to_string (const char *string_value, char string_delimiter, char string_introducer, int length,
+				 int *result_length, bool plain_string, bool change_single_quote);
 
 #ifdef __cplusplus
 }

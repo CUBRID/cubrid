@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -44,6 +43,15 @@
 #include "replication.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+
+// forward definitions
+// *INDENT-OFF*
+namespace cubquery
+{
+  struct mvcc_reev_data;
+}
+using MVCC_REEV_DATA = cubquery::mvcc_reev_data;
+// *INDENT-ON*
 
 enum
 {
@@ -93,7 +101,8 @@ extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid
 				 bool need_locking);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
-					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds);
+					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock,
+					bool skip_checking_fk);
 extern int locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old_recdes, ATTR_ID * att_id,
 				 int n_att_id, OID * oid, OID * class_oid, int op_type,
 				 HEAP_SCANCACHE * scan_cache, REPL_INFO * repl_info);
@@ -117,4 +126,21 @@ extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, O
 				     int ispeeking, int chn);
 extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
+
+extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
+				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
+				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
+				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
+				 bool dont_check_fk, bool use_bulk_logging = false);
+
+ // *INDENT-OFF*
+extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
+				       const std::vector<record_descriptor> &recdes, int has_index, int op_type,
+				       HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
+				       PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
+				       UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk);
+extern bool has_errors_filtered_for_insert (std::vector<int> error_filter_array);
+// *INDENT-ON*
+
+
 #endif /* _LOCATOR_SR_H_ */

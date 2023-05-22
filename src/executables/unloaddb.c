@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -32,8 +31,10 @@
 #include "porting.h"
 #include "authenticate.h"
 #include "db.h"
+#include "extract_schema.hpp"
 #include "message_catalog.h"
 #include "environment_variable.h"
+#include "printer.hpp"
 #include "schema_manager.h"
 #include "locator_cl.h"
 #include "unloaddb.h"
@@ -46,17 +47,21 @@ const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
 TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
+
 TEXT_OUTPUT *obj_out = &object_output;
 int page_size = 4096;
 int cached_pages = 100;
-int est_size = 0;
+int64_t est_size = 0;
 char *hash_filename = NULL;
 int debug_flag = 0;
 bool verbose_flag = false;
+bool latest_image_flag = false;
 bool include_references = false;
 
 bool required_class_only = false;
 bool datafile_per_class = false;
+bool split_schema_files = false;
+bool is_as_dba = false;
 LIST_MOPS *class_table = NULL;
 DB_OBJECT **req_class_table = NULL;
 
@@ -99,6 +104,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   char *user, *password;
   int au_save;
   EMIT_STORAGE_ORDER order;
+  extract_context unload_context;
 
   if (utility_get_option_string_table_size (arg_map) != 1)
     {
@@ -116,6 +122,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   output_dirname = utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PATH_S, 0);
   do_schema = utility_get_option_bool_value (arg_map, UNLOAD_SCHEMA_ONLY_S);
   do_objects = utility_get_option_bool_value (arg_map, UNLOAD_DATA_ONLY_S);
+  latest_image_flag = utility_get_option_bool_value (arg_map, UNLOAD_LATEST_IMAGE_S);
   output_prefix = utility_get_option_string_value (arg_map, UNLOAD_OUTPUT_PREFIX_S, 0);
   hash_filename = utility_get_option_string_value (arg_map, UNLOAD_HASH_FILE_S, 0);
   verbose_flag = utility_get_option_bool_value (arg_map, UNLOAD_VERBOSE_S);
@@ -130,6 +137,9 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     {
       order = FOLLOW_ATTRIBUTE_ORDER;
     }
+
+  split_schema_files = utility_get_option_string_value (arg_map, UNLOAD_SPLIT_SCHEMA_FILES_S, 0);
+  is_as_dba = utility_get_option_string_value (arg_map, UNLOAD_AS_DBA_S, 0);
 
   /* depreciated */
   utility_get_option_bool_value (arg_map, UNLOAD_USE_DELIMITER_S);
@@ -148,13 +158,18 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
       output_prefix = database_name;
     }
 
+  if (output_dirname != NULL)
+    {
+      unload_context.output_dirname = output_dirname;
+    }
+
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, exec_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
-  /* 
+  /*
    * Open db
    */
   if (user == NULL || user[0] == '\0')
@@ -272,19 +287,73 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  if (is_as_dba == true)
+    {
+      unload_context.is_dba_group_member = au_is_dba_group_member (Au_user);
+
+      if (unload_context.is_dba_group_member == false)
+	{
+	  fprintf (stderr, "\n--%s is an option available only when the user is a DBA Group.\n", UNLOAD_AS_DBA_L);
+	  goto end;
+	}
+    }
+  else
+    {
+      unload_context.is_dba_user = ws_is_same_object (Au_dba_user, Au_user);
+    }
+
   if (!status && (do_schema || !do_objects))
     {
-      /* do authorization as well in extractschema() */
-      if (extractschema (exec_name, 1, order))
+      char indexes_output_filename[PATH_MAX * 2] = { '\0' };
+      char trigger_output_filename[PATH_MAX * 2] = { '\0' };
+
+      if (create_filename_trigger (output_dirname, output_prefix, trigger_output_filename,
+				   sizeof (trigger_output_filename)) != 0)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	  goto end;
+	}
+
+      if (create_filename_indexes (output_dirname, output_prefix, indexes_output_filename,
+				   sizeof (indexes_output_filename)) != 0)
+	{
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+	  goto end;
+	}
+
+      /* do authorization as well in extractschema () */
+      unload_context.do_auth = 1;
+      unload_context.storage_order = order;
+      unload_context.exec_name = exec_name;
+      unload_context.login_user = user;
+      unload_context.output_prefix = output_prefix;
+
+      if (extract_classes_to_file (unload_context) != 0)
 	{
 	  status = 1;
 	}
+
+      if (!status && extract_triggers_to_file (unload_context, trigger_output_filename) != 0)
+	{
+	  status = 1;
+	}
+
+      if (!status && extract_indexes_to_file (unload_context, indexes_output_filename) != 0)
+	{
+	  status = 1;
+	}
+
+      unload_context.clear_schema_workspace ();
     }
 
   AU_SAVE_AND_ENABLE (au_save);
   if (!status && (do_objects || !do_schema))
     {
-      if (extractobjects (exec_name))
+      unload_context.exec_name = exec_name;
+      unload_context.login_user = user;
+      unload_context.output_prefix = output_prefix;
+
+      if (extract_objects (unload_context, output_dirname))
 	{
 	  status = 1;
 	}
@@ -300,7 +369,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  /* 
+  /*
    * Shutdown db
    */
   error = db_shutdown ();
@@ -319,6 +388,8 @@ end:
     {
       free_and_init (req_class_table);
     }
+
+  unload_context.clear_schema_workspace ();
 
   return status;
 }

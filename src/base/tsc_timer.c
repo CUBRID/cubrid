@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -35,7 +34,7 @@
 do { \
   if ((v) == 0) \
     { \
-      (v) = get_clockfreq (); \
+      (v) = get_clock_freq (); \
     } \
 } while (0)
 
@@ -68,7 +67,7 @@ void
 tsc_init (void)
 {
   check_power_savings ();
-  cpu_Clock_rate = get_clockfreq ();
+  cpu_Clock_rate = get_clock_freq ();
   return;
 }
 
@@ -93,9 +92,9 @@ tsc_getticks (TSC_TICKS * tck)
 }
 
 /*
- * tsc_elapsed_time_usec() - measure the elapsed time in microseconds 
+ * tsc_elapsed_time_usec() - measure the elapsed time in microseconds
  *   tv(out)       : elapsed time (sec, usec)
- *   end_tick(in)  : end time 
+ *   end_tick(in)  : end time
  *   start_tick(in): start time
  */
 void
@@ -157,7 +156,7 @@ tsc_start_time_usec (TSC_TICKS * tck)
 /*
  * tsc_end_time_usec() - measure the elapsed time in microseconds
  *   tv(out)       : elapsed time (sec, usec)
- *   start_tick(in): start time 
+ *   start_tick(in): start time
  */
 void
 tsc_end_time_usec (TSCTIMEVAL * tv, TSC_TICKS start_tick)
@@ -193,14 +192,14 @@ static void
 check_power_savings (void)
 {
 #if defined (WINDOWS)
-  /* 
-   * Note: Windows's QueryPerformanceFrequency always returns 
+  /*
+   * Note: Windows's QueryPerformanceFrequency always returns
    *       the stable CPU or mainboard clock rate.
    */
   power_Savings = 0;
 
 #elif defined (LINUX)
-  /* 
+  /*
    * Note: 'power_saving value == zero' means that the CPU clock rate is fixed.
    */
   int fd_mc, fd_smt;
@@ -243,7 +242,7 @@ check_power_savings (void)
   power_Savings = 1;
 
 #else
-  /* 
+  /*
    * Note: We assume that the unknown OS performs the power-saving policy.
    */
   power_Savings = 1;

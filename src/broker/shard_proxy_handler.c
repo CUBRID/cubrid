@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -422,7 +421,7 @@ proxy_handler_process_cas_response (T_PROXY_EVENT * event_p)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unsupported function code. " "(func_code:%d). context(%s).", func_code,
 		 proxy_str_context (ctx_p));
-      /* 
+      /*
        * 1*) drop unexpected messages from cas ?
        * 2) free context ?
        */
@@ -499,7 +498,7 @@ proxy_handler_process_cas_error (T_PROXY_EVENT * event_p)
     {
       if (ctx_p->func_code)
 	{
-	  /* 
+	  /*
 	   * we should relay error event to the client
 	   * so, must not call proxy_event_free().
 	   */
@@ -728,6 +727,10 @@ end:
 
   if (ctx_p->free_context)
     {
+      if (proxy_context_direct_send_error (ctx_p) < 0)
+	{
+	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to send error message");
+	}
       proxy_context_free (ctx_p);
     }
 
@@ -1143,7 +1146,7 @@ proxy_context_clear (T_PROXY_CONTEXT * ctx_p)
 	}
       else if (ctx_p->prepared_stmt->stmt_type != SHARD_STMT_TYPE_PREPARED)
 	{
-	  /* 
+	  /*
 	   * shcema info server handle can't be shared with other context
 	   * so, we can free statement at this time.
 	   */

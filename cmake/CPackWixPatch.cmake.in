@@ -5,6 +5,23 @@
 <!-- Check System -->
     <Condition Message="This application is only supported on Windows Vista, Windows Server 2008, or higher."><![CDATA[Installed OR (VersionNT >= 600)]]></Condition>
     <Condition Message="This installer is only supported on Windows @WIX_SUPPORTED_PLATFORM@."><![CDATA[Installed OR @WIX_SUPPORTED_PLATFORM_CONDITION@]]></Condition>
+<!-- Check currentBuild number -->
+    <Property Id="WINDOWS_BUILD_VERSION">
+      <RegistrySearch Id="WIN_CURRENT_VERSION_REGSEARCH" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion" Name="CurrentBuild" Type="raw"/>
+    </Property>
+    <UI>
+      <Dialog Id="WinWarningDlg" Width="284" Height="73" Title="Check for update" NoMinimize="yes">
+        <Control Id="Text" Type="Text" X="38" Y="8" Width="240" Height="40" TabSkip="no">
+          <Text>Installation may fail if the latest version of the Windows security patch is not installed.</Text>
+        </Control>
+        <Control Id="OK" Type="PushButton" X="114" Y="52" Width="56" Height="17" Default="yes" Cancel="yes" Text="OK">
+          <Publish Event="EndDialog" Value="Return">1</Publish>
+        </Control>
+      </Dialog>
+      <InstallUISequence>
+        <Show Dialog="WinWarningDlg" Before="ResumeDlg"><![CDATA[WINDOWS_BUILD_VERSION >= "7600" AND WINDOWS_BUILD_VERSION <= "9600"]]></Show>
+      </InstallUISequence>
+    </UI>
 <!-- Check Java requirements ONLY on "install", but not on modify or uninstall -->
     <Property Id="JAVA_CURRENT_VERSION">
       <RegistrySearch Id="JRE_CURRENT_VERSION_REGSEARCH" Root="HKLM" Key="SOFTWARE\JavaSoft\Java Runtime Environment" Name="CurrentVersion" Type="raw"/>
@@ -12,7 +29,7 @@
     <UI>
       <Dialog Id="JavaWarningDlg" Width="284" Height="73" Title="Java Runtime" NoMinimize="yes">
         <Control Id="Text" Type="Text" X="38" Y="8" Width="240" Height="40" TabSkip="no">
-          <Text>JRE version 1.5 or higher for Windows @WIX_SUPPORTED_PLATFORM@ is required for Java Stored Procedure to function correctly. You may proceed with installation, but be sure to install JRE if you will be using Java Stored Procedure.</Text>
+          <Text>JRE version 1.8 or higher for Windows @WIX_SUPPORTED_PLATFORM@ is required for SSL and Java Stored Procedure to function correctly. You may proceed with installation, but be sure to install JRE if you will be using it.</Text>
         </Control>
         <Control Id="OK" Type="PushButton" X="114" Y="52" Width="56" Height="17" Default="yes" Cancel="yes" Text="OK">
           <Publish Event="EndDialog" Value="Return">1</Publish>
@@ -20,29 +37,41 @@
       </Dialog>
       <InstallUISequence>
 <!-- Warn if Java is not installed -->
-        <Show Dialog="JavaWarningDlg" Before="ResumeDlg"><![CDATA[NOT Installed AND JAVA_CURRENT_VERSION < "1.5"]]></Show>
+        <Show Dialog="JavaWarningDlg" Before="ResumeDlg"><![CDATA[NOT Installed AND JAVA_CURRENT_VERSION < "1.8"]]></Show>
       </InstallUISequence>
     </UI>
-<!-- Install the Visual C++ Redistributable -->
+<!-- Install the Visual C++ Redistributable for CRT-->
     <DirectoryRef Id="TARGETDIR">
       <Merge Id="VCRedist" SourceFile="$(env.ProgramFiles)\Common Files\Merge Modules\@WIX_VCREDIST_MSM@" DiskId="1" Language="0"/>
     </DirectoryRef>
     <Feature Id="VCRedist" Title="Visual C++ Runtime" AllowAdvertise="no" Display="hidden" Level="1">
       <MergeRef Id="VCRedist"/>
 <?endif?>
-    </Feature>
+    </Feature>	
+	
+<!-- Install the Visual C++ Redistributable for MFC -->
+    <DirectoryRef Id="TARGETDIR">
+      <Merge Id="VCMFCRedist" SourceFile="$(env.ProgramFiles)\Common Files\Merge Modules\@WIX_VCREDIST_MFC_MSM@" DiskId="1" Language="0"/>
+    </DirectoryRef>
+    <Feature Id="VCMFCRedist" Title="Visual C++ Runtime" AllowAdvertise="no" Display="hidden" Level="1">
+      <MergeRef Id="VCMFCRedist"/>
+<?endif?>
+    </Feature>	
+
 <!-- Create Env Var -->
     <ComponentGroup Id="CG_CREATE_ENV_VARS" Directory="CM_DP_Application.bin">
       <Component Id="CM_CREATE_ENV_VARS" Guid="{5a720552-96df-4eb4-b305-ac86d4276748}" KeyPath="yes">
         <Environment Id="SetEnv_CUBRID" Action="set" Name="CUBRID" Value="[INSTALL_ROOT]" System="yes"/>
         <Environment Id="SetEnv_CUBRID_DATABASES" Action="set" Name="CUBRID_DATABASES" Value="[INSTALL_ROOT]databases" System="yes"/>
         <Environment Id="SetEnv_PATH" Action="set" Part="first" Name="PATH" Value="[CM_DP_Application.bin]" System="yes"/>
+        <Environment Id="SetEnv_PATH_CCI" Action="set" Part="first" Name="PATH" Value="[INSTALL_ROOT]cci\bin" System="yes"/>
       </Component>
     </ComponentGroup>
     <InstallExecuteSequence>
       <Custom Action="RegisterService" After="InstallFiles"><![CDATA[NOT Installed]]></Custom>
       <Custom Action="CreateScheduledTask" After="RegisterService"><![CDATA[NOT Installed]]></Custom>
-      <Custom Action="CreateDemodb" After="CreateScheduledTask"><![CDATA[NOT Installed AND INSTALLWITHDEMODB]]></Custom>
+      <Custom Action="CreateforDatabases" After="CreateScheduledTask"><![CDATA[NOT Installed]]></Custom>
+      <Custom Action="CreateDemodb" After="CreateforDatabases"><![CDATA[NOT Installed AND INSTALLWITHDEMODB]]></Custom>
       <Custom Action="DeleteScheduledTask" After="InstallInitialize"><![CDATA[Installed]]></Custom>
       <Custom Action="KillTray" Before="DeleteScheduledTask"><![CDATA[Installed]]></Custom>
     </InstallExecuteSequence>
@@ -56,16 +85,19 @@
       </Component>
     </DirectoryRef>
 <!-- Create a schedule for autorun tray -->
-    <SetProperty Id="CreateScheduledTask" Before="CreateScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /CREATE /SC ONLOGON /TN &quot;CUBRID Service Tray&quot; /TR &quot;[#CM_FP_Application.bin.CUBRID_Service_Tray.exe]&quot; /RU &quot;NT Authority\System&quot; /RP /RL HIGHEST"/>
+    <SetProperty Id="CreateScheduledTask" Before="CreateScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /CREATE /SC ONLOGON /TN &quot;CUBRID Service Tray&quot; /TR &quot;[#CM_FP_Application.bin.CUBRID_Service_Tray.exe]&quot; /RU &quot;NT Authority\System&quot; /RP /RL HIGHEST /F"/>
     <CustomAction Id="CreateScheduledTask" Return="check" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
     <SetProperty Id="DeleteScheduledTask" Before="DeleteScheduledTask" Sequence="execute" Value="&quot;[SystemFolder]SCHTASKS.EXE&quot; /DELETE /TN &quot;CUBRID Service Tray&quot; /F"/>
     <CustomAction Id="DeleteScheduledTask" Return="ignore" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
 <!-- Kill Tray before uninstall -->
     <SetProperty Id="KillTray" Before="KillTray" Sequence="execute" Value="&quot;[SystemFolder]TASKKILL.EXE&quot; /F /IM CUBRID_Service_Tray.exe"/>
     <CustomAction Id="KillTray" Return="ignore" Impersonate="no" Execute="deferred" BinaryKey="WixCA" DllEntry="WixQuietExec"/>
+<!-- Create Databases folder and databases.txt -->
+    <SetProperty Id="CreateforDatabases" Before="CreateforDatabases" Sequence="execute" Value="&quot;[SystemFolder]CMD.EXE&quot; /C &quot;[#CM_FP_Unspecified.share.scripts_for_msi.create_for_databases.bat] [INSTALL_ROOT]&quot;"/>
+    <CustomAction Id="CreateforDatabases" BinaryKey="WixCA" DllEntry="CAQuietExec" Execute="deferred" Return="ignore"/>
 <!-- Create demodb -->
     <Property Id="INSTALLWITHDEMODB" Value="1"/>
-    <SetProperty Id="CreateDemodb" Before="CreateDemodb" Sequence="execute" Value="&quot;[SystemFolder]CMD.EXE&quot; /C &quot;[#CM_FP_Unspecified.demo.make_cubrid_demo.bat] demodb [INSTALL_ROOT]&quot;"/>
+    <SetProperty Id="CreateDemodb" Before="CreateDemodb" Sequence="execute" Value="&quot;[SystemFolder]CMD.EXE&quot; /C &quot;[#CM_FP_Unspecified.share.scripts_for_msi.make_demo_msi.bat] demodb [INSTALL_ROOT]&quot;"/>
     <CustomAction Id="CreateDemodb" BinaryKey="WixCA" DllEntry="CAQuietExec" Execute="deferred" Return="ignore"/>
 <!-- Start Tray after install -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>
@@ -83,6 +115,19 @@
         <util:InternetShortcut xmlns:util="http://schemas.microsoft.com/wix/UtilExtension" Id="OnlineDocumentationShortcut" Name="CUBRID Online Documentation" Target="http://www.cubrid.org/"/>
         <Shortcut Id="UninstallProductShortcut" Name="Uninstall @CPACK_PACKAGE_NAME@" Description="Uninstalls @CPACK_PACKAGE_NAME@" Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]"/>
         <RegistryValue Root="HKCU" Key="Software\@CPACK_PACKAGE_VENDOR@\@CPACK_PACKAGE_NAME@" Name="installed" Type="integer" Value="1" KeyPath="yes"/>
+        <RegistryKey Root="HKLM"
+                     Key="SOFTWARE\CUBRID\cmserver"
+                     Action="createAndRemoveOnUninstall">
+            <RegistryValue Name="ROOT_PATH" Type="string" Value="[INSTALL_ROOT]"/>
+            <RegistryValue Name="Version" Type="string" Value="@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@"/>
+        </RegistryKey>
+        <RegistryKey Root="HKLM"
+                     Key="SOFTWARE\CUBRID\CUBRID"
+                     Action="createAndRemoveOnUninstall">
+            <RegistryValue Name="ROOT_PATH" Type="string" Value="[INSTALL_ROOT]"/>
+            <RegistryValue Name="Version" Type="string" Value="@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@"/>
+            <RegistryValue Name="Patch" Type="string" Value="@CPACK_PACKAGE_VERSION_PATCH@"/>
+        </RegistryKey>
       </Component>
     </DirectoryRef>
 <!-- Customized WixUI_InstallDIR -->

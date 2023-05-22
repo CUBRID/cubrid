@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -63,10 +62,13 @@ static OID oid_Password_class = { 0, 0, 0 };
 static OID oid_Authorization_class = { 0, 0, 0 };
 static OID oid_Authorizations_class = { 0, 0, 0 };
 static OID oid_DB_root_class = { 0, 0, 0 };
+static OID oid_DBServer_class = { 0, 0, 0 };
+static OID oid_Synonym_class = { 0, 0, 0 };
 
 static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+
 PAGEID oid_Next_tempid = NULL_PAGEID;
 
 /* ROOT_CLASS OID values. Set during restart/initialization.*/
@@ -104,14 +106,16 @@ OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Password_class, CT_PASSWORD_NAME},
   {&oid_Authorization_class, CT_AUTHORIZATION_NAME},
   {&oid_Authorizations_class, CT_AUTHORIZATIONS_NAME},
-  {&oid_DB_root_class, CT_ROOT_NAME}
+  {&oid_DB_root_class, CT_ROOT_NAME},
+  {&oid_DBServer_class, CT_DB_SERVER_NAME},
+  {&oid_Synonym_class, CT_SYNONYM_NAME}
 };
 
 /*
  * oid_set_root() -  Set the value of the root oid to the given value
  *   return: void
  *   oid(in): Rootoid value
- *   
+ *
  * Note:  This function is used during restart/initialization.
  */
 void
@@ -140,7 +144,7 @@ oid_is_root (const OID * oid)
 /*
  * oid_set_serial () - Store serial class OID
  *
- * return   : 
+ * return   :
  * oid (in) :
  */
 void
@@ -152,7 +156,7 @@ oid_set_serial (const OID * oid)
 /*
  * ois_is_serial () - Compare OID with serial class OID.
  *
- * return : 
+ * return :
  * const OID * oid (in) :
  */
 bool
@@ -176,7 +180,7 @@ oid_get_serial_oid (OID * oid)
 /*
  * oid_set_partition () - Store _db_partition class OID
  *
- * return   : 
+ * return   :
  * oid (in) :
  */
 void
@@ -188,7 +192,7 @@ oid_set_partition (const OID * oid)
 /*
  * ois_is_partition () - Compare OID with partition class OID.
  *
- * return : 
+ * return :
  * const OID * oid (in) :
  */
 bool
@@ -246,42 +250,19 @@ oid_compare (const void *a, const void *b)
   const OID *oid2_p = (const OID *) b;
   int diff;
 
-  if (oid1_p == oid2_p)
-    {
-      return 0;
-    }
-
   diff = oid1_p->volid - oid2_p->volid;
-  if (diff > 0)
+  if (diff)
     {
-      return 1;
-    }
-  else if (diff < 0)
-    {
-      return -1;
+      return diff;
     }
 
   diff = oid1_p->pageid - oid2_p->pageid;
-  if (diff > 0)
+  if (diff)
     {
-      return 1;
-    }
-  else if (diff < 0)
-    {
-      return -1;
+      return diff;
     }
 
-  diff = oid1_p->slotid - oid2_p->slotid;
-  if (diff > 0)
-    {
-      return 1;
-    }
-  else if (diff < 0)
-    {
-      return -1;
-    }
-
-  return 0;
+  return oid1_p->slotid - oid2_p->slotid;
 }
 
 /*
@@ -302,7 +283,7 @@ oid_hash (const void *key_oid, unsigned int htsize)
 
 /*
  * oid_compare_equals() - Compare oids key for hashing
- *   return: 
+ *   return:
  *   key_oid1: First key
  *   key_oid2: Second key
  */
@@ -319,7 +300,7 @@ oid_compare_equals (const void *key_oid1, const void *key_oid2)
  * oid_is_cached_class_oid () - Compare OID with the cached OID identified by
  *				cache_id
  *
- * return : 
+ * return :
  * cache_id (in) :
  * oid (in) :
  */
@@ -344,7 +325,7 @@ oid_set_cached_class_oid (const int cache_id, const OID * oid)
 /*
  * oid_get_cached_class_name () - get the name of cached class
  *
- * return   : 
+ * return   :
  * cache_id (in) :
  */
 const char *
@@ -378,7 +359,7 @@ oid_is_cached_class_oid (const OID * class_oid)
 
 /*
  * oid_get_rep_read_tran_oid () - Get OID that is used for RR transactions
- *				  locking. 
+ *				  locking.
  *
  * return    : return the OID.
  */
@@ -396,11 +377,10 @@ oid_get_rep_read_tran_oid (void)
  * class_oid (in)	   : Class object identifier.
  * is_system_class_p (out) : True is class is a system class.
  */
-int
-oid_is_system_class (const OID * class_oid, bool * is_system_class_p)
+bool
+oid_is_system_class (const OID * class_oid)
 {
-  assert (is_system_class_p != NULL && class_oid != NULL && !OID_ISNULL (class_oid));
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
-  *is_system_class_p = oid_is_cached_class_oid (class_oid);
-  return NO_ERROR;
+  return oid_is_cached_class_oid (class_oid);
 }

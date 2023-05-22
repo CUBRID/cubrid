@@ -1,19 +1,21 @@
+
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -72,6 +74,8 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character '%1$c' in database name '%2$s'\n
@@ -83,7 +87,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 9 \
 %1$s (CUBRID utilities)\n\
 %2$s\n\
-Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 10 \
 cubrid administrator utility, version %1$s\n\
 usage: %2$s <utility-name> [args]\n\
@@ -124,6 +128,8 @@ Available admin utility-name:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -146,8 +152,10 @@ Available service's utilities:\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Available administrator's utilities:\n\
     addvoldb\n\
@@ -182,6 +190,8 @@ Available administrator's utilities:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n
@@ -248,10 +258,39 @@ Available command:\n\
 41 cubrid manager server is not installed.\n
 42 Invalid argument.\n
 43 File(%1$s) open error.\n
+44 cubrid utility, version %1$s\n\
+usage: %2$s javasp <command> [args]\n\
+\n\
+Available command:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
+45 cubrid utility, version %1$s\n\
+usage: %2$s gateway <command> [args]\n\
+\n\
+Available command:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>][-c] [-u] [<expr>]\n\
+    on          gateway-name\n\
+    off         gateway-name\n\
+    reset       gateway-name\n\
+    acl         <status|reload> [gateway-name]\n
+46 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
+47 Invalid format for owner_name.class_name ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n
 31 ERROR: Destination-path does not exist or is not a directory.\n
+32 By using --separate-keys option, it separates the key file (_keys) from the backup volume.\n\
+If the key file is lost, restoring (restoredb) may not work properly even if there is the backup volume.\n
+33 The backup volume includes the key file (_keys).\n\
+If a table is TDE-encrypted, it can cause a security problem for that data.\n\
+To separate the key file to prevent it, use --separate-keys option.\n
+34 ERROR: Cannot use FIFO file as the destination-path with separate-key.\n
 60 \
 backupdb: Backup a database.\n\
 usage: %1$s backupdb [OPTION] database-name\n\
@@ -269,9 +308,9 @@ valid options:\n\
   -C, --CS-mode                client-server mode execution\n\
       --no-check               don't check a consistency of the database; default: check\n\
   -t, --thread-count=COUNT     number of threads; default: 0(auto)\n\
-  -z, --compress               compress backup volumes; default: uncompress\n\
-  -e, --except-active-log      don't include an active log volume; default: include\n\
-      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
+      --no-compress            don't compress backup volumes; default: compression\n\
+      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
+  -k, --separate-keys          keys file (_keys) for TDE is not included in the backup volume, but is separated into a file instead\n
 71 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
 
 
@@ -390,7 +429,8 @@ valid options:\n\
   -l, --level=LEVEL                 LEVEL of backup to be restored; see backup usage; default: 0(full backup)\n\
   -p, --partial-recovery            perform partial recovery if any log archive is absent\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n\
+  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -403,7 +443,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** Checking syntax ***\n\n
 26 %1$d errors detected.\n
 27 \n*** Inserting objects ***\n\n
-28 Total %1$8d objects inserted.\n
+28 Total %1$ld objects inserted.\n
 29 Total %1$8d referenced objects inserted with default contents.\n
 30 \n*** Committing the transaction ***\n
 31 \n*** Closing the database ***\n
@@ -423,58 +463,77 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instance %1$d of class %2$s has already been defined\n
 46 Instance %1$d of class %2$s has already been reserved\n
 47 UNIQUE violation on attribute '%1$s', converted to NULL\n
-48   %1$d instances\n
+48 %1$s %2$ld instances\n
 49 Class %1$s\n
 50 Password:
 51 \n*** Updating class statistics ***\n
 52 %1$s near line %2$d (text was '%3$s')\n
-53 Lexical error
+53 Lexical error\n
 54 line %1$d: syntax error at \"%2$s\"
 55 missing
 56 in %1$s
 57 Incompatible arguments, \"%1$s\", and \"%2$s\"\n
-58 %1$d instances committed\n
+58 %1$s %2$ld instances committed\n
 59 \nCannot invoke non-optimized version of loaddb.\n
 60 Error parsing \"%1$s\", as %2$s type.\n
-112   %1$d instances\r
-113 Last committed line : %1$d
+61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
+112   %1$ld instances\r
+113 Last committed line : %1$d\n
 114 error-control-file
 115 input file to control error(s) during loading
-116 Total %1$8d object(s) inserted, %2$d object(s) failed.\n
+116 Total %1$ld object(s) inserted, %2$ld object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
-120 \
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
+120 data file does not contain '%%class' specifier or '--table' option is missing\n
+121 Class %1$s is ignored.\n
+122 Maximum length of user name is %1$d bytes.\n
+123 %1$s is an empty file.\n
+124 \
 loaddb: Import objects and schemas to the database.\n\
-usage: %1$s loaddb [OPTION] database-name\n\
+usage: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
 valid options:\n\
-  -u, --user=ID                 user ID for database access; default: "public"\n\
-  -p, --password=PASS           user password; default: none\n\
-      --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
-  -l, --load-only               load data file without checking syntax; default: loading after checking\n\
-      --estimated-size=NUMBER   estimated NUMBER of instances; default: 5000\n\
-  -v, --verbose                 enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT   insertion COUNT for periodic commit; default: no commit during loading\n\
-      --no-oid                  don't use OID\n\
-      --no-statistics           do not update the statistics while loading\n\
-  -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
-  -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
-  -d, --data-file=FILE          load data with FILE\n\
-  -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
-      --error-control-file=FILE FILE to control error(s) during loading\n\
-      --ignore-class-file=FILE  input file of class names that skip load\n
+  -S, --SA-mode                  standalone mode execution\n\
+  -C, --CS-mode                  client-server mode execution\n\
+                                 WARNING: When in HA Mode, only data files (-d, --data-file=FILE) can be loaded in client-server mode.\n\
+  -u, --user=ID                  user ID for database access; default: "public"\n\
+  -p, --password=PASS            user password; default: none\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
+      --estimated-size=NUMBER    estimated NUMBER of instances; default: 5000\n\
+  -v, --verbose                  enable verbose status messages; default: disabled\n\
+  -c, --periodic-commit=COUNT    insertion COUNT for periodic commit; default: 10240\n\
+      --no-oid                   don't use OID\n\
+      --no-statistics            do not update the statistics while loading\n\
+  -s, --schema-file=FILE[:LINE]  create schema from LINE with FILE\n\
+  -i, --index-file=FILE[:LINE]   create index from LINE with FILE\n\
+      --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
+  -d, --data-file=FILE           load data with FILE\n\
+  -t, --table=TABLE              table name that is substituted for missing class header in data file\n\
+      --error-control-file=FILE  FILE to control error(s) during loading\n\
+      --ignore-class-file=FILE   input file of class names that skip load\n\
+      --no-user-specified-name   Find classes, serials, and triggers by their object names without their owner names.\n\
+                                 This is to load files generated by cubrid before version    11.2.\n\
+      --schema-file-list=FILE    The content of this file is a list of schema file names to be used in loaddb.\n\
+                                 loaddb is executed sequentially from the top.\n\
+                                 WARNING: Cannot be used with the -s option.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pages value is invalid.\n
 42 cached-page-size value is invalid.\n
-43 %1$d objects dumped.\n
+43 %1$ld objects dumped.\n
 44 Class %1$s
 45 , %1$d instances.\n
-46 Only %1$d out of %2$d objects dumped successfully.\n
+46 Only %1$ld out of %2$ld objects dumped successfully.\n
 47 output directory is too long.\n
 48 LSA : %1$d %2$d \n
 49 Password:
+50 Maximum length of class name is %1$d bytes.\n
+51 Maximum length of user name is %1$d bytes.\n
+52 Class %1$s not found.\n
 60 \
 unloaddb: Export objects and schemas from the database.\n\
 usage: %1$s unloaddb [OPTION] database-name\n\
@@ -493,12 +552,15 @@ valid options:\n\
   -d, --data-only             dump objects only; default: schema and objects\n\
       --output-prefix=PREFIEX PREFIX for output files; default: the database name\n\
       --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
+      --latest-image          when dumping objects, it dumps the latest image of objects in data volumes, not referring to log volumes (ignoring MVCC)\n\
+                              It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\
       --use-delimiter         use '"' where an identifier begins and ends; default: don't use\n\
   -S, --SA-mode               stand-alone mode execution\n\
   -C, --CS-mode               client-server mode execution\n\
-      --datafile-per-class    create a object file for each class; default: disabled\n
-
+      --datafile-per-class    create a object file for each class; default: disabled\n\
+      --split-schema-files    split schema information by object and generate each file; Default: generate one schema file with all objects\n\
+      --as-dba                If the login user is a member of the DBA group, extract the same schema file as the DBA.\n
 
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
@@ -538,6 +600,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \nPass 3\n\n
 45 Heap compact failed...\n
 46 Heap compact succeeded...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: Free unused space in a database.\n\
 usage: %1$s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
@@ -547,16 +611,17 @@ valid options:\n\
   -i, --input-class-file=FILE       input FILE of table names\n\
                                     class_name list must be empty\n\
                                     default: compact all classes\n\
-                                    enabled in CS-mode only\n\
   -p, --pages-commited-once=NUMBER  maximum number of pages to commit once\n\
                                     default: 10\n\
                                     enabled in CS-mode only\n\
   -S, --SA-mode                     stand-alone mode execution\n\
   -C, --CS-mode                     client-server mode execution\n\
   -d, --delete-old-repr             delete old class representations from catalog; default: disabled\n\
-  class_name_list                   enabled in CS-mode only\n\
   -I, --Instance-lock-timeout       timeout for instance lock\n\
-  -c, --class-lock-timeout          timeout for class lock\n
+                                    enabled in CS-mode only\n\
+  -c, --class-lock-timeout          timeout for class lock\n\
+                                    enabled in CS-mode only\n\
+  class_name_list                   list of class name be compacted\n 
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 The CUBRID master running on host %1$s \nwas started at %2$s
@@ -596,6 +661,7 @@ valid options:\n\
 
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Please run without the --recreate-log option or remove the active log volume manually.\n
 60 \
 emergency_patchlog: Patch a database in case of emergency.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -616,7 +682,7 @@ valid options:\n\
       --db-volume-size=SIZE        size of additional volume; default: db_volume_size in cubrid.conf\n\
       --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
   -n, --volume-name=NAME           NAME of information volume; default: generate such as "db"_ext1)\n\
-  -F, --file-path=PATH             PATH for adding volume file; default: working directory\n\
+  -F, --file-path=PATH             PATH for adding volume file; default: volume_extension_path\n\
       --comment=COMMENT            COMMENT for adding volume file; default: none\n\
   -p, --purpose=PURPOSE            PURPOSE for adding volume file; allowed:\n\
                                            DATA - only for data\n\
@@ -803,6 +869,7 @@ valid options:\n\
       --kill-program-name=NAME       kill all transactions with client program NAME\n\
       --kill-sql-id=SQL_ID           kill all transactions with SQL_ID\n\
   -p, --dba-password=PASS            password of the DBA user; will prompt if don't specify\n\
+                                     (only work with -i or --kill options, otherwise occurs error)\n\
   -d, --display-information          display information about active transactions\n\
   -q, --query-exec-info              display information about query execution information of active transactions\n\
   -f, --force                        kill the transaction without a prompt for verification\n
@@ -842,8 +909,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 required argument, no default
 3 java-class-file
 4 required argument, no default
-5 force-overwrite
-6 overwrite class file if exist, default no
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              overwrite class file if exist, default no\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Cannot open output file '%1$s'\n
@@ -905,7 +975,7 @@ valid options:\n\
   -L, --log-path=PATH         directory PATH for copied log volumes\n\
   -m, --mode=MODE             operation mode; default: sync\n\
                               MODE: sync or semisync or async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Enter DBA password:
@@ -936,6 +1006,7 @@ valid options:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Enter DBA password:
 22 The server was not configured for HA.\n
+57 Can't generate the applied info due to an invalid path of the -L option or no related information in the db_ha_apply_info catalog table.\n
 58 HA feature is not supported in this platform.\n
 59 applyinfo cannot run as standalone mode.\n
 60 \
@@ -944,9 +1015,9 @@ usage: %1$s applyinfo [OPTION] database-name\n\
 \n\
 valid options:\n\
   -r, --remote-host-name      remote host name; display remote node's active log information \n\
-  -a, --applied-info 	      display applied information \n\
   -L, --copied-log-path=PATH  path of copied log volumes; display copied log information \n\
-  -p, --page=ID               page id; default : 0\n\
+  -a, --applied-info 	      display applied information; the -L option is required \n\
+  -p, --page=ID               page id; the -L option is required; default : 0\n\
   -v, --verbose               enable verbose status messages; default : disable\n\
   -i, --interval=S            print information every S secs\n
 
@@ -1035,19 +1106,19 @@ valid options:\n\
   -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %1$s password: 
-22 Tran index          User name      Host name      Process id      Program name\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 Enter %1$s password:
+22 Tran index            User name      Host name      Process id      Program name\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 There are no transactions\n
 26 tranlist can only be performed by the DBA or a DBA group member.\n
 27 sort-key column number(%1$d) is invalid.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist cannot run as standalone mode.\n
@@ -1056,8 +1127,6 @@ tranlist: Dump active transaction information.\n\
 usage: %1$s tranlist [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -u, --user=ID                user ID for database access; default: DBA user\n\
-  -p, --password=PASS          user password; default: none\n\
   -s, --summary                print summarized information of transaction\n\
       --sort-key=COLUMN_NUMBER column number to be sorted\n\
       --reverse                reverse the sort result\n
@@ -1124,7 +1193,8 @@ valid options:\n\
       --list                        display a list of backup volumes without restoring\n\
   -B, --backup-file-path=PATH       PATH is a directory of backup volumes to be restored\n\
   -o, --output-file=FILE            redirect output messages to FILE; default: none\n\
-  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n
+  -u, --use-database-location-path  restore the database and log volumes to the path specified in the database location file\n\
+  -k, --keys-file-path              Path of key file (_keys) for TDE to be used during restoring\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Ready to remove the following volumes:\n\n
@@ -1147,17 +1217,21 @@ valid options:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb is temporary not available for client-server mode\n
 21 The vacuum operation failed\n
+22 Couldn't open output file '%1$s'\n
 60 \
 vacuumdb: Vacuums dead records from database.\n\
 usage: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 valid options:\n\
   -S, --SA-mode                stand-alone mode execution\n\
-  -C, --CS-mode                client-server mode execution\n
+  -C, --CS-mode                client-server mode execution\n\
+      --dump                   dump current state of vacuum\n\
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Failed to load table names in %1$s.\n
 2 checksumdb must run on an HA active server. %1$s (current state: %2$s)\n
+3 The owner of the table to save the checksum result must be DBA.\n
 58 HA feature is not supported in this platform.\n
 59 checksumdb cannot run as standalone mode.\n
 60 \
@@ -1171,9 +1245,67 @@ valid options:\n\
   -i, --include-class-file=FILE input FILE of table names to include\n\
   -e, --exclude-class-file=FILE input FILE of table names to exclude; either -i or -e can be used, not both\n\
   -t, --timeout=NUMBER          query timeout in milliseconds; default: 1000 ms\n\
-  -n, --table-name=NAME         table name to save checksum results; default: db_ha_checksums\n\
+  -n, --table-name=NAME         table name to save checksum results; default: dba.db_ha_checksum\n\
   -r, --report-only             report replication integrity based on checksum calculation\n\
                                 any options except --table-name will be ignored\n\
       --resume                  resume calculating checksum\n\
       --schema-only             check only schema consistency\n\
       --cont-on-error           continue on calculation error\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 Enter DBA password:
+25 It has failed to get the key information set on the database\n
+26 Trying to change the key from the key (index: %1$d) to the key (index: %2$d)..\n
+27 The key has been changed from the key (index: %1$d) to the key (index: %2$d)\n
+28 The key set on the database cannot be deleted\n
+29 The key (index: %1$d) has been deleted\n
+30 A new key has been generated - key index: %1$d created on %2$s
+60 \
+tde: Transparent Data Encryption (TDE) management\n\
+usage: %1$s tde OPERATION(-s|-n|-d|-c) [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -p, --dba-password=PASS       password of the DBA user; will prompt if don't specify\n\
+\n\
+OPERATIONs: one of the operations must be given, and they are exclusive \n\
+    -s, --show-keys               print key information set on the database and the key file (_keys)\n\
+    -n, --generate-new-key        generate a new key in the key file (_keys); max count: 128\n\
+    -d, --delete-key=KEY_INDEX    delete a key in the key file (_keys)\n\
+    -c, --change-key=KEY_INDEX    change the key set on the database for another key in the key file (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 Enter DBA password:
+2 Invalid date format, valid format is dd-mm-yyyy:hh:mm:ss\n
+3 Start date (%1$s) is required to be smaller than end date (%2$s)\n
+4 Please try with a date before the current (%1$s) and after the database was created (%2$s)\n
+5 Table (%1$s) does not exist in database\n
+6 Too many transactions to flashback. Please shorten the interval between start date and end date\n
+7 Unable to get flashback because schema (%1$s) has been changed.\n
+8 Log volume has been removed. Please try with the later date\n
+9 Couldn't open output file '%1$s'\n
+10 Trasaction ID (%1$d) does not exist\n
+11 Please set 'supplemental_log' in 'cubrid.conf'. Only the SQL logs executed after setting 'supplemental_log' can be flashbacked.\n
+12 Transaction ID should be entered in %1$d seconds. The timeout can be adjusted through the 'flashback_timeout' setting in 'cubrid.conf'\n
+13 Flashback is already running. Flashback cannot be run by two processes.\n
+14 Flashback cannot run as standalone mode.\n
+15 The system catalog class (%1$s) is not supported in flashback.\n
+60 \
+flashback: Provides statements to flashback a specific transaction.\n\
+usage: %1$s flashback [OPTION] database-name owner_name.class_name1 [owner_name.class_name2 ...]\n\
+\n\
+valid options:\n\
+    -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
+    -u, --user=ID                 specify the user who executed the SQL statement to flashback; default: ALL.\n\
+    -p, --dba-password            password of the DBA user; will prompt if don't specify\n\
+    -s, --start-date=DATE         specify starting DATE for flashback. SQL logs are extracted from the DATE.\n\
+                                  DATE is given as follows: dd-mm-yyyy:hh:mm:ss.\n\
+    -e, --end-date=DATE           specify end DATE for the flashback. SQL logs are extracted up to the DATE.\n\
+                                  if start-date is not specified, then ((END - 10min) ~ END) is set to range,\n\
+                                  and else if END is not specified, then (start ~ (start + 10min)) is set.\n\
+                                  And neither a start date nor an end date is specified,\n\
+                                  the SQL logs, executed between the (current time - 10min) and current time, are extracted.\n\
+    --detail                      output a detailed information for each SQL statement.\n\
+                                  Transaction ID, User name, and original SQL statement will be returned with SQL statement\n\
+                                  for flashback; default: outputs only SQL statements for flashback\n\
+    --oldest                      flashback is performed in chronological order for SQL statements executed from start time to end time;\n\
+                                  default: latest\n

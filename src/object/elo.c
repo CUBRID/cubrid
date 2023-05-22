@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -55,480 +54,20 @@
 #include <sys/stat.h>
 
 #include "elo.h"
-#include "error_manager.h"
-#include "storage_common.h"
-#include "object_representation.h"
-#include "object_primitive.h"
 
-#include "es.h"
 #include "boot.h"
-
-#if defined(CS_MODE)
-#include "network_interface_cl.h"
-#else
-#include "xserver_interface.h"
-#endif
-
 #include "dbtype.h"
+#include "error_manager.h"
+#include "es.h"
+#include "lob_locator.hpp"
+#include "object_primitive.h"
+#include "object_representation.h"
+#include "storage_common.h"
 
 static const DB_ELO elo_Initializer = { -1LL, NULL, NULL, ELO_NULL, ES_NONE };
 
 #define ELO_NEEDS_TRANSACTION(e) \
         ((e)->es_type == ES_OWFS || (e)->es_type == ES_POSIX)
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/* Meta data */
-typedef struct elo_meta ELO_META;
-typedef struct elo_meta_item ELO_META_ITEM;
-
-struct elo_meta
-{
-  ELO_META_ITEM *items;
-};
-
-struct elo_meta_item
-{
-  ELO_META_ITEM *next;
-  char *key;
-  char *value;
-};
-
-/* Meta data */
-static ELO_META *meta_create (const char *s);
-static void meta_destroy_internal (ELO_META * meta);
-static int meta_destroy (ELO_META * meta);
-static ELO_META_ITEM *meta_item_get (ELO_META * meta, const char *key);
-static int meta_check_value (const char *val, bool permit_zero_len);
-static ELO_META_ITEM *meta_item_create (const char *key, int key_len, const char *value, int value_len);
-static const char *meta_get (ELO_META * meta, const char *key);
-static int meta_set (ELO_META * meta, const char *key, const char *val);
-static char *meta_to_string (ELO_META * meta);
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-static LOB_LOCATOR_STATE find_lob_locator (const char *locator, char *real_locator);
-static int add_lob_locator (const char *locator, LOB_LOCATOR_STATE state);
-static int change_state_of_locator (const char *locator, const char *new_locator, LOB_LOCATOR_STATE state);
-static int drop_lob_locator (const char *locator);
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * meta_create () - create ELO_META structure
- * return: ELO_META instance if successful, NULL otherwise
- * s(in): meta string
- */
-static ELO_META *
-meta_create (const char *s)
-{
-  ELO_META *meta;
-
-  meta = db_private_alloc (NULL, sizeof (ELO_META));
-  if (meta == NULL)
-    {
-      return NULL;
-    }
-  meta->items = NULL;
-
-  if (s != NULL)
-    {
-      char *end_p;
-      char *pp;
-      char *key_sp, *key_ep;	/* key_ep = position of the last key char + 1 */
-      char *val_sp, *val_ep;
-
-      pp = (char *) s;
-      end_p = (char *) s + strlen (s);
-      while (pp < end_p)
-	{
-	  key_sp = pp;
-	  key_ep = strchr (key_sp, '=');
-	  if (key_ep == NULL)
-	    {
-	      goto error;
-	    }
-
-	  val_sp = key_ep + 1;
-	  val_ep = strchr (val_sp, ',');
-	  if (val_ep == NULL)
-	    {
-	      val_ep = end_p;
-	    }
-	  /* make a new item. key should have positive length */
-	  if (key_ep - key_sp > 0 && val_ep - val_sp >= 0)
-	    {
-	      ELO_META_ITEM *item = meta_item_create (key_sp, key_ep - key_sp, val_sp,
-						      val_ep - val_sp);
-	      if (item == NULL)
-		{
-		  goto error;
-		}
-
-	      /* add to meta data items */
-	      item->next = meta->items;
-	      meta->items = item;
-	    }
-	  else
-	    {
-	      goto error;
-	    }
-
-	  /* advance to the position of the next key */
-	  pp = val_ep + 1;
-	}
-    }
-
-  return meta;
-
-error:
-  if (meta != NULL)
-    {
-      meta_destroy_internal (meta);
-    }
-
-  return NULL;
-}
-
-/*
- * meta_destroy_internal () - destroy ELO_META structure
- * return:
- * meta(in): ELO_META instance
- */
-static void
-meta_destroy_internal (ELO_META * meta)
-{
-  ELO_META_ITEM *item;
-
-  while (meta->items != NULL)
-    {
-      item = meta->items;
-      meta->items = item->next;
-
-      db_private_free_and_init (NULL, item->key);
-      db_private_free_and_init (NULL, item->value);
-      db_private_free_and_init (NULL, item);
-    }
-
-  db_private_free_and_init (NULL, meta);
-}
-
-/*
- * meta_destroy () - destroy ELO_META instance
- * return: NO_ERROR if successful, ER_FAILED otherwise
- * meta(in): ELO_META instance
- */
-static int
-meta_destroy (ELO_META * meta)
-{
-  if (meta != NULL)
-    {
-      meta_destroy_internal (meta);
-      return NO_ERROR;
-    }
-
-  return ER_FAILED;
-}
-
-/*
- * meta_item_get () - get ELO_META_ITEM instance from ELO_META
- * return: ELO_META_ITEM found, NULL otherwise
- * meta(in): ELO_META instance
- * key(in): key for value
- */
-static ELO_META_ITEM *
-meta_item_get (ELO_META * meta, const char *key)
-{
-  ELO_META_ITEM *item;
-
-  if (meta != NULL)
-    {
-      item = meta->items;
-      while (item != NULL)
-	{
-	  if (strcmp (item->key, key) == 0)
-	    {
-	      return item;
-	    }
-
-	  item = item->next;
-	}
-    }
-
-  return NULL;
-}
-
-/*
- * meta_check_value () - check value for meta data
- * return: NO_ERROR if check passed, ER_FAILED otherwise
- * val(in): value
- * permit_zero_len(in): if non zero value, permits zero length value
- */
-static int
-meta_check_value (const char *val, bool permit_zero_len)
-{
-  char *p;
-
-  p = (char *) val;
-  if (p != NULL)
-    {
-      while (*p)
-	{
-	  if (*p == ',' || *p == '=')
-	    {
-	      return ER_FAILED;
-	    }
-	  p++;
-	}
-    }
-
-  if (!permit_zero_len)
-    {
-      return (p - val) > 0 ? NO_ERROR : ER_FAILED;
-    }
-  else
-    {
-      return NO_ERROR;
-    }
-
-  return ER_FAILED;
-}
-
-/*
- * meta_item_create () - create ELO_META_ITEM with key and value
- * return: ELO_META_ITEM instance if successful, NULL otherwise
- * key(in): key
- * key_len(in): key length
- * value(in): value
- * value_len(in): value length
- */
-static ELO_META_ITEM *
-meta_item_create (const char *key, int key_len, const char *value, int value_len)
-{
-  ELO_META_ITEM *item;
-  char *k, *v;
-
-  item = db_private_alloc (NULL, sizeof (ELO_META_ITEM));
-  if (item != NULL)
-    {
-      k = db_private_alloc (NULL, key_len + 1);
-      if (k != NULL)
-	{
-	  memcpy (k, key, key_len);
-	  k[key_len] = '\0';
-
-	  v = db_private_alloc (NULL, value_len + 1);
-	  if (v != NULL)
-	    {
-	      memcpy (v, value, value_len);
-	      v[value_len] = '\0';
-
-	      item->key = k;
-	      item->value = v;
-
-	      return item;
-	    }
-	  db_private_free_and_init (NULL, k);
-	}
-      db_private_free_and_init (NULL, item);
-    }
-
-  return NULL;
-}
-
-/*
- * meta_get () - get value of the key from ELO_META
- * return: value if found, NULL otherwise
- * meta(in): ELO_META instance
- * key(in): key
- */
-static const char *
-meta_get (ELO_META * meta, const char *key)
-{
-  ELO_META_ITEM *item;
-
-  item = meta_item_get (meta, key);
-  if (item != NULL)
-    {
-      return item->value;
-    }
-
-  return NULL;
-}
-
-/*
- * meta_set () - set key/value data into ELO_META structure
- * return: NO_ERROR if successful, ER_FAILED otherwise
- * meta(in): ELO_META instance
- * key(in): key
- * value(in): value
- */
-static int
-meta_set (ELO_META * meta, const char *key, const char *val)
-{
-  ELO_META_ITEM *item;
-  char *k, *v;
-
-  assert (meta != NULL);
-  assert (key != NULL);
-
-  if (meta_check_value (key, false) != NO_ERROR || meta_check_value (val, true) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  item = meta_item_get (meta, key);
-  if (item != NULL)
-    {
-      v = db_private_strdup (NULL, val);
-      if (v == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      db_private_free_and_init (NULL, item->value);
-      item->value = v;
-
-      return NO_ERROR;
-    }
-
-  /* create new item */
-  item = meta_item_create (key, strlen (key), val, val == NULL ? 0 : strlen (val));
-  if (item == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /* insert into item */
-  item->next = meta->items;
-  meta->items = item;
-
-  return NO_ERROR;
-}
-
-/*
- * meta_to_string () - create string from ELO_META
- * return: meta data string if successful, NULL otherwise
- * meta(in): ELO_META instance
- */
-static char *
-meta_to_string (ELO_META * meta)
-{
-  ELO_META_ITEM *item;
-  size_t sz;
-  char *buf, *buf_p;
-  const char *sep;
-
-  assert (meta != NULL);
-
-  if (meta->items == NULL)
-    {
-      /* do not return "" */
-      return NULL;
-    }
-
-  /* calculate total size needed */
-  sz = 0;
-  item = meta->items;
-  while (item != NULL)
-    {
-      sz += strlen (item->key);
-      sz += strlen (item->value);
-      sz += 2;			/* first('=' and '\0'), second~ (',' and '=') */
-      item = item->next;
-    }
-
-  /* allocate buffer and copy items */
-  buf_p = buf = db_private_alloc (NULL, sz);
-  if (buf == NULL)
-    {
-      return NULL;
-    }
-
-  item = meta->items;
-  sep = "";
-  while (item != NULL)
-    {
-      int r;
-
-      r = snprintf (buf_p, sz, "%s%s=%s", sep, item->key, item->value);
-      buf_p = buf_p + r;
-      sz = sz - r;
-
-      item = item->next;
-      if (sep[0] == 0)
-	{
-	  sep = ",";
-	}
-    }
-
-  assert (sz > 0);
-  *buf_p = '\0';
-
-  return buf;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * find_lob_locator () - wrapper function
- * return: LOB_LOCATOR_STATE
- * locator(in):
- * real_locator(out):
- */
-static LOB_LOCATOR_STATE
-find_lob_locator (const char *locator, char *real_locator)
-{
-#if defined(CS_MODE)
-  return log_find_lob_locator (locator, real_locator);
-#else /* CS_MODE */
-  return xlog_find_lob_locator (NULL, locator, real_locator);
-#endif /* CS_MODE */
-}
-
-/*
- * add_lob_locator () - wrapper function
- * return: error status
- * locator(in):
- * state(in):
- */
-static int
-add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
-{
-#if defined(CS_MODE)
-  return log_add_lob_locator (locator, state);
-#else /* CS_MODE */
-  return xlog_add_lob_locator (NULL, locator, state);
-#endif /* CS_MODE */
-}
-
-/*
- * change_state_of_locator () - wrapper function
- * return: error status
- * locator(in):
- * new_locator(in):
- * state(in):
- */
-static int
-change_state_of_locator (const char *locator, const char *new_locator, LOB_LOCATOR_STATE state)
-{
-#if defined(CS_MODE)
-  return log_change_state_of_locator (locator, new_locator, state);
-#else /* CS_MODE */
-  return xlog_change_state_of_locator (NULL, locator, new_locator, state);
-#endif /* CS_MODE */
-}
-
-/*
- * drop_lob_locator () - wrapper function
- * return: error status
- * locator(in):
- */
-static int
-drop_lob_locator (const char *locator)
-{
-#if defined(CS_MODE)
-  return log_drop_lob_locator (locator);
-#else /* CS_MODE */
-  return xlog_drop_lob_locator (NULL, locator);
-#endif /* CS_MODE */
-}
 
 /* ========================================================================== */
 /* EXPORTED FUNCTIONS */
@@ -572,7 +111,7 @@ elo_create (DB_ELO * elo)
 
   if (ELO_NEEDS_TRANSACTION (elo))
     {
-      ret = add_lob_locator (elo->locator, LOB_TRANSIENT_CREATED);
+      ret = lob_locator_add (elo->locator, LOB_TRANSIENT_CREATED);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -714,7 +253,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
       LOB_LOCATOR_STATE state;
       ES_URI real_locator;
 
-      state = find_lob_locator (elo->locator, real_locator);
+      state = lob_locator_find (elo->locator, real_locator);
       switch (state)
 	{
 	case LOB_TRANSIENT_CREATED:
@@ -732,7 +271,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		ret = er_errid ();
 		goto error_return;
 	      }
-	    ret = change_state_of_locator (elo->locator, locator, LOB_PERMANENT_CREATED);
+	    ret = lob_locator_change_state (elo->locator, locator, LOB_PERMANENT_CREATED);
 	    if (ret != NO_ERROR)
 	      {
 		goto error_return;
@@ -749,7 +288,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		ret = er_errid ();
 		goto error_return;
 	      }
-	    ret = drop_lob_locator (elo->locator);
+	    ret = lob_locator_drop (elo->locator);
 	    if (ret != NO_ERROR)
 	      {
 		goto error_return;
@@ -771,7 +310,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		es_delete_file (out_uri);
 		goto error_return;
 	      }
-	    ret = add_lob_locator (locator, LOB_PERMANENT_CREATED);
+	    ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
 	    if (ret != NO_ERROR)
 	      {
 		goto error_return;
@@ -834,7 +373,7 @@ elo_delete (DB_ELO * elo, bool force_delete)
       LOB_LOCATOR_STATE state;
       ES_URI real_locator;
 
-      state = find_lob_locator (elo->locator, real_locator);
+      state = lob_locator_find (elo->locator, real_locator);
       switch (state)
 	{
 	case LOB_TRANSIENT_CREATED:
@@ -844,19 +383,19 @@ elo_delete (DB_ELO * elo, bool force_delete)
 	      return ret;
 	    }
 
-	  ret = drop_lob_locator (elo->locator);
+	  ret = lob_locator_drop (elo->locator);
 	  break;
 
 	case LOB_PERMANENT_CREATED:
 	case LOB_PERMANENT_DELETED:
-	  ret = change_state_of_locator (elo->locator, NULL, LOB_PERMANENT_DELETED);
+	  ret = lob_locator_change_state (elo->locator, NULL, LOB_PERMANENT_DELETED);
 	  break;
 
 	case LOB_TRANSIENT_DELETED:
 	  break;
 
 	case LOB_NOT_FOUND:
-	  ret = add_lob_locator (elo->locator, LOB_TRANSIENT_DELETED);
+	  ret = lob_locator_add (elo->locator, LOB_TRANSIENT_DELETED);
 	  break;
 
 	case LOB_UNKNOWN:

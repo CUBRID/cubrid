@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -33,6 +32,13 @@
 
 #include "optimizer.h"
 #include "query_bitset.h"
+
+// forward definitions
+struct xasl_node;
+namespace cubxasl
+{
+  struct analytic_eval_type;
+}
 
 #define QO_CPU_WEIGHT   0.0025
 
@@ -96,12 +102,12 @@ struct qo_plan
 
   int refcount;
 
-  /* 
+  /*
    * A plan is "top-rooted" if it is a top level plan
    */
   bool top_rooted;
 
-  /* 
+  /*
    * A plan is "well-rooted" if it is a scan plan, or if it is a follow
    * plan whose subplan is itself well-rooted.  These are plans that
    * won't require the construction of any temporary files during
@@ -120,7 +126,7 @@ struct qo_plan
   QO_EQCLASS *order;
   PT_NODE *iscan_sort_list;	/* sorting fields */
 
-  /* 
+  /*
    * The set of correlated subqueries that are "covered" by this plan.
    * These are the subqueries that must be reevaluated every time a new
    * candidate row is produced by this plan.
@@ -148,9 +154,11 @@ struct qo_plan
       bool index_iss;		/* index skip scan flag */
       bool index_loose;		/* loose index scan flag */
       QO_NODE_INDEX_ENTRY *index;
+      BITSET multi_col_range_segs;	/* range condition segs for multi_col_term */
+      BITSET hash_terms;	/* hash_terms for hash list scan */
     } scan;
 
-    /* 
+    /*
      * Sort nodes are now really "build a temp file" nodes; the
      * created temp file may be sorted or unsorted.  If sorted, the
      * `order' field indicates the sorting order; if unsorted, the
@@ -165,7 +173,7 @@ struct qo_plan
       SORT_LIST *sort_list;
 #endif
       QO_PLAN *subplan;
-      XASL_NODE *xasl;
+      xasl_node *xasl;
     } sort;
 
     struct
@@ -178,6 +186,7 @@ struct qo_plan
       BITSET during_join_terms;	/* during join terms */
       BITSET other_outer_join_terms;	/* for merge outer join only */
       BITSET after_join_terms;	/* after join terms */
+      BITSET hash_terms;	/* hash_terms for hash list scan */
     } join;
 
     struct
@@ -189,7 +198,9 @@ struct qo_plan
   } plan_un;
 
   QO_PLAN_ULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
-  ANALYTIC_EVAL_TYPE *analytic_eval_list;	/* analytic evaluation list */
+  // *INDENT-OFF*
+  cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
+  // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
 };
@@ -220,13 +231,13 @@ struct qo_info
 {
   struct qo_info *next;
 
-  /* 
+  /*
    * The environment relative to which all of the following sets, etc.
    * make sense.
    */
   QO_ENV *env;
 
-  /* 
+  /*
    * The Planner instance to which this Info node belongs.  I wish
    * we didn't have to do this, but there are just enough occassions
    * where we need the back pointer that it is easier just to include
@@ -236,30 +247,30 @@ struct qo_info
    */
   QO_PLANNER *planner;
 
-  /* 
+  /*
    * The lowest-cost plan without regard to ordering.
    */
   QO_PLANVEC best_no_order;
 
-  /* 
+  /*
    * The set of nodes joined by the plans at this node.
    */
   BITSET nodes;
 
-  /* 
+  /*
    * All of the terms accounted for by the plans in this node and their
    * descendents, i.e., the complement of the terms remaining to be
    * dealt with.
    */
   BITSET terms;
 
-  /* 
+  /*
    * The equivalence classes represented by all of the attributes
    * (segments) joined together in this node.
    */
   BITSET eqclasses;
 
-  /* 
+  /*
    * 'projected_segs' is the set of segments (attributes) that need to
    * be projected from this plan produced by this node in order to
    * satisfy the needs of upper level plans.  'projected_size' is the
@@ -270,7 +281,7 @@ struct qo_info
   BITSET projected_segs;
   double cardinality;
 
-  /* 
+  /*
    * One plan for each equivalence class, in each case the best we have
    * seen so far.  This vector is NULL after a node is detached.
    */
@@ -278,12 +289,12 @@ struct qo_info
 
   int projected_size;
 
-  /* 
+  /*
    * The last join level.
    */
   int join_unit;
 
-  /* 
+  /*
    * `detached' is true iff the node has been detached; we can no
    * longer just use the value of `plans' as the indicator because
    * dependent derived tables can give rise to join graphs that couple
@@ -295,22 +306,22 @@ struct qo_info
 
 struct qo_planner
 {
-  /* 
+  /*
    * The struct that encapsulates the information involved in searching
    * for an optimal query plan.
    */
 
-  /* 
+  /*
    * The environment that supplies the various nodes, edges, segments, etc.
    */
   QO_ENV *env;
 
-  /* 
+  /*
    * The relations being considered in this join; there are N of them.
    */
   QO_NODE *node;
 
-  /* 
+  /*
    * The join terms (e.g., employee.dno = dept.dno); there are T of
    * them, E of which are actual edges in the join graph.  node_mask is
    * a bit mask used to mask out non-node terms from node bitsets.
@@ -322,7 +333,7 @@ struct qo_planner
   unsigned int E, M, T;
   unsigned long node_mask;
 
-  /* 
+  /*
    * The path segments involved in the various join terms, and the
    * equivalence classes implied by those joins (e.g., if we have join
    * terms c1 = c2 and c2 = c3, (c1,c2,c3) is an equivalence class for
@@ -332,12 +343,12 @@ struct qo_planner
 
   QO_EQCLASS *eqclass;
 
-  /* 
+  /*
    * The partitions (strong components) of the join graph.
    */
   QO_PARTITION *partition;
 
-  /* 
+  /*
    * The last join level.
    */
   int join_unit;
@@ -345,14 +356,14 @@ struct qo_planner
   unsigned int EQ;
   unsigned int P;
 
-  /* 
+  /*
    * The (level-1 correlated) subqueries used in this query.
    */
   QO_SUBQUERY *subqueries;
   BITSET all_subqueries;
   unsigned int Q;
 
-  /* 
+  /*
    * The final set of segments to be projected out of the top-level
    * plan produced by this planner.
    */
@@ -370,7 +381,7 @@ struct qo_planner
   /* alloced info list */
   QO_INFO *info_list;
 
-  /* 
+  /*
    * true iff qo_planner_cleanup() needs to be called before freeing
    * this planner.  This is needed to help clean up after aborts, when
    * control flow takes an unexpected longjmp.

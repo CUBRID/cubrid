@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -23,12 +22,18 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-#include <assert.h>
 #include "replication.h"
-#include "object_primitive.h"
-#include "heap_file.h"
+
 #include "dbtype.h"
+#include "heap_file.h"
+#include "log_lsa.hpp"
+#include "object_primitive.h"
+#include "object_representation.h"
+#include "transform.h"
+
+#include <assert.h>
+#include <stdio.h>
+
 /*
  * EXTERN TO ALL SERVER RECOVERY FUNCTION CODED SOMEWHERE ELSE
  */
@@ -261,9 +266,9 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 	}
     }
 
-  if (find == false)
+  if (find == false && prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
     {
-      er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
+      _er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
     }
 
   return error;
@@ -289,7 +294,8 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
   int tran_index;
   LOG_TDES *tdes;
   LOG_REPL_RECORD *repl_rec;
-  char *class_name;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  char *class_name = NULL;
   char *ptr;
   int error = NO_ERROR, strlen;
 
@@ -310,6 +316,11 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       return NO_ERROR;
     }
 
+  if (thread_p->no_logging && tdes->fl_mark_repl_recidx == -1)
+    {
+      return NO_ERROR;
+    }
+
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
       && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, false)) != NO_ERROR))
@@ -325,6 +336,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 
   repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[tdes->cur_repl_record]);
   repl_rec->repl_type = log_type;
+  repl_rec->tde_encrypted = false;
 
   repl_rec->rcvindex = rcvindex;
   if (rcvindex == RVREPL_DATA_UPDATE)
@@ -362,6 +374,18 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	  return error;
 	}
 
+      if (heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_REPL_ERROR;
+	    }
+	  return error;
+	}
+
+      repl_rec->tde_encrypted = tde_algo != TDE_ALGORITHM_NONE;
+
       repl_rec->length = OR_INT_SIZE;	/* packed_key_value_size */
       repl_rec->length += or_packed_string_length (class_name, &strlen);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
@@ -391,8 +415,6 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 
       /* fill the length of disk image of pk */
       or_pack_int (ptr_to_packed_key_value_size, packed_key_len);
-
-      free_and_init (class_name);
     }
   else
     {
@@ -412,14 +434,14 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
       break;
     case RVREPL_DATA_UPDATE:
-      /* 
+      /*
        * for the update case, this function is called before the heap
        * file update, so we don't need to LSA for update log here.
        */
       LSA_SET_NULL (&repl_rec->lsa);
       break;
     case RVREPL_DATA_DELETE:
-      /* 
+      /*
        * for the delete case, we don't need to find out the target
        * LSA. Delete is operation is possible without "After Image"
        */
@@ -444,18 +466,30 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       LOG_REPL_RECORD *recsp = tdes->repl_records;
       int i;
 
-      for (i = 0; i < tdes->fl_mark_repl_recidx; i++)
+      if (strcmp (class_name, CT_SERIAL_NAME) != 0)
 	{
-	  if (recsp[i].must_flush == LOG_REPL_COMMIT_NEED_FLUSH && OID_EQ (&recsp[i].inst_oid, &repl_rec->inst_oid))
+	  for (i = 0; i < tdes->fl_mark_repl_recidx; i++)
 	    {
-	      break;
+	      if (recsp[i].must_flush == LOG_REPL_COMMIT_NEED_FLUSH && OID_EQ (&recsp[i].inst_oid, &repl_rec->inst_oid))
+		{
+		  break;
+		}
+	    }
+
+	  if (i >= tdes->fl_mark_repl_recidx)
+	    {
+	      repl_rec->must_flush = LOG_REPL_NEED_FLUSH;
 	    }
 	}
-
-      if (i >= tdes->fl_mark_repl_recidx)
+      else
 	{
 	  repl_rec->must_flush = LOG_REPL_NEED_FLUSH;
 	}
+    }
+
+  if (class_name != NULL)
+    {
+      free_and_init (class_name);
     }
 
   return error;
@@ -509,6 +543,8 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 
   repl_rec = (LOG_REPL_RECORD *) (&tdes->repl_records[tdes->cur_repl_record]);
   repl_rec->repl_type = LOG_REPLICATION_STATEMENT;
+  repl_rec->tde_encrypted = false;
+
   repl_rec->rcvindex = RVREPL_STATEMENT;
   repl_rec->must_flush = LOG_REPL_COMMIT_NEED_FLUSH;
   OID_SET_NULL (&repl_rec->inst_oid);
@@ -534,15 +570,18 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
   ptr = or_pack_string_with_length (ptr, repl_info->db_user, strlen3);
   ptr = or_pack_string_with_length (ptr, repl_info->sys_prm_context, strlen4);
 
-  er_log_debug (ARG_FILE_LINE,
-		"repl_log_insert_statement: repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
-		"sys_prm_context %s }\n", repl_info->statement_type, repl_info->name, repl_info->stmt_text,
-		repl_info->db_user, repl_info->sys_prm_context);
+  if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "repl_log_insert_statement: repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
+		     "sys_prm_context %s }\n", repl_info->statement_type, repl_info->name, repl_info->stmt_text,
+		     repl_info->db_user, repl_info->sys_prm_context);
+    }
   LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
 
   if (tdes->fl_mark_repl_recidx != -1 && tdes->cur_repl_record >= tdes->fl_mark_repl_recidx)
     {
-      /* 
+      /*
        * statement replication does not check log conflicts, so
        * use repl_start_flush_mark with caution.
        */

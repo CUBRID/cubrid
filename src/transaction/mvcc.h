@@ -1,24 +1,23 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
 /*
- * mvcc.h - Multi-Version Concurency Control system (at Server).
+ * mvcc.h - Multi-Version Concurrency Control system (at Server).
  *
  */
 #ifndef _MVCC_H_
@@ -26,8 +25,27 @@
 
 #ident "$Id$"
 
+#include "log_lsa.hpp"
+#include "mvcc_active_tran.hpp"
+#include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+
+#include <vector>
+
+/* MVCC RECORD HEADER */
+typedef struct mvcc_rec_header MVCC_REC_HEADER;
+struct mvcc_rec_header
+{
+  INT32 mvcc_flag:8;		/* MVCC flags */
+  INT32 repid:24;		/* representation id */
+  int chn;			/* cache coherency number */
+  MVCCID mvcc_ins_id;		/* MVCC insert id */
+  MVCCID mvcc_del_id;		/* MVCC delete id */
+  LOG_LSA prev_version_lsa;	/* log address of previous version */
+};
+#define MVCC_REC_HEADER_INITIALIZER \
+{ 0, 0, NULL_CHN, MVCCID_NULL, MVCCID_NULL, LSA_INITIALIZER }
 
 /* MVCC Header Macros */
 #define MVCC_GET_INSID(header) \
@@ -116,65 +134,6 @@
   (chn != NULL_CHN \
    && (chn == MVCC_GET_CHN (rec_header_p)))
 
-#define MVCC_GET_BITAREA_ELEMENT_PTR(bitareaptr, position) \
-  ((UINT64 *)(bitareaptr) + ((position) >> 6))
-#define MVCC_BITAREA_MASK(position) ((1ULL << ((position) & 0x3F)))
-
-/* clear MVCC snapshot data */
-#define MVCC_CLEAR_SNAPSHOT_DATA(snapshot) \
-  do \
-    { \
-      (snapshot)->snapshot_fnc = NULL; \
-      (snapshot)->lowest_active_mvccid = MVCCID_NULL; \
-      (snapshot)->highest_completed_mvccid = MVCCID_NULL; \
-      (snapshot)->bit_area_start_mvccid = MVCCID_NULL;  \
-      (snapshot)->bit_area_length = 0;  \
-      (snapshot)->long_tran_mvccids_length = 0; \
-      (snapshot)->valid = false; \
-    } \
-  while (0)
-
-/* clear MVCC snapshot data */
-#define MVCC_INIT_SNAPSHOT_DATA(snapshot) \
-  do \
-    { \
-      (snapshot)->snapshot_fnc = NULL; \
-      (snapshot)->lowest_active_mvccid = MVCCID_NULL; \
-      (snapshot)->highest_completed_mvccid = MVCCID_NULL; \
-      (snapshot)->bit_area = NULL; \
-      (snapshot)->long_tran_mvccids = NULL;  \
-      (snapshot)->bit_area_start_mvccid = MVCCID_NULL;  \
-      (snapshot)->bit_area_length = 0;  \
-      (snapshot)->long_tran_mvccids_length = 0; \
-      (snapshot)->valid = false; \
-    } \
-    while (0)
-
-/* clear MVCC snapshot data */
-#define MVCC_INIT_MVCC_INFO(mvccinfo) \
-  do \
-    { \
-      MVCC_INIT_SNAPSHOT_DATA (&(mvccinfo)->snapshot);  \
-      (mvccinfo)->id = MVCCID_NULL;	\
-      (mvccinfo)->recent_snapshot_lowest_active_mvccid = MVCCID_NULL; \
-      (mvccinfo)->sub_ids = NULL; \
-      (mvccinfo)->max_sub_ids = 0;  \
-      (mvccinfo)->count_sub_ids = 0;	\
-      (mvccinfo)->is_sub_active = false;  \
-    } \
-    while (0)
-
-#define MVCC_CLEAR_MVCC_INFO(mvccinfo) \
-  do \
-    { \
-      MVCC_CLEAR_SNAPSHOT_DATA (&(mvccinfo)->snapshot);  \
-      (mvccinfo)->id = MVCCID_NULL;	\
-      (mvccinfo)->recent_snapshot_lowest_active_mvccid = MVCCID_NULL; \
-      (mvccinfo)->count_sub_ids = 0;	\
-      (mvccinfo)->is_sub_active = false;  \
-    } \
-    while (0)
-
 #define MVCC_ID_PRECEDES(id1, id2) ((id1) < (id2))
 #define MVCC_ID_FOLLOW_OR_EQUAL(id1, id2) ((id1) >= (id2))
 
@@ -212,17 +171,20 @@ struct mvcc_snapshot
   MVCCID lowest_active_mvccid;	/* lowest active id */
   MVCCID highest_completed_mvccid;	/* highest mvccid in snapshot */
 
-  UINT64 *bit_area;		/* bit area */
-  MVCCID *long_tran_mvccids;	/* long time active MVCCID array */
+  mvcc_active_tran m_active_mvccs;
 
   MVCC_SNAPSHOT_FUNC snapshot_fnc;	/* the snapshot function */
 
-  MVCCID bit_area_start_mvccid;	/* bit area start MVCCID */
-  int bit_area_length;		/* bit area length */
-
-  unsigned int long_tran_mvccids_length;	/* long time MVCCID array length */
-
   bool valid;			/* true, if the snapshot is valid */
+
+  // *INDENT-OFF*
+  mvcc_snapshot ();
+  void reset ();
+
+  mvcc_snapshot &operator= (const mvcc_snapshot& snapshot) = delete;
+
+  void copy_to (mvcc_snapshot & other) const;
+  // *INDENT-ON*
 };
 
 /* MVCC INFO - such structure is attached to each active transaction */
@@ -235,14 +197,20 @@ struct mvcc_info
   MVCCID id;
 
   /* recent_snapshot_lowest_active_mvccid - the lowest active MVCCID computed for the most recent snapshot of current
-   * transaction. This field help to know faster whether an MVCCID is active or not. Thus, mvccid older than this field 
+   * transaction. This field help to know faster whether an MVCCID is active or not. Thus, mvccid older than this field
    * are not active anymore */
   MVCCID recent_snapshot_lowest_active_mvccid;
 
-  MVCCID *sub_ids;		/* MVCC sub-transaction ID array */
-  int max_sub_ids;		/* allocated MVCC sub-transaction ids */
-  int count_sub_ids;		/* count sub-transaction ids */
+  // *INDENT-OFF*
+  std::vector<MVCCID> sub_ids;		/* MVCC sub-transaction ID array */
+  // *INDENT-ON*
   bool is_sub_active;		/* true in case that sub-transaction is running */
+
+  // *INDENT-OFF*
+  mvcc_info ();
+  void init ();
+  void reset ();
+  // *INDENT-ON*
 };
 
 enum mvcc_satisfies_delete_result
@@ -263,6 +231,31 @@ enum mvcc_satisfies_vacuum_result
 				 * inserted. 3. it was recently deleted and has no insert MVCCID. */
 };				/* Heap record satisfies vacuum result */
 typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
+
+/* Definitions used to identify MVCC log records. */
+// TODO - replace with functions
+
+/* Is log record for a heap MVCC operation */
+#define LOG_IS_MVCC_HEAP_OPERATION(rcvindex) \
+  (((rcvindex) == RVHF_MVCC_DELETE_REC_HOME) \
+   || ((rcvindex) == RVHF_MVCC_INSERT) \
+   || ((rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM) \
+   || ((rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME) \
+   || ((rcvindex) == RVHF_MVCC_NO_MODIFY_HOME) \
+   || ((rcvindex) == RVHF_MVCC_REDISTRIBUTE))
+
+/* Is log record for a b-tree MVCC operation */
+#define LOG_IS_MVCC_BTREE_OPERATION(rcvindex) \
+  ((rcvindex) == RVBT_MVCC_DELETE_OBJECT \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT \
+   || (rcvindex) == RVBT_MVCC_INSERT_OBJECT_UNQ \
+   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM)
+
+/* Is log record for a MVCC operation */
+#define LOG_IS_MVCC_OPERATION(rcvindex) \
+  (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
+   || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
+   || ((rcvindex) == RVES_NOTIFY_VACUUM))
 
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							       MVCC_SNAPSHOT * snapshot);

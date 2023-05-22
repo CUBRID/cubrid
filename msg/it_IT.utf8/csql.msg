@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -40,13 +41,17 @@ opzioni valide:\n\
   -c, --command=ARG            commandi-CSQL\n\
   -l, --line-output            ogni valore visualizzato in una riga\n\
   -r, --read-only              modalità read-only\n\
-  -t, --plain-output           visualizzare i risultati in un formato script-friendly (funziona solo con - c e -i)\n\
-  -N, --skip-column-names      non visualizzare i nomi delle colonne nei risultati (funziona solo con - c e -i)\n\
+  -t, --plain-output           visualizzare i risultati in un formato script-friendly (funziona solo con -c e -i)\n\
+  -q, --query-output           visualizzare i risultati in un formato query-friendly (funziona solo con -c e -i)\n\
+  -d, --loaddb-output          visualizzare i risultati in un formato loaddb-friendly (funziona solo con -c e -i)\n\
+  -N, --skip-column-names      non visualizzare i nomi delle colonne nei risultati (funziona solo con -c e -i)\n\
       --string-width           visualizzare ogni colonna che è un tipo stringa in questa larghezza\n\
       --no-auto-commit         disattivare modalità di esecuzione auto-commit\n\
       --no-pager               non utilizzare pager\n\
       --no-single-line         disattivare l'esecuzione orientata singola riga\n\
       --no-trigger-action      disattivare l'azione del trigger\n\
+      --delimiter=ARG          delimitatore tra le colonne (funziona solo con -q)\n\
+      --enclosure=ARG          allegato per una stringa di risultato (funziona solo con -q)\n\
 \n\
 Per ulteriori informazioni, vedere http://www.cubrid.org\n
 41 %1$s: non è corretto il valore di ambiente di %2$s_MODE. \nDovrebbe essere %3$s o %4$s.\n
@@ -87,6 +92,7 @@ $ Questi 3 dovrebbe essere vuoto
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Argomenti forniti troppo pochi.
 
 145 <Aiuto: Schema di Classe>
 146 nessuno
@@ -107,6 +113,7 @@ $ Questi 3 dovrebbe essere vuoto
 194 Combinazione non valida di argomenti della riga di comando (opzioni).
 196 Un errore sconosciuto si è verificato.
 197 ';edit' non è consentita quando l'output è stato reindirizzato.
+198 Formato non riuscito.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -148,7 +155,7 @@ $ messaggi di aiuto csql
    ;EXit                        - uscire dal programma.\n\
 \n\
    ;CLear                       - pulire il buffer di comando.\n\
-   ;EDIT                        - invocare editor di sistema con buffer di comando.\n\
+   ;EDIT   [format/fmt]         - invocare editor di sistema [dopo il formattatore] con il buffer dei comandi.\n\
    ;LISt                        - visualizzare il contenuto del buffer dei comandi.\n\
 \n\
    ;RUn                         - eseguire sql nel buffer dei comandi.\n\
@@ -157,12 +164,15 @@ $ messaggi di aiuto csql
    ;COMmit                      - commit della transazione corrente.\n\
    ;ROllback                    - roll back della transazione corrente.\n\
    ;AUtocommit [ON|OFF]         - attivare/disattivare la modalità di auto-commit.\n\
-   ;REStart                     - riavviare il database.\n\
+   ;REStart                     - riconnettersi al database corrente in una sessione CSQL.\n\
+   ;CHeckpoint                  - esegue il checkpoint (solo CSQL con --sysadm).\n\
+   ;Killtran                    - controlla le informazioni sullo stato della transazione o termina una transazione specifica (solo CSQL con --sysadm).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - impostare la shell predefinito, editor, stampa e pager\n\
-   ;EDITOR_Cmd   [editor-cmd]     comando a uno nuovo, o la visualizzazione corrente\n\
-   ;PRINT_Cmd    [print-cmd]      uno, rispettivamente.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - impostare la shell predefinito, editor, stampa, pager e formattatore\n\
+   ;EDITOR_Cmd    [editor-cmd]    comando a uno nuovo, o la visualizzazione corrente\n\
+   ;PRINT_Cmd     [print-cmd]     uno, rispettivamente.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - visualizzare l'ora locale, data.\n\
    ;DATAbase                    - visualizzare il nome del database a cui si accede.\n\
@@ -180,6 +190,13 @@ $ messaggi di aiuto csql
    ;HISTORYList                 - visualizzare l'elenco delle query eseguite.\n\
    ;HISTORYRead <history_num>   - leggere la voce del numero storia in buffer dei comandi.\n\
    ;TRAce [ON/OFF] [text/json]  - attivare/disattivare sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - abilitare/disabilitare la modalità a riga singola.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - connettersi al database corrente o ad altri come nome utente.\n\
+   ;.Hist [ON/OFF]              - avvia/arresta la raccolta di informazioni statistiche in CSQL (disponibile solo DBA).\n\
+   ;.Clear_hist                 - cancella le informazioni statistiche CSQL nel buffer.\n\
+   ;.Dump_hist                  - visualizza le informazioni statistiche CSQL in CSQL.\n\
+   ;.X_hist                     - visualizza le informazioni statistiche CSQL in CSQL con i dati statistici inizializzati.\n\
    ;HElp                        - visualizza questo messaggio di aiuto.\n\n
 
 232 <Vincoli> 

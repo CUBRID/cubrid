@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -27,6 +26,7 @@
 
 #include <assert.h>
 
+#include "authenticate.h"
 #include "dbi.h"
 #include "parser.h"
 #include "semantic_check.h"
@@ -252,7 +252,7 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, VIEW_HA
     {
       PT_NODE *p, *ord;
 
-      /* 
+      /*
        * It would be nice to make this adjustment more automatic by
        * actually counting the number of "invisible" columns and keeping a
        * running adjustment bias, but right now there doesn't seem to be a
@@ -554,9 +554,10 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  locator_lockhint_classes (lcks.num_classes, (const char **) lcks.classes, lcks.locks, lcks.only_all,
 				    lcks.flags, true, lock_rr_tran)) != LC_CLASSNAME_EXIST)
     {
-      if (find_result == LC_CLASSNAME_ERROR && er_errid () == ER_LK_UNILATERALLY_ABORTED)
+      if (find_result == LC_CLASSNAME_ERROR
+	  && (er_errid () == ER_LK_UNILATERALLY_ABORTED || er_errid () == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED))
 	{
-	  /* 
+	  /*
 	   * Transaction has been aborted, the dirty objects and cached
 	   * locks has been cleared in current client during the above
 	   * locator_lockhint_classes () process. Therefore, must return from
@@ -685,58 +686,93 @@ pt_count_entities (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 int
 pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spec, LC_PREFETCH_FLAGS flags)
 {
+  MOP synonym_mop = NULL;
+  char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *class_name = NULL;
+  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   int len = 0;
+  int error = NO_ERROR;
 
   if (lcks->num_classes >= lcks->allocated_count)
     {
-      /* Need to allocate more space in the locks array. Do not free locks array if memory allocation fails, it will be 
+      /* Need to allocate more space in the locks array. Do not free locks array if memory allocation fails, it will be
        * freed by the caller of this function */
-      void *ptr = NULL;
       size_t new_size = lcks->allocated_count + 1;
 
       /* expand classes */
-      ptr = realloc (lcks->classes, new_size * sizeof (char *));
-      if (ptr == NULL)
+      char **const realloc_ptr_classes = (char **) realloc (lcks->classes, new_size * sizeof (char *));
+      if (realloc_ptr_classes == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		      new_size * sizeof (char *));
 	  return ER_FAILED;
 	}
-      lcks->classes = (char **) ptr;
+      lcks->classes = realloc_ptr_classes;
 
       /* expand only_all */
-      ptr = realloc (lcks->only_all, new_size * sizeof (int));
-      if (ptr == NULL)
+      int *const realloc_ptr_only_all = (int *) realloc (lcks->only_all, new_size * sizeof (int));
+      if (realloc_ptr_only_all == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (int));
 	  return ER_FAILED;
 	}
-      lcks->only_all = (int *) ptr;
+      lcks->only_all = realloc_ptr_only_all;
 
       /* expand locks */
-      ptr = realloc (lcks->locks, new_size * sizeof (LOCK));
-      if (ptr == NULL)
+      LOCK *const realloc_ptr_locks = (LOCK *) realloc (lcks->locks, new_size * sizeof (LOCK));
+      if (realloc_ptr_locks == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, new_size * sizeof (LOCK));
 	  return ER_FAILED;
 	}
-      lcks->locks = (LOCK *) ptr;
+      lcks->locks = realloc_ptr_locks;
 
       /* flags */
-      ptr = realloc (lcks->flags, new_size * sizeof (LC_PREFETCH_FLAGS));
-      if (ptr == NULL)
+      LC_PREFETCH_FLAGS *const realloc_ptr_flags
+	= (LC_PREFETCH_FLAGS *) realloc (lcks->flags, new_size * sizeof (LC_PREFETCH_FLAGS));
+      if (realloc_ptr_flags == NULL)
 	{
 	  PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
 		      new_size * sizeof (LC_PREFETCH_FLAGS));
 	  return ER_FAILED;
 	}
-      lcks->flags = (LC_PREFETCH_FLAGS *) ptr;
+      lcks->flags = realloc_ptr_flags;
 
       lcks->allocated_count++;
     }
 
+  /* If it is a synonym name, change it to the target name. */
+  class_name = spec->info.spec.entity_name->info.name.original;
+  synonym_mop = db_find_synonym (class_name);
+  if (synonym_mop != NULL)
+    {
+      class_name = db_get_synonym_target_name (synonym_mop, target_name, DB_MAX_IDENTIFIER_LENGTH);
+      if (class_name == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+    }
+  else
+    {
+      /* synonym_mop == NULL */
+      ASSERT_ERROR_AND_SET (error);
+
+      if (error == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  return error;
+	}
+    }
+
+  sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
+
   /* need to lowercase the class name so that the lock manager can find it. */
-  len = (int) strlen (spec->info.spec.entity_name->info.name.original);
+  len = (int) strlen (realname);
   /* parser->lcks_classes[n] will be freed at parser_free_parser() */
   lcks->classes[lcks->num_classes] = (char *) calloc (1, len + 1);
   if (lcks->classes[lcks->num_classes] == NULL)
@@ -745,7 +781,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
       return MSGCAT_RUNTIME_OUT_OF_MEMORY;
     }
 
-  sm_downcase_name (spec->info.spec.entity_name->info.name.original, lcks->classes[lcks->num_classes], len + 1);
+  memcpy (lcks->classes[lcks->num_classes], realname, len + 1);
 
   if (spec->info.spec.only_all == PT_ONLY)
     {
@@ -789,7 +825,7 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
   /* Temporary disable count optimization. To enable it just restore the condition and also remove deactivation in
    * qexec_evaluate_aggregates_optimize */
-  if (false /* node->node_type == PT_SELECT */ )
+  if (node->node_type == PT_SELECT)
     {
       /* count optimization */
       PT_NODE *list = node->info.query.q.select.list;
@@ -822,6 +858,12 @@ pt_find_lck_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
   /* check if this is a parenthesized entity list */
   if (!node->info.spec.entity_name || (node->info.spec.entity_name->node_type != PT_NAME))
+    {
+      return node;
+    }
+
+  /* for DBLink DML */
+  if (node->info.spec.remote_server_name)
     {
       return node;
     }
@@ -953,7 +995,7 @@ pt_in_lck_array (PT_CLASS_LOCKS * lcks, const char *str, LC_PREFETCH_FLAGS flags
 static void
 remove_appended_trigger_info (char *msg, int with_evaluate)
 {
-  int i;
+  size_t i;
   const char *scope_str = "SCOPE___ ";
   const char *from_on_str = " FROM ON ";
   const char *eval_prefix = "EVALUATE ( ";
@@ -1039,7 +1081,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 	  return NULL;		/* deleted object */
 	}
 
-      /* The name that could be an argument to UPDATE OBJECT will always be the first name supplied here. Don't need to 
+      /* The name that could be an argument to UPDATE OBJECT will always be the first name supplied here. Don't need to
        * initialize a label as we'll convert the PT_PARAMETER node into a PT_TRIGGER_OID later. */
       if (name1 != NULL)
 	{
@@ -1137,13 +1179,13 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
     {
       statement->info.scope.stmt->info.trigger_action.expression =
 	mq_translate (parser, statement->info.scope.stmt->info.trigger_action.expression);
-      /* 
+      /*
        * Trigger statement node must use the datetime information of the
        * node corresponding the action to be made.
        */
       if (statement->info.scope.stmt && statement->info.scope.stmt->info.trigger_action.expression)
 	{
-	  statement->si_datetime |= statement->info.scope.stmt->info.trigger_action.expression->si_datetime;
+	  statement->flag.si_datetime |= statement->info.scope.stmt->info.trigger_action.expression->flag.si_datetime;
 	}
     }
 
@@ -1385,12 +1427,12 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
   server_info_bits = 0;		/* init */
 
   /* set sys_date, sys_time, sys_timestamp, sys_datetime values for trigger statement. */
-  if (trigger_stmt->si_datetime)
+  if (trigger_stmt->flag.si_datetime)
     {
       server_info_bits |= SI_SYS_DATETIME;
     }
 
-  if (trigger_stmt->si_tran_id)
+  if (trigger_stmt->flag.si_tran_id)
     {
       server_info_bits |= SI_LOCAL_TRANSACTION_ID;
     }
@@ -1517,12 +1559,12 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
     }
 
   /* reset the parser values */
-  if (trigger_stmt->si_datetime)
+  if (trigger_stmt->flag.si_datetime)
     {
       db_make_null (&parser->sys_datetime);
       db_make_null (&parser->sys_epochtime);
     }
-  if (trigger_stmt->si_tran_id)
+  if (trigger_stmt->flag.si_tran_id)
     {
       db_make_null (&parser->local_transaction_id);
     }

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -49,9 +48,9 @@
 #define MAX_ELEMENT_NAME  30
 
 #define MAX_ENCODE_LEN  10
-/* 
+/*
  * start_xxxxxxxxx - XML element start function
- *		       function be called when an element starts 
+ *		       function be called when an element starts
  *
  * return: 0 validation OK enter this element , 1 validation NOK do not enter
  *         -1 error abort parsing
@@ -62,7 +61,7 @@ typedef int (*ELEM_START_FUNC) (void *, const char **);
 
 /*
  * end_xxxxxxxxx - XML element end function
- *		     function be called when an element starts 
+ *		     function be called when an element starts
  *
  * return: 0 parser OK, non-zero value if parser NOK and stop parsing
  * (data): user data
@@ -72,7 +71,7 @@ typedef int (*ELEM_END_FUNC) (void *, const char *);
 
 /*
  * handle_xxxxxxxxx - XML element data content handle function
- *			function be called for element data content 
+ *			function be called for element data content
  *
  * return: 0 handling OK, non-zero if handling NOK and stop parsing
  * (data): user data

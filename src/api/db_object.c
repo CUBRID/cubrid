@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -113,7 +112,7 @@ static void orp_api_destroy (API_OBJECT_RESULTSET_POOL * pool);
 
 
 /*
- * rm_api_get_count - 
+ * rm_api_get_count -
  *    return:
  *    impl():
  *    count():
@@ -131,7 +130,7 @@ rm_api_get_count (API_RESULTSET_META * impl, int *count)
 }
 
 /*
- * rm_api_get_info - 
+ * rm_api_get_info -
  *    return:
  *    impl():
  *    index():
@@ -303,7 +302,7 @@ static API_RESULTSET_META_IFS RM_IFS_ = {
 };
 
 /*
- * or_rm_bind_destroyf - 
+ * or_rm_bind_destroyf -
  *    return:
  *    bind():
  */
@@ -318,7 +317,7 @@ or_rm_bind_destroyf (BH_BIND * bind)
 }
 
 /*
- * or_rm_bind_create - 
+ * or_rm_bind_create -
  *    return:
  *    or():
  *    rrm_bind():
@@ -341,7 +340,7 @@ or_rm_bind_create (OBJECT_RESULTSET * or, OBJECT_RM_BIND ** rrm_bind)
 }
 
 /*
- * or_rm_bind_destroy - 
+ * or_rm_bind_destroy -
  *    return:
  *    rm_bind():
  */
@@ -356,7 +355,7 @@ or_rm_bind_destroy (OBJECT_RM_BIND * rm_bind)
 /* OBJECT RESULTSET IMPLEMENTATION */
 
 /*
- * res_api_get_resultset_metadata - 
+ * res_api_get_resultset_metadata -
  *    return:
  *    impl():
  *    rimpl():
@@ -373,7 +372,7 @@ res_api_get_resultset_metadata (API_RESULTSET * impl, API_RESULTSET_META ** rimp
 }
 
 /*
- * res_api_fetch - 
+ * res_api_fetch -
  *    return:
  *    impl():
  *    offset():
@@ -401,7 +400,7 @@ res_api_fetch (API_RESULTSET * impl, int offset, CI_FETCH_POSITION pos)
 }
 
 /*
- * res_api_tell - 
+ * res_api_tell -
  *    return:
  *    impl():
  *    offset():
@@ -418,7 +417,7 @@ res_api_tell (API_RESULTSET * impl, int *offset)
 }
 
 /*
- * res_api_clear_updates - 
+ * res_api_clear_updates -
  *    return:
  *    impl():
  */
@@ -438,7 +437,7 @@ res_api_clear_updates (API_RESULTSET * impl)
 }
 
 /*
- * res_api_delete_row - 
+ * res_api_delete_row -
  *    return:
  *    impl():
  */
@@ -462,7 +461,7 @@ res_api_delete_row (API_RESULTSET * impl)
 }
 
 /*
- * res_api_get_value - 
+ * res_api_get_value -
  *    return:
  *    impl():
  *    index():
@@ -494,7 +493,7 @@ res_api_get_value (API_RESULTSET * impl, int index, CI_TYPE type, void *addr, si
 }
 
 /*
- * res_api_get_value_by_name - 
+ * res_api_get_value_by_name -
  *    return:
  *    impl():
  *    name():
@@ -522,7 +521,7 @@ res_api_get_value_by_name (API_RESULTSET * impl, const char *name, CI_TYPE type,
 }
 
 /*
- * res_api_update_value - 
+ * res_api_update_value -
  *    return:
  *    impl():
  *    index():
@@ -551,7 +550,7 @@ res_api_update_value (API_RESULTSET * impl, int index, CI_TYPE type, void *addr,
 }
 
 /*
- * res_api_apply_update - 
+ * res_api_apply_update -
  *    return:
  *    impl():
  */
@@ -570,7 +569,7 @@ res_api_apply_update (API_RESULTSET * impl)
 }
 
 /*
- * res_api_destroy - 
+ * res_api_destroy -
  *    return:
  *    impl():
  */
@@ -597,7 +596,7 @@ static API_RESULTSET_IFS RES_IFS_ = {
 };
 
 /*
- * or_res_bind_destroyf - 
+ * or_res_bind_destroyf -
  *    return:
  *    bind():
  */
@@ -613,7 +612,7 @@ or_res_bind_destroyf (BH_BIND * bind)
 
 
 /*
- * or_res_bind_create - 
+ * or_res_bind_create -
  *    return:
  *    or():
  *    rres_bind():
@@ -637,7 +636,7 @@ or_res_bind_create (OBJECT_RESULTSET * or, OBJECT_RES_BIND ** rres_bind)
 }
 
 /*
- * or_res_bind_destroy - 
+ * or_res_bind_destroy -
  *    return:
  *    res_bind():
  */
@@ -649,7 +648,7 @@ or_res_bind_destroy (OBJECT_RES_BIND * res_bind)
 }
 
 /*
- * vt_api_get_index_by_name - 
+ * vt_api_get_index_by_name -
  *    return:
  *    impl():
  *    name():
@@ -675,7 +674,7 @@ vt_api_get_index_by_name (void *impl, const char *name, int *ri)
 }
 
 /*
- * vt_api_get_db_value - 
+ * vt_api_get_db_value -
  *    return:
  *    impl():
  *    index():
@@ -697,7 +696,7 @@ vt_api_get_db_value (void *impl, int index, DB_VALUE * dbval)
 }
 
 /*
- * vt_api_set_db_value - 
+ * vt_api_set_db_value -
  *    return:
  *    impl():
  *    index():
@@ -725,7 +724,7 @@ vt_api_set_db_value (void *impl, int index, DB_VALUE * dbval)
 }
 
 /*
- * vt_api_init_domain - 
+ * vt_api_init_domain -
  *    return:
  *    impl():
  *    index():
@@ -753,7 +752,7 @@ vt_api_init_domain (void *impl, int index, DB_VALUE * value)
 }
 
 /*
- * or_destroy - 
+ * or_destroy -
  *    return:
  *    or():
  */
@@ -784,7 +783,7 @@ or_destroy (OBJECT_RESULTSET * or)
 }
 
 /*
- * or_create - 
+ * or_create -
  *    return:
  *    oid():
  *    conn():
@@ -913,7 +912,7 @@ or_create (OID * oid, BIND_HANDLE conn, BH_INTERFACE * bh_ifs, OBJECT_RESULTSET 
 }
 
 /*
- * orp_ht_comparef - 
+ * orp_ht_comparef -
  *    return:
  *    key1():
  *    key2():
@@ -932,7 +931,7 @@ orp_ht_comparef (void *key1, void *key2, int *r)
 }
 
 /*
- * orp_ht_hashf - 
+ * orp_ht_hashf -
  *    return:
  *    key():
  *    rv():
@@ -949,7 +948,7 @@ orp_ht_hashf (void *key, unsigned int *rv)
 }
 
 /*
- * orp_ht_keyf - 
+ * orp_ht_keyf -
  *    return:
  *    elem():
  *    rk():
@@ -965,7 +964,7 @@ orp_ht_keyf (void *elem, void **rk)
 }
 
 /*
- * orp_api_get_object_resultset - 
+ * orp_api_get_object_resultset -
  *    return:
  *    pool():
  *    xoid():
@@ -1003,7 +1002,7 @@ orp_api_get_object_resultset (API_OBJECT_RESULTSET_POOL * pool, CI_OID * xoid, A
 }
 
 /*
- * orp_oid_delete - 
+ * orp_oid_delete -
  *    return:
  *    pool():
  *    xoid():
@@ -1038,7 +1037,7 @@ orp_oid_delete (API_OBJECT_RESULTSET_POOL * pool, CI_OID * xoid)
 }
 
 /*
- * orp_oid_get_classname - 
+ * orp_oid_get_classname -
  *    return:
  *    pool():
  *    xoid():
@@ -1081,7 +1080,7 @@ orp_oid_get_classname (API_OBJECT_RESULTSET_POOL * pool, CI_OID * xoid, char *na
 }
 
 /*
- * orp_api_destroy - 
+ * orp_api_destroy -
  *    return:
  *    pool():
  */
@@ -1096,7 +1095,7 @@ orp_api_destroy (API_OBJECT_RESULTSET_POOL * pool)
 }
 
 /*
- * apif_tell - 
+ * apif_tell -
  *    return:
  *    obj():
  *    pos():
@@ -1121,7 +1120,7 @@ apif_tell (DB_OBJECT * obj, int *pos)
 }
 
 /*
- * apif_last_pos - 
+ * apif_last_pos -
  *    return:
  *    obj():
  *    pos():
@@ -1150,7 +1149,7 @@ apif_last_pos (DB_OBJECT * obj, int *pos)
 
 
 /*
- * api_object_resultset_pool_create - 
+ * api_object_resultset_pool_create -
  *    return:
  *    ifs():
  *    conn():

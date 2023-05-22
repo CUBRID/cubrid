@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -25,169 +24,82 @@
 #ifndef EXTENSIBLE_ARRAY_HPP_
 #define EXTENSIBLE_ARRAY_HPP_
 
-#include "contiguous_memory_buffer.hpp"
+#include "mem_block.hpp"
 
 #include <memory>
 
-/* extensible_array -
- *
- *    A Contiguous Container with static initial size that can be dynamically extended if need be. The purpose was to
- *    provide a tool to store data varying in size and handling memory needs automatically (which was often handled
- *    manually), with the best performance when static size is not exceeded.
- *
- *
- * When to use:
- *
- *    When data varying in size must be stored or collected preferably with no dynamic memory allocation.
- *
- *    One example of code we often write for popular operations:
- *
- *        const int BUF_SIZE = 128;
- *        char buffer[BUF_SIZE];      // static buffer
- *        char *buffer_p = buffer;    // for now points to static buffer, but may point to dynamic memory
- *        int offset = 0;             // current offset in buffer
- *        int capacity = BUF_SIZE;    // current capacity
- *
- *        memcpy (buffer_p, &header, sizeof (header));
- *        offset += sizeof (header);
- *        ...
- *        if (offset + size_of_data > capacity)           // size_of_data can vary from 0 to 16k, but will usually be
- *                                                        // small enough
- *          {
- *            int new_capacity = capacity;
- *            while (new_capacity < offset + size_of_data)    // double until we can cover
- *              {
- *                new_capacity = 2 * new_capacity
- *              }
- *
- *            buffer_p = db_private_realloc (thread_p, buffer_p, new_capacity);
- *          }
- *        memcpy (buffer_p, page_ptr, size_of_data);
- *        ...
- *
- *      end:
- *        // delete if dynamically allocated
- *        if (buffer_p != buffer)
- *          {
- *            db_private_free (thread_p, buffer_p);
- *          }
- *
- *
- * When not to use:
- *
- *    1. When memory requirements can be predicted and are reasonably small - use static array instead.
- *
- *    2. When performance is not an issue and dynamic allocation is affordable. Use std::string or std::vector instead.
- *
- *
- * How to use:
- *
- *    1. Include extensible_array.hpp.
- *
- *    2. declare static variable with a default size:
- *        const int BUF_SIZE = 64;
- *        db_private_allocator<char> char_private_allocator (thread_p);
- *        extensible_array<char, BUF_SIZE, db_private_allocator<char> > buffer(char_private_allocator);
- *
- *    2. append the required buffer.
- *        buffer.append (REINTERPRET_CAST (char *, &header), sizeof (header));
- *        buffer.append (page_ptr, size_of_data);  // size_of_data can vary from 0 to 16k, but will usually be
- *                                                 // small enough
- *
- *    3. resources are freed automatically once variable scope ends.
- *
- *
- * Templates:
- *
- *    1. T - buffer base type. in most cases a primitive is expected, but the buffer can accept any class.
- *
- *    2. Size - buffer static size. It is recommended to provide a value that covers most cases.
- *
- *    3. [Optional] Allocator - which allocator to be used for dynamic allocation. Default is standard allocator.
- *
- *
- * Implementation details:
- *
- *    A std::array stores the static buffer and a std::vector the dynamic buffer. When static buffer size limit is
- *    reached the vector is allocated. Size is always doubled to cover the new requirements. Vector is resized whenever
- *    necessary.
- *    There are two operations: append and copy (which starts over). They can accept an iterator (which is consumed
- *    from begin to end), or start/end iterators.
- *
- *
- * Notes:
- *
- *    If possible, provide a maximum buffer size to avoid uncontrolled allocations.
- *
- *
- * TODO:
- *
- *    Add alignment. With this feature, we may even replace OR_BUF.
- *
- *    Should we handle out of memory?
- */
-template <typename T, size_t Size, typename Allocator = std::allocator<T> >
-class extensible_array
+namespace cubmem
 {
-  public:
-    extensible_array (void);
-    extensible_array (Allocator &allocator);                // Constructing with allocator is required
-    ~extensible_array ();
+  template <size_t Size>
+  class appendible_block : public cubmem::extensible_stack_block<Size>
+  {
+    private:
+      using base_type = cubmem::extensible_stack_block<Size>;
 
-    inline void append (const T *source, size_t length);    // append at the end of existing data
-    inline void copy (const T *source, size_t length);      // overwrite entire array
+    public:
 
-    inline const T *get_array (void) const;                 // get array pointer
-    inline size_t get_size (void) const;                    // get current size
-    inline size_t get_memsize (void) const;                 // get current memory size
+      appendible_block ();
+      appendible_block (const block_allocator &alloc);
 
-  private:
-    inline void reset (void);                               // reset array
+      inline void append (const char *source, size_t length);    // append at the end of existing data
+      inline void copy (const char *source, size_t length);      // overwrite entire array
 
-    contiguous_memory_buffer<T, Size, Allocator> m_membuf;  // memory handler
-    size_t m_size;                                          // current size
-};
+      template <typename T>
+      inline void append (const T &obj);
 
-/************************************************************************/
-/* Character-only functions                                             */
-/************************************************************************/
+      inline std::size_t get_size () const;
 
-/* extensible_charbuf_append_string - append string to extensible char buffer.
- *
- *  Templates:
- *    Size: extensible buffer static size
- *    Allocator: allocator for extensible buffer dynamic resources
- *
- *  Return:
- *    Error code
- *
- * Parameters:
- *    buffer: extensible char buffer
- *    str: append string to buffer
- *    length: if 0, strlen (str) + 1 is used
- */
-template <size_t Size, typename Allocator = std::allocator<char> >
-inline int xarr_char_append_string (extensible_array<char, Size, Allocator> &buffer, const char *str,
-				    size_t length = 0);
+    private:
+      inline void reset ();
 
-/* extensible_charbuf_append_object - append object data to extensible char buffer.
- *
- *  Templates:
- *    T: type of object
- *    Size: extensible buffer static size
- *    Allocator: allocator for extensible buffer dynamic resources
- *
- *  Return:
- *    Error code
- *
- * Parameters:
- *    buffer: extensible char buffer
- *    to_append: object to append
- */
-template <class T, size_t Size, typename Allocator = std::allocator<char> >
-inline int xarr_char_append_object (extensible_array<char, Size, Allocator> &buffer, const T &to_append);
+      size_t m_size;                                          // current size
+  };
 
-#endif /* !EXTENSIBLE_ARRAY_HPP_ */
+  template <typename T, size_t Size>
+  class extensible_array : protected extensible_stack_block<sizeof (T) * Size>
+  {
+    private:
+      using base_type = extensible_stack_block<sizeof (T) * Size>;
+
+    public:
+      void extend_by (size_t count);
+      void extend_to (size_t count);
+
+      const T *get_array (void) const;
+
+    protected:
+      T *get_data_ptr ();
+
+      size_t get_memsize_for_count (size_t count) const;
+  };
+
+  template <typename T, size_t S>
+  class appendable_array : public extensible_array<T, S>
+  {
+    private:
+      using base_type = extensible_array<T, S>;
+
+    public:
+      appendable_array (void);
+      appendable_array (const block_allocator &allocator);
+      ~appendable_array ();
+
+      inline void append (const T &source);
+      inline void append (const T *source, size_t length);    // append at the end of existing data
+      inline void copy (const T *source, size_t length);      // overwrite entire array
+      void erase (size_t index);    // remove at index; does not preserve order
+
+      inline size_t get_size (void) const;                    // get current size
+
+      size_t get_memsize () const;
+
+    private:
+      inline void reset (void);                               // reset array
+      inline T *get_append_ptr ();
+
+      size_t m_size;                                          // current size
+  };
+} // namespace cubmem
 
 /************************************************************************/
 /* Implementation                                                       */
@@ -196,103 +108,201 @@ inline int xarr_char_append_object (extensible_array<char, Size, Allocator> &buf
 #include <cassert>
 #include <cstring>
 
-template<typename T, size_t Size, typename Allocator>
-inline extensible_array<T, Size, Allocator>::extensible_array (void)
-  : m_membuf ()
-  , m_size (0)
+namespace cubmem
 {
   //
-}
+  //  appendible_block
+  //
+  template <size_t Size>
+  appendible_block<Size>::appendible_block ()
+    : extensible_stack_block<Size> ()
+    , m_size (0)
+  {
+  }
 
-template<typename T, size_t Size, typename Allocator>
-inline extensible_array<T, Size, Allocator>::extensible_array (Allocator &allocator)
-  : m_membuf (allocator)
-  , m_size (0)
-{
-  // empty
-}
+  template <size_t Size>
+  appendible_block<Size>::appendible_block (const block_allocator &alloc)
+    : extensible_stack_block<Size> (alloc)
+    , m_size (0)
+  {
+  }
 
-template<typename T, size_t Size, typename Allocator>
-inline extensible_array<T, Size, Allocator>::~extensible_array ()
-{
-  // empty
-}
+  template <size_t Size>
+  std::size_t
+  appendible_block<Size>::get_size () const
+  {
+    return m_size;
+  }
 
-/* C-style append & copy. they are declared unsafe and is recommended to avoid them (not always possible because of
-* legacy code. */
-template<typename T, size_t Size, typename Allocator>
-inline void
-extensible_array<T, Size, Allocator>::append (const T *source, size_t length)
-{
-  // make sure memory is enough
-  T *buffer_p = m_membuf.resize (m_size + length);
+  template <size_t Size>
+  void
+  appendible_block<Size>::reset ()
+  {
+    m_size = 0;
+  }
 
-  // copy data at the end of the array
-  std::memcpy (buffer_p + m_size, source, length * sizeof (T));
-  m_size += length;
-}
+  template <size_t Size>
+  void
+  appendible_block<Size>::append (const char *source, size_t length)
+  {
+    base_type::extend_to (m_size + length);
+    std::memcpy (base_type::get_ptr () + m_size, source, length);
+    m_size += length;
+  }
 
-template<typename T, size_t Size, typename Allocator>
-inline void
-extensible_array<T, Size, Allocator>::copy (const T *source, size_t length)
-{
-  // copy = reset + append
-  reset ();
-  append (source, length);
-}
+  template <size_t Size>
+  template <typename T>
+  void
+  appendible_block<Size>::append (const T &obj)
+  {
+    append (reinterpret_cast<const char *> (&obj), sizeof (obj));
+  }
 
-template<typename T, size_t Size, typename Allocator>
-inline const T *
-extensible_array<T, Size, Allocator>::get_array (void) const
-{
-  // get array from memory handler
-  return m_membuf.get_membuf_data ();
-}
+  template <size_t Size>
+  void
+  appendible_block<Size>::copy (const char *source, size_t length)
+  {
+    reset ();
+    append (source, length);
+  }
 
-template<typename T, size_t Size, typename Allocator>
-inline size_t
-extensible_array<T, Size, Allocator>::get_size (void) const
-{
-  return m_size;
-}
+  //
+  // extensible_array
+  //
+  template <typename T, size_t Size>
+  void
+  extensible_array<T, Size>::extend_by (size_t count)
+  {
+    base_type::extend_by (get_memsize_for_count (count));
+  }
 
-template<typename T, size_t Size, typename Allocator>
-inline size_t
-extensible_array<T, Size, Allocator>::get_memsize (void) const
-{
-  return m_size * sizeof (T);
-}
+  template <typename T, size_t Size>
+  void
+  extensible_array<T, Size>::extend_to (size_t count)
+  {
+    base_type::extend_to (get_memsize_for_count (count));
+  }
 
-template<typename T, size_t Size, typename Allocator>
-inline void extensible_array<T, Size, Allocator>::reset (void)
-{
-  // set size to zero
-  m_size = 0;
-}
+  template <typename T, size_t Size>
+  const T *
+  extensible_array<T, Size>::get_array (void) const
+  {
+    return reinterpret_cast<const T *> (base_type::get_read_ptr ());
+  }
 
-/************************************************************************/
-/* Character-only functions                                             */
-/************************************************************************/
+  template <typename T, size_t Size>
+  T *
+  extensible_array<T, Size>::get_data_ptr ()
+  {
+    return reinterpret_cast<T *> (base_type::get_ptr ());
+  }
 
-template <size_t Size, typename Allocator>
-inline int xarr_char_append_string (extensible_array<char, Size, Allocator> &buffer, const char *str, size_t length)
-{
-  assert (str != NULL);
+  template <typename T, size_t Size>
+  size_t
+  extensible_array<T, Size>::get_memsize_for_count (size_t count) const
+  {
+    return count * sizeof (T);
+  }
 
-  if (length == 0)
-    {
-      // get length with null terminator
-      length = strlen (str) + 1;
-    }
+  //
+  // appendable_array
+  //
+  template <typename T, size_t Size>
+  appendable_array<T, Size>::appendable_array (void)
+    : base_type ()
+    , m_size (0)
+  {
+    //
+  }
 
-  // append string
-  return buffer.append (str, length);
-}
+  template <typename T, size_t Size>
+  appendable_array<T, Size>::appendable_array (const block_allocator &allocator)
+    : base_type (allocator)
+    , m_size (0)
+  {
+    // empty
+  }
 
-template <class T, size_t Size, typename Allocator>
-inline int xarr_char_append_object (extensible_array<char, Size, Allocator> &buffer, const T &to_append)
-{
-  // append object data
-  return buffer.append (reinterpret_cast<const char *> (&to_append), sizeof (to_append));
-}
+  template <typename T, size_t Size>
+  appendable_array<T, Size>::~appendable_array ()
+  {
+    // empty
+  }
 
+  template <typename T, size_t Size>
+  T *
+  appendable_array<T, Size>::get_append_ptr ()
+  {
+    return base_type::get_data_ptr () + m_size;
+  }
+
+  template <typename T, size_t Size>
+  void
+  appendable_array<T, Size>::append (const T &source)
+  {
+    append (&source, 1);
+  }
+
+  template <typename T, size_t Size>
+  void
+  appendable_array<T, Size>::append (const T *source, size_t length)
+  {
+    // make sure memory is enough
+    base_type::extend_to (m_size + length);
+
+    // copy data at the end of the array
+    std::memcpy (base_type::get_data_ptr () + m_size, source, length * sizeof (T));
+    m_size += length;
+  }
+
+  template <typename T, size_t Size>
+  void
+  appendable_array<T, Size>::copy (const T *source, size_t length)
+  {
+    // copy = reset + append
+    reset ();
+    append (source, length);
+  }
+
+  template <typename T, size_t Size>
+  void
+  appendable_array<T, Size>::erase (size_t index)
+  {
+    if (index >= m_size)
+      {
+	// no op
+	return;
+      }
+    if (index < m_size - 1)
+      {
+	// overwrite with last
+	base_type::get_data_ptr ()[index] = base_type::get_data_ptr ()[m_size - 1];
+      }
+    --m_size;
+  }
+
+  template <typename T, size_t Size>
+  size_t
+  appendable_array<T, Size>::get_size (void) const
+  {
+    return m_size;
+  }
+
+  template<typename T, size_t S>
+  size_t
+  appendable_array<T, S>::get_memsize () const
+  {
+    return base_type::get_memsize_for_count (m_size);
+  }
+
+  template <typename T, size_t Size>
+  void
+  appendable_array<T, Size>::reset (void)
+  {
+    // set size to zero
+    m_size = 0;
+  }
+
+} // namespace cubmem
+
+#endif /* !EXTENSIBLE_ARRAY_HPP_ */

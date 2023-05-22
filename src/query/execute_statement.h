@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -33,6 +32,26 @@
 
 #include "dbi.h"
 #include "parser.h"
+
+#define CDC_TRIGGER_INVOLVED_BACKUP(is_trigger_involved) \
+  do \
+    { \
+      if (prm_get_integer_value(PRM_ID_SUPPLEMENTAL_LOG)) \
+        { \
+          (is_trigger_involved) = cdc_Trigger_involved; \
+        } \
+    } \
+  while (0)
+
+#define CDC_TRIGGER_INVOLVED_RESTORE(is_trigger_involved) \
+  do \
+    { \
+      if (prm_get_integer_value(PRM_ID_SUPPLEMENTAL_LOG)) \
+        { \
+          cdc_Trigger_involved = (is_trigger_involved); \
+        } \
+    } \
+  while (0)
 
 extern int do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_name, const char *att_name);
 extern int do_reset_auto_increment_serial (MOP serial_obj);
@@ -54,10 +73,21 @@ extern int do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser,
 extern int do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+extern int get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, PT_NODE * owner_name,
+					  DB_VALUE * out_val);
+extern int get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_nm, PT_NODE * owner_nm,
+						DB_VALUE * out_val);
 
 typedef int (PT_DO_FUNC) (PARSER_CONTEXT *, PT_NODE *);
 
 extern bool do_Trigger_involved;
+
+extern bool cdc_Trigger_involved;
 
 extern int do_alter (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -111,11 +141,12 @@ extern void do_print_on_method (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * 
 extern void dbmeth_class_name (DB_OBJECT * self, DB_VALUE * result);
 extern void dbmeth_print (DB_OBJECT * self, DB_VALUE * result, DB_VALUE * msg);
 
-extern int do_rename (const PARSER_CONTEXT * parser, const PT_NODE * statement);
+extern int do_rename (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_scope (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_select (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -159,6 +190,18 @@ extern int do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_set_names (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_set_timezone (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern int do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
+
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);
+
+extern int do_find_class_by_query (const char *name, char *buf, int buf_size);
+extern int do_find_serial_by_query (const char *name, char *buf, int buf_size);
+extern int do_find_trigger_by_query (const char *name, char *buf, int buf_size);
+extern int do_find_synonym_by_query (const char *name, char *buf, int buf_size);
+
+
 #endif /* _EXECUTE_STATEMENT_H_ */

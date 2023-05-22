@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -361,6 +360,9 @@ struct coll_data
 
   unsigned int *weights;	/* array of weight (one weight per CP) */
   unsigned int *next_cp;	/* next CP (in order defined by collation) */
+  unsigned int *weights_ti;	/* array of weight for ignore trailing space */
+  unsigned int *next_cp_ti;	/* next CP (for ignore trailing space) */
+
   int w_count;			/* # of codepoints in this collation */
 
   /* Size of uca_w = 'w_count' X 'uca_exp_num' X 'sizeof (UCA_W)' */
@@ -370,7 +372,7 @@ struct coll_data
   UCA_L13_W *uca_w_l13;		/* weight array L1, L2, L3 */
   UCA_L4_W *uca_w_l4;
 
-  COLL_CONTRACTION *contr_list;	/* contactions lists; contractions are stored in binary ascending order of UTF-8 buffer 
+  COLL_CONTRACTION *contr_list;	/* contactions lists; contractions are stored in binary ascending order of UTF-8 buffer
 				 */
   int count_contr;
   int contr_min_size;		/* size of smallest contraction buffer (in bytes) */

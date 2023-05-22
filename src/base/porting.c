@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -95,10 +94,10 @@ realpath (const char *path, char *resolved_path)
     {
       strncpy (tmp_path, tmp_str, _MAX_PATH);
 
-      /* 
-       * The output of _fullpath() ends with '\'(Windows format) or without it. 
+      /*
+       * The output of _fullpath() ends with '\'(Windows format) or without it.
        * It doesn't end with '/'(Linux format).
-       * 
+       *
        * Even if the directory path exists, the stat() in Windows fails when
        * the directory path ends with '\'.
        */
@@ -226,13 +225,13 @@ gettimeofday (struct timeval *tp, void *tzp)
 
   GetSystemTimeAsFileTime (&now.ft);
 
-  /* 
+  /*
    * Optimization for sec = (long) (x / 10000000);
    * where "x" is number of 100 nanoseconds since 1/1/1970.
    */
   tp->tv_sec = (long) (((now.nsec100 - EPOCH_BIAS_IN_100NANOSECS) >> 7) / RAPID_CALC_DIVISOR);
 
-  /* 
+  /*
    * Optimization for usec = (long) (x % 10000000) / 10;
    * Let c = x / b,
    * An alternative for MOD operation (x % b) is: (x - c * b),
@@ -364,7 +363,7 @@ pathconf (char *path, int name)
   switch (name)
     {
     case _PC_PATH_MAX:
-      /* 
+      /*
        * NT and OS/2 file systems claim to be able to handle 255 char
        * file names.  But none of the system calls seem to be able to
        * handle a path of more than 255 chars + 1 NULL.  Nor does there
@@ -506,7 +505,7 @@ setmask (sigset_t * set, sigset_t * oldset)
   return (0);
 
 whoops:
-  /* 
+  /*
    * I'm supposed to restore the signals to the original
    * state if something fails, but I'm blowing it off for now.
    */
@@ -611,7 +610,7 @@ block_signals (sigset_t * set, sigset_t * oldset)
   return (0);
 
 whoops:
-  /* 
+  /*
    * I'm supposed to restore the signals to the original
    * state if something fails, but I'm blowing it off for now.
    */
@@ -716,7 +715,7 @@ unblock_signals (sigset_t * set, sigset_t * oldset)
   return (0);
 
 whoops:
-  /* 
+  /*
    * I'm supposed to restore the signals to the original
    * state if something fails, but I'm blowing it off for now.
    */
@@ -1245,8 +1244,9 @@ stristr (const char *s, const char *find)
   char c, sc;
   size_t len;
 
-  if ((c = *find++) != '0')
+  if ((c = toupper (*find)) != '\0')
     {
+      find++;
       len = strlen (find);
       do
 	{
@@ -1257,7 +1257,7 @@ stristr (const char *s, const char *find)
 		  return NULL;
 		}
 	    }
-	  while (toupper (sc) != toupper (c));
+	  while (toupper (sc) != c);
 	}
       while (strncasecmp (s, find, len) != 0);
       s--;
@@ -1583,7 +1583,7 @@ port_win_mutex_init_and_lock (pthread_mutex_t * mutex)
   EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
   if (mutex->csp != &mutex->cs || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
     {
-      /* 
+      /*
        * below assert means that lock without pthread_mutex_init
        * or PTHREAD_MUTEX_INITIALIZER
        */
@@ -1609,7 +1609,7 @@ port_win_mutex_init_and_trylock (pthread_mutex_t * mutex)
   EnterCriticalSection (css_Internal_mutex_for_mutex_initialize.csp);
   if (mutex->csp != &mutex->cs || mutex->watermark != WATERMARK_MUTEX_INITIALIZED)
     {
-      /* 
+      /*
        * below assert means that trylock without pthread_mutex_init
        * or PTHREAD_MUTEX_INITIALIZER
        */
@@ -1758,7 +1758,7 @@ win_custom_cond_timedwait (pthread_cond_t * cond, pthread_mutex_t * mutex, struc
       ResetEvent (cond->events[COND_BROADCAST]);
       SetEvent (cond->broadcast_block_event);
 
-      /* 
+      /*
        * Remove additional signal if exists
        * (That's received in above THREAD UNSAFE AREA)
        */

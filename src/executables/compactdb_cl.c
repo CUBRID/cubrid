@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -41,6 +40,7 @@
 #include "authenticate.h"
 #include "transaction_cl.h"
 #include "execute_schema.h"
+#include "object_primitive.h"
 
 #define COMPACT_MIN_PAGES 1
 #define COMPACT_MAX_PAGES 20
@@ -52,7 +52,7 @@
 #define COMPACT_CLASS_MAX_LOCK_TIMEOUT 10
 
 static int is_not_system_class (MOBJ class_);
-static int do_reclaim_addresses (const OID ** const class_oids, const int num_class_oids,
+static int do_reclaim_addresses (OID * const *class_oids, const int num_class_oids,
 				 int *const num_classes_fully_processed, const bool verbose,
 				 const int class_lock_timeout);
 static int do_reclaim_class_addresses (const OID class_oid, char **clas_name, bool * const any_class_can_be_referenced,
@@ -68,6 +68,8 @@ static int class_referenced_by_attributes (MOP referenced_class, MOP parent_mop,
 					   bool * const any_class_can_be_referenced);
 static void class_referenced_by_domain (MOP referenced_class, TP_DOMAIN * const domain,
 					bool * const class_can_be_referenced, bool * const any_class_can_be_referenced);
+extern int get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_class_list);
+extern int get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *num_class_mops);
 
 
 /*
@@ -83,231 +85,6 @@ compactdb_usage (const char *argv0)
   exec_name = basename ((char *) argv0);
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
   printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, 60), exec_name);
-}
-
-/*
- * get_num_requested_class - Get the number of class from specified
- * input file
- *    return: error code
- *    input_filename(in): input file name
- *    num_class(out) : pointer to returned number of classes
- */
-static int
-get_num_requested_class (const char *input_filename, int *num_class)
-{
-  FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
-
-  if (input_filename == NULL || num_class == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  input_file = fopen (input_filename, "r");
-  if (input_file == NULL)
-    {
-      perror (input_filename);
-      return ER_FAILED;
-    }
-
-  *num_class = 0;
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
-    {
-      (*num_class)++;
-    }
-
-  fclose (input_file);
-
-  return NO_ERROR;
-}
-
-/*
- * get_class_mops - Get the list of mops of specified classes
- *    return: error code
- *    class_names(in): the names of the classes
- *    num_class(in): the number of classes
- *    class_list(out): pointer to returned list of mops
- *    num_class_list(out): pointer to returned number of mops
- */
-static int
-get_class_mops (char **class_names, int num_class, MOP ** class_list, int *num_class_list)
-{
-  int i, status = NO_ERROR;
-  char downcase_class_name[SM_MAX_IDENTIFIER_LENGTH];
-  DB_OBJECT *class_ = NULL;
-
-  if (class_names == NULL || num_class <= 0 || class_list == NULL || num_class_list == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  *num_class_list = 0;
-  *class_list = (DB_OBJECT **) malloc (DB_SIZEOF (DB_OBJECT *) * (num_class));
-  if (*class_list == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  for (i = 0; i < num_class; ++i)
-    {
-      (*class_list)[i] = NULL;
-    }
-
-  for (i = 0; i < num_class; i++)
-    {
-      if (class_names[i] == NULL || strlen (class_names[i]) == 0)
-	{
-	  status = ER_FAILED;
-	  goto error;
-	}
-
-      sm_downcase_name (class_names[i], downcase_class_name, SM_MAX_IDENTIFIER_LENGTH);
-
-      class_ = locator_find_class (downcase_class_name);
-      if (class_ != NULL)
-	{
-	  (*class_list)[(*num_class_list)] = class_;
-	  (*num_class_list)++;
-	}
-      else
-	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CLASS),
-		  downcase_class_name);
-
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INVALID_CLASS));
-	}
-    }
-
-  return status;
-
-error:
-  if (*class_list)
-    {
-      free (*class_list);
-      *class_list = NULL;
-    }
-
-  if (num_class_list)
-    {
-      *num_class_list = 0;
-    }
-
-  return status;
-}
-
-/*
- * get_class_mops_from_file - Get a list of class mops from specified file
- *    return: error code
- *    input_filename(in): input file name
- *    class_list(out): pointer to returned list of class mops
- *    num_class_mops(out): pointer to returned number of mops
- */
-static int
-get_class_mops_from_file (const char *input_filename, MOP ** class_list, int *num_class_mops)
-{
-  int status = NO_ERROR;
-  int i = 0;
-  FILE *input_file;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH];
-  char **class_names = NULL;
-  int num_class = 0;
-  int len = 0;
-  char *ptr = NULL;
-
-  if (input_filename == NULL || class_list == NULL || num_class_mops == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  *class_list = NULL;
-  *num_class_mops = 0;
-  if (get_num_requested_class (input_filename, &num_class) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (num_class == 0)
-    {
-      return ER_FAILED;
-    }
-
-  input_file = fopen (input_filename, "r");
-  if (input_file == NULL)
-    {
-      perror (input_filename);
-      return ER_FAILED;
-    }
-
-  class_names = (char **) malloc (DB_SIZEOF (char *) * num_class);
-  if (class_names == NULL)
-    {
-      return ER_FAILED;
-    }
-  for (i = 0; i < num_class; i++)
-    {
-      class_names[i] = NULL;
-    }
-
-  for (i = 0; i < num_class; ++i)
-    {
-      if (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) == NULL)
-	{
-	  status = ER_FAILED;
-	  goto end;
-	}
-
-      ptr = strchr (buffer, '\n');
-      if (ptr)
-	{
-	  len = CAST_BUFLEN (ptr - buffer);
-	}
-      else
-	{
-	  len = (int) strlen (buffer);
-	}
-
-      if (len < 1)
-	{
-	  status = ER_FAILED;
-	  goto end;
-	}
-
-      class_names[i] = (char *) malloc (DB_SIZEOF (char) * (len + 1));
-      if (class_names[i] == NULL)
-	{
-	  status = ER_FAILED;
-	  goto end;
-	}
-
-      strncpy (class_names[i], buffer, len);
-      class_names[i][len] = 0;
-    }
-
-  status = get_class_mops (class_names, num_class, class_list, num_class_mops);
-
-end:
-
-  if (input_file)
-    {
-      fclose (input_file);
-    }
-
-  if (class_names)
-    {
-      for (i = 0; i < num_class; i++)
-	{
-	  if (class_names[i] != NULL)
-	    {
-	      free (class_names[i]);
-	      class_names[i] = NULL;
-	    }
-	}
-
-      free (class_names);
-      class_names = NULL;
-    }
-
-  return status;
 }
 
 /*
@@ -829,9 +606,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
     {
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
     }
-  status =
-    do_reclaim_addresses ((const OID ** const) class_oids, num_classes, &num_classes_fully_compacted, verbose_flag,
-			  class_lock_timeout);
+  status = do_reclaim_addresses (class_oids, num_classes, &num_classes_fully_compacted, verbose_flag,
+				 class_lock_timeout);
   if (status != NO_ERROR)
     {
       goto error;
@@ -1012,7 +788,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   int error;
   int i, status = 0;
   const char *database_name;
-  bool verbose_flag = 0, delete_old_repr_flag = 0;
+  bool verbose_flag = 0, delete_old_repr_flag = 0, standby_compactdb_flag = 0;
   char *input_filename = NULL;
   int maximum_processed_space = 10 * DB_PAGESIZE, pages;
   int instance_lock_timeout, class_lock_timeout;
@@ -1021,6 +797,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   verbose_flag = utility_get_option_bool_value (arg_map, COMPACT_VERBOSE_S);
+  standby_compactdb_flag = utility_get_option_bool_value (arg_map, COMPACT_STANDBY_CS_MODE_S);
   input_filename = utility_get_option_string_value (arg_map, COMPACT_INPUT_CLASS_FILE_S, 0);
 
   pages = utility_get_option_int_value (arg_map, COMPACT_PAGES_COMMITED_ONCE_S);
@@ -1080,7 +857,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 
   if (table_size > 1)
     {
-      tables = (char **) malloc (sizeof (char *) * table_size - 1);
+      tables = (char **) malloc (sizeof (char *) * (table_size - 1));
       if (tables == NULL)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
@@ -1097,7 +874,16 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   AU_DISABLE_PASSWORDS ();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+
+  if (standby_compactdb_flag)
+    {
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS);
+    }
+  else
+    {
+      db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+    }
+
   if ((error = db_login ("DBA", NULL)) || (error = db_restart (arg->argv0, TRUE, database_name)))
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s.\n", exec_name, db_error_string (3));
@@ -1141,7 +927,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 }
 
 static int
-do_reclaim_addresses (const OID ** const class_oids, const int num_class_oids, int *const num_classes_fully_processed,
+do_reclaim_addresses (OID * const *class_oids, const int num_class_oids, int *const num_classes_fully_processed,
 		      const bool verbose, const int class_lock_timeout)
 {
   bool any_class_can_be_referenced = false;
@@ -1265,7 +1051,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
       goto error_exit;
     }
 
-  /* 
+  /*
    * Trying to force an ISX_LOCK on the root class. It somehow happens that
    * we are left with an IX_LOCK in the end...
    */
@@ -1294,7 +1080,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
       goto error_exit;
     }
 
-  /* 
+  /*
    * We need an SCH-M lock on the class to process as early as possible so that
    * other transactions don't add references to it in the schema.
    */
@@ -1316,7 +1102,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 
   if (class_->partition != NULL)
     {
-      /* 
+      /*
        * If the current class is a partition of a partitioned class we need
        * to get its parent partitioned table and check for references to its
        * parent too. If table tbl has partition tbl__p__p0, a reference to tbl
@@ -1360,7 +1146,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 
   if (class_->flags & SM_CLASSFLAG_SYSTEM)
     {
-      /* 
+      /*
        * It should be safe to process system classes also but we skip them for
        * now. Please note that class_instances_can_be_referenced () does not
        * check for references from system classes.
@@ -1371,7 +1157,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
     }
   else if (class_->flags & SM_CLASSFLAG_REUSE_OID)
     {
-      /* 
+      /*
        * Nobody should be able to hold references to reusable OID tables so it
        * should be safe to reclaim their OIDs and pages no matter what.
        */
@@ -1381,7 +1167,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
     {
       if (*any_class_can_be_referenced)
 	{
-	  /* 
+	  /*
 	   * Some class attribute has OBJECT or SET OF OBJECT as the domain.
 	   * This means it can point to instances of any class so we're not
 	   * safe reclaiming OIDs.
@@ -1392,7 +1178,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 	{
 	  bool class_can_be_referenced = false;
 
-	  /* 
+	  /*
 	   * IS_LOCK should be enough for what we need but
 	   * locator_get_all_class_mops seems to lock the instances with the
 	   * lock that it has on their class. So we end up with IX_LOCK on all
@@ -1413,7 +1199,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 	    {
 	      goto error_exit;
 	    }
-	  /* 
+	  /*
 	   * If some attribute has OBJECT or the current class as its domain
 	   * then it's not safe to reclaim the OIDs as some of the references
 	   * might point to deleted objects. We skipped the system classes as
@@ -1422,7 +1208,7 @@ do_reclaim_class_addresses (const OID class_oid, char **class_name, bool * const
 	  can_reclaim_addresses = !class_can_be_referenced && !*any_class_can_be_referenced;
 	  if (lmops != NULL)
 	    {
-	      /* 
+	      /*
 	       * It should be safe now to release all the locks we hold on the
 	       * schema classes (except for the X_LOCK on the current class).
 	       * However, we don't currently have a way of releasing those
@@ -1550,7 +1336,7 @@ class_referenced_by_class (MOP referenced_mop, MOP parent_mop, MOP referring_mop
       goto error_exit;
     }
 
-  /* 
+  /*
    * System classes should not point to any instances of the non-system
    * classes.
    */
@@ -1576,7 +1362,7 @@ class_referenced_by_class (MOP referenced_mop, MOP parent_mop, MOP referring_mop
     }
   else
     {
-      /* 
+      /*
        * View attributes are not "real" references so we can safely ignore
        * them.
        */

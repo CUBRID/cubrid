@@ -1,0 +1,101 @@
+# Headless service for stable DNS entries of StatefulSet members
+apiVersion: v1
+kind: Service
+metadata:
+  name: cubrid
+  labels:
+    app: cubrid
+spec:
+  ports:
+  - name: cubrid
+    port: 33000
+  clusterIP: None
+  selector:
+    app: cubrid
+---
+# Client service for connecting to any CUBRID instance for reads.
+# For writes, connect to the master machine: cubrid-0.cubrid
+apiVersion: v1
+kind: Service
+metadata:
+  name: cubrid-read
+  labels:
+    app: cubrid
+spec:
+  ports:
+  - name: cubrid
+    port: 33000
+    targetPort: 33000
+    protocol: TCP
+  type: LoadBalancer
+  selector:
+    app: cubrid
+---
+# cubrid stateful set definition
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cubrid
+spec:
+  selector:
+    matchLabels:
+      app: cubrid
+  serviceName: cubrid
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: cubrid
+    spec:
+      # TODO remove this init container if there is no need for generating core files
+      initContainers:
+      - name: cubrid-init
+        image: cubrid/cubrid:latest
+        command:
+          - "bash"
+          - "-c"
+          - "sysctl -w kernel.core_pattern=/var/lib/cubrid/core.%e.%p.%h.%t || true"
+      containers:
+      - name: cubrid
+        image: cubrid/cubrid:latest
+        env:
+        - name: DB_NAME
+          value: "test_db"
+        - name: CUBRID_COMPONENTS
+          value: "HA"
+        - name: CUBRID_DB_HOST
+          value: "cubrid-0.cubrid.default.svc.cluster.local:cubrid-1.cubrid.default.svc.cluster.local"
+        ports:
+        - name: cubrid-ha
+          containerPort: 59901
+        - name: cubrid-brocker
+          containerPort: 33000
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/cubrid
+        livenessProbe:
+          exec:
+            command:
+              - "bash"
+              - "-c"
+              - "cubrid changemode ${DB_NAME}@127.0.0.1"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+              - "bash"
+              - "-c"
+              - "cubrid heartbeat status"
+          initialDelaySeconds: 5
+          periodSeconds: 2
+          timeoutSeconds: 1
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 5Gi

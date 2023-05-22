@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -44,6 +43,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <syslog.h>
 #endif
 
 #include "connection_cl.h"
@@ -59,6 +59,7 @@
 #include "porting.h"
 #include "tcp.h"
 #include "utility.h"
+#include "host_lookup.h"
 
 #define HB_INFO_STR_MAX         8192
 #define SERVER_DEREG_MAX_POLL_COUNT 10
@@ -108,10 +109,10 @@ static void hb_cluster_job_check_valid_ping_server (HB_JOB_ARG * arg);
 static void hb_cluster_job_demote (HB_JOB_ARG * arg);
 
 static void hb_cluster_request_heartbeat_to_all (void);
-static void hb_cluster_send_heartbeat_req (char *dest_host_name);
-static void hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name);
-static void hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name,
-						bool is_req);
+static int hb_cluster_send_heartbeat_req (char *dest_host_name);
+static int hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name);
+static int hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name,
+					       bool is_req);
 
 static void hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, socklen_t from_len);
 static bool hb_cluster_is_isolated (void);
@@ -120,13 +121,14 @@ static bool hb_cluster_check_valid_ping_server (void);
 
 static int hb_cluster_calc_score (void);
 
-static void hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigned short len,
-			       unsigned int seq, char *dest_host_name);
+static int hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigned short len,
+			      unsigned int seq, char *dest_host_name);
 static int hb_hostname_to_sin_addr (const char *host, struct in_addr *addr);
 static int hb_hostname_n_port_to_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * slen);
 
 /* common */
 static int hb_check_ping (const char *host);
+static int hb_check_tcp_ping (const char *host, int port, int timeout);
 
 /* cluster jobs queue */
 static HB_JOB_ENTRY *hb_cluster_job_dequeue (void);
@@ -154,6 +156,7 @@ static int hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_rep
 
 /* ping host related functions */
 static HB_PING_HOST_ENTRY *hb_add_ping_host (char *host_name);
+static HB_PING_HOST_ENTRY *hb_add_tcp_ping_host (char *host_name, int port);
 static void hb_remove_ping_host (HB_PING_HOST_ENTRY * entry_p);
 static void hb_cluster_remove_all_ping_hosts (HB_PING_HOST_ENTRY * first);
 
@@ -167,7 +170,6 @@ static void hb_resource_job_demote_start_shutdown (HB_JOB_ARG * arg);
 static void hb_resource_job_demote_confirm_shutdown (HB_JOB_ARG * arg);
 static void hb_resource_job_cleanup_all (HB_JOB_ARG * arg);
 static void hb_resource_job_confirm_cleanup_all (HB_JOB_ARG * arg);
-static void hb_resource_job_send_master_hostname (HB_JOB_ARG * arg);
 
 static void hb_resource_demote_start_shutdown_server_proc (void);
 static bool hb_resource_demote_confirm_shutdown_server_proc (void);
@@ -188,7 +190,7 @@ static void hb_remove_all_procs (HB_PROC_ENTRY * first);
 static HB_PROC_ENTRY *hb_return_proc_by_args (char *args);
 static HB_PROC_ENTRY *hb_return_proc_by_pid (int pid);
 static HB_PROC_ENTRY *hb_return_proc_by_fd (int sfd);
-static void hb_proc_make_arg (char **arg, char *argv);
+static void hb_proc_make_arg (char **arg, char *args);
 static HB_JOB_ARG *hb_deregister_process (HB_PROC_ENTRY * proc);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void hb_deregister_nodes (char *node_to_dereg);
@@ -237,6 +239,7 @@ static int hb_help_sprint_processes_info (char *buffer, int max_length);
 static int hb_help_sprint_nodes_info (char *buffer, int max_length);
 static int hb_help_sprint_jobs_info (HB_JOB * jobs, char *buffer, int max_length);
 static int hb_help_sprint_ping_host_info (char *buffer, int max_length);
+static int hb_help_sprint_tcp_ping_host_info (char *buffer, int max_length);
 
 HB_CLUSTER *hb_Cluster = NULL;
 HB_RESOURCE *hb_Resource = NULL;
@@ -249,7 +252,6 @@ static char hb_Nolog_event_msg[LINE_MAX] = "";
 static HB_DEACTIVATE_INFO hb_Deactivate_info = { NULL, 0, false };
 
 static bool hb_Is_activated = true;
-static char *current_master_hostname = NULL;
 
 /* cluster jobs */
 static HB_JOB_FUNC hb_cluster_jobs[] = {
@@ -275,7 +277,6 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
   hb_resource_job_demote_confirm_shutdown,
   hb_resource_job_cleanup_all,
   hb_resource_job_confirm_cleanup_all,
-  hb_resource_job_send_master_hostname,
   NULL
 };
 
@@ -315,6 +316,11 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
         " HA-Ping Host Info (PING check %s)\n"
 #define HA_PING_HOSTS_FORMAT_STRING        \
           "   %-20s %s\n"
+
+#define HA_TCP_PING_HOSTS_INFO_FORMAT_STRING       \
+        " HA-Ping Host/Port Info (TCP PING check %s)\n"
+#define HA_TCP_PING_HOSTS_FORMAT_STRING        \
+          "   %-20s %-10d %s\n"
 
 #define HA_ADMIN_INFO_FORMAT_STRING                \
         " HA-Admin Info\n"
@@ -526,7 +532,7 @@ hb_job_queue (HB_JOB * jobs, unsigned int job_type, HB_JOB_ARG * arg, unsigned i
   rv = pthread_mutex_lock (&jobs->lock);
   for (job = &(jobs->jobs); *job; job = &((*job)->next))
     {
-      /* 
+      /*
        * compare expire time of new job and current job
        * until new job's expire is larger than current's
        */
@@ -630,14 +636,14 @@ hb_job_set_expire_and_reorder (HB_JOB * jobs, unsigned int job_type, unsigned in
 
   memcpy ((void *) &(target_job->expire), (void *) &now, sizeof (struct timeval));
 
-  /* 
+  /*
    * so now we change target job's turn to adjust sorted queue
    */
   hb_list_remove ((HB_LIST *) target_job);
 
   for (job = &(jobs->jobs); *job; job = &((*job)->next))
     {
-      /* 
+      /*
        * compare expiration time of target job and current job
        * until target job's expire is larger than current's
        */
@@ -763,7 +769,7 @@ hb_cluster_is_isolated (void)
 }
 
 /*
- * hb_cluster_is_received_heartbeat_from_all() - 
+ * hb_cluster_is_received_heartbeat_from_all() -
  *   return: whether current node received heartbeat from all node
  */
 static bool
@@ -856,7 +862,15 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 
       if (hb_Cluster->num_ping_hosts > 0)
 	{
-	  hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	  if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+	    {
+	      hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	    }
+	  else
+	    {
+	      hb_help_sprint_tcp_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	    }
+
 	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 	}
 
@@ -972,7 +986,14 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
     {
       for (ping_host = hb_Cluster->ping_hosts; ping_host; ping_host = ping_host->next)
 	{
-	  ping_result = hb_check_ping (ping_host->host_name);
+	  if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+	    {
+	      ping_result = hb_check_ping (ping_host->host_name);
+	    }
+	  else
+	    {
+	      ping_result = hb_check_tcp_ping (ping_host->host_name, ping_host->port, hb_Cluster->ping_timeout);
+	    }
 
 	  ping_host->ping_result = ping_result;
 	  if (ping_result == HB_PING_SUCCESS)
@@ -1119,7 +1140,15 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
 
   if (hb_Cluster->num_ping_hosts > 0)
     {
-      hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+      if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+	{
+	  hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	}
+      else
+	{
+	  hb_help_sprint_tcp_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	}
+
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
     }
 
@@ -1209,7 +1238,15 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
 
 	  if (hb_Cluster->num_ping_hosts > 0)
 	    {
-	      hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	      if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+		{
+		  hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+		}
+	      else
+		{
+		  hb_help_sprint_tcp_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+		}
+
 	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
 	    }
 
@@ -1276,7 +1313,15 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 
   if (hb_Cluster->num_ping_hosts > 0)
     {
-      hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+      if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+	{
+	  hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	}
+      else
+	{
+	  hb_help_sprint_tcp_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
+	}
+
       MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, hb_info_str);
     }
 
@@ -1302,7 +1347,7 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 	    {
 	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 
-	      /* 
+	      /*
 	       * in case that memory allocation fails,
 	       * kill all cub_server processes with SIGKILL
 	       */
@@ -1365,7 +1410,14 @@ hb_cluster_check_valid_ping_server (void)
 
   for (ping_host = hb_Cluster->ping_hosts; ping_host; ping_host = ping_host->next)
     {
-      ping_host->ping_result = hb_check_ping (ping_host->host_name);
+      if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+	{
+	  ping_host->ping_result = hb_check_ping (ping_host->host_name);
+	}
+      else
+	{
+	  ping_host->ping_result = hb_check_tcp_ping (ping_host->host_name, ping_host->port, hb_Cluster->ping_timeout);
+	}
 
       if (ping_host->ping_result == HB_PING_SUCCESS)
 	{
@@ -1458,7 +1510,7 @@ hb_cluster_calc_score (void)
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
       /* If this node does not receive heartbeat message over than prm_get_integer_value (PRM_ID_HA_MAX_HEARTBEAT_GAP)
-       * times, (or sufficient time has been elapsed from the last received heartbeat message time), this node does not 
+       * times, (or sufficient time has been elapsed from the last received heartbeat message time), this node does not
        * know what other node state is. */
       if (node->heartbeat_gap > prm_get_integer_value (PRM_ID_HA_MAX_HEARTBEAT_GAP)
 	  || (!HB_IS_INITIALIZED_TIME (node->last_recv_hbtime)
@@ -1532,8 +1584,10 @@ hb_cluster_request_heartbeat_to_all (void)
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (hb_Cluster->host_name, node->host_name) == 0)
-	continue;
+      if (are_hostnames_equal (hb_Cluster->host_name, node->host_name))
+	{
+	  continue;
+	}
 
       hb_cluster_send_heartbeat_req (node->host_name);
       node->heartbeat_gap++;
@@ -1548,7 +1602,7 @@ hb_cluster_request_heartbeat_to_all (void)
  *
  *   host_name(in):
  */
-static void
+static int
 hb_cluster_send_heartbeat_req (char *dest_host_name)
 {
   struct sockaddr_in saddr;
@@ -1556,25 +1610,24 @@ hb_cluster_send_heartbeat_req (char *dest_host_name)
 
   /* construct destination address */
   memset ((void *) &saddr, 0, sizeof (saddr));
-  if (hb_hostname_n_port_to_sockaddr (dest_host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
-				      (struct sockaddr *) &saddr, &saddr_len) != NO_ERROR)
+  int error_code = hb_hostname_n_port_to_sockaddr (dest_host_name, prm_get_integer_value (PRM_ID_HA_PORT_ID),
+						   (struct sockaddr *) &saddr, &saddr_len);
+  if (error_code != NO_ERROR)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hb_hostname_n_port_to_sockaddr failed. \n");
-      return;
+      return error_code;
     }
 
-  hb_cluster_send_heartbeat_internal (&saddr, saddr_len, dest_host_name, true);
-  return;
+  return hb_cluster_send_heartbeat_internal (&saddr, saddr_len, dest_host_name, true);
 }
 
-static void
+static int
 hb_cluster_send_heartbeat_resp (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name)
 {
-  hb_cluster_send_heartbeat_internal (saddr, saddr_len, dest_host_name, false);
-  return;
+  return hb_cluster_send_heartbeat_internal (saddr, saddr_len, dest_host_name, false);
 }
 
-static void
+static int
 hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_len, char *dest_host_name, bool is_req)
 {
   HBP_HEADER *hbp_header;
@@ -1585,21 +1638,31 @@ hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_l
   memset ((void *) buffer, 0, sizeof (buffer));
   hbp_header = (HBP_HEADER *) (&buffer[0]);
 
-  hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, OR_INT_SIZE, 0, dest_host_name);
+  int error_code = hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, OR_INT_SIZE, 0, dest_host_name);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   p = (char *) (hbp_header + 1);
   p = or_pack_int (p, hb_Cluster->state);
 
   hb_len = sizeof (HBP_HEADER) + OR_INT_SIZE;
 
+  if (hb_Cluster->sfd == INVALID_SOCKET)
+    {
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_DATAGRAM_SOCKET, 0);
+      return ERR_CSS_TCP_DATAGRAM_SOCKET;
+    }
+
   send_len = sendto (hb_Cluster->sfd, (void *) &buffer[0], hb_len, 0, (struct sockaddr *) saddr, saddr_len);
   if (send_len <= 0)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "sendto failed. \n");
-      /* TODO : error */
+      return ER_FAILED;
     }
 
-  return;
+  return NO_ERROR;
 }
 
 
@@ -1635,7 +1698,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
     }
 
   /* validate receive message */
-  if (strcmp (hb_Cluster->host_name, hbp_header->dest_host_name))
+  if (!are_hostnames_equal (hb_Cluster->host_name, hbp_header->dest_host_name))
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "hostname mismatch. " "(host_name:{%s}, dest_host_name:{%s}).\n",
 			   hb_Cluster->host_name, hbp_header->dest_host_name);
@@ -1707,7 +1770,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	      }
 	  }
 
-	/* 
+	/*
 	 * if heartbeat group id is mismatch, ignore heartbeat
 	 */
 	if (strcmp (hbp_header->group_id, hb_Cluster->group_id))
@@ -1716,7 +1779,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	    return;
 	  }
 
-	/* 
+	/*
 	 * must send heartbeat response in order to avoid split-brain
 	 * when heartbeat configuration changed
 	 */
@@ -1774,20 +1837,25 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
  *   seq(in):
  *   dest_host_name(in):
  */
-static void
+static int
 hb_set_net_header (HBP_HEADER * header, unsigned char type, bool is_req, unsigned short len, unsigned int seq,
 		   char *dest_host_name)
 {
+  if (hb_Cluster->myself == NULL)
+    {
+      // if myself is NULL then cluster is not healthy
+      return ER_FAILED;
+    }
+
   header->type = type;
   header->r = (is_req) ? 1 : 0;
   header->len = htons (len);
   header->seq = htonl (seq);
-  strncpy (header->group_id, hb_Cluster->group_id, sizeof (header->group_id) - 1);
-  header->group_id[sizeof (header->group_id) - 1] = '\0';
-  strncpy (header->dest_host_name, dest_host_name, sizeof (header->dest_host_name) - 1);
-  header->dest_host_name[sizeof (header->dest_host_name) - 1] = '\0';
-  strncpy (header->orig_host_name, hb_Cluster->host_name, sizeof (header->orig_host_name) - 1);
-  header->orig_host_name[sizeof (header->orig_host_name) - 1] = '\0';
+  strncpy_bufsize (header->group_id, hb_Cluster->group_id);
+  strncpy_bufsize (header->dest_host_name, dest_host_name);
+  strncpy_bufsize (header->orig_host_name, hb_Cluster->myself->host_name);
+
+  return NO_ERROR;
 }
 
 /*
@@ -1802,7 +1870,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 {
   in_addr_t in_addr;
 
-  /* 
+  /*
    * First try to convert to the host name as a dotten-decimal number.
    * Only if that fails do we call gethostbyname.
    */
@@ -1819,7 +1887,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
@@ -1830,7 +1898,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
@@ -1840,7 +1908,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       struct hostent hent;
       struct hostent_data ht_data;
 
-      if (gethostbyname_r (host, &hent, &ht_data) == -1)
+      if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
 	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
@@ -1854,7 +1922,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       int r;
 
       r = pthread_mutex_lock (&gethostbyname_lock);
-      hp = gethostbyname (host);
+      hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
@@ -1885,7 +1953,7 @@ hb_hostname_n_port_to_sockaddr (const char *host, int port, struct sockaddr *sad
   int error = NO_ERROR;
   struct sockaddr_in udp_saddr;
 
-  /* 
+  /*
    * Construct address for UDP socket
    */
   memset ((void *) &udp_saddr, 0, sizeof (udp_saddr));
@@ -1995,7 +2063,7 @@ hb_add_node_to_cluster (char *host_name, unsigned short priority)
   p = (HB_NODE_ENTRY *) malloc (sizeof (HB_NODE_ENTRY));
   if (p)
     {
-      if (strcmp (host_name, "localhost") == 0)
+      if (are_hostnames_equal (host_name, "localhost"))
 	{
 	  strncpy (p->host_name, hb_Cluster->host_name, sizeof (p->host_name) - 1);
 	}
@@ -2077,6 +2145,45 @@ hb_add_ping_host (char *host_name)
     {
       strncpy (p->host_name, host_name, sizeof (p->host_name) - 1);
       p->host_name[sizeof (p->host_name) - 1] = '\0';
+      p->port = -1;
+      p->ping_result = HB_PING_UNKNOWN;
+      p->next = NULL;
+      p->prev = NULL;
+
+      first_pp = &hb_Cluster->ping_hosts;
+
+      hb_list_add ((HB_LIST **) first_pp, (HB_LIST *) p);
+    }
+
+  return (p);
+}
+
+/*
+ * hb_add_tcp_ping_host() -
+ *   return: pointer to ping host entry
+ *
+ *   host_name(in):
+ *   port(in):
+ */
+static HB_PING_HOST_ENTRY *
+hb_add_tcp_ping_host (char *host_name, int port)
+{
+  HB_PING_HOST_ENTRY *p;
+  HB_PING_HOST_ENTRY **first_pp;
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "%s:%d is added to the TCP PING list.\n", host_name, port);
+
+  if (host_name == NULL)
+    {
+      return NULL;
+    }
+
+  p = (HB_PING_HOST_ENTRY *) malloc (sizeof (HB_PING_HOST_ENTRY));
+  if (p)
+    {
+      strncpy (p->host_name, host_name, sizeof (p->host_name) - 1);
+      p->host_name[sizeof (p->host_name) - 1] = '\0';
+      p->port = port;
       p->ping_result = HB_PING_UNKNOWN;
       p->next = NULL;
       p->prev = NULL;
@@ -2136,13 +2243,14 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
   int num_hosts = 0;
   char host_list[LINE_MAX];
   char *host_list_p, *host_p, *host_pp;
+  char buf[128];
 
   if (ha_ping_host_list == NULL)
     {
       return 0;
     }
 
-  strncpy (host_list, ha_ping_host_list, LINE_MAX);
+  strncpy_bufsize (host_list, ha_ping_host_list);
 
   for (host_list_p = host_list;; host_list_p = NULL)
     {
@@ -2152,9 +2260,148 @@ hb_cluster_load_ping_host_list (char *ha_ping_host_list)
 	  break;
 	}
 
-      hb_add_ping_host (host_p);
-      num_hosts++;
+      if (strcmp (host_p, "0.0.0.0") == 0)
+	{
+	  snprintf (buf, sizeof (buf), "We do not allow 0.0.0.0 as a ping hosts, excluded");
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+	}
+      else
+	{
+	  hb_add_ping_host (host_p);
+	  num_hosts++;
+	}
     }
+
+  return num_hosts;
+}
+
+/*
+ * hb_port_str_to_num() -
+ *   return: port number converted from port string or -1 in case of failure to convert
+ *
+ *   port_p(in):
+ */
+static int
+hb_port_str_to_num (char *port_p)
+{
+  int num_count = 0, port = -1;
+  bool is_space_after_numbers = false;
+  char *p;
+
+  p = port_p;
+
+  if (p == NULL || *p == '\0')
+    {
+      goto error;
+    }
+
+  while (*p != '\0')
+    {
+      if (*p >= '0' && *p <= '9')
+	{
+	  num_count++;
+
+	  if (num_count > 5 || is_space_after_numbers == true)	/* The port number cannot exceed 5 digits. */
+	    {
+	      goto error;
+	    }
+	}
+      else if (*p == ' ')
+	{
+	  if (num_count >= 1)	/* atoi("80 80") returns 80. It needs an exception handling */
+	    {
+	      is_space_after_numbers = true;
+	    }
+	}
+      else
+	{
+	  goto error;
+	}
+
+      p++;
+    }
+
+  port = atoi (port_p);
+
+  if (port < 1 || port > USHRT_MAX)
+    {
+      goto error;
+    }
+
+  return port;
+
+error:
+
+  return -1;
+}
+
+/*
+ * hb_cluster_load_tcp_ping_host_list() -
+ *   return: number of tcp ping hosts
+ *
+ *   ha_ping_host_list(in):
+ */
+static int
+hb_cluster_load_tcp_ping_host_list (char *ha_ping_host_list)
+{
+  int num_hosts = 0, port = -1;
+  char host_list[LINE_MAX];
+  char *host_list_p, *host_p, *host_pp;
+  char *port_p;
+  char buf[128];
+
+  if (ha_ping_host_list == NULL)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "ha_tcp_ping_hosts=NULL\n");
+      return 0;
+    }
+
+  strncpy_bufsize (host_list, ha_ping_host_list);
+
+  for (host_list_p = host_list;; host_list_p = NULL)
+    {
+      host_p = strtok_r (host_list_p, ",", &host_pp);
+      if (host_p == NULL)
+	{
+	  break;
+	}
+
+      port_p = strstr (host_p, ":");
+      if (port_p == NULL || port_p == host_p)
+	{
+	  break;
+	}
+      else
+	{
+	  *port_p = '\0';
+	  port_p++;
+
+	  port = hb_port_str_to_num (port_p);
+
+	  if (port == -1)
+	    {
+	      break;
+	    }
+	}
+
+      if (strcmp (host_p, "0.0.0.0") == 0)
+	{
+	  snprintf (buf, sizeof (buf), "We do not allow 0.0.0.0 as a tcp ping hosts, excluded");
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+	}
+      else
+	{
+	  if (hb_add_tcp_ping_host (host_p, port) == NULL)
+	    {
+	      break;
+	    }
+
+	  num_hosts++;
+	}
+    }
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "ha_tcp_ping_hosts=%s is parsed into %d host:port.\n",
+		       ha_ping_host_list, num_hosts);
 
   return num_hosts;
 }
@@ -2172,7 +2419,7 @@ hb_return_node_by_name (char *name)
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (name, node->host_name))
+      if (!are_hostnames_equal (name, node->host_name))
 	{
 	  continue;
 	}
@@ -2196,7 +2443,7 @@ hb_return_node_by_name_except_me (char *name)
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (name, node->host_name) || (strcmp (name, hb_Cluster->host_name) == 0))
+      if (!are_hostnames_equal (name, node->host_name) || are_hostnames_equal (name, hb_Cluster->host_name))
 	{
 	  continue;
 	}
@@ -2241,7 +2488,7 @@ hb_is_heartbeat_valid (char *host_name, char *group_id, struct sockaddr_in *from
   return HB_VALID_NO_ERROR;
 }
 
-/* 
+/*
  * hb_valid_result_string() -
  */
 static const char *
@@ -2276,7 +2523,7 @@ hb_return_ui_node (char *host_name, char *group_id, struct sockaddr_in saddr)
 
   for (node = hb_Cluster->ui_nodes; node; node = node->next)
     {
-      if (strcmp (node->host_name, host_name) != 0)
+      if (!are_hostnames_equal (node->host_name, host_name))
 	{
 	  continue;
 	}
@@ -2318,8 +2565,8 @@ hb_add_ui_node (char *host_name, char *group_id, struct sockaddr_in saddr, int v
   node = (HB_UI_NODE_ENTRY *) malloc (sizeof (HB_UI_NODE_ENTRY));
   if (node)
     {
-      strncpy (node->host_name, host_name, sizeof (node->host_name) - 1);
-      strncpy (node->group_id, group_id, sizeof (node->group_id) - 1);
+      strncpy_bufsize (node->host_name, host_name);
+      strncpy_bufsize (node->group_id, group_id);
       memcpy ((void *) &node->saddr, (void *) &saddr, sizeof (struct sockaddr_in));
       gettimeofday (&node->last_recv_time, NULL);
       node->v_result = v_result;
@@ -2418,7 +2665,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   hb_Cluster->myself = NULL;
 
-  strncpy (tmp_string, ha_node_list, LINE_MAX);
+  strncpy_bufsize (tmp_string, ha_node_list);
   for (priority = 0, p = strtok_r (tmp_string, "@", &savep); p; priority++, p = strtok_r (NULL, " ,:", &savep))
     {
 
@@ -2426,9 +2673,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	{
 	  /* TODO : trim group id */
 	  /* set heartbeat group id */
-	  strncpy (hb_Cluster->group_id, p, sizeof (hb_Cluster->group_id) - 1);
-	  hb_Cluster->group_id[sizeof (hb_Cluster->group_id) - 1] = '\0';
-
+	  strncpy_bufsize (hb_Cluster->group_id, p);
 	}
       else
 	{
@@ -2436,7 +2681,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	  node = hb_add_node_to_cluster (p, (priority));
 	  if (node)
 	    {
-	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
+	      if (are_hostnames_equal (node->host_name, hb_Cluster->host_name))
 		{
 		  hb_Cluster->myself = node;
 #if defined (HB_VERBOSE_DEBUG)
@@ -2457,7 +2702,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 
   if (ha_replica_list)
     {
-      strncpy (tmp_string, ha_replica_list, LINE_MAX);
+      strncpy_bufsize (tmp_string, ha_replica_list);
     }
   else
     {
@@ -2479,7 +2724,7 @@ hb_cluster_load_group_and_node_list (char *ha_node_list, char *ha_replica_list)
 	  node = hb_add_node_to_cluster (p, HB_REPLICA_PRIORITY);
 	  if (node)
 	    {
-	      if (strcmp (node->host_name, hb_Cluster->host_name) == 0)
+	      if (are_hostnames_equal (node->host_name, hb_Cluster->host_name))
 		{
 		  hb_Cluster->myself = node;
 		  hb_Cluster->state = HB_NSTATE_REPLICA;
@@ -2720,7 +2965,7 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   struct timeval now;
   HB_PROC_ENTRY *proc;
   HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? &(arg->resource_job_arg) : NULL;
-  char *argv[HB_MAX_NUM_PROC_ARGV] = { NULL, };
+  char *argv[HB_MAX_NUM_PROC_ARGV] = { NULL, }, *args;
 
   if (arg == NULL || proc_arg == NULL)
     {
@@ -2775,7 +3020,8 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2, "Restart the process", error_string);
 
-  hb_proc_make_arg (argv, (char *) proc->argv);
+  args = strdup (proc->args);
+  hb_proc_make_arg (argv, args);
 
   pid = fork ();
   if (pid < 0)
@@ -2790,6 +3036,9 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
 	  assert (false);
 	  free_and_init (arg);
 	}
+
+      free (args);
+
       return;
     }
   else if (pid == 0)
@@ -2815,6 +3064,8 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
       proc->pid = pid;
       proc->state = HB_PSTATE_STARTED;
       gettimeofday (&proc->stime, NULL);
+
+      free (args);
     }
 
   pthread_mutex_unlock (&hb_Resource->lock);
@@ -3547,72 +3798,6 @@ hb_resource_job_shutdown (void)
   return hb_job_shutdown (resource_Jobs);
 }
 
-static void
-hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
-{
-  char *hostname = hb_find_host_name_of_master_server ();
-  int error, rv;
-  HB_PROC_ENTRY *proc = NULL;
-  CSS_CONN_ENTRY *conn = NULL;
-
-  rv = pthread_mutex_lock (&hb_Resource->lock);
-  proc = hb_Resource->procs;
-  while (proc)
-    {
-      if (proc->type == HB_PTYPE_SERVER)
-	{
-	  if (proc->knows_master_hostname)
-	    {
-	      pthread_mutex_unlock (&hb_Resource->lock);
-	      return;
-	    }
-
-	  conn = proc->conn;
-	  break;
-	}
-      proc = proc->next;
-    }
-  pthread_mutex_unlock (&hb_Resource->lock);
-
-  if (proc != NULL)
-    {
-      if (hostname == NULL)
-	{
-	  proc->knows_master_hostname = false;
-	  current_master_hostname = NULL;
-	  return;
-	}
-
-      if (current_master_hostname == NULL)
-	{
-	  current_master_hostname = hostname;
-	  proc->knows_master_hostname = false;
-	}
-      else if (current_master_hostname == hostname && proc->knows_master_hostname == true)
-	{
-	  return;
-	}
-      else if (current_master_hostname != hostname)
-	{
-	  proc->knows_master_hostname = false;
-	}
-
-      error = css_send_to_my_server_the_master_hostname (hostname, proc, conn);
-      assert (error == NO_ERROR);
-    }
-
-  error =
-    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL,
-			   prm_get_integer_value (PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS));
-  assert (error == NO_ERROR);
-
-  if (arg)
-    {
-      free_and_init (arg);
-    }
-  return;
-}
-
 /*
  * resource process
  */
@@ -3637,7 +3822,7 @@ hb_alloc_new_proc (void)
       p->prev = NULL;
       p->being_shutdown = false;
       p->server_hang = false;
-      p->knows_master_hostname = false;
+      p->is_curr_eof_received = false;
       LSA_SET_NULL (&p->prev_eof);
       LSA_SET_NULL (&p->curr_eof);
 
@@ -3759,19 +3944,18 @@ hb_return_proc_by_fd (int sfd)
  *   argv(in):
  */
 static void
-hb_proc_make_arg (char **arg, char *argv)
+hb_proc_make_arg (char **arg, char *args)
 {
-  int i;
+  char *tok, *save;
 
-  for (i = 0; i < HB_MAX_NUM_PROC_ARGV; i++, arg++, argv += HB_MAX_SZ_PROC_ARGV)
+  tok = strtok_r (args, " \t\n", &save);
+
+  while (tok)
     {
-      if ((*argv == 0))
-	{
-	  break;
-	}
-
-      (*arg) = argv;
+      (*arg++) = tok;
+      tok = strtok_r (NULL, " \t\n", &save);
     }
+
   return;
 }
 
@@ -3819,8 +4003,8 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unexpected process's state. " "(fd:%d, pid:%d, state:%d, args:{%s}). \n",
 			   sfd, proc->pid, proc->state, proc->args);
-      /* 
-       * Do not delete process entry. 
+      /*
+       * Do not delete process entry.
        * process entry will be removed by resource job.
        */
 
@@ -3883,6 +4067,7 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
 
   proc->state = HB_PSTATE_DEAD;
   proc->server_hang = false;
+  proc->is_curr_eof_received = false;
   LSA_SET_NULL (&proc->prev_eof);
   LSA_SET_NULL (&proc->curr_eof);
 
@@ -4012,7 +4197,6 @@ hb_register_new_process (CSS_CONN_ENTRY * conn)
 	    }
 	  memcpy ((void *) &proc->exec_path[0], (void *) &hbp_proc_register->exec_path[0], sizeof (proc->exec_path));
 	  memcpy ((void *) &proc->args[0], (void *) &hbp_proc_register->args[0], sizeof (proc->args));
-	  memcpy ((void *) &proc->argv[0], (void *) &hbp_proc_register->argv[0], sizeof (proc->argv));
 	  hb_Resource->num_procs++;
 	}
 
@@ -4096,19 +4280,16 @@ hb_resource_send_changemode (HB_PROC_ENTRY * proc)
     case HB_NSTATE_MASTER:
       {
 	state = HA_SERVER_STATE_ACTIVE;
-	proc->knows_master_hostname = true;
       }
       break;
     case HB_NSTATE_TO_BE_SLAVE:
       {
 	state = HA_SERVER_STATE_STANDBY;
-	proc->knows_master_hostname = false;
       }
       break;
     case HB_NSTATE_SLAVE:
     default:
       {
-	proc->knows_master_hostname = false;
 	return ER_FAILED;
       }
       break;
@@ -4185,24 +4366,20 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
     {
     case HA_SERVER_STATE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_ACTIVE;
-      proc->knows_master_hostname = true;
       break;
 
     case HA_SERVER_STATE_TO_BE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE;
-      proc->knows_master_hostname = true;
       break;
 
     case HA_SERVER_STATE_STANDBY:
       proc->state = HB_PSTATE_REGISTERED_AND_STANDBY;
       hb_Cluster->state = HB_NSTATE_SLAVE;
       hb_Resource->state = HB_NSTATE_SLAVE;
-      proc->knows_master_hostname = false;
       break;
 
     case HA_SERVER_STATE_TO_BE_STANDBY:
       proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_STANDBY;
-      proc->knows_master_hostname = false;
       break;
 
     default:
@@ -4249,6 +4426,23 @@ hb_resource_check_server_log_grow (void)
 	{
 	  proc->server_hang = true;
 	  dead_cnt++;
+
+	  if (proc->is_curr_eof_received)
+	    {
+#if !defined(WINDOWS)
+	      syslog (LOG_ALERT, "[CUBRID] no change to eof [%lld|%d] received from (pid:%d)",
+		      LSA_AS_ARGS (&proc->curr_eof), proc->pid);
+#endif
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "no change to eof [%lld|%d] received from (pid:%d)\n",
+				   LSA_AS_ARGS (&proc->curr_eof), proc->pid);
+	    }
+	  else
+	    {
+#if !defined(WINDOWS)
+	      syslog (LOG_ALERT, "[CUBRID] no response to eof request from (pid:%d)", proc->pid);
+#endif
+	      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "no response to eof request from (pid:%d)\n", proc->pid);
+	    }
 	}
     }
   if (dead_cnt > 0)
@@ -4280,6 +4474,7 @@ hb_resource_send_get_eof (void)
       if (proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
 	{
 	  css_send_heartbeat_request (proc->conn, SERVER_GET_EOF);
+	  proc->is_curr_eof_received = false;
 	}
     }
 
@@ -4321,9 +4516,10 @@ hb_resource_receive_get_eof (CSS_CONN_ENTRY * conn)
   if (proc->state == HB_PSTATE_REGISTERED_AND_ACTIVE)
     {
       or_unpack_log_lsa (reply, &proc->curr_eof);
+      proc->is_curr_eof_received = true;
     }
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "received eof [%lld|%lld]\n", proc->curr_eof.pageid, proc->curr_eof.offset);
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "received eof [%lld|%d]\n", LSA_AS_ARGS (&proc->curr_eof));
 
   pthread_mutex_unlock (&hb_Resource->lock);
 
@@ -4538,6 +4734,8 @@ hb_thread_check_disk_failure (void *arg)
 		  pthread_mutex_unlock (&hb_Cluster->lock);
 #if !defined(WINDOWS)
 		  pthread_mutex_unlock (&css_Master_socket_anchor_lock);
+
+		  syslog (LOG_ALERT, "[CUBRID] %s () at %s:%d", __func__, __FILE__, __LINE__);
 #endif /* !WINDOWS */
 
 		  error = hb_resource_job_queue (HB_RJOB_DEMOTE_START_SHUTDOWN, NULL, HB_JOB_TIMER_IMMEDIATELY);
@@ -4632,7 +4830,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 {
   int rv;
   struct sockaddr_in udp_saddr;
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
 
   if (nodes == NULL)
     {
@@ -4655,7 +4853,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 
   if (GETHOSTNAME (host_name, sizeof (host_name)))
     {
-      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host_name);
       return ER_BO_UNABLE_TO_FIND_HOSTNAME;
     }
 
@@ -4700,6 +4898,25 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
     {
       pthread_mutex_unlock (&hb_Cluster->lock);
       return ER_FAILED;
+    }
+
+  if (hb_Cluster->num_ping_hosts == 0)
+    {
+      /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled. To use TCP ping, ha_ping_hosts should not be set because ha_ping_hosts has a higher priority than ha_tcp_ping_hosts. */
+      hb_Cluster->num_ping_hosts = hb_cluster_load_tcp_ping_host_list (prm_get_string_value (PRM_ID_HA_TCP_PING_HOSTS));
+      hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT) * 1000;	/* change to msecs */
+
+      if (hb_cluster_check_valid_ping_server () == false)
+	{
+	  pthread_mutex_unlock (&hb_Cluster->lock);
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is failed to initialize.\n");
+	  return ER_FAILED;
+	}
+
+      if (hb_Cluster->num_ping_hosts)
+	{
+	  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is initialized successfully.\n");
+	}
     }
 
 #if defined (HB_VERBOSE_DEBUG)
@@ -4796,16 +5013,6 @@ hb_resource_job_initialize ()
   error =
     hb_resource_job_queue (HB_RJOB_CHANGE_MODE, NULL,
 			   prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
-			   prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
-  if (error != NO_ERROR)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  /* TODO add other timers */
-  error =
-    hb_resource_job_queue (HB_RJOB_SEND_MASTER_HOSTNAME, NULL, prm_get_integer_value (PRM_ID_HA_INIT_TIMER_IN_MSECS) +
 			   prm_get_integer_value (PRM_ID_HA_FAILOVER_WAIT_TIME_IN_MSECS));
   if (error != NO_ERROR)
     {
@@ -5132,8 +5339,10 @@ hb_cluster_cleanup (void)
 
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (hb_Cluster->host_name, node->host_name) == 0)
-	continue;
+      if (are_hostnames_equal (hb_Cluster->host_name, node->host_name))
+	{
+	  continue;
+	}
 
       hb_cluster_send_heartbeat_req (node->host_name);
       node->heartbeat_gap++;
@@ -5153,6 +5362,7 @@ hb_cluster_cleanup (void)
   hb_cluster_remove_all_ping_hosts (hb_Cluster->ping_hosts);
   hb_Cluster->ping_hosts = NULL;
   hb_Cluster->num_ping_hosts = 0;
+  hb_Cluster->ping_timeout = 0;
 
   hb_cluster_remove_all_ui_nodes (hb_Cluster->ui_nodes);
   hb_Cluster->ui_nodes = NULL;
@@ -5251,7 +5461,7 @@ hb_ping_result_string (int ping_result)
 static int
 hb_reload_config (void)
 {
-  int rv, old_num_nodes, old_num_ping_hosts, error;
+  int rv, old_num_nodes, old_num_ping_hosts, old_ping_timeout, error;
   HB_NODE_ENTRY *old_nodes;
   HB_NODE_ENTRY *old_node, *old_myself, *old_master, *new_node;
   HB_PING_HOST_ENTRY *old_ping_hosts;
@@ -5278,6 +5488,7 @@ hb_reload_config (void)
   /* backup old ping hosts */
   hb_list_move ((HB_LIST **) (&old_ping_hosts), (HB_LIST **) (&hb_Cluster->ping_hosts));
   old_num_ping_hosts = hb_Cluster->num_ping_hosts;
+  old_ping_timeout = hb_Cluster->ping_timeout;
 
   hb_Cluster->ping_hosts = NULL;
 
@@ -5296,6 +5507,20 @@ hb_reload_config (void)
     {
       error = ER_FAILED;
       goto reconfig_error;
+    }
+
+  /* reload tcp ping hosts */
+  if (hb_Cluster->num_ping_hosts == 0)
+    {
+      /* The ha_tcp_ping_hosts can be used instead of the ha_ping_hosts in case the ICMP protocol is disabled. To use TCP ping, ha_ping_hosts should not be set because ha_ping_hosts has a higher priority than ha_tcp_ping_hosts. */
+      hb_Cluster->num_ping_hosts = hb_cluster_load_tcp_ping_host_list (prm_get_string_value (PRM_ID_HA_TCP_PING_HOSTS));
+      hb_Cluster->ping_timeout = prm_get_integer_value (PRM_ID_HA_PING_TIMEOUT) * 1000;	/* change to msecs */
+
+      if (hb_cluster_check_valid_ping_server () == false)
+	{
+	  pthread_mutex_unlock (&hb_Cluster->lock);
+	  return ER_FAILED;
+	}
     }
 
   /* reload node list */
@@ -5318,11 +5543,11 @@ hb_reload_config (void)
 #endif
       for (old_node = old_nodes; old_node; old_node = old_node->next)
 	{
-	  if (strcmp (new_node->host_name, old_node->host_name))
+	  if (!are_hostnames_equal (new_node->host_name, old_node->host_name))
 	    {
 	      continue;
 	    }
-	  if (old_master && strcmp (new_node->host_name, old_master->host_name) == 0)
+	  if (old_master && are_hostnames_equal (new_node->host_name, old_master->host_name))
 	    {
 	      hb_Cluster->master = new_node;
 	    }
@@ -5360,6 +5585,7 @@ reconfig_error:
 
 /* restore ping hosts */
   hb_Cluster->num_ping_hosts = old_num_ping_hosts;
+  hb_Cluster->ping_timeout = old_ping_timeout;
 
   hb_cluster_remove_all_ping_hosts (hb_Cluster->ping_hosts);
 
@@ -5535,7 +5761,7 @@ hb_get_ping_host_info_string (char **str)
   buf_size += required_size;
 
   required_size = strlen (HA_PING_HOSTS_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;
+  required_size += CUB_MAXHOSTNAMELEN;
   required_size += HB_PING_STR_SIZE;	/* length of ping test result */
   required_size *= hb_Cluster->num_ping_hosts;
 
@@ -5560,6 +5786,94 @@ hb_get_ping_host_info_string (char **str)
     {
       p +=
 	snprintf (p, MAX ((last - p), 0), HA_PING_HOSTS_FORMAT_STRING, ping_host->host_name,
+		  hb_ping_result_string (ping_host->ping_result));
+    }
+
+  pthread_mutex_unlock (&hb_Cluster->lock);
+
+  return;
+}
+
+/*
+ * hb_get_tcp_ping_host_info_string -
+ *   return: none
+ *
+ *   str(out):
+ */
+void
+hb_get_tcp_ping_host_info_string (char **str)
+{
+  int rv, buf_size = 0, required_size = 0;
+  char *p, *last;
+  bool valid_ping_host_exists;
+  bool is_ping_check_enabled = true;
+  HB_PING_HOST_ENTRY *ping_host;
+
+  if (hb_Cluster == NULL)
+    {
+      return;
+    }
+
+  if (*str)
+    {
+      **str = 0;
+      return;
+    }
+
+  rv = pthread_mutex_lock (&hb_Cluster->lock);
+
+  if (hb_Cluster->num_ping_hosts == 0)
+    {
+      pthread_mutex_unlock (&hb_Cluster->lock);
+      return;
+    }
+
+  /* refresh ping host info */
+  valid_ping_host_exists = hb_cluster_check_valid_ping_server ();
+
+  if (valid_ping_host_exists == false && hb_cluster_is_isolated () == false)
+    {
+      is_ping_check_enabled = false;
+    }
+
+  if (is_ping_check_enabled != hb_Cluster->is_ping_check_enabled)
+    {
+      hb_cluster_job_set_expire_and_reorder (HB_CJOB_CHECK_VALID_PING_SERVER, HB_JOB_TIMER_IMMEDIATELY);
+    }
+
+  required_size = strlen (HA_TCP_PING_HOSTS_INFO_FORMAT_STRING);
+  required_size += 7;		/* length of ping check status */
+
+  buf_size += required_size;
+
+  required_size = strlen (HA_TCP_PING_HOSTS_FORMAT_STRING);
+  required_size += 10;
+  required_size += CUB_MAXHOSTNAMELEN;
+  required_size += HB_PING_STR_SIZE;	/* length of ping test result */
+  required_size *= hb_Cluster->num_ping_hosts;
+
+  buf_size += required_size;
+
+  *str = (char *) malloc (sizeof (char) * buf_size);
+  if (*str == NULL)
+    {
+      pthread_mutex_unlock (&hb_Cluster->lock);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char) * buf_size);
+      return;
+    }
+  **str = '\0';
+
+  p = (char *) (*str);
+  last = p + buf_size;
+
+  p +=
+    snprintf (p, MAX ((last - p), 0), HA_TCP_PING_HOSTS_INFO_FORMAT_STRING,
+	      is_ping_check_enabled ? "enabled" : "disabled");
+
+  for (ping_host = hb_Cluster->ping_hosts; ping_host; ping_host = ping_host->next)
+    {
+      p +=
+	snprintf (p, MAX ((last - p), 0), HA_TCP_PING_HOSTS_FORMAT_STRING, ping_host->host_name, ping_host->port,
 		  hb_ping_result_string (ping_host->ping_result));
     }
 
@@ -5598,12 +5912,12 @@ hb_get_node_info_string (char **str, bool verbose_yn)
     }
 
   required_size = strlen (HA_NODE_INFO_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;	/* length of node name */
+  required_size += CUB_MAXHOSTNAMELEN;	/* length of node name */
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   buf_size += required_size;
 
   required_size = strlen (HA_NODE_FORMAT_STRING);
-  required_size += MAXHOSTNAMELEN;	/* length of node name */
+  required_size += CUB_MAXHOSTNAMELEN;	/* length of node name */
   required_size += 5;		/* length of priority */
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   if (verbose_yn)
@@ -6378,10 +6692,10 @@ hb_check_ping (const char *host)
   FILE *fp;
   HB_NODE_ENTRY *node;
 
-  /* If host_p is in the cluster node, then skip to check */
+  /* If host is in the cluster node, then skip to check */
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
-      if (strcmp (host, node->host_name) == 0)
+      if (are_hostnames_equal (host, node->host_name))
 	{
 	  /* PING Host is same as cluster's host name */
 	  snprintf (buf, sizeof (buf), "Useless PING host name %s", host);
@@ -6423,6 +6737,49 @@ hb_check_ping (const char *host)
   return HB_PING_SUCCESS;
 }
 
+/*
+ * hb_check_tcp_ping -
+ *   return : int
+ *
+ */
+static int
+hb_check_tcp_ping (const char *host, int port, int timeout)
+{
+  char buf[128];
+  HB_NODE_ENTRY *node;
+  SOCKET sfd = INVALID_SOCKET;
+
+  /* If host is in the cluster node, then skip to check */
+  for (node = hb_Cluster->nodes; node; node = node->next)
+    {
+      if (are_hostnames_equal (host, node->host_name))
+	{
+	  /* PING Host is same as cluster's host name */
+	  snprintf (buf, sizeof (buf), "Useless TCP PING host name %s", host);
+	  MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+	  return HB_PING_USELESS_HOST;
+	}
+    }
+
+  sfd = css_tcp_client_open_with_timeout (host, port, timeout);
+
+  if (IS_INVALID_SOCKET (sfd))
+    {
+      /* ping failed */
+      snprintf (buf, sizeof (buf), "TCP PING failed for host %s, port %d, timeout %d msecs", host, port, timeout);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_NODE_EVENT, 1, buf);
+
+      return HB_PING_FAILURE;
+    }
+
+  css_shutdown_socket (sfd);
+
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "TCP PING is success on host %s, port %d, timeout %d msecs.\n", host, port,
+		       timeout);
+
+  return HB_PING_SUCCESS;
+}
+
 static int
 hb_help_sprint_ping_host_info (char *buffer, int max_length)
 {
@@ -6456,6 +6813,48 @@ hb_help_sprint_ping_host_info (char *buffer, int max_length)
     {
       p +=
 	snprintf (p, MAX ((last - p), 0), "%-20s %-20s\n", ping_host->host_name,
+		  hb_ping_result_string (ping_host->ping_result));
+    }
+  p +=
+    snprintf (p, MAX ((last - p), 0),
+	      "==============================" "==================================================\n");
+
+  return p - buffer;
+}
+
+static int
+hb_help_sprint_tcp_ping_host_info (char *buffer, int max_length)
+{
+  HB_PING_HOST_ENTRY *ping_host;
+  char *p, *last;
+
+  if (*buffer != '\0')
+    {
+      memset (buffer, 0, max_length);
+    }
+
+  p = buffer;
+  last = buffer + max_length;
+
+  p += snprintf (p, MAX ((last - p), 0), "HA TCP Ping Host Info\n");
+  p +=
+    snprintf (p, MAX ((last - p), 0),
+	      "==============================" "==================================================\n");
+
+  p +=
+    snprintf (p, MAX ((last - p), 0), " * TCP PING check is %s\n",
+	      hb_Cluster->is_ping_check_enabled ? "enabled" : "disabled");
+  p +=
+    snprintf (p, MAX ((last - p), 0),
+	      "------------------------------" "--------------------------------------------------\n");
+  p += snprintf (p, MAX ((last - p), 0), "%-20s %-10s %-20s\n", "hostname", "port", "TCP PING check result");
+  p +=
+    snprintf (p, MAX ((last - p), 0),
+	      "------------------------------" "--------------------------------------------------\n");
+  for (ping_host = hb_Cluster->ping_hosts; ping_host; ping_host = ping_host->next)
+    {
+      p +=
+	snprintf (p, MAX ((last - p), 0), "%-20s %-10d %-20s\n", ping_host->host_name, ping_host->port,
 		  hb_ping_result_string (ping_host->ping_result));
     }
   p +=
@@ -6784,7 +7183,7 @@ hb_return_proc_state_by_fd (int sfd)
 
 /*
  * hb_is_hang_process() -
- *   return: 
+ *   return:
  *
  *   sfd(in):
  */
@@ -6815,24 +7214,4 @@ hb_is_hang_process (int sfd)
   pthread_mutex_unlock (&hb_Resource->lock);
 
   return false;
-}
-
-char *
-hb_find_host_name_of_master_server ()
-{
-  HB_NODE_ENTRY *node;
-
-  int rv = pthread_mutex_lock (&hb_Cluster->lock);
-  for (node = hb_Cluster->nodes; node; node = node->next)
-    {
-      if (node->state == HB_NSTATE_MASTER && hb_Cluster->master == node)
-	{
-	  assert (strcmp (node->host_name, hb_Cluster->master->host_name) == 0);
-	  pthread_mutex_unlock (&hb_Cluster->lock);
-	  return node->host_name;
-	}
-    }
-  pthread_mutex_unlock (&hb_Cluster->lock);
-
-  return NULL;
 }

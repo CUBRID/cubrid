@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
  */
 
 /*
@@ -26,11 +26,14 @@
 #ifndef _DB_VALUE_PRINTER_HPP_
 #define _DB_VALUE_PRINTER_HPP_
 
-struct db_collection;
+#include <cstdio>
+
+struct db_set;
 struct db_midxkey;
 struct db_monetary;
 struct db_value;
 class string_buffer;
+class print_output;
 
 class db_value_printer
 {
@@ -48,10 +51,15 @@ class db_value_printer
     void describe_money (const db_monetary *value); //former describe_money(parser...)
     void describe_value (const db_value *value);    //former describe_value(parser...)
     void describe_data (const db_value *value);     //former describe_data(parser...)
+    void describe_comment_value (const db_value *value);    //former describe_value(parser...)
 
   protected:
     void describe_midxkey (const db_midxkey *midxkey, int help_Max_set_elements=20);  //former describe_midxkey()
-    void describe_set (const db_collection *set, int help_Max_set_elements=20);       //former describe_set()
+    void describe_set (const db_set *set, int help_Max_set_elements=20);       //former describe_set()
 };
+
+void db_fprint_value (FILE *fp, const db_value *value);
+void db_print_value (print_output &output_ctx, const db_value *value);
+void db_sprint_value (const db_value *value, string_buffer &sb);
 
 #endif //_DB_VALUE_PRINTER_HPP_

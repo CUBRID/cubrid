@@ -16,7 +16,7 @@ Before you run ha_make_slavedb.sh, you should configure some parameters in ha_ma
   - backup_option    : Additional options for cubrid backupdb. Optional.
   - restore_option   : Additional options for cubrid restoredb. Optional.
   - scp_option       : scp utility options. ha_make_slavedb.sh uses 'scp' to copy a backup volume from a master to a slave. The default values of '-l 16M' means there's a network limitation of 16MB.
-
+  - ssh_port         : port number for scp and ssh utility.
 
   example)
      # user specific options
@@ -33,7 +33,7 @@ Before you run ha_make_slavedb.sh, you should configure some parameters in ha_ma
      backup_option=
      restore_option=
      scp_option="-l 131072"  # default - limit : 16M*1024*8=131072
-
+     ssh_port=22
 
 3. How to use
 

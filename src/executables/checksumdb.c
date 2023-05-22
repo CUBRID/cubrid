@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -31,6 +30,7 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "error_code.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
@@ -53,6 +53,7 @@
 
 #define CHKSUM_DEFAULT_LIST_SIZE	10
 #define CHKSUM_MIN_CHUNK_SIZE		100
+#define CHKSUM_DEFAULT_TABLE_OWNER_NAME	"dba"
 #define CHKSUM_DEFAULT_TABLE_NAME	"db_ha_checksum"
 #define CHKSUM_SCHEMA_TABLE_SUFFIX	"_schema"
 
@@ -410,12 +411,26 @@ chksum_report_summary (FILE * fp)
   CHKSUM_PRINT_AND_LOG (fp,
 			"-------------------------------------------------" "-------------------------------------\n");
 
+  // *INDENT-OFF*
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT " CHKSUM_TABLE_CLASS_NAME_COL ", " "COUNT (*), " "COUNT(CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL
-	    " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL THEN 1 END), "
-	    " SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), " " MAX ("
-	    CHKSUM_TABLE_ELAPSED_TIME_COL ") " "FROM %s GROUP BY " CHKSUM_TABLE_CLASS_NAME_COL,
-	    chksum_result_Table_name);
+        "SELECT "
+          CHKSUM_TABLE_CLASS_NAME_COL ", "
+          "CAST (COUNT (*) AS INTEGER), "
+          "CAST (COUNT ("
+              "CASE WHEN " CHKSUM_TABLE_MASTER_CHEKSUM_COL " <> " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " "
+                         "OR " CHKSUM_TABLE_CHUNK_CHECKSUM_COL " IS NULL "
+                         "THEN 1 "
+              "END"
+            ") AS INTEGER), "
+          "SUM (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+          "MIN (" CHKSUM_TABLE_ELAPSED_TIME_COL "), "
+          "MAX (" CHKSUM_TABLE_ELAPSED_TIME_COL ") "
+        "FROM "
+          "%s "
+        "GROUP BY "
+          CHKSUM_TABLE_CLASS_NAME_COL,
+        chksum_result_Table_name);
+  // *INDENT-ON*
 
   res = db_execute (query_buf, &query_result, &query_error);
   if (res > 0)
@@ -823,7 +838,7 @@ chksum_get_prev_checksum_results (void)
     {
       int pos;
       int out_val_idx;
-      char *db_string_p = NULL;
+      const char *db_string_p = NULL;
 
       pos = db_query_first_tuple (query_result);
       while (pos == DB_CURSOR_SUCCESS)
@@ -1687,7 +1702,7 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, cons
 
   query = (const char *) pt_get_varchar_bytes (checksum_query);
 
-  /* 
+  /*
    * write replication log first and release all locks
    * to avoid long lock wait of other concurrent clients on active server
    */
@@ -1782,16 +1797,16 @@ chksum_need_skip_table (const char *table_name, CHKSUM_ARG * chksum_arg)
 static int
 chksum_start (CHKSUM_ARG * chksum_arg)
 {
-  PARSER_CONTEXT *parser;
-  DB_OBJLIST *tbl_list, *tbl;
-  DB_OBJECT *classobj;
+  PARSER_CONTEXT *parser = NULL;
+  DB_OBJLIST *tbl_list = NULL, *tbl = NULL;
+  DB_OBJECT *classobj = NULL;
   DB_CONSTRAINT *constraints = NULL, *pk_cons = NULL;
-  DB_ATTRIBUTE *attributes;
-  PARSER_VARCHAR *lower_bound, *next_lower_bound;
-  OID *class_oidp;
+  DB_ATTRIBUTE *attributes = NULL;
+  PARSER_VARCHAR *lower_bound = NULL, *next_lower_bound = NULL;
+  OID *class_oidp = NULL;
 
   char err_msg[LINE_MAX];
-  const char *table_name;
+  const char *table_name = NULL;
   int error = NO_ERROR;
   int chunk_id = 0;
   int repid = -1;
@@ -2079,12 +2094,15 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   char er_msg_file[PATH_MAX];
   const char *database_name = NULL;
   CHKSUM_ARG chksum_arg;
+  dynamic_array *list = NULL;
+  char table_in_list[SM_MAX_IDENTIFIER_LENGTH];
   char *incl_class_file = NULL;
   char *excl_class_file = NULL;
   char *checksum_table = NULL;
   bool report_only = false;
   HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
   int error = NO_ERROR;
+  int i = 0;
 
   memset (&chksum_arg, 0, sizeof (CHKSUM_ARG));
 
@@ -2107,15 +2125,58 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   checksum_table = utility_get_option_string_value (arg_map, CHECKSUM_TABLE_NAME_S, 0);
   if (sm_check_name (checksum_table) > 0)
     {
+      if (utility_check_class_name (checksum_table) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      /* The owner of checksum_table must be a DBA. */
+      if (strncasecmp (checksum_table, "dba.", 4) != 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_INVALID_OWNER));
+	  util_log_write_errid (CHECKSUMDB_MSG_INVALID_OWNER);
+	  goto error_exit;
+	}
+
       snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", checksum_table);
+
+      /* Check the length when "_schema" is added. */
+      if (snprintf (NULL, 0, "%s%s", chksum_result_Table_name, CHKSUM_SCHEMA_TABLE_SUFFIX) >= SM_MAX_IDENTIFIER_LENGTH)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GENERIC,
+				  MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH), SM_MAX_USER_LENGTH,
+				 SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+	  util_log_write_errid (MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH);
+	  return ER_FAILED;
+	  goto error_exit;
+	}
+
+      if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
+		    CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
+	{
+	  assert (false);
+	  goto error_exit;
+	}
+
+      if (utility_check_class_name (chksum_schema_Table_name) != NO_ERROR)
+	{
+	  goto error_exit;
+	}
     }
   else
     {
-      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s", CHKSUM_DEFAULT_TABLE_NAME);
-    }
+      snprintf (chksum_result_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", CHKSUM_DEFAULT_TABLE_OWNER_NAME,
+		CHKSUM_DEFAULT_TABLE_NAME);
 
-  snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH, "%s%s", chksum_result_Table_name,
-	    CHKSUM_SCHEMA_TABLE_SUFFIX);
+      if (snprintf (chksum_schema_Table_name, SM_MAX_IDENTIFIER_LENGTH - 1, "%s%s", chksum_result_Table_name,
+		    CHKSUM_SCHEMA_TABLE_SUFFIX) < 0)
+	{
+	  assert (false);
+	  goto error_exit;
+	}
+    }
 
   report_only = utility_get_option_bool_value (arg_map, CHECKSUM_REPORT_ONLY_S);
   if (report_only == true)
@@ -2142,6 +2203,16 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 				 incl_class_file);
 	  goto error_exit;
 	}
+
+      list = chksum_arg.include_list;
+      for (i = 0; i < da_size (list); i++)
+	{
+	  da_get (list, i, table_in_list);
+	  if (utility_check_class_name (table_in_list) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
     }
 
   if (excl_class_file != NULL)
@@ -2153,6 +2224,16 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CHECKSUMDB, CHECKSUMDB_MSG_INVALID_INPUT_FILE),
 				 excl_class_file);
 	  goto error_exit;
+	}
+
+      list = chksum_arg.exclude_list;
+      for (i = 0; i < da_size (list); i++)
+	{
+	  da_get (list, i, table_in_list);
+	  if (utility_check_class_name (table_in_list) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 	}
     }
 

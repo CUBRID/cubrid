@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -199,6 +198,7 @@ static META_ATTRIBUTE class_atts[] = {
   {"class_type", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
   {"owner", DB_TYPE_OBJECT, 1, "object", 0, 0, NULL},
   {"collation_id", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
+  {"tde_encryption_algorithm", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
   {"name", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"loader_commands", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"representations", DB_TYPE_SET, 0, META_REPRESENTATION_NAME, 1, 0, NULL},
@@ -290,6 +290,8 @@ static CT_ATTR ct_class_atts[] = {
   {"class_type", NULL_ATTRID, DB_TYPE_INTEGER},
   {"owner", NULL_ATTRID, DB_TYPE_OBJECT},
   {"collation_id", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"tde_algorithm", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"unique_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"class_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"sub_classes", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"super_classes", NULL_ATTRID, DB_TYPE_SEQUENCE},
@@ -412,95 +414,93 @@ static CT_ATTR ct_partition_atts[] = {
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
-#define NULL_OID_INITIALIZER    {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
-
 CT_CLASS ct_Class = {
   CT_CLASS_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_class_atts) / sizeof (ct_class_atts[0])),
   ct_class_atts
 };
 
 CT_CLASS ct_Attribute = {
   CT_ATTRIBUTE_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_attribute_atts) / sizeof (ct_attribute_atts[0])),
   ct_attribute_atts
 };
 
 CT_CLASS ct_Attrid = {
   NULL,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_attrid_atts) / sizeof (ct_attrid_atts[0])),
   ct_attrid_atts
 };
 
 CT_CLASS ct_Domain = {
   CT_DOMAIN_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_domain_atts) / sizeof (ct_domain_atts[0])),
   ct_domain_atts
 };
 
 CT_CLASS ct_Method = {
   CT_METHOD_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_method_atts) / sizeof (ct_method_atts[0])),
   ct_method_atts
 };
 
 CT_CLASS ct_Methsig = {
   CT_METHSIG_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_methsig_atts) / sizeof (ct_methsig_atts[0])),
   ct_methsig_atts
 };
 
 CT_CLASS ct_Metharg = {
   CT_METHARG_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_metharg_atts) / sizeof (ct_metharg_atts[0])),
   ct_metharg_atts
 };
 
 CT_CLASS ct_Methfile = {
   CT_METHFILE_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_methfile_atts) / sizeof (ct_methfile_atts[0])),
   ct_methfile_atts
 };
 
 CT_CLASS ct_Queryspec = {
   CT_QUERYSPEC_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_queryspec_atts) / sizeof (ct_queryspec_atts[0])),
   ct_queryspec_atts
 };
 
 CT_CLASS ct_Partition = {
   CT_PARTITION_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_partition_atts) / sizeof (ct_partition_atts[0])),
   ct_partition_atts
 };
 
 CT_CLASS ct_Resolution = {
   NULL,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_resolution_atts) / sizeof (ct_resolution_atts[0])),
   ct_resolution_atts
 };
 
 CT_CLASS ct_Index = {
   CT_INDEX_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_index_atts) / sizeof (ct_index_atts[0])),
   ct_index_atts
 };
 
 CT_CLASS ct_Indexkey = {
   CT_INDEXKEY_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_indexkey_atts) / sizeof (ct_indexkey_atts[0])),
   ct_indexkey_atts
 };
@@ -572,7 +572,7 @@ tf_compile_meta_classes ()
 	    }
 	  else if (class_->mc_n_variable)
 	    {
-	      /* 
+	      /*
 	       * can't have fixed width attributes AFTER variable width
 	       * attributes
 	       */
@@ -580,7 +580,7 @@ tf_compile_meta_classes ()
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * need a domain for size calculations, since we don't use
 	       * any parameterized types this isn't necessary but we still must
 	       * have it to call tp_domain_isk_size().
@@ -603,7 +603,7 @@ tf_compile_meta_classes ()
 int
 tf_install_meta_classes ()
 {
-  /* 
+  /*
    * no longer making catalog entries, eventually build the meta-class object
    * here
    */

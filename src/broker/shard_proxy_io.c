@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -1720,7 +1719,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 
 	  CAS_PROTO_TO_VER_STR (&ver, (int) (CAS_PROTO_VER_MASK & client_version));
 
-	  strncpy (driver_version, ver, SRV_CON_VER_STR_MAX_SIZE);
+	  strncpy_bufsize (driver_version, ver);
 	}
       else
 	{
@@ -1811,7 +1810,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 connection_established:
   if (ctx_p->error_ind != CAS_NO_ERROR)
     {
-      /* 
+      /*
        * Process error message if exists.
        * context will be freed after sending error message.
        */
@@ -2010,7 +2009,7 @@ proxy_process_client_read_error (T_SOCKET_IO * sock_io_p)
   assert (sock_io_p);
 
 #if defined(LINUX)
-  /* 
+  /*
    * If connection error event was triggered by EPOLLERR, EPOLLHUP,
    * there could be no error events.
    */
@@ -2361,7 +2360,7 @@ proxy_process_cas_read_error (T_SOCKET_IO * sock_io_p)
   assert (sock_io_p);
 
 #if defined(LINUX)
-  /* 
+  /*
    * If connection error event was triggered by EPOLLERR, EPOLLHUP,
    * there could be no error events.
    */
@@ -2754,7 +2753,7 @@ proxy_socket_io_write (T_SOCKET_IO * sock_io_p)
     {
       PROXY_DEBUG_LOG ("Unexpected socket status. (fd:%d, status:%d). \n", sock_io_p->fd, sock_io_p->status);
 
-      /* 
+      /*
        * free writer event when sock status is 'close wait'
        */
       if (sock_io_p->write_event)
@@ -2829,7 +2828,7 @@ proxy_socket_io_read (T_SOCKET_IO * sock_io_p)
 
       PROXY_DEBUG_LOG ("Unexpected socket status. " "socket will be closed. " "(fd:%d, status:%d).", sock_io_p->fd,
 		       sock_io_p->status);
-      // 
+      //
       // proxy_io_buffer_clear (&sock_io_p->recv_buffer);
 
       // assert (false);
@@ -3027,7 +3026,7 @@ proxy_client_io_new (SOCKET fd, char *driver_info)
 
       if (proxy_Client_io.cur_client > proxy_Client_io.max_client)
 	{
-	  /* 
+	  /*
 	   * Error message would be retured when processing
 	   * register(db_info) request.
 	   */
@@ -3626,8 +3625,6 @@ proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id, int ctx_cid, un
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid shard/CAS id is requested. " "(shard_id:%d, cas_id:%d). ", shard_id,
 		 cas_id);
-
-      assert (false);
 
       return NULL;
     }
@@ -4609,8 +4606,8 @@ proxy_set_conn_info (int func_code, int ctx_cid, int ctx_uid, int shard_id, int 
   /* this cas will reconnect to database. */
   shard_stmt_del_all_srv_h_id_for_shard_cas (shard_id, cas_id);
 
-  strncpy (as_info_p->database_user, ctx_p->database_user, SRV_CON_DBUSER_SIZE - 1);
-  strncpy (as_info_p->database_passwd, ctx_p->database_passwd, SRV_CON_DBPASSWD_SIZE - 1);
+  strncpy_bufsize (as_info_p->database_user, ctx_p->database_user);
+  strncpy_bufsize (as_info_p->database_passwd, ctx_p->database_passwd);
 }
 
 static T_CAS_IO *
@@ -4920,6 +4917,32 @@ proxy_convert_error_code (int error_ind, int error_code, char *driver_info, T_BR
     }
 
   return error_code;
+}
+
+int
+proxy_context_direct_send_error (T_PROXY_CONTEXT * ctx_p)
+{
+  T_CLIENT_IO *cli_io_p = NULL;
+  T_SOCKET_IO *sock_io_p = NULL;
+
+  cli_io_p = proxy_client_io_find_by_ctx (ctx_p->client_id, ctx_p->cid, ctx_p->uid);
+  if (cli_io_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find client. " "(client_id:%d, context id:%d, context uid:%u).",
+		 ctx_p->client_id, ctx_p->cid, ctx_p->uid);
+
+      return -1;
+    }
+
+  sock_io_p = proxy_socket_io_find (cli_io_p->fd);
+  if (sock_io_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find socket entry. (fd:%d).", cli_io_p->fd);
+      return -1;
+    }
+
+  proxy_socket_io_write (sock_io_p);
+  return 0;
 }
 
 #if defined(LINUX)

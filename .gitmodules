@@ -2,3 +2,11 @@
 	path = cubridmanager
 	url = https://github.com/CUBRID/cubrid-manager-server
 	branch = develop
+[submodule "cubrid-jdbc"]
+	path = cubrid-jdbc
+	url = https://github.com/cubrid/cubrid-jdbc
+	branch = develop
+[submodule "cubrid-cci"]
+	path = cubrid-cci
+	url = https://github.com/CUBRID/cubrid-cci.git
+	branch = develop

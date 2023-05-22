@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -38,6 +37,7 @@
 #include "class_object.h"	/* for SM_CLASS */
 #include "schema_template.h"	/* template interface */
 #include "trigger_manager.h"	/* for TR_EVENT_TYPE */
+#include "tde.h"
 
 /*
  * This is NOT the "object" class but rather functions more like
@@ -79,6 +79,7 @@ struct sm_constraint_info
   SM_FOREIGN_KEY_ACTION fk_update_action;
   DB_CONSTRAINT_TYPE constraint_type;
   const char *comment;
+  SM_INDEX_STATUS index_status;	// Used to save index_status in case of rebuild or moving the constraint
 };
 
 extern ROOT_CLASS sm_Root_class;
@@ -94,15 +95,11 @@ extern int sm_update_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth, bool lock_hierarchy);
 extern int sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_delete_class_mop (MOP op, bool is_cascade_constraints);
+extern int ib_get_thread_count ();
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int sm_delete_class (const char *name);
 #endif
 
-#if 0				// TODO - remove it
-extern int sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *constraint_name,
-			 const char **attnames, const int *asc_desc, const int *attrs_prefix_length,
-			 SM_PREDICATE_INFO * pred_info, SM_FUNCTION_INFO * fi_info, const char *comment);
-#endif
 extern int sm_get_index (MOP classop, const char *attname, BTID * index);
 extern char *sm_produce_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE constraint_type,
 					 const char **att_names, const int *asc_desc, const char *given_name);
@@ -130,11 +127,14 @@ extern void sm_mark_system_class_for_catalog (void);
 #endif /* SA_MODE */
 extern int sm_mark_system_class (MOP classop, int on_or_off);
 extern int sm_is_system_class (MOP op);
+extern bool sm_check_system_class_by_name (const char *name);
 extern bool sm_is_reuse_oid_class (MOP op);
 extern int sm_check_reuse_oid_class (MOP op);
 extern int sm_is_partitioned_class (MOP op);
 extern int sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyattr, MOP ** partitions);
 extern int sm_set_class_flag (MOP classop, SM_CLASS_FLAG flag, int onoff);
+extern int sm_set_class_tde_algorithm (MOP classop, TDE_ALGORITHM tde_algo);
+extern int sm_get_class_tde_algorithm (MOP classop, TDE_ALGORITHM * tde_algo);
 extern int sm_get_class_flag (MOP op, SM_CLASS_FLAG flag);
 extern int sm_set_class_collation (MOP classop, int collation_id);
 extern int sm_get_class_collation (MOP classop, int *collation_id);
@@ -152,7 +152,13 @@ extern int sm_force_method_link (MOP obj);
 
 extern char *sm_get_method_source_file (MOP obj, const char *name);
 
-extern int sm_truncate_class (MOP class_mop);
+extern int sm_truncate_class (MOP class_mop, const bool is_cascade);
+extern int sm_truncate_using_delete (MOP class_mop);
+extern int sm_truncate_using_destroy_heap (MOP class_mop);
+
+bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const class_,
+					    const SM_CLASS_CONSTRAINT * const constraint);
+
 
 extern int sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info, const SM_CLASS_CONSTRAINT * const c);
 extern int sm_save_function_index_info (SM_FUNCTION_INFO ** save_info, SM_FUNCTION_INFO * func_index_info);
@@ -199,9 +205,6 @@ extern OID *sm_get_ch_rep_dir (MOP classmop);
 
 extern int sm_is_subclass (MOP classmop, MOP supermop);
 extern int sm_is_partition (MOP classmop, MOP supermop);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int sm_object_size (MOP op);
-#endif
 extern int sm_object_size_quick (SM_CLASS * class_, MOBJ obj);
 extern SM_CLASS_CONSTRAINT *sm_class_constraints (MOP classop);
 
@@ -213,9 +216,14 @@ extern OID *sm_ch_rep_dir (MOBJ clobj);
 extern bool sm_has_indexes (MOBJ class_);
 
 /* Interpreter support functions */
-extern void sm_downcase_name (const char *name, char *buf, int maxlen);
+extern char *sm_downcase_name (const char *name, char *buf, int buf_size);
+extern char *sm_user_specified_name (const char *name, char *buf, int buf_size);
+extern char *sm_qualifier_name (const char *name, char *buf, int buf_size);
+extern const char *sm_remove_qualifier_name (const char *name);
 extern MOP sm_find_class (const char *name);
 extern MOP sm_find_class_with_purpose (const char *name, bool for_update);
+extern MOP sm_find_synonym (const char *name);
+extern char *sm_get_synonym_target_name (MOP synonym, char *buf, int buf_size);
 
 extern const char *sm_get_att_name (MOP classop, int id);
 extern int sm_att_id (MOP classop, const char *name);
@@ -306,7 +314,9 @@ extern int classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * bti
 
 /* currently this is a private function to be called only by AU_SET_USER */
 extern int sc_set_current_schema (MOP user);
-/* Obtain (pointer to) current schema name.                            */
+extern const char *sc_current_schema_name (void);
+extern MOP sc_current_schema_owner (void);
+/* Obtain (pointer to) current schema name. */
 
 extern int sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs);
 extern void sm_free_function_index_info (SM_FUNCTION_INFO * func_index_info);
@@ -320,5 +330,10 @@ extern int sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const ch
 #endif
 
 extern int sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop, bool * found);
+extern bool sm_is_index_visible (SM_CLASS_CONSTRAINT * constraint_list, BTID btid);
+
+SM_DOMAIN *sm_domain_alloc ();
+void sm_domain_free (SM_DOMAIN * ptr);
+SM_DOMAIN *sm_domain_copy (SM_DOMAIN * ptr);
 
 #endif /* _SCHEMA_MANAGER_H_ */

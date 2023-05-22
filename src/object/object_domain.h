@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -28,10 +27,9 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "dbtype_def.h"
 
 #include <stdio.h>
-#include "error_manager.h"
-#include "area_alloc.h"
 
 #if defined (__cplusplus)
 class JSON_VALIDATOR;
@@ -96,7 +94,7 @@ typedef struct tp_domain
   TP_DOMAIN_COLL_ACTION collation_flag;
 
   unsigned self_ref:1;		/* object self reference */
-  /* 
+  /*
    * merge this with self_ref when we get a chance to rebuild the whole
    * system
    */
@@ -141,10 +139,6 @@ typedef struct tp_alloc_context
 #define TP_FREE(con, mem) \
   (*(con)->free_func)(mem, (con)->free_args)
 
-
-/* DOMAIN ALLOCATION */
-extern AREA *tp_Domain_area;
-
 /*
  * BUILT IN DOMAINS
  */
@@ -181,6 +175,7 @@ extern TP_DOMAIN tp_VarBit_domain;
 extern TP_DOMAIN tp_Midxkey_domain;
 extern TP_DOMAIN tp_Enumeration_domain;
 extern TP_DOMAIN tp_Json_domain;
+extern TP_DOMAIN tp_Bigint_domain;
 
 /*
  * TP_DOMAIN_STATUS
@@ -247,6 +242,12 @@ typedef enum tp_match
 #define TP_IS_CHAR_TYPE(typeid) \
   (((typeid) == DB_TYPE_VARCHAR)  || ((typeid) == DB_TYPE_CHAR) || \
    ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
+
+#define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) \
+  (((typeid) == DB_TYPE_CHAR) || ((typeid) == DB_TYPE_NCHAR))
+
+#define TP_IS_VAR_LEN_CHAR_TYPE(typeid) \
+    (((typeid) == DB_TYPE_VARCHAR) || ((typeid) == DB_TYPE_VARNCHAR))
 
 /*
  * TP_IS_CHAR_BIT_TYPE
@@ -402,6 +403,7 @@ extern "C"
   extern TP_DOMAIN *tp_domain_resolve_default (DB_TYPE type);
   extern TP_DOMAIN *tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTION coll_flag);
 
+  extern void tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id);
   extern void tp_domain_free (TP_DOMAIN * dom);
   extern TP_DOMAIN *tp_domain_new (DB_TYPE type);
   extern int tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src);
@@ -443,7 +445,7 @@ extern "C"
   TP_DOMAIN *tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object *class_, bool is_desc);
   TP_DOMAIN *tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc);
   TP_DOMAIN *tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc);
-  TP_DOMAIN *tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf);
+  TP_DOMAIN *tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf);
 #if defined(ENABLE_UNUSED_FUNCTION)
   TP_DOMAIN *tp_create_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * domain);
 #endif				/* ENABLE_UNUSED_FUNCTION */
@@ -459,6 +461,9 @@ extern "C"
 
   extern TP_DOMAIN_STATUS tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 					 bool implicit_coercion);
+
+  extern TP_DOMAIN_STATUS tp_value_cast_force (const DB_VALUE * src, DB_VALUE * dest,
+					       const TP_DOMAIN * desired_domain, bool implicit_coercion);
 
   extern TP_DOMAIN_STATUS tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
 							 const TP_DOMAIN * desired_domain, bool implicit_coercion,

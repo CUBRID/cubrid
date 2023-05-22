@@ -92,7 +92,7 @@ static unsigned int
 ini_table_hash (char *key)
 {
   size_t len;
-  int i;
+  size_t i;
   unsigned int hash;
 
   len = strlen (key);
@@ -517,7 +517,11 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
 	{
 	  sprintf (section, "%c%s", leading_char, ini_str_trim (section + 1));
 	}
-      strcpy (section, ini_str_lower (section));
+
+      if (leading_char != '@')
+	{
+	  strcpy (section, ini_str_lower (section));
+	}
       status = LINE_SECTION;
     }
   else if (sscanf (line, "%[^=] = \"%[^\"]\"", key, value) == 2 || sscanf (line, "%[^=] = '%[^\']'", key, value) == 2
@@ -527,7 +531,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
       strcpy (key, ini_str_trim (key));
       strcpy (key, ini_str_lower (key));
       strcpy (value, ini_str_trim (value));
-      /* 
+      /*
        * sscanf cannot handle '' or "" as empty values
        * this is done here
        */
@@ -539,7 +543,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
     }
   else if (sscanf (line, "%[^=] = %[;#]", key, value) == 2 || sscanf (line, "%[^=] %[=]", key, value) == 2)
     {
-      /* 
+      /*
        * Special cases:
        * key=
        * key=;
@@ -573,7 +577,7 @@ ini_parser_load (const char *ininame)
   char line[INI_BUFSIZ + 1];
   char section[INI_BUFSIZ + 1];
   char key[INI_BUFSIZ + 1];
-  char tmp[INI_BUFSIZ + 1];
+  char tmp[(INI_BUFSIZ + 1) * 2];
   char val[INI_BUFSIZ + 1];
 
   int last = 0;
@@ -596,10 +600,10 @@ ini_parser_load (const char *ininame)
       return NULL;
     }
 
-  memset (line, 0, INI_BUFSIZ);
-  memset (section, 0, INI_BUFSIZ);
-  memset (key, 0, INI_BUFSIZ);
-  memset (val, 0, INI_BUFSIZ);
+  memset (line, 0, INI_BUFSIZ + 1);
+  memset (section, 0, INI_BUFSIZ + 1);
+  memset (key, 0, INI_BUFSIZ + 1);
+  memset (val, 0, INI_BUFSIZ + 1);
   last = 0;
 
   while (fgets (line + last, INI_BUFSIZ - last, in) != NULL)
@@ -783,7 +787,7 @@ ini_hassec (const char *key)
  * Note:
  */
 int
-ini_seccmp (const char *key1, const char *key2)
+ini_seccmp (const char *key1, const char *key2, bool ignore_case)
 {
   const char *s1 = strchr (key1, ':');
   const char *s2 = strchr (key2, ':');
@@ -812,7 +816,12 @@ ini_seccmp (const char *key1, const char *key2)
       return 0;
     }
 
-  if (strncasecmp (key1, key2, key1_sec_len) == 0)
+  if (ignore_case && strncasecmp (key1, key2, key1_sec_len) == 0)
+    {
+      return key1_sec_len;
+    }
+
+  if (ignore_case == false && strncmp (key1, key2, key1_sec_len) == 0)
     {
       return key1_sec_len;
     }
@@ -888,7 +897,7 @@ ini_getint (INI_TABLE * ini, const char *sec, const char *key, int def, int *lin
   int val;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
-  if (str == INI_INVALID_KEY)
+  if (str == INI_INVALID_KEY || str == NULL)
     {
       return def;
     }
@@ -996,7 +1005,7 @@ ini_gethex (INI_TABLE * ini, const char *sec, const char *key, int def, int *lin
   int val;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
-  if (str == INI_INVALID_KEY)
+  if (str == INI_INVALID_KEY || str == NULL)
     {
       return def;
     }
@@ -1022,7 +1031,7 @@ ini_getfloat (INI_TABLE * ini, const char *sec, const char *key, float def, int 
   const char *str;
 
   str = ini_getstr (ini, sec, key, INI_INVALID_KEY, lineno);
-  if (str == INI_INVALID_KEY)
+  if (str == INI_INVALID_KEY || str == NULL)
     {
       return def;
     }

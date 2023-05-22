@@ -1,19 +1,21 @@
+
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -72,6 +74,8 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 크기가 잘못되었거나, 잘못된 문자 '%1$c'이(가) 데이터베이스 이름 '%2$s'에 포함되어 있습니다\n
@@ -83,7 +87,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 9 \
 %1$s (CUBRID 유틸리티)\n\
 %2$s\n\
-Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 10 \
 cubrid 관리자 유틸리티, 버전 %1$s\n\
 사용법: %2$s <유틸리티 이름> [옵션]\n\
@@ -124,6 +128,8 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s (은)는 DBMS 관리 도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -146,8 +152,10 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
     addvoldb\n\
@@ -182,6 +190,8 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s (은)는 DBMS  도구입니다.\n\
 추가적인 정보는 다음 사이트를 참조하세요. http://www.cubrid.org\n
@@ -248,10 +258,39 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 41 CUBRID 메니저가 설치되지 않았습니다.\n
 42 인자가 잘못되었습니다.\n
 43 파일(%1$s)을 열지 못했습니다.\n
+44 cubrid 유틸리티, 버전 %1$s\n\
+사용법: %2$s javasp <명령어> [인자]\n\
+\n\
+가용한 명령어:\n\
+    start       [데이터베이스 이름]\n\
+    stop        [데이터베이스 이름]\n\
+    restart     [데이터베이스 이름]\n\
+    status      [데이터베이스 이름]\n
+45 cubrid 유틸리티, 버전 %1$s\n\
+사용법: %2$s gateway <명령어> [인자]\n\
+\n\
+가용한 명령어:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
+    on          <게이트웨이 이름>\n\
+    off         <게이트웨이 이름>\n\
+    reset       <게이트웨이 이름>\n\
+    acl         <status|reload> [게이트웨이 이름]\n
+46 owner_name의 길이는 %1$d 미만이어야 하고 class_name의 길이는 %2$d 바이트 미만이어야 합니다.\n
+47 테이블 이름('%1$s')을 owner_name.class_name 형식으로 입력하십시오.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
 31 에러: 대상 경로가 존재하지 않거나 디렉토리가 아닙니다.\n
+32 --separate-keys 옵션으로 키 파일 (_keys)을 백업볼륨과 분리합니다.\n\
+해당 키 파일을 분실할 경우백업파일이 있더라도 복구 (restoredb)가 올바르게 진행되지 않을 수 있습니다.\n
+33 키 파일 (_keys)를 백업 볼륨에 포함합니다.\n\
+만약 TDE 기능으로 암호화된 테이블이 볼륨내에 존재할 경우, 보안상의 문제가 생길 수 있습니다.\n\
+키 파일이 분리를 위해선 --serperate-keys 옵션을 사용하세요.\n
+34 에러: --separate-key 옵션 사용시 FIFO 파일을 대상 경로로 설정할 수 없습니다.\n
 60 \
 backupdb: 데이터베이스를 백업합니다.\n\
 사용법: %1$s backupdb [옵션] <데이터베이스 이름>\n\
@@ -269,9 +308,9 @@ backupdb: 데이터베이스를 백업합니다.\n\
   -C, --CS-mode                클라이언트 서버 모드 실행\n\
       --no-check               데이터베이스의 정합성 확인 작업을 수행하지 않습니다; 기본값: 수행\n\
   -t, --thread-count=COUNT     백업을 수행하는 스레드 개수; 기본값: 자동\n\
-  -z, --compress               백업 볼륨을 압축합니다; 기본값: 압축하지 않음\n\
-  -e, --except-active-log      백업 볼륨에 활동 로그를 포함하지 않습니다; 기본값 : 포함\n\
-      --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n
+      --no-compress            백업 볼륨을 압축하지 않습니다; 기본값: 압축\n\
+      --sleep-msecs=N          매 1M 읽기 마다 N 밀리초를 쉽니다; 기본값: 0\n\
+  -k, --separate-keys          TDE에 사용되는 Key File (_keys)을 백업볼륨에 포함하지 않고 별개의 파일로 분리합니다.\n
 71 \"%1$s\" 와 \"%2$s\" (은)는 함께 사용할 수 없습니다.\n
 
 
@@ -297,7 +336,7 @@ copydb: 데이터베이스 복사.\n\
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
 40 그룹 '%1$s'는 존재하지 않습니다\n
-41 사용자 '%1$s'는 존재하지 않습니다\n 
+41 사용자 '%1$s'는 존재하지 않습니다\n
 42 알 수 없는 명령어 '%1$s'\n
 43 출력 파일 '%1$s' 을(를) 열 수 없습니다.\n
 44 기존 데이터베이스를 삭제할 수 없습니다.\n
@@ -389,7 +428,8 @@ restoredb: 데이터베이스 복구\n\
   -l, --level=LEVEL                 복구에 사용될 백업의 레벨; 기본값: 0(Full backup)\n\
   -p, --partial-recovery            archive 로그가 존재하지 않으면 강제로 partial recovery 수행함\n\
   -o, --output-file=FILE            출력 메시지가 저장될 파일; 기본값: 없음\n\
-  -u, --use-database-location-path  데이터베이스 위치 파일에 설정된 경로에 데이터베이스 볼륨과 로그 볼륨을 복구\n
+  -u, --use-database-location-path  데이터베이스 위치 파일에 설정된 경로에 데이터베이스 볼륨과 로그 볼륨을 복구\n\
+  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -402,7 +442,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** 문법 검사 ***\n\n
 26 %1$d 개의 에러가 검출되었습니다.\n
 27 \n*** 객체 삽입 중 ***\n\n
-28 총 %1$8d 개의 객체가 삽입되었습니다.\n
+28 총 %1$ld 개의 객체가 삽입되었습니다.\n
 29 총 %1$8d 개의 참조된 객체가 기본 내용 값으로 입력되었습니다.\n
 30 \n*** 트랜잭션 커밋 중 ***\n
 31 \n*** 데이터베이스 닫는 중 ***\n
@@ -422,58 +462,77 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 클래스 %2$s의 인스턴스 %1$d은(는) 이미 정의되었습니다.\n
 46 클래스 %2$s의 인스턴스 %1$d은(는) 이미 사용되었습니다.\n
 47 속성 '%1$s'상의 UNIQUE 위반, NULL로 변환 되었습니다.\n
-48    %1$d 인스턴스\n
+48 %1$s %2$ld 인스턴스\n
 49 클래스 %1$s\n
-50 패스워드: 
+50 패스워드:
 51 \n*** 클래스 통계 정보 갱신 중 ***\n
 52 %1$s 에러가 라인 %2$d에서 발생('%3$s')\n
-53 Lexical 오류
+53 Lexical 오류\n
 54 라인 %1$d: 문법 에러 at \"%2$s\"
-55 missing 
+55 missing
 56 in %1$s
 57 함께 사용할 수 없는 인자 \"%1$s\", 와 \"%2$s\"\n
-58 %1$d 인스턴스가 커밋 되었습니다\n
-59 \n이전 버전의 loaddb를 수행할 수 없습니다.\n 
+58 %1$s %2$ld 인스턴스가 커밋 되었습니다\n
+59 \n이전 버전의 loaddb를 수행할 수 없습니다.\n
 60 에러 parsing \"%1$s\", as %2$s type.\n
-112   %1$d 개의 인스턴스\r
-113 마지막으로 커밋된 라인 : %1$d
+61 오브젝트 참조는 CS 모드에서 지원되지 않습니다.\n
+62 테이블 %1$s의 통계정보 업데이트.\n
+112   %1$ld 개의 인스턴스\r
+113 마지막으로 커밋된 라인 : %1$d\n
 114 에러 제어 파일
 115 로드 시에 에러 제어를 위한 입력 파일
-116 총 %1$8d 개의 객체가 삽입되었으며, %2$d 개의 객체가 실패하였습니다.\n
+116 총 %1$ld 개의 객체가 삽입되었으며, %2$ld 개의 객체가 실패하였습니다.\n
 117 로드 실패.\n
 118 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
-120 \
+119 전체 %1$8d 오브젝트 검사, %2$d 오브젝트 실패.\n
+120 데이터 파일이 '%%class'을 포함하거나 '--table' 옵션이 주어져야 합니다.\n
+121 무시된 테이블 %1$s.\n
+122 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
+123 %1$s 은 빈 파일 입니다.\n
+124 \
 loaddb: 데이터베이스에 객체 및 스키마 적재\n\
-사용법: %1$s loaddb [옵션] <데이터베이스 이름>\n\
+사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
 \n\
 옵션:\n\
-  -u, --user=ID                 데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
-  -p, --password=PASS           사용자 패스워드; 기본값: 없음\n\
-      --data-file-check-only    문법 체크만 수행; 기본값: 문법 체크 이후 적재\n\
-  -l, --load-only               문법 체크하지 않고 적재; 기본값: 문법 체크 이후 적재\n\
-      --estimated-size=NUMBER   인스턴스의 대략적인 개수; 기본값: 5000\n\
-  -v, --verbose                 많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
-  -c, --periodic-commit=COUNT   주기적인 커밋에 대한 카운트; 기본값: 적재 중 커밋하지 않음\n\
-      --no-oid                  OID 사용 안 함\n\
-      --no-statistics           로딩 후에 통계 정보 갱신하지 않음\n\
-  -s, --schema-file=FILE[:LINE] 파일[:라인] 정보로 스키마 생성\n\
-  -i, --index-file=FILE[:LINE]  파일[:라인] 정보로 인덱스 생성\n\
-  -d, --data-file=FILE          적재할 데이터 파일\n\
-  -t, --table=TABLE             데이터를 적재할 테이블 이름; 데이터 파일에 테이블 정보가 없는 경우 사용\n\
-      --error-control-file=FILE 적재 시 발생하는 에러에 대한 제어 파일\n\
-      --ignore-class-file=FILE  적재하지 않을 클래스 이름이 있는 파일\n
+  -S, --SA-mode                  독립 모드 실행\n\
+  -C, --CS-mode                  클라이언트 서버 모드 실행\n\
+                                 경고: HA Mode 일때, 클라이언트-서버 모드에서는 데이터 파일(-d, --data-file=FILE)만 로드할 수 있습니다.\n\
+  -u, --user=ID                  데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
+  -p, --password=PASS            사용자 패스워드; 기본값: 없음\n\
+      --data-file-check-only     데이터 파일을 로딩하지 않고 신택스만 검사; 기본값: 아니오\n\
+  -l, --load-only                신택스 체크없이 데이터 파일 로딩; SA_MODE만 지원\n\
+      --estimated-size=NUMBER    인스턴스의 대략적인 개수; 기본값: 5000\n\
+  -v, --verbose                  많은 상태 정보를 출력; 기본값: 출력하지 않음\n\
+  -c, --periodic-commit=COUNT    주기적인 커밋에 대한 카운트; 기본값: 10240\n\
+      --no-oid                   OID 사용 안 함\n\
+      --no-statistics            로딩 후에 통계 정보 갱신하지 않음\n\
+  -s, --schema-file=FILE[:LINE]  파일[:라인] 정보로 스키마 생성\n\
+  -i, --index-file=FILE[:LINE]   파일[:라인] 정보로 인덱스 생성\n\
+      --trigger-file=FILE[:LINE] 파일[:라인] 정보로 트리거 생성\n\
+  -d, --data-file=FILE           적재할 데이터 파일\n\
+  -t, --table=TABLE              데이터를 적재할 테이블 이름; 데이터 파일에 테이블 정보가 없는 경우 사용\n\
+      --error-control-file=FILE  적재 시 발생하는 에러에 대한 제어 파일\n\
+      --ignore-class-file=FILE   적재하지 않을 클래스 이름이 있는 파일\n\
+      --no-user-specified-name   소유자 이름 없이 객체 이름으로 CLASS, SERIAL 및 TRIGGER를 찾음.\n\
+                                 CUBRID 11.2 전 버전에서 생성된 파일을 불러오기 위함.\n\
+      --schema-file-list=FILE    이 파일의 내용은 loaddb에서 사용할 스키마 파일 이름 목록이다.\n\
+                                 loaddb는 위에서부터 순차적으로 실행된다.\n\
+                                 경고: -s 옵션과 함께 사용 할 수 없습니다.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pages 값이 유효하지 않습니다.\n
 42 cached-page-size 값이 유효하지 않습니다.\n
-43 %1$d 개의 객체가 덤프 되었습니다.\n
+43 %1$ld 개의 객체가 덤프 되었습니다.\n
 44 클래스 %1$s
 45 , %1$d 개의 인스턴스.\n
-46 %1$d 개의 객체가 (전체 %2$d 객체) 성공적으로 덤프 되었습니다.\n
+46 %1$ld 개의 객체가 (전체 %2$ld 객체) 성공적으로 덤프 되었습니다.\n
 47 출력 디렉터리 이름이 너무 깁니다.\n
 48 LSA : %1$d %2$d \n
-49 패스워드: 
+49 패스워드:
+50 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
+51 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
+52 클래스 %1$s를 찾을 수 없습니다.\n
 60 \
 unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
 사용법: %1$s unloaddb [옵션] <데이터베이스 이름>\n\
@@ -492,11 +551,15 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -d, --data-only             오브젝트만 처리; 기본값: 스키마와 오브젝트 처리\n\
       --output-prefix=PREFIEX 출력 파일의 prefix; 기본값: 데이터베이스 이름 사용\n\
       --hash-file=FILE        해쉬 파일이름; 기본값: 파일을 생성하기 위해 tmpnam()을 사용함\n\
+      --latest-image          오브젝트 (객체)를 언로드할 때, 데이터 볼륨의 최신 이미지를 언로드합니다. 이 과정에서 로그 볼륨은 참조되지 않으며, MVCC는 무시됩니다.\n\
+                              커밋되지않은 데이터와 제거되었지만 배큠되지 않은 데이터가 포함될 수 있습니다; 기본 값: 사용 안 함\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\
       --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
-      --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n
+      --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
+      --split-schema-files    스키마 정보를 오브젝트별로 분리하여 각각의 파일로 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n\
+      --as-dba                로그인 사용자가 DBA 그룹의 구성원인 경우 DBA와 동일한 스키마 파일을 추출합니다.\n
 
 
 
@@ -537,6 +600,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 Pass 3\n\n
 45 힙 공간 정리에 실패했습니다.\n
 46 힙 공간 정리에 성공했습니다.\n
+47 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
+48 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
 60 \
 compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
 사용법: %1$s compactdb [옵션] <데이터베이스 이름> [테이블1 테이블2 ...]\n\
@@ -546,19 +611,20 @@ compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
   -i, --input-class-file=FILE       테이블 이름을 포함하는 FILE 이름\n\
                                     해당 옵션 사용 시 [테이블1 테이블2 ...]이 생략되어야 함\n\
                                     기본값: 모든 테이블들의 공간을 정리함\n\
-                                    클라이언트 서버 모드에서만 가능\n\
   -p, --pages-commited-once=NUMBER  한 번에 커밋할 수 있는 최대 페이지 개수\n\
                                     기본값: 10\n\
                                     클라이언트 서버 실행 모드에서만 가능\n\
   -S, --SA-mode                     독립 모드 실행\n\
   -C, --CS-mode                     클라이언트 서버 모드 실행\n\
   -d, --delete-old-repr             카탈로그에서 과거 테이블 표현을 삭제; 기본값: 사용 안 함\n\
-  [테이블1 테이블2 ...]             클라이언트 서버 모드에서만 가능\n\
   -I, --Instance-lock-timeout       인스턴스 잠금에 대한 타임아웃\n\
-  -c, --class-lock-timeout          클래스 잠금에 대한 타임아웃\n
+                                    클라이언트 서버 모드에서만 가능\n\
+  -c, --class-lock-timeout          클래스 잠금에 대한 타임아웃\n\
+                                    클라이언트 서버 모드에서만 가능\n\
+  [테이블1 테이블2 ...]             정리할 테이블 리스트\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
-21 CUBRID master가 호스트 %1$s 에서 수행 중입니다. %2$s 에 시작되어  
+21 CUBRID master가 호스트 %1$s 에서 수행 중입니다. %2$s 에 시작되어
 22 %1$d 개의 요청을 처리 하였습니다. \n현재 %2$d 개의 서버가 동작 중입니다.\n
 23 %1$s 분 내에 SHUTDOWN 합니다!!!\n
 24 %1$s
@@ -588,12 +654,13 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' 명령을 사용하십시�
 33 마스터는 %1$d 분 후에 shutdown 됩니다.\n
 34 클라이언트로부터의 데이터 수신 에러
 35 한글 database 서버 %1$s 은(는) 현재 수행 중이 아닙니다.
-36 쉘 (%1$s) 를 수행할 수 없습니다. %2$s, %3$s 
+36 쉘 (%1$s) 를 수행할 수 없습니다. %2$s, %3$s
 37 프로세스 fork %1$s, 반환 %2$d, %3$s
 38 %1$s을(를) 수행할 수 없습니다
 39 -i(--immediately)옵션은 --deact-stop-all 옵션이 지정되어야합니다.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 --recreate-log 옵션 없이 실행하거나 액티브 로그 볼륨을 직접 제거해주세요.\n
 60 \
 emergency_patchlog: 긴급한 상황에서 데이터베이스 로그 패치\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -614,7 +681,7 @@ addvoldb: 데이터베이스 볼륨 파일을 추가\n\
       --db-volume-size=SIZE        추가될 볼륨의 크기; 기본값: 설정에서 읽음\n\
       --max-writesize-in-sec=SIZE  초당 추가될 볼륨의 크기. (예. 512K, 1M, 10M); 기본값: 사용하지 않음; 최소값: 160K\n\
   -n, --volume-name=NAME           볼륨 이름; 기본값: "db"_ext1 과 같은 이름을 생성\n\
-  -F, --file-path=PATH             데이터베이스 파일에 대한 볼륨 패스; 기본값: 현재 디렉터리\n\
+  -F, --file-path=PATH             데이터베이스 파일에 대한 볼륨 패스; 기본값: volume_extension_path\n\
       --comment=COMMENT            볼륨 주석; 기본값: 없음\n\
   -p, --purpose=PURPOSE            볼륨 사용 용도; 다음과 같은 값이 허용됨\n\
                                            DATA - 데이터 볼륨\n\
@@ -801,6 +868,7 @@ killtran: 데이터베이스 transaction 제거 관리\n\
       --kill-program-name=NAME       NAME으로 지정되는 모든 트랜잭션 종료\n\
       --kill-sql-id=SQL_ID           SQL_ID에 해당하는 질의를 실행중인 모든 트랜잭션 종료\n\
   -p, --dba-password=PASS            DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
+                                     (-i 또는 --kill 옵션과 사용 가능, 그외는 오류 발생)\n\
   -d, --display-information          현재 활성화된 트랜잭션에 대한 정보 보여줌\n\
   -q, --query-exec-info              현재 활성화된 트랜잭션에 대한 질의 수행정보를 보여줌\n\
   -f, --force                        사용자 확인 없이 지정된 트랜잭션 종료\n
@@ -811,17 +879,17 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 2  필수 인자; 기본값: 없음
 3  호환성 검사
 4  호환성 검사만 수행
-5  백업 경로 
+5  백업 경로
 6  백업 볼륨을 저장할 디렉터리 경로나 디바이스 이름
 20 데이터베이스 '%1$s'가 존재하지 않습니다.
 21 '%1$s'는(은) 버전이 너무 낮아 %2$s으로 마이그레이션 할 수 없습니다.\n
 22 '%1$s'는(은) 마이그레이션이 필요 없습니다.\n
 23 '%1$s'는(은) 마이그레이션이 필요합니다.\n
-24 마이그레이션 후 백업하는 것을 권장합니다. 지금 백업하시겠습니까? (y/n): 
-25 마이그레이션 후 백업하는 것을 권장합니다. 
-26 \n*** 경고: %1$s 으로 마이그레이션 수행 전에 데이터베이스를 백업하십시오 ***\n\n마이그레이션 중 발생할 수 있는 장애를 복구하기 위해서는 반드시 백업이 필요합니다.\n백업 하셨습니까? (y/n): 
+24 마이그레이션 후 백업하는 것을 권장합니다. 지금 백업하시겠습니까? (y/n):
+25 마이그레이션 후 백업하는 것을 권장합니다.
+26 \n*** 경고: %1$s 으로 마이그레이션 수행 전에 데이터베이스를 백업하십시오 ***\n\n마이그레이션 중 발생할 수 있는 장애를 복구하기 위해서는 반드시 백업이 필요합니다.\n백업 하셨습니까? (y/n):
 27 \n1. backupdb 실행 \n2. 새로운 데이터베이스에 대한 새로운 백업 경로 입력. (현재 경로: %1$s) \n3. 종료 \n
-28 \n새로운 데이터베이스에 대한 백업 경로: 
+28 \n새로운 데이터베이스에 대한 백업 경로:
 29 \n마이그레이션 및 백업을 정상적으로 수행했습니다.
 30 백업에 실패했습니다. 다시 백업하십시오.
 31 \n\n*** 경고: 마이그레이션 완료 이후에는 이전 버전의 백업 파일을 이용하여 복구할 수 없습니다.\n이전 버전의 백업 파일은 해당 버전에서만 복구가 가능합니다.\n이전 버전의 백업 파일을 보존하십시오. ***\n
@@ -840,8 +908,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 필수 인자; 기본값: 없음
 3 java-class-file
 4 필수 인자; 기본값: 없음
-5 force-overwrite
-6 클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              클래스 파일이 이미 존재하면 덮어씀; 기본값: 덮어쓰지 않음\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n
@@ -934,6 +1005,7 @@ valid options:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA 암호 입력:
 22 서버가 HA 모드로 설정되지 않았습니다.\n
+57 -L 옵션의 경로가 잘못되었거나 db_ha_apply_info 카탈로그 테이블에 관련 정보가 없기 때문에 복제 반영 정보를 생성할 수 없습니다.\n
 58 HA 기능이 지원되지 않는 플랫폼입니다.\n
 59 applyinfo는 독립 모드에서 실행할 수 없습니다.\n
 60 \
@@ -942,9 +1014,9 @@ applyinfo: display CUBRID HA 복제 상태 출력\n\
 \n\
 valid options:\n\
   -r, --remote-host-name      원격 호스트 이름; 원격 노드의 활성 로그 정보 출력\n\
-  -a, --applied-info          반영된 정보 출력\n\
   -L, --copied-log-path=PATH  복사된 로그 볼륨의 경로; 복사된 로그 정보 출력\n\
-  -p, --page=ID               페이지 id; 기본값: 0\n\
+  -a, --applied-info          반영된 정보 출력; L옵션이 필요\n\
+  -p, --page=ID               페이지 id; L옵션이 필요; 기본값: 0\n\
   -v, --verbose               상세 상태 정보 출력; 기본값: 사용하지 않음\n\
   -i, --interval=S            매 S 초마다 로그 정보 출력\n
 
@@ -1000,16 +1072,16 @@ valid options:\n\
   -z, --normalization   정규화 데이터를 덤프; 기본값: 사용 안 함\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 파티션 기준 컬럼의 콜레이션 "%1$s"를 변경하기 전에 파티션을 삭제해야 합니다.\n클래스\n 
+43 파티션 기준 컬럼의 콜레이션 "%1$s"를 변경하기 전에 파티션을 삭제해야 합니다.\n클래스\n
 44 콜레이션을 업데이트 하기 전에 콜레이션 "%1$s"을 가지는 컬럼의 외래키를 삭제해야 합니다.\n테이블 | 외래키\n
 45 콜레이션 "%1$s"를 가진 클래스는 재정의 해야 합니다.\n클래스\n
 46 콜레이션 "%1$s"를 가지는 표현식을 포함한 함수 인덱스는 재정의 해야 합니다.\n테이블 | 인덱스 | 함수 expression\n
 47 콜레이션 업데이트가 수행되지 않았습니다. 데이터베이스는 변경되지 않았습니다.\n
 48 시스템 테이블 "%1$s"은 새로운 콜레이션으로 업데이트되었습니다.\n
-49 시스템 콜레이션을 업데이트하면 데이터베이스가 손상될 수 있습니다. 계속 하시겠습니까? (y/n)\n 
+49 시스템 콜레이션을 업데이트하면 데이터베이스가 손상될 수 있습니다. 계속 하시겠습니까? (y/n)\n
 50 새로운 시스템 설정에서 데이터베이스에 콜레이션 "%1$s"(Id: %2$d)가 존재하지 않거나 변경되었습니다.\n
 51 콜레이션 "%1$s"를 포함하는 조건을 가진 트리거는 재정의 해야 합니다.\n트리거 | 조건\n
-52 콜레이션 "%1$s"를 포함하는 뷰는 재정의 해야 합니다.\n뷰 | 질의스펙\n 
+52 콜레이션 "%1$s"를 포함하는 뷰는 재정의 해야 합니다.\n뷰 | 질의스펙\n
 53 콜레이션 "%1$s"를 가진 애트리뷰트 도메인은 재정의 해야 합니다.\n테이블 | 애트리뷰트 도메인\n
 54 수동적 검사가 필요합니다.\n\
 데이터베이스에 콜레이션을 강제로 적용하기 전에 "%1$s" 파일을 검사하시기 바랍니다.\n
@@ -1017,8 +1089,8 @@ $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
 56 데이터베이스는 시스템 콜레이션으로 업데이트 되어야 합니다.\n\
 "cubrid synccolldb -f %1$s"으로 실행 하십시오.\n
 57 데이터베이스에 비해 시스템 설정에는 %1$d개의 새로운 콜레이션이 있습니다.\n
-58 데이터베이스 "%1$s"의 모든 콜레이션은 새로운 시스템 설정 상에 존재합니다.\n 
-59 데이터베이스의 %1$d개의 콜레이션은 설정되지 않았거나 새로운 시스템 콜레이션으로 변경되었습니다.\n 
+58 데이터베이스 "%1$s"의 모든 콜레이션은 새로운 시스템 설정 상에 존재합니다.\n
+59 데이터베이스의 %1$d개의 콜레이션은 설정되지 않았거나 새로운 시스템 콜레이션으로 변경되었습니다.\n
 60 \
 synccolldb: 데이터베이스 콜레이션을 시스템 설정에 정의된 콜레이션에 맞게 업데이트 합니다.\n\
 사용법: %1$s synccolldb [옵션] 데이터베이스-이름\n\
@@ -1030,19 +1102,19 @@ valid options:\n\
   -f, --force-only    데이터베이스의 콜레이션을 새로운 시스템 설정의 콜레이션으로 강제 업데이트 합니다.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 사용자 %1$s의 비밀번호를 입력하세요 : 
-22 트랜잭션인덱스      사용자이름     호스트이름     프로세스 ID     프로그램이름\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 사용자 %1$s의 비밀번호를 입력하세요 :
+22 트랜잭션인덱스        사용자이름     호스트이름     프로세스 ID     프로그램이름\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 트랜잭션이 없습니다\n
 26 tranlist는 DBA 또는 DBA 그룹의 멤버에 의해서만 수행될 수 있습니다.\n
 27 유효하지 않은 컬럼번호(%1$d) 입니다.\n
-32 트랜잭션인덱스      프로세스 ID     프로그램이름         질의수행시간  트랜잭션시간             대기중인 락 소유자      질의문 ID     질의문\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 트랜잭션인덱스      사용자이름     호스트이름     프로세스 ID     프로그램이름         질의수행시간  트랜잭션시간             대기중인 락 소유자      질의문 ID     질의문\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 트랜잭션인덱스        프로세스 ID     프로그램이름         질의수행시간  트랜잭션시간             대기중인 락 소유자      질의문 ID     질의문\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 트랜잭션인덱스        사용자이름     호스트이름     프로세스 ID     프로그램이름         질의수행시간  트랜잭션시간             대기중인 락 소유자      질의문 ID     질의문\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 트랜잭션 인덱스 : %1$d
 46 질의문 ID : %1$s\n
 59 tranlist는 독립 모드에서 실행할 수 없습니다.\n
@@ -1051,8 +1123,6 @@ tranlist: 활성화된 트랜잭션 정보 출력.\n\
 사용법: %1$s tranlist [옵션] database-name\n\
 \n\
 valid options:\n\
-  -u, --user=ID                데이터베이스 접근에 관한 사용자 이름; 기본값: DBA\n\
-  -p, --password=PASS          사용자 패스워드; 기본값: 없음\n\
   -s, --summary                질의정보 및 락 정보 생략\n\
       --sort-key=COLUMN_NUMBER 정렬할 컬럼번호; 기본값 : 1\n\
       --reverse                내림차순 정렬수행; 기본값 : 오름차순 정렬\n
@@ -1111,7 +1181,8 @@ valid options:\n\
       --list                        실제 복원하지 않고 백업 볼륨의 리스트만 출력\n\
   -B, --backup-file-path=PATH       복원할 백업 볼륨의 디렉터리 경로\n\
   -o, --output-file=FILE            출력 메시지를 FILE로 변경; 기본값: 없음\n\
-  -u, --use-database-location-path  데이터베이스와 로그 볼륨을 데이터베이스 경로 파일에 명시된 경로로 복원\n
+  -u, --use-database-location-path  데이터베이스와 로그 볼륨을 데이터베이스 경로 파일에 명시된 경로로 복원\n\
+  -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Ready to remove the following volumes:\n\n
@@ -1134,17 +1205,21 @@ valid options:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb는 현재 클라이언트 서버 모드에서 지원되지 않습니다.\n
 21 vacuum 작업 실패\n
+22 출력 파일 '%1$s'을 열 수 없습니다.\n
 60 \
 vacuumdb: 사용되지 않는 레코드를 데이터베이스에서 정리\n\
 usage: %1$s vacuumdb [옵션] database-name\n\
 \n\
 valid options:\n\
   -S, --SA-mode                독립 모드 실행\n\
-  -C, --CS-mode                클라이언트 서버 모드 실행\n
+  -C, --CS-mode                클라이언트 서버 모드 실행\n\
+      --dump                   현재 vacuum 상태 덤프\n\
+  -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$s으로부터 테이블 이름 로딩 실패.\n
 2 checksumdb는 반드시 HA active 서버에서 실행해야 합니다. %1$s (현재 상태: %2$s)\n
+3 체크섬 결과를 저장할 테이블의 소유자는 DBA여야 합니다.\n
 58 HA 기능이 제공되지 않는 플랫폼입니다.\n
 59 checksumdb는 독립 모드로 실행할 수 없습니다.\n
 60 \
@@ -1158,9 +1233,67 @@ valid options:\n\
   -i, --include-class-file=FILE 포함시킬 테이블을 지정하는 입력 파일\n\
   -e, --exclude-class-file=FILE 제외시킬 테이블을 지정하는 입력 파일; -i 또는 -e 하나만 명시 가능, 동시 지정 불가\n\
   -t, --timeout=NUMBER          밀리초 단위 쿼리 타임 아웃; 기본값: 1000 ms\n\
-  -n, --table-name=NAME         체크섬 결과를 저장할 테이블 이름; 기본값: db_ha_checksums\n\
+  -n, --table-name=NAME         체크섬 결과를 저장할 테이블 이름; 기본값: dba.db_ha_checksum\n\
   -r, --report-only             체크섬 계산을 기반하여 복제 일관성 상태 보고\n\
                                 --table-name 옵션 외에 다른 옵션은 모두 무시됨\n\
       --resume                  체크섬 계산 복귀\n\
       --schema-only             스키마 일관성만 검사\n\
       --cont-on-error           계산 오류 발생해도 계속 진행\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 DBA 비밀 번호:
+25 데이터베이스에 등록된 키 정보를 가져올 수 없습니다.\n
+26 키 (인덱스: %1$d)에서 키 (인덱스: %2$d)로 변경을 시도합니다..\n
+27 키 (인덱스: %1$d)에서 키 (인덱스: %2$d)로 변경되었습니다.\n
+28 데이터베이스에 등록된 키는 제거할 수 없습니다.\n
+29 인덱스: %1$d 키를 제거하였습니다.\n
+30 새로운 키가 생성되었습니다. 키 인덱스: %1$d, 생성 시간: %2$s
+60 \
+tde: Transparent Data Encryption (TDE) 관리\n\
+usage: %1$s tde <operation> [옵션] <데이터베이스-이름>\n\
+\n\
+valid options:\n\
+    -p, --dba-password=PASS       DBA 패스워드; 지정되지 않은 경우 프롬프트\n\
+\n\
+operations:\n\
+    -s, --show-keys               데이터베이스에 등록된 키, 키 파일 (_keys)내의 키들에 대한 정보를 출력 \n\
+    -n, --generate-new-key        키 파일 (_keys)에 새로운 키를 추가; 최대 갯수: 128\n\
+    -d, --delete-key=KEY_INDEX    키 파일 (_keys)의 한 키를 제거\n\
+    -c, --change-key=KEY_INDEX    데이터베이스에 등록된 키를 키 파일 (_keys)에 존재하는 다른 키로 변경\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBA 비밀번호:
+2 잘못된 날짜 형식입니다. 올바른 형식은 dd-mm-yyyy:hh:mm:ss입니다.\n
+3 시작 날짜(%1$s)는 종료 날짜(%2$s)보다 작아야 합니다.\n
+4 현재 날짜 이전(%1$s) 또는 데이터베이스 생성 이후(%2$s) 날짜로 시도하십시오.\n
+5 테이블(%1$s)이 데이터베이스에 없습니다.\n
+6 플래시백할 트랜잭션이 너무 많습니다. 시작 날짜와 종료 날짜 사이의 간격을 줄이십시오.\n
+7 스키마(%1$s)가 변경되었기 때문에 플래시백을 수행할 수 없습니다.\n
+8 로그 볼륨이 제거되었습니다. 나중 날짜로 시도하십시오.\n
+9 출력 파일 '%1$s'을 열 수 없습니다.\n
+10 트랜잭션 ID(%1$d)가 존재하지 않습니다.\n
+11 'cubrid.conf'의 'supplemental_log'를 설정해 주세요. 'supplemental_log'를 설정한 후 실행된 SQL 로그만 플래시백할 수 있습니다.\n
+12 트랜잭션 ID는 %1$d초 안에 입력해야 합니다. 'cubrid.conf'의 'flashback_timeout' 설정을 통해 시간 값을 조정할 수 있습니다. \n
+13 플래시백이 이미 실행 중입니다. 플래시백은 두 개 이상의 프로세스에서 실행할 수 없습니다.\n
+14 플래시백은 독립 모드에서 실행할 수 없습니다.\n
+15 시스템 카탈로그 클래스(%1$s)에 대하여 플래시백을 지원하지 않습니다.\n
+60 \
+flashback: 특정 트랜잭션을 플래시백하는 명령문을 제공합니다.\n\
+사용법: %1$s flashback [OPTION] 데이터베이스 이름 owner_name.class_name1 [owner_name.class_name2 ...]\n\
+\n\
+유효한 옵션:\n\
+    -o, --output-file=FILE      출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
+    -u, --user=ID               플래시백할 SQL 문을 실행한 사용자를 지정합니다. 기본값: 모두.\n\
+    -p, --dba-password          DBA 사용자의 비밀번호; 지정하지 않으면 메시지가 표시됩니다.\n\
+    -s, --start-date=DATE       플래시백의 시작 날짜를 지정합니다. DATE 이후에 수행된 SQL로그가 추출됩니다.\n\
+                                DATE는 다음과 같이 지정됩니다. dd-mm-yyyy:hh:mm:ss.\n\
+    -e, --end-date=DATE         플래시백의 종료 날짜를 지정합니다. DATE까지 수행된 SQL로그가 추출됩니다.\n\
+                                시작 날짜를 지정하지 않으면 ((종료 - 10분) ~ 종료) 범위로 설정됩니다.\n\
+                                종료 날짜를 지정되지 않은 경우 (시작 ~ (시작 + 10분)) 범위로 설정됩니다.\n\
+                                시작 날짜와 종료 날짜 모두 지정되지 않은 경우,\n\
+                                (현재 시간 - 10분)과 현재 시간 사이에 실행된 SQL 로그를 추출합니다.\n\
+    --detail                    각 SQL 문에 대한 자세한 정보를 출력합니다.\n\
+                                트랜잭션 ID, 사용자 이름 및 사용자가 수행한 SQL 문, 플래쉬백을 위한 SQL 문이 출력됩니다;\n\
+                                기본값: 플래시백을 위한 SQL 문만 출력\n\
+    --oldest                    시작 시간부터 종료 시간까지 수행된 SQL문에 대하여 시간 순으로 플래시백을 수행합니다;\n\
+                                기본값: 최근에 수행된 SQL문부터 역순으로 플래시백을 수행합니다.\n

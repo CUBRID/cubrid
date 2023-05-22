@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -24,11 +23,15 @@
 #ifndef _NO_INLINE_DBTYPE_FUNCTION_
 #define _NO_INLINE_DBTYPE_FUNCTION_
 
+#include <stdio.h>
+
+#include "db_set_function.h"
 #include "dbtype_def.h"
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
-#define db_set db_collection
+// for backward compatibility
+#define db_collection db_set
 
 #define db_make_utime db_make_timestamp
 
@@ -75,7 +78,7 @@
 #define DB_MAKE_SEQ DB_MAKE_SEQUENCE
 
 /* new preferred interface */
-  /*  todo: This following macro had in its previous version another call to 
+  /*  todo: This following macro had in its previous version another call to
    *  db_value_domain_init(). Now it has been removed but it needs to be
    *  checked if its still correct!!!.
    */
@@ -274,15 +277,9 @@ extern "C"
   extern int db_value_put_null (DB_VALUE * value);
   extern int db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int input_length);
   extern bool db_value_type_is_collection (const DB_VALUE * value);
-  extern bool db_value_type_is_numeric (const DB_VALUE * value);
-  extern bool db_value_type_is_bit (const DB_VALUE * value);
-  extern bool db_value_type_is_char (const DB_VALUE * value);
-  extern bool db_value_type_is_internal (const DB_VALUE * value);
   extern bool db_value_is_null (const DB_VALUE * value);
   extern int db_value_get (DB_VALUE * value, const DB_TYPE_C type, void *buf, const int buflen, int *transferlen,
 			   int *outputlen);
-  extern int db_value_size (const DB_VALUE * value, DB_TYPE_C type, int *size);
-  extern int db_value_char_size (const DB_VALUE * value, int *size);
   extern DB_CURRENCY db_value_get_monetary_currency (const DB_VALUE * value);
   extern double db_value_get_monetary_amount_as_double (const DB_VALUE * value);
   extern int db_value_put_monetary_currency (DB_VALUE * value, const DB_CURRENCY type);
@@ -291,74 +288,8 @@ extern "C"
 
   extern int db_value_put_encoded_time (DB_VALUE * value, const DB_TIME * time_value);
   extern int db_value_put_encoded_date (DB_VALUE * value, const DB_DATE * date_value);
-  extern int db_value_put_numeric (DB_VALUE * value, DB_C_NUMERIC num);
-  extern int db_value_put_bit (DB_VALUE * value, DB_C_BIT str, int size);
-  extern int db_value_put_varbit (DB_VALUE * value, DB_C_BIT str, int size);
-  extern int db_value_put_char (DB_VALUE * value, DB_C_CHAR str, int size);
-  extern int db_value_put_varchar (DB_VALUE * value, DB_C_CHAR str, int size);
-  extern int db_value_put_nchar (DB_VALUE * value, DB_C_NCHAR str, int size);
-  extern int db_value_put_varnchar (DB_VALUE * value, DB_C_NCHAR str, int size);
 
   extern DB_CURRENCY db_get_currency_default (void);
-
-  /* Collection functions */
-  extern DB_COLLECTION *db_col_create (DB_TYPE type, int size, DB_DOMAIN * domain);
-  extern DB_COLLECTION *db_col_copy (DB_COLLECTION * col);
-  extern int db_col_filter (DB_COLLECTION * col);
-  extern int db_col_free (DB_COLLECTION * col);
-  extern int db_col_coerce (DB_COLLECTION * col, DB_DOMAIN * domain);
-
-  extern int db_col_size (DB_COLLECTION * col);
-  extern int db_col_cardinality (DB_COLLECTION * col);
-  extern DB_TYPE db_col_type (DB_COLLECTION * col);
-  extern DB_DOMAIN *db_col_domain (DB_COLLECTION * col);
-  extern int db_col_ismember (DB_COLLECTION * col, DB_VALUE * value);
-  extern int db_col_find (DB_COLLECTION * col, DB_VALUE * value, int starting_index, int *found_index);
-  extern int db_col_add (DB_COLLECTION * col, DB_VALUE * value);
-  extern int db_col_drop (DB_COLLECTION * col, DB_VALUE * value, int all);
-  extern int db_col_drop_element (DB_COLLECTION * col, int element_index);
-
-  extern int db_col_drop_nulls (DB_COLLECTION * col);
-
-  extern int db_col_get (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-  extern int db_col_put (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-  extern int db_col_insert (DB_COLLECTION * col, int element_index, DB_VALUE * value);
-
-  extern int db_col_print (DB_COLLECTION * col);
-  extern int db_col_fprint (FILE * fp, DB_COLLECTION * col);
-
-  /* Set and sequence functions.
-   * These are now obsolete. Please use the generic collection functions "db_col*" instead
-   */
-  extern int db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2);
-  extern DB_COLLECTION *db_set_create (DB_OBJECT * classobj, const char *name);
-  extern DB_COLLECTION *db_set_create_basic (DB_OBJECT * classobj, const char *name);
-  extern DB_COLLECTION *db_set_create_multi (DB_OBJECT * classobj, const char *name);
-  extern DB_COLLECTION *db_seq_create (DB_OBJECT * classobj, const char *name, int size);
-  extern int db_set_free (DB_COLLECTION * set);
-  extern int db_set_filter (DB_COLLECTION * set);
-  extern int db_set_add (DB_COLLECTION * set, DB_VALUE * value);
-  extern int db_set_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-  extern int db_set_drop (DB_COLLECTION * set, DB_VALUE * value);
-  extern int db_set_size (DB_COLLECTION * set);
-  extern int db_set_cardinality (DB_COLLECTION * set);
-  extern int db_set_ismember (DB_COLLECTION * set, DB_VALUE * value);
-  extern int db_set_isempty (DB_COLLECTION * set);
-  extern int db_set_has_null (DB_COLLECTION * set);
-  extern int db_set_print (DB_COLLECTION * set);
-  extern DB_TYPE db_set_type (DB_COLLECTION * set);
-  extern DB_COLLECTION *db_set_copy (DB_COLLECTION * set);
-  extern int db_seq_get (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-  extern int db_seq_put (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-  extern int db_seq_insert (DB_COLLECTION * set, int element_index, DB_VALUE * value);
-  extern int db_seq_drop (DB_COLLECTION * set, int element_index);
-  extern int db_seq_size (DB_COLLECTION * set);
-  extern int db_seq_cardinality (DB_COLLECTION * set);
-  extern int db_seq_print (DB_COLLECTION * set);
-  extern int db_seq_find (DB_COLLECTION * set, DB_VALUE * value, int element_index);
-  extern int db_seq_free (DB_SEQ * seq);
-  extern int db_seq_filter (DB_SEQ * seq);
-  extern DB_SEQ *db_seq_copy (DB_SEQ * seq);
 
   extern DB_DOMAIN *db_type_to_db_domain (DB_TYPE type);
   extern const char *db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
@@ -372,7 +303,7 @@ extern "C"
   extern int db_get_int (const DB_VALUE * value);
   extern DB_C_SHORT db_get_short (const DB_VALUE * value);
   extern DB_BIGINT db_get_bigint (const DB_VALUE * value);
-  extern DB_C_CHAR db_get_string (const DB_VALUE * value);
+  extern DB_CONST_C_CHAR db_get_string (const DB_VALUE * value);
   extern DB_C_FLOAT db_get_float (const DB_VALUE * value);
   extern DB_C_DOUBLE db_get_double (const DB_VALUE * value);
   extern DB_OBJECT *db_get_object (const DB_VALUE * value);
@@ -389,12 +320,12 @@ extern "C"
   extern int db_get_error (const DB_VALUE * value);
   extern DB_ELO *db_get_elo (const DB_VALUE * value);
   extern DB_C_NUMERIC db_get_numeric (const DB_VALUE * value);
-  extern DB_C_BIT db_get_bit (const DB_VALUE * value, int *length);
-  extern DB_C_CHAR db_get_char (const DB_VALUE * value, int *length);
-  extern DB_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
+  extern DB_CONST_C_BIT db_get_bit (const DB_VALUE * value, int *length);
+  extern DB_CONST_C_CHAR db_get_char (const DB_VALUE * value, int *length);
+  extern DB_CONST_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
   extern int db_get_string_size (const DB_VALUE * value);
   extern unsigned short db_get_enum_short (const DB_VALUE * value);
-  extern DB_C_CHAR db_get_enum_string (const DB_VALUE * value);
+  extern DB_CONST_C_CHAR db_get_enum_string (const DB_VALUE * value);
   extern int db_get_enum_string_size (const DB_VALUE * value);
   extern DB_C_CHAR db_get_method_error_msg (void);
   extern DB_RESULTSET db_get_resultset (const DB_VALUE * value);
@@ -427,23 +358,23 @@ extern "C"
   extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
   extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
   extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
-  extern int db_make_bit (DB_VALUE * value, const int bit_length, const DB_C_BIT bit_str, const int bit_str_bit_size);
-  extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, const DB_C_BIT bit_str,
+  extern int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str, const int bit_str_bit_size);
+  extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
 			     const int bit_str_bit_size);
-  extern int db_make_char (DB_VALUE * value, const int char_length, const DB_C_CHAR str, const int char_str_byte_size,
+  extern int db_make_char (DB_VALUE * value, const int char_length, DB_CONST_C_CHAR str, const int char_str_byte_size,
 			   const int codeset, const int collation_id);
-  extern int db_make_varchar (DB_VALUE * value, const int max_char_length, const DB_C_CHAR str,
+  extern int db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
 			      const int char_str_byte_size, const int codeset, const int collation_id);
-  extern int db_make_nchar (DB_VALUE * value, const int nchar_length, const DB_C_NCHAR str,
+  extern int db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str,
 			    const int nchar_str_byte_size, const int codeset, const int collation_id);
-  extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, const DB_C_NCHAR str,
+  extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
 			       const int nchar_str_byte_size, const int codeset, const int collation_id);
-  extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_C_CHAR str, int size,
+  extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size,
 				  unsigned char codeset, const int collation_id);
   extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);
 
-  extern int db_make_string (DB_VALUE * value, char *str);
-  extern int db_make_string_copy (DB_VALUE * value, const char *str);
+  extern int db_make_string (DB_VALUE * value, DB_CONST_C_CHAR str);
+  extern int db_make_string_copy (DB_VALUE * value, DB_CONST_C_CHAR str);
 
   extern int db_make_oid (DB_VALUE * value, const OID * oid);
 

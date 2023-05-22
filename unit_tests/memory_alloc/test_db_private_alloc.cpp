@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -23,6 +22,8 @@
 #include "test_perf_compare.hpp"
 #include "test_debug.hpp"
 #include "test_output.hpp"
+
+#include "thread_manager.hpp"
 
 #include <iostream>
 #include <thread>
@@ -41,13 +42,13 @@ namespace test_memalloc
 
   /* Expand fn_arg<Alloc<T> > with the three possible allocator */
 #define FUNC_ALLOCS_AS_ARGS(fn_arg, type_arg) \
-  fn_arg<db_private_allocator<type_arg> >, \
+  fn_arg<cubmem::private_allocator<type_arg> >, \
   fn_arg<std::allocator<type_arg> >, \
   fn_arg<mallocator<type_arg> >
 
   /* Expand fn_arg<T, Alloc<T> > with the three possible allocator */
 #define FUNC_TYPE_AND_ALLOCS_AS_ARGS(fn_arg, type_arg) \
-  fn_arg<type_arg, db_private_allocator<type_arg> >, \
+  fn_arg<type_arg, cubmem::private_allocator<type_arg> >, \
   fn_arg<type_arg, std::allocator<type_arg> >, \
   fn_arg<type_arg, mallocator<type_arg> >
 
@@ -139,7 +140,7 @@ namespace test_memalloc
 
     {
       custom_thread_entry cte;
-      db_private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
       std::cout << prefix << "alloc 64" << std::endl;
       ptr = private_alloc.allocate (SIZE_64);
@@ -150,7 +151,7 @@ namespace test_memalloc
 
     {
       custom_thread_entry cte;
-      db_private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
       std::cout << prefix << "alloc 1M" << std::endl;
       ptr = private_alloc.allocate (SIZE_1_M);
       *ptr = T();
@@ -160,7 +161,7 @@ namespace test_memalloc
 
     {
       custom_thread_entry cte;
-      db_private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
       std::cout << prefix << "alloc 64x64" << std::endl;
       std::array<T *, SIZE_64> ptr_array;
@@ -178,10 +179,10 @@ namespace test_memalloc
 
     {
       custom_thread_entry cte;
-      db_private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
       /* test containers */
-      std::vector<T, db_private_allocator<T>> vec (private_alloc);
+      std::vector<T, cubmem::private_allocator<T>> vec (private_alloc);
       vec.resize (SIZE_64);
       vec.resize (SIZE_ONE_K);
       vec.resize (SIZE_16_K);
@@ -251,7 +252,7 @@ namespace test_memalloc
 
     test_common::custom_assert (step == results.get_step_count ());
 
-    delete pointers;
+    delete [] pointers;
     delete alloc;
 
     return 0;
@@ -403,7 +404,7 @@ namespace test_memalloc
     test_common::custom_assert (random_value_cursor == actions.get_size ());
     test_common::custom_assert (step == result.get_step_count ());
 
-    delete pointers_pool;
+    delete [] pointers_pool;
     delete alloc;
 
     return 0;

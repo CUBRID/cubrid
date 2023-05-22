@@ -2,7 +2,7 @@ pipeline {
   agent none
 
   triggers {
-    pollSCM('H 1 * * *')
+    pollSCM('H 21 * * 1,2,4,5,7')
   }
 
   environment {
@@ -30,10 +30,10 @@ pipeline {
             }
 
             echo 'Building...'
-            sh 'scl enable devtoolset-6 -- /entrypoint.sh build'
+            sh 'scl enable devtoolset-8 -- /entrypoint.sh build'
 
             echo 'Packing...'
-            sh "scl enable devtoolset-6 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
+            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -o ${OUTPUT_DIR}"
 
             echo 'Testing...'
             sh '/entrypoint.sh test || echo "$? failed"'
@@ -59,10 +59,10 @@ pipeline {
           }
           steps {
             echo 'Building...'
-            sh 'scl enable devtoolset-6 -- /entrypoint.sh build -m debug'
+            sh 'scl enable devtoolset-8 -- /entrypoint.sh build -m debug'
             
             echo 'Packing...'
-            sh "scl enable devtoolset-6 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
+            sh "scl enable devtoolset-8 -- /entrypoint.sh dist -m debug -o ${OUTPUT_DIR}"
 
             echo 'Testing...'
             sh '/entrypoint.sh test || echo "$? failed"'

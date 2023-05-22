@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -24,79 +23,79 @@
 #ifndef _BOOT_H_
 #define _BOOT_H_
 
+#include "client_credentials.hpp"
+#include "es_common.h"
 #include "porting.h"
 #include "storage_common.h"
-#include "es_common.h"
 
-/* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
-enum boot_client_type
-{
-  BOOT_CLIENT_UNKNOWN = -1,
-  BOOT_CLIENT_SYSTEM_INTERNAL = 0,
-  BOOT_CLIENT_DEFAULT = 1,
-  BOOT_CLIENT_CSQL = 2,
-  BOOT_CLIENT_READ_ONLY_CSQL = 3,
-  BOOT_CLIENT_BROKER = 4,
-  BOOT_CLIENT_READ_ONLY_BROKER = 5,
-  BOOT_CLIENT_SLAVE_ONLY_BROKER = 6,
-  BOOT_CLIENT_ADMIN_UTILITY = 7,
-  BOOT_CLIENT_ADMIN_CSQL = 8,
-  BOOT_CLIENT_LOG_COPIER = 9,
-  BOOT_CLIENT_LOG_APPLIER = 10,
-  BOOT_CLIENT_RW_BROKER_REPLICA_ONLY = 11,
-  BOOT_CLIENT_RO_BROKER_REPLICA_ONLY = 12,
-  BOOT_CLIENT_SO_BROKER_REPLICA_ONLY = 13,
-  BOOT_CLIENT_ADMIN_CSQL_WOS = 14,	/* admin csql that can write on standby */
-};
-typedef enum boot_client_type BOOT_CLIENT_TYPE;
+#include <stdio.h>
 
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
-        ((client_type) == BOOT_CLIENT_DEFAULT \
-         || (client_type) == BOOT_CLIENT_CSQL \
-         || (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
-         || (client_type) == BOOT_CLIENT_BROKER \
-         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
-         || (client_type) == BOOT_CLIENT_RW_BROKER_REPLICA_ONLY \
-         || (client_type) == BOOT_CLIENT_RO_BROKER_REPLICA_ONLY)
+        ((client_type) == DB_CLIENT_TYPE_DEFAULT \
+         || (client_type) == DB_CLIENT_TYPE_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_BROKER \
+         || (client_type) == DB_CLIENT_TYPE_READ_ONLY_BROKER \
+         || (client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
+         || (client_type) == DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY)
 
 #define BOOT_READ_ONLY_CLIENT_TYPE(client_type) \
-        ((client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
-         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
-         || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER \
-         || (client_type) == BOOT_CLIENT_RO_BROKER_REPLICA_ONLY \
-         || (client_type) == BOOT_CLIENT_SO_BROKER_REPLICA_ONLY)
+        ((client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_READ_ONLY_BROKER \
+         || (client_type) == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER \
+         || (client_type) == DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY \
+         || (client_type) == DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY)
 
 #define BOOT_ADMIN_CLIENT_TYPE(client_type) \
-        ((client_type) == BOOT_CLIENT_ADMIN_UTILITY \
-         || (client_type) == BOOT_CLIENT_ADMIN_CSQL \
-         || (client_type) == BOOT_CLIENT_ADMIN_CSQL_WOS)
+        ((client_type) == DB_CLIENT_TYPE_ADMIN_UTILITY \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS \
+	 || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
 
 #define BOOT_LOG_REPLICATOR_TYPE(client_type) \
-        ((client_type) == BOOT_CLIENT_LOG_COPIER \
-         || (client_type) == BOOT_CLIENT_LOG_APPLIER)
+        ((client_type) == DB_CLIENT_TYPE_LOG_COPIER \
+         || (client_type) == DB_CLIENT_TYPE_LOG_APPLIER)
 
 #define BOOT_CSQL_CLIENT_TYPE(client_type) \
-        ((client_type) == BOOT_CLIENT_CSQL \
-        || (client_type) == BOOT_CLIENT_READ_ONLY_CSQL \
-        || (client_type) == BOOT_CLIENT_ADMIN_CSQL \
-        || (client_type) == BOOT_CLIENT_ADMIN_CSQL_WOS)
+        ((client_type) == DB_CLIENT_TYPE_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
+
+/* DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG is excluded
+ * for using the `--sysadm_rebuild_catalog` option of the csql utility.
+ *
+ * See CBRD-24781 for the details.
+ */
+#define BOOT_ADMIN_CSQL_CLIENT_TYPE(client_type) \
+        ((client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
 
 #define BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type) \
-        ((client_type) == BOOT_CLIENT_DEFAULT \
-         || (client_type) == BOOT_CLIENT_BROKER \
-         || (client_type) == BOOT_CLIENT_READ_ONLY_BROKER \
-         || (client_type) == BOOT_CLIENT_SLAVE_ONLY_BROKER \
+        ((client_type) == DB_CLIENT_TYPE_DEFAULT \
+         || (client_type) == DB_CLIENT_TYPE_BROKER \
+         || (client_type) == DB_CLIENT_TYPE_READ_ONLY_BROKER \
+         || (client_type) == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER \
          || BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE(client_type))
 
 #define BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE(client_type) \
-    ((client_type) == BOOT_CLIENT_RW_BROKER_REPLICA_ONLY \
-        || (client_type) == BOOT_CLIENT_RO_BROKER_REPLICA_ONLY \
-        || (client_type) == BOOT_CLIENT_SO_BROKER_REPLICA_ONLY)
+    ((client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
+        || (client_type) == DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY \
+        || (client_type) == DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY)
 
 #define BOOT_WRITE_ON_STANDY_CLIENT_TYPE(client_type) \
-  ((client_type) == BOOT_CLIENT_LOG_APPLIER \
-      || (client_type) == BOOT_CLIENT_RW_BROKER_REPLICA_ONLY \
-      || (client_type) == BOOT_CLIENT_ADMIN_CSQL_WOS)
+  ((client_type) == DB_CLIENT_TYPE_LOG_APPLIER \
+      || (client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
+      || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+      || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS)
 
 /*
  * BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE()
@@ -111,22 +110,6 @@ typedef enum boot_client_type BOOT_CLIENT_TYPE;
 #define BOOT_IS_PREFERRED_HOSTS_SET(credential) \
         ((credential)->preferred_hosts != NULL \
         && (credential)->preferred_hosts[0] != '\0')
-
-typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
-struct boot_client_credential
-{
-  BOOT_CLIENT_TYPE client_type;
-  char *client_info;		/* DB_MAX_IDENTIFIER_LENGTH */
-  char *db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
-  char *db_user;		/* DB_MAX_USER_LENGTH */
-  char *db_password;		/* DB_MAX_PASSWORD_LENGTH */
-  char *program_name;		/* PATH_MAX */
-  char *login_name;		/* L_cuserid */
-  char *host_name;		/* MAXHOSTNAMELEN */
-  char *preferred_hosts;	/* LINE_MAX */
-  int connect_order;
-  int process_id;
-};
 
 typedef struct boot_db_path_info BOOT_DB_PATH_INFO;
 struct boot_db_path_info
@@ -166,7 +149,7 @@ typedef struct boot_server_credential BOOT_SERVER_CREDENTIAL;
 struct boot_server_credential
 {
   char *db_full_name;		/* PATH_MAX */
-  char *host_name;		/* MAXHOSTNAMELEN */
+  char *host_name;		/* CUB_MAXHOSTNAMELEN */
   char *lob_path;		/* PATH_MAX + LOB_PATH_PREFIX_MAX */
   int process_id;
   OID root_class_oid;
@@ -180,9 +163,29 @@ struct boot_server_credential
   char *db_lang;
 };
 
-extern char boot_Host_name[MAXHOSTNAMELEN];
+extern char boot_Host_name[CUB_MAXHOSTNAMELEN];
 
 #define LOB_PATH_PREFIX_MAX     ES_URI_PREFIX_MAX
 #define LOB_PATH_DEFAULT_PREFIX ES_POSIX_PATH_PREFIX
 
+/* Compose the full name of a database */
+
+inline void
+COMPOSE_FULL_NAME (char *buf, size_t buf_size, const char *path, const char *name)
+{
+  size_t len = strlen (path);
+  int ret;
+  if (len > 0 && path[len - 1] != PATH_SEPARATOR)
+    {
+      ret = snprintf (buf, buf_size - 1, "%s%c%s", path, PATH_SEPARATOR, name);
+    }
+  else
+    {
+      ret = snprintf (buf, buf_size - 1, "%s%s", path, name);
+    }
+  if (ret < 0)
+    {
+      abort ();
+    }
+}
 #endif /* _BOOT_H_ */

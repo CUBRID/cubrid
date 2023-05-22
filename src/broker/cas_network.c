@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -52,6 +51,7 @@
 #include "cas_execute.h"
 #include "error_code.h"
 #include "broker_util.h"
+#include "host_lookup.h"
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
@@ -73,6 +73,16 @@ static bool net_timeout_flag = false;
 
 static char net_error_flag;
 static int net_timeout = NET_DEFAULT_TIMEOUT;
+
+extern bool ssl_client;
+extern int cas_ssl_write (int sock_fd, const char *buf, int size);
+extern int cas_ssl_read (int sock_fd, char *buf, int size);
+extern bool is_ssl_data_ready (int sock_fd);
+
+#define READ_FROM_NET(sd, buf, size) ssl_client ? cas_ssl_read (sd, buf, size) : \
+	READ_FROM_SOCKET(sd, buf, size)
+#define WRITE_TO_NET(sd, buf, size) ssl_client ? cas_ssl_write (sd, buf, size) : \
+       WRITE_TO_SOCKET(sd, buf, size)
 
 SOCKET
 #if defined(WINDOWS)
@@ -154,7 +164,7 @@ net_init_env (char *port_name)
   return (sock_fd);
 }
 
-#ifndef LIBCAS_FOR_JSP
+
 #if defined(WINDOWS)
 SOCKET
 net_connect_proxy (int proxy_id)
@@ -227,7 +237,7 @@ net_connect_proxy (void)
 
   memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
   shard_sock_addr.sun_family = AF_UNIX;
-  strncpy (shard_sock_addr.sun_path, port_name, sizeof (shard_sock_addr.sun_path) - 1);
+  strncpy_bufsize (shard_sock_addr.sun_path, port_name);
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
   len = sizeof (shard_sock_addr.sun_len) + sizeof (shard_sock_addr.sun_family) + strlen (shard_sock_addr.sun_path) + 1;
   shard_sock_addr.sun_len = len;
@@ -245,7 +255,7 @@ net_connect_proxy (void)
   net_error_flag = 0;
   return (fd);
 }
-#endif /* LIBCAS_FOR_JSP */
+
 
 SOCKET
 net_connect_client (SOCKET srv_sock_fd)
@@ -328,7 +338,7 @@ net_read_header (SOCKET sock_fd, MSG_HEADER * header)
     }
   else
     {
-      retval = net_read_int (sock_fd, header->msg_body_size_ptr);
+      retval = net_read_stream (sock_fd, (char *) header->msg_body_size_ptr, 4);
     }
 
   return retval;
@@ -518,6 +528,7 @@ static int
 read_buffer (SOCKET sock_fd, char *buf, int size)
 {
   int read_len = -1;
+  bool ssl_data_ready = false;
 #if defined(ASYNC_MODE)
   struct pollfd po[2] = { {0, 0, 0}, {0, 0, 0} };
   int timeout, po_size, n;
@@ -547,7 +558,15 @@ read_buffer (SOCKET sock_fd, char *buf, int size)
     }
 
 retry_poll:
-  n = poll (po, po_size, timeout);
+  if (ssl_client && is_ssl_data_ready (sock_fd))
+    {
+      po[0].revents = POLLIN;
+      n = 1;
+    }
+  else
+    {
+      n = poll (po, po_size, timeout);
+    }
   if (n < 0)
     {
       if (errno == EINTR)
@@ -581,7 +600,7 @@ retry_poll:
 	{
 #endif /* ASYNC_MODE */
 	  /* RECEIVE NEW REQUEST */
-	  read_len = READ_FROM_SOCKET (sock_fd, buf, size);
+	  read_len = READ_FROM_NET (sock_fd, buf, size);
 #if defined(ASYNC_MODE)
 	}
     }
@@ -643,7 +662,7 @@ retry_poll:
       else if (po[0].revents & POLLOUT)
 	{
 #endif /* ASYNC_MODE */
-	  write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
+	  write_len = WRITE_TO_NET (sock_fd, buf, size);
 #if defined(ASYNC_MODE)
 	}
     }
@@ -660,14 +679,14 @@ retry_poll:
 static int
 get_host_ip (unsigned char *ip_addr)
 {
-  char hostname[64];
+  char hostname[CUB_MAXHOSTNAMELEN];
   struct hostent *hp;
 
   if (gethostname (hostname, sizeof (hostname)) < 0)
     {
       return -1;
     }
-  if ((hp = gethostbyname (hostname)) == NULL)
+  if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
       return -1;
     }

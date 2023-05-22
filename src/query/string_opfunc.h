@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -35,8 +34,14 @@
 #include "language_support.h"
 #include "numeric_opfunc.h"
 #include "object_domain.h"
-#include "libregex38a/regex38a.h"
 #include "thread_compat.hpp"
+
+#ifdef  __cplusplus
+#include <functional>
+#include "string_regex.hpp"
+#else
+typedef struct cub_compiled_regex cub_compiled_regex;
+#endif
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
                                  ((s)==DB_TYPE_VARCHAR))
@@ -58,28 +63,28 @@
 
 #define QSTR_NUM_BYTES(a)            (((a) + 7) / 8)
 
-#define QSTR_CHAR_COMPARE(id, string1, size1, string2, size2) \
-	QSTR_COMPARE(id, string1, size1, string2, size2)
+#define QSTR_CHAR_COMPARE(id, string1, size1, string2, size2, ti) \
+	QSTR_COMPARE(id, string1, size1, string2, size2, ti)
 
-#define QSTR_NCHAR_COMPARE(id, string1, size1, string2, size2, codeset) \
-        QSTR_COMPARE(id, string1, size1, string2, size2)
+#define QSTR_NCHAR_COMPARE(id, string1, size1, string2, size2, codeset, ti) \
+        QSTR_COMPARE(id, string1, size1, string2, size2, ti)
 
-#define QSTR_COMPARE(id, string1, size1, string2, size2) \
-  (lang_get_collation (id))->fastcmp ((lang_get_collation (id)), (string1), \
-				      (size1), (string2), (size2))
+#define QSTR_COMPARE(id, string1, size1, string2, size2, ti) \
+  (LANG_GET_COLLATION (id))->fastcmp ((LANG_GET_COLLATION (id)), (string1), \
+				      (size1), (string2), (size2), ti)
 #define QSTR_MATCH(id, string1, size1, string2, size2, esc, has_last_escape, \
 		   match_size) \
-  (lang_get_collation (id))->strmatch ((lang_get_collation (id)), true, \
+  (LANG_GET_COLLATION (id))->strmatch ((LANG_GET_COLLATION (id)), true, \
 				       (string1), (size1), \
 				       (string2), (size2), (esc), \
-				       (has_last_escape), (match_size))
+				       (has_last_escape), (match_size), false)
 #define QSTR_NEXT_ALPHA_CHAR(id, cur_chr, size, next_chr, len) \
-  (lang_get_collation (id))->next_coll_seq ((lang_get_collation (id)), \
-					(cur_chr), (size), (next_chr), (len))
-#define QSTR_SPLIT_KEY(id, is_desc, str1, size1, str2, size2, k, s) \
-  (lang_get_collation (id))->split_key ((lang_get_collation (id)), is_desc, \
+  (LANG_GET_COLLATION (id))->next_coll_seq ((LANG_GET_COLLATION (id)), \
+					(cur_chr), (size), (next_chr), (len), false)
+#define QSTR_SPLIT_KEY(id, is_desc, str1, size1, str2, size2, k, s, ti) \
+  (LANG_GET_COLLATION (id))->split_key ((LANG_GET_COLLATION (id)), is_desc, \
 					(str1), (size1), (str2), (size2), \
-					(k), (s))
+					(k), (s), ti)
 
 
 /*
@@ -174,6 +179,7 @@ extern int bit_compare (const unsigned char *string1, int size1, const unsigned 
 extern int varbit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int get_last_day (int month, int year);
 extern int get_day (int month, int day, int year);
+
 extern int db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result);
 extern int db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string2, DB_VALUE * db_result,
 				    TP_DOMAIN * key_domain);
@@ -183,7 +189,6 @@ extern int db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2);
 extern int db_string_instr (const DB_VALUE * src_string, const DB_VALUE * sub_string, const DB_VALUE * start_pos,
 			    DB_VALUE * result);
 extern int db_string_position (const DB_VALUE * sub_string, const DB_VALUE * src_string, DB_VALUE * result);
-extern int db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args);
 extern int db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_string,
 				const DB_VALUE * start_position, const DB_VALUE * extraction_length,
 				DB_VALUE * sub_string);
@@ -200,20 +205,7 @@ extern int db_string_space (DB_VALUE const *count, DB_VALUE * result);
 extern int db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, const DB_VALUE * length,
 				       DB_VALUE * sub_string, DB_VALUE * result);
 extern int db_string_elt (DB_VALUE * result, DB_VALUE * args[], int const num_args);
-extern int db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_insert (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
-extern int db_json_replace (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
-extern int db_json_set (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
-extern int db_json_keys (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
-extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
-extern int db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_pretty (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_string_escape_str (const char *src_str, size_t src_size, char **res_string, size_t * dest_size);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count);
@@ -229,8 +221,25 @@ extern int db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_s
 			  const DB_VALUE * pad_charset, DB_VALUE * padded_string);
 extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * esc_char,
 			   int *result);
+
+//***********************************************************************************************
+// Regular Expression Functions
+//***********************************************************************************************
+// using db_regex_func = std::function<int (DB_VALUE *, DB_VALUE*[], const int, cub_compiled_regex **, char **)>;
 extern int db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * case_sensitive,
-			    cub_regex_t ** comp_regex, char **comp_pattern, int *result);
+			    cub_compiled_regex ** comp_regex, int *result);
+extern int db_string_regexp_count (DB_VALUE * result, DB_VALUE * args[], const int num_args,
+				   cub_compiled_regex ** comp_regex);
+extern int db_string_regexp_instr (DB_VALUE * result, DB_VALUE * args[], const int num_args,
+				   cub_compiled_regex ** comp_regex);
+extern int db_string_regexp_like (DB_VALUE * result, DB_VALUE * args[], const int num_args,
+				  cub_compiled_regex ** comp_regex);
+extern int db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], const int num_args,
+				     cub_compiled_regex ** comp_regex);
+extern int db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], const int num_args,
+				    cub_compiled_regex ** comp_regex);
+//***********************************************************************************************
+
 extern int db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int new_size, int *spare_bytes);
 extern int db_string_fix_string_size (DB_VALUE * src_string);
 extern int db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, const DB_VALUE * repl_string,
@@ -248,18 +257,23 @@ extern int db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DAT
 extern int db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz);
 extern int db_new_time (DB_VALUE * time_val, DB_VALUE * tz_source, DB_VALUE * tz_dest, DB_VALUE * result_time);
 extern int db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time);
+extern int db_json_convert_to_utf8 (DB_VALUE * dbval);
+extern int db_json_copy_and_convert_to_utf8 (const DB_VALUE * src_dbval, DB_VALUE * dest_dbval,
+					     const DB_VALUE ** json_str_dbval);
+extern int db_string_convert_to (const DB_VALUE * src_string, DB_VALUE * dest_string, INTL_CODESET dest_codeset,
+				 int dest_col);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string);
 #endif
 extern unsigned char *qstr_pad_string (unsigned char *s, int length, INTL_CODESET codeset);
 extern int qstr_bin_to_hex (char *dest, int dest_size, const char *src, int src_size);
-extern int qstr_hex_to_bin (char *dest, int dest_size, char *src, int src_size);
-extern int qstr_bit_to_bin (char *dest, int dest_size, char *src, int src_size);
+extern int qstr_hex_to_bin (char *dest, int dest_size, const char *src, int src_size);
+extern int qstr_bit_to_bin (char *dest, int dest_size, const char *src, int src_size);
 extern void qstr_bit_to_hex_coerce (char *buffer, int buffer_size, const char *src, int src_length, int pad_flag,
 				    int *copy_size, int *truncation);
 extern int db_get_string_length (const DB_VALUE * value);
-extern void qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int precision, const DB_C_CHAR src,
+extern void qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int precision, DB_CONST_C_CHAR src,
 				    const int s_unit, const int codeset, const int collation_id);
 extern int db_add_months (const DB_VALUE * src_date, const DB_VALUE * nmonth, DB_VALUE * result_date);
 extern int db_last_day (const DB_VALUE * src_date, DB_VALUE * result_day);

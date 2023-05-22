@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -23,36 +22,23 @@
 
 #ident "$Id$"
 
+#include "overflow_file.h"
+
 #include "config.h"
+#include "error_manager.h"
+#include "file_manager.h"
+#include "heap_file.h"
+#include "log_append.hpp"
+#include "log_manager.h"
+#include "memory_alloc.h"
+#include "mvcc.h"
+#include "page_buffer.h"
+#include "slotted_page.h"
+#include "storage_common.h"
 
 #include <string.h>
 
-#include "storage_common.h"
-#include "memory_alloc.h"
-#include "error_manager.h"
-#include "page_buffer.h"
-#include "file_manager.h"
-#include "slotted_page.h"
-#include "log_manager.h"
-#include "overflow_file.h"
-#include "heap_file.h"
-
 #define OVERFLOW_ALLOCVPID_ARRAY_SIZE 64
-
-typedef struct overflow_first_part OVERFLOW_FIRST_PART;
-struct overflow_first_part
-{
-  VPID next_vpid;
-  int length;
-  char data[1];			/* Really more than one */
-};
-
-typedef struct overflow_rest_part OVERFLOW_REST_PART;
-struct overflow_rest_part
-{
-  VPID next_vpid;
-  char data[1];			/* Really more than one */
-};
 
 typedef enum
 {
@@ -118,7 +104,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
   addr.vfid = ovf_vfid;
   addr.offset = 0;
 
-  /* 
+  /*
    * Guess the number of pages. The total number of pages is found by dividing length by page size - the smallest
    * header. Then, we make sure that this estimate is correct. */
   length = recdes->length - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
@@ -188,7 +174,9 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit_on_error;
 	}
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
       /* Is this the first page ? */
       if (i == 0)
@@ -228,7 +216,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
 
       memcpy (copyto, data, copy_length);
 
-      if (file_type != FILE_TEMP)
+      if (file_type != FILE_TEMP && thread_p->no_logging != true)
 	{
 	  log_append_redo_data (thread_p, RVOVF_NEWPAGE_INSERT, &addr,
 				copy_length + CAST_BUFLEN (copyto - (char *) addr.pgptr), (char *) addr.pgptr);
@@ -310,7 +298,7 @@ overflow_traverse (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * 
   VPID vpid;
   PAGE_PTR pgptr = NULL;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock
@@ -326,7 +314,9 @@ overflow_traverse (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * 
 	  goto exit_on_error;
 	}
 
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
       vpid = next_vpid;
       overflow_next_vpid (ovf_vpid, &next_vpid, pgptr);
@@ -422,7 +412,9 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit_on_error;
 	}
+#if !defined (NDEBUG)
       (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
       addr_vpid_ptr = pgbuf_get_vpid_ptr (addr.pgptr);
 
@@ -509,7 +501,10 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
       data += copy_length;
       length -= copy_length;
 
-      log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
+      if (thread_p->no_logging != true)
+	{
+	  log_append_redo_data (thread_p, RVOVF_PAGE_UPDATE, &addr, copy_length + hdr_length, (char *) addr.pgptr);
+	}
 
       if (length > 0)
 	{
@@ -572,7 +567,9 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 		  goto exit_on_error;
 		}
 
+#if !defined (NDEBUG)
 	      (void) pgbuf_check_page_ptype (thread_p, addr.pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
 	      tmp_vpid = next_vpid;
 	      rest_parts = (OVERFLOW_REST_PART *) addr.pgptr;
@@ -695,7 +692,7 @@ overflow_get_length (THREAD_ENTRY * thread_p, const VPID * ovf_vpid)
   PAGE_PTR pgptr;
   int length;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock
@@ -707,7 +704,9 @@ overflow_get_length (THREAD_ENTRY * thread_p, const VPID * ovf_vpid)
       return -1;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
   length = ((OVERFLOW_FIRST_PART *) pgptr)->length;
 
@@ -746,7 +745,7 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
   int copy_length;
   char *data;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock
@@ -760,7 +759,9 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
       return S_ERROR;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
   first_part = (OVERFLOW_FIRST_PART *) pgptr;
   if (mvcc_snapshot != NULL)
@@ -839,7 +840,7 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
 	  copyfrom += copy_length;
 	}
 
-      /* 
+      /*
        * Copy as much as you can when you do not need to continue seeking,
        * and there is something to copy in current page (i.e., not at end
        * of the page) and we are not located at the end of the overflow record.
@@ -881,7 +882,9 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
 	      return S_ERROR;
 	    }
 
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
 	  rest_parts = (OVERFLOW_REST_PART *) pgptr;
 	  copyfrom = (char *) rest_parts->data;
@@ -938,7 +941,7 @@ overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, int *ovf_
   int hdr_length;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock
@@ -952,7 +955,9 @@ overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, int *ovf_
       return ER_FAILED;
     }
 
+#if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
   first_part = (OVERFLOW_FIRST_PART *) pgptr;
   remain_length = first_part->length;
@@ -998,7 +1003,9 @@ overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, int *ovf_
 	      goto exit_on_error;
 	    }
 
+#if !defined (NDEBUG)
 	  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_OVERFLOW);
+#endif /* !NDEBUG */
 
 	  rest_parts = (OVERFLOW_REST_PART *) pgptr;
 	  hdr_length = offsetof (OVERFLOW_REST_PART, data);
@@ -1038,7 +1045,7 @@ overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid)
   int i;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock

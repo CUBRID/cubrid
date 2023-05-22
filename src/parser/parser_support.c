@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -22,7 +21,6 @@
  */
 
 #ident "$Id$"
-
 
 #include "config.h"
 
@@ -37,6 +35,7 @@
 #include <stdarg.h>
 #endif
 
+#include "authenticate.h"
 #include "chartype.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -47,7 +46,6 @@
 #include "work_space.h"
 #include "oid.h"
 #include "class_object.h"
-#include "xasl_support.h"
 #include "optimizer.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -61,6 +59,8 @@
 #include "object_printer.hpp"
 #include "string_buffer.hpp"
 #include "dbtype.h"
+#include "parser_allocator.hpp"
+#include "execute_schema.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -116,37 +116,6 @@ static PT_NODE *pt_must_be_filtering (PARSER_CONTEXT * parser, PT_NODE * node, v
 static bool pt_is_filtering_predicate (PARSER_CONTEXT * parser, PT_NODE * predicate);
 static PT_NODE *pt_is_filtering_skip_and_or (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-static void *regu_bytes_alloc (int length);
-#endif
-static void regu_dbvallist_init (QPROC_DB_VALUE_LIST ptr);
-static void regu_var_init (REGU_VARIABLE * ptr);
-static void regu_varlist_init (REGU_VARIABLE_LIST ptr);
-static void regu_varlist_list_init (REGU_VARLIST_LIST ptr);
-static void regu_vallist_init (VAL_LIST * ptr);
-static void regu_outlist_init (OUTPTR_LIST * ptr);
-static void regu_pred_init (PRED_EXPR * ptr);
-static ARITH_TYPE *regu_arith_no_value_alloc (void);
-static void regu_arith_init (ARITH_TYPE * ptr);
-static FUNCTION_TYPE *regu_function_alloc (void);
-static void regu_func_init (FUNCTION_TYPE * ptr);
-static AGGREGATE_TYPE *regu_aggregate_alloc (void);
-static void regu_agg_init (AGGREGATE_TYPE * ptr);
-static XASL_NODE *regu_xasl_alloc (PROC_TYPE type);
-static void regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type);
-static ACCESS_SPEC_TYPE *regu_access_spec_alloc (TARGET_TYPE type);
-static void regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type);
-static SORT_LIST *regu_sort_alloc (void);
-static void regu_sort_list_init (SORT_LIST * ptr);
-static void regu_init_oid (OID * oidptr);
-static QFILE_LIST_ID *regu_listid_alloc (void);
-static void regu_listid_init (QFILE_LIST_ID * ptr);
-static void regu_srlistid_init (QFILE_SORTED_LIST_ID * ptr);
-static void regu_domain_init (SM_DOMAIN * ptr);
-static void regu_cache_attrinfo_init (HEAP_CACHE_ATTRINFO * ptr);
-static void regu_selupd_list_init (SELUPD_LIST * ptr);
-static void regu_regu_value_list_init (REGU_VALUE_LIST * ptr);
-static void regu_regu_value_item_init (REGU_VALUE_ITEM * ptr);
 static PT_NODE *pt_create_param_for_value (PARSER_CONTEXT * parser, PT_NODE * value, int host_var_index);
 static PT_NODE *pt_make_dotted_identifier (PARSER_CONTEXT * parser, const char *identifier_str);
 static PT_NODE *pt_make_dotted_identifier_internal (PARSER_CONTEXT * parser, const char *identifier_str, int depth);
@@ -169,12 +138,16 @@ static PT_NODE *pt_make_outer_select_for_show_stmt (PARSER_CONTEXT * parser, PT_
 						    const char *select_alias);
 static PT_NODE *pt_make_field_type_expr_node (PARSER_CONTEXT * parser);
 static PT_NODE *pt_make_select_count_star (PARSER_CONTEXT * parser);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_make_field_extra_expr_node (PARSER_CONTEXT * parser);
 static PT_NODE *pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static PT_NODE *pt_make_sort_spec_with_identifier (PARSER_CONTEXT * parser, const char *identifier,
 						   PT_MISC_TYPE sort_mode);
 static PT_NODE *pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const int number_pos, PT_MISC_TYPE sort_mode);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *table_name);
+#endif /* ENABLE_UNUSED_FUNCTION */
 static PT_NODE *pt_make_dummy_query_check_table (PARSER_CONTEXT * parser, const char *table_name);
 static PT_NODE *pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name);
 static void pt_help_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name, string_buffer & strbuf);
@@ -192,6 +165,10 @@ static PT_NODE *pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const
 						  int arg_info_count, PT_NODE * args);
 static PT_NODE *pt_resolve_showstmt_args_named (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_ARG * arg_infos,
 						int arg_info_count, PT_NODE * args);
+
+static bool pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl);
+static void pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text,
+					 int local_upd, int remote_upd, SERVER_NAME_LIST * snl);
 #define NULL_ATTRID -1
 
 /*
@@ -259,7 +236,6 @@ pt_and (PARSER_CONTEXT * parser, const PT_NODE * arg1, const PT_NODE * arg2)
   node = parser_new_node (parser, PT_EXPR);
   if (node)
     {
-      parser_init_node (node);
       node->info.expr.op = PT_AND;
       node->info.expr.arg1 = (PT_NODE *) arg1;
       node->info.expr.arg2 = (PT_NODE *) arg2;
@@ -285,7 +261,6 @@ pt_union (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2)
 
   if (node)
     {
-      parser_init_node (node);
       /* set query id # */
       node->info.query.id = (UINTPTR) node;
 
@@ -340,7 +315,6 @@ pt_name (PARSER_CONTEXT * parser, const char *name)
   node = parser_new_node (parser, PT_NAME);
   if (node)
     {
-      parser_init_node (node);
       node->info.name.original = pt_append_string (parser, NULL, name);
     }
 
@@ -362,7 +336,6 @@ pt_table_option (PARSER_CONTEXT * parser, const PT_TABLE_OPTION_TYPE option, PT_
   node = parser_new_node (parser, PT_TABLE_OPTION);
   if (node)
     {
-      parser_init_node (node);
       node->info.table_option.option = option;
       node->info.table_option.val = val;
     }
@@ -387,7 +360,6 @@ pt_expression (PARSER_CONTEXT * parser, PT_OP_TYPE op, PT_NODE * arg1, PT_NODE *
   node = parser_new_node (parser, PT_EXPR);
   if (node)
     {
-      parser_init_node (node);
       node->info.expr.op = op;
       node->info.expr.arg1 = arg1;
       node->info.expr.arg2 = arg2;
@@ -460,7 +432,6 @@ pt_entity (PARSER_CONTEXT * parser, const PT_NODE * entity_name, const PT_NODE *
   node = parser_new_node (parser, PT_SPEC);
   if (node)
     {
-      parser_init_node (node);
       node->info.spec.entity_name = (PT_NODE *) entity_name;
       node->info.spec.range_var = (PT_NODE *) range_var;
       node->info.spec.flat_entity_list = (PT_NODE *) flat_list;
@@ -485,7 +456,6 @@ pt_tuple_value (PARSER_CONTEXT * parser, PT_NODE * name, CURSOR_ID * cursor_p, i
   node = parser_new_node (parser, PT_TUPLE_VALUE);
   if (node)
     {
-      parser_init_node (node);
       node->info.tuple_value.name = name;
       node->info.tuple_value.index = index;
       node->info.tuple_value.cursor_p = cursor_p;
@@ -507,7 +477,6 @@ pt_insert_value (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *insert_val = parser_new_node (parser, PT_INSERT_VALUE);
   if (insert_val != NULL)
     {
-      parser_init_node (insert_val);
       insert_val->info.insert_value.original_node = node;
     }
   return insert_val;
@@ -719,15 +688,80 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
   if (node->node_type == PT_FUNCTION)
     {
       function_type = node->info.function.function_type;
-      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT || function_type == F_JSON_OBJECT
-	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
-	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
+      if (function_type == F_INSERT_SUBSTRING
+	  || function_type == F_ELT
+	  || function_type == F_JSON_ARRAY
 	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
-	  || function_type == F_JSON_CONTAINS_PATH || function_type == F_JSON_GET_ALL_PATHS
-	  || function_type == F_JSON_REPLACE || function_type == F_JSON_SET
-	  || function_type == F_JSON_KEYS || function_type == F_JSON_SEARCH)
+	  || function_type == F_JSON_CONTAINS || function_type == F_JSON_CONTAINS_PATH
+	  || function_type == F_JSON_DEPTH
+	  || function_type == F_JSON_EXTRACT
+	  || function_type == F_JSON_GET_ALL_PATHS
+	  || function_type == F_JSON_INSERT
+	  || function_type == F_JSON_KEYS
+	  || function_type == F_JSON_LENGTH
+	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
+	  || function_type == F_JSON_OBJECT
+	  || function_type == F_JSON_PRETTY
+	  || function_type == F_JSON_QUOTE
+	  || function_type == F_JSON_REMOVE
+	  || function_type == F_JSON_REPLACE
+	  || function_type == F_JSON_SEARCH
+	  || function_type == F_JSON_SET
+	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID
+	  || function_type == F_REGEXP_COUNT || function_type == F_REGEXP_INSTR || function_type == F_REGEXP_LIKE
+	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR)
 	{
 	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_is_json_function () -
+ *   return: true if node is a json function
+ *   parser(in): parser context
+ *   node(in): PT_FUNTION node
+ */
+bool
+pt_is_json_function (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  FUNC_TYPE function_type;
+
+  if (node->node_type == PT_FUNCTION)
+    {
+      function_type = node->info.function.function_type;
+      switch (function_type)
+	{
+	case F_JSON_ARRAY:
+	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
+	case F_JSON_CONTAINS:
+	case F_JSON_CONTAINS_PATH:
+	case F_JSON_DEPTH:
+	case F_JSON_EXTRACT:
+	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_INSERT:
+	case F_JSON_KEYS:
+	case F_JSON_LENGTH:
+	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
+	case F_JSON_OBJECT:
+	case F_JSON_PRETTY:
+	case F_JSON_QUOTE:
+	case F_JSON_REMOVE:
+	case F_JSON_REPLACE:
+	case F_JSON_SEARCH:
+	case F_JSON_SET:
+	case F_JSON_TYPE:
+	case F_JSON_UNQUOTE:
+	case F_JSON_VALID:
+	case PT_JSON_ARRAYAGG:
+	case PT_JSON_OBJECTAGG:
+	  return true;
+	default:
+	  return false;
 	}
     }
 
@@ -1075,6 +1109,105 @@ pt_find_aggregate_functions_post (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 }
 
 /*
+ * pt_is_order_sensitive_agg_post () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_order_sensitive_agg_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *order_sensitive_agg = (bool *) arg;
+
+  if (*order_sensitive_agg)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_group_concat () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an analytic function node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_group_concat (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_group_concat = (bool *) arg;
+
+  if (tree && tree->node_type == PT_FUNCTION && tree->info.function.function_type == PT_GROUP_CONCAT)
+    {
+      *has_group_concat = true;
+    }
+
+  if (*has_group_concat)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_order_sensitive_agg () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an order-sensitive aggrigation function node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_group_concat = (bool *) arg;
+
+  if (tree && tree->node_type == PT_FUNCTION &&
+      (tree->info.function.function_type == PT_GROUP_CONCAT
+       || tree->info.function.function_type == PT_CUME_DIST
+       || tree->info.function.function_type == PT_PERCENT_RANK
+       || tree->info.function.function_type == PT_PERCENTILE_CONT
+       || tree->info.function.function_type == PT_PERCENTILE_DISC
+       || tree->info.function.function_type == F_SEQUENCE || pt_is_json_function (parser, tree)))
+    {
+      *has_group_concat = true;
+    }
+
+  if (*has_group_concat)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * pt_is_analytic_node_post () -
  *   return:
  *   parser(in):
@@ -1124,6 +1257,10 @@ pt_is_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *co
   else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
     {
       *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
     }
 
   return tree;
@@ -1189,6 +1326,65 @@ pt_is_inst_or_orderby_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, vo
 }
 
 /*
+ * pt_is_inst_num_node_post () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_inst_num_node_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_inst_num = (bool *) arg;
+
+  if (*has_inst_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_inst_num_node () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an INST_NUM expression node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_inst_num = (bool *) arg;
+
+  if (PT_IS_INSTNUM (tree))
+    {
+      *has_inst_num = true;
+    }
+
+  if (*has_inst_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * pt_is_inst_or_orderby_num_node () -
  *   return:
  *   parser(in):
@@ -1213,6 +1409,44 @@ pt_is_inst_or_orderby_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *a
   else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
     {
       *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_is_inst_or_inst_num_node () -
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): true if node is an INST_NUM or ORDERBY_NUM or GROUPBY_NUM expression node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_inst_or_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_inst_orderby_num = (bool *) arg;
+
+  if (PT_IS_INSTNUM (tree) || PT_IS_ORDERBYNUM (tree) || PT_IS_GROUPBYNUM (tree))
+    {
+      *has_inst_orderby_num = true;
+    }
+
+  if (*has_inst_orderby_num)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
     }
 
   return tree;
@@ -1255,6 +1489,16 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_REMOVE_TRIGGER:
 	case PT_RENAME_TRIGGER:
 	case PT_UPDATE_STATS:
+	  /* TODO: check it  */
+	case PT_CREATE_SERVER:
+	case PT_DROP_SERVER:
+	case PT_RENAME_SERVER:
+	case PT_ALTER_SERVER:
+	case PT_TRUNCATE:
+	case PT_ALTER_SYNONYM:
+	case PT_CREATE_SYNONYM:
+	case PT_DROP_SYNONYM:
+	case PT_RENAME_SYNONYM:
 	  return true;
 	default:
 	  break;
@@ -1841,8 +2085,8 @@ pt_check_level_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool * has_greater
     case PT_LE:
     case PT_GE:
       {
-	bool lhs_level = arg1->info.expr.op == PT_LEVEL;
-	bool rhs_level = arg2->info.expr.op == PT_LEVEL;
+	bool lhs_level = PT_IS_EXPR_NODE (arg1) && arg1->info.expr.op == PT_LEVEL;
+	bool rhs_level = PT_IS_EXPR_NODE (arg2) && arg2->info.expr.op == PT_LEVEL;
 	if ((lhs_level && rhs_level) || (!lhs_level && !rhs_level))
 	  {
 	    /* leave both has_greater and has_lesser as false */
@@ -2139,7 +2383,7 @@ pt_get_first_arg_ignore_prior (PT_NODE * node)
     {
       arg1 = arg1->info.expr.arg1;
     }
-  /* Although semantically valid, PRIOR(PRIOR(expr)) is not allowed at runtime so this combination is restricted during 
+  /* Although semantically valid, PRIOR(PRIOR(expr)) is not allowed at runtime so this combination is restricted during
    * parsing. See the parser rule for PRIOR for details. */
   assert (!PT_IS_EXPR_NODE_WITH_OPERATOR (arg1, PT_PRIOR));
 
@@ -2441,7 +2685,7 @@ pt_is_filtering_predicate (PARSER_CONTEXT * parser, PT_NODE * predicate)
     }
   else
     {
-      /* It references more than one spec (like a join predicate), but we consider it to be a filtering predicate if it 
+      /* It references more than one spec (like a join predicate), but we consider it to be a filtering predicate if it
        * contains certain expressions. */
       return info.must_be_filtering;
     }
@@ -2519,7 +2763,7 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
     {
       bool has_filter_pred = false;
 
-      assert (PT_IS_EXPR_NODE (current_conj));
+      assert (PT_IS_EXPR_NODE (current_conj) || PT_IS_VALUE_NODE (current_conj));
       /* It is either fully CNF or not at all. */
       assert (!(current_conj->next != NULL
 		&& (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
@@ -2529,7 +2773,7 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
 
       for (current_pred = current_conj; current_pred != NULL; current_pred = current_pred->or_next)
 	{
-	  assert (PT_IS_EXPR_NODE (current_pred));
+	  assert (PT_IS_EXPR_NODE (current_pred) || PT_IS_VALUE_NODE (current_pred));
 	  /* It is either fully CNF or not at all. */
 	  assert (!(current_pred->or_next != NULL
 		    && (PT_IS_EXPR_NODE_WITH_OPERATOR (current_pred, PT_AND)
@@ -2728,25 +2972,6 @@ pt_column_updatable (PARSER_CONTEXT * parser, PT_NODE * statement)
   return updatable;
 }
 #endif
-
-/*
- * pt_has_error () - returns true if there are errors recorder for this parser
- *   return:
- *   parser(in):
- */
-int
-pt_has_error (const PARSER_CONTEXT * parser)
-{
-  if (parser && (parser->error_msgs != NULL || parser->has_internal_error))
-    {
-#if 0				/* TODO */
-      assert (er_errid () != NO_ERROR);
-#endif
-      return 1;
-    }
-
-  return 0;
-}
 
 /*
  * pt_statement_line_number () -
@@ -2948,6 +3173,55 @@ pt_has_aggregate (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_define_vars () - check if a statement uses define vars ':='
+ * return	: true if the statement uses define vars ':='
+ * parser (in)	: parser context
+ * stmt (in)	: statement
+ */
+bool
+pt_has_define_vars (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  bool has_define_vars = false;
+
+  parser_walk_tree (parser, stmt, pt_is_define_vars, &has_define_vars, NULL, NULL);
+
+  return has_define_vars;
+}
+
+/*
+ * pt_is_define_vars () - check if a node is a define vars ':='
+ * return : node
+ * parser (in) : parser context
+ * node (in)   : node
+ * arg (in)    :
+ * continue_walk (in) :
+ */
+PT_NODE *
+pt_is_define_vars (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *is_define_vars = (bool *) arg;
+  *continue_walk = PT_CONTINUE_WALK;
+  assert (is_define_vars != NULL);
+
+  if (*is_define_vars)
+    {
+      /* stop checking, there already is a parameter in the statement */
+      return node;
+    }
+
+  if (node->node_type == PT_EXPR)
+    {
+      if (node->info.expr.op == PT_DEFINE_VARIABLE)
+	{
+	  *is_define_vars = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_has_analytic () -
  *   return: true if statement has an analytic function in its parse tree
  *   parser(in):
@@ -3005,6 +3279,52 @@ pt_has_analytic (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_order_sensitive_agg () -
+ *   return: true if statement has an group_concat function in its parse tree
+ *   parser(in):
+ *   node(in/out):
+ *
+ */
+bool
+pt_has_order_sensitive_agg (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_order_sensitive_agg = false;
+  bool has_order_sensitive_agg_arg1 = false;
+  bool has_order_sensitive_agg_arg2 = false;
+
+  if (!node)
+    {
+      return false;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      (void) parser_walk_tree (parser, node->info.query.q.select.list, pt_is_order_sensitive_agg,
+			       &has_order_sensitive_agg, pt_is_order_sensitive_agg_post, &has_order_sensitive_agg);
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      has_order_sensitive_agg_arg1 = pt_has_order_sensitive_agg (parser, node->info.query.q.union_.arg1);
+      has_order_sensitive_agg_arg2 = pt_has_order_sensitive_agg (parser, node->info.query.q.union_.arg2);
+      if (has_order_sensitive_agg_arg1 || has_order_sensitive_agg_arg2)
+	{
+	  has_order_sensitive_agg = true;
+	}
+      break;
+
+    default:
+      (void) parser_walk_tree (parser, node, pt_is_order_sensitive_agg, &has_order_sensitive_agg,
+			       pt_is_order_sensitive_agg_post, &has_order_sensitive_agg);
+      break;
+    }
+
+  return has_order_sensitive_agg;
+}
+
+/*
  * pt_has_inst_or_orderby_num () - check if tree has an INST_NUM or ORDERBY_NUM
  *				   node somewhere
  *   return: true if tree has INST_NUM/ORDERBY_NUM
@@ -3020,6 +3340,265 @@ pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node)
 			   pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
 
   return has_inst_orderby_num;
+}
+
+/*
+ * pt_has_inst_num () - check if tree has an INST_NUM node somewhere
+ *   return: true if tree has INST_NUM
+ *   parser(in):
+ *   node(in):
+ */
+bool
+pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_inst_num = false;
+
+  (void) parser_walk_tree (parser, node, pt_is_inst_num_node, &has_inst_num, pt_is_inst_num_node_post, &has_inst_num);
+
+  return has_inst_num;
+}
+
+/*
+ * pt_has_expr_of_inst_in_sel_list () - check if tree has an EXPR node having INST_NUM in select list
+ *   return: true if tree has EXPR node having INST_NUM
+ *   parser(in):
+ *   node(in):
+ */
+bool
+pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list)
+{
+  PT_NODE *save_next, *col;
+
+  /*
+   * FIXME!! : remove this check after expanding syntax related to orderby_num().
+   * This check is needed because the syntax below is not supported.
+   * 'select orderby_num() + 10 ...'
+   * Check MSGCAT_SEMANTIC_ORDERBYNUM_SELECT_LIST_ERR error code
+   * In XASL Generator, 'ordbynum_val' must be created as a regular variable, not db_value.
+   */
+  col = select_list;
+  while (col)
+    {
+      /* cut off next */
+      save_next = col->next;
+      col->next = NULL;
+
+      if (!PT_IS_INSTNUM (col) && pt_has_inst_num (parser, col))
+	{
+	  /* find expr of instnum */
+	  col->next = save_next;
+	  return true;
+	}
+      col->next = save_next;
+      col = col->next;
+    }
+
+  return false;
+}
+
+/*
+ * pt_has_inst_in_where_and_select_list ()
+ *          - check if tree has an INST_NUM or ORDERBY_NUM or GROUPBY_NUM node in where and select_list
+ *   return: true if tree has INST_NUM/ORDERBY_NUM
+ *   parser(in):
+ *   node(in):
+ */
+
+bool
+pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_inst_orderby_num = false;
+  PT_NODE *where, *select_list, *orderby_for, *having, *using_index;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      using_index = node->info.query.q.select.using_index;
+      if (using_index != NULL && using_index->info.name.indx_key_limit != NULL)
+	{
+	  return true;
+	}
+      where = node->info.query.q.select.where;
+      (void) parser_walk_tree (parser, where, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      select_list = node->info.query.q.select.list;
+      (void) parser_walk_tree (parser, select_list, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      orderby_for = node->info.query.orderby_for;
+      (void) parser_walk_tree (parser, orderby_for, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      having = node->info.query.q.select.having;
+      (void) parser_walk_tree (parser, having, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      if (node->info.query.limit)
+	{
+	  return true;
+	}
+      has_inst_orderby_num |= pt_has_inst_in_where_and_select_list (parser, node->info.query.q.union_.arg1);
+      has_inst_orderby_num |= pt_has_inst_in_where_and_select_list (parser, node->info.query.q.union_.arg2);
+      break;
+
+    default:
+      break;
+    }
+
+  return has_inst_orderby_num;
+}
+
+/*
+ * pt_has_inst_or_orderby_num_in_where ()
+ *          - check if tree has an INST_NUM or ORDERBY_NUM or GROUPBY_NUM node in where
+ *   return: true if tree has INST_NUM/ORDERBY_NUM
+ *   parser(in):
+ *   node(in):
+ */
+
+bool
+pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_inst_orderby_num = false;
+  PT_NODE *where, *select_list, *orderby_for, *having, *using_index;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      using_index = node->info.query.q.select.using_index;
+      if (using_index != NULL && using_index->info.name.indx_key_limit != NULL)
+	{
+	  return true;
+	}
+      where = node->info.query.q.select.where;
+      (void) parser_walk_tree (parser, where, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      orderby_for = node->info.query.orderby_for;
+      (void) parser_walk_tree (parser, orderby_for, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      having = node->info.query.q.select.having;
+      (void) parser_walk_tree (parser, having, pt_is_inst_or_inst_num_node, &has_inst_orderby_num,
+			       pt_is_inst_or_orderby_num_node_post, &has_inst_orderby_num);
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      if (node->info.query.limit)
+	{
+	  return true;
+	}
+      has_inst_orderby_num |= pt_has_inst_or_orderby_num_in_where (parser, node->info.query.q.union_.arg1);
+      has_inst_orderby_num |= pt_has_inst_or_orderby_num_in_where (parser, node->info.query.q.union_.arg2);
+      break;
+
+    default:
+      break;
+    }
+
+  return has_inst_orderby_num;
+}
+
+/*
+ * pt_set_correlation_level ()
+ *          - set correlation level
+ *   parser(in):
+ *   subquery(in):
+ *   level(in):
+ */
+
+void
+pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level)
+{
+  switch (subquery->node_type)
+    {
+    case PT_SELECT:
+      subquery->info.query.correlation_level = level;
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      subquery->info.query.correlation_level = level;
+      pt_set_correlation_level (parser, subquery->info.query.q.union_.arg1, level);
+      pt_set_correlation_level (parser, subquery->info.query.q.union_.arg2, level);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * pt_set_pred_order ()
+ *          - set predicate order number
+ *   parser(in):
+ *   pre_pred(in):
+ *   pre_order(in):
+ */
+
+void
+pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred, int pre_order)
+{
+  PT_NODE *pred;
+
+  /* set pred_order + pre_order to pre_pred */
+  for (pred = pre_pred; pred; pred = pred->next)
+    {
+      if (pt_is_expr_node (pred))
+	{
+	  pred->info.expr.pred_order += pre_order;
+	}
+    }
+}
+
+/*
+ * pt_get_max_pred_order ()
+ *          - get max predicate order number
+ *   parser(in):
+ *   pred(in):
+ */
+
+int
+pt_get_max_pred_order (PARSER_CONTEXT * parser, PT_NODE * predicate)
+{
+  PT_NODE *pred;
+  int max_pred_order = 0;
+
+  for (pred = predicate; pred; pred = pred->next)
+    {
+      if (pt_is_expr_node (pred))
+	{
+	  if (pred->info.expr.pred_order > max_pred_order)
+	    {
+	      max_pred_order = pred->info.expr.pred_order;
+	    }
+	}
+    }
+  return max_pred_order;
+}
+
+/*
+ * pt_has_nullable_term () - check if tree has an nullable term
+ *				   node somewhere
+ *   return: true if tree has nullable term
+ *   parser(in):
+ *   node(in):
+ */
+bool
+pt_has_nullable_term (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  int has_nullable_term = 0;
+  PT_NODE *next;
+
+  next = node->next;
+  node->next = NULL;
+  (void) parser_walk_tree (parser, node, NULL, NULL, qo_check_nullable_expr, &has_nullable_term);
+  node->next = next;
+
+  return has_nullable_term == 0 ? false : true;
 }
 
 /*
@@ -3578,2373 +4157,6 @@ pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list)
   return (s2 == NULL) ? true : false;
 }
 
-/*
- *
- * Function group:
- * Query Processor memory management module
- *
- */
-
-
-/*
- *       		  MEMORY FUNCTIONS FOR STRINGS
- */
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * regu_bytes_alloc () - Memory allocation function for void *.
- *   return: void *
- *   length(in): length of the bytes to be allocated
- *   length(in) :
- */
-static void *
-regu_bytes_alloc (int length)
-{
-  void *ptr;
-
-  if ((ptr = pt_alloc_packing_buf (length)) == (void *) NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      return ptr;
-    }
-}
-
-/*
- * regu_string_alloc () - Memory allocation function for CHAR *.
- *   return: char *
- *   length(in) : length of the string to be allocated
- */
-char *
-regu_string_alloc (int length)
-{
-  return (char *) regu_bytes_alloc (length);
-}
-
-/*
- * regu_string_db_alloc () -
- *   return: char *
- *   length(in) : length of the string to be allocated
- *
- * Note: Memory allocation function for CHAR * using malloc.
- */
-char *
-regu_string_db_alloc (int length)
-{
-  char *ptr;
-
-  return (ptr = (char *) malloc (length));
-}
-
-/*
- * regu_string_ws_alloc () -
- *   return: char *
- *   length(in) : length of the string to be allocated
- *
- * Note: Memory allocation function for CHAR * using malloc.
- */
-
-char *
-regu_string_ws_alloc (int length)
-{
-  char *ptr;
-
-  return (ptr = (char *) db_ws_alloc (length));
-}
-
-/*
- * regu_strdup () - Duplication function for string.
- *   return: char *
- *   srptr(in)  : pointer to the source string
- *   alloc(in)  : pointer to an allocation function
- */
-char *
-regu_strdup (const char *srptr, char *(*alloc) (int))
-{
-  int len;
-  char *dtptr;
-
-  len = strlen (srptr) + 1;
-  dtptr = alloc (len);
-  if (dtptr == NULL)
-    {
-      return NULL;
-    }
-
-  /* because alloc may be bound to regu_bytes_alloc (which is a fixed-len buffer allocator), we must guard against
-   * copying strings longer than DB_MAX_STRING_LENGTH.  Otherwise, we get a corrupted heap seg fault. */
-  len = (len > DB_MAX_STRING_LENGTH ? DB_MAX_STRING_LENGTH : len);
-  dtptr[0] = '\0';
-  strncat (dtptr, srptr, len);
-  dtptr[len - 1] = '\0';
-  return dtptr;
-}
-
-/*
- * regu_strcmp () - String comparison function.
- *   return: int
- *   name1(in)  : pointer to the first string
- *   name2(in)  : pointer to the second string
- *   function_strcmp(in): pointer to the function strcmp or ansisql_strcmp
- */
-int
-regu_strcmp (const char *name1, const char *name2, int (*function_strcmp) (const char *, const char *))
-{
-  int i;
-
-  if (name1 == NULL && name2 == NULL)
-    {
-      return 0;
-    }
-  else if (name1 == NULL)
-    {
-      return -2;
-    }
-  else if (name2 == NULL)
-    {
-      return 2;
-    }
-  else if ((i = function_strcmp (name1, name2)) == 0)
-    {
-      return 0;
-    }
-  else
-    {
-      return ((i < 0) ? -1 : 1);
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- *       		MEMORY FUNCTIONS FOR DB_VALUE
- */
-
-/*
- * regu_dbval_db_alloc () -
- *   return: DB_VALUE *
- *
- * Note: Memory allocation function for DB_VALUE using malloc.
- */
-DB_VALUE *
-regu_dbval_db_alloc (void)
-{
-  DB_VALUE *ptr;
-
-  ptr = (DB_VALUE *) malloc (sizeof (DB_VALUE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_dbval_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_dbval_alloc () -
- *   return: DB_VALUE *
- *
- * Note: Memory allocation function for X_VARIABLE.
- */
-DB_VALUE *
-regu_dbval_alloc (void)
-{
-  DB_VALUE *ptr;
-
-  ptr = (DB_VALUE *) pt_alloc_packing_buf (sizeof (DB_VALUE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_dbval_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_dbval_init () - Initialization function for DB_VALUE.
- *   return: int
- *   ptr(in)    : pointer to an DB_VALUE
- */
-int
-regu_dbval_init (DB_VALUE * ptr)
-{
-  if (db_value_domain_init (ptr, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
-    {
-      return false;
-    }
-  else
-    {
-      return true;
-    }
-}
-
-
-/*
- * regu_dbval_type_init () -
- *   return: int
- *   ptr(in)    : pointer to an DB_VALUE
- *   type(in)   : a primitive data type
- *
- * Note: Initialization function for DB_VALUE with type argument.
- */
-int
-regu_dbval_type_init (DB_VALUE * ptr, DB_TYPE type)
-{
-  if (db_value_domain_init (ptr, type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
-    {
-      return false;
-    }
-  else
-    {
-      return true;
-    }
-}
-
-/*
- * regu_dbvalptr_array_alloc () -
- *   return: DB_VALUE **
- *   size(in): size of the array to be allocated
- *
- * Note: Memory allocation function for arrays of DB_VALUE pointers
- *       allocated with the default memory manager.
- */
-DB_VALUE **
-regu_dbvalptr_array_alloc (int size)
-{
-  DB_VALUE **ptr;
-
-  if (size == 0)
-    return NULL;
-
-  ptr = (DB_VALUE **) pt_alloc_packing_buf (sizeof (DB_VALUE *) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      return ptr;
-    }
-}
-
-/*
- * regu_dbvallist_alloc () -
- *   return: QP_DB_VALUE_LIST
- *
- * Note: Memory allocation function for QP_DB_VALUE_LIST with the
- *              allocation of a DB_VALUE for the value field.
- */
-QPROC_DB_VALUE_LIST
-regu_dbvallist_alloc (void)
-{
-  QPROC_DB_VALUE_LIST ptr;
-
-  ptr = regu_dbvlist_alloc ();
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-
-  ptr->val = regu_dbval_alloc ();
-  if (ptr->val == NULL)
-    {
-      return NULL;
-    }
-
-  return ptr;
-}
-
-/*
- * regu_dbvlist_alloc () -
- *   return: QPROC_DB_VALUE_LIST
- *
- * Note: Memory allocation function for QPROC_DB_VALUE_LIST.
- */
-QPROC_DB_VALUE_LIST
-regu_dbvlist_alloc (void)
-{
-  QPROC_DB_VALUE_LIST ptr;
-  int size;
-
-  size = (int) sizeof (struct qproc_db_value_list);
-  ptr = (QPROC_DB_VALUE_LIST) pt_alloc_packing_buf (size);
-
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_dbvallist_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_dbvallist_init () -
- *   return:
- *   ptr(in)    : pointer to an QPROC_DB_VALUE_LIST
- *
- * Note: Initialization function for QPROC_DB_VALUE_LIST.
- */
-static void
-regu_dbvallist_init (QPROC_DB_VALUE_LIST ptr)
-{
-  ptr->next = NULL;
-  ptr->val = NULL;
-  ptr->dom = NULL;
-}
-
-/*
- *       	       MEMORY FUNCTIONS FOR REGU_VARIABLE
- */
-
-/*
- * regu_var_alloc () -
- *   return: REGU_VARIABLE *
- *
- * Note: Memory allocation function for REGU_VARIABLE.
- */
-REGU_VARIABLE *
-regu_var_alloc (void)
-{
-  REGU_VARIABLE *ptr;
-
-  ptr = (REGU_VARIABLE *) pt_alloc_packing_buf (sizeof (REGU_VARIABLE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_var_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_var_init () -
- *   return:
- *   ptr(in)    : pointer to a regu_variable
- *
- * Note: Initialization function for REGU_VARIABLE.
- */
-static void
-regu_var_init (REGU_VARIABLE * ptr)
-{
-  ptr->type = TYPE_POS_VALUE;
-  ptr->flags = 0;
-  ptr->value.val_pos = 0;
-  ptr->vfetch_to = NULL;
-  ptr->domain = NULL;
-  REGU_VARIABLE_XASL (ptr) = NULL;
-}
-
-/*
- * regu_varlist_alloc () -
- *   return: REGU_VARIABLE_LIST
- *
- * Note: Memory allocation function for REGU_VARIABLE_LIST.
- */
-REGU_VARIABLE_LIST
-regu_varlist_alloc (void)
-{
-  REGU_VARIABLE_LIST ptr;
-  int size;
-
-  size = (int) sizeof (struct regu_variable_list_node);
-  ptr = (REGU_VARIABLE_LIST) pt_alloc_packing_buf (size);
-
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_varlist_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_varlist_init () -
- *   return:
- *   ptr(in)    : pointer to a regu_variable_list
- *
- * Note: Initialization function for regu_variable_list.
- */
-static void
-regu_varlist_init (REGU_VARIABLE_LIST ptr)
-{
-  ptr->next = NULL;
-  regu_var_init (&ptr->value);
-}
-
-/*
- * regu_varptr_array_alloc () -
- *   return: REGU_VARIABLE **
- *   size: size of the array to be allocated
- *
- * Note: Memory allocation function for arrays of REGU_VARIABLE
- *       pointers allocated with the default memory manager.
- */
-REGU_VARIABLE **
-regu_varptr_array_alloc (int size)
-{
-  REGU_VARIABLE **ptr;
-
-  if (size == 0)
-    return NULL;
-
-  ptr = (REGU_VARIABLE **) pt_alloc_packing_buf (sizeof (REGU_VARIABLE *) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      return ptr;
-    }
-}
-
-/*
- * regu_varlist_list_init () -
- *   return:
- *   ptr(in)    : pointer to a regu_varlist_list
- *
- * Note: Initialization function for regu_varlist_list.
- */
-static void
-regu_varlist_list_init (REGU_VARLIST_LIST ptr)
-{
-  ptr->next = NULL;
-  ptr->list = NULL;
-}
-
-/*
- * regu_varlist_list_alloc () -
- *   return:
- */
-REGU_VARLIST_LIST
-regu_varlist_list_alloc (void)
-{
-  REGU_VARLIST_LIST ptr;
-  int size;
-
-  size = (int) sizeof (struct regu_variable_list_node);
-  ptr = (REGU_VARLIST_LIST) pt_alloc_packing_buf (size);
-
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_varlist_list_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- *       	       MEMORY FUNCTIONS FOR POINTER LISTS
- */
-/*
- * regu_vallist_alloc () -
- *   return: VAL_LIST
- *
- * Note: Memory allocation function for VAL_LIST.
- */
-VAL_LIST *
-regu_vallist_alloc (void)
-{
-  VAL_LIST *ptr;
-
-  ptr = (VAL_LIST *) pt_alloc_packing_buf (sizeof (VAL_LIST));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_vallist_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_vallist_init () -
- *   return:
- *   ptr(in)    : pointer to a value list
- *
- * Note: Initialization function for VAL_LIST.
- */
-static void
-regu_vallist_init (VAL_LIST * ptr)
-{
-  ptr->val_cnt = 0;
-  ptr->valp = NULL;
-}
-
-/*
- * regu_outlist_alloc () -
- *   return: OUTPTR_LIST *
- *
- * Note: Memory allocation function for OUTPTR_LIST.
- */
-OUTPTR_LIST *
-regu_outlist_alloc (void)
-{
-  OUTPTR_LIST *ptr;
-
-  ptr = (OUTPTR_LIST *) pt_alloc_packing_buf (sizeof (OUTPTR_LIST));
-
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_outlist_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_outlist_init () -
- *   return:
- *   ptr(in)    : pointer to an output pointer list
- *
- * Note: Initialization function for OUTPTR_LIST.
- */
-static void
-regu_outlist_init (OUTPTR_LIST * ptr)
-{
-  ptr->valptr_cnt = 0;
-  ptr->valptrp = NULL;
-}
-
-/*
- * regu_outlistptr_array_alloc () - Allocate an array of OUTPTR_LIST pointers.
- *
- * return	 : Allocated memory pointer.
- * int size (in) : Array size.
- */
-OUTPTR_LIST **
-regu_outlistptr_array_alloc (int size)
-{
-  OUTPTR_LIST **ptr;
-
-  if (size == 0)
-    return NULL;
-
-  ptr = (OUTPTR_LIST **) pt_alloc_packing_buf (sizeof (OUTPTR_LIST *) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      return ptr;
-    }
-}
-
-/*
- *       	   MEMORY FUNCTIONS FOR EXPRESSION STRUCTURES
- */
-
-/*
- * regu_pred_alloc () -
- *   return: PRED_EXPR *
- *
- * Note: Memory allocation function for PRED_EXPR.
- */
-PRED_EXPR *
-regu_pred_alloc (void)
-{
-  PRED_EXPR *ptr;
-
-  ptr = (PRED_EXPR *) pt_alloc_packing_buf (sizeof (PRED_EXPR));
-
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_pred_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_pred_init () -
- *   return:
- *   ptr(in)    : pointer to a predicate expression
- *
- * Note: Initialization function for PRED_EXPR.
- */
-static void
-regu_pred_init (PRED_EXPR * ptr)
-{
-  ptr->type = T_NOT_TERM;
-  ptr->pe.not_term = NULL;
-}
-
-/*
- * regu_pred_with_context_alloc () -
- *   return: PRED_EXPR_WITH_CONTEXT *
- *
- * Note: Memory allocation function for PRED_EXPR_WITH_CONTEXT.
- */
-PRED_EXPR_WITH_CONTEXT *
-regu_pred_with_context_alloc (void)
-{
-  PRED_EXPR_WITH_CONTEXT *ptr;
-
-  ptr = (PRED_EXPR_WITH_CONTEXT *) pt_alloc_packing_buf (sizeof (PRED_EXPR_WITH_CONTEXT));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-
-  memset ((char *) ptr, 0x00, sizeof (PRED_EXPR_WITH_CONTEXT));
-  return ptr;
-}
-
-/*
- * regu_arith_alloc () -
- *   return: ARITH_TYPE *
- *
- * Note: Memory allocation function for ARITH_TYPE with the allocation
- *       of a db_value for the value field.
- */
-ARITH_TYPE *
-regu_arith_alloc (void)
-{
-  ARITH_TYPE *arithptr;
-
-  arithptr = regu_arith_no_value_alloc ();
-  if (arithptr == NULL)
-    {
-      return NULL;
-    }
-
-  arithptr->value = regu_dbval_alloc ();
-  if (arithptr->value == NULL)
-    {
-      return NULL;
-    }
-
-  return arithptr;
-}
-
-/*
- * regu_arith_no_value_alloc () -
- *   return: ARITH_TYPE *
- *
- * Note: Memory allocation function for ARITH_TYPE.
- */
-static ARITH_TYPE *
-regu_arith_no_value_alloc (void)
-{
-  ARITH_TYPE *ptr;
-
-  ptr = (ARITH_TYPE *) pt_alloc_packing_buf (sizeof (ARITH_TYPE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_arith_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_arith_init () -
- *   return:
- *   ptr(in)    : pointer to an arithmetic node
- *
- * Note: Initialization function for ARITH_TYPE.
- */
-static void
-regu_arith_init (ARITH_TYPE * ptr)
-{
-  ptr->next = NULL;
-  ptr->domain = NULL;
-  ptr->value = NULL;
-  ptr->opcode = T_ADD;
-  ptr->leftptr = NULL;
-  ptr->rightptr = NULL;
-  ptr->thirdptr = NULL;
-  ptr->misc_operand = LEADING;
-  ptr->rand_seed = NULL;
-}
-
-/*
- * regu_func_alloc () -
- *   return: FUNCTION_TYPE *
- *
- * Note: Memory allocation function for FUNCTION_TYPE with the
- *       allocation of a db_value for the value field
- */
-FUNCTION_TYPE *
-regu_func_alloc (void)
-{
-  FUNCTION_TYPE *funcp;
-
-  funcp = regu_function_alloc ();
-  if (funcp == NULL)
-    {
-      return NULL;
-    }
-
-  funcp->value = regu_dbval_alloc ();
-  if (funcp->value == NULL)
-    {
-      return NULL;
-    }
-
-  return funcp;
-}
-
-/*
- * regu_function_alloc () -
- *   return: FUNCTION_TYPE *
- *
- * Note: Memory allocation function for FUNCTION_TYPE.
- */
-static FUNCTION_TYPE *
-regu_function_alloc (void)
-{
-  FUNCTION_TYPE *ptr;
-
-  ptr = (FUNCTION_TYPE *) pt_alloc_packing_buf (sizeof (FUNCTION_TYPE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_func_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_func_init () -
- *   return:
- *   ptr(in)    : pointer to a function structure
- *
- * Note: Initialization function for FUNCTION_TYPE.
- */
-static void
-regu_func_init (FUNCTION_TYPE * ptr)
-{
-  ptr->value = NULL;
-  ptr->ftype = (FUNC_TYPE) 0;
-  ptr->operand = NULL;
-}
-
-/*
- * regu_agg_alloc () -
- *   return: AGGREGATE_TYPE *
- *
- * Note: Memory allocation function for AGGREGATE_TYPE with the
- *       allocation of a DB_VALUE for the value field and a list id
- *       structure for the list_id field.
- */
-AGGREGATE_TYPE *
-regu_agg_alloc (void)
-{
-  AGGREGATE_TYPE *aggptr;
-
-  aggptr = regu_aggregate_alloc ();
-  if (aggptr == NULL)
-    {
-      return NULL;
-    }
-
-  aggptr->accumulator.value = regu_dbval_alloc ();
-  if (aggptr->accumulator.value == NULL)
-    {
-      return NULL;
-    }
-
-  aggptr->accumulator.value2 = regu_dbval_alloc ();
-  if (aggptr->accumulator.value2 == NULL)
-    {
-      return NULL;
-    }
-
-  aggptr->list_id = regu_listid_alloc ();
-  if (aggptr->list_id == NULL)
-    {
-      return NULL;
-    }
-
-  return aggptr;
-}
-
-/*
- * regu_agg_grbynum_alloc () -
- *   return:
- */
-AGGREGATE_TYPE *
-regu_agg_grbynum_alloc (void)
-{
-  AGGREGATE_TYPE *aggptr;
-
-  aggptr = regu_aggregate_alloc ();
-  if (aggptr == NULL)
-    {
-      return NULL;
-    }
-
-  aggptr->accumulator.value = NULL;
-  aggptr->accumulator.value2 = NULL;
-  aggptr->list_id = NULL;
-
-  return aggptr;
-}
-
-/*
- * regu_aggregate_alloc () -
- *   return: AGGREGATE_TYPE *
- *
- * Note: Memory allocation function for AGGREGATE_TYPE.
- */
-static AGGREGATE_TYPE *
-regu_aggregate_alloc (void)
-{
-  AGGREGATE_TYPE *ptr;
-
-  ptr = (AGGREGATE_TYPE *) pt_alloc_packing_buf (sizeof (AGGREGATE_TYPE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_agg_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_agg_init () -
- *   return:
- *   ptr(in)    : pointer to an aggregate structure
- *
- * Note: Initialization function for AGGREGATE_TYPE.
- */
-static void
-regu_agg_init (AGGREGATE_TYPE * ptr)
-{
-  ptr->next = NULL;
-  ptr->accumulator.value = NULL;
-  ptr->accumulator.value2 = NULL;
-  ptr->accumulator.curr_cnt = 0;
-  ptr->function = (FUNC_TYPE) 0;
-  ptr->option = (QUERY_OPTIONS) 0;
-  ptr->operands = NULL;
-  ptr->list_id = NULL;
-  ptr->sort_list = NULL;
-  memset (&ptr->info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
-}
-
-/*
- * regu_analytic_alloc () -
- *   return: ANALYTIC_TYPE *
- *
- * Note: Memory allocation function for ANALYTIC_TYPE.
- */
-ANALYTIC_TYPE *
-regu_analytic_alloc (void)
-{
-  ANALYTIC_TYPE *ptr;
-
-  ptr = (ANALYTIC_TYPE *) pt_alloc_packing_buf (sizeof (ANALYTIC_TYPE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-    }
-  else
-    {
-      regu_analytic_init (ptr);
-      ptr->list_id = regu_listid_alloc ();
-      if (ptr->list_id == NULL)
-	{
-	  return NULL;
-	}
-      ptr->value2 = regu_dbval_alloc ();
-      if (ptr->value2 == NULL)
-	{
-	  return NULL;
-	}
-    }
-
-  return ptr;
-}
-
-/*
- * regu_analytic_eval_alloc () -
- *   return: ANALYTIC_EVAL_TYPE *
- *
- * Note: Memory allocation function for ANALYTIC_EVAL_TYPE.
- */
-ANALYTIC_EVAL_TYPE *
-regu_analytic_eval_alloc (void)
-{
-  ANALYTIC_EVAL_TYPE *ptr;
-
-  ptr = (ANALYTIC_EVAL_TYPE *) pt_alloc_packing_buf (sizeof (ANALYTIC_EVAL_TYPE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-    }
-  else
-    {
-      regu_analytic_eval_init (ptr);
-    }
-
-  return ptr;
-}
-
-/*
- * regu_analytic_init () -
- *   return:
- *   ptr(in)    : pointer to an analytic structure
- *
- * Note: Initialization function for ANALYTIC_TYPE.
- */
-void
-regu_analytic_init (ANALYTIC_TYPE * ptr)
-{
-  ptr->next = NULL;
-  ptr->value = NULL;
-  ptr->value2 = NULL;
-  ptr->out_value = NULL;
-  ptr->offset_idx = 0;
-  ptr->default_idx = 0;
-  ptr->curr_cnt = 0;
-  ptr->sort_prefix_size = 0;
-  ptr->sort_list_size = 0;
-  ptr->function = (FUNC_TYPE) 0;
-  regu_var_init (&ptr->operand);
-  ptr->opr_dbtype = DB_TYPE_NULL;
-  ptr->flag = 0;
-  ptr->from_last = false;
-  ptr->ignore_nulls = false;
-  ptr->is_const_operand = false;
-}
-
-/*
- * regu_analytic_eval_init () -
- *   return:
- *   ptr(in)    : pointer to an analytic structure
- *
- * Note: Initialization function for ANALYTIC_EVAL_TYPE.
- */
-void
-regu_analytic_eval_init (ANALYTIC_EVAL_TYPE * ptr)
-{
-  ptr->next = NULL;
-  ptr->head = NULL;
-  ptr->sort_list = NULL;
-}
-
-/*
- *       		 MEMORY FUNCTIONS FOR XASL TREE
- */
-
-/*
- * regu_xasl_node_alloc () -
- *   return: XASL_NODE *
- *   type(in)   : xasl proc type
- *
- * Note: Memory allocation function for XASL_NODE with the allocation
- *       a QFILE_LIST_ID structure for the list id field.
- */
-XASL_NODE *
-regu_xasl_node_alloc (PROC_TYPE type)
-{
-  XASL_NODE *xasl;
-
-  xasl = regu_xasl_alloc (type);
-  if (xasl == NULL)
-    {
-      return NULL;
-    }
-
-  xasl->list_id = regu_listid_alloc ();
-  if (xasl->list_id == NULL)
-    {
-      return NULL;
-    }
-
-  return xasl;
-}
-
-/*
- * regu_xasl_alloc () -
- *   return: XASL_NODE *
- *   type(in): xasl proc type
- *
- * Note: Memory allocation function for XASL_NODE.
- */
-static XASL_NODE *
-regu_xasl_alloc (PROC_TYPE type)
-{
-  XASL_NODE *ptr;
-
-  ptr = (XASL_NODE *) pt_alloc_packing_buf (sizeof (XASL_NODE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_xasl_node_init (ptr, type);
-      return ptr;
-    }
-}
-
-/*
- * regu_xasl_node_init () -
- *   return:
- *   ptr(in)    : pointer to an xasl structure
- *   type(in)   : xasl proc type
- *
- * Note: Initialization function for XASL_NODE.
- */
-static void
-regu_xasl_node_init (XASL_NODE * ptr, PROC_TYPE type)
-{
-  memset ((char *) ptr, 0x00, sizeof (XASL_NODE));
-
-  ptr->type = type;
-  ptr->option = Q_ALL;
-  ptr->iscan_oid_order = prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER);
-  ptr->scan_op_type = S_SELECT;
-
-  switch (type)
-    {
-    case UNION_PROC:
-    case DIFFERENCE_PROC:
-    case INTERSECTION_PROC:
-      ptr->option = Q_DISTINCT;
-      break;
-
-    case OBJFETCH_PROC:
-      break;
-
-    case BUILDLIST_PROC:
-      break;
-
-    case BUILDVALUE_PROC:
-      break;
-
-    case MERGELIST_PROC:
-      break;
-
-    case SCAN_PROC:
-      break;
-
-    case UPDATE_PROC:
-      break;
-
-    case DELETE_PROC:
-      break;
-
-    case INSERT_PROC:
-      break;
-
-    case CONNECTBY_PROC:
-      /* allocate CONNECT BY internal list files */
-      ptr->proc.connect_by.input_list_id = regu_listid_alloc ();
-      ptr->proc.connect_by.start_with_list_id = regu_listid_alloc ();
-      break;
-
-    case DO_PROC:
-      break;
-
-    case MERGE_PROC:
-      ptr->proc.merge.update_xasl = NULL;
-      ptr->proc.merge.insert_xasl = NULL;
-      break;
-
-    case CTE_PROC:
-      ptr->proc.cte.recursive_part = NULL;
-      ptr->proc.cte.non_recursive_part = NULL;
-      break;
-
-    default:
-      /* BUILD_SCHEMA_PROC */
-      break;
-    }
-}
-
-/*
- * regu_spec_alloc () -
- *   return: ACCESS_SPEC_TYPE *
- *   type(in)   : target type: TARGET_CLASS/TARGET_LIST/TARGET_SET
- *
- * Note: Memory allocation function for ACCESS_SPEC_TYPE with the
- *       allocation of a QFILE_LIST_ID structure for the list_id field of
- *       list file target.
- */
-ACCESS_SPEC_TYPE *
-regu_spec_alloc (TARGET_TYPE type)
-{
-  ACCESS_SPEC_TYPE *ptr;
-
-  ptr = regu_access_spec_alloc (type);
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-
-  return ptr;
-}
-
-/*
- * regu_access_spec_alloc () -
- *   return: ACCESS_SPEC_TYPE *
- *   type(in): TARGET_CLASS/TARGET_LIST/TARGET_SET
- *
- * Note: Memory allocation function for ACCESS_SPEC_TYPE.
- */
-static ACCESS_SPEC_TYPE *
-regu_access_spec_alloc (TARGET_TYPE type)
-{
-  ACCESS_SPEC_TYPE *ptr;
-
-  ptr = (ACCESS_SPEC_TYPE *) pt_alloc_packing_buf (sizeof (ACCESS_SPEC_TYPE));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_spec_init (ptr, type);
-      return ptr;
-    }
-}
-
-/*
- * regu_spec_init () -
- *   return:
- *   ptr(in)    : pointer to an access specification structure
- *   type(in)   : TARGET_CLASS/TARGET_LIST
- *
- * Note: Initialization function for ACCESS_SPEC_TYPE.
- */
-static void
-regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
-{
-  ptr->type = type;
-  ptr->access = ACCESS_METHOD_SEQUENTIAL;
-  ptr->indexptr = NULL;
-  ptr->where_key = NULL;
-  ptr->where_pred = NULL;
-  ptr->where_range = NULL;
-
-  if ((type == TARGET_CLASS) || (type == TARGET_CLASS_ATTR))
-    {
-      ptr->s.cls_node.cls_regu_list_key = NULL;
-      ptr->s.cls_node.cls_regu_list_pred = NULL;
-      ptr->s.cls_node.cls_regu_list_rest = NULL;
-      ptr->s.cls_node.cls_regu_list_range = NULL;
-      ACCESS_SPEC_HFID (ptr).vfid.fileid = NULL_FILEID;
-      ACCESS_SPEC_HFID (ptr).vfid.volid = NULL_VOLID;
-      ACCESS_SPEC_HFID (ptr).hpgid = NULL_PAGEID;
-      regu_init_oid (&ACCESS_SPEC_CLS_OID (ptr));
-      ptr->s.cls_node.attrids_range = NULL;
-      ptr->s.cls_node.cache_range = NULL;
-      ptr->s.cls_node.num_attrs_range = 0;
-    }
-  else if (type == TARGET_LIST)
-    {
-      ptr->s.list_node.list_regu_list_pred = NULL;
-      ptr->s.list_node.list_regu_list_rest = NULL;
-      ACCESS_SPEC_XASL_NODE (ptr) = NULL;
-    }
-  else if (type == TARGET_SHOWSTMT)
-    {
-      ptr->s.showstmt_node.show_type = SHOWSTMT_NULL;
-      ptr->s.showstmt_node.arg_list = NULL;
-    }
-  else if (type == TARGET_SET)
-    {
-      ACCESS_SPEC_SET_REGU_LIST (ptr) = NULL;
-      ACCESS_SPEC_SET_PTR (ptr) = NULL;
-    }
-  else if (type == TARGET_METHOD)
-    {
-      ACCESS_SPEC_METHOD_REGU_LIST (ptr) = NULL;
-      ACCESS_SPEC_XASL_NODE (ptr) = NULL;
-      ACCESS_SPEC_METHOD_SIG_LIST (ptr) = NULL;
-    }
-  else if (type == TARGET_JSON_TABLE)
-    {
-      ACCESS_SPEC_JSON_TABLE_REGU_VAR (ptr) = NULL;
-      ACCESS_SPEC_JSON_TABLE_ROOT_NODE (ptr) = NULL;
-      ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT (ptr) = 0;
-    }
-  ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
-  ptr->s_dbval = NULL;
-  ptr->next = NULL;
-  ptr->flags = ACCESS_SPEC_FLAG_NONE;
-}
-
-/*
- * regu_index_alloc () -
- *   return: INDX_INFO *
- *
- * Note: Memory allocation function for INDX_INFO.
- */
-INDX_INFO *
-regu_index_alloc (void)
-{
-  INDX_INFO *ptr;
-
-  ptr = (INDX_INFO *) pt_alloc_packing_buf (sizeof (INDX_INFO));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_index_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_index_init () -
- *   return:
- *   ptr(in)    : pointer to an index structure
- *
- * Note: Initialization function for INDX_INFO.
- */
-void
-regu_index_init (INDX_INFO * ptr)
-{
-  OID_SET_NULL (&ptr->class_oid);
-  ptr->coverage = 0;
-  ptr->range_type = R_KEY;
-  ptr->key_info.key_cnt = 0;
-  ptr->key_info.key_ranges = NULL;
-  ptr->key_info.is_constant = false;
-  ptr->key_info.key_limit_reset = false;
-  ptr->key_info.is_user_given_keylimit = false;
-  ptr->key_info.key_limit_l = NULL;
-  ptr->key_info.key_limit_u = NULL;
-  ptr->orderby_desc = 0;
-  ptr->groupby_desc = 0;
-  ptr->use_desc_index = 0;
-  ptr->orderby_skip = 0;
-  ptr->groupby_skip = 0;
-  ptr->use_iss = false;
-  ptr->iss_range.range = NA_NA;
-  ptr->iss_range.key1 = NULL;
-  ptr->iss_range.key2 = NULL;
-}
-
-/*
- * regu_keyrange_init () -
- *   return:
- *   ptr(in)    : pointer to an key range structure
- *
- * Note: Initialization function for KEY_RANGE.
- */
-void
-regu_keyrange_init (KEY_RANGE * ptr)
-{
-  ptr->range = NA_NA;
-  ptr->key1 = NULL;
-  ptr->key2 = NULL;
-}
-
-/*
- * regu_keyrange_array_alloc () -
- *   return: KEY_RANGE *
- *
- * Note: Memory allocation function for KEY_RANGE.
- */
-KEY_RANGE *
-regu_keyrange_array_alloc (int size)
-{
-  KEY_RANGE *ptr;
-  int i;
-
-  if (size == 0)
-    return NULL;
-
-  ptr = (KEY_RANGE *) pt_alloc_packing_buf (sizeof (KEY_RANGE) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      for (i = 0; i < size; i++)
-	{
-	  regu_keyrange_init (ptr + i);
-	}
-      return ptr;
-    }
-}
-
-/*
- * regu_sort_list_alloc () -
- *   return: SORT_LIST *
- *
- * Note: Memory allocation function for SORT_LIST.
- */
-SORT_LIST *
-regu_sort_list_alloc (void)
-{
-  SORT_LIST *ptr;
-
-  ptr = regu_sort_alloc ();
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-  return ptr;
-}
-
-/*
- * regu_sort_alloc () -
- *   return: SORT_LIST *
- *
- * Note: Memory allocation function for SORT_LIST.
- */
-static SORT_LIST *
-regu_sort_alloc (void)
-{
-  SORT_LIST *ptr;
-
-  ptr = (SORT_LIST *) pt_alloc_packing_buf (sizeof (SORT_LIST));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_sort_list_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_sort_list_init () -
- *   return:
- *   ptr(in)    : pointer to a list of sorting specifications
- *
- * Note: Initialization function for SORT_LIST.
- */
-static void
-regu_sort_list_init (SORT_LIST * ptr)
-{
-  ptr->next = NULL;
-  ptr->pos_descr.pos_no = 0;
-  ptr->pos_descr.dom = &tp_Integer_domain;
-  ptr->s_order = S_ASC;
-  ptr->s_nulls = S_NULLS_FIRST;
-}
-
-/*
- *       	       MEMORY FUNCTIONS FOR PHYSICAL ID'S
- */
-
-/*
- * regu_init_oid () -
- *   return:
- *   oidptr(in) : pointer to an oid structure
- *
- * Note: Initialization function for OID.
- */
-static void
-regu_init_oid (OID * oidptr)
-{
-  OID_SET_NULL (oidptr);
-}
-
-/*
- *       	     MEMORY FUNCTIONS FOR LIST ID
- */
-
-/*
- * regu_listid_alloc () -
- *   return: QFILE_LIST_ID *
- *
- * Note: Memory allocation function for QFILE_LIST_ID.
- */
-static QFILE_LIST_ID *
-regu_listid_alloc (void)
-{
-  QFILE_LIST_ID *ptr;
-
-  ptr = (QFILE_LIST_ID *) pt_alloc_packing_buf (sizeof (QFILE_LIST_ID));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_listid_init (ptr);
-      return ptr;
-    }
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * regu_listid_db_alloc () -
- *   return: QFILE_LIST_ID *
- *
- * Note: Memory allocation function for QFILE_LIST_ID using malloc.
- */
-QFILE_LIST_ID *
-regu_listid_db_alloc (void)
-{
-  QFILE_LIST_ID *ptr;
-
-  ptr = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_listid_init (ptr);
-      return ptr;
-    }
-}
-#endif
-
-/*
- * regu_listid_init () -
- *   return:
- *   ptr(in)    : pointer to a list_id structure
- *
- * Note: Initialization function for QFILE_LIST_ID.
- */
-static void
-regu_listid_init (QFILE_LIST_ID * ptr)
-{
-  QFILE_CLEAR_LIST_ID (ptr);
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * regu_cp_listid () -
- *   return: bool
- *   dst_list_id(in)    : pointer to the destination list_id
- *   src_list_id(in)    : pointer to the source list_id
- *
- * Note: Copy function for QFILE_LIST_ID.
- */
-int
-regu_cp_listid (QFILE_LIST_ID * dst_list_id, QFILE_LIST_ID * src_list_id)
-{
-  return cursor_copy_list_id (dst_list_id, src_list_id);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * regu_free_listid () -
- *   return:
- *   list_id(in)        : pointer to a list_id structure
- *
- * Note: Free function for QFILE_LIST_ID using free_and_init.
- */
-void
-regu_free_listid (QFILE_LIST_ID * list_id)
-{
-  if (list_id != NULL)
-    {
-      cursor_free_list_id (list_id, true);
-    }
-}
-
-/*
- * regu_srlistid_alloc () -
- *   return: QFILE_SORTED_LIST_ID *
- *
- * Note: Memory allocation function for QFILE_SORTED_LIST_ID.
- */
-QFILE_SORTED_LIST_ID *
-regu_srlistid_alloc (void)
-{
-  QFILE_SORTED_LIST_ID *ptr;
-  int size;
-
-  size = (int) sizeof (QFILE_SORTED_LIST_ID);
-  ptr = (QFILE_SORTED_LIST_ID *) pt_alloc_packing_buf (size);
-
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_srlistid_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_srlistid_init () -
- *   return:
- *   ptr(in)    : pointer to a srlist_id structure
- *
- * Note: Initialization function for QFILE_SORTED_LIST_ID.
- */
-static void
-regu_srlistid_init (QFILE_SORTED_LIST_ID * ptr)
-{
-  ptr->sorted = false;
-  ptr->list_id = NULL;
-}
-
-/*
- *       		 MEMORY FUNCTIONS FOR SM_DOMAIN
- */
-
-/*
- * regu_domain_db_alloc () -
- *   return: SM_DOMAIN *
- *
- * Note: Memory allocation function for SM_DOMAIN using malloc.
- */
-SM_DOMAIN *
-regu_domain_db_alloc (void)
-{
-  SM_DOMAIN *ptr;
-
-  ptr = (SM_DOMAIN *) malloc (sizeof (SM_DOMAIN));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_domain_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_domain_init () -
- *   return:
- *   ptr(in)    : pointer to a schema manager domain
- *
- * Note: Initialization function for SM_DOMAIN.
- */
-static void
-regu_domain_init (SM_DOMAIN * ptr)
-{
-  ptr->next = NULL;
-  ptr->next_list = NULL;
-  ptr->type = PR_TYPE_FROM_ID (DB_TYPE_INTEGER);
-  ptr->precision = 0;
-  ptr->scale = 0;
-  ptr->class_mop = NULL;
-  ptr->self_ref = 0;
-  ptr->setdomain = NULL;
-  OID_SET_NULL (&ptr->class_oid);
-  ptr->codeset = 0;
-  ptr->collation_id = 0;
-  ptr->is_cached = 0;
-  ptr->built_in_index = 0;
-  ptr->is_parameterized = 0;
-  ptr->is_desc = 0;
-}
-
-/*
- * regu_free_domain () -
- *   return:
- *   ptr(in)    : pointer to a schema manager domain
- *
- * Note: Free function for SM_DOMAIN using free_and_init.
- */
-void
-regu_free_domain (SM_DOMAIN * ptr)
-{
-  if (ptr != NULL)
-    {
-      regu_free_domain (ptr->next);
-      regu_free_domain (ptr->setdomain);
-      free_and_init (ptr);
-    }
-}
-
-
-/*
- * regu_cp_domain () -
- *   return: SM_DOMAIN *
- *   ptr(in)    : pointer to a schema manager domain
- *
- * Note: Copy function for SM_DOMAIN.
- */
-SM_DOMAIN *
-regu_cp_domain (SM_DOMAIN * ptr)
-{
-  SM_DOMAIN *new_ptr;
-
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-
-  new_ptr = regu_domain_db_alloc ();
-  if (new_ptr == NULL)
-    {
-      return NULL;
-    }
-  *new_ptr = *ptr;
-
-  if (ptr->next != NULL)
-    {
-      new_ptr->next = regu_cp_domain (ptr->next);
-      if (new_ptr->next == NULL)
-	{
-	  free_and_init (new_ptr);
-	  return NULL;
-	}
-    }
-
-  if (ptr->setdomain != NULL)
-    {
-      new_ptr->setdomain = regu_cp_domain (ptr->setdomain);
-      if (new_ptr->setdomain == NULL)
-	{
-	  regu_free_domain (new_ptr->next);
-	  new_ptr->next = NULL;
-	  free_and_init (new_ptr);
-	  return NULL;
-	}
-    }
-
-  return new_ptr;
-}
-
-/*
- * regu_int_init () -
- *   return:
- *   ptr(in)    : pointer to an int
- *
- * Note: Initialization function for int.
- */
-void
-regu_int_init (int *ptr)
-{
-  *ptr = 0;
-}
-
-/*
- * regu_int_array_alloc () -
- *   return: int *
- *   size(in): size of the array to be allocated
- *
- * Note: Memory allocation function for arrays of int
- */
-int *
-regu_int_array_alloc (int size)
-{
-  int *ptr;
-  int i;
-
-  if (size == 0)
-    return NULL;
-
-  ptr = (int *) pt_alloc_packing_buf (sizeof (int) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      for (i = 0; i < size; i++)
-	{
-	  regu_int_init (ptr + i);
-	}
-      return ptr;
-    }
-}
-
-/*
- * regu_int_pointer_array_alloc () -
- *   return: int **
- *   size(in): size of the array to be allocated
- *
- * Note: Memory allocation function for arrays of int pointers
- */
-int **
-regu_int_pointer_array_alloc (int size)
-{
-  int **ptr;
-  int i;
-
-  if (size == 0)
-    {
-      return NULL;
-    }
-
-  ptr = (int **) pt_alloc_packing_buf (sizeof (int *) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      for (i = 0; i < size; i++)
-	{
-	  *(ptr + i) = 0;
-	}
-      return ptr;
-    }
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * regu_int_array_db_alloc () -
- *   return: int *
- *   size(in): size of the array to be allocated
- *
- * Note: Memory allocation function for arrays of int using malloc.
- */
-int *
-regu_int_array_db_alloc (int size)
-{
-  int *ptr;
-  int i;
-
-  if (size == 0)
-    return NULL;
-
-  ptr = (int *) malloc (sizeof (int) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      for (i = 0; i < size; i++)
-	{
-	  regu_int_init (ptr + i);
-	}
-      return ptr;
-    }
-}
-#endif
-
-/*
- * regu_cache_attrinfo_alloc () -
- *   return: HEAP_CACHE_ATTRINFO *
- *
- * Note: Memory allocation function for HEAP_CACHE_ATTRINFO
- */
-HEAP_CACHE_ATTRINFO *
-regu_cache_attrinfo_alloc (void)
-{
-  HEAP_CACHE_ATTRINFO *ptr;
-  int size;
-
-  size = (int) sizeof (HEAP_CACHE_ATTRINFO);
-  ptr = (HEAP_CACHE_ATTRINFO *) pt_alloc_packing_buf (size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_cache_attrinfo_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_cache_attrinfo_init () -
- *   return:
- *   ptr(in)    : pointer to a cache_attrinfo structure
- *
- * Note: Initialization function for HEAP_CACHE_ATTRINFO.
- */
-static void
-regu_cache_attrinfo_init (HEAP_CACHE_ATTRINFO * ptr)
-{
-  memset (ptr, 0, sizeof (HEAP_CACHE_ATTRINFO));
-}
-
-/*
- * regu_oid_init () -
- *   return:
- *   ptr(in)    : pointer to a OID
- *
- * Note: Initialization function for OID.
- */
-void
-regu_oid_init (OID * ptr)
-{
-  OID_SET_NULL (ptr);
-}
-
-/*
- * regu_oid_array_alloc () -
- *   return: OID *
- *   size(in): size of the array to be allocated
- *
- * Note: Memory allocation function for arrays of OID
- */
-OID *
-regu_oid_array_alloc (int size)
-{
-  OID *ptr;
-  int i;
-
-  if (size == 0)
-    {
-      return NULL;
-    }
-
-  ptr = (OID *) pt_alloc_packing_buf (sizeof (OID) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      for (i = 0; i < size; i++)
-	{
-	  regu_oid_init (ptr + i);
-	}
-      return ptr;
-    }
-}
-
-/*
- * regu_hfid_init () -
- *   return:
- *   ptr(in)    : pointer to a HFID
- *
- * Note: Initialization function for HFID.
- */
-void
-regu_hfid_init (HFID * ptr)
-{
-  HFID_SET_NULL (ptr);
-}
-
-/*
- * regu_hfid_array_alloc () -
- *   return: HFID *
- *   size(in): size of the array to be allocated
- *
- * Note: Memory allocation function for arrays of HFID
- */
-HFID *
-regu_hfid_array_alloc (int size)
-{
-  HFID *ptr;
-  int i;
-
-  if (size == 0)
-    {
-      return NULL;
-    }
-
-  ptr = (HFID *) pt_alloc_packing_buf (sizeof (HFID) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      for (i = 0; i < size; i++)
-	{
-	  regu_hfid_init (ptr + i);
-	}
-      return ptr;
-    }
-}
-
-/*
- * regu_upddel_class_info_init () -
- *   return:
- *   ptr(in)    : pointer to a UPDDEL_CLASS_INFO
- *
- * Note: Initialization function for UPDDEL_CLASS_INFO.
- */
-void
-regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr)
-{
-  ptr->att_id = NULL;
-  ptr->class_hfid = NULL;
-  ptr->class_oid = NULL;
-  ptr->has_uniques = 0;
-  ptr->num_subclasses = 0;
-  ptr->num_attrs = 0;
-  ptr->needs_pruning = DB_NOT_PARTITIONED_CLASS;
-  ptr->num_lob_attrs = NULL;
-  ptr->lob_attr_ids = NULL;
-  ptr->num_extra_assign_reev = 0;
-  ptr->mvcc_extra_assign_reev = NULL;
-}
-
-/*
- * regu_upddel_class_info_array_alloc () -
- *   return: UPDDEL_CLASS_INFO *
- *   size(in): size of the array to be allocated
- *
- * Note: Memory allocation function for arrays of UPDDEL_CLASS_INFO
- */
-UPDDEL_CLASS_INFO *
-regu_upddel_class_info_array_alloc (int size)
-{
-  UPDDEL_CLASS_INFO *ptr;
-  int i;
-
-  if (size == 0)
-    {
-      return NULL;
-    }
-
-  ptr = (UPDDEL_CLASS_INFO *) pt_alloc_packing_buf (sizeof (UPDDEL_CLASS_INFO) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      for (i = 0; i < size; i++)
-	{
-	  regu_upddel_class_info_init (&ptr[i]);
-	}
-      return ptr;
-    }
-}
-
-/*
- * regu_odku_info_alloc () - memory allocation for ODKU_INFO objects
- * return : allocated object or NULL
- */
-ODKU_INFO *
-regu_odku_info_alloc (void)
-{
-  ODKU_INFO *ptr;
-
-  ptr = (ODKU_INFO *) pt_alloc_packing_buf (sizeof (ODKU_INFO));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  ptr->assignments = NULL;
-  ptr->attr_ids = NULL;
-  ptr->cons_pred = NULL;
-  ptr->num_assigns = 0;
-  ptr->attr_info = NULL;
-  return ptr;
-}
-
-/*
- * regu_update_assignment_init () -
- *   return:
- *   ptr(in)    : pointer to a UPDATE_ASSIGNMENT
- *
- * Note: Initialization function for UPDATE_ASSIGNMENT.
- */
-void
-regu_update_assignment_init (UPDATE_ASSIGNMENT * ptr)
-{
-  ptr->att_idx = -1;
-  ptr->cls_idx = -1;
-  ptr->constant = NULL;
-  ptr->regu_var = NULL;
-}
-
-/*
- * regu_update_assignment_array_alloc () -
- *   return: UPDATE_ASSIGNMENT *
- *   size(in): size of the array to be allocated
- *
- * Note: Memory allocation function for arrays of UPDATE_ASSIGNMENT
- */
-UPDATE_ASSIGNMENT *
-regu_update_assignment_array_alloc (int size)
-{
-  UPDATE_ASSIGNMENT *ptr;
-  int i;
-
-  if (size == 0)
-    {
-      return NULL;
-    }
-
-  ptr = (UPDATE_ASSIGNMENT *) pt_alloc_packing_buf (sizeof (UPDATE_ASSIGNMENT) * size);
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      for (i = 0; i < size; i++)
-	{
-	  regu_update_assignment_init (&ptr[i]);
-	}
-      return ptr;
-    }
-}
-
-/*
- * regu_method_sig_init () -
- *   return:
- *   ptr(in)    : pointer to a method_sig
- *
- * Note: Initialization function for METHOD_SIG.
- */
-void
-regu_method_sig_init (METHOD_SIG * ptr)
-{
-  ptr->next = NULL;
-  ptr->method_name = NULL;
-  ptr->class_name = NULL;
-  ptr->method_type = METHOD_IS_NONE;
-  ptr->num_method_args = 0;
-  ptr->method_arg_pos = NULL;
-}
-
-/*
- * regu_method_sig_alloc () -
- *   return: METHOD_SIG *
- *
- * Note: Memory allocation function for METHOD_SIG.
- */
-METHOD_SIG *
-regu_method_sig_alloc (void)
-{
-  METHOD_SIG *ptr;
-
-  ptr = (METHOD_SIG *) pt_alloc_packing_buf (sizeof (METHOD_SIG));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_method_sig_init (ptr);
-      return ptr;
-    }
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * regu_method_sig_db_alloc () -
- *   return: METHOD_SIG *
- *
- * Note: Memory allocation function for METHOD_SIG using malloc.
- */
-METHOD_SIG *
-regu_method_sig_db_alloc (void)
-{
-  METHOD_SIG *ptr;
-
-  ptr = (METHOD_SIG *) malloc (sizeof (METHOD_SIG));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_method_sig_init (ptr);
-      return ptr;
-    }
-}
-#endif
-
-/*
- * regu_free_method_sig () -
- *   return:
- *   method_sig(in)     : pointer to a method_sig
- *
- * Note: Free function for METHOD_SIG using free_and_init.
- */
-void
-regu_free_method_sig (METHOD_SIG * method_sig)
-{
-  if (method_sig != NULL)
-    {
-      regu_free_method_sig (method_sig->next);
-      db_private_free_and_init (NULL, method_sig->method_name);
-      db_private_free_and_init (NULL, method_sig->class_name);
-      db_private_free_and_init (NULL, method_sig->method_arg_pos);
-      db_private_free_and_init (NULL, method_sig);
-    }
-}
-
-/*
- * regu_method_sig_list_init () -
- *   return:
- *   ptr(in)    : pointer to a method_sig_list
- *
- * Note: Initialization function for METHOD_SIG_LIST.
- */
-void
-regu_method_sig_list_init (METHOD_SIG_LIST * ptr)
-{
-  ptr->num_methods = 0;
-  ptr->method_sig = (METHOD_SIG *) 0;
-}
-
-/*
- * regu_method_sig_list_alloc () -
- *   return: METHOD_SIG_LIST *
- *
- * Note: Memory allocation function for METHOD_SIG_LIST
- */
-METHOD_SIG_LIST *
-regu_method_sig_list_alloc (void)
-{
-  METHOD_SIG_LIST *ptr;
-
-  ptr = (METHOD_SIG_LIST *) pt_alloc_packing_buf (sizeof (METHOD_SIG_LIST));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_method_sig_list_init (ptr);
-      return ptr;
-    }
-}
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * regu_method_sig_list_db_alloc () -
- *   return: METHOD_SIG_LIST *
- *
- * Note: Memory allocation function for METHOD_SIG_LIST using malloc.
- */
-METHOD_SIG_LIST *
-regu_method_sig_list_db_alloc (void)
-{
-  METHOD_SIG_LIST *ptr;
-
-  ptr = (METHOD_SIG_LIST *) malloc (sizeof (METHOD_SIG_LIST));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_method_sig_list_init (ptr);
-      return ptr;
-    }
-}
-#endif
-
-/*
- * regu_free_method_sig_list () -
- *   return:
- *   method_sig_list(in)        : pointer to a method_sig_list
- *
- * Note: Free function for METHOD_SIG_LIST using free_and_init.
- */
-void
-regu_free_method_sig_list (METHOD_SIG_LIST * method_sig_list)
-{
-  if (method_sig_list != NULL)
-    {
-      regu_free_method_sig (method_sig_list->method_sig);
-      db_private_free_and_init (NULL, method_sig_list);
-    }
-}
-
-/*
- * regu_selupd_list_alloc () -
- *   return:
- */
-SELUPD_LIST *
-regu_selupd_list_alloc (void)
-{
-  SELUPD_LIST *ptr;
-
-  ptr = (SELUPD_LIST *) pt_alloc_packing_buf (sizeof (SELUPD_LIST));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-  else
-    {
-      regu_selupd_list_init (ptr);
-      return ptr;
-    }
-}
-
-/*
- * regu_selupd_list_init () -
- *   return:
- *   ptr(in)    :
- */
-static void
-regu_selupd_list_init (SELUPD_LIST * ptr)
-{
-  ptr->next = NULL;
-  regu_init_oid (&ptr->class_oid);
-  ptr->class_hfid.vfid.fileid = NULL_FILEID;
-  ptr->class_hfid.vfid.volid = NULL_VOLID;
-  ptr->class_hfid.hpgid = NULL_PAGEID;
-  ptr->select_list_size = 0;
-  ptr->select_list = NULL;
-}
-
-/*
- * regu_regu_value_list_alloc () -
- *   return:
- */
-REGU_VALUE_LIST *
-regu_regu_value_list_alloc (void)
-{
-  REGU_VALUE_LIST *regu_value_list = NULL;
-
-  regu_value_list = (REGU_VALUE_LIST *) pt_alloc_packing_buf (sizeof (REGU_VALUE_LIST));
-
-  if (regu_value_list == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-    }
-  else
-    {
-      regu_regu_value_list_init (regu_value_list);
-    }
-
-  return regu_value_list;
-}
-
-/*
- * regu_regu_value_list_init () -
- *   return:
- *   ptr(in)    :
- */
-static void
-regu_regu_value_list_init (REGU_VALUE_LIST * regu_value_list)
-{
-  assert (regu_value_list != NULL);
-
-  regu_value_list->count = 0;
-  regu_value_list->current_value = NULL;
-  regu_value_list->regu_list = NULL;
-}
-
-/*
- * regu_regu_value_item_alloc () -
- *   return:
- */
-REGU_VALUE_ITEM *
-regu_regu_value_item_alloc (void)
-{
-  REGU_VALUE_ITEM *regu_value_item = NULL;
-
-  regu_value_item = (REGU_VALUE_ITEM *) pt_alloc_packing_buf (sizeof (REGU_VALUE_ITEM));
-
-  if (regu_value_item == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-    }
-  else
-    {
-      regu_regu_value_item_init (regu_value_item);
-    }
-
-  return regu_value_item;
-}
-
-/*
- * regu_regu_value_item_init () -
- *   return:
- *   ptr(in)    :
- */
-static void
-regu_regu_value_item_init (REGU_VALUE_ITEM * regu_value_item)
-{
-  assert (regu_value_item != NULL);
-
-  regu_value_item->next = NULL;
-  regu_value_item->value = NULL;
-}
-
-/*
- * regu_func_pred_alloc () -
- *   return:
- */
-FUNC_PRED *
-regu_func_pred_alloc (void)
-{
-  FUNC_PRED *ptr;
-
-  ptr = (FUNC_PRED *) pt_alloc_packing_buf (sizeof (FUNC_PRED));
-  if (ptr == NULL)
-    {
-      regu_set_error_with_zero_args (ER_REGU_NO_SPACE);
-      return NULL;
-    }
-
-  memset ((char *) ptr, 0x00, sizeof (FUNC_PRED));
-  return ptr;
-}
-
 /* pt_enter_packing_buf() - mark the beginning of another level of packing
  *   return: none
  */
@@ -6348,6 +4560,7 @@ pt_create_param_for_value (PARSER_CONTEXT * parser, PT_NODE * value, int host_va
     {
       host_var->info.host_var.index = host_var_index;
     }
+  host_var->expr_before_const_folding = value->expr_before_const_folding;
 
   return host_var;
 }
@@ -6447,10 +4660,10 @@ error_exit:
 void
 pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination)
 {
-  destination->recompile = source->recompile;
-  destination->cannot_prepare = source->cannot_prepare;
-  destination->si_datetime = source->si_datetime;
-  destination->si_tran_id = source->si_tran_id;
+  destination->flag.recompile = source->flag.recompile;
+  destination->flag.cannot_prepare = source->flag.cannot_prepare;
+  destination->flag.si_datetime = source->flag.si_datetime;
+  destination->flag.si_tran_id = source->flag.si_tran_id;
 }
 
 /*
@@ -6568,11 +4781,11 @@ pt_dup_key_update_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * assig
     }
 
   /* We need the OID PT_VALUE to become a host variable, see qo_optimize_queries () */
-  node->info.update.search_cond->force_auto_parameterize = 1;
+  node->info.update.search_cond->flag.force_auto_parameterize = 1;
 
-  /* We don't want constant folding on the WHERE clause because it might result in the host variable being removed from 
+  /* We don't want constant folding on the WHERE clause because it might result in the host variable being removed from
    * the tree. */
-  node->info.update.search_cond->do_not_fold = 1;
+  node->info.update.search_cond->flag.do_not_fold = 1;
 
   func_node = NULL;
   name_node = NULL;
@@ -7751,6 +5964,7 @@ pt_make_collation_expr_node (PARSER_CONTEXT * parser)
   return if_node;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_field_extra_expr_node() - builds the 'Extra' field for the
  *				SHOW COLUMNS statment
@@ -7807,7 +6021,9 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
 
   return extra_node;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_field_key_type_expr_node() - builds the 'Key' field for the
  *				SHOW COLUMNS statment
@@ -7976,7 +6192,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
   }
 
   {
-    /* mul_count : (SELECT count (*) FROM (SELECT IK.key_attr_name ATTR FROM _db_index_key IK , _db_index I WHERE IK IN 
+    /* mul_count : (SELECT count (*) FROM (SELECT IK.key_attr_name ATTR FROM _db_index_key IK , _db_index I WHERE IK IN
      * I.key_attrs AND IK.key_attr_name = A.attr_name AND I.class_of = A.class_of AND A.class_of.class_name =
      * C.class_name AND IK.key_order = 0) constraints_no_index ) */
     PT_NODE *sub_query = NULL;
@@ -8088,6 +6304,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
   }
   return key_node;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pt_make_sort_spec_with_identifier() - builds a SORT_SPEC for GROUP BY or
@@ -8158,6 +6375,7 @@ pt_make_sort_spec_with_number (PARSER_CONTEXT * parser, const int number_pos, PT
   return sort_spec_node;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * pt_make_collection_type_subquery_node() - builds a SELECT subquery used
  *					construct the string to display
@@ -8267,6 +6485,7 @@ pt_make_collection_type_subquery_node (PARSER_CONTEXT * parser, const char *tabl
 
   return query;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * pt_make_dummy_query_check_table() - builds a SELECT subquery used check
@@ -8390,6 +6609,7 @@ pt_make_query_show_table (PARSER_CONTEXT * parser, bool is_full_syntax, int like
       /* add IF to SELECT list, list should not be empty at this point */
       assert (sub_query->info.query.q.select.list != NULL);
 
+      pt_add_name_col_to_sel_list (parser, sub_query, "C.owner_name", "Owner");
       sub_query->info.query.q.select.list = parser_append_node (if_node, sub_query->info.query.q.select.list);
     }
 
@@ -8549,6 +6769,13 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 
       if (arg_infos[i].type == AVT_IDENTIFIER)
 	{
+	  /* store user-specified-name in info.name.original. */
+	  parser_walk_tree (parser, arg, NULL, NULL, pt_set_user_specified_name, NULL);
+	  if (pt_has_error (parser))
+	    {
+	      goto error;
+	    }
+
 	  /* replace identifier node with string value node */
 	  id_string = pt_make_string_value (parser, arg->info.name.original);
 	  if (id_string == NULL)
@@ -8919,6 +7146,13 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
       PT_SELECT_INFO_SET_FLAG (sub_query, PT_SELECT_INFO_COLS_SCHEMA);
     }
 
+  /* store user-specified-name in info.name.original. */
+  parser_walk_tree (parser, original_cls_id, NULL, NULL, pt_set_user_specified_name, NULL);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
   intl_identifier_lower (original_cls_id->info.name.original, lower_table_name);
 
   db_make_int (db_valuep + 0, 0);
@@ -9096,24 +7330,15 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   assert (table_name != NULL);
   assert (table_name->node_type == PT_NAME);
 
-  /* *INDENT-OFF* */
-  string_buffer strbuf {
-    [&parser] (mem::block &block, size_t len)
-    {
-      size_t dim = block.dim ? block.dim : 1;
+  parser_block_allocator alloc (parser);
+  string_buffer strbuf (alloc);
 
-      for (; dim < block.dim + len; dim *= 2) // calc next power of 2 >= b.dim+len
-	;
-
-      mem::block b{ dim, (char *) parser_alloc (parser, (const int) dim) };
-      memcpy (b.ptr, block.ptr, block.dim); // copy old content
-      block = std::move (b);
-    },
-    [](mem::block &block) //no need to deallocate for parser_context
+  /* store user-specified-name in info.name.original. */
+  parser_walk_tree (parser, table_name, NULL, NULL, pt_set_user_specified_name, NULL);
+  if (pt_has_error (parser))
     {
+      return NULL;
     }
-  };
-  /* *INDENT-ON* */
 
   pt_help_show_create_table (parser, table_name, strbuf);
   if (strbuf.len () == 0)
@@ -9129,13 +7354,13 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 
   PT_SELECT_INFO_SET_FLAG (select, PT_SELECT_INFO_READ_ONLY);
 
-  /* 
+  /*
    * SELECT 'table_name' as TABLE, 'create table ...' as CREATE TABLE
    *      FROM db_root
    */
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
   pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
-  pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
+  pt_add_table_name_to_from_list (parser, select, "dual", NULL, DB_AUTH_SELECT);
   return select;
 }
 
@@ -9179,6 +7404,13 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
 
   assert (view_identifier != NULL);
   assert (view_identifier->node_type == PT_NAME);
+
+  /* store user-specified-name in info.name.original. */
+  parser_walk_tree (parser, view_identifier, NULL, NULL, pt_set_user_specified_name, NULL);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
 
   node = parser_new_node (parser, PT_SELECT);
   if (node == NULL)
@@ -9236,7 +7468,8 @@ pt_make_query_show_create_view (PARSER_CONTEXT * parser, PT_NODE * view_identifi
   /* ------ SELECT ... WHERE ------- */
   {
     PT_NODE *where_item = NULL;
-    where_item = pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", lower_view_name);
+    where_item =
+      pt_make_pred_name_string_val (parser, PT_EQ, "VC.vclass_name", sm_remove_qualifier_name (lower_view_name));
 
     /* WHERE list should be empty */
     assert (node->info.query.q.select.where == NULL);
@@ -9267,7 +7500,7 @@ pt_make_query_show_exec_stats (PARSER_CONTEXT * parser)
       return NULL;
     }
 
-  parser->dont_collect_exec_stats = 1;
+  parser->flag.dont_collect_exec_stats = 1;
 
   show_node = pt_pop (parser);
   assert (show_node == node[0]);
@@ -9357,7 +7590,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
 
   show_node = pt_pop (parser);
   assert (show_node == node[0]);
-  parser->dont_collect_exec_stats = 1;
+  parser->flag.dont_collect_exec_stats = 1;
 
   return node[0];
 }
@@ -9507,7 +7740,8 @@ pt_make_query_show_grants_curr_usr (PARSER_CONTEXT * parser)
  *	 	       '')
  *		 ) AS GRANTS
  *   FROM db_class C, _db_auth AU
- *   WHERE AU.class_of.class_name = C.class_name AND
+ *   WHERE AU.class_of.unique_name = C.unique_name AND
+ *	    AU.class_of.owner.name = C.owner_name AND
  *	    C.is_system_class='NO' AND
  *	    ( AU.grantee.name=<user_name> OR
  *	      SET{ AU.grantee.name} SUBSETEQ (
@@ -9556,11 +7790,11 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_READ_ONLY);
 
   /* ------ SELECT list ------- */
-  /* 
+  /*
    *      CONCAT ( 'GRANT ',
    *                GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
    *                ' ON ' ,
-   *                AU.class_of.class_name,
+   *                AU.class_of.unique_name,
    *                ' TO ',
    *                AU.grantee.name ,
    *                IF (AU.is_grantable=1,
@@ -9606,7 +7840,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
     concat_arg = pt_make_string_value (parser, " ON ");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
-    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.class_name");
+    concat_arg = pt_make_dotted_identifier (parser, "AU.class_of.unique_name");
     concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
 
     concat_arg = pt_make_string_value (parser, " TO ");
@@ -9648,8 +7882,9 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   from_item = pt_add_table_name_to_from_list (parser, node, "_db_auth", "AU", DB_AUTH_SELECT);
 
   /* ------ SELECT ... WHERE ------- */
-  /* 
+  /*
    * WHERE AU.class_of.class_name = C.class_name AND
+   *    AU.class_of.owner.name = C.owner_name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
    *      SET{ AU.grantee.name} SUBSETEQ (  <query_user_groups> )
@@ -9661,6 +7896,14 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
 
     where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.class_name", "C.class_name");
     where_expr = where_item;
+  }
+  {
+    /* AU.class_of.owner.name = C.owner_name */
+    PT_NODE *where_item = NULL;
+
+    where_item = pt_make_pred_with_identifiers (parser, PT_EQ, "AU.class_of.owner.name", "C.owner_name");
+    /* <where_expr> = <where_expr> AND <where_item> */
+    where_expr = parser_make_expression (parser, PT_AND, where_expr, where_item, NULL);
   }
   {
     /* C.is_system_class = 'NO' */
@@ -9766,7 +8009,7 @@ pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, 
     {
       /* The only part of a spec node that could contain references to the given spec_id are derived tables,
        * path_entities, path_conjuncts, and on_cond. All the rest of the name nodes for the spec are not references,
-       * but range variables, class names, etc. We don't want to mess with these. We'll handle the ones that we want by 
+       * but range variables, class names, etc. We don't want to mess with these. We'll handle the ones that we want by
        * hand. */
       parser_walk_tree (parser, node->info.spec.derived_table, pt_is_spec_referenced, void_arg, pt_continue_walk, NULL);
       parser_walk_tree (parser, node->info.spec.path_entities, pt_is_spec_referenced, void_arg, pt_continue_walk, NULL);
@@ -9778,7 +8021,7 @@ pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, 
       return node;
     }
 
-  /* Data type nodes can not contain any valid references.  They do contain class names and other things we don't want. 
+  /* Data type nodes can not contain any valid references.  They do contain class names and other things we don't want.
    */
   if (node->node_type == PT_DATA_TYPE)
     {
@@ -9951,7 +8194,7 @@ pt_split_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * delete_stmt)
 	  if (last_new_del_stmt != NULL)
 	    {
 	      last_new_del_stmt->info.delete_.hint = delete_stmt->info.delete_.hint;
-	      last_new_del_stmt->recompile = delete_stmt->recompile;
+	      last_new_del_stmt->flag.recompile = delete_stmt->flag.recompile;
 	      if ((last_new_del_stmt->info.delete_.hint & PT_HINT_LK_TIMEOUT)
 		  && delete_stmt->info.delete_.waitsecs_hint != NULL)
 		{
@@ -10073,6 +8316,13 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   assert (original_cls_id != NULL);
   assert (original_cls_id->node_type == PT_NAME);
 
+  /* store user-specified-name in info.name.original. */
+  parser_walk_tree (parser, original_cls_id, NULL, NULL, pt_set_user_specified_name, NULL);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
   query = parser_new_node (parser, PT_SELECT);
   if (query == NULL)
     {
@@ -10103,7 +8353,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
 			   LANG_SYS_COLLATION, NULL);
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
-  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   db_value_domain_default (db_valuep + 13, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
 
@@ -10383,8 +8633,8 @@ pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list, PT_NOD
 static PT_NODE *
 pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for, bool add_as_attr)
 {
-  PT_NODE *derived_table, *as_attr, *col, *upd_del_spec, *spec_list;
-  PT_NODE *save_spec, *save_next, *flat_copy;
+  PT_NODE *derived_table = NULL, *as_attr = NULL, *col = NULL, *upd_del_spec = NULL, *spec_list = NULL;
+  PT_NODE *save_spec = NULL, *save_next = NULL, *flat_copy = NULL;
   const char *spec_name = NULL;
   int upd_del_count = 0;
 
@@ -10440,6 +8690,7 @@ pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC
   save_spec = derived_table->info.query.q.select.from;
   derived_table->info.query.q.select.from = upd_del_spec;
   save_next = upd_del_spec->next;
+  assert (upd_del_spec != NULL);
   upd_del_spec->next = NULL;
 
   derived_table = pt_add_row_oid_name (parser, derived_table);
@@ -10667,7 +8918,7 @@ pt_process_spec_for_update (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * n
 	  name = temp_name;
 	}
 
-      /* we now have the derived table subtree populated with oids; we can add oids to this derived table's select list 
+      /* we now have the derived table subtree populated with oids; we can add oids to this derived table's select list
        * as well */
       spec->info.spec.derived_table = derived_table;
       spec = pt_rewrite_derived_for_upd_del (parser, spec, PT_SPEC_FLAG_UPDATE, (derived_table == dt_arg1));
@@ -10916,7 +9167,7 @@ pt_check_grammar_charset_collation (PARSER_CONTEXT * parser, PT_NODE * charset_n
 	default:
 	  assert (*charset == INTL_CODESET_BINARY);
 	  *coll_id = LANG_COLL_BINARY;
-	  break;
+	  return NO_ERROR;
 	}
     }
 
@@ -11239,8 +9490,8 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
 
   domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
-  save_set_host_var = parser->set_host_var;
-  parser->set_host_var = 1;
+  save_set_host_var = parser->flag.set_host_var;
+  parser->flag.set_host_var = 1;
 
   assert (limit->node_type == PT_VALUE || limit->node_type == PT_HOST_VAR || limit->node_type == PT_EXPR);
 
@@ -11303,7 +9554,7 @@ cleanup:
       db_make_null (limit_val);
     }
 
-  parser->set_host_var = save_set_host_var;
+  parser->flag.set_host_var = save_set_host_var;
   return error;
 }
 
@@ -11383,8 +9634,8 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query
 
   db_make_null (&limit_val);
 
-  save_set_host_var = parser->set_host_var;
-  parser->set_host_var = 1;
+  save_set_host_var = parser->flag.set_host_var;
+  parser->flag.set_host_var = 1;
 
   if (pt_get_query_limit_value (parser, query, &limit_val) != NO_ERROR)
     {
@@ -11412,7 +9663,7 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query
     }
 
 end_mro_candidate:
-  /* should be here if multi range optimization could not be validated because upper limit is too large or it could not 
+  /* should be here if multi range optimization could not be validated because upper limit is too large or it could not
    * be evaluated. However, the query may still use optimization for different host variable values. */
   if (mro_candidate != NULL)
     {
@@ -11420,7 +9671,7 @@ end_mro_candidate:
     }
 
 end:
-  parser->set_host_var = save_set_host_var;
+  parser->flag.set_host_var = save_set_host_var;
   return valid;
 }
 
@@ -11757,6 +10008,9 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
   int char_count = 0;
   unsigned char pad[2];
 
+  bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
   if (dt == NULL || dt->node_type != PT_DATA_TYPE || dt->type_enum != PT_TYPE_ENUMERATION)
     {
       return NO_ERROR;
@@ -11823,9 +10077,14 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
       temp = node->next;
       while (temp != NULL)
 	{
+	  if (!ignore_trailing_space)
+	    {
+	      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
+	    }
+
 	  if (QSTR_COMPARE (domain->collation_id, node->info.value.data_value.str->bytes,
 			    node->info.value.data_value.str->length, temp->info.value.data_value.str->bytes,
-			    temp->info.value.data_value.str->length) == 0)
+			    temp->info.value.data_value.str->length, ti) == 0)
 	    {
 	      PT_ERRORm (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ENUM_TYPE_DUPLICATE_VALUES);
 
@@ -11959,14 +10218,17 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
   trace_func->alias_print = pt_append_string (parser, NULL, "trace");
   select->info.query.q.select.list = parser_append_node (trace_func, select->info.query.q.select.list);
 
-  parser->dont_collect_exec_stats = 1;
-  parser->query_trace = false;
+  if (parser->statement_number == 0)	// This is when only the show trace statement is used.
+    {
+      parser->flag.dont_collect_exec_stats = 1;
+      parser->query_trace = false;
+    }
 
   return select;
 }
 
 /*
- * pt_has_non_groupby_column_node () - Use parser_walk_tree to check having 
+ * pt_has_non_groupby_column_node () - Use parser_walk_tree to check having
  *                                     clause.
  * return	      : node.
  * parser (in)	      : parser context.
@@ -11974,8 +10236,8 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
  * arg (in)	      : pt_non_groupby_col_info
  * continue_walk (in) : continue walk.
  *
- * NOTE: Make sure to set has_non_groupby_col to false before calling 
- *       parser_walk_tree. 
+ * NOTE: Make sure to set has_non_groupby_col to false before calling
+ *       parser_walk_tree.
  */
 PT_NODE *
 pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -11999,6 +10261,11 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
     }
 
   if (!PT_IS_NAME_NODE (node))
+    {
+      return node;
+    }
+
+  if (node->info.name.correlation_level > 0)
     {
       return node;
     }
@@ -12100,4 +10367,1511 @@ pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *contin
     }
 
   return node;
+}
+
+PT_NODE *
+pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  const char *dot = NULL;
+  const char *original_name = NULL;
+  const char *resolved_name = NULL;
+  char downcase_resolved_name[DB_MAX_USER_LENGTH] = { '\0' };
+  const char *user_specified_name = NULL;
+
+  assert (continue_walk != NULL);
+
+  if (parser == NULL || node == NULL)
+    {
+      PT_ERROR (parser, node, "Invalid arguments.");
+      return NULL;
+    }
+
+  if (pt_has_error (parser))
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      if (PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+	{
+	  original_name = node->info.name.original;
+	  resolved_name = node->info.name.resolved;
+	}
+      else
+	{
+	  return node;
+	}
+      break;
+    case PT_EXPR:
+      if (PT_IS_SERIAL (node->info.expr.op))
+	{
+	  if (PT_IS_DOT_NODE (node->info.expr.arg1)
+	      && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg1)
+	      && PT_IS_NAME_NODE (node->info.expr.arg1->info.dot.arg2))
+	    {
+	      PT_NODE *owner = node->info.expr.arg1->info.dot.arg1;
+	      PT_NODE *name = node->info.expr.arg1->info.dot.arg2;
+
+	      original_name = name->info.name.original;
+	      resolved_name = owner->info.name.original;
+	    }
+	  else if (PT_IS_NAME_NODE (node->info.expr.arg1))
+	    {
+	      PT_NODE *name = node->info.expr.arg1;
+
+	      original_name = name->info.name.original;
+	    }
+	  else
+	    {
+	      return node;
+	    }
+	}
+      else
+	{
+	  return node;
+	}
+      break;
+    case PT_ALTER_SYNONYM:
+      {
+	const char *synonym_owner_name = NULL;
+
+	assert (PT_SYNONYM_NAME (node) != NULL);
+
+	synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node));
+	assert (synonym_owner_name != NULL);
+	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
+
+	/* If only the comment is changed, PT_SYNONYM_TARGET_NAME (node) can be NULL. */
+	if (PT_SYNONYM_TARGET_NAME (node) != NULL)
+	  {
+	    const char *target_owner_name = NULL;
+
+	    /* When processing PT_NAME, resolved_name is prefixed to original_name.
+	     * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
+	    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	    if (target_owner_name == NULL
+		&& sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	      {
+		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	      }
+	    else
+	      {
+		assert (target_owner_name != NULL);
+		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
+	      }
+	  }
+
+	return node;
+      }
+      // break;
+    case PT_CREATE_SYNONYM:
+      {
+	const char *synonym_owner_name = NULL;
+	const char *target_owner_name = NULL;
+
+	assert (PT_SYNONYM_NAME (node) != NULL);
+	assert (PT_SYNONYM_TARGET_NAME (node) != NULL);
+
+	synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node));
+	assert (synonym_owner_name != NULL);
+	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
+
+	/* When processing PT_NAME, resolved_name is prefixed to original_name.
+	 * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
+	target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	if (target_owner_name == NULL
+	    && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
+	  {
+	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
+	  }
+	else
+	  {
+	    assert (target_owner_name != NULL);
+	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
+	  }
+
+	return node;
+      }
+      // break;
+    case PT_DROP_SYNONYM:
+      {
+	const char *synonym_owner_name = NULL;
+
+	assert (PT_SYNONYM_NAME (node) != NULL);
+
+	synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_NAME (node));
+	assert (synonym_owner_name != NULL);
+	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
+
+	return node;
+      }
+      // break;
+    case PT_RENAME_SYNONYM:
+      {
+	const char *old_synonym_owner_name = NULL;
+	const char *new_synonym_owner_name = NULL;
+
+	assert (PT_SYNONYM_OLD_NAME (node) != NULL);
+	assert (PT_SYNONYM_NEW_NAME (node) != NULL);
+
+	old_synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_OLD_NAME (node));
+	assert (old_synonym_owner_name != NULL);
+	PT_SYNONYM_OLD_OWNER_NAME (node) = pt_name (parser, old_synonym_owner_name);
+
+	new_synonym_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_NEW_NAME (node));
+	assert (new_synonym_owner_name != NULL);
+	PT_SYNONYM_NEW_OWNER_NAME (node) = pt_name (parser, new_synonym_owner_name);
+
+	return node;
+      }
+      // break;
+    case PT_CREATE_ENTITY:
+      {
+	bool is_dba_group_member = au_is_dba_group_member (Au_user);
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node))) && !is_dba_group_member)
+	  {
+	    int error = NO_ERROR;
+	    ERROR_SET_ERROR_1ARG (error, ER_AU_DBA_ONLY, "create system class/vclass");
+	    PT_ERRORc (parser, node, er_msg ());
+	    *continue_walk = PT_STOP_WALK;
+	  }
+
+	return node;
+      }
+      // break;
+    case PT_RENAME:
+      {
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))))
+	  {
+	    PT_ERROR (parser, node, "It is not allowed to be renamed to the system class name.");
+	    *continue_walk = PT_STOP_WALK;
+	  }
+
+	return node;
+      }
+      // break;
+    default:
+      return node;
+    }
+
+  // *INDENT-OFF*
+  assert ((node->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_USER_SPECIFIED))
+          || (node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op)));
+  // *INDENT-ON*
+  assert (original_name && original_name[0] != '\0');
+
+  if (strchr (original_name, '.'))
+    {
+      /* It is already user_specified_name. */
+      return node;
+    }
+
+  if (strlen (original_name) >= DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH)
+    {
+      PT_ERRORf2 (parser, node,
+		  "Object name [%s] not allowed. It cannot exceed %d bytes.",
+		  pt_short_print (parser, node), DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH);
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  /* In the system_class, user_specified_name does not include user_name.
+   * So, info.name.original is different for each case below.
+   *
+   *    original_name        resolve_name        user_specified_name
+   * -------------------------------------------------------------------------------
+   * 1. common_class_name &&             NULL -> current_user_name.common_class_name
+   * 2. common_class_name && common_user_name ->  common_user_name.common_class_name
+   * 3. common_class_name &&    dba_user_name ->     dba_user_name.common_class_name
+   * 4. system_class_name &&             NULL ->                   system_class_name
+   * 5. system_class_name && common_user_name ->  common_user_name.system_class_name -> error
+   * 6. system_class_name &&    dba_user_name ->     dba_user_name.system_class_name -> error
+   * 
+   * In case 5, raises an error to inform the user of an incorrect customization.
+   */
+  if (node->node_type == PT_NAME && sm_check_system_class_by_name (original_name))
+    {
+      /* In case 5, 6 */
+      if (resolved_name != NULL)
+	{
+	  PT_ERROR (parser, node, "It is not allowed to specify an owner in the system class name.");
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      /* resolved_name == NULL */
+
+      /* Skip in case 4 */
+      return node;
+    }
+
+  if (resolved_name == NULL || resolved_name[0] == '\0')
+    {
+      resolved_name = sc_current_schema_name ();
+    }
+  else if (intl_identifier_lower_string_size (resolved_name) >= DB_MAX_USER_LENGTH)
+    {
+      PT_ERRORf2 (parser, node,
+		  "User name [%s] not allowed. It cannot exceed %d bytes.", resolved_name, DB_MAX_USER_LENGTH);
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  intl_identifier_lower (resolved_name, downcase_resolved_name);
+
+  /* In case 1, 2, 3 */
+  user_specified_name = pt_append_string (parser, downcase_resolved_name, ".");
+  user_specified_name = pt_append_string (parser, user_specified_name, original_name);
+
+  assert (intl_identifier_lower_string_size (user_specified_name) < DB_MAX_IDENTIFIER_LENGTH);
+
+  if (PT_IS_NAME_NODE (node))
+    {
+      node->info.name.original = user_specified_name;
+      node->info.name.resolved = NULL;
+    }
+  else
+    {
+      assert (PT_IS_EXPR_NODE (node) && PT_IS_SERIAL (node->info.expr.op));
+
+      if (PT_IS_DOT_NODE (node->info.expr.arg1))
+	{
+	  node->info.expr.arg1->info.dot.arg2->info.name.original = user_specified_name;
+	  node->info.expr.arg1->info.dot.arg2->info.name.resolved = NULL;
+
+	  parser_free_tree (parser, node->info.expr.arg1->info.dot.arg1);
+	  node->info.expr.arg1 = node->info.expr.arg1->info.dot.arg2;
+	}
+      else
+	{
+	  assert (PT_IS_NAME_NODE (node->info.expr.arg1));
+
+	  node->info.expr.arg1->info.name.original = user_specified_name;
+	  node->info.expr.arg1->info.name.resolved = NULL;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_get_qualifier_name() - If the name is a user-specified name, get the user name.
+ * return	: user name or NULL on error
+ * parser (in)	: parser context
+ * node (in)	: node of type PT_NAME
+ */
+const char *
+pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  const char *name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
+
+  if (parser == NULL || node == NULL)
+    {
+      return NULL;
+    }
+
+  if (PT_IS_NAME_NODE (node) == false)
+    {
+      return NULL;
+    }
+
+  if (PT_NAME_ORIGINAL (node) == NULL || (PT_NAME_ORIGINAL (node))[0] == '\0')
+    {
+      return NULL;
+    }
+
+  if (sm_qualifier_name (PT_NAME_ORIGINAL (node), qualifier_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      return PT_NAME_RESOLVED (node);
+    }
+
+  return pt_append_string (parser, NULL, qualifier_name);
+}
+
+/*
+ * pt_get_name_with_qualifier_removed() - If the name has a qualifier name, remove it.
+ * return	: name with qualifier name removed
+ * name (in)	: user-specified name or object name
+ */
+const char *
+pt_get_name_with_qualifier_removed (const char *name)
+{
+  return sm_remove_qualifier_name (name);
+}
+
+/*
+ * pt_get_name_without_current_user_name() - If the name is a user-specified name and the specified user is
+ *                                           the current user, return only the object name.
+ * return	: user name or NULL on error
+ * parser (in)	: parser context
+ * node (in)	: node of type PT_NAME
+ */
+const char *
+pt_get_name_without_current_user_name (const char *name)
+{
+  char *dot = NULL;
+  char name_copy[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *current_schema_name = NULL;
+  const char *object_name = NULL;
+  int error = NO_ERROR;
+
+  if (name == NULL || name[0] == '\0')
+    {
+      return name;
+    }
+
+  assert (strlen (name) < DB_MAX_IDENTIFIER_LENGTH);
+  strcpy (name_copy, name);
+
+  dot = strchr (name_copy, '.');
+
+  /* If the name is not a user-specified name, it is returned as is. */
+  if (dot == NULL)
+    {
+      /*
+       * e.g.        name: object_name
+       *      object_name: object_name
+       */
+      return name;
+    }
+
+  current_schema_name = sc_current_schema_name ();
+
+  dot[0] = '\0';
+
+  if (intl_identifier_casecmp (name_copy, current_schema_name) == 0)
+    {
+      /*
+       * e.g.        name: current_schema_name.object_name
+       *      object_name: object_name
+       */
+      object_name = strchr (name, '.') + 1;
+    }
+  else
+    {
+      /*
+       * e.g.        name: other_user_name.object_name
+       *      object_name: other_user_name.object_name
+       */
+      object_name = name;
+    }
+
+  return object_name;
+}
+
+static PT_NODE *
+pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
+{
+  PT_SPEC_INFO *class_spec_info = &from_tbl->info.spec;
+  PT_NODE *drived_spec;
+  PT_NODE *new_range_var;
+  PT_NODE *dbl_col = NULL;
+
+  if ((drived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
+    {
+      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      return NULL;
+    }
+
+  if ((new_range_var = parser_new_node (parser, PT_NAME)) == NULL)
+    {
+      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      parser_free_node (parser, drived_spec);
+      return NULL;
+    }
+
+  if (class_spec_info->entity_name->info.name.resolved)
+    {
+      char tmp[1024];
+      snprintf (tmp, sizeof (tmp), "%s.%s", class_spec_info->entity_name->info.name.resolved,
+		class_spec_info->entity_name->info.name.original);
+      drived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, NULL, tmp);
+    }
+  else
+    {
+      drived_spec->info.dblink_table.remote_table_name =
+	pt_append_string (parser, NULL, class_spec_info->entity_name->info.name.original);
+    }
+
+  assert (class_spec_info->remote_server_name->node_type == PT_NAME);
+  drived_spec->info.dblink_table.is_name = true;
+  drived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
+  if (class_spec_info->remote_server_name->next)
+    {
+      drived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
+      class_spec_info->remote_server_name->next = NULL;
+    }
+  class_spec_info->remote_server_name = NULL;
+
+  // alias table_name
+  PARSER_VARCHAR *var_buf = 0;
+  if (class_spec_info->range_var)
+    {				/* alias table name */
+      var_buf = pt_print_bytes (parser, class_spec_info->range_var);
+    }
+  else
+    {
+      // from test_tbl@srv, test_tbl  
+      /* Should be unique.
+       * What if the remote table and local table name are the same?
+       * In the case of "<server_name>_<table_naem>", it is necessary to review the length limitation.  
+       */
+      var_buf = pt_print_bytes (parser, class_spec_info->entity_name);
+    }
+
+  new_range_var->info.name.original = pt_append_string (parser, NULL, (char *) var_buf->bytes);
+
+
+  drived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
+  class_spec_info->entity_name = NULL;
+
+  drived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
+  class_spec_info->range_var = NULL;
+
+  drived_spec->info.dblink_table.cols = NULL;
+
+  from_tbl->info.spec.range_var = new_range_var;
+  from_tbl->info.spec.derived_table = drived_spec;
+  from_tbl->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
+
+  return from_tbl;
+}
+
+static PT_NODE *
+pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PARSER_VARCHAR *vq = NULL;
+  char *name_ptr = NULL;
+  char *owner_ptr = NULL;
+  SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
+  PT_NODE *new_name, *new_owner;
+
+  //*continue_walk = PT_STOP_WALK;
+  *continue_walk = PT_CONTINUE_WALK;
+  assert (continue_walk != NULL);
+
+  if (node->node_type != PT_SPEC)
+    {
+      return node;
+    }
+
+  if (node->info.spec.remote_server_name == NULL)
+    {
+      if (node->info.spec.derived_table)
+	{
+	  if (node->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	    {
+	      snl->server_cnt++;
+	      snl->has_dblink_query = true;
+	    }
+	  else
+	    {
+	      PT_NODE *derived = node->info.spec.derived_table;
+	      switch (derived->node_type)
+		{
+		case PT_SELECT:
+		  parser_walk_tree (parser, derived->info.query.q.select.from, pt_get_server_name_list, snl, NULL,
+				    NULL);
+		  break;
+		case PT_UNION:
+		case PT_INTERSECTION:
+		case PT_DIFFERENCE:
+		  parser_walk_tree (parser, derived->info.query.q.union_.arg1->info.query.q.select.from,
+				    pt_get_server_name_list, snl, NULL, NULL);
+		  parser_walk_tree (parser, derived->info.query.q.union_.arg2->info.query.q.select.from,
+				    pt_get_server_name_list, snl, NULL, NULL);
+		  break;
+		default:
+		  snl->local_cnt++;
+		}
+	      return node;
+	    }
+	}
+      else
+	{
+	  snl->local_cnt++;
+	  return node;
+	}
+    }
+
+  if (node->info.spec.remote_server_name)
+    {
+      name_ptr = (char *) node->info.spec.remote_server_name->info.name.original;
+      if (node->info.spec.remote_server_name->next)
+	{
+	  owner_ptr = (char *) node->info.spec.remote_server_name->next->info.name.original;
+	}
+    }
+  else
+    {
+      if (node->info.spec.derived_table->info.dblink_table.conn)
+	{
+	  name_ptr = (char *) node->info.spec.derived_table->info.dblink_table.conn->info.name.original;
+	  if (node->info.spec.derived_table->info.dblink_table.owner_name)
+	    {
+	      owner_ptr = (char *) node->info.spec.derived_table->info.dblink_table.owner_name->info.name.original;
+	    }
+	}
+    }
+
+  snl->server_cnt++;
+  for (int i = 0; i < snl->server_node_cnt; i++)
+    {
+      int node_cnt = 0;
+
+      if (name_ptr == NULL || strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
+	{
+	  node_cnt++;
+	}
+
+      if (owner_ptr == NULL && snl->server[i]->next == NULL)
+	{
+	  snl->server_node_cnt += node_cnt;
+	  return node;
+	}
+
+      if (owner_ptr && snl->server[i]->next)
+	{
+	  if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
+	    {
+	      node_cnt++;
+	    }
+	  snl->server_node_cnt += node_cnt;
+	  return node;
+	}
+    }
+
+  if (name_ptr != NULL)
+    {
+      new_name = parser_new_node (parser, PT_NAME);
+      new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
+      if (owner_ptr)
+	{
+	  new_owner = parser_new_node (parser, PT_NAME);
+	  new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
+	  new_name->next = new_owner;
+
+	  vq = pt_append_nulstring (parser, vq, owner_ptr);
+	  vq = pt_append_bytes (parser, vq, ".", 1);
+	}
+      vq = pt_append_nulstring (parser, vq, name_ptr);
+
+      snl->len[snl->server_node_cnt] = (int) strlen ((char *) vq->bytes);
+      snl->server_full_name[snl->server_node_cnt] = (char *) vq->bytes;
+      snl->server[snl->server_node_cnt] = new_name;
+      snl->server_node_cnt++;
+    }
+
+  return node;
+}
+
+static PARSER_VARCHAR *
+pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_LIST * snl)
+{
+  PARSER_VARCHAR *pvc = NULL;
+  char *ps, *pt, *t;
+
+  ps = sql_user_text;
+  if (snl->server_node_cnt > 0)
+    {
+      int i, idx;
+      int zidx[2] = { 0, 1 };
+
+      if (snl->server_node_cnt == 2 && snl->len[0] < snl->len[1])
+	{
+	  zidx[0] = 1;
+	  zidx[1] = 0;
+	}
+
+      while (ps)
+	{
+	  t = strchr ((char *) ps, '@');
+	  if (!t)
+	    {
+	      break;
+	    }
+	  pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
+
+	  for (i = 0; i < snl->server_node_cnt; i++)
+	    {
+	      idx = zidx[i];
+	      if (strncasecmp (t + 1, snl->server_full_name[idx], snl->len[idx]) == 0)
+		{
+		  char ch = t[snl->len[idx] + 1];
+		  if (char_isspace (ch) || ch == ',' || ch == ';' || ch == '(' || ch == ')')
+		    {
+		      break;
+		    }
+		}
+	    }
+
+	  assert (i < snl->server_node_cnt);
+	  ps = t + snl->len[idx] + 1;
+	}
+    }
+
+  pvc = pt_append_nulstring (parser, pvc, ps);
+
+  pt = (char *) pvc->bytes;
+  t = pt + (pvc->length - 1);
+  while (t > pt)
+    {
+      if (*t != ' ' && *t != '\t' && *t != '\n' && *t != '\a')
+	{
+	  break;
+	}
+
+      t--;
+    }
+  t[1] = '\0';
+  pvc->length = (int) (t - pt) + 1;
+
+  return pvc;
+}
+
+static int
+pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
+		     int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data)
+{
+  int error = NO_ERROR;
+  int assign_cnt = 0, upd_cls_cnt = 0;
+  int idx, idx2;
+
+  PT_ASSIGNMENTS_HELPER ea;
+  PT_NODE *node = NULL, *assignments, *spec, *class_spec;
+  CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls_info_tmp = NULL;
+  CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL, *assign2 = NULL;
+
+  assign_cnt = 0;
+  assignments =
+    statement->node_type == PT_MERGE ? statement->info.merge.update.assignment : statement->info.update.assignment;
+  spec = statement->node_type == PT_MERGE ? statement->info.merge.into : statement->info.update.spec;
+  class_spec = statement->node_type == PT_MERGE ? NULL : statement->info.update.class_specs;
+
+  pt_init_assignments_helper (parser, &ea, assignments);
+  while (pt_get_next_assignment (&ea))
+    {
+      /* count number of assignments */
+      assign_cnt++;
+    }
+
+  /* allocate memory for assignment structures */
+  assigns = (CLIENT_UPDATE_INFO *) malloc (assign_cnt * sizeof (CLIENT_UPDATE_INFO));
+  if (assigns == NULL)
+    {
+      error = ER_REGU_NO_SPACE;
+      goto error_return;
+    }
+  memset (assigns, 0, assign_cnt * sizeof (CLIENT_UPDATE_INFO));
+
+  node = spec;
+  while (node)
+    {
+      /* count classes that will be updated */
+      upd_cls_cnt++;
+      node = node->next;
+    }
+
+  node = class_spec;
+  while (node)
+    {
+      /* count classes that will be updated */
+      upd_cls_cnt++;
+      node = node->next;
+    }
+
+  /* allocate array of classes information structures */
+  cls_info = (CLIENT_UPDATE_CLASS_INFO *) malloc (upd_cls_cnt * sizeof (CLIENT_UPDATE_CLASS_INFO));
+  if (cls_info == NULL)
+    {
+      error = ER_REGU_NO_SPACE;
+      goto error_return;
+    }
+
+  memset (cls_info, 0, upd_cls_cnt * sizeof (CLIENT_UPDATE_CLASS_INFO));
+
+  /* initialize classes info array */
+  idx = 0;
+  node = spec;
+  while (node)
+    {
+      cls_info_tmp = &cls_info[idx++];
+      cls_info_tmp->spec = node;
+      cls_info_tmp->first_assign = NULL;
+
+      node = node->next;
+    }
+
+  /* initialize classes info array */
+  idx = 0;
+  node = class_spec;
+  while (node)
+    {
+      cls_info_tmp = &cls_info[idx++];
+      cls_info_tmp->spec = node;
+      cls_info_tmp->first_assign = NULL;
+
+      node = node->next;
+    }
+
+  /* Fill assignment structures */
+  pt_init_assignments_helper (parser, &ea, assignments);
+  for (assign = assigns; pt_get_next_assignment (&ea); assign++)
+    {
+      PT_NODE *tbl_spec = NULL;
+      PT_NODE *entity_spec;
+      char *tbl_name;
+      char *tbl_alias = NULL;
+      char *lhs_name;
+      bool found = false;
+
+      for (idx = 0; idx < upd_cls_cnt; idx++)
+	{
+	  if (cls_info[idx].spec->info.spec.entity_name)
+	    {
+	      if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
+		{
+		  tbl_spec = cls_info[idx].spec;
+		}
+	      else if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_SPEC)
+		{
+		  tbl_spec = cls_info[idx].spec->info.spec.entity_name;
+		}
+	    }
+
+	  lhs_name = (char *) ea.lhs->info.name.original;
+	  while (tbl_spec && !found)
+	    {
+	      if (tbl_spec->info.spec.range_var)
+		{
+		  tbl_name = (char *) tbl_spec->info.spec.range_var->info.name.original;
+		  tbl_alias = (char *) tbl_spec->info.spec.range_var->info.name.original;
+		  entity_spec = NULL;
+		}
+	      else
+		{
+		  entity_spec = tbl_spec->info.spec.entity_name;
+		}
+
+	      while (entity_spec)
+		{
+		  if (entity_spec->node_type == PT_NAME)
+		    {
+		      tbl_name = (char *) entity_spec->info.name.original;
+		      break;
+		    }
+		  entity_spec = entity_spec->info.spec.entity_name;
+		}
+
+	      assign->cls_info = NULL;
+	      if (strcmp (tbl_name, lhs_name) == 0 || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0))
+		{
+		  assign->cls_info = &cls_info[idx];
+		  /* link assignment to its class info */
+		  if (cls_info[idx].first_assign)
+		    {
+		      assign2 = cls_info[idx].first_assign;
+		      while (assign2->next)
+			{
+			  assign2 = assign2->next;
+			}
+		      assign2->next = assign;
+		    }
+		  else
+		    {
+		      cls_info[idx].first_assign = assign;
+		    }
+		  assign->next = NULL;
+		  found = true;
+		  break;
+		}
+	      tbl_spec = tbl_spec->next;
+	    }
+	}
+    }
+
+  *assigns_data = assigns;
+  *assigns_count = assign_cnt;
+  *cls_data = cls_info;
+
+  return error;
+
+error_return:
+  /* free class information array */
+  if (cls_info)
+    {
+      free (cls_info);
+    }
+
+  /* free assignments information */
+  if (assigns != NULL)
+    {
+      free (assigns);
+    }
+
+  return error;
+}
+
+static PT_NODE *
+pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *has_synonym, int *continue_walk)
+{
+  char *class_name;
+  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  MOP synonym_mop = NULL;
+  int error = NO_ERROR;
+
+  if (spec->node_type != PT_SPEC || spec->info.spec.remote_server_name != NULL || spec->info.spec.entity_name == NULL)
+    {
+      return spec;
+    }
+
+  /* If it is a synonym name, change it to the target name. */
+  class_name = (char *) spec->info.spec.entity_name->info.name.original;
+  synonym_mop = db_find_synonym (class_name);
+  if (synonym_mop != NULL)
+    {
+      char *r;
+
+      class_name = db_get_synonym_target_name (synonym_mop, target_name, DB_MAX_IDENTIFIER_LENGTH);
+      if (class_name == NULL)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	  return spec;
+	}
+      if ((r = (char *) strchr (class_name, '@')) != NULL)
+	{
+	  /* remote table */
+	  char *synonym_name, *s;
+
+	  /* for alias */
+	  synonym_name = (char *) spec->info.spec.entity_name->info.name.original;
+	  if ((s = (char *) strchr (synonym_name, '.')) != NULL)
+	    {
+	      synonym_name = s + 1;
+	    }
+
+	  *r = 0;
+	  spec->info.spec.entity_name->info.name.original = pt_append_string (parser, NULL, class_name);
+	  spec->info.spec.remote_server_name = parser_new_node (parser, PT_NAME);
+	  spec->info.spec.remote_server_name->info.name.original = pt_append_string (parser, NULL, r + 1);
+	  if (spec->info.spec.range_var == NULL)
+	    {
+	      spec->info.spec.range_var = parser_new_node (parser, PT_NAME);
+	      spec->info.spec.range_var->info.name.original = pt_append_string (parser, NULL, synonym_name);
+	    }
+	  *(bool *) has_synonym = true;
+	}
+    }
+  else
+    {
+/* synonym_mop == NULL */
+      ASSERT_ERROR_AND_SET (error);
+      if (error == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	  error = NO_ERROR;
+	}
+    }
+
+  return spec;
+}
+
+static void
+pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *target, *source;
+  bool remote_target = false;
+  bool has_synonym = false;
+
+  target = node->info.merge.into;
+  source = node->info.merge.using_clause;
+
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
+  if (target->info.spec.remote_server_name)
+    {
+      remote_target = true;
+    }
+
+  if (remote_target)
+    {
+      parser_walk_tree (parser, source, pt_get_server_name_list, snl, NULL, NULL);
+      if (snl->local_cnt > 0)
+	{
+	  /* not allowed to merge multi-server */
+	  PT_ERROR (parser, source, "dblink: multi-remote DML is not allowed");
+	}
+      else
+	{
+	  /* only remote merge */
+	  assert (snl->server_cnt > 0);
+	}
+    }
+
+  if (has_synonym)
+    {
+      sql_user_text = parser_print_tree (parser, node);
+    }
+
+  pt_convert_dblink_dml_query (parser, node, sql_user_text, (int) (remote_target == false),
+			       (int) (remote_target == true), snl);
+}
+
+static void
+pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *insert, *spec;
+  int remote_ins = 0;
+  bool has_synonym = false;
+
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
+  spec = node->info.insert.spec;
+  if (spec->info.spec.remote_server_name)
+    {
+      remote_ins = 1;
+    }
+
+  if (has_synonym)
+    {
+      /* node need alias for insert */
+      parser_free_node (parser, node->info.insert.spec->info.spec.range_var);
+      node->info.insert.spec->info.spec.range_var = NULL;
+      sql_user_text = parser_print_tree (parser, node);
+    }
+
+  pt_convert_dblink_dml_query (parser, node, sql_user_text, (remote_ins == 0), remote_ins, snl);
+
+  return;
+}
+
+static void
+pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *target, *spec;
+  int remote_del = 0, local_del = 0;
+  bool has_synonym = false;
+
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
+  target = node->info.delete_.target_classes;
+  while (target)
+    {
+      for (spec = node->info.delete_.spec; spec; spec = spec->next)
+	{
+	  if (spec->info.spec.range_var)
+	    {
+	      /* checking alias for remote/local table */
+	      if (strcmp (spec->info.spec.range_var->info.name.original, target->info.name.original) == 0)
+		{
+		  if (spec->info.spec.remote_server_name)
+		    {
+		      remote_del++;
+		    }
+		  else
+		    {
+		      local_del++;
+		    }
+		  break;
+		}
+	    }
+	  else
+	    {
+	      if (spec->info.spec.entity_name
+		  && strcmp (spec->info.spec.entity_name->info.name.original, target->info.name.original) == 0)
+		{
+		  if (spec->info.spec.remote_server_name)
+		    {
+		      remote_del++;
+		    }
+		  else
+		    {
+		      local_del++;
+		    }
+		  break;
+		}
+	    }
+	}
+
+      if (spec == NULL)
+	{
+	  /* not matched: error case */
+	  PT_ERRORmf (parser, node->info.delete_.spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
+		      target->info.name.original);
+	  return;
+	}
+
+      target = target->next;
+    }
+
+  if (has_synonym)
+    {
+      sql_user_text = parser_print_tree (parser, node);
+    }
+
+  pt_convert_dblink_dml_query (parser, node, sql_user_text, local_del, remote_del, snl);
+
+  return;
+}
+
+static void
+pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+{
+  int idx, local_upd = 0, assigns_count = 0;
+  int error, remote_upd = 0, upd_cls_cnt, vals_cnt, multi_assign_cnt;
+  PT_NODE *assignments = NULL, *rhs, *tbl_spec;
+  PT_ASSIGNMENTS_HELPER ea;
+  CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
+  CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls = NULL;
+  DB_VALUE *dbvals = NULL;
+  bool has_synonym = false;
+
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
+  assignments = node->info.update.assignment;
+  tbl_spec = node->info.update.spec;
+
+  error = pt_init_update_data (parser, node, &assigns, &assigns_count, &cls_info);
+
+  pt_init_assignments_helper (parser, &ea, assignments);
+  for (idx = 0; idx < assigns_count && error == NO_ERROR; idx += multi_assign_cnt)
+    {
+      multi_assign_cnt = 1;
+      assign = &assigns[idx];
+      cls = assign->cls_info;
+      if (cls == NULL)
+	{
+	  continue;
+	}
+      if (cls->spec->info.spec.remote_server_name == NULL)
+	{
+	  local_upd++;
+	}
+      else
+	{
+	  remote_upd++;
+	}
+
+      pt_get_next_assignment (&ea);
+      rhs = ea.rhs;
+      if (ea.is_n_column)
+	{
+	  while (pt_get_next_assignment (&ea) && rhs == ea.rhs)
+	    {
+	      multi_assign_cnt++;
+	    }
+	}
+    }
+
+  /* free assignments array */
+  if (assigns != NULL)
+    {
+      free (assigns);
+    }
+
+  /* free classes info array */
+  if (cls_info != NULL)
+    {
+      free (cls_info);
+    }
+
+  if (has_synonym)
+    {
+      sql_user_text = parser_print_tree (parser, node);
+    }
+
+  pt_convert_dblink_dml_query (parser, node, sql_user_text, local_upd, remote_upd, snl);
+
+  return;
+}
+
+static PT_NODE *pt_convert_select (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+static PT_NODE *
+pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *list, *spec;
+  PT_NODE *sub_sel = NULL;
+  SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
+
+  if (node->node_type != PT_SPEC)
+    {
+      return node;
+    }
+
+  list = node;
+
+  while (list)
+    {
+      if (list->info.spec.derived_table)
+	{
+	  sub_sel = list->info.spec.derived_table;
+	}
+
+      if (list->info.spec.remote_server_name)
+	{
+	  sub_sel = parser_new_node (parser, PT_SELECT);
+	  sub_sel->info.query.q.select.list = parser_new_node (parser, PT_VALUE);
+	  sub_sel->info.query.q.select.list->type_enum = PT_TYPE_STAR;
+	  spec = parser_new_node (parser, PT_SPEC);
+	  spec->info.spec.only_all = PT_ONLY;
+	  spec->info.spec.meta_class = PT_CLASS;
+	  spec->info.spec.remote_server_name = list->info.spec.remote_server_name;
+	  spec->info.spec.entity_name = list->info.spec.entity_name;
+	  list->info.spec.remote_server_name = NULL;
+	  list->info.spec.entity_name = NULL;
+	  sub_sel->info.query.q.select.from = spec;
+	  list->info.spec.derived_table = sub_sel;
+	  list->info.spec.derived_table_type = PT_IS_SUBQUERY;
+	}
+
+      if (sub_sel && sub_sel->node_type == PT_SELECT)
+	{
+	  if (parser_walk_tree (parser, sub_sel, NULL, NULL, pt_convert_select, snl))
+	    {
+	      parser_walk_tree (parser, sub_sel, pt_check_dblink_query, NULL, NULL, NULL);
+	    }
+	}
+
+      list = list->next;
+    }
+
+  return node;
+}
+
+static void
+pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text,
+			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
+{
+  int i;
+  int tmp_local_cnt = snl->local_cnt;
+  int tmp_server_cnt = snl->server_cnt;
+
+  PT_NODE *sub_sel = NULL;	/* for select sub-query */
+  PT_NODE *list = NULL;		/* for insert select list */
+  PT_NODE *spec, *into_spec = NULL, *upd_spec = NULL, *server;
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      into_spec = node->info.insert.spec;
+      sub_sel = node->info.insert.value_clauses;
+      for (list = sub_sel->info.node_list.list; list; list = list->next)
+	{
+	  if (local_upd > 0)
+	    {
+	      parser_walk_tree (parser, list, pt_check_sub_query_spec, snl, NULL, NULL);
+	    }
+	  else
+	    {
+	      parser_walk_tree (parser, list, pt_get_server_name_list, snl, NULL, NULL);
+	    }
+	}
+      sub_sel = NULL;
+      break;
+    case PT_DELETE:
+      upd_spec = node->info.delete_.spec;
+      break;
+    case PT_UPDATE:
+      upd_spec = node->info.update.spec;
+      break;
+    case PT_MERGE:
+      into_spec = node->info.merge.into;
+      upd_spec = node->info.merge.using_clause;
+      break;
+    default:
+      assert (false);
+    }
+
+  if (local_upd > 0 && upd_spec)
+    {
+      pt_check_sub_query_spec (parser, upd_spec, snl, NULL);
+    }
+
+  if (into_spec)
+    {
+      parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
+    }
+
+  if (upd_spec)
+    {
+      parser_walk_tree (parser, upd_spec, pt_get_server_name_list, snl, NULL, NULL);
+    }
+
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
+  if (snl->local_cnt > 0 && remote_upd > 0)
+    {
+      PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: local mixed remote DML is not allowed");
+      return;
+    }
+
+  if (snl->server_cnt == tmp_server_cnt || (local_upd > 0 && remote_upd == 0))
+    {
+      /* local update only */
+      return;
+    }
+
+  if (snl->has_dblink_query)
+    {
+      PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: remote DML has DBLINK query is not allowed");
+      return;
+    }
+
+  if (snl->server_node_cnt >= 2 && remote_upd > 0)
+    {
+      PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: multi-remote DML is not allowed");
+      return;
+    }
+
+  /*  
+   ** The target server must all be the same.
+   ** Therefore, even if multiple tables are specified, only the first information is configured as PT_DBLINK_TABLE_DML.
+   ** Postpone checking that "user.server" and "server" are the same.
+   */
+
+  PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
+  if (!ct)
+    {
+      PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      return;
+    }
+
+  PT_NODE *val = parser_new_node (parser, PT_VALUE);
+  if (!val)
+    {
+      PT_ERRORmf (parser, val, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      return;
+    }
+
+  val->type_enum = PT_TYPE_CHAR;
+  val->info.value.string_type = ' ';
+
+  assert (sql_user_text && sql_user_text[0]);
+  if (sql_user_text)
+    {
+      val->info.value.data_value.str = pt_make_remote_query (parser, sql_user_text, snl);
+      PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
+    }
+
+  if (into_spec)
+    {
+      server = into_spec->info.spec.remote_server_name;
+    }
+  else
+    {
+      server = upd_spec->info.spec.remote_server_name;
+    }
+
+  assert (server->node_type == PT_NAME);
+
+  ct->info.dblink_table.is_name = true;
+  ct->info.dblink_table.conn = server;
+  if (server->next)
+    {
+      assert (server->next->node_type == PT_NAME);
+      ct->info.dblink_table.owner_name = server->next;
+      server->next = NULL;
+    }
+
+  ct->info.dblink_table.qstr = val;
+
+  for (i = 0; i < snl->server_node_cnt; i++)
+    {
+      if (snl->server_node_cnt != 1)
+	{
+	  if (ct->info.dblink_table.owner_list == NULL && snl->server[i]->next)
+	    {
+	      ct->info.dblink_table.owner_list = snl->server[i]->next;
+	      snl->server[i]->next = NULL;
+	    }
+	}
+
+      if (snl->server[i]->next)
+	{
+	  parser_free_node (parser, snl->server[i]->next);
+	}
+
+      parser_free_node (parser, snl->server[i]);
+    }
+
+  if (into_spec)
+    {
+      into_spec->info.spec.remote_server_name = ct;
+      pt_resolve_server_names (parser, into_spec);
+    }
+
+  if (upd_spec)
+    {
+      upd_spec->info.spec.remote_server_name = ct;
+      pt_resolve_server_names (parser, upd_spec);
+    }
+
+  return;
+}
+
+static bool
+pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl)
+{
+  bool has_dblink = false;
+
+  PT_QUERY_INFO *query = &query_stmt->info.query;
+  PT_NODE *from_tbl = query_stmt->info.query.q.select.from;
+  bool has_synonym = false;
+
+  parser_walk_tree (parser, query_stmt, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+
+  while (from_tbl)
+    {
+      parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
+
+      if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
+	{
+	  assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
+
+	  from_tbl = pt_mk_spec_derived_dblink_table (parser, from_tbl);
+	  has_dblink = true;
+	}
+      from_tbl = from_tbl->next;
+    }
+
+  return has_dblink;
+}
+
+static PT_NODE *
+pt_convert_select (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
+
+  assert (continue_walk && parser && node);
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      if (pt_convert_dblink_select_query (parser, node, snl))
+	{
+	  parser_walk_tree (parser, node, pt_check_dblink_query, NULL, NULL, NULL);
+	}
+      break;
+    default:
+      break;
+    }
+
+  return node;
+}
+
+static PT_NODE *
+pt_convert_dml (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
+
+  assert (continue_walk && parser && node);
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      pt_convert_dblink_insert_query (parser, node, node->sql_user_text, snl);
+      break;
+
+    case PT_DELETE:
+      pt_convert_dblink_delete_query (parser, node, node->sql_user_text, snl);
+      break;
+
+    case PT_UPDATE:
+      pt_convert_dblink_update_query (parser, node, node->sql_user_text, snl);
+      break;
+
+    case PT_MERGE:
+      pt_convert_dblink_merge_query (parser, node, node->sql_user_text, snl);
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
+
+// *INDENT-OFF*
+#define SET_DBLINK_HOST_VAR_COUNT(ptspec, var_cnt)  do {                \
+            if ((ptspec) && (ptspec)->info.spec.remote_server_name)     \
+            {                                                       \
+                (ptspec)->info.spec.remote_server_name->info.dblink_table.host_vars.count = (var_cnt);   \
+            }                                                       \
+        } while(0)
+// *INDENT-ON*     
+
+void
+pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  SERVER_NAME_LIST snl;
+
+  memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
+
+  switch (stmt->node_type)
+    {
+    case PT_INSERT:
+    case PT_DELETE:
+    case PT_UPDATE:
+    case PT_MERGE:
+      parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_dml, &snl);
+      if (pt_has_error (parser))
+	{
+	  return;
+	}
+      break;
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_UNION:
+    case PT_SELECT:
+    case PT_CREATE_ENTITY:
+    case PT_ALTER:
+      parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_select, &snl);
+      return;
+    default:
+      /* no action */
+      return;
+    }
+
+  switch (stmt->node_type)
+    {
+    case PT_INSERT:
+      SET_DBLINK_HOST_VAR_COUNT (stmt->info.insert.spec, parser->host_var_count);
+      break;
+    case PT_DELETE:
+      SET_DBLINK_HOST_VAR_COUNT (stmt->info.delete_.spec, parser->host_var_count);
+      break;
+    case PT_UPDATE:
+      SET_DBLINK_HOST_VAR_COUNT (stmt->info.update.spec, parser->host_var_count);
+      break;
+    case PT_MERGE:
+      SET_DBLINK_HOST_VAR_COUNT (stmt->info.merge.into, parser->host_var_count);
+      break;
+    default:
+      break;
+    }
+
+  return;
 }

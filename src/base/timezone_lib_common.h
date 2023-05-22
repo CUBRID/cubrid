@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -47,7 +46,7 @@ typedef enum
   TZ_DS_TYPE_VAR_GREATER
 } TZ_DS_TYPE;
 
-/* 
+/*
  * The values below are needed for identifying and properly computing time
  * when a daylight saving event occurs, namely to track the suffixes
  * 's' (standard local time), 'g', 'u' and 'z' (GMT/UTC/Zulu), 'w' or
@@ -68,17 +67,14 @@ typedef enum
  * necessary to also generate either a new or an updated C file containing
  * timezone names and IDs (which should be included in the new CUBRID release)
  * TZ_GEN_TYPE_NEW - generate the TZ/ID arrays from scratch;
- *		   - include all the data from the TZ database into the 
+ *		   - include all the data from the TZ database into the
  *		     C file to be compiled into the TZ shared library
  * TZ_GEN_TYPE_UPDATE - don't generate any TZ/ID arrays
- *		      - use the existing TZ/ID arrays to identify which 
+ *		      - use the existing TZ/ID arrays to identify which
  *		      timezones need to be updated;
  *		      - no new time zones are added;
  * TZ_GEN_TYPE_EXTEND - this flag is used when generating a new timezone library
  *		        using the old library and the new timezone data
- *		      
- *		      
- *		      
  */
 typedef enum
 {
@@ -226,7 +222,7 @@ struct tz_data
   int windows_iana_map_count;
   TZ_WINDOWS_IANA_MAP *windows_iana_map;
 #endif
-  /* 
+  /*
    * 32 digits for the md5 checksum
    */
   char checksum[TZ_CHECKSUM_SIZE + 1];

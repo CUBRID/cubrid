@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -49,6 +48,7 @@
 #include "language_support.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#include "object_primitive.h"
 
 extern int set_size (DB_COLLECTION * set);
 extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
@@ -230,7 +230,7 @@ _op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error)
 {
   int errcode;
   char *id, *pwd, *db_name;
-  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  char dbname_at_hostname[CUB_MAXHOSTNAMELEN + DB_NAME_LEN];
 
   id = nv_get_val (in, "_DBID");
   pwd = nv_get_val (in, "_DBPASSWD");
@@ -389,7 +389,7 @@ cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
   int i;
   bool isdba = false;
   T_DB_SERVICE_MODE db_mode = DB_SERVICE_MODE_NONE;
-  char dbname_at_hostname[MAXHOSTNAMELEN + DB_NAME_LEN];
+  char dbname_at_hostname[CUB_MAXHOSTNAMELEN + DB_NAME_LEN];
 
   targetid = nv_get_val (in, "targetid");
   dbname = nv_get_val (in, "dbname");
@@ -1372,14 +1372,25 @@ user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser, cha
 {
   char opcode[10];
   char outfile[PATH_MAX], errfile[PATH_MAX];
-  char tmpfile[100];
+  char tmpfile[PATH_MAX];
   const char *argv[10];
   char cmd_name[PATH_MAX];
   char *outmsg = NULL, *errmsg = NULL;
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_ems_sa.", getpid ());
+  if (make_temp_filename (tmpfile, "DBMT_ems_sa.", PATH_MAX) < 0)
+    {
+      strcpy (_dbmt_error, "make_temp_filename: filename creation error");
+      goto login_err;
+    }
+
+
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
-  snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
+  if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
+    {
+      assert (false);
+      goto login_err;
+    }
+
   unlink (outfile);
   unlink (errfile);
 
@@ -1523,11 +1534,20 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cl
   const char *argv[10];
   char cli_ver[10];
   char opcode[10];
-  char tmpfile[100];
+  char tmpfile[PATH_MAX];
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_class_info.", getpid ());
+  if (make_temp_filename (tmpfile, "DBMT_class_info.", PATH_MAX) < 0)
+    {
+      return ERR_GENERAL_ERROR;
+    }
+
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
-  snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
+  if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
+    {
+      assert (false);
+      return ERR_GENERAL_ERROR;
+    }
+
   unlink (outfile);
   unlink (errfile);
 
@@ -1929,7 +1949,7 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 
       while (end == 0)
 	{
-	  char *db_string_p = NULL;
+	  const char *db_string_p = NULL;
 
 	  db_query_get_tuple_value (result, 0, &val);
 	  db_string_p = db_get_string (&val);
@@ -1943,7 +1963,11 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 	  db_string_p = db_get_string (&val);
 	  if (db_string_p != NULL)
 	    {
-	      snprintf (order, sizeof (order) - 1, "%s", db_string_p);
+	      if (snprintf (order, sizeof (order) - 1, "%s", db_string_p) < 0)
+		{
+		  assert (false);
+		  order[sizeof (order) - 1] = '\0';
+		}
 	    }
 	  db_value_clear (&val);
 
@@ -2250,6 +2274,7 @@ _op_get_value_string (DB_VALUE * value)
 #if !defined (NUMERIC_MAX_STRING_SIZE)
 #define NUMERIC_MAX_STRING_SIZE (80 + 1)
 #endif
+  const char *db_varnchar_p = NULL, *db_string_p_tmp = NULL;
   char *result, *return_result, *db_string_p;
   DB_TYPE type;
   DB_DATE *date_v;
@@ -2284,18 +2309,18 @@ _op_get_value_string (DB_VALUE * value)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      db_string_p = db_get_string (value);
-      if (db_string_p != NULL)
+      db_string_p_tmp = db_get_string (value);
+      if (db_string_p_tmp != NULL)
 	{
-	  snprintf (result, result_size, "%s", db_string_p);
+	  snprintf (result, result_size, "%s", db_string_p_tmp);
 	}
       break;
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      db_string_p = db_get_nchar (value, &size);
-      if (db_string_p != NULL)
+      db_varnchar_p = db_get_nchar (value, &size);
+      if (db_varnchar_p != NULL)
 	{
-	  snprintf (result, result_size, "N'%s'", db_string_p);
+	  snprintf (result, result_size, "N'%s'", db_varnchar_p);
 	}
       break;
     case DB_TYPE_BIT:
@@ -2346,7 +2371,9 @@ _op_get_value_string (DB_VALUE * value)
 	    }
 	  idx += snprintf (result + idx, result_size - idx, "%s", "}");
 	  if (idx >= result_size)
-	    strncpy (result + result_size - 4, "...}", 4);
+	    {
+	      strncpy (result + result_size - 5, "...}", 5);
+	    }
 	  result[result_size] = '\0';
 	}
       break;
@@ -2520,11 +2547,20 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplis
   int ret_val = ERR_NO_ERROR;
   char cmd_name[PATH_MAX];
   const char *argv[10];
-  char tmpfile[100];
+  char tmpfile[PATH_MAX];
 
-  snprintf (tmpfile, sizeof (tmpfile) - 1, "%s%d", "DBMT_trigger_info.", getpid ());
+  if (make_temp_filename (tmpfile, "DBMT_trigger_info.", PATH_MAX) < 0)
+    {
+      return ERR_GENERAL_ERROR;
+    }
+
   (void) envvar_tmpdir_file (outfile, PATH_MAX, tmpfile);
-  snprintf (errfile, PATH_MAX - 1, "%s.err", outfile);
+  if (snprintf (errfile, PATH_MAX - 1, "%s.err", outfile) < 0)
+    {
+      assert (false);
+      return ERR_GENERAL_ERROR;
+    }
+
   unlink (outfile);
   unlink (errfile);
 
@@ -2920,12 +2956,20 @@ getservershmid (char *dir, char *dbname)
     }
   if (fgets (cbuf, sizeof (cbuf), fdkey_file) == NULL)
     {
+      if (fdkey_file != nullptr)
+	{
+	  fclose (fdkey_file);
+	}
       return -1;
     }
 
   result = parse_int (&shm_key, cbuf, 16);
   if (result != 0)
     {
+      if (fdkey_file != nullptr)
+	{
+	  fclose (fdkey_file);
+	}
       return -1;
     }
 

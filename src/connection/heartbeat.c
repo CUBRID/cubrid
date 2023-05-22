@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -31,6 +30,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <assert.h>
+#include <signal.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -61,9 +61,6 @@
 #include "environment_variable.h"
 #include "error_context.hpp"
 #include "porting.h"
-#if !defined(WINDOWS)
-#include "log_impl.h"
-#endif
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "connection_defs.h"
@@ -97,8 +94,8 @@ bool hb_Proc_shutdown = false;
 
 SOCKET hb_Pipe_to_master = INVALID_SOCKET;
 
-/*    
- * hb_process_type_string () - 
+/*
+ * hb_process_type_string () -
  *   return: process type string
  *
  *   ptype(in):
@@ -118,8 +115,8 @@ hb_process_type_string (int ptype)
   return "invalid";
 }
 
-/*    
- * hb_set_exec_path () - 
+/*
+ * hb_set_exec_path () -
  *   return: none
  *
  *   exec_path(in):
@@ -130,8 +127,8 @@ hb_set_exec_path (char *exec_path)
   strncpy (hb_Exec_path, exec_path, sizeof (hb_Exec_path) - 1);
 }
 
-/*    
- * hb_set_argv () - 
+/*
+ * hb_set_argv () -
  *   return: none
  *
  *   argv(in):
@@ -143,9 +140,9 @@ hb_set_argv (char **argv)
 }
 
 
-/*    
- * css_send_heartbeat_request () - 
- *   return: 
+/*
+ * css_send_heartbeat_request () -
+ *   return:
  *
  *   conn(in):
  *   command(in):
@@ -169,9 +166,9 @@ css_send_heartbeat_request (CSS_CONN_ENTRY * conn, int command)
   return CONNECTION_CLOSED;
 }
 
-/*    
- * css_send_heartbeat_data () - 
- *   return: 
+/*
+ * css_send_heartbeat_data () -
+ *   return:
  *
  *   conn(in):
  *   data(in):
@@ -194,9 +191,9 @@ css_send_heartbeat_data (CSS_CONN_ENTRY * conn, const char *data, int size)
   return CONNECTION_CLOSED;
 }
 
-/*    
- * css_receive_heartbeat_request () - 
- *   return: 
+/*
+ * css_receive_heartbeat_request () -
+ *   return:
  *
  *   conn(in):
  *   command(in):
@@ -221,9 +218,9 @@ css_receive_heartbeat_request (CSS_CONN_ENTRY * conn, int *command)
   return CONNECTION_CLOSED;
 }
 
-/*    
- * css_receive_heartbeat_data () - 
- *   return: 
+/*
+ * css_receive_heartbeat_data () -
+ *   return:
  *
  *   conn(in):
  *   data(in):
@@ -246,8 +243,8 @@ css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data, int size)
   return CONNECTION_CLOSED;
 }
 
-/*    
-* hb_thread_master_reader () - 
+/*
+* hb_thread_master_reader () -
 *   return: none
 *
 *   arg(in):
@@ -279,9 +276,9 @@ hb_thread_master_reader (void *arg)
 }
 
 
-/*    
-* hb_make_set_hbp_register () - 
-*   return: 
+/*
+* hb_make_set_hbp_register () -
+*   return:
 *
 *   type(in):
 */
@@ -290,7 +287,6 @@ hb_make_set_hbp_register (int type)
 {
   HBP_PROC_REGISTER *hbp_register;
   char *p, *last;
-  int argc;
   char **argv;
 
   hbp_register = (HBP_PROC_REGISTER *) malloc (sizeof (HBP_PROC_REGISTER));
@@ -303,14 +299,13 @@ hb_make_set_hbp_register (int type)
   memset ((void *) hbp_register, 0, sizeof (HBP_PROC_REGISTER));
   hbp_register->pid = htonl (getpid ());
   hbp_register->type = htonl (type);
-  strncpy (hbp_register->exec_path, hb_Exec_path, sizeof (hbp_register->exec_path) - 1);
+  strncpy_bufsize (hbp_register->exec_path, hb_Exec_path);
 
   p = (char *) &hbp_register->args[0];
   last = (char *) (p + sizeof (hbp_register->args));
-  for (argc = 0, argv = hb_Argv; *argv && argc < HB_MAX_NUM_PROC_ARGV; argc++, argv++)
+  for (argv = hb_Argv; *argv; argv++)
     {
       p += snprintf (p, MAX ((last - p), 0), "%s ", *argv);
-      strncpy ((char *) hbp_register->argv[argc], *argv, (HB_MAX_SZ_PROC_ARGV - 1));
     }
 
   return (hbp_register);
@@ -349,8 +344,8 @@ hb_deregister_from_master (void)
   return NO_ERROR;
 }
 
-/*    
-* hb_register_to_master () - 
+/*
+* hb_register_to_master () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   conn(in):
@@ -397,8 +392,8 @@ error_return:
   return (ER_FAILED);
 }
 
-/*    
-* hb_process_master_request_info () - 
+/*
+* hb_process_master_request_info () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   conn(in):
@@ -442,8 +437,8 @@ hb_type_to_str (HB_PROC_TYPE type)
     }
 }
 
-/*    
-* hb_process_to_master () - 
+/*
+* hb_process_to_master () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   argv(in):
@@ -531,11 +526,11 @@ hb_pack_server_name (const char *server_name, int *name_length, const char *log_
        * for the purpose of matching the name of the CUBRID driver. */
 
       snprintf (pid_string, sizeof (pid_string), "%d", getpid ());
-      n_len = strlen (server_name) + 1;
-      l_len = (log_path) ? strlen (log_path) + 1 : 0;
-      r_len = strlen (rel_major_release_string ()) + 1;
-      e_len = strlen (env_name) + 1;
-      p_len = strlen (pid_string) + 1;
+      n_len = (int) strlen (server_name) + 1;
+      l_len = (log_path) ? (int) strlen (log_path) + 1 : 0;
+      r_len = (int) strlen (rel_major_release_string ()) + 1;
+      e_len = (int) strlen (env_name) + 1;
+      p_len = (int) strlen (pid_string) + 1;
       *name_length = n_len + l_len + r_len + e_len + p_len + 5;
 
       packed_name = (char *) malloc (*name_length);
@@ -575,10 +570,10 @@ hb_pack_server_name (const char *server_name, int *name_length, const char *log_
 
 /*
  * hb_connect_to_master() - connect to the master server
- *   return: conn 
+ *   return: conn
  *   server_name(in): server name
  *   log_path(in): log path
- *   copylogdbyn(in): 
+ *   copylogdbyn(in):
  */
 static CSS_CONN_ENTRY *
 hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYPE type)
@@ -604,8 +599,8 @@ hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYP
   return conn;
 }
 
-/*    
-* hb_create_master_reader () - 
+/*
+* hb_create_master_reader () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   conn(in):
@@ -675,8 +670,8 @@ hb_create_master_reader (void)
 #endif
 }
 
-/*    
-* hb_process_init () - 
+/*
+* hb_process_init () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   server_name(in):
@@ -730,8 +725,8 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
 }
 
 
-/*    
-* hb_process_term () - 
+/*
+* hb_process_term () -
 *   return: none
 *
 *   type(in):

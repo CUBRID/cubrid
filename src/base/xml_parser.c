@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -83,7 +82,7 @@ XML_ELEMENT_DEF xml_elem_XML = { "XML", XML_ROOT_DEPTH, NULL, NULL, NULL };
 
 
 /*
- * xml_init_schema_tree() - initializes the XML parsing schema 
+ * xml_init_schema_tree() - initializes the XML parsing schema
  *   return: tree parse schema (root node)
  *   element_array(in): array of definition nodes (XML elements)
  *   count(in): count of nodes in the array
@@ -120,7 +119,7 @@ xml_init_schema_tree (XML_ELEMENT_DEF ** element_array, const int count)
 }
 
 /*
- * xml_destroy_schema_tree() - frees the XML parsing schema 
+ * xml_destroy_schema_tree() - frees the XML parsing schema
  *   return:
  *   pt(in): tree parse schema (root node)
  */
@@ -245,7 +244,7 @@ create_xml_node (XML_ELEMENT_DEF * new_elem)
 
 /*
  * add_xml_element() - creates and element node based on its definition and
- *		       inserts it into the XML schema parser 
+ *		       inserts it into the XML schema parser
  *
  *   return: XML error code
  *   xml_node(in): tree parse schema (root node)
@@ -605,7 +604,7 @@ check_xml_elem_name (XML_ELEMENT * el, const char *check_el_name)
  * xml_header_validation_utf8() - XML header validation function;
  *				  expat callback function
  *
- *   return: 
+ *   return:
  *   userData(in): user data
  *   version(in):
  *   encoding(in):
@@ -634,7 +633,7 @@ xml_header_validation_utf8 (void *userData, const XML_Char * version, const XML_
  * xml_elem_start() - XML element start function;
  *		      expat callback function
  *
- *   return: 
+ *   return:
  *   data(in): user data
  *   parsed_el_name(in): element name
  *   attr(in): array of pairs for XML attribute and value (strings) of current
@@ -764,7 +763,7 @@ xml_elem_start (void *data, const char *parsed_el_name, const char **attr)
 /*
  * xml_elem_end() - XML element end function; expat callback function
  *
- *   return: 
+ *   return:
  *   data(in): user data
  *   parsed_el_name(in): element name
  */
@@ -818,7 +817,7 @@ xml_elem_end (void *data, const char *parsed_el_name)
  * xml_data_handler() - XML element element content handling function;
  *			expat callback function
  *
- *   return: 
+ *   return:
  *   data(in): user data
  *   s(in): content buffer
  *   len(in): length (in XML_Char) of content buffer
@@ -888,7 +887,9 @@ xml_init_parser_common (void *data, const char *xml_file, const char *encoding)
       return NULL;
     }
 
-  strncpy (pd->encoding, encoding, MAX_ENCODE_LEN);
+  size_t encoding_len = strnlen (encoding, MAX_ENCODE_LEN);
+  memcpy (pd->encoding, encoding, encoding_len);
+  pd->encoding[encoding_len] = '\0';
 
   pd->xml_parser = p;
   pd->xml_error = XML_CUB_NO_ERROR;

@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -25,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 Copyright Information\n
 5 Non integer argument value `%1$s'
 6 Non floating argument value `%1$s'
@@ -184,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
 117 Absolute pathname for the database is too long. The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
 118 Failed to locate current working directory.
-119 Unable to find local hostname.
+119 Cannot find ("%1$s") in /etc/hosts. Please check permissions of the file or if there is the hostname.
 120 The maximum number of volumes (%1$d) has been exceeded.
 121 Trying to remove "%1$s" a permanent volume from the database.
 122 Unable to access system message catalog.
@@ -415,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Could not establish a pipe to the master server.
 348 Must specify either service or port identifier.
 349 Unknown service for TCP: %1$s.
-350 Error getting local host by name for host "%1$s". Host not found.
+350 Cannot find ("%1$s") in /etc/hosts. Please check permissions of the file or if there is the hostname.
 351 Cannot create TCP socket.
 352 tcp_open: cannot get a reserved TCP port.
 353 Cannot make connection to master server on host "%1$s".
@@ -903,7 +904,7 @@ $ LOADDB
 834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
 835 Undefined statistics item.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial etc). 
+837 Cannot drop the user who owns database objects(class/trigger/serial/server/synonym etc).
 838 Cannot open more than %1$d index scans simultaneously.
 839 "%1$s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%1$s".
@@ -987,7 +988,7 @@ $ LOADDB
 918 The class '%1$s' referred by the foreign key does not exist.
 919 The class '%1$s' referred by the foreign key does not have the primary key.
 920 The foreign key '%1$s' does not include the primary key member '%2$s'.
-921 The domain of the foreign key member '%1$s' is different from that of the primary key member '%2$s'.
+921 The domain of the foreign key member '%1$s' is different from that of the primary key member '%2$s'. (%3$s: %4$s vs. %5$s)
 922 The constraint of the foreign key '%1$s' is invalid, due to value '%2$s'.
 923 The primary key '%1$s' referred by a foreign key '%2$s' is not supposed to be dropped.
 924 Update/Delete operations are restricted by the foreign key '%1$s'.
@@ -1051,7 +1052,7 @@ $ LOADDB
 982 Set interrupt to the transaction %1$d.
 983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
 984 Cannot set %3$s to "%6$s" in the "[%5$s]" section when it is set to "%4$s" in the "[%2$s]" section of the configuration file "%1$s".
-985 The hostname on the database connection string should be specified when multihost is set in "databases.txt".
+985 The hostname on the database connection string should be specified when multihost is set in "databases.txt". ex) csql demodb@localhost
 986 CUBRID heartbeat feature started. 
 987 CUBRID heartbeat feature stopped.
 988 Node event: %1$s.
@@ -1194,7 +1195,7 @@ $ LOADDB
 1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Delete an empty overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 Log recovery is started. The number of log records to be applied: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 Log recovery is started.
 1129 Log recovery is finished.
 1130 Transaction is aborted because transaction lock counts exceeds %1$d.
 1131 Internal error: The page %1$d of volume "%2$s" may be corrupted.\n%3$s
@@ -1271,10 +1272,10 @@ $ LOADDB
 1202 Json PATH "%1$s" does not exist in %2$s
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
-1206 Reserved error for JSON.
-1207 Reserved error for JSON.
-1208 Reserved error for JSON.
+1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
+1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
+1207 Invalid JSON path. Index is larger than allowed by system parameter json_max_array_idx.
+1208 Invalid one/all argument. The one/all argument may only take one of these two values: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
@@ -1306,8 +1307,153 @@ $ LOADDB
 1237 Cannot change status on %1$s because %2$s is a %3$s.
 1238 Missing value for JSON_TABLE column '%1$s'.
 1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1240 Online index is not allowed on classes that are part of a hierarchy chain.
+1241 XASL tree needs recompile.
+1242 Cannot create partition on a class that is part of a hierarchy chain.
+1243 Index loading was aborted after an error.
+1244 Loading shared attributes updates from object files is not supported in CS mode.
+1245 Loading class attributes updates from object files is not supported in CS mode.
+1246 Cannot get address and canonical name  for ("%1$s") in /etc/hosts. Please check permission of the file or if there is the hostname.
+1247 The time(%1$s) specified must be after the time(%2$s) of the specified backup.
+1248 Invalid Key file : %1$s
+1249 Cannot find the key (index: %1$d).
+1250 The master key set on the database and what is given don't match. The key index set on the database: %1$d
+1251 Error while TDE-encrypting.
+1252 Error while TDE-decrypting.
+1253 TDE Module is not loaded.
+1254 Cannot create a key.
+1255 Cannot load TDE module. You can't use TDE feature.\n\
+Check the path of the key file (_keys) and make sure that it includes proper key.
+1256 Cannot copy key file (_keys). You can't use TDE feature on the copied database.
+1257 Cannot backup key file (_keys). You can't use TDE feature on the restored database based on this backup volume.
+1258 Cannot find the key set on the database from %1$s. The key file from backup volume is going to be used.
+1259 Rename the key file from "%1$s" to "%2$s".
+1260 Copy the key file "%1$s" to "%2$s".
+1261 The first key (key index: %1$d, created time: %2$s) on the restored key file has been set.
+1262 The key file is full.
+1263 It fails to TDE-encrypt the log page (pageid: %1$lld). It won't be tried to encrypt this page any longer.
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
+1284 Cannot truncate the table due to the primary key referred to on %1$s. Try again with CASCADE option.
+1285 Cannot cascade truncate because the ON DELETE action of the foreign key (%1$s) is not set to CASCADE.
 
-1240 Last Error
+1286 Cannot find the log lsa at the time to extract. (input time : %1$s).
+1287 Timed out attempting to extract log info. (elapsed time : %1$d sec, extraction timeout : %2$d sec)
+1288 Skip producing log info for unsupported log record internally.
+1289 Skip producing log info for invalid transaction. (trid : %1$d)
+1290 Invalid log lsa (%1$lld|%2$d) to extract log info.
+1291 Cannot connect to server for extracting log info. Try again with setting 'supplemental_log' parameter.
+1292 Cannot find the log lsa at the time (%1$s). Log lsa is adjusted to the time (%2$s).
+1293 Cannot get log page while producing log infos. Log lsa to generate log info indicates NULL.
+1294 Log info has been generated. (type : "%1$s").
+1295 Skip producing log info for invalid table. (class OID : %1$d|%2$d|%3$d)
+
+1296 Log recovery: ANALYSIS Phase is started.
+1297 Log recovery: REDO Phase is started. Log pages to redo: %1$lld, Log records to redo: %2$lld.
+1298 Log recovery: UNDO Phase is started. Log pages to undo: %1$lld, transactions to undo: %2$d.
+1299 Log recovery: %1$s Phase is being finished up.
+1300 Log recovery: %1$s Phase is finished.
+1301 Log recovery: %1$s progress: (%2$lld/%3$lld), %4$.2f percent, elapsed time: %5$.2f (s), estimated remaining time: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - not supported type %1$s.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 not supported type %1$s(%2$d).
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 A null column binder was referenced.
+
+1332 The active log volume (%1$s) is too sane to recreate. If you remove the active log, it could cause an unexpected and irreversible problem.
+
+1333 Invalid time (%1$s) to start flashback. Time is required to be set between (%2$s) and (%3$s).
+1334 Can not find the class to flashback (%1$s).
+1335 Too many transactions to flashback. Less than %1$d transactions can be flashback.
+1336 Cannot support flashback for this class (name : %1$s , OID : %2$d|%3$d|%4$d). Class schema has been changed.
+1337 Log record does not exist (lsa : %1$lld|%2$d). The archive log volume has been deleted.
+1338 Flashback is already running. Flashback cannot be run by more than one user at the same time.
+
+1339 Unsupported argument type of stored procedure: %1$s
+1340 Unsupported return type of stored procedure: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
+
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Invalid number of columns specified.
+
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Invalid number of columns specified.
+
+1353 Internal CAS error : %1$d
+1354 Internal CAS error : %1$d, %2$s
+
+1355 %1$s "%2$s" is invalid format at line %3$d of the file "%4$s".
+1356 Hostname "%1$s" is too long, it should be less than or equal to 256 at line %2$d of the file "%3$s".
+1357 Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses at line %2$d of the file "%3$s".
+1358 Both, the IP address and hostname, must be written completely at line %1$d of the file "%2$s".
+1359 Unable to look up "%1$s" in the cubrid_hosts.conf.
+1360 An error occured when using user defined host.
+
+1361 File "%1$s" was not found.
+
+1362 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1464,6 +1610,15 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 Maximum length of a class/vclass comment is %1$d bytes.
 127 Maximum length of a comment is %1$d bytes.
 128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
+131 Invalid use of ALTER SYNONYM.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 Invalid use of CREATE SYNONYM.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 Invalid use of DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 Invalid use of RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 No options specified for ALTER SYNONYM.
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1766,6 +1921,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
 299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 300 Subquery is not allowed in DEFAULT clause.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s, expected type is: %2$s.
+303 Unexpected number of arguments %1$d.
+304 Could not find compatible signature for function %1$s()
+305 Signature %1$s is not compatible with function arguments.
+306 dblink - Required information is missing.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.
@@ -1848,7 +2019,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Invalid isolation level: %1$s schema, %2$s instances.
 80 Isolation level value in MVCC must be 'read committed', 'repeatable read' or 'serializable'.
 81 '%1$s' is an 'auto_increment' object, which is not allowed to be altered as a serial.
-
+82 Invalid JSON: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** invalid cache ***

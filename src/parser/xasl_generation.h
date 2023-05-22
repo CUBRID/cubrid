@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -31,10 +30,23 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
-#include "parser.h"
-#include "object_domain.h"
 #include "dbtype_def.h"
+#include "object_domain.h"
 #include "optimizer.h"
+#include "parser.h"
+#include "regu_var.hpp"
+#include "xasl.h"
+
+// forward definitions
+
+// *INDENT-OFF*
+namespace cubxasl
+{
+  struct analytic_list_node;
+  struct pred_expr;
+} // namespace cubxasl
+using PRED_EXPR = cubxasl::pred_expr;
+// *INDENT-ON*
 
 #define MATCH_ALL       1
 
@@ -49,7 +61,7 @@ struct table_info
   PT_NODE *class_spec;		/* SHARED pointer to parse tree entity spec */
   const char *exposed;		/* SHARED pointer to entity spec exposed name */
   UINTPTR spec_id;
-  PT_NODE *attribute_list;	/* is a list of names which appear anywhere in a select statement with the exposed name 
+  PT_NODE *attribute_list;	/* is a list of names which appear anywhere in a select statement with the exposed name
 				 */
   VAL_LIST *value_list;		/* is a list of DB_VALUES which correspond by position in list to the attributes named
 				 * in attribute_list */
@@ -100,7 +112,9 @@ struct aggregate_info
 typedef struct analytic_info ANALYTIC_INFO;
 struct analytic_info
 {
-  ANALYTIC_TYPE *head_list;
+  // *INDENT-OFF*
+  cubxasl::analytic_list_node *head_list;
+  // *INDENT-ON*
   PT_NODE *sort_lists;
   PT_NODE *select_node;
   PT_NODE *select_list;
@@ -122,7 +136,14 @@ typedef struct
 
 extern char *query_Plan_dump_filename;
 extern FILE *query_Plan_dump_fp;
+extern bool query_Plan_dump_fp_open;
 
+extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
+						     PRED_EXPR * where_pred,
+						     REGU_VARIABLE_LIST pred_list,
+						     REGU_VARIABLE_LIST attr_list, char *url, char *user,
+						     char *password, int host_var_count, int *host_var_index,
+						     char *sql);
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node, UNBOX unbox);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *argp);
@@ -133,8 +154,8 @@ extern TP_DOMAIN *pt_xasl_type_enum_to_domain (const PT_TYPE_ENUM type);
 extern TP_DOMAIN *pt_xasl_node_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node);
 extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * select_list,
 				     PT_NODE * from, PT_NODE * with, PT_NODE * class_specs, PT_NODE * where,
-				     PT_NODE * using_index, PT_NODE * order_by, PT_NODE * orderby_for, int server_op,
-				     SCAN_OPERATION_TYPE scan_op_type);
+				     PT_NODE * using_index, PT_NODE * order_by, PT_NODE * orderby_for,
+				     int server_op, SCAN_OPERATION_TYPE scan_op_type);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * filter_pred, PT_NODE * spec);
 extern XASL_NODE *pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
@@ -143,13 +164,14 @@ extern XASL_NODE *pt_append_xasl (XASL_NODE * to, XASL_NODE * from_list);
 extern XASL_NODE *pt_remove_xasl (XASL_NODE * xasl_list, XASL_NODE * remove);
 extern ACCESS_SPEC_TYPE *pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * where_key_part,
 					  PT_NODE * where_part, QO_PLAN * plan, QO_XASL_INDEX_INFO * indx,
-					  PT_NODE * src_derived_table);
+					  PT_NODE * src_derived_table, PT_NODE * where_hash_part);
 extern XASL_NODE *pt_to_fetch_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * pred);
 extern VAL_LIST *pt_to_val_list (PARSER_CONTEXT * parser, UINTPTR id);
 extern SORT_LIST *pt_to_orderby (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * root);
 extern XASL_NODE *pt_skeleton_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * namelist);
 extern XASL_NODE *ptqo_to_scan_proc (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl, PT_NODE * spec,
-				     PT_NODE * where_key_part, PT_NODE * where_part, QO_XASL_INDEX_INFO * info);
+				     PT_NODE * where_key_part, PT_NODE * where_part, QO_XASL_INDEX_INFO * info,
+				     PT_NODE * where_hash_part);
 extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE type,
 					  XASL_NODE * listfile, PT_NODE * namelist, PT_NODE * pred, int *poslist);
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);
@@ -186,4 +208,5 @@ extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
 extern int pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * specified_attrs,
 					 PT_NODE ** default_expr_attrs);
 extern int pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from);
+extern XASL_NODE *pt_to_instnum_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * pred);
 #endif /* _XASL_GENERATION_H_ */

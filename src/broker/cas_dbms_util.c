@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -75,7 +74,7 @@ cfg_get_dbinfo (char *alias, char *dbinfo)
   FILE *file;
   char *save, *token;
   char delim[] = "|";
-  char filename[BROKER_PATH_MAX];
+  char filename[BROKER_PATH_MAX] = { 0, };
   char line[DBINFO_MAX_LENGTH];
 
   if (shm_appl->db_connection_file[0] == '\0')
@@ -134,7 +133,7 @@ int
 cfg_read_dbinfo (DB_INFO ** db_info_p)
 {
   FILE *file;
-  char filename[BROKER_PATH_MAX];
+  char filename[BROKER_PATH_MAX] = { 0, };
   char line[DBINFO_MAX_LENGTH];
   char *str = NULL;
   DB_INFO *databases, *db, *last;
@@ -282,7 +281,7 @@ char_get_next (char *str_p)
 
 /*
  * cfg_pop_token() - This looks in the buffer for the next token which is define as
- *               a string of characters started by | 
+ *               a string of characters started by |
  *    return: char
  *    str_p(in): buffer with tokens
  *    token_p(in/out): returned next token string

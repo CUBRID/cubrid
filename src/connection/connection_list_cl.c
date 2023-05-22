@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -269,7 +268,7 @@ css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * 
     }
 
   entry_p = *anchor;
-  prev_p = NULL;
+  prev_p = nullptr;
 
   while (entry_p)
     {
@@ -279,9 +278,13 @@ css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * 
 	    {
 	      *anchor = entry_p->next;
 	    }
-	  else
+	  else if (prev_p != nullptr)
 	    {
 	      prev_p->next = entry_p->next;
+	    }
+	  else
+	    {
+	      assert (false);
 	    }
 
 	  css_free_queue_entry (entry_p);
@@ -551,7 +554,8 @@ css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn, unsigned short req
 
   conn->set_tran_index (ntohl (header->transaction_id));
   flags = ntohs (header->flags);
-  conn->invalidate_snapshot = flags | NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->invalidate_snapshot = flags & NET_HEADER_FLAG_INVALIDATE_SNAPSHOT ? 1 : 0;
+  conn->in_method = flags & NET_HEADER_FLAG_METHOD_MODE ? true : false;
   conn->db_error = (int) ntohl (header->db_error);
 
   switch (type)

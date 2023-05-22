@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -26,10 +25,11 @@
 
 #ident "$Id$"
 
-#include "system_parameter.h"
-#include "porting.h"
-#include "master_util.h"
 #include "heartbeat.h"
+#include "log_lsa.hpp"
+#include "master_util.h"
+#include "porting.h"
+#include "system_parameter.h"
 
 #if defined (LINUX)
 #include <netinet/in.h>
@@ -84,7 +84,6 @@ enum HB_RESOURCE_JOB
   HB_RJOB_DEMOTE_CONFIRM_SHUTDOWN = 6,
   HB_RJOB_CLEANUP_ALL = 7,
   HB_RJOB_CONFIRM_CLEANUP_ALL = 8,
-  HB_RJOB_SEND_MASTER_HOSTNAME = 9,
   HB_RJOB_MAX
 };
 
@@ -203,7 +202,7 @@ struct hb_node_entry
   HB_NODE_ENTRY *next;
   HB_NODE_ENTRY **prev;
 
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
   unsigned short priority;
   HB_NODE_STATE_TYPE state;
   short score;
@@ -219,7 +218,8 @@ struct hb_ping_host_entry
   HB_PING_HOST_ENTRY *next;
   HB_PING_HOST_ENTRY **prev;
 
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
+  int port;			/* TCP ping only */
   int ping_result;
 };
 
@@ -230,7 +230,7 @@ struct hb_ui_node_entry
   HB_UI_NODE_ENTRY *next;
   HB_UI_NODE_ENTRY **prev;
 
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
   char group_id[HB_MAX_GROUP_ID_LEN];
   struct sockaddr_in saddr;
   struct timeval last_recv_time;
@@ -247,7 +247,7 @@ struct hb_cluster
 
   HB_NODE_STATE_TYPE state;
   char group_id[HB_MAX_GROUP_ID_LEN];
-  char host_name[MAXHOSTNAMELEN];
+  char host_name[CUB_MAXHOSTNAMELEN];
 
   int num_nodes;
   HB_NODE_ENTRY *nodes;
@@ -262,6 +262,7 @@ struct hb_cluster
 
   HB_PING_HOST_ENTRY *ping_hosts;
   int num_ping_hosts;
+  int ping_timeout;		/* TCP ping only */
 
   HB_UI_NODE_ENTRY *ui_nodes;
   int num_ui_nodes;
@@ -281,7 +282,6 @@ struct HB_PROC_ENTRY
   int pid;
   char exec_path[HB_MAX_SZ_PROC_EXEC_PATH];
   char args[HB_MAX_SZ_PROC_ARGS];
-  char argv[HB_MAX_NUM_PROC_ARGV][HB_MAX_SZ_PROC_ARGV];
 
   struct timeval frtime;	/* first registered time */
   struct timeval rtime;		/* registerd time */
@@ -294,12 +294,12 @@ struct HB_PROC_ENTRY
 
   LOG_LSA prev_eof;
   LOG_LSA curr_eof;
+  bool is_curr_eof_received;
 
   CSS_CONN_ENTRY *conn;
 
   bool being_shutdown;		/* whether the proc is being shut down */
   bool server_hang;
-  bool knows_master_hostname;
 };
 
 /* heartbeat resources */
@@ -395,6 +395,7 @@ extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd
 extern void hb_get_node_info_string (char **str, bool verbose_yn);
 extern void hb_get_process_info_string (char **str, bool verbose_yn);
 extern void hb_get_ping_host_info_string (char **str);
+extern void hb_get_tcp_ping_host_info_string (char **str);
 extern void hb_get_admin_info_string (char **str);
 extern void hb_kill_all_heartbeat_process (char **str);
 
@@ -425,6 +426,5 @@ extern void hb_disable_er_log (int reason, const char *msg_fmt, ...);
 
 extern int hb_return_proc_state_by_fd (int sfd);
 extern bool hb_is_hang_process (int sfd);
-extern char *hb_find_host_name_of_master_server ();
 
 #endif /* _MASTER_HEARTBEAT_H_ */

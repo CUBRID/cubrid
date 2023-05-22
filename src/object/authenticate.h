@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -32,12 +31,21 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
+#ifndef __cplusplus
+#error Requires C++
+#endif // not c++
+
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "error_manager.h"
 #include "class_object.h"
 #include "databases_file.h"
+#include "object_fetch.h"
+#include "extract_schema.hpp"
+
+
+class print_output;
 
 /*
  * Authorization Class Names
@@ -130,6 +138,21 @@ MOP au_get_dba_user (void);
     } \
   while (0)
 
+/* 
+ * name is user_specified_name.
+ * owner_name must be a char array of size DB_MAX_IDENTIFIER_LENGTH to copy user_specified_name.
+ * class_name refers to class_name after dot(.).
+ */
+#define SPLIT_USER_SPECIFIED_NAME(name, owner_name, class_name) \
+	do \
+	  { \
+	    assert (strlen ((name)) < STATIC_CAST (int, sizeof ((owner_name)))); \
+	    strcpy ((owner_name), (name)); \
+	    (class_name) = strchr ((owner_name), '.'); \
+	    *(class_name)++ = '\0'; \
+	  } \
+	while (0)
+
 #define AU_DISABLE_PASSWORDS    au_disable_passwords
 #define AU_SET_USER     au_set_user
 
@@ -145,17 +168,6 @@ MOP au_get_dba_user (void);
       (cache) = NULL; \
     } \
   while (0)
-
-typedef enum au_fetchmode
-{
-  AU_FETCH_READ,
-  AU_FETCH_SCAN,		/* scan that does not allow write */
-  AU_FETCH_EXCLUSIVE_SCAN,	/* scan that does allow neither write nor other exclusive scan, i.e, scan for load
-				 * index. */
-  AU_FETCH_WRITE,
-  AU_FETCH_UPDATE
-} AU_FETCHMODE;
-
 
 /*
  * Global Variables
@@ -192,6 +204,7 @@ extern int au_set_user_comment (MOP user, const char *comment);
 
 extern const char *au_user_name (void);
 extern char *au_user_name_dup (void);
+extern bool au_has_user_name (void);
 
 /* grant/revoke */
 extern int au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
@@ -217,12 +230,13 @@ extern void au_free_authorization_cache (void *cache);
 extern void au_reset_authorization_caches (void);
 
 /* misc utilities */
-extern int au_change_owner (MOP classmop, MOP owner);
+extern int au_change_owner (MOP class_mop, MOP owner_mop);
 extern MOP au_get_class_owner (MOP classmop);
 extern int au_check_user (void);
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);
-extern void au_change_serial_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * serial, DB_VALUE * owner);
+extern bool au_is_user_group_member (MOP group_user, MOP user);
+extern void au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial_val, DB_VALUE * owner_val);
 
 /* debugging functions */
 extern void au_dump (void);
@@ -239,8 +253,8 @@ extern void au_link_static_methods (void);
 
 /* migration utilities */
 
-extern int au_export_users (FILE * outfp);
-extern int au_export_grants (FILE * outfp, MOP class_mop);
+extern int au_export_users (extract_context & ctxt, print_output & output_ctx);
+extern int au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_mop);
 
 extern int au_get_class_privilege (DB_OBJECT * mop, unsigned int *auth);
 
@@ -256,9 +270,10 @@ extern void au_set_password_encoded_sha1_method (MOP user, DB_VALUE * returnval,
 extern void au_add_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval);
 extern void au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval);
 extern void au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name);
-extern void au_change_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VALUE * owner);
-extern int au_change_trigger_owner (MOP trigger, MOP owner);
-extern void au_change_trigger_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * trigger, DB_VALUE * owner);
+extern void au_change_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * class_val, DB_VALUE * owner_val);
+extern int au_change_trigger_owner (MOP trigger_mop, MOP owner_mop);
+extern void au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigger_val,
+					    DB_VALUE * owner_val);
 extern void au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_);
 extern void au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VALUE * auth);
 extern int au_change_sp_owner (MOP sp, MOP owner);
@@ -269,6 +284,8 @@ extern void au_describe_user_method (MOP user, DB_VALUE * returnval);
 extern void au_info_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern void au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info);
 extern int au_check_serial_authorization (MOP serial_object);
+extern int au_check_server_authorization (MOP server_object);
+extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
 extern const char *au_get_public_user_name (void);
 extern const char *au_get_user_class_name (void);
 #if defined(ENABLE_UNUSED_FUNCTION)

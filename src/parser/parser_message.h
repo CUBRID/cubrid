@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -164,7 +163,15 @@
 #define MSGCAT_SYNTAX_MAX_CLASS_COMMENT_LEN             MSGCAT_SYNTAX_NO(126)
 #define MSGCAT_SYNTAX_MAX_COMMENT_LEN                   MSGCAT_SYNTAX_NO(127)
 #define MSGCAT_SYNTAX_INVALID_JSON_OBJECTAGG            MSGCAT_SYNTAX_NO(128)
-
+#define MSGCAT_SYNTAX_INVALID_PARALLEL_ARGUMENT         MSGCAT_SYNTAX_NO(129)
+#define MSGCAT_SYNTAX_INVALID_SERVER_NAME               MSGCAT_SYNTAX_NO(130)
+#define MSGCAT_SYNTAX_SYNONYM_INVALID_ALTER             MSGCAT_SYNTAX_NO(131)
+#define MSGCAT_SYNTAX_SYNONYM_INVALID_CREATE            MSGCAT_SYNTAX_NO(132)
+#define MSGCAT_SYNTAX_SYNONYM_INVALID_DROP              MSGCAT_SYNTAX_NO(133)
+#define MSGCAT_SYNTAX_SYNONYM_INVALID_RENAME            MSGCAT_SYNTAX_NO(134)
+#define MSGCAT_SYNTAX_SYNONYM_ALTER_NO_OPTION           MSGCAT_SYNTAX_NO(135)
+#define MSGCAT_SYNTAX_MAX_SERVER_DBNAME_LEN             MSGCAT_SYNTAX_NO(136)
+#define MSGCAT_SYNTAX_MAX_SERVER_USER_LEN               MSGCAT_SYNTAX_NO(137)
 
 /* Message id in the set MSGCAT_SET_PARSER_SEMANTIC */
 #define MSGCAT_SEMANTIC_NO(n)			n
@@ -468,6 +475,22 @@
 #define MSGCAT_SEMANTIC_INCORRECT_RECURSIVE_CTE		MSGCAT_SEMANTIC_NO(298)
 #define MSGCAT_SEMANTIC_INCORRECT_UNION_IN_CTE		MSGCAT_SEMANTIC_NO(299)
 #define MSGCAT_SEMANTIC_SUBQUERY_NOT_ALLOWED_IN_DEFAULT_CLAUSE      MSGCAT_SEMANTIC_NO(300)
+#define MSGCAT_SEMANTIC_NO_SIGNATURES                   MSGCAT_SEMANTIC_NO(301)
+#define MSGCAT_SEMANTIC_INCOMPATIBLE_ARGUMENT_TYPE      MSGCAT_SEMANTIC_NO(302)
+#define MSGCAT_SEMANTIC_WRONG_ARGS_COUNT                MSGCAT_SEMANTIC_NO(303)
+#define MSGCAT_SEMANTIC_NO_VALID_FUNCTION_SIGNATURE     MSGCAT_SEMANTIC_NO(304)
+#define MSGCAT_SEMANTIC_INCOMPATIBLE_SIGNATURE          MSGCAT_SEMANTIC_NO(305)
+#define MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED         MSGCAT_SEMANTIC_NO(306)
+#define MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE       MSGCAT_SEMANTIC_NO(307)
+#define MSGCAT_SEMANTIC_CREATE_TABLE_VIEW_NOT_OWNER     MSGCAT_SEMANTIC_NO(308)
+#define MSGCAT_SEMANTIC_SYNONYM_INVALID_NAME            MSGCAT_SEMANTIC_NO(309)
+#define MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER               MSGCAT_SEMANTIC_NO(310)
+#define MSGCAT_SEMANTIC_SYNONYM_PUBLIC_ALREADY_EXIST    MSGCAT_SEMANTIC_NO(311)
+#define MSGCAT_SEMANTIC_SYNONYM_PUBLIC_NOT_EXIST        MSGCAT_SEMANTIC_NO(312)
+#define MSGCAT_SEMANTIC_SYNONYM_ALREADY_EXIST           MSGCAT_SEMANTIC_NO(313)
+#define MSGCAT_SEMANTIC_SYNONYM_NOT_EXIST               MSGCAT_SEMANTIC_NO(314)
+#define MSGCAT_SEMANTIC_SYNONYM_RENAME_CANNOT_CHANGE_OWNER	MSGCAT_SEMANTIC_NO(315)
+#define MSGCAT_SEMANTIC_SYNONYM_RENAME_CANNOT_SAME_NAME		MSGCAT_SEMANTIC_NO(316)
 
 /* Message id in the set MSGCAT_SET_PARSER_RUNTIME */
 #define MSGCAT_RUNTIME_NO(n)				n
@@ -551,7 +574,7 @@
 #define MSGCAT_RUNTIME_SERIAL_IS_AUTO_INCREMENT_OBJ     MSGCAT_RUNTIME_NO(78)
 #define MSGCAT_RUNTIME_XACT_INVALID_ISO_LVL_MSG         MSGCAT_RUNTIME_NO(79)
 #define MSGCAT_MVCC_RUNTIME_XACT_ISO_LVL_MSG            MSGCAT_RUNTIME_NO(80)
-#define MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER            MSGCAT_RUNTIME_NO(81)
+#define MSGCAT_RUNTIME_INVALID_AUTO_INCREMENT_ALTER     MSGCAT_RUNTIME_NO(81)
 #define MSGCAT_RUNTIME_INVALID_JSON                     MSGCAT_RUNTIME_NO(82)
-
+#define MSGCAT_RUNTIME_REUSE_OID_TABLE_NOT_UPDATABLE    MSGCAT_RUNTIME_NO(83)
 #endif /* _PARSER_MESSAGE_H_ */

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -40,6 +39,7 @@
 #include "broker_config.h"
 #include "broker_shm.h"
 #include "broker_error.h"
+#include "system_parameter.h"
 
 #include "broker_util.h"
 #include "util_func.h"
@@ -90,13 +90,25 @@ main (int argc, char **argv)
       return 0;
     }
 
+  er_init (NULL, ER_NEVER_EXIT);
+
   /* change the working directory to $CUBRID */
   ut_cd_root_dir ();
+
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_IGNORE_INTL_PARAMS) != NO_ERROR)
+    {
+      fprintf (stderr, "System Parameter load failed.");
+      return 0;
+    }
 
   err = broker_config_read (NULL, br_info, &num_broker, &master_shm_id, admin_log_file, 0, &acl_flag, acl_file, NULL);
   if (err < 0)
     {
+#if defined (FOR_ODBC_GATEWAY)
+      util_log_write_errstr ("gateway config read error.\n");
+#else
       util_log_write_errstr ("broker config read error.\n");
+#endif
       return -1;
     }
 
@@ -142,7 +154,7 @@ main (int argc, char **argv)
 
       if (shm_br == NULL && uw_get_error_code () != UW_ER_SHM_OPEN_MAGIC)
 	{
-	  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file) < 0)
+	  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, admin_log_file) < 0)
 	    {
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
 	      return -1;
@@ -298,7 +310,11 @@ main (int argc, char **argv)
 
       if (argc < 3)
 	{
+#if defined (FOR_ODBC_GATEWAY)
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <gateway-name>\n", argv[0]);
+#else
 	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n", argv[0]);
+#endif
 	  return -1;
 	}
 
@@ -317,7 +333,11 @@ main (int argc, char **argv)
 	}
       else
 	{
+#if defined (FOR_ODBC_GATEWAY)
+	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <gateway-name>\n", argv[0]);
+#else
 	  PRINT_AND_LOG_ERR_MSG ("%s acl <reload|status> <broker-name>\n", argv[0]);
+#endif
 	  return -1;
 	}
       if (err_code < 0)
@@ -338,7 +358,7 @@ main (int argc, char **argv)
     {
       goto usage;
     }
-
+  er_final (ER_ALL_FINAL);
   return 0;
 
 usage:

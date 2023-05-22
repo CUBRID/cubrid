@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -42,12 +41,6 @@ extern "C"
   typedef char need_clear_type;
 #endif
 
-#define IS_VALID_ISOLATION_LEVEL(isolation_level) \
-    (TRAN_MINVALUE_ISOLATION <= (isolation_level) \
-     && (isolation_level) <= TRAN_MAXVALUE_ISOLATION)
-
-#define TRAN_DEFAULT_ISOLATION_LEVEL()	(TRAN_DEFAULT_ISOLATION)
-
 #if defined (__GNUC__) && defined (NDEBUG)
 #define ALWAYS_INLINE always_inline
 #else
@@ -75,29 +68,6 @@ extern "C"
 
   /******************************************/
   /* From cubrid_api.h */
-  typedef enum
-  {
-    TRAN_UNKNOWN_ISOLATION = 0x00,	/* 0 0000 */
-
-    TRAN_READ_COMMITTED = 0x04,	/* 0 0100 */
-    TRAN_REP_CLASS_COMMIT_INSTANCE = 0x04,	/* Alias of above */
-    TRAN_CURSOR_STABILITY = 0x04,	/* Alias of above */
-
-    TRAN_REPEATABLE_READ = 0x05,	/* 0 0101 */
-    TRAN_REP_READ = 0x05,	/* Alias of above */
-    TRAN_REP_CLASS_REP_INSTANCE = 0x05,	/* Alias of above */
-    TRAN_DEGREE_2_9999_CONSISTENCY = 0x05,	/* Alias of above */
-
-    TRAN_SERIALIZABLE = 0x06,	/* 0 0110 */
-    TRAN_DEGREE_3_CONSISTENCY = 0x06,	/* Alias of above */
-    TRAN_NO_PHANTOM_READ = 0x06,	/* Alias of above */
-
-    TRAN_DEFAULT_ISOLATION = TRAN_READ_COMMITTED,
-    MVCC_TRAN_DEFAULT_ISOLATION = TRAN_READ_COMMITTED,
-
-    TRAN_MINVALUE_ISOLATION = 0x04,	/* internal use only */
-    TRAN_MAXVALUE_ISOLATION = 0x06	/* internal use only */
-  } DB_TRAN_ISOLATION;
 
   typedef enum
   {
@@ -168,6 +138,16 @@ extern "C"
     CUBRID_STMT_VACUUM,
     CUBRID_STMT_SET_TIMEZONE,
 
+    CUBRID_STMT_CREATE_SERVER,
+    CUBRID_STMT_DROP_SERVER,
+    CUBRID_STMT_RENAME_SERVER,
+    CUBRID_STMT_ALTER_SERVER,
+
+    CUBRID_STMT_ALTER_SYNONYM,
+    CUBRID_STMT_CREATE_SYNONYM,
+    CUBRID_STMT_DROP_SYNONYM,
+    CUBRID_STMT_RENAME_SYNONYM,
+
     CUBRID_MAX_STMT_TYPE
   } CUBRID_STMT_TYPE;
 
@@ -183,9 +163,6 @@ extern "C"
    *       then we can move all this back to dbdef, include dbdef in dbtype_common and add dbdef to the list of exposed
    *       headers.
    */
-
-#define TRAN_ASYNC_WS_BIT                        0x10	/* 1 0000 */
-#define TRAN_ISO_LVL_BITS                        0x0F	/* 0 1111 */
 
 #define DB_AUTH_ALL \
   ((DB_AUTH) (DB_AUTH_SELECT | DB_AUTH_INSERT | DB_AUTH_UPDATE | DB_AUTH_DELETE | \
@@ -260,7 +237,7 @@ extern "C"
     DB_FETCH_QUERY_WRITE = 6,	/* Read the class and query (read) all instances of the class and update some of those
 				 * instances. Note class must be given This is for Query update (SQL update) or Query
 				 * delete (SQL delete) INTERNAL USE ONLY */
-    DB_FETCH_SCAN = 7,		/* Read the class for scan purpose The lock of the lock should be kept since the actual 
+    DB_FETCH_SCAN = 7,		/* Read the class for scan purpose The lock of the lock should be kept since the actual
 				 * access happens later. This is for loading an index. INTERNAL USE ONLY */
     DB_FETCH_EXCLUSIVE_SCAN = 8	/* Read the class for exclusive scan purpose The lock of the lock should be kept since
 				 * the actual access happens later. This is for loading an index. INTERNAL USE ONLY */
@@ -285,7 +262,7 @@ extern "C"
     DB_AUTH_EXECUTE = 64
   } DB_AUTH;
 
-  /* object_id type constants used in a db_register_ldb api call to specify whether a local database supports intrinsic object 
+  /* object_id type constants used in a db_register_ldb api call to specify whether a local database supports intrinsic object
    * identity or user-defined object identity.
    */
   typedef enum
@@ -353,9 +330,9 @@ extern "C"
   typedef struct sm_descriptor DB_ATTDESC;
   typedef struct sm_descriptor DB_METHDESC;
 
-  /* These structures are used for building editing templates on classes and objects. Templates allow the specification of 
-   * multiple operations to the object that are treated as an atomic unit. If any of the operations in the template fail, 
-   * none of the operations will be applied to the object. They are defined as abstract data types on top of internal data 
+  /* These structures are used for building editing templates on classes and objects. Templates allow the specification of
+   * multiple operations to the object that are treated as an atomic unit. If any of the operations in the template fail,
+   * none of the operations will be applied to the object. They are defined as abstract data types on top of internal data
    * structures, API programs are not allowed to make assumptions about the contents of these structures.
    */
   typedef struct sm_template DB_CTMPL;
@@ -436,12 +413,12 @@ extern "C"
     TR_ACT_PRINT = 4		/* PRINT action */
   } DB_TRIGGER_ACTION;
 
-  /* This is the generic pointer to database objects. An object may be either an instance or a class. The actual structure is 
+  /* This is the generic pointer to database objects. An object may be either an instance or a class. The actual structure is
    * defined elsewhere and it is not necessary for database applications to understand its contents.
    */
   typedef struct db_object DB_OBJECT, *MOP;
 
-  /* Structure defining the common list link header used by the general list routines. Any structure in the db_ layer that 
+  /* Structure defining the common list link header used by the general list routines. Any structure in the db_ layer that
    * are linked in lists will follow this convention.
    */
   typedef struct db_list DB_LIST;
@@ -479,7 +456,7 @@ extern "C"
   typedef struct sm_class_constraint DB_CONSTRAINT;
   typedef struct sm_function_index_info DB_FUNCTION_INDEX_INFO;
 
-  /* Types of constraints that may be applied to attributes. This type is used by the db_add_constraint()/db_drop_constraint() 
+  /* Types of constraints that may be applied to attributes. This type is used by the db_add_constraint()/db_drop_constraint()
    * API functions.
    */
   typedef enum
@@ -538,7 +515,7 @@ extern "C"
 /* Maximum allowable class name. */
 #define DB_MAX_CLASS_LENGTH (DB_MAX_IDENTIFIER_LENGTH-DB_MAX_SCHEMA_LENGTH-4)
 
-#define DB_MAX_SPEC_LENGTH       4096
+#define DB_MAX_SPEC_LENGTH       (0x3FFFFFFF)
 
 /* Maximum allowable class comment length */
 #define DB_MAX_CLASS_COMMENT_LENGTH     2048
@@ -560,8 +537,10 @@ extern "C"
 /* The lower limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
 
-/* The maximum precision that can be specified for a CHAR(n) domain. */
-#define DB_MAX_CHAR_PRECISION DB_MAX_STRING_LENGTH
+/* The maximum precision of CHAR(n) domain that can be specified for an INTL_UTF8_MAX_CHAR_SIZE.
+ * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
+ */
+#define DB_MAX_CHAR_PRECISION (DB_MAX_STRING_LENGTH/4)
 
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
@@ -649,7 +628,7 @@ extern "C"
 /* The maximum length of the partition expression after it is processed */
 #define DB_MAX_PARTITION_EXPR_LENGTH 2048
 
-/* Defines the state of a value as not being compressable due to its bad compression size or 
+/* Defines the state of a value as not being compressable due to its bad compression size or
  * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
  */
 #define DB_UNCOMPRESSABLE -1
@@ -863,7 +842,7 @@ extern "C"
     DB_CURRENCY type;
   };
 
-  /* Definition for the collection descriptor structure. The structures for the collection descriptors and the sequence 
+  /* Definition for the collection descriptor structure. The structures for the collection descriptors and the sequence
    * descriptors are identical internally but not all db_collection functions can be used with sequences and no db_seq functions
    * can be used with sets. It is advisable to recognize the type of set being used, type it appropriately and only call those
    * db_ functions defined for that type.
@@ -1028,7 +1007,7 @@ extern "C"
       unsigned char is_max_string;
       unsigned char compressed_need_clear;
       int size;
-      char *buf;
+      const char *buf;
       int compressed_size;
       char *compressed_buf;
     } medium;
@@ -1045,7 +1024,7 @@ extern "C"
   typedef DB_CHAR DB_NCHAR;
   typedef DB_CHAR DB_BIT;
 
-  typedef int DB_RESULTSET;
+  typedef uint64_t DB_RESULTSET;
 
   /* Structure for an ENUMERATION element */
   typedef struct db_enum_element DB_ENUM_ELEMENT;
@@ -1183,8 +1162,11 @@ extern "C"
   typedef float DB_C_FLOAT;
   typedef double DB_C_DOUBLE;
   typedef char *DB_C_CHAR;
+  typedef const char *DB_CONST_C_CHAR;
   typedef char *DB_C_NCHAR;
+  typedef const char *DB_CONST_C_NCHAR;
   typedef char *DB_C_BIT;
+  typedef const char *DB_CONST_C_BIT;
   typedef DB_OBJECT DB_C_OBJECT;
   typedef DB_COLLECTION DB_C_SET;
   typedef DB_COLLECTION DB_C_COLLECTION;
@@ -1231,7 +1213,7 @@ extern "C"
   {
     DB_DEFAULT_EXPR_TYPE default_expr_type;	/* default expression identifier */
     int default_expr_op;	/* default expression operator */
-    char *default_expr_format;	/* default expression format */
+    const char *default_expr_format;	/* default expression format */
   };
 
   typedef DB_DATETIME DB_C_DATETIME;

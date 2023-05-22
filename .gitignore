@@ -14,24 +14,6 @@ config.status
 libtool
 stamp-h1
 libedit.pc
-/external/expat-2.0.1/expat_config.h
-/external/jansson-2.4/jansson.pc
-/external/libgcrypt-1.5.2/mpi/asm-syntax.h
-/external/libgcrypt-1.5.2/mpi/mod-source-info.h
-/external/libgcrypt-1.5.2/mpi/mpi-asm-defs.h
-/external/libgcrypt-1.5.2/mpi/mpih-add1-asm.S
-/external/libgcrypt-1.5.2/mpi/mpih-lshift-asm.S
-/external/libgcrypt-1.5.2/mpi/mpih-mul1-asm.S
-/external/libgcrypt-1.5.2/mpi/mpih-mul2-asm.S
-/external/libgcrypt-1.5.2/mpi/mpih-mul3-asm.S
-/external/libgcrypt-1.5.2/mpi/mpih-rshift-asm.S
-/external/libgcrypt-1.5.2/mpi/mpih-sub1-asm.S
-/external/libgcrypt-1.5.2/mpi/sysdep.h
-/external/libgcrypt-1.5.2/src/libgcrypt-config
-/external/libgcrypt-1.5.2/src/versioninfo.rc
-/external/libgpg-error-1.11/po/POTFILES
-/external/libgpg-error-1.11/src/gpg-error-config
-/external/libgpg-error-1.11/src/versioninfo.rc
 
 
 ## C files
@@ -83,54 +65,11 @@ broker/cubrid_broker
 broker/cubrid_replay
 cm_common/cub_jobsa
 cm_common/cub_sainfo
-external/bin/
 .installed
-external/expat-2.0.1/examples/elements
-external/expat-2.0.1/examples/outline
-external/expat-2.0.1/xmlwf/xmlwf
-external/include/
-external/lib/
-/external/libgcrypt-1.5.2/src/dumpsexp
-/external/libgcrypt-1.5.2/src/hmac256
-/external/libgpg-error-1.11/lang/cl/gpg-error-codes.lisp
-/external/libgpg-error-1.11/src/code-from-errno.h
-/external/libgpg-error-1.11/src/code-to-errno.h
-/external/libgpg-error-1.11/src/err-codes-sym.h
-/external/libgpg-error-1.11/src/err-sources-sym.h
-/external/libgpg-error-1.11/src/errnos-sym.h
-/external/libgpg-error-1.11/src/extra-h.in
-/external/libgpg-error-1.11/src/gpg-error
-/external/libgpg-error-1.11/src/gpg-error.def
-/external/libgpg-error-1.11/src/mkerrcodes
-/external/libgpg-error-1.11/src/mkerrcodes.h
-/external/libgpg-error-1.11/src/mkw32errmap.map.c
-/external/libgpg-error-1.11/tests/t-strerror
-/external/libgpg-error-1.11/tests/t-syserror
-/external/libgpg-error-1.11/tests/t-version
-!/external/lzo-2.10/Makefile.in
-/external/lzo-2.10/examples/dict
-/external/lzo-2.10/examples/lzopack
-/external/lzo-2.10/examples/overlap
-/external/lzo-2.10/examples/precomp
-/external/lzo-2.10/examples/precomp2
-/external/lzo-2.10/examples/simple
-/external/lzo-2.10/lzotest/lzotest
-/external/lzo-2.10/minilzo/testmini
-/external/lzo-2.10/tests/align
-/external/lzo-2.10/tests/chksum
-/external/lzo-2.10/tests/promote
-/external/lzo-2.10/tests/sizes
-/external/man/
-/external/share/
 /java/bin/
 /java/jspserver.jar
 /java/src-jsp/
 /java/src/
-/jdbc/JDBC-*-cubrid-src.jar
-/jdbc/JDBC-*-cubrid.jar
-/jdbc/bin-cubrid/
-/jdbc/src-cubrid/
-/jdbc/src/
 /msg/*/*.cat
 /timezones/tzlib/timezones.c
 /tools/cci_applier
@@ -183,6 +122,10 @@ x86
 /win/install/CUBRID_Release_x64/
 /win/cubridtray/Debug/
 
+## Windows 3rdparty
+/win/3rdparty/Install/
+/win/3rdparty/Download/
+
 ## MISC
 *.swp
 *.bak
@@ -196,3 +139,15 @@ Debug/
 Release/
 build_x86_64_debug/
 build_x86_64_release/
+build_x86_64_coverage/
+build_x86_64_profile/
+
+## Development Environments
+# Visual Studio Code
+.vscode/*
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -797,7 +796,7 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVPGBUF_COMPENSATE_DEALLOC,
    "RVPGBUF_COMPENSATE_DEALLOC",
-   pgbuf_rv_new_page_redo,
+   pgbuf_rv_dealloc_undo_compensate,
    NULL,
    NULL,
    NULL},
@@ -813,7 +812,24 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_record_modify,
    btree_rv_keyval_dump,
    log_rv_dump_hexa},
-
+  {RVHF_APPEND_PAGES_TO_HEAP,
+   "RVHF_APPEND_PAGES_TO_HEAP",
+   NULL,
+   heap_rv_postpone_append_pages_to_heap,
+   NULL,
+   heap_rv_dump_append_pages_to_heap},
+  {RVPGBUF_SET_TDE_ALGORITHM,
+   "RVPGBUF_SET_TDE_ALGORITHM",
+   pgbuf_rv_set_tde_algorithm,
+   pgbuf_rv_set_tde_algorithm,
+   NULL,
+   NULL},
+  {RVFL_FHEAD_SET_TDE_ALGORITHM,
+   "RVFL_FHEAD_SET_TDE_ALGORITHM",
+   file_rv_set_tde_algorithm,
+   file_rv_set_tde_algorithm,
+   NULL,
+   NULL},
 };
 
 /*

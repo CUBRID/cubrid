@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -705,7 +704,7 @@ process_is_registered_proc (CSS_CONN_ENTRY * conn, char *args)
   rid = send_request_one_arg (conn, IS_REGISTERED_HA_PROC, (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
 
-  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }
@@ -745,7 +744,7 @@ process_ha_deregister_by_pid (CSS_CONN_ENTRY * conn, char *pid_string)
   rid = send_request_one_arg (conn, DEREGISTER_HA_PROCESS_BY_PID, (char *) &pid, sizeof (pid));
   return_string (conn, rid, &reply_buffer, &size);
 
-  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }
@@ -785,7 +784,7 @@ process_ha_deregister_by_args (CSS_CONN_ENTRY * conn, char *args)
   rid = send_request_one_arg (conn, DEREGISTER_HA_PROCESS_BY_ARGS, (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
 
-  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }
@@ -869,7 +868,7 @@ process_deactivate_heartbeat (CSS_CONN_ENTRY * conn)
 
   return_string (conn, rid, &result_reply_buffer, &size);
 #endif
-  if (size > 0 && strcmp (result_reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (result_reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }
@@ -905,7 +904,7 @@ process_deact_confirm_no_server (CSS_CONN_ENTRY * conn)
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
-  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }
@@ -937,7 +936,7 @@ process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn)
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
-  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }
@@ -970,7 +969,7 @@ process_deact_stop_all (CSS_CONN_ENTRY * conn)
   return_string (conn, rid, &reply_buffer, &size);
 #endif /* !WINDOWS */
 
-  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }
@@ -1007,7 +1006,7 @@ process_activate_heartbeat (CSS_CONN_ENTRY * conn)
   return_string (conn, rid, &reply_buffer, &size);
 #endif
 
-  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }
@@ -1046,7 +1045,7 @@ process_ha_start_util_process (CSS_CONN_ENTRY * conn, char *args)
   rid = send_request_one_arg (conn, START_HA_UTIL_PROCESS, (char *) buffer, len);
   return_string (conn, rid, &reply_buffer, &size);
 
-  if (size > 0 && strcmp (reply_buffer, HA_REQUEST_SUCCESS) == 0)
+  if (size > 0 && strncmp (reply_buffer, HA_REQUEST_SUCCESS, size - 1) == 0)
     {
       error = NO_ERROR;
     }

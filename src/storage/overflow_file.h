@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -28,11 +27,28 @@
 #ident "$Id$"
 
 #include "config.h"
-
-#include "storage_common.h"
-#include "slotted_page.h"
+#include "file_manager.h"
+#include "mvcc.h"
 #include "page_buffer.h"
 #include "recovery.h"
+#include "slotted_page.h"
+#include "storage_common.h"
+
+typedef struct overflow_first_part OVERFLOW_FIRST_PART;
+struct overflow_first_part
+{
+  VPID next_vpid;
+  int length;
+  char data[1];			/* Really more than one */
+};
+
+typedef struct overflow_rest_part OVERFLOW_REST_PART;
+struct overflow_rest_part
+{
+  VPID next_vpid;
+  char data[1];			/* Really more than one */
+};
+
 
 extern int overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
 			    FILE_TYPE file_type);

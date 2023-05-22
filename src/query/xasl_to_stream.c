@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -39,7 +38,12 @@
 #include "object_primitive.h"
 #include "work_space.h"
 #include "memory_alloc.h"
+#include "xasl.h"
+#include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
+#include "xasl_unpack_info.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE
 #define    LONG_SIZE        OR_INT_SIZE
@@ -109,6 +113,8 @@ static int xts_save (const T &t);
 
 template <typename T>
 static void xts_debug_check (const T &t, char *pack_start, const char *pack_end);
+template <typename T>
+static void xts_debug_clear (T &t);
 // *INDENT-ON*
 
 static int xts_save_db_value_array (DB_VALUE ** ptr, int size);
@@ -162,6 +168,7 @@ static char *xts_process_showstmt_spec_type (char *ptr, const SHOWSTMT_SPEC_TYPE
 static char *xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec);
 static char *xts_process_json_table_column_behavior (char *ptr, const json_table_column_behavior * behavior);
 static char *xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec);
+static char *xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec);
 static char *xts_process_rlist_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
 static char *xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id);
 static char *xts_process_val_list (char *ptr, const VAL_LIST * val_list);
@@ -219,6 +226,7 @@ static int xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * ptr);
 static int xts_sizeof_showstmt_spec_type (const SHOWSTMT_SPEC_TYPE * ptr);
 static int xts_sizeof_set_spec_type (const SET_SPEC_TYPE * ptr);
 static int xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * ptr);
+static int xts_sizeof_dblink_spec_type (const DBLINK_SPEC_TYPE * ptr);
 static int xts_sizeof_json_table_column_behavior (const json_table_column_behavior * behavior);
 static int xts_sizeof_list_id (const QFILE_LIST_ID * ptr);
 static int xts_sizeof_val_list (const VAL_LIST * ptr);
@@ -1283,7 +1291,7 @@ xts_save_regu_variable (const REGU_VARIABLE * regu_var)
     }
   assert (buf <= buf_p + size);
 
-  /* 
+  /*
    * OR_VALUE_ALIGNED_SIZE may reserve more bytes
    * suppress valgrind UMW (uninitialized memory write)
    */
@@ -1572,7 +1580,7 @@ xts_save_xasl_node (const XASL_NODE * xasl)
 
   assert (buf <= buf_p + size);
 
-  /* 
+  /*
    * OR_DOUBLE_ALIGNED_SIZE may reserve more bytes
    * suppress valgrind UMW (uninitialized memory write)
    */
@@ -2293,7 +2301,7 @@ xts_save_string (const char *string)
 
   packed_length = or_packed_string_length (string, &length);
 
-  assert ((string != NULL && length > 0) || (string == NULL && length == 0));
+  assert (string != NULL || length == 0);
 
   offset = xts_reserve_location_in_stream (packed_length);
   if (offset == ER_FAILED || xts_mark_ptr_visited (string, offset) == ER_FAILED)
@@ -2706,6 +2714,32 @@ xts_save_key_range_array (const KEY_RANGE * key_range_array, int nelements)
   return offset;
 }
 
+static int
+xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
+{
+  int offset, i;
+  char *ptr;
+
+  if (key_val_array == NULL)
+    {
+      return 0;
+    }
+
+  offset = xts_reserve_location_in_stream (sizeof (KEY_VAL_RANGE) * nelements);
+  if (offset == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  ptr = &xts_Stream_buffer[offset];
+  for (i = 0; i < nelements; ++i)
+    {
+      ptr = or_pack_key_val_range (ptr, &key_val_array[i]);
+    }
+
+  return offset;
+}
+
 /*
  * xts_process_xasl_header () - Pack XASL node header in buffer.
  *
@@ -2994,19 +3028,13 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       ptr = xts_process_access_spec_type (ptr, access_spec);
     }
 
-  ptr = or_pack_int (ptr, xasl->next_scan_on);
-
-  ptr = or_pack_int (ptr, xasl->next_scan_block_on);
-
-  ptr = or_pack_int (ptr, xasl->cat_fetched);
-
   ptr = or_pack_int (ptr, (int) xasl->scan_op_type);
 
   ptr = or_pack_int (ptr, xasl->upd_del_class_cnt);
 
   ptr = or_pack_int (ptr, xasl->mvcc_reev_extra_cls_cnt);
 
-  /* 
+  /*
    * NOTE that the composite lock block is strictly a server side block
    * and is not packed.
    */
@@ -3077,9 +3105,6 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     {
       return NULL;
     }
-
-  ptr = or_pack_int (ptr, xasl->projected_size);
-  ptr = or_pack_double (ptr, xasl->cardinality);
 
   ptr = or_pack_int (ptr, (int) xasl->iscan_oid_order);
 
@@ -3162,7 +3187,7 @@ xts_process_func_pred (char *ptr, const FUNC_PRED * func_pred)
 static char *
 xts_process_cache_attrinfo (char *ptr)
 {
-  /* 
+  /*
    * We don't need to pack anything here, it is strictly a server side
    * structure.  Unfortunately, we must send something or else the ptrs
    * to this structure might conflict with a structure that might be
@@ -3383,22 +3408,6 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_pred_expr (build_list_proc->a_instnum_pred);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_db_value (build_list_proc->a_instnum_val);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  ptr = or_pack_int (ptr, build_list_proc->a_instnum_flag);
 
   return ptr;
 }
@@ -3922,6 +3931,8 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
   /* no_logging */
   ptr = or_pack_int (ptr, update_info->no_logging);
 
+  ptr = or_pack_int (ptr, update_info->no_supplemental_log);
+
   /* num_orderby_keys */
   ptr = or_pack_int (ptr, update_info->num_orderby_keys);
 
@@ -3964,6 +3975,8 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
   ptr = or_pack_int (ptr, delete_info->wait_msecs);
 
   ptr = or_pack_int (ptr, delete_info->no_logging);
+
+  ptr = or_pack_int (ptr, delete_info->no_supplemental_log);
 
   /* mvcc condition reevaluation data */
   ptr = or_pack_int (ptr, delete_info->num_reev_classes);
@@ -4130,15 +4143,15 @@ xts_process_pred_expr (char *ptr, const PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      ptr = xts_process_pred (ptr, &pred_expr->pe.pred);
+      ptr = xts_process_pred (ptr, &pred_expr->pe.m_pred);
       break;
 
     case T_EVAL_TERM:
-      ptr = xts_process_eval_term (ptr, &pred_expr->pe.eval_term);
+      ptr = xts_process_eval_term (ptr, &pred_expr->pe.m_eval_term);
       break;
 
     case T_NOT_TERM:
-      offset = xts_save_pred_expr (pred_expr->pe.not_term);
+      offset = xts_save_pred_expr (pred_expr->pe.m_not_term);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -4175,7 +4188,7 @@ xts_process_pred (char *ptr, const PRED * pred)
   /* Traverse right-linear chains of AND/OR terms */
   while (rhs->type == T_PRED)
     {
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       offset = xts_save_pred_expr (pred->lhs);	/* lhs */
       if (offset == ER_FAILED)
@@ -4425,6 +4438,10 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
       ptr = xts_process (ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       break;
 
+    case TARGET_DBLINK:
+      ptr = xts_process_dblink_spec_type (ptr, &ACCESS_SPEC_DBLINK_SPEC (access_spec));
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return NULL;
@@ -4456,6 +4473,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 static char *
 xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 {
+  int offset;
+
   ptr = or_pack_btid (ptr, &indx_info->btid);
 
   ptr = or_pack_int (ptr, indx_info->coverage);
@@ -4480,10 +4499,22 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
 
+  if (indx_info->cov_list_id == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_list_id (indx_info->cov_list_id);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
   if (indx_info->use_iss)
     {
-      int offset;
-
       ptr = or_pack_int (ptr, (int) indx_info->iss_range.range);
 
       offset = xts_save_regu_variable (indx_info->iss_range.key1);
@@ -4517,6 +4548,20 @@ xts_process_key_info (char *ptr, const KEY_INFO * key_info)
   if (key_info->key_cnt > 0)
     {
       offset = xts_save_key_range_array (key_info->key_ranges, key_info->key_cnt);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+  else
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+
+  if (key_info->key_cnt > 0)
+    {
+      offset = xts_save_key_val_array (key_info->key_vals, key_info->key_cnt);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -4711,6 +4756,22 @@ xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_regu_variable_list (list_spec->list_regu_list_build);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (list_spec->list_regu_list_probe);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, list_spec->hash_list_scan_yn);
+
   return ptr;
 }
 
@@ -4801,7 +4862,7 @@ xts_process (char *ptr, const json_table_column & jtc)
   ptr = or_pack_domain (ptr, jtc.m_domain, 0, 0);
 
   // save path
-  assert (jtc.m_path != NULL && strlen (jtc.m_path) > 0);
+  assert (jtc.m_path != NULL);
   offset = xts_save_string (jtc.m_path);
   if (offset == ER_FAILED)
     {
@@ -4810,7 +4871,7 @@ xts_process (char *ptr, const json_table_column & jtc)
   ptr = or_pack_int (ptr, offset);
 
   // save column_name
-  assert (jtc.m_column_name != NULL && strlen (jtc.m_column_name) > 0);
+  assert (jtc.m_column_name != NULL);
   offset = xts_save_string (jtc.m_column_name);
   if (offset == ER_FAILED)
     {
@@ -4863,7 +4924,7 @@ xts_process (char *ptr, const json_table_node & jtn)
 
   ptr = or_pack_int (ptr, (int) jtn.m_id);
 
-  ptr = or_pack_int (ptr, (int) jtn.m_expand_type);
+  ptr = or_pack_int (ptr, (int) jtn.m_is_iterable_node);
 
   xts_debug_check (jtn, start_ptr, ptr);
 
@@ -4912,6 +4973,67 @@ xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_method_sig_list (method_spec->method_sig_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
+static char *
+xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec)
+{
+  int offset;
+
+  offset = xts_save_regu_variable_list (dblink_spec->dblink_regu_list_pred);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (dblink_spec->dblink_regu_list_rest);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, dblink_spec->host_var_count);
+  if (dblink_spec->host_var_count > 0)
+    {
+      offset = xts_save_int_array (dblink_spec->host_var_index, dblink_spec->host_var_count);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  offset = xts_save_string (dblink_spec->conn_url);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (dblink_spec->conn_user);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (dblink_spec->conn_password);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (dblink_spec->conn_sql);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -4975,7 +5097,7 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_xasl_node (REGU_VARIABLE_XASL (regu_var));
+  offset = xts_save_xasl_node (regu_var->xasl);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -5144,13 +5266,6 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
 
   ptr = or_pack_int (ptr, arith->opcode);
 
-  offset = xts_save_arith_type (arith->next);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   offset = xts_save_regu_variable (arith->leftptr);
   if (offset == ER_FAILED)
     {
@@ -5208,7 +5323,7 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
     }
   ptr = or_pack_int (ptr, offset);
 
-  ptr = or_pack_int (ptr, aggregate->accumulator.curr_cnt);
+  ptr = or_pack_int64 (ptr, aggregate->accumulator.curr_cnt);
 
   offset = xts_save_aggregate_type (aggregate->next);
   if (offset == ER_FAILED)
@@ -5460,7 +5575,7 @@ xts_process_sort_list (char *ptr, const SORT_LIST * sort_list)
   return ptr;
 }
 
-/* 
+/*
  * xts_process_method_sig_list ( ) -
  *
  * Note: do not use or_pack_method_sig_list
@@ -5510,19 +5625,35 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_string (method_sig->class_name);	/* is can be null */
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   ptr = or_pack_int (ptr, method_sig->method_type);
   ptr = or_pack_int (ptr, method_sig->num_method_args);
 
   for (n = 0; n < method_sig->num_method_args + 1; n++)
     {
       ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
+    }
+
+  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
+    {
+      for (n = 0; n < method_sig->num_method_args; n++)
+	{
+	  ptr = or_pack_int (ptr, method_sig->arg_info.arg_mode[n]);
+	}
+      for (n = 0; n < method_sig->num_method_args; n++)
+	{
+	  ptr = or_pack_int (ptr, method_sig->arg_info.arg_type[n]);
+	}
+
+      ptr = or_pack_int (ptr, method_sig->arg_info.result_type);
+    }
+  else
+    {
+      offset = xts_save_string (method_sig->class_name);	/* is can be null */
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
     }
 
   offset = xts_save_method_sig (method_sig->next, count - 1);
@@ -5713,9 +5844,6 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* isleaf_regu */
 	   + PTR_SIZE		/* iscycle_val */
 	   + PTR_SIZE		/* iscycle_regu */
-	   + OR_INT_SIZE	/* next_scan_on */
-	   + OR_INT_SIZE	/* next_scan_block_on */
-	   + OR_INT_SIZE	/* cat_fetched */
 	   + OR_INT_SIZE	/* scan_op_type */
 	   + OR_INT_SIZE	/* upd_del_class_cnt */
 	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
@@ -5845,9 +5973,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       return ER_FAILED;
     }
 
-  size += (OR_INT_SIZE		/* projected_size */
-	   + OR_DOUBLE_ALIGNED_SIZE	/* cardinality */
-	   + OR_INT_SIZE	/* iscan_oid_order */
+  size += (OR_INT_SIZE		/* iscan_oid_order */
 	   + PTR_SIZE		/* query_alias */
 	   + PTR_SIZE);		/* next */
 
@@ -5969,11 +6095,7 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + PTR_SIZE		/* a_outptr_list */
 	   + PTR_SIZE		/* a_outptr_list_ex */
 	   + PTR_SIZE		/* a_outptr_list_interm */
-	   + PTR_SIZE		/* a_val_list */
-	   + PTR_SIZE		/* a_instnum_pred */
-	   + PTR_SIZE		/* a_instnum_val */
-	   + OR_INT_SIZE);	/* a_instnum_flag */
-
+	   + PTR_SIZE);		/* a_val_list */
   return size;
 }
 
@@ -6126,6 +6248,7 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 	   + PTR_SIZE		/* assignments */
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
+	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_orderby_keys */
 	   + OR_INT_SIZE	/* num_assign_reev_classes */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
@@ -6148,6 +6271,7 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 	   + OR_INT_SIZE	/* num_classes */
 	   + OR_INT_SIZE	/* wait_msecs */
 	   + OR_INT_SIZE	/* no_logging */
+	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
 	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
 
@@ -6202,7 +6326,7 @@ xts_sizeof_merge_proc (const MERGE_PROC_NODE * merge_info)
 
 /*
  * xts_sizeof_cte_proc () -
- * return 
+ * return
  * ptr(in)  :
  */
 static int
@@ -6248,7 +6372,7 @@ xts_sizeof_pred_expr (const PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      tmp_size = xts_sizeof_pred (&pred_expr->pe.pred);
+      tmp_size = xts_sizeof_pred (&pred_expr->pe.m_pred);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6257,7 +6381,7 @@ xts_sizeof_pred_expr (const PRED_EXPR * pred_expr)
       break;
 
     case T_EVAL_TERM:
-      tmp_size = xts_sizeof_eval_term (&pred_expr->pe.eval_term);
+      tmp_size = xts_sizeof_eval_term (&pred_expr->pe.m_eval_term);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6317,7 +6441,7 @@ xts_sizeof_pred (const PRED * pred)
   /* Traverse right-linear chains of AND/OR terms */
   while (rhs->type == T_PRED)
     {
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       size += (PTR_SIZE		/* lhs */
 	       + OR_INT_SIZE);	/* bool_op */
@@ -6531,6 +6655,15 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
       size += tmp_size;
       break;
 
+    case TARGET_DBLINK:
+      tmp_size = xts_sizeof_dblink_spec_type (&ACCESS_SPEC_DBLINK_SPEC (access_spec));
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+      break;
+
     case TARGET_JSON_TABLE:
       tmp_size = xts_sizeof (ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       if (tmp_size == ER_FAILED)
@@ -6570,6 +6703,7 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
   size = OR_BTID_ALIGNED_SIZE;	/* btid */
 
   size += (OR_INT_SIZE		/* coverage */
+	   + PTR_SIZE		/* coverage list id */
 	   + OR_INT_SIZE);	/* range_type */
 
   tmp_size = xts_sizeof_key_info (&indx_info->key_info);
@@ -6605,6 +6739,7 @@ xts_sizeof_key_info (const KEY_INFO * key_info)
 
   size += (OR_INT_SIZE		/* key_cnt */
 	   + PTR_SIZE		/* key_ranges */
+	   + PTR_SIZE		/* key_vals */
 	   + OR_INT_SIZE	/* is_constant */
 	   + OR_INT_SIZE	/* key_limit_reset */
 	   + OR_INT_SIZE	/* is_user_given_keylimit */
@@ -6664,6 +6799,9 @@ xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * list_spec)
 
   size += (PTR_SIZE		/* list_regu_list_pred */
 	   + PTR_SIZE		/* list_regu_list_rest */
+	   + PTR_SIZE		/* list_regu_list_build */
+	   + PTR_SIZE		/* list_regu_list_probe */
+	   + OR_INT_SIZE	/* hash_list_scan_yn */
 	   + PTR_SIZE);		/* xasl_node */
 
   return size;
@@ -6714,6 +6852,28 @@ xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * method_spec)
   size += (PTR_SIZE		/* method_regu_list */
 	   + PTR_SIZE		/* xasl_node */
 	   + PTR_SIZE);		/* method_sig_list */
+
+  return size;
+}
+
+/*
+ * xts_sizeof_dblink_spec_type () -
+ *   return:
+ *   ptr(in)    :
+ */
+static int
+xts_sizeof_dblink_spec_type (const DBLINK_SPEC_TYPE * dblink_spec)
+{
+  int size = 0;
+
+  size += (PTR_SIZE		/* dblink_regu_list_pred */
+	   + PTR_SIZE		/* dblink_regu_list_rest */
+	   + OR_INT_SIZE	/* host_var_count */
+	   + PTR_SIZE		/* host_var_index */
+	   + PTR_SIZE		/* conn_rul */
+	   + PTR_SIZE		/* conn_user */
+	   + PTR_SIZE		/* conn_password */
+	   + PTR_SIZE);		/* conn_sql */
 
   return size;
 }
@@ -7220,11 +7380,21 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
   int size = 0;
 
   size += (PTR_SIZE		/* method_name */
-	   + PTR_SIZE		/* class_name */
 	   + OR_INT_SIZE	/* method_type */
 	   + OR_INT_SIZE	/* num_method_args */
 	   + (OR_INT_SIZE * (method_sig->num_method_args + 1))	/* method_arg_pos */
 	   + PTR_SIZE);		/* next */
+
+  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
+    {
+      size += ((method_sig->num_method_args * OR_INT_SIZE)	/* arg_mode */
+	       + (method_sig->num_method_args * OR_INT_SIZE)	/* arg_type */
+	       + (OR_INT_SIZE));	/* result type */
+    }
+  else
+    {
+      size += PTR_SIZE;		/* class_name */
+    }
 
   return size;
 }
@@ -7406,7 +7576,7 @@ xts_get_offset_visited_ptr (const void *ptr)
 static void
 xts_free_visited_ptrs (void)
 {
-  int i;
+  size_t i;
 
   for (i = 0; i < MAX_PTR_BLOCKS; i++)
     {
@@ -7511,7 +7681,7 @@ xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST regu_var_lis
 // template T - type having an overload of xts_sizeof and xts_process functions
 //
 // return : offset
-// t (in) : 
+// t (in) :
 //
 template <typename T>
 int static
@@ -7579,9 +7749,19 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
       assert (false);
     }
 
-  xasl_unpack_info* unpack_info = stx_get_xasl_unpack_info_ptr (NULL);
+  xts_debug_clear (unpack_t);
+
+  xasl_unpack_info* unpack_info = get_xasl_unpack_info_ptr (NULL);
   db_private_free_and_init (NULL, unpack_info);
-  stx_set_xasl_unpack_info_ptr (NULL, NULL);
+  set_xasl_unpack_info_ptr (NULL, NULL);
 #endif // DEBUG
 }
+
+template <typename T>
+static void
+xts_debug_clear (T &t)
+{
+  t.clear_xasl ();
+}
+
 // *INDENT-ON*

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -56,18 +55,18 @@
 #define LANG_COERCIBLE_COLL LANG_SYS_COLLATION
 #define LANG_COERCIBLE_CODESET LANG_SYS_CODESET
 
-#define LANG_IS_COERCIBLE_COLL(c)	\
-  ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY	\
-   || (c) == LANG_COLL_EUCKR_BINARY)
+#define LANG_IS_COERCIBLE_COLL(c)       \
+    ((c) == LANG_COLL_ISO_BINARY || (c) == LANG_COLL_UTF8_BINARY  \
+     || (c) == LANG_COLL_EUCKR_BINARY)
 
 /* common collation to be used at runtime */
 #define LANG_RT_COMMON_COLL(c1, c2, coll)     \
-  do {					      \
-    coll = -1;				      \
+  do {                                        \
+    coll = -1;                                \
     if ((c1) == (c2))			      \
-      {					      \
-	coll = (c1);			      \
-      }					      \
+      {                                       \
+        coll = (c1);			      \
+      }                                       \
     else if (LANG_IS_COERCIBLE_COLL (c1))     \
       {					      \
 	if (!LANG_IS_COERCIBLE_COLL (c2))     \
@@ -112,7 +111,9 @@ enum
   LANG_COLL_UTF8_TR_CS = 6,
   LANG_COLL_UTF8_KO_CS = 7,
   LANG_COLL_EUCKR_BINARY = 8,
-  LANG_COLL_BINARY = 9
+  LANG_COLL_BINARY = 9,
+  LANG_COLL_DEFAULT = LANG_COLL_ISO_BINARY,
+  LANG_COLL_BUILTIN_MAX = LANG_COLL_BINARY
 };
 
 #define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
@@ -120,13 +121,6 @@ enum
   (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
   (((c) == INTL_CODESET_ISO88591) ? LANG_COLL_ISO_BINARY :	 \
     LANG_COLL_BINARY)))
-
-
-  /* collation and charset do be used by system : */
-#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
-
-#define LANG_SYS_CODESET  lang_charset()
-
 
 typedef struct db_charset DB_CHARSET;
 struct db_charset
@@ -173,16 +167,17 @@ struct lang_collation
   COLL_DATA coll;		/* collation data */
   /* string compare */
   int (*fastcmp) (const LANG_COLLATION * lang_coll, const unsigned char *string1, const int size1,
-		  const unsigned char *string2, const int size2);
+		  const unsigned char *string2, const int size2, bool ignore_trailing_space);
   int (*strmatch) (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *string1, int size1,
 		   const unsigned char *string2, int size2, const unsigned char *escape, const bool has_last_escape,
-		   int *str1_match_size);
+		   int *str1_match_size, bool ignore_trailing_space);
   /* function to get collatable character sequence (in sort order) */
   int (*next_coll_seq) (const LANG_COLLATION * lang_coll, const unsigned char *seq, const int size,
-			unsigned char *next_seq, int *len_next);
+			unsigned char *next_seq, int *len_next, bool ignore_trailing_space);
   /* find common key where str1 <= key < str2 (BTREE string prefix) */
   int (*split_key) (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
-		    const unsigned char *str2, const int size2, unsigned char **key, int *byte_size);
+		    const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size,
+		    bool ignore_trailing_space);
   /* compute hash value pseudokey (mht_2str_pseudo_key) */
   unsigned int (*mht2str) (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   /* collation data init function */
@@ -256,10 +251,27 @@ struct lang_locale_compat
   char checksum[32 + 1];
 };
 
+/* collation and charset do be used by system : */
+#if defined(NDEBUG)
+#define LANG_GET_COLLATION(i)  lang_Collations[i]
+#else /* DEBUG */
+#define LANG_GET_COLLATION(i)  lang_get_collation(i)
+#endif /* NDEBUG */
+
+#if defined(NDEBUG)
+#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_Loc_charset))
+#define LANG_SYS_CODESET  lang_Loc_charset
+#else /* DEBUG */
+#define LANG_SYS_COLLATION  (LANG_GET_BINARY_COLLATION(lang_charset()))
+#define LANG_SYS_CODESET  lang_charset()
+#endif /* NDEBUG */
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+  extern LANG_COLLATION *lang_Collations[LANG_MAX_COLLATIONS];
+  extern INTL_CODESET lang_Loc_charset;
   extern INTL_CODESET lang_charset (void);
   extern void lang_init_builtin (void);
   extern int lang_init (void);
@@ -308,7 +320,7 @@ extern "C"
   extern int lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data, bool is_match, const unsigned char *str1,
 						 const int size1, const unsigned char *str2, const int size2,
 						 const unsigned char *escape, const bool has_last_escape,
-						 int *str1_match_size);
+						 int *str1_match_size, bool ignore_trailing_space);
   extern int lang_get_charset_env_string (char *buf, int buf_size, const char *lang_name, const INTL_CODESET charset);
 #if !defined (SERVER_MODE)
   extern int lang_charset_name_to_id (const char *name, INTL_CODESET * codeset);

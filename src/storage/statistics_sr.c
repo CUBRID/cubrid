@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -30,12 +29,15 @@
 #include <math.h>
 
 #include "statistics_sr.h"
+
 #include "btree.h"
 #include "heap_file.h"
 #include "boot_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "thread_entry.hpp"
+#include "system_parameter.h"
 
 #define SQUARE(n) ((n)*(n))
 
@@ -56,7 +58,7 @@ struct partition_stats_acumulator
   double height;		/* the height of the B+tree */
   double keys;			/* number of keys */
   int pkeys_size;		/* pkeys array size */
-  double *pkeys;		/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] -> 
+  double *pkeys;		/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[pkeys_size-1] -> # of {a, b, ..., x} */
 };
 
@@ -392,7 +394,7 @@ xstats_update_all_statistics (THREAD_ENTRY * thread_p, bool with_fullscan)
 #if !defined(NDEBUG)
       classname = or_class_name (&recdes);
       assert (classname != NULL);
-      assert (strlen (classname) < 255);
+      assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
 #endif
 
       error = xstats_update_statistics (thread_p, &class_oid, with_fullscan);
@@ -452,6 +454,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   int key_size;
   int lk_grant_code;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
+  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   /* init */
   cls_info_p = NULL;
@@ -591,6 +594,15 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
       OR_PUT_INT (buf_p, cls_info_p->ci_tot_pages);	/* #pages */
       buf_p += OR_INT_SIZE;
     }
+  else if (!use_stat_estimation)
+    {
+      /* use statistics info */
+      OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
+      buf_p += OR_INT_SIZE;
+
+      OR_PUT_INT (buf_p, MAX (cls_info_p->ci_tot_pages, 1));	/* #pages */
+      buf_p += OR_INT_SIZE;
+    }
   else
     {
       /* use estimates from the heap since it is likely that its estimates are more accurate than the ones gathered at
@@ -668,7 +680,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  btree_stats_p->pages = MAX (1, btree_stats_p->pages);
 	  btree_stats_p->height = MAX (1, btree_stats_p->height);
 
-	  /* If the btree file has currently more pages than when we gathered statistics, assume that all growth happen 
+	  /* If the btree file has currently more pages than when we gathered statistics, assume that all growth happen
 	   * at the leaf level. If the btree is smaller, we use the gathered statistics since the btree may have an
 	   * external file (unknown at this level) to keep overflow keys. */
 	  if (file_get_num_user_pages (thread_p, &btree_stats_p->btid.vfid, &npages) != NO_ERROR)
@@ -682,7 +694,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	      npages = MAX (npages, 1);	/* safe-guard */
 	    }
 	  assert (npages > 0);
-	  if (npages > btree_stats_p->pages)
+	  if (npages > btree_stats_p->pages && use_stat_estimation)
 	    {
 	      OR_PUT_INT (buf_p, (btree_stats_p->leafs + (npages - btree_stats_p->pages)));
 	      buf_p += OR_INT_SIZE;
@@ -706,7 +718,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  buf_p += OR_INT_SIZE;
 
 	  /* check and handle with estimation, since pkeys[] is not gathered before update stats */
-	  if (estimated_nobjs > 0)
+	  if (estimated_nobjs > 0 && use_stat_estimation)
 	    {
 	      /* is non-empty index */
 	      btree_stats_p->keys = MAX (btree_stats_p->keys, 1);
@@ -744,7 +756,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
 	    {
 	      /* check and handle with estimation, since pkeys[] is not gathered before update stats */
-	      if (estimated_nobjs > 0)
+	      if (estimated_nobjs > 0 && use_stat_estimation)
 		{
 		  /* is non-empty index */
 		  btree_stats_p->pkeys[k] = MAX (btree_stats_p->pkeys[k], 1);

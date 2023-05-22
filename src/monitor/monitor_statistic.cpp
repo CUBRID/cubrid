@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -22,6 +21,9 @@
 //
 
 #include "monitor_statistic.hpp"
+
+#include <cassert>
+#include <cstring>
 
 namespace cubmonitor
 {
@@ -44,13 +46,19 @@ namespace cubmonitor
   statistic_value
   statistic_value_cast (const floating_rep &rep)
   {
-    return *reinterpret_cast<const statistic_value *> (&rep);
+    statistic_value stat_val;
+    static_assert (sizeof (rep) == sizeof (stat_val), "floating_rep and statistic_value must be same size");
+    std::memcpy (&stat_val, &rep, sizeof (stat_val));
+    return stat_val;
   }
 
   floating_rep
   floating_rep_cast (statistic_value value)
   {
-    return *reinterpret_cast<const floating_rep *> (&value);
+    floating_rep float_val;
+    static_assert (sizeof (float_val) == sizeof (value), "floating_rep and statistic_value must be same size");
+    std::memcpy (&float_val, &value, sizeof (floating_rep));
+    return float_val;
   }
 
   statistic_value
@@ -156,4 +164,10 @@ namespace cubmonitor
     //
   }
 
+  template <>
+  void
+  accumulator_atomic_statistic<time_rep>::collect (const time_rep &value)
+  {
+    this->m_value.fetch_add (value.count ());
+  }
 } // namespace cubmonitor

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -33,6 +32,8 @@
 #include <iostream>
 #include <typeinfo>
 #include <array>
+
+using namespace cubmem;
 
 namespace test_memalloc
 {
@@ -146,11 +147,10 @@ namespace test_memalloc
     unsigned append_count = AppendCount;
 
     /* first test extensible array */
-    std::allocator<char> allocator;
-    extensible_array<char, AppendSize *AppendCount> xarr (allocator);
+    appendable_array<char, AppendSize *AppendCount> xarr;
 
     run_test (global_error,
-	      test_append_strings<extensible_array<char, AppendSize *AppendCount> >,
+	      test_append_strings<appendable_array<char, AppendSize *AppendCount> >,
 	      std::ref (compare_result),
 	      std::ref (xarr),
 	      test_string_buffer_types::EXTENSIBLE_ARRAY,
@@ -184,10 +184,10 @@ namespace test_memalloc
    */
   static void
   test_extensible_array_correctness_append (int &global_error, test_common::perf_compare &test_compare,
-      extensible_array<char, SIZE_64> &xarr_buf,
+      appendable_array<char, SIZE_64> &xarr_buf,
       std::string &string_buf, size_t append_size)
   {
-    run_test (global_error, test_append_strings<extensible_array<char, SIZE_64> >, test_compare, xarr_buf,
+    run_test (global_error, test_append_strings<appendable_array<char, SIZE_64> >, test_compare, xarr_buf,
 	      test_string_buffer_types::EXTENSIBLE_ARRAY, append_size, 1);
     run_test (global_error, test_append_strings<std::string>, test_compare, string_buf,
 	      test_string_buffer_types::CSTYLE_STRING, append_size, 1);
@@ -218,8 +218,7 @@ namespace test_memalloc
     const size_t APPEND_COUNT = 6;
 
     std::string verifier;
-    std::allocator<char> allocator;
-    extensible_array<char, SIZE_64> xarr (allocator);
+    appendable_array<char, SIZE_64> xarr;
 
     test_common::perf_compare compare_result (string_buffer_names, append_step_names);
 

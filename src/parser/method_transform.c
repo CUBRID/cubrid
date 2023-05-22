@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -25,6 +24,7 @@
 
 #include "config.h"
 
+#include "authenticate.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "parser.h"
@@ -908,7 +908,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg, in
 			      table1->info.spec.referenced_attrs);
 
   /* replace the PT_NAME parameters of the method calls with the derived attributes from the first table of the merge.
-   * We use the referenced attrs list instead of the as_attr_list because it has the resolved field filled in.  We must 
+   * We use the referenced attrs list instead of the as_attr_list because it has the resolved field filled in.  We must
    * first skip over the non-PT_NAME parameters. */
   tmp = table1->info.spec.referenced_attrs;
   for (i = 0; i < num_method_params + num_hierarchical_exprs; i++)
@@ -919,9 +919,9 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg, in
 				 num_referenced_attrs);
 
   /* replace all method calls from this spec in the original statement with their new derived attributes which are
-   * first on the new_spec's as_attr_list.  We use the referenced_attrs list instead of the as_attr_list because it has 
+   * first on the new_spec's as_attr_list.  We use the referenced_attrs list instead of the as_attr_list because it has
    * the resolved field filled in.
-   * 
+   *
    * * Since new_spec->info.spec.path_entities is a copy of the original spec's, we also need to replace any method
    * calls in this tree. */
   meth_replace_method_calls (parser, info->root, table2->info.spec.derived_table, new_spec->info.spec.referenced_attrs,
@@ -945,10 +945,10 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg, in
   /* now that we've finished copy stuff to the derived table, reset ids */
   derived1 = mq_reset_paths (parser, derived1, derived1->info.query.q.select.from);
 
-  /* replace references to the old spec's referenced_attr list with derived attrs from the new_spec's as_attr_list.  We 
+  /* replace references to the old spec's referenced_attr list with derived attrs from the new_spec's as_attr_list.  We
    * need to skip over derived attrs for the method calls.  Again, we use the referenced_attrs list instead of the
    * as_attr_list because it has the resolved field filled in.
-   * 
+   *
    * * Since table2 and new_spec path_entities are a copy of the original spec's, we also need to replace any
    * referenced attrs in these trees. */
   tmp = new_spec->info.spec.referenced_attrs;

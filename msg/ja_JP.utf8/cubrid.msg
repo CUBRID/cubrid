@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -25,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 著作権情報\n
 5 「%1$s」はインテェジャーパラメーターではありません。
 6 「%1$s」はフローティングパラメーターではありません。
@@ -184,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 データベース「%1$s」がないか、またはファイル「databases.txt」にアクセスできません。
 117 データベースに対する絶対パスが長過ぎます。パス「%1$s」と名前「%2$s」を合わせた長さは「%3$d」なので、「%4$d」より少ない必要があります。
 118 現在作業ディレクトリーが決められません。
-119 ローカルホスト名がありません。
+119 /etc/hostsに("%1$s")が見つかりません。ファイルの権限を確認するか、ホスト名があるかどうかを確認してください。
 120 ボリュームの最大数「%1$d」を超えました。
 121 データベースの永久ボリューム「%1$s」削除します。
 122 システムメッセージカタログが使えません。
@@ -415,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 マスターサーバーとのバイプが生成できません。
 348 サービスやポート番号を明視してください。
 349 わからないTCPサービスです: %1$s。
-350 「%1$s」マッチする名前のホストがありません。
+350 /etc/hostsに("%1$s")が見つかりません。ファイルの権限を確認するか、ホスト名があるかどうかを確認してください。
 351 TCPソケットが作れません。
 352 tcp_open: 予約されたTCPポートが獲得できません。
 353 ホスト「%1$s」のマスターサーバーに接続できません。
@@ -903,7 +904,7 @@ $ LOADDB
 834 to_number()ファンクションに使ったストリング「%1$s」とフォマットストリング「%2$s」マッチングしません。
 835 定義されていない通計アイテムです。
 836 ページ(%1$d|%2$d)に対するラッチ獲得リクエストがタイムアウトされました。
-837 データベースオブジェクト(クラス/ビュー/トリガー/シリアルなど)を持っているユーザーは削除できません。
+837 データベースオブジェクト（クラス/ビュー/トリガー/シリアル/サーバー/同義語など）を持つユーザーは削除できません。
 838 同時に%1$d個を超えるインデックススキャンが開けません。
 839 「%1$s」: わからないシステムパラメーター、または正しくないバリューです。
 840 システムパラメーター「%1$s」が変えられません。
@@ -987,7 +988,7 @@ $ LOADDB
 918 フォーリンキーがレファレンスするクラス「%1$s」が存在しません。
 919 フォーリンキーがレファレンスするクラス「%1$s」プライマリーキーを持っていません。
 920 フォーリンキー「%1$s」にプライマリーキーメンバー「%2$s」に含まれていません。
-921 フォーリンキーメンバー「%1$s」のドメインがプライマリーキーの「%2$s」のドメインと違います。
+921 フォーリンキーメンバー「%1$s」のドメインがプライマリーキーの「%2$s」のドメインと違います。 (%3$s: %4$s vs. %5$s)
 922 フォーリンキー「%1$s」の制約条件が「%2$s」のせいで違背しました。
 923 フォーリンキー「%2$s」にレファレンスされるプライマリーキー「%1$s」は削除できません。
 924 修正／作条演算がフォーリンキー「%1$s」によって制約されました。
@@ -1051,7 +1052,7 @@ $ LOADDB
 982 トランザクション「%1$d」にインターラプト設定。
 983 当テーブルに許可しない作業がトライされました。REUSE_OIDオプションが定義されているテーブルのレコードがレファレンスできません。
 984 設定ファイル「%1$s」の「[%2$s]」セクションで「%3$s」が「%4$s」設定されていると「[%5$s]」セクションで「%6$s」設定できません。
-985 "databases.txt"にマルチホストが設定された場合、データベースコネクトストリングにホスト名を指定する必要があります。
+985 "databases.txt"にマルチホストが設定された場合、データベースコネクトストリングにホスト名を指定する必要があります。 ex) csql demodb@localhost
 986 CUBRID heartbeat機能をスタートします。
 987 CUBRID heartbeat機能をストップします。
 988 ノードイベント: %1$s。
@@ -1194,7 +1195,7 @@ $ LOADDB
 1125 オーバーフローキーファイルを生成します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
 1126 新しいオーバーフローページを生成します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
 1127 空きオーバーフローページを削除します。INDEX %1$s%2$s ON CLASS %3$s%4$s。キー: %5$s%6$s。
-1128 ログリカバリー作業が始まりました。適用されるログレコード数：%1$lld。ログページ：%2$lld ~ %3$lld。
+1128 ログリカバリー作業が始まりました。
 1129 ログリカバリー作業が終わりました。
 1130 トランザクションのロックカウントが「%1$d」を超えたので、トランザクションがキャンセルされました。
 1131 インターナルエラー：ボリューム「%2$s」のページ「%1$d」が壊れています。\n%3$s
@@ -1271,10 +1272,10 @@ $ LOADDB
 1202 Json PATH "%1$s" does not exist in %2$s
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
-1206 Reserved error for JSON.
-1207 Reserved error for JSON.
-1208 Reserved error for JSON.
+1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
+1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
+1207 Invalid JSON path. Index is larger than allowed by system parameter json_max_array_idx.
+1208 Invalid one/all argument. The one/all argument may only take one of these two values: "one", "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
@@ -1306,8 +1307,146 @@ $ LOADDB
 1237 Cannot change status on %1$s because %2$s is a %3$s.
 1238 Missing value for JSON_TABLE column '%1$s'.
 1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1240 Online index is not allowed on classes that are part of a hierarchy chain.
+1241 XASL tree needs recompile.
+1242 Cannot create partition on a class that is part of a hierarchy chain.
+1243 Index loading was aborted after an error.
+1244 Loading shared attributes updates from object files is not supported in CS mode.
+1245 Loading class attributes updates from object files is not supported in CS mode.
+1246 /etc/hostsの("%1$s")のアドレスと正規名を取得できません。ファイルの権限を確認するか、ホスト名があるかどうかを確認してください。
+1247 復旧時点(%1$s)は必ずバックアップ時点(%2$s)の後に指定してください。
+1248 無効なキーファイル：%1$s
+1249 キーが見つかりません（インデックス：%1$d）。
+1250 データベースに設定されているマスターキーと指定されているものが一致しません。データベースに設定されているキーインデックス：%1$d
+1251 TDE暗号化中にエラーが発生しました。
+1252 TDEの復号化中にエラーが発生しました。
+1253 TDEモジュールがロードされていません。
+1254 キーを作成できません。
+1255 TDEモジュールをロードできません。 TDE機能は使用できません。\n\
+キーファイル（_keys）のパスをチェックし、適切なキーが含まれていることを確認します。
+1256 キーファイル（_keys）をコピーできません。コピーしたデータベースでTDE機能を使用することはできません。
+1257 キーファイル（_keys）をバックアップできません。このバックアップボリュームに基づいて復元されたデータベースでTDE機能を使用することはできません。
+1258 %1$sからデータベースに設定されたキーが見つかりません。バックアップボリュームのキーファイルが使用されます。
+1259 キーファイルの名前を「%1$s」から「%2$s」に変更します。
+1260 キーファイル「%1$s」を「%2$s」にコピーします。
+1261 復元されたキーファイルの最初のキー（キーインデックス：%1$d、作成時間：%2$s）が設定されました。
+1262 キーファイルがいっぱいです。
+1263 ログページのTDE暗号化に失敗しました（ページID：%1$lld）。このページの暗号化はこれ以上試行されません。
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
+1284 %1$s sで参照されている主キーが原因で、テーブルを切り捨てることができません。 CASCADEオプションを使用して再試行してください。
+1285 外部キー（%1$s）のON DELETEアクションがCASCADEに設定されていないため、切り捨てをカスケードできません。
 
-1240 ラストエラー
+1286 抽出時にログlsaが見つかりません。 （入力時間：%1$s）。
+1287 ログ情報を抽出しようとしてタイムアウトしました。 （経過時間：%1$d秒、抽出タイムアウト：%2$d秒）
+1288 サポートされていないログレコードのログ情報の内部生成をスキップします。
+1289 無効なトランザクションのログ情報の生成をスキップします。（trid：%1$d）
+1290 ログ情報を抽出するための無効なログlsa（%1$lld|%2$d）。
+1291 ログ情報を抽出するためにサーバーに接続できません。 'supplemental_log'パラメーターを設定して再試行してください。
+1292 その時点でログlsaが見つかりません（%1$s）。 Log lsaは時間（%2$s）に調整されます。
+1293 ログ情報の生成中にログページを取得できません。ログ情報を生成するためのログlsaは、NULLを示します。
+1294 ログ情報が生成されました。 （タイプ： "%1$s"）。
+1295 無効なテーブルのログ情報の生成をスキップします。 （class OID：%1$d|%2$d|%3$d）
+
+1296 ログリカバリ: 分析フェーズが開始されます。
+1297 ログ回復: REDOフェーズが開始されました。 再実行するログページ: %1$lld、再実行するログレコード: %2$lld。
+1298 ログリカバリ: UNDOフェーズが開始されました。 元に戻すページ: %1$lld、元に戻すトランザクション: %2$d。
+1299 ログ復旧: %1$sフェーズが終了しています。
+1300 ログの回復: %1$sフェーズが終了しました。
+1301 ログの回復：%1$sの進行状況：（%2$lld/%3$lld）、%4$.2fパーセント、経過時間：%5$.2f（s）、推定残り時間：%6$.2f （s）。
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - not supported type %1$s.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 not supported type %1$s(%2$d).
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 A null column binder was referenced.
+
+1332 アクティブなログボリューム（%1$s）が正常すぎて、再作成できません。 アクティブなログを削除すると、予期しない不可逆的な問題が発生する可能性があります。
+
+1333 フラッシュバックを開始するための無効な時間（%1$ss）。 時間は（%2$s）と（%3$s）の間に設定する必要があります。
+1334 フラッシュバックするクラスが見つかりません（%1$s）。
+1335 フラッシュバックするにはトランザクションが多すぎます。 %1$d 未満のトランザクションはフラッシュバックする可能性があります。
+1336 このクラスのフラッシュバックをサポートできません（名前：%1$s、OID：%2$d|%3$d|%4$d）。 クラススキーマが変更されました。
+1337 ログレコードが存在しません（lsa：%1$lld|%2$d）。 アーカイブログボリュームが削除されました。
+1338 フラッシュバックはすでに実行されています。 フラッシュバックは、複数のユーザーが同時に実行することはできません。
+
+1339 サポートされていない引数タイプのストアドプロシージャ: %1$s
+1340 サポートされていない戻りタイプのストアドプロシージャ: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
+
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Invalid number of columns specified.
+
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 %1$s "%2$s" は、ファイル "%4$s" の %3$d 行目にある無効な形式です。
+1356 ホスト名 "%1$s" が長すぎます。ファイル "%3$s" の %2$d 行で 256 以下にする必要があります。
+1357 ホスト名 "%1$s" は既に存在します。ファイル "%3$s" の %2$d 行でホスト名を他の IP アドレスと重複させることはできません。
+1358 IP アドレスとホスト名の両方を、ファイル "%2$s" の %1$d 行に完全に記述する必要があります。
+1359 cubrid_hosts.conf で「%1$s」を検索できません。
+1360 ユーザー定義ホストの使用中にエラーが発生しました。
+
+1361 ファイル "%1$s" が見つかりませんでした。
+
+1362 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1464,6 +1603,15 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 class/vclassコメントの最大長は%1$dバイトです。
 127 コメントの最大長は%1$dバイトです。
 128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
+131 「ALTER SYNONYM」の使用が無効です。\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 「CREATE SYNONYM」の使用が無効です。\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 「DROP SYNONYM」の使用が無効です。\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 「RENAME SYNONYM」の使用が無効です。\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 「ALTER SYNONYM」にオプションが指定されていません。
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。
@@ -1766,6 +1914,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
 299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 300 Subquery is not allowed in DEFAULT clause.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s, expected type is: %2$s.
+303 Unexpected number of arguments %1$d.
+304 Could not find compatible signature for function %1$s()
+305 Signature %1$s is not compatible with function arguments.
+306 dblink - Required information is missing.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 バチャールメモリーが足りません。: %1$dバイトがアロケーションできません。
@@ -1848,6 +2012,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 正しくないアイソレーションレベル: 「%1$s」スキーマ、「%2$s」オブジェクト。
 80 MVCCで分離レベルの値は、「read committed」、「repeatable read」または「serializable」でなければなりません。
 81 「%1$s」は「auto_increment」オブジェクトです。これはシリアルように変更することが許可されていません。
+82 Invalid JSON: '%1$s'.
+83 Vclass %1$s is not updatable. Please check if any of its related classes are marked as REUSE_OID.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** 正しくないキャッシュ ***

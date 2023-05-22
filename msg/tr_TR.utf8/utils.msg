@@ -1,19 +1,21 @@
+
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -72,6 +74,8 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Geçersiz uzunluk veya karakter '%1$c' veritabanı adı '%2$s' \n
@@ -83,7 +87,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 9 \
 %1$s (CUBRID yardımcı programları)\n\
 %2$s\n\
-Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 10 \
 cubrid yönetici yardımcı programı, sürüm %1$s\n\
 kullanım: %2$s <yardımcı programı-adı> [args]\n\
@@ -124,6 +128,8 @@ Mevcut yönetici yardımcı programı-adı:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz:http://www.cubrid.org\n
@@ -146,8 +152,10 @@ Mevcut hizmetin programları:\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Mevcut yönetici programları:\n\
     addvoldb\n\
@@ -182,6 +190,8 @@ Mevcut yönetici programları:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s DBMS için bir araçtır.\n\
 Daha fazla bilgi için bkz: http://www.cubrid.org\n
@@ -248,10 +258,39 @@ Mevcut komut:\n\
 41 CUBRID sunucu yöneticisi yüklü değildir.\n
 42 Değişken geçersiz.\n
 43 (%1$s) dosya açma hatası.\n
+44 cubrid yardımcı programı, sürüm %1$s\n\
+kullanım: %2$s javasp <komut> [args]\n\
+\n\
+Mevcut komut:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
+45 cubrid utility, version %1$s\n\
+usage: %2$s gateway <command> [args]\n\
+\n\
+Available command:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
+    on          gateway-name\n\
+    off         gateway-name\n\
+    reset       gateway-name\n\
+    acl         <status|reload> [gateway-name]\n
+46 Sahip_adı uzunluğunun %1$d'den az olması ve sınıf_adı uzunluğunun %2$d bayttan az olması gerekir.\n
+47 sahibi_adı.sınıf_adı ('%1$s') için geçersiz biçim.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 UYARI: -t seçeneği stand-alone modu yürütülmesine göz ardı edilir.\n
 31 HATA: Hedef-yolu yok veya bir dizin değil.\n
+32 --separate-keys seçeneğini kullanarak, anahtar dosyasını (_keys) yedekleme biriminden ayırır.\n\
+Anahtar dosyası kaybolursa, yedekleme birimi olsa bile geri yükleme (geri yüklendib) düzgün çalışmayabilir.\n
+33 Yedekleme birimi anahtar dosyasını (_keys) içerir.\n\
+Bir tablo TDE şifreli ise, bu veriler için güvenlik sorununa neden olabilir.\n\
+Önlemek üzere anahtar dosyasını ayırmak için --separate-keys seçeneğini kullanın.\n
+34 HATA: FIFO dosyası ayrı anahtarla hedef yol olarak kullanılamaz.\n
 60 \
 backupdb: Bir veritabanı yedeklemesi.\n\
 kullanım: %1$s backupdb [SEÇENEK] veritabanı-adı\n\
@@ -269,9 +308,9 @@ geçerli opsiyonlar:\n\
   -C, --CS-mode                istemci-sunucu modunda yürütme\n\
       --no-check               veritabanının tutarlılığını kontrol etmez; varsayılan: kontrol edin\n\
   -t, --thread-count=COUNT     Konu sayısı; Varsayılan olarak: 0 (otomatik)\n\
-  -z, --compress               yedekleme birimleri sıkıştırmak; varsayılan: sıkıştırmayı açma\n\
-  -e, --except-active-log      şunlardır: varsayılan; aktif bir log yoğunluğu içermez\n\
-      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n
+      --no-compress            yedekleme birimlerini sıkıştırmayın; varsayılan: sıkıştırma\n\
+      --sleep-msecs=N          sleep N millisecond per 1M read; default: 0\n\
+  -k, --separate-keys          TDE için anahtarlar dosyası (_keys) yedekleme birimine dahil değildir, bunun yerine bir dosyaya ayrılmıştır\n
 71 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
 
 
@@ -389,7 +428,8 @@ geçerli seçenekler:\n\
   -l, --level=LEVEL                 Yedekleme SEVİYE geri yüklenecek; yedekleme kullanımını görmek; varsayılan: 0 (tam yedekleme)\n\
   -p, --partial-recovery            herhangi bir log arşiv bulunmayışı halinde kısmi kurtarma işlemi\n\
   -o, --output-file=FILE            DOSYA çıktı mesajları yönlendirme; varsayılan: hiçbir\n\
-  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yoluna veritabanı ve günlük yoğunlukları geri yükleme.\n
+  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yoluna veritabanı ve günlük yoğunlukları geri yükleme.\n\
+  -k, --keys-file-path              TDE için geri yükleme sırasında kullanılacak anahtar dosyasının yolu (_keys)\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -402,7 +442,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** syntax kontrolü ***\n\n
 26 %1$d hataları algılandı.\n
 27 \n*** Ekleme nesneleri ***\n\n
-28 Toplam %1$8d nesneleri eklenir.\n
+28 Toplam %1$ld nesneleri eklenir.\n
 29 Toplam %1$8d varsayılan içeriği ile eklenen nesneleri başvurulan.\n
 30 \n*** İşlem İşlemek ***\n
 31 \n*** Veritabanı Kapama ***\n
@@ -422,58 +462,77 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Sınıf %2$s Derece %1$d zaten tanımlanmış\n
 46 Sınıf %2$s Derece %1$d zaten ayrılmıştır\n
 47 Özniteliği '%1$s 'EŞSİZ aykırı, NULL'a dönüştürülür\n
-48   %1$d örnekleri\n
+48 %1$s %2$ld örnekleri\n
 49 Sınıf %1$s\n
 50 Şifre:
 51 \n*** Sınıf istatistikleri güncelleniyor ***\n
 52 %2$d hat yakınlarındaki %1$s (metin '%3$s' oldu)\n
-53 Sözcüksel hata
+53 Sözcüksel hata\n
 54 satır %1$d: \"%2$s\" içinde syntax hata
 55 eksik
 56 %1$s de
 57 Uyumsuz bağımsız değişkenleri, \"%1$s\", ve \"%2$s\"\n
-58 %1$d taahhüt örnekleri\n
+58 %1$s %2$ld taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
-112   %1$d örnekleri\r
-113 Son kararlı hattı: %1$d
+61 Nesne Referans CS modunda desteklenmez.\n
+62 %1$s sınıfı için güncellenmiş istatistikler.\n
+112   %1$ld örnekleri\r
+113 Son kararlı hattı: %1$d\n
 114 hata-kontrol-dosyası
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
-116 Toplam %1$8d nesne (ler) eklenen, %2$d nesne (ler) başarısız oldu.\n
+116 Toplam %1$ld nesne (ler) eklenen, %2$ld nesne (ler) başarısız oldu.\n
 117 Başarısız yük.\n
-118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
-120 \
+118 Maximum length of class name is %1$d bytes.\n
+119 Toplam %1$8d nesne kontrol edildi, %2$d nesne başarısız oldu.\n
+120 Veri dosyası '%%class' belirteci içermiyor ve '--table' seçeneği eksik\n
+121 %1$s sınıfı yoksayılır.\n
+122 Maximum length of user name is %1$d bytes.\n
+123 %1$s boş bir dosya.\n
+124 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
-kullanım: %1$s loaddb [SEÇENEK] database-name\n\
+kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
 \n\
 geçerli seçenekler:\n\
-  -u, --user=ID                 veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
-  -p, --password=PASS           kullanıcı şifresi; varsayılan: hiçbir\n\
-      --data-file-check-only    yük olmadan veri dosyası için sözdizimi kontrol edin; varsayılan: yükleme kontrol ettikten sonra\n\
-  -l, --load-only               sözdizimi denetimi olmadan veri dosyası yükleyebilir; varsayılan: yükleme kontrol ettikten sonra\n\
-      --estimated-size=NUMBER   örneklerini tahmin NUMBER; varsayılan: 5000\n\
-  -v, --verbose                 Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
-  -c, --periodic-commit=COUNT   Periyodik tamamlama için ekleme COUNT; varsayılan: yükleme sırasında taahhüt yok\n\
-      --no-oid                  OID kullanmayın\n\
-      --no-statistics           yüklerken istatistikleri güncelleştirmeyin\n\
-  -s, --schema-file=FILE[:LINE] FILE ile LINE şeması oluşturun\n\
-  -i, --index-file=FILE[:LINE]  FILE ile LINE dizin oluşturun\n\
-  -d, --data-file=FILE          FILE ile yük verileri\n\
-  -t, --table=TABLE             Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
-      --error-control-file=FILE Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
-      --ignore-class-file=FILE  yük atlamak sınıf adları girdi dosyası\n
+  -S, --SA-mode                  stand-alone modu yürütme\n\
+  -C, --CS-mode                  istemci-sunucu modunda yürütme\n\
+                                 UYARI: HA Modundayken, istemci-sunucu modunda sadece veri dosyaları (-d, --data-file=FILE) yüklenebilir.\n\
+  -u, --user=ID                  veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
+  -p, --password=PASS            kullanıcı şifresi; varsayılan: hiçbir\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
+      --estimated-size=NUMBER    örneklerini tahmin NUMBER; varsayılan: 5000\n\
+  -v, --verbose                  Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
+  -c, --periodic-commit=COUNT    Periyodik tamamlama için ekleme COUNT; varsayılan: 10240\n\
+      --no-oid                   OID kullanmayın\n\
+      --no-statistics            yüklerken istatistikleri güncelleştirmeyin\n\
+  -s, --schema-file=FILE[:LINE]  FILE ile LINE şeması oluşturun\n\
+  -i, --index-file=FILE[:LINE]   FILE ile LINE dizin oluşturun\n\
+      --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
+  -d, --data-file=FILE           FILE ile yük verileri\n\
+  -t, --table=TABLE              Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
+      --error-control-file=FILE  Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
+      --ignore-class-file=FILE   yük atlamak sınıf adları girdi dosyası\n\
+      --no-user-specified-name   Find classes, serials, and triggers by their object names without their owner names.\n\
+                                 This is to load files generated by cubrid before version 11.2.\n\
+      --schema-file-list=FILE    Bu dosyanın içeriği, loaddb'de kullanılacak şema dosya adlarının bir listesidir.\n\
+                                 loaddb üstten sırayla yürütülür.\n\
+                                 UYARI: -s seçeneği ile kullanılamaz.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 önbelleğe alınmış sayfaları değeri geçersiz.\n
 42 önbelleğe alınmış sayfa boyutu değeri geçersiz.\n
-43 %1$d nesneler atılıyor.\n
+43 %1$ld nesneler atılıyor.\n
 44 Class %1$s
 45 , %1$d örnekleri.\n
-46 %2$d nesneleri yalnızca %1$d tanesinde başarılı atılıyor.\n
+46 %2$ld nesneleri yalnızca %1$ld tanesinde başarılı atılıyor.\n
 47 çıkış dizin çok uzun.\n
 48 LSA : %1$d %2$d \n
 49 Şifre:
+50 Maximum length of class name is %1$d bytes.\n
+51 Maximum length of user name is %1$d bytes.\n
+52 Class %1$s not found.\n
 60 \
 unloaddb: Veritabanındaki nesneleri ve şemalar verin.\n\
 kullanım: %1$s unloaddb [SEÇENEK] database-name\n\
@@ -492,11 +551,15 @@ geçerli seçenekler:\n\
   -d, --data-only             dökümü nesneleri yalnızca; varsayılan: şema ve objeler\n\
       --output-prefix=PREFIEX Çıktı dosyaları için PREFIEX; varsayılan: veritabanı adı\n\
       --hash-file=FILE        Karma için FILE varsayılan: tmpnam tarafından oluşturmak ()\n\
+      --latest-image          nesneleri boşaltırken, günlük hacimlerine atıfta bulunmadan (MVCC'yi yok sayarak) veri hacimlerindeki nesnelerin en son görüntüsünü atar\n\
+                              Taahhüt edilmemiş verileri ve vakumlanmayan silinmiş verileri içerebilir; varsayılan: devre dışı\n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı\n\
       --use-delimiter         kullanımı '"' bir tanımlayıcı nereden başlayıp nerede bittiği; varsayılan: kullanmayın\n\
   -S, --SA-mode               stand-alone modu yürütme\n\
   -C, --CS-mode               istemci-sunucu modunda yürütme\n\
-      --datafile-per-class    her sınıf için bir nesne dosyası oluşturmak; varsayılan: devre dışı\n
+      --datafile-per-class    her sınıf için bir nesne dosyası oluşturmak; varsayılan: devre dışı\n\
+      --split-schema-files    şema bilgilerini nesneye göre ayırın ve her dosyayı oluşturun; Varsayılan: tüm nesnelerle bir şema dosyası oluştur\n\
+      --as-dba                Oturum açan kullanıcı DBA grubunun bir üyesiyse, DBA ile aynı şema dosyasını ayıklayın.\n
 
 
 
@@ -537,6 +600,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \nPass 3\n\n
 45 Öbek kompakt başarısız oldu ...\n
 46 Öbek kompakt başarıldı ...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: Bir veritabanı Serbest kullanılmayan alanı.\n\
 kullanım: %1$s compactdb [SEÇENEK] database-name [class_name1 class_name2 ...]\n\
@@ -546,16 +611,17 @@ geçerli seçenekler:\n\
   -i, --input-class-file=FILE       tablo adlarının girişi FILE\n\
                                     class_name liste boş olmalıdır\n\
                                     varsayılan: kompakt tüm sınıflar\n\
-                                    CS-mode sadece etkinleştirilmiş,\n\
   -p, --pages-commited-once=NUMBER  maksimum sayfa sayısı bir kez işlemek için\n\
                                     varsayılan: 10\n\
                                     CS-mode sadece etkinleştirilmiş\n\
   -S, --SA-mode                     stand-alone modu yürütme\n\
   -C, --CS-mode                     istemci-sunucu modunda yürütme\n\
   -d, --delete-old-repr             katalogdan eski sınıf temsilleri silmek; varsayılan: devre dışı\n\
-  class_name_list                   CS-mode sadece etkinleştirilmiş\n\
   -I, --Instance-lock-timeout       Örneğin kilidi için zaman aşımı\n\
-  -c, --class-lock-timeout          sınıf kilidi için zaman aşımı\n
+                                    CS-mode sadece etkinleştirilmiş,\n\
+  -c, --class-lock-timeout          sınıf kilidi için zaman aşımı\n\
+                                    CS-mode sadece etkinleştirilmiş,\n\
+  class_name_list                   sınıf adı listesi sıkıştırılacak\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Host üzerinde çalışan CUBRID Master %1$s \n başlandı %2$s
@@ -594,6 +660,7 @@ geçerli seçenekler:\n\
 39 -i(--immediately) opsiyon seçeneği --deact-stop-all ile birlikte kullanılmalıdır.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Lütfen --recreate-log seçeneği olmadan çalıştırın veya etkin günlük birimini manuel olarak kaldırın.\n
 60 \
 emergency_patchlog: Patch acil durumlarda bir veritabanı.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -614,7 +681,7 @@ geçerli seçenekler:\n\
       --db-volume-size=SIZE        ilave yoğunluk büyüklüğü; varsayılan: cubrid.conf içinde db_volume_size\n\
       --max-writesize-in-sec=SIZE  the amount of volume written per second; (ex. 512K, 1M, 10M); default: not used; minimum: 160K\n\
   -n, --volume-name=NAME           Bilgi yoğunluğunun NAME; varsayılan: örneğin, "db"_ext1 olarak oluşturmak\n\
-  -F, --file-path=PATH             yoğunluk dosyası eklemek için PATH; varsayılan: çalışma dizini\n\
+  -F, --file-path=PATH             yoğunluk dosyası eklemek için PATH; varsayılan: volume_extension_path\n\
       --comment=COMMENT            yoğunluk dosyası eklemek için COMMENT; varsayılan: hiçbir\n\
   -p, --purpose=PURPOSE            yoğunluk dosyası eklemek için PURPOSE; izin:\n\
                                            DATA - sadece veri için\n\
@@ -801,6 +868,7 @@ geçerli seçenekler:\n\
       --kill-program-name=NAME       istemci programı NAME ile tüm işlemleri iptal etme\n\
       --kill-sql-id=SQL_ID           li tüm geçişleri sonlandırır\n\
   -p, --dba-password=PASS            DBA kullanıcı şifresi; belirtmezseniz isteyecektir\n\
+                                     (yalnızca -i veya --kill seçenekleriyle çalışır. Aksi takdirde hata alır)\n\
   -d, --display-information          etkin işlemler hakkında bilgi görüntülemek\n\
   -q, --query-exec-info              aktif geçişlerin sorgulama çalışması bilgisi hakkında bilgiyi görüntüler\n\
   -f, --force                        doğrulaması için bir istemi olmadan işlemi iptal etme\n
@@ -839,9 +907,12 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 1 database-name
 2 Gerekli bağımsız değişkeni, bir varsayılanı yok
 3 java sınıf dosyası
-4 Gerekli bağımsız değişkeni, bir varsayılanı yok
-5 zorlamak - üzerine yazmak
-6 varsa sınıf dosyanın üzerine yazmak, varsayılan yok
+4 Gerekli bağımsız değişkeni, bir varsayılanı 
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              varsa sınıf dosyanın üzerine yazmak, varsayılan yok\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Çıktı dosyası '%1$s' açılamıyor \n
@@ -903,7 +974,7 @@ geçerli seçenekler:\n\
   -L, --log-path=PATH         Kopyalanan log yoğunlukları için dizin PATH\n\
   -m, --mode=MODE             çalışma modu, varsayılan: sync\n\
                               MODE: sync veya semisync veya async\n\
-  -S, --start-page-id=ID      ilk log sayfası kopyalamak\n 
+  -S, --start-page-id=ID      ilk log sayfası kopyalamak\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA şifrenizi girin:
@@ -934,6 +1005,7 @@ geçerli seçenekler:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA şifrenizi girin:
 22 Sunucu modunda HA ayarlı değil.\n
+57 -L seçeneğinin geçersiz yolu veya db_ha_apply_info katalog tablosunda ilgili bilgi olmaması nedeniyle uygulanan bilgi oluşturulamıyor.\n
 58 HA özelliği bu platformda desteklenmiyor.\n
 59 applyinfo standlone modu olarak çalıştıramazsınız.\n
 60 \
@@ -942,9 +1014,9 @@ kullanım: %1$s applyinfo [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -r, --remote-host-name      Uzak ana bilgisayar adı; görüntü uzak düğüm aktif log bilgileri\n\
-  -a, --applied-info 	      uygulamalı bilgilerde görüntü \n\
   -L, --copied-log-path=PATH  Kopyalanan log yoğunlukların path; görüntü kopyalanan log bilgileri \n\
-  -p, --page=ID               sayfa id; varsayılan: 0 \n\
+  -a, --applied-info 	      uygulamalı bilgilerde görüntü; -L seçeneği gereklidir \n\
+  -p, --page=ID               sayfa id; -L seçeneği gereklidir; varsayılan: 0 \n\
   -v, --verbose               Ayrıntılı durum mesajları sağlamak; varsayılan: devre dışı bırakmak\n\
   -i, --interval=S            her S saniye bilgilerini yazdırmak\n
 
@@ -1033,19 +1105,19 @@ geçerli seçenekler:\n\
   -f, --force-only    derlemeleri veri tabanında yeni sistem konfigürasyonu ile aynı olacak şekilde günceller.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 %1$s şifre gir: 
-22 Tran index          User name      Host name      Process id      Program name\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 %1$s şifre gir:
+22 Tran index            User name      Host name      Process id      Program name\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 Geçişler yok\n
 26 tranlist sadece DBA veya bir DBA grup üyesi tarafından uygulanabilir.\n
 27 sort-key sütun numarası (%1$d) geçersiz.\n
-32 Tran index         Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            User name      Host name      Process id    Program name              Query time    Tran time              Wait for lock holder      SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist standalone mode olarak çalışamaz.\n
@@ -1054,8 +1126,6 @@ tranlist: Aktif geçiş bilgisini boşalt.\n\
 kullanım: %1$s tranlist [SEÇENEK] database-name\n\
 \n\
 geçerli seçenekler:\n\
-  -u, --user=ID                veri tabanı erişimi için kullanıcı kimliği; default: DBA user\n\
-  -p, --password=PASS          kullanıcı şifresi; default: none\n\
   -s, --summary                geçişin sonuçlandırılmış bilgisini yazdır\n\
       --sort-key=COLUMN_NUMBER Sıralanacak sütun numarası\n\
       --reverse                Sıralama sonucu ters\n
@@ -1117,7 +1187,8 @@ geçerli seçenekler:\n\
       --list                        zorunlu görüntüleme geri yüklemeden yedek hacimlerinin listesi\n\
   -B, --backup-file-path=PATH       PATH yedekleme ciltlik bir dizin restore edilecek olan\n\
   -o, --output-file=FILE            FILE çıktı iletileri yönlendirmek; varsayılan: yok\n\
-  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yolu veritabanı ve log birimlar geri\n
+  -u, --use-database-location-path  veritabanı konumu dosyasında belirtilen yolu veritabanı ve log birimlar geri\n\
+  -k, --keys-file-path              TDE için geri yükleme sırasında kullanılacak anahtar dosyasının yolu (_keys)\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Aşağıdaki birimlerini kaldırmak için hazır:\n\n
@@ -1140,17 +1211,21 @@ geçerli seçenekler:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb istemci-sunucu modunda geçici olarak kullanılamaz\n
 21 Vakum işlemi başarısız oldu\n
+22 Çıktı dosyası '%1$s' açılmaadı \n
 60 \
 vacuumdb: Veritabanından ölü kayıtları temizler.\n\
 kullanım: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 geçerli seçenekler:\n\
   -S, --SA-mode                stand-alone mod yürütme\n\
-  -C, --CS-mode                client-server mod yürütme\n
+  -C, --CS-mode                client-server mod yürütme\n\
+      --dump                   mevcut vakum durumunu boşalt\n\
+  -o, --output-file=FILE       FILE çıktı mesajları yönlendirme; varsayılan: hiçbir\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$s içinde tablo adlarını yüklenemedi.\n
 2 checksumdb bir HA aktif sunucu üzerinde çalıştırmak gerekir. %1$s (güncel durum: %2$s)\n
+3 Sağlama toplamı sonucunu kaydetmek için tablonun sahibi DBA olmalıdır.\n
 58 HA özelliği bu platformda desteklenmiyor.\n
 59 checksumdb stand-alone modu olarak çalıştıramazsınız.\n
 60 \
@@ -1164,9 +1239,67 @@ geçerli seçenekler:\n\
   -i, --include-class-file=FILE tablo adları giriş FILE dahil\n\
   -e, --exclude-class-file=FILE tablo adları giriş FILE dışlamak için; ya da -i ya -e ikisi birden kullanılabilir\n\
   -t, --timeout=NUMBER          milisaniye cinsinden sorgu zaman aşımı; varsayılan: 1000 ms\n\
-  -n, --table-name=NAME         tablo adı sağlama sonuçları kaydetmek; varsayılan: db_ha_checksums\n\
+  -n, --table-name=NAME         tablo adı sağlama sonuçları kaydetmek; varsayılan: dba.db_ha_checksum\n\
   -r, --report-only             checksum hesaplama dayalı rapor çoğaltma bütünlüğü\n\
                                 --table-name dışında herhangi bir seçenek göz ardı edilecektir\n\
       --resume                  checksum hesaplanması devam\n\
       --schema-only             sadece şema tutarlılığını denetlemek\n\
       --cont-on-error           hesaplama hatası devam\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 DBA şifresini girin:
+25 Veritabanındaki anahtar bilgi kümesini alamadı\n
+26 Anahtarı anahtardan (dizin: %1$d) anahtara (dizin: %2$d) değiştirmeye çalışılıyor ..\n
+27 Anahtar, anahtardan (dizin: %1$d) anahtara (dizin: %2$d) değiştirildi\n
+28 Veritabanındaki anahtar seti silinemez\n
+29 Anahtar (dizin: %1$d) silindi\n
+30 Yeni bir anahtar oluşturuldu - anahtar dizini: %1$d %2$s üzerinde oluşturuldu
+60 \
+tde: Şeffaf Veri Şifreleme (TDE) yönetimi\n\
+kullanım: %1$s tde İŞLEM (-s|-n|-d|-c) [SEÇENEK] veritabanı-adı\n\
+\n\
+geçerli seçenekler:\n\
+    -p, --dba-password=PASS      DBA kullanıcısının şifresi; belirtmezseniz sorulacak\n\
+\n\
+İŞLEMLER: işlemlerden biri verilmelidir ve bunlar özeldir\n\
+    -s, --show-keys              veritabanında ve anahtar dosyasında (_keys) ayarlanan anahtar bilgileri yazdırır\n\
+    -n, --generate-new-key       anahtar dosyasında (_keys) yeni bir anahtar oluşturur; maksimum sayı: 128\n\
+    -d, --delete-key=KEY_INDEX   anahtar dosyasındaki (_keys) bir anahtarı sil\n\
+    -c, --change-key=KEY_INDEX   anahtar dosyasındaki (_keys) başka bir anahtar için veritabanındaki anahtarı değiştir\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBA şifresini girin:
+2 Geçersiz tarih biçimi, geçerli biçim gg-aa-yyyy:ss:dd:ss\n
+3 Başlangıç tarihi (%1$s), bitiş tarihinden (%2$s) küçük olmalıdır\n
+4 Lütfen geçerli tarihten (%1$s) önce veya veritabanı oluşturulduktan sonra (%2$s) bir tarihle deneyin\n
+5 Tablo (%1$s) veritabanında yok\n
+6 Geri dönüş için çok fazla işlem var. Lütfen başlangıç tarihi ile bitiş tarihi arasındaki süreyi kısaltın\n
+7 Şema (%1$s) değiştirildiği için geri dönüş alınamadı.\n
+8 Günlük hacmi kaldırıldı. Lütfen daha sonraki bir tarihle deneyin\n
+9 '%1$s' çıktı dosyası açılamadı\n
+10 İşlem Kimliği (%1$d) mevcut değil\n
+11 Lütfen 'cubrid.conf' içinde 'supplemental_log' ayarlayın. Yalnızca 'supplemental_log' ayarlandıktan sonra yürütülen SQL günlükleri flashback yapılabilir.\n
+12 İşlem Kimliği %1$d saniye içinde girilmelidir. Zaman aşımı, 'cubrid.conf' içindeki 'flashback_timeout' ayarı ile ayarlanabilir.\n
+13 Flashback zaten çalışıyor. Flashback iki işlem tarafından çalıştırılamaz.\n
+14 Flashback bağımsız mod olarak çalıştırılamaz.\n
+15 Sistem kataloğu sınıfı (%1$s) flashback'te desteklenmiyor.\n
+60 \
+flashback: Belirli bir işlemi flashback yapmak için ifadeler sağlar.\n\
+kullanım: %1$s flashback [SEÇENEK] veritabanı adı sahibi_adı.sınıf_adı1 [sahibi_adı.sınıf_adı2 ...]\n\
+\n\
+geçerli seçenekler:\n\
+    -o, --output-file=FILE      çıktı mesajını DOSYA'ya yönlendirir; varsayılan: yok.\n\
+    -u, --user=ID               flashback için SQL deyimini yürüten kullanıcıyı belirtir; varsayılan: TÜMÜ.\n\
+    -p, --dba-password          DBA kullanıcısının parolası; belirtmezseniz sorar\n\
+    -s, --start-date=DATE       flashback için başlangıç TARİHİNİ belirtir. SQL günlükleri DATE'den alınır.\n\
+                                TARİH şu şekilde verilir: gg-aa-yyyy:ss:dd:ss.\n\
+    -e, --end-date=DATE         flashback için bitiş TARİHİNİ belirtir. SQL günlükleri DATE tarihine kadar ayıklanır.\n\
+                                başlangıç-tarihi belirtilmemişse, ((END - 10dk) ~ END) aralık olarak ayarlanır,\n\
+                                ve END belirtilmezse, (start ~ (start + 10min)) ayarlanır.\n\
+                                Ve ne bir başlangıç ne de bir bitiş tarihi belirtilmemiş,\n\
+                                (geçerli saat - 10dk) ve geçerli saat arasında yürütülen SQL günlükleri çıkarılır.\n\
+    --detail                    her SQL deyimi için ayrıntılı bilgi verir.\n\
+                                İşlem Kimliği, Kullanıcı adı ve orijinal SQL ifadesi, SQL ifadesi ile birlikte döndürülecektir\n\
+                                flashback için; varsayılan: yalnızca flashback için SQL deyimlerini verir\n\
+    --oldest                    flashback, başlangıç zamanından bitiş zamanına kadar yürütülen SQL ifadeleri için kronolojik sırayla\n\
+                                gerçekleştirilir; varsayılan: en son\n

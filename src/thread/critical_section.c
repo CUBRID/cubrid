@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -105,7 +104,7 @@ csect_name_at (int cs_index)
   return csect_Names[cs_index];
 }
 
-/* 
+/*
  * Synchronization Primitives Statistics Monitor
  */
 
@@ -405,8 +404,8 @@ csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
 	      continue;
 	    }
 
-	  /* In case I wake up by shutdown thread and there's not me in the promoters Q, I proceed anyway assuming that 
-	   * followings occurred in order. 1. Critical section holder wakes me up after removing me from the promoters 
+	  /* In case I wake up by shutdown thread and there's not me in the promoters Q, I proceed anyway assuming that
+	   * followings occurred in order. 1. Critical section holder wakes me up after removing me from the promoters
 	   * Q.(mutex lock is not released yet). 2. I wake up and then wait for the mutex to be released. 3. The
 	   * shutdown thread wakes me up by a server shutdown command.  (resume_status is changed to
 	   * THREAD_RESUME_DUE_TO_INTERRUPT) 4. Critical section holder releases the mutex lock. 5. I wake up with
@@ -485,8 +484,6 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().on_enter_as_writer (csect->cs_index);
-
   csect->stats->nenter++;
 
   tsc_getticks (&start_tick);
@@ -503,7 +500,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
     {
       if (csect->rwlock < 0 && csect->owner == thread_p->get_id ())
 	{
-	  /* 
+	  /*
 	   * I am holding the csect, and reenter it again as writer.
 	   * Note that rwlock will be decremented.
 	   */
@@ -546,7 +543,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
 		}
 	      if (csect->owner != thread_id_t () && csect->waiting_writers > 0)
 		{
-		  /* 
+		  /*
 		   * There's one waiting to be promoted.
 		   * Note that 'owner' was not reset while demoting.
 		   * I have to yield to the waiter
@@ -605,7 +602,6 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
 		      assert (0);
 		      return ER_CSS_PTHREAD_COND_WAIT;
 		    }
-
 		  return error_code;
 		}
 	    }
@@ -657,6 +653,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
 		    csect->stats->total_elapsed.tv_sec, csect->stats->total_elapsed.tv_usec);
     }
 
+  thread_p->get_csect_tracker ().on_enter_as_writer (csect->cs_index);
   return NO_ERROR;
 }
 
@@ -707,8 +704,6 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
-  thread_p->get_csect_tracker ().on_enter_as_reader (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -877,6 +872,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
 		    csect->stats->total_elapsed.tv_usec);
     }
 
+  thread_p->get_csect_tracker ().on_enter_as_reader (csect->cs_index);
   return NO_ERROR;
 }
 
@@ -928,8 +924,6 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().on_demote (csect->cs_index);
-
   csect->stats->nenter++;
 
   tsc_getticks (&start_tick);
@@ -944,7 +938,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
 
   if (csect->rwlock < 0 && csect->owner == thread_p->get_id ())
     {
-      /* 
+      /*
        * I have write lock. I was entered before as a writer.
        * Every others are waiting on either 'reader_ok', if it is waiting as
        * a reader, or 'writers_queue' with 'waiting_writers++', if waiting as
@@ -954,7 +948,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
       csect->rwlock++;		/* releasing */
       if (csect->rwlock < 0)
 	{
-	  /* 
+	  /*
 	   * In the middle of an outer critical section, it is not possible
 	   * to be a reader. Treat as same as csect_enter_critical_section_as_reader().
 	   */
@@ -972,7 +966,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
     }
   else
     {
-      /* 
+      /*
        * I don't have write lock. Act like a normal reader request.
        */
       while (csect->rwlock < 0 || csect->waiting_writers > 0)
@@ -1137,7 +1131,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
 		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
 		    csect->stats->total_elapsed.tv_usec);
     }
-
+  thread_p->get_csect_tracker ().on_demote (csect->cs_index);
   return NO_ERROR;
 }
 
@@ -1185,8 +1179,6 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().on_promote (csect->cs_index);
-
   csect->stats->nenter++;
 
   tsc_getticks (&start_tick);
@@ -1201,7 +1193,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
 
   if (csect->rwlock > 0)
     {
-      /* 
+      /*
        * I am a reader so that no writer is in this csect but reader(s) could be.
        * All writers are waiting on 'writers_queue' with 'waiting_writers++'.
        */
@@ -1210,7 +1202,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
   else
     {
       csect->rwlock++;		/* releasing */
-      /* 
+      /*
        * I don't have read lock. Act like a normal writer request.
        */
     }
@@ -1220,7 +1212,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
       /* There's another readers. So I have to wait as a writer. */
       if (csect->rwlock < 0 && csect->owner == thread_p->get_id ())
 	{
-	  /* 
+	  /*
 	   * I am holding the csect, and reenter it again as writer.
 	   * Note that rwlock will be decremented.
 	   */
@@ -1348,6 +1340,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
 		    csect->stats->total_elapsed.tv_usec);
     }
 
+  thread_p->get_csect_tracker ().on_promote (csect->cs_index);
   return NO_ERROR;
 }
 
@@ -1389,8 +1382,6 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().on_exit (csect->cs_index);
-
   error_code = pthread_mutex_lock (&csect->lock);
   if (error_code != NO_ERROR)
     {
@@ -1412,6 +1403,7 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
 	      assert (0);
 	      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
 	    }
+	  thread_p->get_csect_tracker ().on_exit (csect->cs_index);
 	  return NO_ERROR;
 	}
       else
@@ -1441,7 +1433,7 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
       return ER_CS_UNLOCKED_BEFORE;
     }
 
-  /* 
+  /*
    * Keep flags that show if there are waiting readers or writers
    * so that we can wake them up outside the monitor lock.
    */
@@ -1492,6 +1484,7 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
+  thread_p->get_csect_tracker ().on_exit (csect->cs_index);
   return NO_ERROR;
 }
 
@@ -1623,7 +1616,7 @@ csect_check_own_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
- *   ptr(in/out): 
+ *   ptr(in/out):
  */
 int
 csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
@@ -1666,7 +1659,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
       idx++;
 
       /* The name of the critical section */
-      db_make_string_by_const_str (&vals[idx], csect_name (csect));
+      db_make_string (&vals[idx], csect_name (csect));
       idx++;
 
       /* 'N readers', '1 writer', 'none' */
@@ -1791,7 +1784,7 @@ exit_on_error:
 
 
 /*
- * rwlock_initialize () - initialize a rwlock 
+ * rwlock_initialize () - initialize a rwlock
  *   return: NO_ERROR, or ER_code
  *
  *   rwlock(in/out):
@@ -1836,7 +1829,7 @@ rwlock_initialize (SYNC_RWLOCK * rwlock, const char *name)
 }
 
 /*
- * rwlock_finalize () - finalize a rwlock 
+ * rwlock_finalize () - finalize a rwlock
  *   return: NO_ERROR, or ER_code
  *
  *   rwlock(in/out):
@@ -2090,7 +2083,7 @@ rwlock_dump_statistics (FILE * fp)
 }
 
 /*
- * rmutex_initialize () - initialize a reentrant mutex 
+ * rmutex_initialize () - initialize a reentrant mutex
  *   return: NO_ERROR, or ER_code
  *
  *   rmutex(in/out):
@@ -2125,7 +2118,7 @@ rmutex_initialize (SYNC_RMUTEX * rmutex, const char *name)
 }
 
 /*
- * rmutex_finalize () - finalize a rmutex 
+ * rmutex_finalize () - finalize a rmutex
  *   return: NO_ERROR, or ER_code
  *
  *   rmutex(in/out):
@@ -2274,7 +2267,7 @@ sync_reset_stats_metrics (SYNC_STATS * stats)
  * sync_initialize_sync_stats () - initialize synchronization primitives stats monitor
  *   return: NO_ERROR
  *
- *   called during server startup 
+ *   called during server startup
  */
 int
 sync_initialize_sync_stats (void)
@@ -2296,7 +2289,7 @@ sync_initialize_sync_stats (void)
  * sync_finalize_sync_stats () - finalize synchronization primitives stats monitor
  *   return: NO_ERROR
  *
- *   called during server shutdown 
+ *   called during server shutdown
  */
 int
 sync_finalize_sync_stats (void)
@@ -2368,7 +2361,7 @@ sync_initialize_sync_stats_chunk (SYNC_STATS_CHUNK * sync_stats_chunk)
 }
 
 /*
- * sync_consume_sync_stats_from_pool () - 
+ * sync_consume_sync_stats_from_pool () -
  *   return: stats buffer
  *
  */
@@ -2398,7 +2391,7 @@ sync_consume_sync_stats_from_pool (SYNC_STATS_CHUNK * sync_stats_chunk, int idx,
 }
 
 /*
- * sync_return_sync_stats_to_pool () - 
+ * sync_return_sync_stats_to_pool () -
  *   return: NO_ERROR
  *
  */
@@ -2421,7 +2414,7 @@ sync_return_sync_stats_to_pool (SYNC_STATS_CHUNK * sync_stats_chunk, int idx)
 }
 
 /*
- * sync_allocate_sync_stats () - 
+ * sync_allocate_sync_stats () -
  *   return: NO_ERROR
  *
  */
@@ -2479,7 +2472,7 @@ sync_allocate_sync_stats (SYNC_PRIMITIVE_TYPE sync_prim_type, const char *name)
 }
 
 /*
- * sync_deallocate_sync_stats () - 
+ * sync_deallocate_sync_stats () -
  *   return: NO_ERROR
  *
  */

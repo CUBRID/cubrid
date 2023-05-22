@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -33,43 +32,23 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "object_representation.h"
-#include "error_manager.h"
-#include "oid.h"
-#include "set_object.h"
-#include "file_io.h"
-#include "regu_var.h"
-#include "object_primitive.h"
-#include "query_list.h"
 #include "db_json.hpp"
-
 #include "dbtype.h"
+#include "error_manager.h"
+#include "file_io.h"
+#include "log_lsa.hpp"
+#include "method_def.hpp"
+#include "object_primitive.h"
+#include "object_representation.h"
+#include "oid.h"
+#include "porting_inline.hpp"
+#include "query_list.h"
+#include "set_object.h"
+#include "access_spec.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
-
-/* simple macro to calculate minimum bytes to contain given bits */
-#define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
-
-/* move the data inside the record */
-#define HEAP_MOVE_INSIDE_RECORD(rec, dest_offset, src_offset) \
-  do \
-    { \
-      assert ((rec) != NULL && (dest_offset) >= 0 && (src_offset) >= 0); \
-      assert (((rec)->length - (src_offset)) >= 0); \
-      assert (((rec)->area_size <= 0) || ((rec)->area_size >= (rec)->length)); \
-      assert (((rec)->area_size <= 0) \
-              || (((rec)->length + ((dest_offset) - (src_offset))) \
-                  <= (rec)->area_size)); \
-      if ((dest_offset) != (src_offset)) \
-        { \
-          memmove ((rec)->data + (dest_offset), (rec)->data + (src_offset), \
-                   (rec)->length - (src_offset)); \
-          (rec)->length = (rec)->length + ((dest_offset) - (src_offset)); \
-        } \
-    } \
-  while (0)
 
 /*
  * Lookup to compute the MVCC header size faster:
@@ -102,23 +81,11 @@ static char *or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *unpack_str_array (char *buffer, char ***string_array, int count);
 #endif
+static int or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align);
 static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align);
-static int or_varbit_length_internal (int bitlen, int align);
-static int or_varchar_length_internal (int charlen, int align);
-static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align);
+static int or_packed_json_schema_length (const char *json_schema);
+static int or_packed_json_validator_length (JSON_VALIDATOR * json_validator);
 static char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size);
-static char or_mvcc_get_flag (RECDES * record);
-static void or_mvcc_set_flag (RECDES * record, char flags);
-static INLINE MVCCID or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE MVCCID or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_get_chn (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header) __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-  __attribute__ ((ALWAYS_INLINE));
-static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
-  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * classobj_get_prop - searches a property list for a value with the given name
@@ -136,7 +103,7 @@ classobj_get_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue)
   int error;
   int found, max, i;
   DB_VALUE value;
-  char *tmp_str;
+  const char *tmp_str;
 
   error = NO_ERROR;
   found = 0;
@@ -190,7 +157,6 @@ error:
 
   return found;
 }
-
 
 /*
  * classobj_decompose_property_oid - parse oid string from buffer
@@ -316,7 +282,7 @@ or_class_name (RECDES * record)
   char *start, *name;
   int offset, len;
 
-  /* 
+  /*
    * the first variable attribute for both classes and the rootclass
    * is the name - if this ever changes, we could check the class
    * OID which should be NULL for the root class and special case
@@ -326,7 +292,7 @@ or_class_name (RECDES * record)
   offset = OR_VAR_OFFSET (record->data, 0);
   start = &record->data[offset];
 
-  /* 
+  /*
    * kludge kludge kludge
    * This is now an encoded "varchar" string, we need to skip over the length
    * before returning it.  Note that this also depends on the stored string
@@ -399,7 +365,7 @@ or_set_rep_id (RECDES * record, int repid)
       return ER_FAILED;
     }
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
   new_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
@@ -412,68 +378,6 @@ or_set_rep_id (RECDES * record, int repid)
 
   /* Set buffer pointer to the right position */
   buf->ptr = buf->buffer + OR_REP_OFFSET;
-
-  /* write new REPR_ID to the record */
-  or_put_int (buf, new_bits);
-
-  return NO_ERROR;
-}
-
-/*
- * or_replace_rep_id () - replace representation id for record
- * return : error code or NO_ERROR
- * record (in/out): record
- * repid (in)	  : new representation
- *
- * NOTE: This function is similar to or_set_rep_id but it determines
- * the type of record based on MVCC flag and sets rep_id accordingly.
- */
-int
-or_replace_rep_id (RECDES * record, int repid)
-{
-  OR_BUF orep, *buf;
-  unsigned int new_bits = 0;
-  int offset_size = 0;
-  char mvcc_flag;
-  bool is_bound_bit = false;
-
-  OR_BUF_INIT (orep, record->data, record->area_size);
-  buf = &orep;
-
-  mvcc_flag = or_mvcc_get_flag (record);
-  if (mvcc_flag == 0)
-    {
-      /* non-MVCC record */
-      /* read REPR_ID flags */
-      if (OR_GET_BOUND_BIT_FLAG (record->data))
-	{
-	  is_bound_bit = true;
-	}
-      offset_size = OR_GET_OFFSET_SIZE (record->data);
-
-      /* construct new REPR_ID element */
-      new_bits = repid;
-      if (is_bound_bit)
-	{
-	  new_bits |= OR_BOUND_BIT_FLAG;
-	}
-      OR_SET_VAR_OFFSET_SIZE (new_bits, offset_size);
-      buf->ptr = buf->buffer + OR_REP_OFFSET;
-    }
-  else
-    {
-      /* MVCC record */
-      new_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
-
-      /* Remove old repid */
-      new_bits &= ~OR_MVCC_REPID_MASK;
-
-      /* Add new repid */
-      new_bits |= (repid & OR_MVCC_REPID_MASK);
-
-      /* Set buffer pointer to the right position */
-      buf->ptr = buf->buffer + OR_REP_OFFSET;
-    }
 
   /* write new REPR_ID to the record */
   or_put_int (buf, new_bits);
@@ -516,7 +420,7 @@ or_replace_chn (RECDES * record, int chn)
   int offset;
   int error;
 
-  OR_BUF_INIT (orep, record->data, record->area_size);
+  or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
   offset = OR_CHN_OFFSET;
@@ -531,7 +435,7 @@ or_replace_chn (RECDES * record, int chn)
  * or_mvcc_get_repid_and_flags () - Gets MVCC representation id and flags.
  *
  * return	   : MVCC flags.
- * buf (in/out) : or buffer 
+ * buf (in/out) : or buffer
  * error(out): NO_ERROR or error code
  */
 int
@@ -558,7 +462,7 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
  * or_mvcc_set_repid_and_flags () - Set MVCC representation id and flags.
  *
  * return	   : nothing
- * buf (in/out) : or buffer 
+ * buf (in/out) : or buffer
  * bound_bit(in) : bound bit
  * variable_offset_size(in); variable offset size
  * error(out): NO_ERROR or error code
@@ -581,405 +485,6 @@ or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_b
   repid_and_flags |= (mvcc_flag & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS;
 
   return or_put_int (buf, repid_and_flags);
-}
-
-/*
- * or_mvcc_get_flag () - Gets MVCC flags.
- *
- * return	   : MVCC flags.
- * record (in)	   : Record descriptor.
- */
-static char
-or_mvcc_get_flag (RECDES * record)
-{
-  assert (record != NULL && record->data != NULL && record->length >= OR_HEADER_SIZE (record->data));
-
-  return (char) (OR_GET_MVCC_FLAG (record->data));
-}
-
-/*
- * or_mvcc_set_flag () - Set mvcc flags to record header.
- *
- * return      : Void.
- * record (in) : Record descriptor.
- * flags (in)  : MVCC flags to set.
- */
-static void
-or_mvcc_set_flag (RECDES * record, char flags)
-{
-  OR_BUF orep, *buf;
-  int repid_and_flag = 0;
-
-  assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE);
-
-  repid_and_flag = OR_GET_INT (record->data + OR_REP_OFFSET);
-
-  /* Remove old mvcc flags */
-  repid_and_flag &= ~OR_MVCC_FLAG_MASK;
-  /* Set new mvcc flags */
-  repid_and_flag += ((flags & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS);
-
-  OR_BUF_INIT (orep, record->data, record->area_size);
-  buf = &orep;
-  buf->ptr = buf->buffer + OR_REP_OFFSET;
-  or_put_int (buf, repid_and_flag);
-}
-
-/*
- * or_mvcc_get_insid () - Get insert MVCCID from record data.
- *
- * return	   : Insert MVCCID.
- * buf (in/out)	   : or buffer
- * mvcc_falgs(in)  : MVCC flags
- * error(out): NO_ERROR or error code
- */
-STATIC_INLINE MVCCID
-or_mvcc_get_insid (OR_BUF * buf, int mvcc_flags, int *error)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_INSID))
-    {
-      return MVCCID_ALL_VISIBLE;
-    }
-  else if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return 0;
-    }
-  else
-    {
-      MVCCID insert_id = 0;
-      OR_GET_BIGINT (buf->ptr, &insert_id);
-      buf->ptr += OR_MVCCID_SIZE;
-      *error = NO_ERROR;
-      return insert_id;
-    }
-}
-
-/*
- * or_mvcc_set_insid () - Set insert MVCCID into record data
- *
- * return	   : Insert MVCCID.
- * buf (in/out)	   : or buffer
- * mvcc_rec_header(in) : MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_set_insid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_INSID))
-    {
-      return NO_ERROR;
-    }
-
-  return or_put_bigint (buf, mvcc_rec_header->mvcc_ins_id);
-}
-
-/*
- * or_mvcc_get_delid () - Get MVCC delid
- *
- * return	   : MVCC delid
- * buf (in/out)	   : or buffer
- * mvcc_falgs(in)  : MVCC flags
- * error(out): NO_ERROR or error code
- */
-STATIC_INLINE MVCCID
-or_mvcc_get_delid (OR_BUF * buf, int mvcc_flags, int *error)
-{
-  MVCCID delid = MVCCID_NULL;
-
-  assert (buf != NULL && error != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  *error = NO_ERROR;
-  if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
-    {
-      /* MVCC DELID is active */
-      if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-	{
-	  *error = or_underflow (buf);
-	  delid = MVCCID_NULL;
-	}
-      else
-	{
-	  OR_GET_BIGINT (buf->ptr, &(delid));
-	  buf->ptr += OR_MVCCID_SIZE;
-	}
-    }
-  return delid;
-}
-
-/*
- * or_mvcc_get_chn () - Get MVCC chn
- *
- * return	   : MVCC chn
- * buf (in/out)	   : or buffer
- * mvcc_falgs(in)  : MVCC flags
- * error(out): NO_ERROR or error code
- */
-STATIC_INLINE int
-or_mvcc_get_chn (OR_BUF * buf, int *error)
-{
-  int chn = NULL_CHN;
-
-  assert (buf != NULL && error != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  *error = NO_ERROR;
-
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      chn = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-    }
-
-  return chn;
-}
-
-/*
- * or_mvcc_set_delid () - Set MVCC delete id
- *
- * return	      : error code 
- * buf (in/out)	      : or buffer 
- * mvcc_rec_header(in): MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  assert (buf != NULL);
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID))
-    {
-      return NO_ERROR;
-    }
-
-  return or_put_bigint (buf, mvcc_rec_header->mvcc_del_id);
-}
-
-/*
- * or_mvcc_set_chn () - Set MVCC chn
- *
- * return	      : error code 
- * buf (in/out)	      : or buffer 
- * mvcc_rec_header(in): MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_set_chn (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  assert (buf != NULL);
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  return or_put_int (buf, mvcc_rec_header->chn);
-}
-
-/*
- * or_mvcc_get_header () - Get mvcc record header from record data.
- *
- * return		: Void.
- * record (in)		: Record descriptor.
- * mvcc_header (out)	: MVCC Record header.
- */
-int
-or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
-{
-  OR_BUF buf;
-  int rc = NO_ERROR;
-  int repid_and_flag_bits;
-
-  assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE && mvcc_header != NULL);
-
-  or_init (&buf, record->data, record->length);
-
-  repid_and_flag_bits = or_mvcc_get_repid_and_flags (&buf, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-  mvcc_header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
-  mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-
-  mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  mvcc_header->mvcc_ins_id = or_mvcc_get_insid (&buf, mvcc_header->mvcc_flag, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  rc = or_mvcc_get_prev_version_lsa (&buf, mvcc_header->mvcc_flag, &(mvcc_header->prev_version_lsa));
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  return NO_ERROR;
-
-exit_on_error:
-  return (rc == NO_ERROR && (rc = er_errid ()) == NO_ERROR) ? ER_FAILED : rc;
-}
-
-/*
- * or_mvcc_set_header () - Updates record header
- *
- * return		: Void.
- * record (in/out)	: Record descriptor. 
- * mvcc_rec_header (in) : MVCC Record header.
- *
- *  Note: This function assume that record area size is sufficiently large
- *    to include additional MVCC data that may come from mvcc_rec_header. 
- */
-int
-or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  OR_BUF orep, *buf;
-  int error = NO_ERROR;
-  int mvcc_old_flag = 0;
-  int repid_and_flag_bits = 0;
-  int old_mvcc_size = 0, new_mvcc_size = 0;
-
-  assert (record != NULL && record->data != NULL && record->length != 0 && record->length >= OR_MVCC_MIN_HEADER_SIZE);
-
-  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
-
-  mvcc_old_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-
-  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag];
-  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag];
-  if (old_mvcc_size != new_mvcc_size)
-    {
-      /* resize MVCC info inside recdes */
-      if (record->area_size < (record->length + new_mvcc_size - old_mvcc_size))
-	{
-	  /* TO DO - er_set */
-	  assert (false);
-	  goto exit_on_error;
-	}
-
-      HEAP_MOVE_INSIDE_RECORD (record, new_mvcc_size, old_mvcc_size);
-    }
-
-  OR_BUF_INIT (orep, record->data, record->area_size);
-  buf = &orep;
-
-  error =
-    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid,
-				 repid_and_flag_bits & OR_BOUND_BIT_FLAG, OR_GET_OFFSET_SIZE (record->data));
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_chn (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_insid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_delid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  return NO_ERROR;
-
-exit_on_error:
-  return (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
-}
-
-/*
- * or_mvcc_add_header () - Add header in record
- *
- * return		: Void.
- * record (in/out)	: Record descriptor. 
- * mvcc_rec_header (in) : MVCC Record header.
- *
- *  Note: This function must be called when the record is build by adding
- *    header and then data. This function will add record header only.
- *    Later, record data must be added. Obvious, the caller must be sure that
- *    the record area size is sufficiently large to include header and data.
- *	  When called, record->length must be 0. When return, record->length
- *    will contain the header size.
- */
-int
-or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit, int variable_offset_size)
-{
-  OR_BUF orep, *buf;
-  int error = NO_ERROR;
-
-  assert (record != NULL && record->data != NULL && record->length == 0);
-
-  OR_BUF_INIT (orep, record->data, record->area_size);
-  buf = &orep;
-
-  error =
-    or_mvcc_set_repid_and_flags (buf, mvcc_rec_header->mvcc_flag, mvcc_rec_header->repid, bound_bit,
-				 variable_offset_size);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_chn (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_insid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_delid (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  error = or_mvcc_set_prev_version_lsa (buf, mvcc_rec_header);
-  if (error != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  record->length = CAST_BUFLEN (buf->ptr - buf->buffer);
-
-  return NO_ERROR;
-
-exit_on_error:
-  return (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
 }
 
 #if !defined (SERVER_MODE)
@@ -1039,10 +544,6 @@ or_put_bound_bit (char *bound_bits, int element, int bound)
 #endif /* !SERVER_MODE */
 
 /*
- * OR_BUF PACK/UNPACK FUNCTIONS
- */
-
-/*
  * or_overflow - called by the or_put_ functions when there is not enough
  * room in the buffer to hold a particular value.
  *    return: ER_TF_BUFFER_OVERFLOW or long jump to buf->error_abort
@@ -1063,7 +564,7 @@ or_put_bound_bit (char *bound_bits, int element, int bound)
 int
 or_overflow (OR_BUF * buf)
 {
-  /* 
+  /*
    * since this is normal behavior, don't set an error condition, the
    * main transformer functions will need to test the status value
    * for ER_TF_BUFFER_OVERFLOW and know that this isn't an error condition.
@@ -1115,1396 +616,6 @@ or_abort (OR_BUF * buf)
     {
       _longjmp (buf->env, er_errid ());
     }
-}
-
-/*
- * or_init - initialize the field of an OR_BUF
- *    return: void
- *    buf(in/out): or buffer to initialize
- *    data(in): buffer data
- *    length(in):  buffer data length
- */
-void
-or_init (OR_BUF * buf, char *data, int length)
-{
-  buf->buffer = data;
-  buf->ptr = data;
-
-  if (length == 0 || length == -1 || length == DB_INT32_MAX)
-    {
-      buf->endptr = (char *) OR_INFINITE_POINTER;
-    }
-  else
-    {
-      buf->endptr = data + length;
-    }
-
-  buf->error_abort = 0;
-  buf->fixups = NULL;
-}
-
-/*
- * or_put_align32 - pad zero bytes round up to 4 byte bound
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- */
-int
-or_put_align32 (OR_BUF * buf)
-{
-  unsigned int bits;
-  int rc = NO_ERROR;
-
-  bits = (UINTPTR) buf->ptr & 3;
-  if (bits)
-    {
-      rc = or_pad (buf, 4 - bits);
-    }
-
-  return rc;
-}
-
-/*
- * or_get_align32 - adnvance or buf pointer to next 4 byte alignment position
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- */
-int
-or_get_align32 (OR_BUF * buf)
-{
-  unsigned int bits;
-  int rc = NO_ERROR;
-
-  bits = (UINTPTR) (buf->ptr) & 3;
-  if (bits)
-    {
-      rc = or_advance (buf, 4 - bits);
-    }
-
-  return rc;
-}
-
-/*
- * or_get_align64 - adnvance or buf pointer to next 8 byte alignment position
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- */
-int
-or_get_align64 (OR_BUF * buf)
-{
-  unsigned int bits;
-  int rc = NO_ERROR;
-
-  bits = (UINTPTR) (buf->ptr) & 7;
-  if (bits)
-    {
-      rc = or_advance (buf, 8 - bits);
-    }
-
-  return rc;
-}
-
-/*
- * or_get_align - adnvance or buf pointer to next alignment position
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    align(in):
- */
-int
-or_get_align (OR_BUF * buf, int align)
-{
-  char *ptr;
-
-  ptr = PTR_ALIGN (buf->ptr, align);
-  if (ptr > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      buf->ptr = ptr;
-      return NO_ERROR;
-    }
-}
-
-/*
- * or_packed_varchar_length - returns length of place holder that can contain
- * package varchar length. Also ajust length up to 4 byte boundary.
- *    return: length of placeholder that can contain packed varchar length
- *    charlen(in): varchar length
- */
-int
-or_packed_varchar_length (int charlen)
-{
-  return or_varchar_length_internal (charlen, INT_ALIGNMENT);
-}
-
-/*
- * or_varchar_length - returns length of place holder that can contain
- * package varchar length.
- *    return: length of place holder that can contain packed varchar length
- *    charlen(in): varchar length
- */
-int
-or_varchar_length (int charlen)
-{
-  return or_varchar_length_internal (charlen, CHAR_ALIGNMENT);
-}
-
-int
-or_packed_recdesc_length (int length)
-{
-  return OR_INT_SIZE * 2 + or_packed_stream_length (length);
-}
-
-static int
-or_varchar_length_internal (int charlen, int align)
-{
-  int len;
-
-  if (charlen < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-    {
-      len = OR_BYTE_SIZE + charlen;
-    }
-  else
-    {
-      /* 
-       * Regarding the new encoding for VARCHAR and VARNCHAR, the strings stored in buffers have this representation:
-       * OR_BYTE_SIZE    : First byte in encoding. If it's 0xFF, the string's length is greater than 255.
-       *                 : Otherwise, the first byte states the length of the string.
-       * 1st OR_INT_SIZE : string's compressed length
-       * 2nd OR_INT_SIZE : string's decompressed length
-       * charlen         : string's disk length
-       */
-      len = OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + charlen;
-    }
-
-  if (align == INT_ALIGNMENT)
-    {
-      /* size of NULL terminator */
-      len += OR_BYTE_SIZE;
-
-      len = DB_ALIGN (len, INT_ALIGNMENT);
-    }
-
-  return len;
-}
-
-/*
- * or_put_varchar - put varchar to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    string(in): string to put into the or buffer
- *    charlen(in): string length
- */
-int
-or_put_varchar (OR_BUF * buf, char *string, int charlen)
-{
-  return or_put_varchar_internal (buf, string, charlen, CHAR_ALIGNMENT);
-}
-
-/*
- * or_packed_put_varchar - put varchar to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    string(in): string to put into the or buffer
- *    charlen(in): string length
- */
-int
-or_packed_put_varchar (OR_BUF * buf, char *string, int charlen)
-{
-  return or_put_varchar_internal (buf, string, charlen, INT_ALIGNMENT);
-}
-
-static int
-or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
-{
-  int net_charlen = 0;
-  char *compressed_string = NULL;
-  int rc = NO_ERROR;
-  bool compressable = false;
-  lzo_uint compressed_length = 0;
-  lzo_voidp wrkmem = NULL;
-  int error_abort = 0;
-
-  error_abort = buf->error_abort;
-
-  buf->error_abort = 0;
-
-  /* store the size prefix */
-  if (charlen < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
-    {
-      rc = or_put_byte (buf, charlen);
-    }
-  else
-    {
-      rc = or_put_byte (buf, OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
-      compressable = true;
-    }
-
-  if (rc != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
-  if (compressable == true)
-    {
-      if (!pr_Enable_string_compression)	/* compression is not set */
-	{
-	  compressed_length = 0;
-	  goto after_compression;
-	}
-      /* Future optimization : use a preallocated object for wrkmem in thread_entry. */
-      /* Alloc memory */
-      wrkmem = (lzo_voidp) malloc (LZO1X_1_MEM_COMPRESS);
-      if (wrkmem == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) LZO1X_1_MEM_COMPRESS);
-	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto cleanup;
-	}
-      memset (wrkmem, 0x00, LZO1X_1_MEM_COMPRESS);
-
-      /* Alloc memory for the compressed string */
-      /* Worst case LZO compression size from their FAQ */
-      compressed_string = (char *) malloc (LZO_COMPRESSED_STRING_SIZE (charlen));
-      if (compressed_string == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
-		  1, (size_t) (LZO_COMPRESSED_STRING_SIZE (charlen)));
-	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto cleanup;
-	}
-
-      /* Compress the string */
-      rc = lzo1x_1_compress ((lzo_bytep) string, (lzo_uint) charlen, (lzo_bytep) compressed_string,
-			     &compressed_length, wrkmem);
-      if (rc != LZO_E_OK)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZO_COMPRESS_FAIL, 4, FILEIO_ZIP_LZO1X_METHOD,
-		  fileio_get_zip_method_string (FILEIO_ZIP_LZO1X_METHOD), FILEIO_ZIP_LZO1X_DEFAULT_LEVEL,
-		  fileio_get_zip_level_string (FILEIO_ZIP_LZO1X_DEFAULT_LEVEL));
-	  rc = ER_IO_LZO_COMPRESS_FAIL;
-	  goto cleanup;
-	}
-
-      if (compressed_length >= (lzo_uint) (charlen - 8))
-	{
-	  /* Compression successful but its length exceeds the original length of the string. */
-	  compressed_length = 0;
-	}
-
-      /* Store the compression size */
-      assert (compressed_length < (lzo_uint) (charlen - 8));
-    after_compression:
-      OR_PUT_INT (&net_charlen, compressed_length);
-      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      net_charlen = 0;
-      /* Store the uncompressed data size */
-      OR_PUT_INT (&net_charlen, charlen);
-      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      if (compressed_length == 0)
-	{
-	  /* Compression failed. */
-	  /* Store the original string bytes */
-	  rc = or_put_data (buf, string, charlen);
-	  if (rc != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	}
-      else
-	{
-	  /* Store the compressed string bytes */
-	  rc = or_put_data (buf, compressed_string, (int) compressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	}
-    }
-  else
-    {
-      /* No compression needed */
-      /* Store the string in its raw form */
-      rc = or_put_data (buf, string, charlen);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-    }
-
-  if (align == INT_ALIGNMENT)
-    {
-      /* kludge, temporary NULL terminator */
-      rc = or_put_byte (buf, 0);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      /* round up to a word boundary */
-      rc = or_put_align32 (buf);
-    }
-
-cleanup:
-
-  if (compressed_string != NULL)
-    {
-      free_and_init (compressed_string);
-    }
-
-  if (wrkmem != NULL)
-    {
-      free_and_init (wrkmem);
-    }
-
-  buf->error_abort = error_abort;
-
-  if (rc == ER_TF_BUFFER_OVERFLOW)
-    {
-      return or_overflow (buf);
-    }
-
-  return rc;
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * or_get_varchar - get varchar from or buffer
- *    return: varchar pointer read from the or buffer. or NULL for error
- *    buf(in/out): or buffer
- *    length_ptr(out): length of returned string
- */
-char *
-or_get_varchar (OR_BUF * buf, int *length_ptr)
-{
-  int rc = NO_ERROR;
-  int charlen;
-  char *new_;
-
-  charlen = or_get_varchar_length (buf, &rc);
-
-  if (rc != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  /* Allocate storage for the string including the kludge NULL terminator */
-  new_ = db_private_alloc (NULL, charlen + 1);
-
-  if (new_ == NULL)
-    {
-      or_abort (buf);
-      return NULL;
-    }
-  rc = or_get_data (buf, new_, charlen + 1);
-
-  if (rc == NO_ERROR)
-    {
-
-      /* return the length */
-      if (length_ptr != NULL)
-	{
-	  *length_ptr = charlen;
-	}
-
-      /* round up to a word boundary */
-      rc = or_get_align32 (buf);
-    }
-  if (rc != NO_ERROR)
-    {
-      db_private_free_and_init (NULL, new_);
-      return NULL;
-    }
-  else
-    {
-      return new_;
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * or_get_varchar_length - get varchar length from or buffer
- *    return: length of varchar or 0 if error.
- *    buf(in/out): or buffer
- *    rc(out): status code
- */
-int
-or_get_varchar_length (OR_BUF * buf, int *rc)
-{
-  int charlen, compressed_length = 0, decompressed_length = 0;
-
-  *rc = or_get_varchar_compression_lengths (buf, &compressed_length, &decompressed_length);
-
-  if (compressed_length > 0)
-    {
-      charlen = compressed_length;
-    }
-  else
-    {
-      charlen = decompressed_length;
-    }
-
-  return charlen;
-}
-
-/*
- * or_skip_varchar_remainder - skip varchar field of given length
- *    return: NO_ERROR if successful, error code otherwise
- *    buf(in/out): or buffer
- *    charlen(in): length of varchar field to skip
- *    align(in):
- */
-int
-or_skip_varchar_remainder (OR_BUF * buf, int charlen, int align)
-{
-  int rc = NO_ERROR;
-
-  if (align == INT_ALIGNMENT)
-    {
-      rc = or_advance (buf, charlen + 1);
-      if (rc == NO_ERROR)
-	{
-	  rc = or_get_align32 (buf);
-	}
-    }
-  else
-    {
-      rc = or_advance (buf, charlen);
-    }
-
-  return rc;
-}
-
-/*
- * or_skip_varchar - skip varchar field (length + data) from or buffer
- *    return: NO_ERROR or error code.
- *    buf(in/out): or buffer
- *    align(in):
- */
-int
-or_skip_varchar (OR_BUF * buf, int align)
-{
-  int charlen, rc = NO_ERROR;
-
-  charlen = or_get_varchar_length (buf, &rc);
-
-  if (rc == NO_ERROR)
-    {
-      return (or_skip_varchar_remainder (buf, charlen, align));
-    }
-
-  return rc;
-}
-
-/*
- * or_packed_varbit_length - returns packed varbit length of or buffer encoding
- *    return: packed varbit encoding length
- *    bitlen(in): varbit length
- */
-int
-or_packed_varbit_length (int bitlen)
-{
-  return or_varbit_length_internal (bitlen, INT_ALIGNMENT);
-}
-
-/*
- * or_packed_varbit_length - returns packed varbit length of or buffer encoding
- *    return: varbit encoding length
- *    bitlen(in): varbit length
- */
-int
-or_varbit_length (int bitlen)
-{
-  return or_varbit_length_internal (bitlen, CHAR_ALIGNMENT);
-}
-
-static int
-or_varbit_length_internal (int bitlen, int align)
-{
-  int len;
-
-  /* calculate size of length prefix */
-  if (bitlen < 0xFF)
-    {
-      len = 1;
-    }
-  else
-    {
-      len = 1 + OR_INT_SIZE;
-    }
-
-  /* add in the string length in bytes */
-  len += ((bitlen + 7) / 8);
-
-  if (align == INT_ALIGNMENT)
-    {
-      /* round up to a word boundary */
-      len = DB_ALIGN (len, INT_ALIGNMENT);
-    }
-  return len;
-}
-
-/*
- * or_put_varbit - put varbit into or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    string(in): string contains varbit value
- *    bitlen(in): length of varbit
- */
-int
-or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen)
-{
-  return or_put_varbit_internal (buf, string, bitlen, INT_ALIGNMENT);
-}
-
-/*
- * or_put_varbit - put varbit into or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    string(in): string contains varbit value
- *    bitlen(in): length of varbit
- */
-int
-or_put_varbit (OR_BUF * buf, char *string, int bitlen)
-{
-  return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
-}
-
-static int
-or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align)
-{
-  int net_bitlen;
-  int bytelen;
-  char *start;
-  int status;
-  int valid_buf;
-  jmp_buf save_buf;
-
-  if (buf->error_abort)
-    {
-      memcpy (&save_buf, &buf->env, sizeof (save_buf));
-    }
-
-  valid_buf = buf->error_abort;
-  buf->error_abort = 1;
-  status = _setjmp (buf->env);
-
-  if (status == 0)
-    {
-      start = buf->ptr;
-      bytelen = BITS_TO_BYTES (bitlen);
-
-      /* store the size prefix */
-      if (bitlen < 0xFF)
-	{
-	  or_put_byte (buf, bitlen);
-	}
-      else
-	{
-	  or_put_byte (buf, 0xFF);
-	  OR_PUT_INT (&net_bitlen, bitlen);
-	  or_put_data (buf, (char *) &net_bitlen, OR_INT_SIZE);
-	}
-
-      /* store the string bytes */
-      or_put_data (buf, string, bytelen);
-
-      if (align == INT_ALIGNMENT)
-	{
-	  /* round up to a word boundary */
-	  or_put_align32 (buf);
-	}
-    }
-  else
-    {
-      if (valid_buf)
-	{
-	  memcpy (&buf->env, &save_buf, sizeof (save_buf));
-	  _longjmp (buf->env, status);
-	}
-    }
-
-  if (valid_buf)
-    {
-      memcpy (&buf->env, &save_buf, sizeof (save_buf));
-    }
-  else
-    {
-      buf->error_abort = 0;
-    }
-
-  if (status == 0)
-    {
-      return NO_ERROR;
-    }
-
-  return status;
-
-}
-
-int
-or_put_offset (OR_BUF * buf, int num)
-{
-  return or_put_offset_internal (buf, num, BIG_VAR_OFFSET_SIZE);
-}
-
-int
-or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
-{
-  if (offset_size == OR_BYTE_SIZE)
-    {
-      return or_put_byte (buf, num);
-    }
-  else if (offset_size == OR_SHORT_SIZE)
-    {
-      return or_put_short (buf, num);
-    }
-  else
-    {
-      assert (offset_size == BIG_VAR_OFFSET_SIZE);
-
-      return or_put_int (buf, num);
-    }
-}
-
-int
-or_get_offset (OR_BUF * buf, int *error)
-{
-  return or_get_offset_internal (buf, error, BIG_VAR_OFFSET_SIZE);
-}
-
-int
-or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
-{
-  if (offset_size == OR_BYTE_SIZE)
-    {
-      return or_get_byte (buf, error);
-    }
-  else if (offset_size == OR_SHORT_SIZE)
-    {
-      return or_get_short (buf, error);
-    }
-  else
-    {
-      assert (offset_size == BIG_VAR_OFFSET_SIZE);
-      return or_get_int (buf, error);
-    }
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * or_get_varbit - get varbit from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    length_ptr(out): length of varbit read
- */
-char *
-or_get_varbit (OR_BUF * buf, int *length_ptr)
-{
-  int bitlen, charlen;
-  char *new_ = NULL;
-  int rc = NO_ERROR;
-
-  bitlen = or_get_varbit_length (buf, &rc);
-
-  if (rc != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  /* Allocate storage for the string including the kludge NULL terminator */
-  charlen = BITS_TO_BYTES (bitlen);
-  new_ = db_private_alloc (NULL, charlen + 1);
-
-  if (new_ == NULL)
-    {
-      or_abort (buf);
-      return NULL;
-    }
-  rc = or_get_data (buf, new_, charlen);
-
-  if (rc == NO_ERROR)
-    {
-      /* return the length */
-      if (length_ptr != NULL)
-	{
-	  *length_ptr = bitlen;
-	}
-
-      /* round up to a word boundary */
-      rc = or_get_align32 (buf);
-    }
-  if (rc != NO_ERROR)
-    {
-      if (new_)
-	{
-	  db_private_free_and_init (NULL, new_);
-	}
-      return NULL;
-    }
-
-  return new_;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * or_get_varbit_length - get varbit length from or buffer
- *    return: length of varbit or 0 if error
- *    buf(in/out): or buffer
- *    rc(out): NO_ERROR or error code
- */
-int
-or_get_varbit_length (OR_BUF * buf, int *rc)
-{
-  int net_bitlen = 0, bitlen = 0;
-
-  /* unpack the size prefix */
-  bitlen = or_get_byte (buf, rc);
-
-  if (*rc != NO_ERROR)
-    {
-      return bitlen;
-    }
-
-  if (bitlen == 0xFF)
-    {
-      *rc = or_get_data (buf, (char *) &net_bitlen, OR_INT_SIZE);
-      bitlen = OR_GET_INT (&net_bitlen);
-    }
-  return bitlen;
-}
-
-/*
- * or_skip_varbit_remainder - skip varbit field of given length in or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    bitlen(in): bitlen to skip
- *    align(in):
- */
-int
-or_skip_varbit_remainder (OR_BUF * buf, int bitlen, int align)
-{
-  int rc = NO_ERROR;
-
-  rc = or_advance (buf, BITS_TO_BYTES (bitlen));
-  if (rc == NO_ERROR && align == INT_ALIGNMENT)
-    {
-      rc = or_get_align32 (buf);
-    }
-  return rc;
-}
-
-/*
- * or_skip_varbit - skip varbit in or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    align(in):
- */
-int
-or_skip_varbit (OR_BUF * buf, int align)
-{
-  int bitlen;
-  int rc = NO_ERROR;
-
-  bitlen = or_get_varbit_length (buf, &rc);
-  if (rc == NO_ERROR)
-    {
-      return (or_skip_varbit_remainder (buf, bitlen, align));
-    }
-  return rc;
-}
-
-/*
- * NUMERIC DATA TRANSFORMS
- *    This set of functions handles the transformation of the
- *    numeric types byte, short, integer, float, and double.
- *
- */
-
-
-/*
- * or_put_byte - put a byte to or buffer
- *    return: NO_ERROR or error code
- *    buf(out/out): or buffer
- *    num(in): byte value
- */
-int
-or_put_byte (OR_BUF * buf, int num)
-{
-  if ((buf->ptr + OR_BYTE_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_BYTE (buf->ptr, num);
-      buf->ptr += OR_BYTE_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_byte - read a byte value from or buffer
- *    return: byte value read
- *    buf(in/out): or buffer
- *    error(out): NO_ERROR or error code
- */
-int
-or_get_byte (OR_BUF * buf, int *error)
-{
-  int value = 0;
-
-  if ((buf->ptr + OR_BYTE_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return 0;
-    }
-  else
-    {
-      value = OR_GET_BYTE (buf->ptr);
-      buf->ptr += OR_BYTE_SIZE;
-      *error = NO_ERROR;
-    }
-  return value;
-}
-
-/*
- * or_put_short - put a short value to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    num(in): short value to put
- */
-int
-or_put_short (OR_BUF * buf, int num)
-{
-  ASSERT_ALIGN (buf->ptr, SHORT_ALIGNMENT);
-
-  if ((buf->ptr + OR_SHORT_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_SHORT (buf->ptr, num);
-      buf->ptr += OR_SHORT_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_short - read a short value from or buffer
- *    return: short value read
- *    buf(in/out): or buffer
- *    error(out): NO_ERROR or error code
- */
-int
-or_get_short (OR_BUF * buf, int *error)
-{
-  int value = 0;
-
-  ASSERT_ALIGN (buf->ptr, SHORT_ALIGNMENT);
-
-  if ((buf->ptr + OR_SHORT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-      return 0;
-    }
-  else
-    {
-      value = OR_GET_SHORT (buf->ptr);
-      buf->ptr += OR_SHORT_SIZE;
-    }
-  *error = NO_ERROR;
-  return value;
-}
-
-/*
- * or_put_int - put int value to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    num(in): int value to put
- */
-int
-or_put_int (OR_BUF * buf, int num)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_INT (buf->ptr, num);
-      buf->ptr += OR_INT_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_int - get int value from or buffer
- *    return: int value read
- *    buf(in/out): or buffer
- *    error(out): NO_ERROR or error code
- */
-int
-or_get_int (OR_BUF * buf, int *error)
-{
-  int value = 0;
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_INT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      value = OR_GET_INT (buf->ptr);
-      buf->ptr += OR_INT_SIZE;
-      *error = NO_ERROR;
-    }
-  return value;
-}
-
-/*
- * or_put_bigint - put bigint value to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    num(in): bigint value to put
- */
-int
-or_put_bigint (OR_BUF * buf, DB_BIGINT num)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_BIGINT_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_BIGINT (buf->ptr, &num);
-      buf->ptr += OR_BIGINT_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_bigint - get bigint value from or buffer
- *    return: bigint value read
- *    buf(in/out): or buffer
- *    error(out): NO_ERROR or error code
- */
-DB_BIGINT
-or_get_bigint (OR_BUF * buf, int *error)
-{
-  DB_BIGINT value = 0;
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_BIGINT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_BIGINT (buf->ptr, &value);
-      buf->ptr += OR_BIGINT_SIZE;
-      *error = NO_ERROR;
-    }
-  return value;
-}
-
-/*
- * or_put_float - put a float value to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    fnum(in): float value to put
- */
-int
-or_put_float (OR_BUF * buf, float fnum)
-{
-  ASSERT_ALIGN (buf->ptr, FLOAT_ALIGNMENT);
-
-  if ((buf->ptr + OR_FLOAT_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_FLOAT (buf->ptr, &fnum);
-      buf->ptr += OR_FLOAT_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_float - read a float value from or buffer
- *    return: float value read
- *    buf(in/out): or buffer
- *    error(out): NO_ERROR or error code
- */
-float
-or_get_float (OR_BUF * buf, int *error)
-{
-  float value = 0.0;
-
-  ASSERT_ALIGN (buf->ptr, FLOAT_ALIGNMENT);
-
-  if ((buf->ptr + OR_FLOAT_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_FLOAT (buf->ptr, &value);
-      buf->ptr += OR_FLOAT_SIZE;
-      *error = NO_ERROR;
-    }
-  return value;
-}
-
-/*
- * or_put_double - put a double value to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    dnum(in): double value to put
- */
-int
-or_put_double (OR_BUF * buf, double dnum)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_DOUBLE_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_DOUBLE (buf->ptr, &dnum);
-      buf->ptr += OR_DOUBLE_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_double - read a double value from or buffer
- *    return: double value read
- *    buf(in/out): or buffer
- *    error(out): NO_ERROR or error code
- */
-double
-or_get_double (OR_BUF * buf, int *error)
-{
-  double value = 0.0;
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_DOUBLE_SIZE) > buf->endptr)
-    {
-      *error = or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_DOUBLE (buf->ptr, &value);
-      buf->ptr += OR_DOUBLE_SIZE;
-      *error = NO_ERROR;
-    }
-  return value;
-}
-
-/*
- * EXTENDED TYPE TRANSLATORS
- *    This set of functions reads and writes the extended types time,
- *    utime, date, and monetary.
- */
-
-/*
- * or_put_time - write a DB_TIME to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    timeval(in): time value to write
- */
-int
-or_put_time (OR_BUF * buf, DB_TIME * timeval)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_TIME_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_TIME (buf->ptr, timeval);
-      buf->ptr += OR_TIME_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_time - read a  DB_TIME from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    timeval(out): pointer to DB_TIME value
- */
-int
-or_get_time (OR_BUF * buf, DB_TIME * timeval)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_TIME_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_TIME (buf->ptr, timeval);
-      buf->ptr += OR_TIME_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_put_utime - write a timestamp value to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    timeval(in): pointer to timestamp value
- */
-int
-or_put_utime (OR_BUF * buf, DB_UTIME * timeval)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_UTIME_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_UTIME (buf->ptr, timeval);
-      buf->ptr += OR_UTIME_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_utime - read a timestamp value from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    timeval(out): pointer to timestamp value
- */
-int
-or_get_utime (OR_BUF * buf, DB_UTIME * timeval)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_UTIME_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_UTIME (buf->ptr, timeval);
-      buf->ptr += OR_UTIME_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_put_timestamptz - write a timestamp with tz value to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    ts_tz(in): pointer to DB_TIMESTAMPTZ value
- */
-int
-or_put_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_TIMESTAMPTZ_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_TIMESTAMPTZ (buf->ptr, ts_tz);
-      buf->ptr += OR_TIMESTAMPTZ_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_timestamptz - read a timestamp with tz value from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    ts_tz(out): pointer to DB_TIMESTAMPTZ value
- */
-int
-or_get_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_TIMESTAMPTZ_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_TIMESTAMPTZ (buf->ptr, ts_tz);
-      buf->ptr += OR_TIMESTAMPTZ_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_put_date - write a DB_DATE value to or_buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    date(in): pointer to DB_DATE value
- */
-int
-or_put_date (OR_BUF * buf, DB_DATE * date)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_DATE_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_DATE (buf->ptr, date);
-      buf->ptr += OR_DATE_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_date - read a DB_DATE value from or_buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    date(out): pointer to DB_DATE value
- */
-int
-or_get_date (OR_BUF * buf, DB_DATE * date)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_DATE_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_DATE (buf->ptr, date);
-      buf->ptr += OR_DATE_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_put_datetime - write a datetime value to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    datetimeval(in): pointer to datetime value
- */
-int
-or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_DATETIME_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_DATETIME (buf->ptr, datetimeval);
-      buf->ptr += OR_DATETIME_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_datetime - read a DB_DATETIME value from or_buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    date(out): pointer to DB_DATETIME value
- */
-int
-or_get_datetime (OR_BUF * buf, DB_DATETIME * datetime)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_DATETIME_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_DATETIME (buf->ptr, datetime);
-      buf->ptr += OR_DATETIME_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_put_datetimetz - write a datetime with tz value to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    datetimetz(in): pointer to DB_DATETIMETZ value
- */
-int
-or_put_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_DATETIMETZ_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_DATETIMETZ (buf->ptr, datetimetz);
-      buf->ptr += OR_DATETIMETZ_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_datetimetz - read a datetime with tz value from or_buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    datetimetz(out): pointer to DB_DATETIMETZ value
- */
-int
-or_get_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_DATETIMETZ_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_DATETIMETZ (buf->ptr, datetimetz);
-      buf->ptr += OR_DATETIMETZ_SIZE;
-    }
-  return NO_ERROR;
 }
 
 /*
@@ -2596,178 +707,7 @@ or_get_monetary (OR_BUF * buf, DB_MONETARY * monetary)
   return NO_ERROR;
 }
 
-/*
- * or_put_oid - write content of an OID structure from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    oid(in): pointer to OID
- */
-int
-or_put_oid (OR_BUF * buf, const OID * oid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_OID_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      if (oid == NULL)
-	{
-	  OR_PUT_NULL_OID (buf->ptr);
-	}
-      else
-	{
-	  /* Cannot allow any temp oid's to be written */
-	  if (OID_ISTEMP (oid))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      or_abort (buf);
-	    }
-	  OR_PUT_OID (buf->ptr, oid);
-	}
-      buf->ptr += OR_OID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_oid - read content of an OID structure from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    oid(out): pointer to OID
- */
-int
-or_get_oid (OR_BUF * buf, OID * oid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_OID_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_OID (buf->ptr, oid);
-      buf->ptr += OR_OID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_put_data - write an array of bytes to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    data(in): pointer to data
- *    length(in): length in bytes
- */
-int
-or_put_data (OR_BUF * buf, const char *data, int length)
-{
-  if ((buf->ptr + length) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      (void) memcpy (buf->ptr, data, length);
-      buf->ptr += length;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_data - read an array of bytes from or buffer for given length
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    data(in): pointer to buffer to read data into
- *    length(in): length of read data
- */
-int
-or_get_data (OR_BUF * buf, char *data, int length)
-{
-  if ((buf->ptr + length) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      (void) memcpy (data, buf->ptr, length);
-      buf->ptr += length;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_put_string - write string to or buf
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    str(in): string to write
- *
- * Note:
- *    Does byte padding on strings to bring them up to 4 byte boundary.
- *
- *    There is no or_get_string since this is the same as or_get_data.
- *    Since the workspace allocator (and most other Unix allocators) will
- *    keep track of the size of allocated blocks (and they will be
- *    in word multiples anyway), we can just include the disk padding
- *    bytes with the string when it is brought in from disk even though
- *    the total length may be more than that returned by strlen.
- */
-int
-or_put_string_aligned (OR_BUF * buf, char *str)
-{
-  int len, bits, pad;
-  int rc = NO_ERROR;
-
-  if (str == NULL)
-    {
-      return rc;
-    }
-  len = strlen (str) + 1;
-  rc = or_put_data (buf, str, len);
-  if (rc == NO_ERROR)
-    {
-      /* PAD */
-      bits = len & 3;
-      if (bits)
-	{
-	  pad = 4 - bits;
-	  rc = or_pad (buf, pad);
-	}
-    }
-  return rc;
-}
-
 #if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * or_length_string - returns the number of bytes required to hold the disk
- * representation of a string
- *    return: number of bytes needed or 0 for error
- *    string(in): string for calculation
- *
- * Note:
- * This will include any padding bytes up to 4 byte boundary
- */
-int
-or_length_string (char *string)
-{
-  int len, bits;
-
-  len = 0;
-  if (string != NULL)
-    {
-      len = strlen (string) + 1;
-      bits = len & 3;
-      if (bits)
-	{
-	  len += 4 - bits;
-	}
-    }
-  return len;
-}
-
 /*
  * or_put_binary - Writes a binary array into the translation buffer.
  *    return: NO_ERROR or error code
@@ -2807,7 +747,365 @@ or_put_binary (OR_BUF * buf, DB_BINARY * binary)
     }
   return rc;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
+/*
+ * or_put_varbit - put varbit into or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    string(in): string contains varbit value
+ *    bitlen(in): length of varbit
+ */
+extern int
+or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
+{
+  return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
+}
+
+#if defined(ENABLE_UNUSED_FUNCTION)
+/*
+ * or_get_varbit - get varbit from or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    length_ptr(out): length of varbit read
+ */
+char *
+or_get_varbit (OR_BUF * buf, int *length_ptr)
+{
+  int bitlen, charlen;
+  char *new_ = NULL;
+  int rc = NO_ERROR;
+
+  bitlen = or_get_varbit_length (buf, &rc);
+
+  if (rc != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  /* Allocate storage for the string including the kludge NULL terminator */
+  charlen = BITS_TO_BYTES (bitlen);
+  new_ = db_private_alloc (NULL, charlen + 1);
+
+  if (new_ == NULL)
+    {
+      or_abort (buf);
+      return NULL;
+    }
+  rc = or_get_data (buf, new_, charlen);
+
+  if (rc == NO_ERROR)
+    {
+      /* return the length */
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = bitlen;
+	}
+
+      /* round up to a word boundary */
+      rc = or_get_align32 (buf);
+    }
+  if (rc != NO_ERROR)
+    {
+      if (new_)
+	{
+	  db_private_free_and_init (NULL, new_);
+	}
+      return NULL;
+    }
+
+  return new_;
+}
+#endif /* ENABLE_UNUSED_FUNCTION */
+
+/*
+ * or_put_varchar - put varchar to or buffer
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer
+ *    string(in): string to put into the or buffer
+ *    charlen(in): string length
+ */
+int
+or_put_varchar (OR_BUF * buf, char *string, int charlen)
+{
+  return or_put_varchar_internal (buf, string, charlen, CHAR_ALIGNMENT);
+}
+
+#if defined(ENABLE_UNUSED_FUNCTION)
+/*
+ * or_get_varchar - get varchar from or buffer
+ *    return: varchar pointer read from the or buffer. or NULL for error
+ *    buf(in/out): or buffer
+ *    length_ptr(out): length of returned string
+ */
+char *
+or_get_varchar (OR_BUF * buf, int *length_ptr)
+{
+  int rc = NO_ERROR;
+  int charlen;
+  char *new_;
+
+  charlen = or_get_varchar_length (buf, &rc);
+
+  if (rc != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  /* Allocate storage for the string including the kludge NULL terminator */
+  new_ = db_private_alloc (NULL, charlen + 1);
+
+  if (new_ == NULL)
+    {
+      or_abort (buf);
+      return NULL;
+    }
+  rc = or_get_data (buf, new_, charlen + 1);
+
+  if (rc == NO_ERROR)
+    {
+
+      /* return the length */
+      if (length_ptr != NULL)
+	{
+	  *length_ptr = charlen;
+	}
+
+      /* round up to a word boundary */
+      rc = or_get_align32 (buf);
+    }
+  if (rc != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, new_);
+      return NULL;
+    }
+  else
+    {
+      return new_;
+    }
+}
+#endif /* ENABLE_UNUSED_FUNCTION */
+
+static int
+or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
+{
+  int net_bitlen;
+  int bytelen;
+  char *start;
+  int status;
+  int valid_buf;
+  jmp_buf save_buf;
+
+  if (buf->error_abort)
+    {
+      memcpy (&save_buf, &buf->env, sizeof (save_buf));
+    }
+
+  valid_buf = buf->error_abort;
+  buf->error_abort = 1;
+  status = _setjmp (buf->env);
+
+  if (status == 0)
+    {
+      start = buf->ptr;
+      bytelen = BITS_TO_BYTES (bitlen);
+
+      /* store the size prefix */
+      if (bitlen < 0xFF)
+	{
+	  or_put_byte (buf, bitlen);
+	}
+      else
+	{
+	  or_put_byte (buf, 0xFF);
+	  OR_PUT_INT (&net_bitlen, bitlen);
+	  or_put_data (buf, (char *) &net_bitlen, OR_INT_SIZE);
+	}
+
+      /* store the string bytes */
+      or_put_data (buf, string, bytelen);
+
+      if (align == INT_ALIGNMENT)
+	{
+	  /* round up to a word boundary */
+	  or_put_align32 (buf);
+	}
+    }
+  else
+    {
+      if (valid_buf)
+	{
+	  memcpy (&buf->env, &save_buf, sizeof (save_buf));
+	  _longjmp (buf->env, status);
+	}
+    }
+
+  if (valid_buf)
+    {
+      memcpy (&buf->env, &save_buf, sizeof (save_buf));
+    }
+  else
+    {
+      buf->error_abort = 0;
+    }
+
+  if (status == 0)
+    {
+      return NO_ERROR;
+    }
+
+  return status;
+}
+
+static int
+or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
+{
+  int net_charlen = 0, compress_buffer_size;
+  char *compressed_string = NULL;
+  int rc = NO_ERROR;
+  bool compressable = false;
+  int compressed_length = 0;
+  int error_abort = 0;
+
+  error_abort = buf->error_abort;
+
+  buf->error_abort = 0;
+
+  /* store the size prefix */
+  if (charlen < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      rc = or_put_byte (buf, charlen);
+    }
+  else
+    {
+      rc = or_put_byte (buf, OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+      compressable = true;
+    }
+
+  if (rc != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  if (compressable == true)
+    {
+      if (!pr_Enable_string_compression || charlen > LZ4_MAX_INPUT_SIZE)	/* compression is not set */
+	{
+	  compressed_length = 0;
+	  goto after_compression;
+	}
+
+      assert (OR_IS_STRING_LENGTH_COMPRESSABLE (charlen));
+
+      /* Alloc memory for the compressed string */
+      compress_buffer_size = LZ4_compressBound (charlen);
+      compressed_string = (char *) malloc (compress_buffer_size);
+      if (compressed_string == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (compress_buffer_size));
+	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto cleanup;
+	}
+
+      /* Compress the string */
+      compressed_length = LZ4_compress_default (string, compressed_string, charlen, compress_buffer_size);
+      if (compressed_length <= 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_COMPRESS_FAIL, 4, FILEIO_ZIP_LZ4_METHOD,
+		  fileio_get_zip_method_string (FILEIO_ZIP_LZ4_METHOD), FILEIO_ZIP_LZ4_DEFAULT_LEVEL,
+		  fileio_get_zip_level_string (FILEIO_ZIP_LZ4_DEFAULT_LEVEL));
+	  rc = ER_IO_LZ4_COMPRESS_FAIL;
+	  goto cleanup;
+	}
+      assert (compressed_length <= compress_buffer_size);
+
+      if (compressed_length >= charlen - 8)
+	{
+	  /* Compression successful but its length exceeds the original length of the string. */
+	  compressed_length = 0;
+	}
+
+      /* Store the compression size */
+      assert (compressed_length < charlen - 8);
+    after_compression:
+      OR_PUT_INT (&net_charlen, compressed_length);
+      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      net_charlen = 0;
+      /* Store the uncompressed data size */
+      OR_PUT_INT (&net_charlen, charlen);
+      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      if (compressed_length == 0)
+	{
+	  /* Compression failed. */
+	  /* Store the original string bytes */
+	  rc = or_put_data (buf, string, charlen);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+      else
+	{
+	  /* Store the compressed string bytes */
+	  rc = or_put_data (buf, compressed_string, (int) compressed_length);
+	  if (rc != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+    }
+  else
+    {
+      /* No compression needed */
+      /* Store the string in its raw form */
+      rc = or_put_data (buf, string, charlen);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+  if (align == INT_ALIGNMENT)
+    {
+      /* kludge, temporary NULL terminator */
+      rc = or_put_byte (buf, 0);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      /* round up to a word boundary */
+      rc = or_put_align32 (buf);
+    }
+
+cleanup:
+
+  if (compressed_string != NULL)
+    {
+      free_and_init (compressed_string);
+    }
+
+  buf->error_abort = error_abort;
+
+  if (rc == ER_TF_BUFFER_OVERFLOW)
+    {
+      return or_overflow (buf);
+    }
+
+  return rc;
+}
+
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_length_binary - Calculates the number of bytes required for the disk
  * representaion of binary data.
@@ -2837,90 +1135,88 @@ or_length_binary (DB_BINARY * binary)
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /*
- * or_pad - This advances the translation pointer and adds bytes of zero.
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    length(in): number of bytes to pad
+ * or_length_string - returns the number of bytes required to hold the disk
+ * representation of a string
+ *    return: number of bytes needed or 0 for error
+ *    string(in): string for calculation
  *
  * Note:
- *    This advances the translation pointer and adds bytes of zero.
- *    This is used add padding bytes to ensure proper alignment of
- *    some data types.
+ * This will include any padding bytes up to 4 byte boundary
  */
 int
-or_pad (OR_BUF * buf, int length)
+or_length_string (char *string)
 {
-  if ((buf->ptr + length) > buf->endptr)
+  int len, bits;
+
+  len = 0;
+  if (string != NULL)
     {
-      return (or_overflow (buf));
+      len = strlen (string) + 1;
+      bits = len & 3;
+      if (bits)
+	{
+	  len += 4 - bits;
+	}
     }
-  else
-    {
-      (void) memset (buf->ptr, 0, length);
-      buf->ptr += length;
-    }
-  return NO_ERROR;
+  return len;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * or_advance - This advances the translation pointer
+ * or_put_varbit - put varbit into or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
- *    offset(in): number of bytes to skip
+ *    string(in): string contains varbit value
+ *    bitlen(in): length of varbit
  */
 int
-or_advance (OR_BUF * buf, int offset)
+or_packed_put_varbit (OR_BUF * buf, const char *string, int bitlen)
 {
-  if ((buf->ptr + offset) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      buf->ptr += offset;
-      return NO_ERROR;
-    }
+  return or_put_varbit_internal (buf, string, bitlen, INT_ALIGNMENT);
 }
 
 /*
- * or_seek - This sets the translation pointer directly to a certain byte in
- * the buffer.
- *    return: ERROR_SUCCESS or error code
+ * or_packed_varbit_length - returns packed varbit length of or buffer encoding
+ *    return: packed varbit encoding length
+ *    bitlen(in): varbit length
+ */
+int
+or_packed_varbit_length (int bitlen)
+{
+  return or_varbit_length_internal (bitlen, INT_ALIGNMENT);
+}
+
+/*
+ * or_packed_put_varchar - put varchar to or buffer
+ *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
- *    psn(in): position within buffer
+ *    string(in): string to put into the or buffer
+ *    charlen(in): string length
  */
 int
-or_seek (OR_BUF * buf, int psn)
+or_packed_put_varchar (OR_BUF * buf, char *string, int charlen)
 {
-  if ((buf->buffer + psn) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      buf->ptr = buf->buffer + psn;
-    }
-  return NO_ERROR;
+  return or_put_varchar_internal (buf, string, charlen, INT_ALIGNMENT);
 }
 
 /*
- * or_align () - Align current buffer pointer to given alignment.
- *
- * return	 : Error code.
- * buf (in/out)	 : Buffer.
- * alignment (in) : Desired alignment.
+ * or_packed_varchar_length - returns length of place holder that can contain
+ * package varchar length. Also ajust length up to 4 byte boundary.
+ *    return: length of placeholder that can contain packed varchar length
+ *    charlen(in): varchar length
  */
 int
-or_align (OR_BUF * buf, int alignment)
+or_packed_varchar_length (int charlen)
 {
-  char *new_ptr = PTR_ALIGN (buf->ptr, alignment);
-  if (new_ptr > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  buf->ptr = new_ptr;
-  return NO_ERROR;
+  return or_varchar_length_internal (charlen, INT_ALIGNMENT);
+}
+
+int
+or_packed_recdesc_length (int length)
+{
+  return OR_INT_SIZE * 2 + or_packed_stream_length (length);
 }
 
 /*
@@ -3041,12 +1337,6 @@ or_get_var_table_internal (OR_BUF * buf, int nvars, char *(*allocator) (int), in
 
 /*
  * COMMUNICATION BUFFER PACK/UNPACK FUNCTIONS
- */
-
-
-/*
- * NUMERIC DATA TYPE TRANSLATORS
- *    Translators for the numeric data types int, short, errcode, lock...
  */
 
 /*
@@ -3249,7 +1539,7 @@ or_pack_float (char *ptr, float number)
 {
   ASSERT_ALIGN (ptr, FLOAT_ALIGNMENT);
 
-  OR_PUT_FLOAT (ptr, &number);
+  OR_PUT_FLOAT (ptr, number);
   return (ptr + OR_FLOAT_SIZE);
 }
 
@@ -3280,7 +1570,7 @@ or_pack_double (char *ptr, double number)
 {
   ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
 
-  OR_PUT_DOUBLE (ptr, &number);
+  OR_PUT_DOUBLE (ptr, number);
   return (ptr + OR_DOUBLE_SIZE);
 }
 
@@ -3717,7 +2007,7 @@ or_unpack_btid (char *ptr, BTID * btid)
  *    lsa(in): LOG_LSA value
  */
 char *
-or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
+or_pack_log_lsa (const char *ptr, const log_lsa * lsa)
 {
   char *new_;
 
@@ -3749,7 +2039,7 @@ or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
  *    lsa(out): LOG_LSA value
  */
 char *
-or_unpack_log_lsa (char *ptr, LOG_LSA * lsa)
+or_unpack_log_lsa (char *ptr, log_lsa * lsa)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
@@ -3765,7 +2055,7 @@ or_unpack_log_lsa (char *ptr, LOG_LSA * lsa)
  *    domain(in): domain of the set (can be NULL)
  */
 char *
-or_unpack_set (char *ptr, SETOBJ ** set, TP_DOMAIN * domain)
+or_unpack_set (char *ptr, setobj ** set, TP_DOMAIN * domain)
 {
   OR_BUF orbuf;
 
@@ -4131,6 +2421,41 @@ or_packed_string_length (const char *string, int *strlenp)
 }
 
 /*
+ * or_packed_json_schema_length - Determines the number of bytes required to hold
+ * the packed representation of a json_schema.
+ *    return: length of packed json_schema
+ *    json_schema(in): json_schema
+ */
+static int
+or_packed_json_schema_length (const char *json_schema)
+{
+  DB_VALUE val;
+  db_make_string (&val, json_schema);
+
+  int len = tp_String.get_disk_size_of_value (&val);
+
+  pr_clear_value (&val);
+
+  return len;
+}
+
+/*
+ * or_packed_json_validator_length - Determines the number of bytes required to hold
+ * the packed representation of a json_validator.
+ *    return: length of packed json_validator
+ *    json_validator(in): json_validator
+ */
+static int
+or_packed_json_validator_length (JSON_VALIDATOR * json_validator)
+{
+  if (json_validator == NULL)
+    {
+      return 0;
+    }
+  return or_packed_json_schema_length (db_json_get_schema_raw_from_validator (json_validator));
+}
+
+/*
  * or_packed_stream_length - Determines the number of bytes required to hold
  * the packed representation of a stream.
  *    return: length of packed stream
@@ -4431,7 +2756,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_NUMERIC:
 	  precision = d->precision;
 	  scale = d->scale;
-	  /* 
+	  /*
 	   * Safe guard for floating precision caused by incorrect type setting
 	   */
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
@@ -4446,9 +2771,10 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_VARCHAR:
 	  /* collation id */
 	  size += OR_INT_SIZE;
+	  /* FALLTHRU */
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  /* 
+	  /*
 	   * Hack, if the precision is -1, it is a special value indicating
 	   * either the maximum precision for the varying types or a floating
 	   * precision for the fixed types.
@@ -4458,7 +2784,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	      precision = d->precision;
 	    }
 
-	  /* 
+	  /*
 	   * Kludge, for temporary backward compatibility, treat varchar
 	   * types with the maximum precision as above. Need to change ourselves
 	   * to use -1 consistently for this after which this little
@@ -4489,10 +2815,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  break;
 
 	case DB_TYPE_JSON:
-	  if (d->json_validator != NULL)
-	    {
-	      size += or_packed_string_length (db_json_get_schema_raw_from_validator (d->json_validator), NULL);
-	    }
+	  size += or_packed_json_validator_length (d->json_validator);
 	  break;
 
 	default:
@@ -4545,7 +2868,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
   int rc = NO_ERROR;
   unsigned int collation_storage;
 
-  /* 
+  /*
    * Hack, if this is a built-in domain, store a single word reference.
    * This is only allowed for the top level domain.
    * Note that or_unpack_domain is probably not going to do the right
@@ -4571,7 +2894,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
       id = TP_DOMAIN_TYPE (d);
 
-      /* 
+      /*
        * Initial word has type, precision, scale, & codeset to the extent that
        * they will fit.  High bit of the type byte is set if there
        * is another domain following this one. (e.g. for set or union domains).
@@ -4624,7 +2947,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  /* handle all precisions the same way at the end */
 	  precision = d->precision;
-	  /* 
+	  /*
 	   * Safe guard for floating precision caused by incorrect type setting
 	   */
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
@@ -4638,11 +2961,12 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  has_collation = true;
+	  /* FALLTHRU */
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  carrier |= ((int) (d->codeset)) << OR_DOMAIN_CODSET_SHIFT;
 
-	  /* 
+	  /*
 	   * Hack, if the precision is our special maximum/floating indicator,
 	   * store a zero in the precision field of the carrier.
 	   */
@@ -4651,7 +2975,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      precision = d->precision;
 	    }
 
-	  /* 
+	  /*
 	   * Kludge, for temporary backward compatibility, treat varchar
 	   * types with the maximum precision as the -1 case.  See commentary
 	   * in or_packed_domain_size above.
@@ -4666,7 +2990,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
 	case DB_TYPE_OBJECT:
 	case DB_TYPE_OID:
-	  /* 
+	  /*
 	   * If the include_classoids argument was specified, set a flag in the
 	   * disk representation indicating the presence of the class oids.
 	   * This isn't necessary when the domain is used for value tagging
@@ -4684,7 +3008,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_SEQUENCE:
 	case DB_TYPE_TABLE:
 	case DB_TYPE_MIDXKEY:
-	  /* 
+	  /*
 	   * we need to recursively store the sub-domains following this one,
 	   * since sets can have empty domains we need a flag to indicate this.
 	   */
@@ -4819,7 +3143,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	}
 
-      /* 
+      /*
        * Recurse on the sub domains if necessary, note that we don't
        * pass the NULL bit down here because that applies only to the
        * top level domain.
@@ -4880,7 +3204,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
       if (type == DB_TYPE_NULL && (carrier & OR_DOMAIN_BUILTIN_FLAG))
 	{
 	  index = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
-	  /* 
+	  /*
 	   * Recall that the builtin domain indexes are 1 based rather
 	   * than zero based, must adjust prior to indexing the table.
 	   */
@@ -4945,6 +3269,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      has_collation = true;
+	      /* FALLTHRU */
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
 	      codeset = (carrier & OR_DOMAIN_CODSET_MASK) >> OR_DOMAIN_CODSET_SHIFT;
@@ -5127,7 +3452,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * Recurse to get set sub-domains if there are any, note that
 	   * we don't pass the is_null flag down here since NULLness only
 	   * applies to the top level domain.
@@ -5263,6 +3588,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_DATETIMELTZ:
 	    case DB_TYPE_MONETARY:
 	      precision = tp_get_fixed_precision (type);
+	      /* FALLTHRU */
 
 	    case DB_TYPE_NULL:
 	    case DB_TYPE_BLOB:
@@ -5318,6 +3644,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		{
 		  collation_flag = TP_DOMAIN_COLL_NORMAL;
 		}
+	      /* FALLTHRU */
 
 	    case DB_TYPE_BIT:
 	    case DB_TYPE_VARBIT:
@@ -5334,7 +3661,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      if (precision == 0)
 		{
-		  /* 
+		  /*
 		   * Kludge, restore maximum precision for the types that
 		   * aren't yet prepared for a -1.  This can be removed
 		   * eventually, see commentary in the or_put_domain.
@@ -5506,6 +3833,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
 		  dom->collation_flag = (TP_DOMAIN_COLL_ACTION) collation_flag;
+		  /* FALLTHRU */
 		case DB_TYPE_BIT:
 		case DB_TYPE_VARBIT:
 		  dom->codeset = codeset;
@@ -5719,7 +4047,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
   int homogeneous;
 
 
-  /* 
+  /*
    * A set can be of fixed width only if the domain is fully specified and there
    * is only one fixed width data type in the set.
    * Note that for "attached" sets that may be fixed width, the domain must
@@ -5727,7 +4055,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
    * and assume its a variable width set.
    */
 
-  /* 
+  /*
    * might only need bother with offset tables if this is an indexable
    * sequence ?
    */
@@ -5765,7 +4093,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
       *offset_table = 1;
     }
 
-  /* 
+  /*
    * Determine if we need to tag each value with its domain.
    * Normally, one would tag the elements if the domain is being excluded
    * from the set, but we'll allow it and assume that it will be passed
@@ -5773,7 +4101,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
    */
   *element_tags = !homogeneous;	/* || !include_domain */
 
-  /* 
+  /*
    * If we have to have element tags, then don't bother with a bound
    * bit array.
    */
@@ -5940,7 +4268,7 @@ or_skip_set_header (OR_BUF * buf)
  *    don't pack the class OIDs of object domains.
  */
 int
-or_packed_set_length (SETOBJ * set, int include_domain)
+or_packed_set_length (setobj * set, int include_domain)
 {
   DB_VALUE *value = NULL;
   int len, element_size, bound_bits, offset_table, element_tags, i, bits;
@@ -5979,7 +4307,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
       len += or_packed_domain_size (set_domain, 0);
     }
 
-  /* 
+  /*
    * If we have a non-tagged fixed width set, can calculate the size without
    * mapping over the values.
    */
@@ -5995,7 +4323,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
 	  error = setobj_get_element_ptr (set, i, &value);
 
 	  /* Second argument indicates whether to "collapse_null" values into nothing.  - can do this only if there is
-	   * an offset table. Third argument indicates whether or not to include the domain which - we do if the values 
+	   * an offset table. Third argument indicates whether or not to include the domain which - we do if the values
 	   * are tagged. Fourth argument indicates the desire to pack class OIDs which we never do since these are tag
 	   * domains. */
 	  len += or_packed_value_size (value, offset_table, element_tags, 0);
@@ -6029,7 +4357,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
  *    include_domain(in): non-zero to store full set domain too
  */
 void
-or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
+or_put_set (OR_BUF * buf, setobj * set, int include_domain)
 {
   DB_VALUE *value = NULL;
   unsigned int bound_word;
@@ -6103,7 +4431,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 	{
 	  error = setobj_get_element_ptr (set, i, &value);
 
-	  /* 
+	  /*
 	   * make an entry in the offset table or bound bit array if we
 	   * have them
 	   */
@@ -6133,7 +4461,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * Write the value.  Be careful with NULLs in fixed width sets, need
 	   * to leave space.
 	   */
@@ -6141,7 +4469,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 
 	  if (bound_ptr != NULL && is_null)
 	    {
-	      /* 
+	      /*
 	       * Could just use or_advance here but lets be nice and
 	       * zero out the space for debugging.
 	       */
@@ -6204,7 +4532,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
  *    stored values of attributes since we can always get the correct
  *    domain by looking in the catalog.
  */
-SETOBJ *
+setobj *
 or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 {
   SETOBJ *set;
@@ -6232,7 +4560,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
       return NULL;
     }
 
-  /* 
+  /*
    * If a domain was supplied, stick it in the set, probably should do a
    * sanity check in this and the doamin stored in the set.  The domain
    * MUST be passed if the set was packed with the "include_domain" domain
@@ -6265,7 +4593,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
        * Might want to check this here. */
     }
 
-  /* 
+  /*
    * Calculate the length of the fixed width elements if that's what we have.
    * This looks like it should be a little utilitiy function.
    */
@@ -6321,13 +4649,13 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * 8 element_size will now be 0 if NULL, the true size, or -1 if * variable or unknown. */
 
 	  /* Read the element. */
 	  if (element_size == 0)
 	    {
-	      /* 
+	      /*
 	       * we have to initlaize the domain too, since a set can
 	       * have several possible domains, just pick the first one.
 	       * Actually,for wildcard sets, we won't have a domain to select.
@@ -6336,7 +4664,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	       */
 	      db_value_domain_init (&value, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	      db_make_null (&value);
-	      /* 
+	      /*
 	       * if this is a fixed width element array, skip over the null
 	       * data
 	       */
@@ -6347,7 +4675,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * read a packed value, pass the domain only if the
 	       * values are not tagged already tagged.
 	       */
@@ -6361,7 +4689,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * This setobj interface function passes "ownership" of the memory
 	   * of value to the set. value need not be cleared after this call,
 	   * as its internal memory pointers are copied directly to the set
@@ -6445,7 +4773,7 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
       set_domain = or_get_domain (buf, set_domain, NULL);
     }
 
-  /* 
+  /*
    * Calculate the length of the fixed width elements if that's what we have.
    * This looks like it should be a little utilitiy function.
    */
@@ -6499,19 +4827,19 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * element_size will now be 0 if NULL, the true size, or -1 if
 	   * variable or unknown.
 	   */
 
-	  /* 
+	  /*
 	   * Skip the element, we may have to actually unpack the element
 	   * to do this (if the size is variable), but no storage should be
 	   * allocated.
 	   */
 	  if (element_size == 0)
 	    {
-	      /* 
+	      /*
 	       * if this is a fixed width element array, skip over the null
 	       * data
 	       */
@@ -6571,7 +4899,7 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
  *    include_domain_classoids(in): non-zero to include the domain class OIDs
  */
 int
-or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
+or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
 {
   PR_TYPE *type;
   TP_DOMAIN *domain;
@@ -6584,7 +4912,7 @@ or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, i
     }
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   if (type == NULL)
     {
@@ -6623,14 +4951,7 @@ or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, i
 	      return size;
 	    }
 	}
-      if (type->data_lengthval == NULL)
-	{
-	  size += type->disksize;
-	}
-      else
-	{
-	  size += (*(type->data_lengthval)) (value, 1);
-	}
+      size += type->get_disk_size_of_value (value);
     }
 
   /* Values must as a unit be aligned to a word boundary.  We can't do this inside the writeval function because that
@@ -6672,7 +4993,7 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
     }
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   if (type == NULL)
     {
@@ -6716,11 +5037,11 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
       /* probably should blow off writing the value if we couldn't determine the domain ? */
       if (rc == NO_ERROR)
 	{
-	  rc = (*(type->data_writeval)) (buf, value);
+	  rc = type->data_writeval (buf, value);
 	}
     }
 
-  /* 
+  /*
    * Values must as a unit be aligned to a word boundary.  We can't do this
    * inside the writeval function becaue that may be used to place data inside
    * disk structures that don't have alignment requirements.
@@ -6775,7 +5096,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
   is_null = 0;
   start = buf->ptr;
 
-  /* 
+  /*
    * Always make sure this is properly initialized.
    * If the domain is given here, we could use that for further initialization ?
    */
@@ -6790,7 +5111,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * If a domain was supplied, use it to decode the value, otherwise we
    * assume that the vlaues must be tagged.
    */
@@ -6842,12 +5163,12 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	{
 	  if (value)
 	    {
-	      (*(domain->type->data_readval)) (buf, value, domain, expected, copy, NULL, 0);
+	      domain->type->data_readval (buf, value, domain, expected, copy, NULL, 0);
 	    }
 	  else
 	    {
 	      /* the NULL value, will cause readval to skip the value */
-	      (*(domain->type->data_readval)) (buf, NULL, domain, expected, false, NULL, 0);
+	      domain->type->data_readval (buf, NULL, domain, expected, false, NULL, 0);
 	    }
 
 	  if (rc != NO_ERROR)
@@ -6931,7 +5252,7 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
   ptr_to_packed_value = buf->ptr;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
   if (type == NULL)
     {
       return NULL;
@@ -6967,7 +5288,7 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
       if (rc == NO_ERROR)
 	{
 	  or_get_align64 (buf);
-	  rc = (*(type->data_writeval)) (buf, value);
+	  rc = type->data_writeval (buf, value);
 	}
     }
 
@@ -7002,12 +5323,12 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
  *    details.
  */
 char *
-or_unpack_value (char *buf, DB_VALUE * value)
+or_unpack_value (const char *buf, DB_VALUE * value)
 {
   OR_BUF orbuf;
 
   buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
-  or_init (&orbuf, buf, 0);
+  or_init (&orbuf, CONST_CAST (char *, buf) /* it is for read */ , 0);
   or_get_value (&orbuf, value, NULL, -1, true);
 
   return orbuf.ptr;
@@ -7052,7 +5373,7 @@ or_unpack_mem_value (char *ptr, DB_VALUE * value)
     }
   else
     {
-      rc = (*(domain->type->data_readval)) (buf, value, domain, -1, true, NULL, 0);
+      rc = domain->type->data_readval (buf, value, domain, -1, true, NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  return NULL;
@@ -7108,8 +5429,7 @@ or_pack_listid (char *ptr, void *listid_ptr)
   OR_PUT_PTR (ptr, listid->tfile_vfid);
   ptr += OR_PTR_SIZE;
 
-  OR_PUT_INT (ptr, listid->tuple_cnt);
-  ptr += OR_INT_SIZE;
+  ptr = or_pack_int64 (ptr, listid->tuple_cnt);
 
   OR_PUT_INT (ptr, listid->page_cnt);
   ptr += OR_INT_SIZE;
@@ -7179,7 +5499,7 @@ or_unpack_recdes (char *buf, RECDES ** recdes)
  *    Kludge, the arguments are passed in as void* so we can avoid
  *    unfortunate circular dependencies between query_list.h and or.h
  *    query_list.h is included at the top of this file so we have the
- *    information necesary for casting.
+ *    information necessary for casting.
  */
 char *
 or_unpack_listid (char *ptr, void *listid_ptr)
@@ -7196,8 +5516,7 @@ or_unpack_listid (char *ptr, void *listid_ptr)
   listid->tfile_vfid = (struct qmgr_temp_file *) OR_GET_PTR (ptr);
   ptr += OR_PTR_SIZE;
 
-  listid->tuple_cnt = OR_GET_INT (ptr);
-  ptr += OR_INT_SIZE;
+  ptr = or_unpack_int64 (ptr, &listid->tuple_cnt);
 
   listid->page_cnt = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
@@ -7236,8 +5555,8 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
   QFILE_LIST_ID *listid;
   int count, i;
 
-  /* 
-   * tuple_cnt 4, vfid.fileid 4, vfid.volid 2, attr_list.oid_flg 2,
+  /*
+   * tuple_cnt 8, vfid.fileid 4, vfid.volid 2, attr_list.oid_flg 2,
    * attr_list.attr_cnt 4, attr_list.attr_id 4 * n
    */
 
@@ -7310,16 +5629,21 @@ or_listid_length (void *listid_ptr)
       return length;
     }
 
-  /* QFILE_LIST_ID 9 fixed item tuple_cnt page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid 
+  length = OR_PTR_SIZE /* query_id */  + OR_PTR_SIZE;	/* tfile_vfid */
+
+  /* aligned length for tuple_count (INT64, 8) */
+  length = DB_ALIGN (length, MAX_ALIGNMENT);	// aligned offset
+  length += OR_INT64_SIZE;
+
+  /* 8 fixed item page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
    * last_offset lasttpl_len type_list_type_cnt */
-  length = OR_INT_SIZE * 9;
+  length += OR_INT_SIZE * 8;
 
   for (i = 0; i < listid->type_list.type_cnt; i++)
     {
       length += or_packed_domain_size (listid->type_list.domp[i], 0);
     }
 
-  length += OR_PTR_SIZE /* query_id */  + OR_PTR_SIZE;	/* tfile_vfid */
   return length;
 }
 
@@ -7350,6 +5674,56 @@ or_pack_method_sig (char *ptr, void *method_sig_ptr)
     {
       ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
     }
+
+  return ptr;
+}
+
+/*
+ * or_pack_key_val_range - packs a KEY VALUE RANGE.
+ *    return: advanced buffer pointer
+ *    ptr(out): starting pointer
+ *    key_val_range(in):  key value range pointer
+ */
+char *
+or_pack_key_val_range (char *ptr, const void *key_val_range_ptr)
+{
+  KEY_VAL_RANGE *key_val_range = (KEY_VAL_RANGE *) key_val_range_ptr;
+
+  if (key_val_range == NULL)
+    {
+      return ptr;
+    }
+
+  ptr = or_pack_int (ptr, (int) key_val_range->range);
+  ptr = or_pack_int (ptr, key_val_range->num_index_term);
+  ptr = or_pack_int (ptr, (int) key_val_range->is_truncated);
+  ptr = or_pack_db_value (ptr, &key_val_range->key1);
+  ptr = or_pack_db_value (ptr, &key_val_range->key2);
+
+  return ptr;
+}
+
+/*
+ * or_unpack_key_val_array - unpacks a KEY_VAL_RANGE descriptor from a buffer.
+ *    return: advanced buffer pointer
+ *    ptr(in): starting pointer
+ *    n(in):
+ */
+char *
+or_unpack_key_val_range (char *ptr, void *key_val_range_ptr)
+{
+  KEY_VAL_RANGE *key_val_range = (KEY_VAL_RANGE *) key_val_range_ptr;
+
+  if (key_val_range == (KEY_VAL_RANGE *) 0)
+    {
+      return NULL;
+    }
+
+  ptr = or_unpack_int (ptr, (int *) &key_val_range->range);
+  ptr = or_unpack_int (ptr, &key_val_range->num_index_term);
+  ptr = or_unpack_int (ptr, (int *) &key_val_range->is_truncated);
+  ptr = or_unpack_db_value (ptr, &key_val_range->key1);
+  ptr = or_unpack_db_value (ptr, &key_val_range->key2);
 
   return ptr;
 }
@@ -7568,7 +5942,7 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, DB_GET_ENUM_ELEM_STRING (db_enum),
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       LANG_GET_BINARY_COLLATION (DB_GET_ENUM_ELEM_CODESET (db_enum)));
-      size += (*(tp_String.data_lengthval)) (&value, 1);
+      size += tp_String.get_disk_size_of_value (&value);
       pr_clear_value (&value);
     }
 
@@ -7604,7 +5978,7 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, DB_GET_ENUM_ELEM_STRING (db_enum),
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       enumeration->collation_id);
-      rc = (*(tp_String.data_writeval)) (buf, &value);
+      rc = tp_String.data_writeval (buf, &value);
       pr_clear_value (&value);
 
       if (rc != NO_ERROR)
@@ -7628,7 +6002,8 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
   DB_ENUM_ELEMENT *enum_vals = NULL, *db_enum = NULL;
   int idx = 0, count = 0, error = NO_ERROR;
   DB_VALUE value;
-  char *enum_str = NULL, *value_str;
+  char *enum_str = NULL;
+  const char *value_str = NULL;
   int str_size = 0;
   LANG_COLLATION *lc;
 
@@ -7664,13 +6039,13 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
       /* enum values are indexed starting with 1 */
       db_enum->short_val = idx + 1;
 
-      /* 
+      /*
        * Make sure this starts off initialized so "readval" won't try to free
        * any existing contents.
        */
       db_make_null (&value);
 
-      error = (*(tp_String.data_readval)) (buf, &value, NULL, -1, false, NULL, 0);
+      error = tp_String.data_readval (buf, &value, NULL, -1, false, NULL, 0);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -7987,62 +6362,6 @@ or_unpack_ptr (char *ptr, UINTPTR * ptrval)
 /*
  * MVCCID:
  */
-/*
- * or_put_mvccid () - Put an MVCCID to OR Buffer.
- *
- * return      : Error code.
- * buf (in)    : OR Buffer
- * mvccid (in) : MVCCID
- */
-int
-or_put_mvccid (OR_BUF * buf, MVCCID mvccid)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_MVCCID (buf->ptr, &mvccid);
-      buf->ptr += OR_MVCCID_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_mvccid - get bigint value from or buffer
- *    return: bigint value read
- *    buf(in/out): or buffer
- *    error(out): NO_ERROR or error code
- */
-/*
- * or_get_mvccid () - Get an MVCCID from OR Buffer.
- *
- * return	: MVCCID
- * buf (in/out) : OR Buffer.
- * error (out)  : Error code.
- */
-int
-or_get_mvccid (OR_BUF * buf, MVCCID * mvccid)
-{
-  assert (mvccid != NULL);
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  *mvccid = MVCCID_NULL;
-
-  if ((buf->ptr + OR_MVCCID_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_MVCCID (buf->ptr, mvccid);
-      buf->ptr += OR_MVCCID_SIZE;
-    }
-  return NO_ERROR;
-}
 
 /*
  * or_pack_mvccid () - Pack an MVCCID at the give pointer.
@@ -8126,274 +6445,6 @@ or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
   OR_GET_SHA1 (ptr, sha1);
   return ptr + OR_SHA1_SIZE;
 }
-
-/*
- * or_mvcc_set_prev_version_lsa () - Set MVCC prev version LSA
- *
- * return	      : error code 
- * buf (in/out)	      : or buffer
- * mvcc_rec_header(in): MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
-{
-  assert (buf != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (!(mvcc_rec_header->mvcc_flag & OR_MVCC_FLAG_VALID_PREV_VERSION))
-    {
-      return NO_ERROR;
-    }
-
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-
-  memcpy (buf->ptr, &mvcc_rec_header->prev_version_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
-  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
-
-  return NO_ERROR;
-}
-
-/*
- * or_mvcc_get_prev_version_lsa () - Get MVCC prev version LSA from buffer
- *
- * return	        : error code 
- * buf (in)	        : or buffer
- * mvcc_flags(in)       : header mvcc flags
- * prev_version_lsa(out): the LSA to previous version
- * mvcc_rec_header(in)  : MVCC record header
- */
-STATIC_INLINE int
-or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
-{
-  assert (buf != NULL);
-
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
-    {
-      LSA_SET_NULL (prev_version_lsa);
-      return NO_ERROR;
-    }
-
-  if ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
-    {
-      return (or_underflow (buf));
-    }
-
-  *prev_version_lsa = *(LOG_LSA *) buf->ptr;
-  buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
-
-  return NO_ERROR;
-}
-
-/*
- * or_mvcc_set_log_lsa_to_record () - Sets the previus version LSA in record header. 
- *			    Assumes the previous version lsa is allocated in header
- *
- * return		 : error_code
- * record (in/out)	 : record 
- * lsa (in) : lsa to be set
- */
-int
-or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa)
-{
-  int mvcc_flags = or_mvcc_get_flag (record);
-  int lsa_offset = -1;
-
-  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_PREV_VERSION))
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  if (record == NULL || lsa == NULL)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  lsa_offset = (OR_REP_OFFSET + OR_MVCC_REP_SIZE + OR_INT_SIZE
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_INSID) ? OR_MVCCID_SIZE : 0)
-		+ (((mvcc_flags) & OR_MVCC_FLAG_VALID_DELID) ? OR_MVCCID_SIZE : 0));
-
-  memcpy (record->data + lsa_offset, lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);
-
-  return NO_ERROR;
-}
-
-/*
- * LITTLE ENDIAN TRANSFORMATION FUNCTIONS
- */
-
-/*
- * little endian support functions.
- * Could just leave these in all the time.
- * Try to speed these up, consider making them inline.
- *
- */
-#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-
-#if !defined (OR_HAVE_NTOHS)
-unsigned short
-ntohs (unsigned short from)
-{
-  unsigned short to;
-  char *ptr, *vptr;
-
-  ptr = (char *) &from;
-  vptr = (char *) &to;
-  vptr[0] = ptr[1];
-  vptr[1] = ptr[0];
-
-  return to;
-}
-#endif /* !OR_HAVE_NTOHS */
-
-#if !defined (OR_HAVE_NTOHL)
-unsigned int
-ntohl (unsigned int from)
-{
-  unsigned int to;
-  char *ptr, *vptr;
-
-  ptr = (char *) &from;
-  vptr = (char *) &to;
-  vptr[0] = ptr[3];
-  vptr[1] = ptr[2];
-  vptr[2] = ptr[1];
-  vptr[3] = ptr[0];
-
-  return to;
-}
-#endif /* !OR_HAVE_NTOHL */
-
-#if !defined (OR_HAVE_NTOHF)
-float
-ntohf (UINT32 from)
-{
-  char *ptr, *vptr;
-  float to;
-
-  ptr = (char *) &from;
-  vptr = (char *) &to;
-  vptr[0] = ptr[3];
-  vptr[1] = ptr[2];
-  vptr[2] = ptr[1];
-  vptr[3] = ptr[0];
-
-  return to;
-}
-#endif /* !OR_HAVE_NTOHF */
-
-#if !defined (OR_HAVE_NTOHD)
-double
-ntohd (UINT64 from)
-{
-  char *ptr, *vptr;
-  double to;
-
-  ptr = (char *) &from;
-  vptr = (char *) &to;
-  vptr[0] = ptr[7];
-  vptr[1] = ptr[6];
-  vptr[2] = ptr[5];
-  vptr[3] = ptr[4];
-  vptr[4] = ptr[3];
-  vptr[5] = ptr[2];
-  vptr[6] = ptr[1];
-  vptr[7] = ptr[0];
-
-  return to;
-}
-#endif /* !OR_HAVE_NTOHD */
-
-UINT64
-ntohi64 (UINT64 from)
-{
-  UINT64 to;
-  char *ptr, *vptr;
-
-  ptr = (char *) &from;
-  vptr = (char *) &to;
-  vptr[0] = ptr[7];
-  vptr[1] = ptr[6];
-  vptr[2] = ptr[5];
-  vptr[3] = ptr[4];
-  vptr[4] = ptr[3];
-  vptr[5] = ptr[2];
-  vptr[6] = ptr[1];
-  vptr[7] = ptr[0];
-
-  return to;
-}
-
-#if !defined (OR_HAVE_HTONS)
-unsigned short
-htons (unsigned short from)
-{
-  return ntohs (from);
-}
-#endif /* !OR_HAVE_HTONS */
-
-#if !defined (OR_HAVE_HTONL)
-unsigned int
-htonl (unsigned int from)
-{
-  return ntohl (from);
-}
-#endif /* !OR_HAVE_HTONL */
-
-UINT64
-htoni64 (UINT64 from)
-{
-  return ntohi64 (from);
-}
-
-#if !defined (OR_HAVE_HTONF)
-UINT32
-htonf (float from)
-{
-  UINT32 to;
-  char *p, *q;
-
-  p = (char *) &from;
-  q = (char *) &to;
-
-  q[0] = p[3];
-  q[1] = p[2];
-  q[2] = p[1];
-  q[3] = p[0];
-
-  return to;
-}
-#endif /* !OR_HAVE_HTONL */
-
-#if !defined (OR_HAVE_HTOND)
-UINT64
-htond (double from)
-{
-  UINT64 to;
-  char *p, *q;
-
-  p = (char *) &from;
-  q = (char *) &to;
-
-  q[0] = p[7];
-  q[1] = p[6];
-  q[2] = p[5];
-  q[3] = p[4];
-  q[4] = p[3];
-  q[5] = p[2];
-  q[6] = p[1];
-  q[7] = p[0];
-
-  return to;
-}
-#endif /* ! OR_HAVE_HTOND */
-
-#endif /* OR_BYTE_ORDER == OR_LITTLE_ENDIAN */
 
 /*
  * or_packed_spacedb_size () - compute the size required to pack all space info
@@ -8571,36 +6622,6 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
 }
 
 /*
- *  this function also adds
- *  the length of the string to the buffer
- */
-int
-or_put_string_aligned_with_length (OR_BUF * buf, const char *str)
-{
-  int len;
-  int rc = NO_ERROR;
-
-  if (str == NULL)
-    {
-      return rc;
-    }
-  len = (int) strlen (str) + 1;
-
-  rc = or_put_int (buf, len);
-  if (rc != NO_ERROR)
-    {
-      return rc;
-    }
-
-  rc = or_put_data (buf, str, len);
-  if (rc == NO_ERROR)
-    {
-      or_align (buf, OR_INT_SIZE);
-    }
-  return rc;
-}
-
-/*
  * classobj_initialize_default_expr() - Initializes default expression
  *   return: nothing
  *
@@ -8669,7 +6690,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
-  rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL, 0);
+  rc = tp_String.data_readval (buf, &schema_value, NULL, -1, false, NULL, 0);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -8702,10 +6723,10 @@ or_put_json_schema (OR_BUF * buf, const char *schema)
     }
   else
     {
-      db_make_string_by_const_str (&schema_raw, schema);
+      db_make_string (&schema_raw, schema);
     }
 
-  rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
+  rc = tp_String.data_writeval (buf, &schema_raw);
   if (rc != NO_ERROR)
     {
       goto exit;

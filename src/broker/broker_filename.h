@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -33,16 +32,22 @@
 #define APPL_SERVER_CAS_ORACLE_NAME     "cub_cas_oracle"
 #define APPL_SERVER_CAS_MYSQL51_NAME    "cub_cas_mysql51"
 #define APPL_SERVER_CAS_MYSQL_NAME      "cub_cas_mysql"
+#define APPL_SERVER_CAS_CGW_NAME        "cub_cas_cgw"
 
 #define NAME_BROKER			"Tbroker"
 #define NAME_PROXY			"cub_proxy"
 #define NAME_CAS_BROKER			"cub_broker"
+#define NAME_CAS_GATEWAY		"cub_gateway"
 #if defined(WINDOWS)
 #define NAME_CAS_BROKER2		"Cbroker2"
 #define NAME_UC_SHM			"broker_shm"
 #endif
 
+#if defined(FOR_ODBC_GATEWAY)
+#define CUBRID_BASE_DIR                 "log/gateway/"
+#else
 #define CUBRID_BASE_DIR                 "log/broker/"
+#endif
 
 #ifdef DISPATCHER
 #define ERROR_MSG_FILE			"uw_er.msg"
@@ -51,12 +56,19 @@
 #define BROKER_PATH_MAX             (PATH_MAX)
 
 /* default values */
+#if defined(FOR_ODBC_GATEWAY)
+#define DEFAULT_LOG_DIR               "log/gateway/sql_log/"
+#define DEFAULT_SLOW_LOG_DIR          DEFAULT_LOG_DIR
+#define DEFAULT_ERR_DIR               "log/gateway/error_log/"
+#define DEFAULT_SHARD_PROXY_LOG_DIR   "log/gateway/proxy_log/"
+#define DEFAULT_ACCESS_LOG_DIR        "log/gateway/"
+#else
 #define DEFAULT_LOG_DIR               "log/broker/sql_log/"
 #define DEFAULT_SLOW_LOG_DIR          DEFAULT_LOG_DIR
 #define DEFAULT_ERR_DIR               "log/broker/error_log/"
 #define DEFAULT_SHARD_PROXY_LOG_DIR   "log/broker/proxy_log/"
 #define DEFAULT_ACCESS_LOG_DIR        "log/broker/"
-
+#endif
 #define ACCESS_LOG_DENIED_FILENAME_POSTFIX ".denied"
 
 enum t_cubrid_file_id
@@ -82,6 +94,7 @@ enum t_cubrid_file_id
   FID_SLOW_LOG_DIR,
   FID_SHARD_DBINFO,
   FID_SHARD_PROXY_LOG_DIR,
+  FID_CUBRID_GATEWAY_CONF,
   MAX_CUBRID_FILE
 };
 typedef enum t_cubrid_file_id T_CUBRID_FILE_ID;

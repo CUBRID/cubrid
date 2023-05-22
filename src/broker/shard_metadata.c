@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -125,9 +124,9 @@ shard_metadata_read_user (T_SHM_PROXY * shm_proxy_p, char *db_name, char *db_use
   shm_user_p->num_shard_user = max_user;
 
   user_p = &(shm_user_p->shard_user[0]);
-  strncpy (user_p->db_name, db_name, sizeof (user_p->db_name) - 1);
-  strncpy (user_p->db_user, db_user, sizeof (user_p->db_user) - 1);
-  strncpy (user_p->db_password, db_password, sizeof (user_p->db_password) - 1);
+  strncpy_bufsize (user_p->db_name, db_name);
+  strncpy_bufsize (user_p->db_user, db_user);
+  strncpy_bufsize (user_p->db_password, db_password);
 
   SHARD_INF ("<USERINFO> [%d] db_name:[%s], " "db_user:[%s], db_password:[%s]\n", 0, user_p->db_name, user_p->db_user,
 	     user_p->db_password);
@@ -194,7 +193,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	      trim (section);
 	      if (strncasecmp (section, key_column, SHARD_KEY_COLUMN_LEN) != 0)
 		{
-		  strncpy (key_column, section, sizeof (key_column) - 1);
+		  strncpy_bufsize (key_column, section);
 
 		  shm_key_p->num_shard_key++;
 		  idx_key = shm_key_p->num_shard_key - 1;
@@ -225,7 +224,7 @@ shard_metadata_read_key (const char *filename, T_SHM_PROXY * shm_proxy_p)
 	}
 
       key_p = &(shm_key_p->shard_key[idx_key]);
-      strncpy (key_p->key_column, key_column, sizeof (key_p->key_column) - 1);
+      strncpy_bufsize (key_p->key_column, key_column);
 
       if (idx_range >= SHARD_KEY_RANGE_MAX)
 	{
@@ -678,7 +677,7 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p, T_SHM_SHARD_CON
   num_shard_conn = shm_conn_p->num_shard_conn;
   if (num_shard_conn < 0)
     {
-      SHARD_ERR ("%s: num shard connection is invalid.\n");
+      SHARD_ERR ("%s: num shard connection is invalid.\n", key_p->key_column);
       return -1;
     }
 
@@ -706,16 +705,16 @@ shard_metadata_validate_key_range_internal (T_SHARD_KEY * key_p, T_SHM_SHARD_CON
 	}
       if (j >= num_shard_conn)
 	{
-	  SHARD_ERR ("%s: shard range shard_id (%d) is invalid.\n", range_p->shard_id);
+	  SHARD_ERR ("%s: shard range shard_id (%d) is invalid.\n", key_p->key_column, range_p->shard_id);
 	  return -1;
 	}
 
       prv_range_max = range_p->max;
     }
 
-  if ((modular >= 1) && (prv_range_max > modular))
+  if ((modular >= 1) && (prv_range_max > modular - 1))
     {
-      SHARD_ERR ("%s: shard range max (%d, modular %d) is invalid.\n", range_p->max, modular);
+      SHARD_ERR ("%s: shard range max (%d, modular %d) is invalid.\n", key_p->key_column, range_p->max, modular);
       return -1;
     }
 

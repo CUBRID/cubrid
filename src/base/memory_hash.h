@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -83,9 +82,8 @@ extern unsigned int mht_3strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
-extern unsigned int mht_logpageidhash (const void *key, unsigned int htsize);
 
-extern unsigned int mht_get_hash_number (const int ht_size, const DB_VALUE * val);
+extern unsigned int mht_get_hash_number (const int unsigned ht_size, const DB_VALUE * val);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
@@ -123,5 +121,58 @@ extern unsigned int mht_count (const MHT_TABLE * ht);
 extern int mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * ht, const int print_id_opt,
 		     int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *key, void *data, void *args),
 		     void *func_args);
+
+/*
+ * Hash table for HASH LIST SCAN
+ * In order to minimize the size of the hash entry, a hash table for HASH LIST SCAN is created separately.
+ * It has the following features.
+ * 1. lru, act is not used. (remove variable related to lru, act)
+ * 2. key comparison is performed in executor. (remove key of hash entry)
+ * 3. put data orderly. (add tail pointer for it)
+ * 4. Since hash size is fixed, rehashing the hash table is not necessary.
+ */
+
+/* Hash Table Entry for HASH LIST SCAN - linked list, keyless hash entry */
+typedef struct hentry_hls HENTRY_HLS;
+typedef struct hentry_hls *HENTRY_HLS_PTR;
+struct hentry_hls
+{
+  HENTRY_HLS_PTR tail;		/* tail node on hash table entry */
+  HENTRY_HLS_PTR next;		/* Next hash table entry for colisions */
+  void *data;			/* Data associated with key entry */
+  unsigned int key;		/* hash key */
+};
+
+/* Memory Hash Table for HASH LIST SCAN*/
+typedef struct mht_hls_table MHT_HLS_TABLE;
+struct mht_hls_table
+{
+  unsigned int (*hash_func) (const void *key, unsigned int htsize);
+  int (*cmp_func) (const void *key1, const void *key2);
+  const char *name;
+  HENTRY_HLS_PTR *table;	/* The hash table (entries) */
+  HENTRY_HLS_PTR prealloc_entries;	/* Free entries allocated for locality reasons */
+  unsigned int size;		/* Better if prime number */
+  unsigned int nentries;	/* Actual number of entries */
+  unsigned int nprealloc_entries;	/* Number of preallocated entries for future insertions */
+  unsigned int ncollisions;	/* Number of collisions in HT */
+  HL_HEAPID heap_id;		/* Id of heap allocator */
+  bool build_lru_list;		/* true if LRU list must be built */
+};
+
+extern const void *mht_put_hls (MHT_HLS_TABLE * ht, const void *key, void *data);
+extern void *mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last);
+extern void *mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last);
+extern MHT_HLS_TABLE *mht_create_hls (const char *name, int est_size,
+				      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
+				      int (*cmp_func) (const void *key1, const void *key2));
+extern int mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args),
+			  void *func_args);
+extern void mht_destroy_hls (MHT_HLS_TABLE * ht);
+extern int mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
+			 int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, void *args),
+			 void *func_args);
+extern unsigned int mht_calculate_htsize (unsigned int ht_size);
+/* for HASH LIST SCAN (end) */
 
 #endif /* _MEMORY_HASH_H_ */

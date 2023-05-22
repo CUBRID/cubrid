@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -318,81 +317,5 @@ enum
 #define private_user2hl_ptr(ptr) \
   (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
 #endif /* SA_MODE */
-
-
-#if defined (__cplusplus)
-// *INDENT-OFF*
-template <class T> 
-class PRIVATE_UNIQUE_PTR_DELETER
-{
-  public:
-    PRIVATE_UNIQUE_PTR_DELETER ()
-      : thread_p (NULL) 
-      { 
-      }
-
-    PRIVATE_UNIQUE_PTR_DELETER (THREAD_ENTRY * thread_p)
-      : thread_p (thread_p)
-      {
-      }
-
-    void operator () (T * ptr) const
-      {
-        if (ptr != NULL)
-          {
-	    db_private_free (thread_p, ptr);
-          }
-      }
-
-  private:
-    THREAD_ENTRY * thread_p;
-};
-
-template <class T> 
-class PRIVATE_UNIQUE_PTR
-{
-  public:
-    PRIVATE_UNIQUE_PTR (T * ptr, THREAD_ENTRY * thread_p)
-      {
-        smart_ptr = std::unique_ptr<T, PRIVATE_UNIQUE_PTR_DELETER <T> >
-          (ptr, PRIVATE_UNIQUE_PTR_DELETER <T> (thread_p));
-      }
-
-    T *get ()
-      {
-        return smart_ptr.get ();
-      }
-
-    T *release ()
-      {
-        return smart_ptr.release ();
-      }
-
-    void swap (PRIVATE_UNIQUE_PTR <T> &other)
-      {
-        smart_ptr.swap (other.smart_ptr);
-      }
-
-    void reset (T *ptr)
-      {
-        smart_ptr.reset (ptr);
-      }
-
-    T *operator-> () const
-      {
-        return smart_ptr.get();
-      }
-
-    T &operator* () const
-      {
-        return *smart_ptr.get();
-      }
-
-  private:
-    std::unique_ptr <T, PRIVATE_UNIQUE_PTR_DELETER <T> >smart_ptr;
-};
-// *INDENT-ON*
-
-#endif /* cplusplus */
 
 #endif /* _MEMORY_ALLOC_H_ */

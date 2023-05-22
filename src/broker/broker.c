@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -195,7 +194,7 @@
 	  write_to_client(FD, (char*) &write_val, 4);	\
 	} while (0)
 
-#define JOB_COUNT_MAX		1000000
+#define JOB_COUNT_MAX		130000000
 
 /* num of collecting counts per monitoring interval */
 #define NUM_COLLECT_COUNT_PER_INTVL     4
@@ -266,6 +265,8 @@ static int write_to_client (SOCKET sock_fd, char *buf, int size);
 static int write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_sec);
 static int read_from_client (SOCKET sock_fd, char *buf, int size);
 static int read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_sec);
+static int read_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout);
+static int write_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout);
 static int run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index);
 static int stop_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index);
 static void restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index);
@@ -733,6 +734,18 @@ cleanup (int signo)
   exit (0);
 }
 
+static bool
+di_understand_renewed_error_code (const char *driver_info)
+{
+#define IS_SET_BIT(C,B)	(((C) & (B)) == (B))
+  if (!IS_SET_BIT (driver_info[SRV_CON_MSG_IDX_PROTO_VERSION], CAS_PROTO_INDICATOR))
+    {
+      return false;
+    }
+
+  return IS_SET_BIT (driver_info[DRIVER_INFO_FUNCTION_FLAG], BROKER_RENEWED_ERROR_CODE);
+}
+
 static void
 send_error_to_driver (int sock, int error, char *driver_info)
 {
@@ -747,7 +760,7 @@ send_error_to_driver (int sock, int error, char *driver_info)
     }
   else
     {
-      if (driver_version == CAS_PROTO_MAKE_VER (PROTOCOL_V2) || cas_di_understand_renewed_error_code (driver_info))
+      if (driver_version == CAS_PROTO_MAKE_VER (PROTOCOL_V2) || di_understand_renewed_error_code (driver_info))
 	{
 	  write_val = htonl (error);
 	}
@@ -766,7 +779,9 @@ static const char *cas_client_type_str[] = {
   "ODBC",			/* CAS_CLIENT_ODBC */
   "JDBC",			/* CAS_CLIENT_JDBC */
   "PHP",			/* CAS_CLIENT_PHP */
-  "OLEDB"			/* CAS_CLIENT_OLEDB */
+  "OLEDB",			/* CAS_CLIENT_OLEDB */
+  "INTERNAL_JDBC",		/* CAS_CLIENT_SERVER_SIDE_JDBC */
+  "GATEWAY_CCI"			/* CAS_CLIENT_GATEWAY */
 };
 
 static THREAD_FUNC
@@ -847,7 +862,42 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
-      /* 
+      if (strncmp (cas_req_header, "ST", 2) == 0)
+	{
+	  int status = FN_STATUS_NONE;
+	  int pid, i;
+	  unsigned int session_id;
+
+	  memcpy ((char *) &pid, cas_req_header + 2, 4);
+	  pid = ntohl (pid);
+	  memcpy ((char *) &session_id, cas_req_header + 6, 4);
+	  session_id = ntohl (session_id);
+
+	  if (shm_br->br_info[br_index].shard_flag == ON)
+	    {
+	      status = FN_STATUS_BUSY;
+	    }
+	  else
+	    {
+	      for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
+		{
+		  if (shm_appl->as_info[i].service_flag == SERVICE_ON && shm_appl->as_info[i].pid == pid)
+		    {
+		      if (session_id == shm_appl->as_info[i].session_id)
+			{
+			  status = shm_appl->as_info[i].fn_status;
+			}
+		      break;
+		    }
+		}
+	    }
+
+	  CAS_SEND_ERROR_CODE (clt_sock_fd, status);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
+	}
+
+      /*
        * Query cancel message (size in bytes)
        *
        * - For client version 8.4.0 patch 1 or below:
@@ -858,8 +908,8 @@ receiver_thr_f (void *arg)
        *
        *   CLIENT_PORT can be 0 if the client failed to get its local port.
        */
-      if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
-	  || strncmp (cas_req_header, "X1", 2) == 0)
+      else if (strncmp (cas_req_header, "QC", 2) == 0 || strncmp (cas_req_header, "CANCEL", 6) == 0
+	       || strncmp (cas_req_header, "X1", 2) == 0)
 	{
 	  int ret_code = 0;
 #if !defined(WINDOWS)
@@ -926,10 +976,19 @@ receiver_thr_f (void *arg)
 	}
 
       cas_client_type = cas_req_header[SRV_CON_MSG_IDX_CLIENT_TYPE];
-      if (strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN) != 0
+      if (!(strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR, SRV_CON_CLIENT_MAGIC_LEN) == 0
+	    || strncmp (cas_req_header, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN) == 0)
 	  || cas_client_type < CAS_CLIENT_TYPE_MIN || cas_client_type > CAS_CLIENT_TYPE_MAX)
 	{
-	  send_error_to_driver (clt_sock_fd, CAS_ER_COMMUNICATION, cas_req_header);
+	  send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT, cas_req_header);
+	  CLOSE_SOCKET (clt_sock_fd);
+	  continue;
+	}
+
+      if ((IS_SSL_CLIENT (cas_req_header) && shm_br->br_info[br_index].use_SSL == OFF)
+	  || (!IS_SSL_CLIENT (cas_req_header) && shm_br->br_info[br_index].use_SSL == ON))
+	{
+	  send_error_to_driver (clt_sock_fd, CAS_ER_SSL_TYPE_NOT_ALLOWED, cas_req_header);
 	  CLOSE_SOCKET (clt_sock_fd);
 	  continue;
 	}
@@ -1367,50 +1426,31 @@ read_from_client (SOCKET sock_fd, char *buf, int size)
 static int
 read_from_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_sec)
 {
+  int len = size;
   int read_len;
-#ifdef ASYNC_MODE
-  SELECT_MASK read_mask;
-  int nfound;
-  int maxfd;
-  struct timeval timeout_val, *timeout_ptr;
 
-  if (timeout_sec < 0)
-    {
-      timeout_ptr = NULL;
-    }
-  else
-    {
-      timeout_val.tv_sec = timeout_sec;
-      timeout_val.tv_usec = 0;
-      timeout_ptr = &timeout_val;
-    }
-#endif
-
-#ifdef ASYNC_MODE
-  FD_ZERO (&read_mask);
-  FD_SET (sock_fd, (fd_set *) (&read_mask));
-  maxfd = (int) sock_fd + 1;
-  nfound = select (maxfd, &read_mask, (SELECT_MASK *) 0, (SELECT_MASK *) 0, timeout_ptr);
-  if (nfound < 0)
+  if (IS_INVALID_SOCKET (sock_fd))
     {
       return -1;
     }
-#endif
 
 #ifdef ASYNC_MODE
-  if (FD_ISSET (sock_fd, (fd_set *) (&read_mask)))
+  while (size > 0)
     {
-#endif
-      read_len = READ_FROM_SOCKET (sock_fd, buf, size);
-#ifdef ASYNC_MODE
+      read_len = read_buffer_async (sock_fd, buf, size, timeout_sec);
+      if (read_len <= 0)
+	{
+	  return -1;
+	}
+
+      buf += read_len;
+      size -= read_len;
     }
-  else
-    {
-      return -1;
-    }
+#else
+  read_len = READ_FROM_SOCKET (sock_fd, buf, size);
 #endif
 
-  return read_len;
+  return len;
 }
 
 static int
@@ -1422,53 +1462,32 @@ write_to_client (SOCKET sock_fd, char *buf, int size)
 static int
 write_to_client_with_timeout (SOCKET sock_fd, char *buf, int size, int timeout_sec)
 {
-  int write_len;
-#ifdef ASYNC_MODE
-  SELECT_MASK write_mask;
-  int nfound;
-  int maxfd;
-  struct timeval timeout_val, *timeout_ptr;
-
-  if (timeout_sec < 0)
-    {
-      timeout_ptr = NULL;
-    }
-  else
-    {
-      timeout_val.tv_sec = timeout_sec;
-      timeout_val.tv_usec = 0;
-      timeout_ptr = &timeout_val;
-    }
-#endif
+  int len = size;
+  int write_len = -1;
 
   if (IS_INVALID_SOCKET (sock_fd))
-    return -1;
-
-#ifdef ASYNC_MODE
-  FD_ZERO (&write_mask);
-  FD_SET (sock_fd, (fd_set *) (&write_mask));
-  maxfd = (int) sock_fd + 1;
-  nfound = select (maxfd, (SELECT_MASK *) 0, &write_mask, (SELECT_MASK *) 0, timeout_ptr);
-  if (nfound < 0)
     {
       return -1;
     }
-#endif
 
 #ifdef ASYNC_MODE
-  if (FD_ISSET (sock_fd, (fd_set *) (&write_mask)))
+  while (size > 0)
     {
-#endif
-      write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
-#ifdef ASYNC_MODE
+      write_len = write_buffer_async (sock_fd, buf, size, timeout_sec);
+
+      if (write_len <= 0)
+	{
+	  return -1;
+	}
+
+      buf += write_len;
+      size -= write_len;
     }
-  else
-    {
-      return -1;
-    }
+#else
+  len = WRITE_TO_SOCKET (sock_fd, buf, size);
 #endif
 
-  return write_len;
+  return len;
 }
 
 /*
@@ -1999,8 +2018,8 @@ insert_db_server_check_list (T_DB_SERVER * list_p, int check_list_cnt, const cha
       return UNUSABLE_DATABASE_MAX;
     }
 
-  strncpy (list_p[i].database_name, db_name, SRV_CON_DBNAME_SIZE - 1);
-  strncpy (list_p[i].database_host, db_host, MAXHOSTNAMELEN - 1);
+  strncpy_bufsize (list_p[i].database_name, db_name);
+  strncpy_bufsize (list_p[i].database_host, db_host);
   list_p[i].state = -1;
 
   return i + 1;
@@ -2115,7 +2134,7 @@ server_monitor_thr_f (void *arg)
 	      strncpy (shm_appl->unusable_databases[u_index][cnt].database_name, check_list[i].database_name,
 		       SRV_CON_DBNAME_SIZE - 1);
 	      strncpy (shm_appl->unusable_databases[u_index][cnt].database_host, check_list[i].database_host,
-		       MAXHOSTNAMELEN - 1);
+		       CUB_MAXHOSTNAMELEN - 1);
 	      cnt++;
 	    }
 	}
@@ -2206,7 +2225,7 @@ hang_check_thr_f (void *ar)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * reject_client_flag for shard broker
 	   * does not depend on the current number of proxies.
 	   * If one proxy hangs for the last 1 min, then
@@ -2866,7 +2885,7 @@ init_proxy_env ()
 
   memset (&shard_sock_addr, 0, sizeof (shard_sock_addr));
   shard_sock_addr.sun_family = AF_UNIX;
-  strncpy (shard_sock_addr.sun_path, shm_appl->port_name, sizeof (shard_sock_addr.sun_path) - 1);
+  strncpy_bufsize (shard_sock_addr.sun_path, shm_appl->port_name);
 
 #ifdef  _SOCKADDR_LEN		/* 4.3BSD Reno and later */
   len = sizeof (shard_sock_addr.sun_len) + sizeof (shard_sock_addr.sun_family) + strlen (shard_sock_addr.sun_path) + 1;
@@ -3191,8 +3210,12 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
       putenv (proxy_id_env_str);
 
 #if !defined(WINDOWS)
-      snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
-		proxy_index + 1);
+      if (snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
+		    proxy_index + 1) < 0)
+	{
+	  assert (false);
+	  exit (0);
+	}
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
@@ -3266,35 +3289,105 @@ restart_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index
 static void
 get_as_sql_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 {
+  int ret;
   char dirname[BROKER_PATH_MAX];
 
   get_cubrid_file (FID_SQL_LOG_DIR, dirname, BROKER_PATH_MAX);
 
   if (br_shard_flag == ON)
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.sql.log", dirname, broker_name, as_info_p->proxy_id + 1,
-		as_info_p->shard_id, as_info_p->shard_cas_id + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d_%d_%d.sql.log", dirname, broker_name,
+		      as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.sql.log", dirname, broker_name, as_index + 1);
+    }
+  if (ret < 0)
+    {
+      // bad name
+      log_filename[0] = '\0';
     }
 }
 
 static void
 get_as_slow_log_filename (char *log_filename, int len, char *broker_name, T_APPL_SERVER_INFO * as_info_p, int as_index)
 {
+  int ret;
   char dirname[BROKER_PATH_MAX];
 
   get_cubrid_file (FID_SLOW_LOG_DIR, dirname, BROKER_PATH_MAX);
 
   if (br_shard_flag == ON)
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d_%d_%d.slow.log", dirname, broker_name, as_info_p->proxy_id + 1,
-		as_info_p->shard_id, as_info_p->shard_cas_id + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d_%d_%d.slow.log", dirname, broker_name,
+		      as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
     }
   else
     {
-      snprintf (log_filename, BROKER_PATH_MAX, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
+      ret = snprintf (log_filename, BROKER_PATH_MAX - 1, "%s%s_%d.slow.log", dirname, broker_name, as_index + 1);
     }
+  if (ret < 0)
+    {
+      // bad name
+      log_filename[0] = '\0';
+    }
+}
+
+static int
+read_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout)
+{
+  int read_len = -1;
+  struct pollfd po[1] = { {0, 0, 0} };
+  int ret;
+
+  po[0].fd = sock_fd;
+  po[0].events = POLLIN;
+
+  do
+    {
+      ret = poll (po, 1, timeout * 1000);
+    }
+  while (ret < 0 && errno == EINTR);
+
+  if (ret < 1)			/* ERROR OR TIMEOUT */
+    {
+      return -1;
+    }
+
+  if (po[0].revents & POLLIN)	/* RECEIVE NEW REQUEST */
+    {
+      read_len = READ_FROM_SOCKET (sock_fd, buf, size);
+    }
+
+  return read_len;
+}
+
+static int
+write_buffer_async (SOCKET sock_fd, char *buf, int size, int timeout)
+{
+  int write_len = -1;
+  struct pollfd po[1] = { {0, 0, 0} };
+  int ret;
+
+  po[0].fd = sock_fd;
+  po[0].events = POLLOUT;
+
+  do
+    {
+      ret = poll (po, 1, timeout * 1000);
+    }
+  while (ret < 0 && errno == EINTR);
+
+  if (ret < 1)			/* ERROR OR TIMEOUT */
+    {
+      return -1;
+    }
+
+  if (po[0].revents & POLLOUT)	/* RECEIVE NEW REQUEST */
+    {
+      write_len = WRITE_TO_SOCKET (sock_fd, buf, size);
+    }
+
+  return write_len;
 }

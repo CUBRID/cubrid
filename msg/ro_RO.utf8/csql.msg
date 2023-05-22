@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version. 
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -40,13 +41,17 @@ optiuni valide:\n\
   -c, --command=ARG            comenzi CSQL\n\
   -l, --line-output            afişarea fiecărei valori pe o singură linie\n\
   -r, --read-only              mod read-only\n\
-  -t, --plain-output           afișarea rezultatelor neformatate (doar împreună cu -c și -i)\n\
+  -t, --plain-output           afișează rezultatele într-un format compatibil cu scriptul (doar împreună cu -c și -i)\n\
+  -q, --query-output           afișează rezultatele într-un format compatibil cu interogările (doar împreună cu -c și -i)\n\
+  -d, --loaddb-output          afișează rezultatele într-un format prietenos cu loaddb (doar împreună cu -c și -i)\n\
   -N, --skip-column-names      afișarea rezultatelor fără numele coloanelor (doar împreună cu -c și -i)\n\
       --string-width           lăţimea de afişare a fiecărei coloane de tip string\n\
       --no-auto-commit         dezactivarea modului de execuţie auto-commit\n\
       --no-pager               dezactivarea paginatorilor\n\
       --no-single-line         dezactivarea modului de execuţie linie cu linie\n\
       --no-trigger-action      dezactivarea acţiunilor declanşatorilor\n\
+      --delimiter=ARG          delimitator între coloană (doar împreună cu -q)\n\
+      --enclosure=ARG          incintă pentru un șir de rezultate (doar împreună cu -q)\n\
 \n\
 Pentru informaţii suplimentare accesaţi http://www.cubrid.org\n
 41 %1$s: valoarea de mediu pentru %2$s_MODE este incorectă. \nTrebuie să fie %3$s sau %4$s.\n
@@ -87,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Prea puține argumente date.
 
 145 <Ajutor: Schema unei clase>
 146 vid
@@ -107,6 +113,7 @@ $ These 3 should be blank
 194 Combinaţie invalidă de argumente (optiuni) de linie de comandă.
 196 O eroare nedefinită s-a produs.
 197 ';edit' nu este permis când output-ul este redirecţionat.
+198 Formatul a eșuat.
 
 203 <%1$s> 
 204 <SuperClase> 
@@ -148,7 +155,7 @@ $ csql help messages
    ;EXit                        - închide aplicaţia.\n\
 \n\
    ;CLear                       - goleşte buffer-ul de comenzi.\n\
-   ;EDIT                        - invocă editorul sistemului pentru buffer-ul de comenzi.\n\
+   ;EDIT   [format/fmt]         - invocă editorul de sistem [după formatator] cu bufferul de comandă.\n\
    ;LISt                        - afişează conţinutul buffer-ului de comenzi.\n\
 \n\
    ;RUn                         - execută instrucţiunile SQL din buffer-ul de comenzi.\n\
@@ -157,12 +164,15 @@ $ csql help messages
    ;COMmit                      - finalizează(commit) tranzacţia curentă.\n\
    ;ROllback                    - derulează înapoi tranzacţia curentă.\n\
    ;AUtocommit [ON|OFF]         - activează/dezactivează modul "auto commit".\n\
-   ;REStart                     - reporneşte baza de date.\n\
+   ;REStart                     - reconectați-vă la baza de date țintă într-o sesiune CSQL.\n\
+   ;CHeckpoint                  - executați punctul de control (numai CSQL cu --sysadm).\n\
+   ;Killtran                    - vizualizați informații despre starea tranzacției sau încheiați o anumită tranzacție. (numai CSQL cu --sysadm).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - schimbă comenzile implicite pentru shell, editor,\n\
-   ;EDITOR_Cmd   [editor-cmd]     afişare şi paginator cu comenzi noi, respectiv \n\
-   ;PRINT_Cmd    [print-cmd]      afişează comanda curentă.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - schimbă comenzile implicite pentru shell, editor,\n\
+   ;EDITOR_Cmd    [editor-cmd]    afişare, paginator şi formatator cu comenzi noi, respectiv \n\
+   ;PRINT_Cmd     [print-cmd]     afişează comanda curentă.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - afişează ora şi data locală.\n\
    ;DATAbase                    - afişează numele bazei de date accesate.\n\
@@ -181,6 +191,13 @@ $ csql help messages
    ;HISTORYRead <history_num>   - citeşte în buffer-ul de comenzi înregistrarea din istoric\n\
                                   specificată prin parametru.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - activați/dezactivați modul cu o singură linie.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - conectați-vă la bazele de date curente sau la alte baze de date ca nume de utilizator.\n\
+   ;.Hist [ON/OFF]              - porniți/opriți colectarea informațiilor statistice în CSQL (doar DBA disponibil).\n\
+   ;.Clear_hist                 - ștergeți informațiile statistice CSQL din buffer.\n\
+   ;.Dump_hist                  - afișați informațiile statistice CSQL în CSQL.\n\
+   ;.X_hist                     - afișați informațiile statistice CSQL în CSQL cu datele statistice inițializate.\n\
    ;HElp                        - afişează acest mesaj de ajutor.\n\n
 
 232 <Constrângeri> 

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -80,7 +79,7 @@ static API_ONCE_TYPE once = API_ONCE_INIT;
 int api_malloc_dhook_flag_set = 0;
 
 /*
- * once_function - initialize api_malloc/free/calloc debug information 
+ * once_function - initialize api_malloc/free/calloc debug information
  *    return: void
  */
 static void
@@ -156,12 +155,12 @@ dlisth_map (dlisth * h, dlist_map_func func, void *arg)
 
 /*
  * hash_new - create new static hash table
- *    return: NO_ERROR if successful, error code otherwise 
+ *    return: NO_ERROR if successful, error code otherwise
  *    bucket_sz(in): hash table bucket size
  *    hashf(in): hash function
  *    keyf(in): key function
  *    comparef(in): compare function
- *    rht(out): hash table 
+ *    rht(out): hash table
  */
 int
 hash_new (int bucket_sz, ht_hashf hashf, ht_keyf keyf, ht_comparef comparef, hash_table ** rht)
@@ -224,7 +223,7 @@ hash_destroy (hash_table * ht, ht_destroyf dtor)
 }
 
 /*
- * hash_lookup - lookup element 
+ * hash_lookup - lookup element
  *    return: NO_ERROR if successful, error code otherwise
  *    ht(in): hash table
  *    key(in): pointer to the key
@@ -270,7 +269,7 @@ hash_lookup (hash_table * ht, void *key, void **relem)
  * hash_insert - insert element to the hash table
  *    return: NO_ERROR if successful, error code otherwise
  *    ht(in): hash table
- *    elem(in): element to insert 
+ *    elem(in): element to insert
  */
 int
 hash_insert (hash_table * ht, void *elem)
@@ -311,7 +310,7 @@ hash_insert (hash_table * ht, void *elem)
  *    ht(in): hash table
  *    key(in): pointer to the key
  *    relem(out): element found, or set to NULL
- * 
+ *
  * NOTE
  *   When element is not found then NO_ERROR returned with NULL relem value
  */
@@ -449,10 +448,10 @@ api_free (void *ptr, const char *file, int line)
 }
 
 /*
- * api_check_memory - check memory 
+ * api_check_memory - check memory
  *    return: 0 if successful, count of failure otherwise
- *    fp(in): FILE * to print check message 
- * NOTE : this function checks malloc/free pair match and 
+ *    fp(in): FILE * to print check message
+ * NOTE : this function checks malloc/free pair match and
  *        dump debug debug information of malloc/calloced but not freeed.
  */
 int

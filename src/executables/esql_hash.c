@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -274,7 +273,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (BUCKET *, void *), void *par
     {
       for (symtab = tbl->table, i = tbl->size; --i >= 0; ++symtab)
 	{
-	  /* 
+	  /*
 	   * Print all symbols in the current chain.  The +1 in the
 	   * print call adjusts the bucket pointer to point to the user
 	   * area of the bucket.
@@ -287,7 +286,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (BUCKET *, void *), void *par
     }
   else
     {
-      /* 
+      /*
        * Allocate enough memory for 'outtab', an array of pointers to
        * BUCKETs, and initialize it.  'outtab' is different from the
        * actual hash table in that every 'outtab' element points to a
@@ -313,7 +312,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (BUCKET *, void *), void *par
 	    }
 	}
 
-      /* 
+      /*
        * Sort 'outtab' and then print it.
        */
       es_User_cmp = tbl->cmp;

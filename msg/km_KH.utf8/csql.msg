@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version. 
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -41,12 +42,16 @@ valid options:\n\
   -l, --line-output            display each value in a line\n\
   -r, --read-only              read-only mode\n\
   -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
+  -q, --query-output           display results in a query-friendly format (only works with -c and -i)\n\
+  -d, --loaddb-output          display results in a loaddb-friendly format (only works with -c and -i)\n\
   -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
       --string-width           display each column which is a string type in this width\n\
       --no-auto-commit         disable auto commit mode execution\n\
       --no-pager               do not use pager\n\
       --no-single-line         turn off single line oriented execution\n\
       --no-trigger-action      disable trigger action\n\
+      --delimiter=ARG          delimiter between columns (only work with -q) \n\
+      --enclosure=ARG          enclosure for a result string (only work with -q)\n\
 \n\
 For additional information, see http://www.cubrid.org\n
 41 %1$s: the environment value of %2$s_MODE is incorrect. \nIt should be either %3$s or %4$s.\n
@@ -87,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Too few arguments given.
 
 145 <Help: Schema of a Class>
 146 none
@@ -107,6 +113,7 @@ $ These 3 should be blank
 194 Invalid combination of command line arguments (options).
 196 An undefined error has occurred.
 197 ';edit' is not allowed when output has been redirected.
+198 Format failed.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -148,7 +155,7 @@ $ csql help messages
    ;EXit                        - exit program.\n\
 \n\
    ;CLear                       - clear command buffer.\n\
-   ;EDIT                        - invoke system editor with command buffer.\n\
+   ;EDIT   [format/fmt]         - invoke system editor [after formatter] with command buffer.\n\
    ;LISt                        - display the content of command buffer.\n\
 \n\
    ;RUn                         - execute sql in command buffer.\n\
@@ -157,12 +164,15 @@ $ csql help messages
    ;COMmit                      - commit the current transaction.\n\
    ;ROllback                    - roll back the current transaction.\n\
    ;AUtocommit [ON|OFF]         - enable/disable auto commit mode.\n\
-   ;REStart                     - restart database.\n\
+   ;REStart                     - reconnect to the current database in a CSQL session.\n\
+   ;CHeckpoint                  - execute the checkpoint(CSQL with --sysadm only).\n\
+   ;Killtran                    - check transaction status information or end a specific transaction.(CSQL with --sysadm only).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - set default shell, editor, print and pager\n\
-   ;EDITOR_Cmd   [editor-cmd]     command to new one, or display the current\n\
-   ;PRINT_Cmd    [print-cmd]      one, respectively.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - set default shell, editor, print, pager and formatter\n\
+   ;EDITOR_Cmd    [editor-cmd]    command to new one, or display the current\n\
+   ;PRINT_Cmd     [print-cmd]     one, respectively.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - display the local time, date.\n\
    ;DATAbase                    - display the name of database being accessed.\n\
@@ -180,6 +190,13 @@ $ csql help messages
    ;HISTORYList                 - display list of the executed queries.\n\
    ;HISTORYRead <history_num>   - read entry on the history number into command buffer.\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - enable/disable single-line mode.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - connect to the current or other databases as a username.\n\
+   ;.Hist [ON/OFF]              - start/stop collecting statistics information in CSQL(available DBA only).\n\
+   ;.Clear_hist                 - clear the CSQL statistics information in the buffer.\n\
+   ;.Dump_hist                  - display the CSQL statistics information in CSQL.\n\
+   ;.X_hist                     - display the CSQL statistics information in CSQL with statistics data initialized.\n\
    ;HElp                        - display this help message.\n\n
 
 232 <Constraints> 

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -31,16 +30,21 @@
 #include <string.h>
 #include <time.h>
 
-#include "porting.h"
 #include "file_manager.h"
+
+#include "btree.h"
+#include "porting.h"
+#include "porting_inline.hpp"
 #include "memory_alloc.h"
 #include "storage_common.h"
 #include "error_manager.h"
 #include "file_io.h"
 #include "page_buffer.h"
 #include "disk_manager.h"
+#include "log_append.hpp"
 #include "log_manager.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "lock_manager.h"
 #include "system_parameter.h"
 #include "boot_sr.h"
@@ -52,6 +56,7 @@
 #include "bit.h"
 #include "util_func.h"
 #include "vacuum.h"
+#include "btree_load.h"
 #include "critical_section.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
@@ -158,9 +163,14 @@ struct file_header
 /* File flags. */
 #define FILE_FLAG_NUMERABLE	    0x1	/* Is file numerable */
 #define FILE_FLAG_TEMPORARY	    0x2	/* Is file temporary */
+#define FILE_FLAG_ENCRYPTED_AES 0x4	/* Is file encrypted using AES */
+#define FILE_FLAG_ENCRYPTED_ARIA 0x8	/* Is file encrypted using ARIA */
+
+#define FILE_FLAG_ENCRYPTED_MASK 0x0000000c	/* 0x4 + 0x8 */
 
 #define FILE_IS_NUMERABLE(fh) (((fh)->file_flags & FILE_FLAG_NUMERABLE) != 0)
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
+#define FILE_IS_TDE_ENCRYPTED(fh) (((fh)->file_flags & FILE_FLAG_ENCRYPTED_MASK) != 0)
 
 #define FILE_CACHE_LAST_FIND_NTH(fh) \
   (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP)
@@ -246,7 +256,7 @@ typedef int (*FILE_EXTDATA_ITEM_FUNC) (THREAD_ENTRY * thread_p, const void *data
  * sectors) stores reserved sectors and bitmaps for allocated pages in these sectors. Usually, when all sector pages are
  * allocated, the sector is removed from partial sector table. This rule does not apply to temporary files, which for
  * simplicity, only use this partial sector table without moving its content to full table sector.
- * 
+ *
  * Each bit in bitmap represents a page, and a page is considered allocated if its bit is set or free if the bit is not
  * set.
  */
@@ -322,12 +332,14 @@ static bool file_Logging = false;
  "\t\tvfid = %d|%d \n" \
  "\t\t%s \n" \
  "\t\t%s \n" \
+ "\t\ttde_algorithm: %s \n" \
  "\t\tpage: total = %d, user = %d, table = %d, free = %d \n" \
  "\t\tsector: total = %d, partial = %d, full = %d, empty = %d \n"
 #define FILE_HEAD_ALLOC_AS_ARGS(fhead) \
   VFID_AS_ARGS (&(fhead)->self), \
   FILE_PERM_TEMP_STRING (FILE_IS_TEMPORARY (fhead)), \
   FILE_NUMERABLE_REGULAR_STRING (FILE_IS_NUMERABLE (fhead)), \
+  tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)), \
   (fhead)->n_page_total, (fhead)->n_page_user, (fhead)->n_page_ftab, (fhead)->n_page_free, \
   (fhead)->n_sector_total, (fhead)->n_sector_partial, (fhead)->n_sector_full, (fhead)->n_sector_empty
 
@@ -367,9 +379,9 @@ static bool file_Logging = false;
   "\t\tfile cache: max = %d, numerable = %d, regular = %d, total = %d \n" \
   "\t\tfree entries: max = %d, count = %d \n"
 #define FILE_TEMPCACHE_AS_ARGS \
-  file_Tempcache->ncached_max, file_Tempcache->ncached_numerable, file_Tempcache->ncached_not_numerable, \
-  file_Tempcache->ncached_numerable + file_Tempcache->ncached_not_numerable, \
-  file_Tempcache->nfree_entries_max, file_Tempcache->nfree_entries
+  file_Tempcache.ncached_max, file_Tempcache.ncached_numerable, file_Tempcache.ncached_not_numerable, \
+  file_Tempcache.ncached_numerable + file_Tempcache.ncached_not_numerable, \
+  file_Tempcache.nfree_entries_max, file_Tempcache.nfree_entries
 
 #define FILE_TEMPCACHE_ENTRY_MSG "%p, VFID %d|%d, %s"
 #define FILE_TEMPCACHE_ENTRY_AS_ARGS(ent) ent, VFID_AS_ARGS (&(ent)->vfid), file_type_to_string ((ent)->ftype)
@@ -416,6 +428,14 @@ struct file_map_context
 
   FILE_MAP_PAGE_FUNC func;
   void *args;
+};
+
+/* FILE_SET_TDE_ALGORITHM_ARGS - args varaible for file_apply_tde_algorithm() */
+typedef struct file_set_tde_algorithm_args FILE_SET_TDE_ALGORITHM_ARGS;
+struct file_set_tde_algorithm_args
+{
+  bool skip_logging;
+  TDE_ALGORITHM tde_algo;
 };
 
 /************************************************************************/
@@ -477,7 +497,7 @@ struct file_tempcache
   SPACEDB_FILES spacedb_temp;
 };
 
-static FILE_TEMPCACHE *file_Tempcache = NULL;
+static FILE_TEMPCACHE file_Tempcache;
 
 /************************************************************************/
 /* File tracker section                                                 */
@@ -721,6 +741,9 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
 static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
+static int file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo);
+static TDE_ALGORITHM file_get_tde_algorithm_internal (const FILE_HEADER * fhead);
+static void file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo);
 
 /************************************************************************/
 /* Numerable files section.                                             */
@@ -2562,7 +2585,7 @@ file_extdata_find_and_remove_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA
   assert (log_check_system_op_is_started (thread_p));
 
   /* how it works:
-   * 
+   *
    * first we must find the item in one of the extensible pages. we iterate through each page and try to find the item.
    * during page iteration we save the previous page (it is NULL when current page is first).
    *
@@ -3797,10 +3820,10 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
   if (is_temp)
     {
       /* update stats */
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.nfile, 1);
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, fhead->n_page_ftab);
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_user, fhead->n_page_user);
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, fhead->n_page_free);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.nfile, 1);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_ftab, fhead->n_page_ftab);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_user, fhead->n_page_user);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_reserved, fhead->n_page_free);
     }
 
   /* Fall through to exit */
@@ -3825,7 +3848,6 @@ exit:
 	}
       else
 	{
-	  ASSERT_NO_ERROR ();
 	  log_sysop_end_logical_undo (thread_p, RVFL_DESTROY, NULL, sizeof (*vfid), (char *) vfid);
 	}
     }
@@ -4019,7 +4041,7 @@ int
 file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 {
   VPID vpid_fhead;
-  PAGE_PTR page_fhead;
+  PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
   FILE_VSID_COLLECTOR vsid_collector;
   FILE_FTAB_COLLECTOR ftab_collector;
@@ -4028,6 +4050,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   int error_code = NO_ERROR;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
+
+  vsid_collector.vsids = NULL;
 
   if (is_temp)
     {
@@ -4045,7 +4069,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	}
     }
 
-  vsid_collector.vsids = NULL;
   ftab_collector.partsect_ftab = NULL;
 
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
@@ -4058,6 +4081,16 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
     }
 
   fhead = (FILE_HEADER *) page_fhead;
+
+#if !defined(NDEBUG)
+  if (file_get_tde_algorithm_internal (fhead) != TDE_ALGORITHM_NONE)
+    {
+      tde_er_log
+	("file_destroy(): clear tde bit in pflag in all user pages, VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+	 VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
+	 tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)));
+    }
+#endif /* !NDEBUG */
 
   assert (is_temp == FILE_IS_TEMPORARY (fhead));
   assert (FILE_IS_TEMPORARY (fhead) || log_check_system_op_is_started (thread_p));
@@ -4146,10 +4179,10 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   else
     {
       /* todo: invalidate pages in page buffer. actually move them to the bottom of LRU lists. */
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.nfile, -1);
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, -fhead->n_page_ftab);
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_user, -fhead->n_page_user);
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, -fhead->n_page_free);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.nfile, -1);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_ftab, -fhead->n_page_ftab);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_user, -fhead->n_page_user);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_reserved, -fhead->n_page_free);
       pgbuf_unfix_and_init (thread_p, page_fhead);
     }
 
@@ -5227,6 +5260,7 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   bool is_sysop_started = false;
   char undo_log_data_buf[UNDO_DATA_SIZE + MAX_ALIGNMENT];
   char *undo_log_data = PTR_ALIGN (undo_log_data_buf, MAX_ALIGNMENT);
@@ -5314,6 +5348,26 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  pgbuf_unfix (thread_p, page_alloc);
 	  goto exit;
 	}
+
+      assert (pgbuf_get_page_ptype (thread_p, page_alloc) != PAGE_UNKNOWN);
+
+      tde_algo = file_get_tde_algorithm_internal (fhead);
+
+#if !defined (NDEBUG)
+      {
+	TDE_ALGORITHM prev_tde_algo = pgbuf_get_tde_algorithm (page_alloc);
+	if (tde_algo != prev_tde_algo)
+	  {
+	    tde_er_log
+	      ("file_alloc(): set tde bit in pflag, VFID = %d|%d, VPID = %d|%d, tde_algorithm of the file = %s, previous tde algorithm of the page = %s\n",
+	       VFID_AS_ARGS (&fhead->self), VPID_AS_ARGS (vpid_out), tde_get_algorithm_name (tde_algo),
+	       tde_get_algorithm_name (prev_tde_algo));
+	  }
+      }
+#endif /* NDEBUG */
+
+      pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
+
       if (page_out != NULL)
 	{
 	  *page_out = page_alloc;
@@ -5609,6 +5663,295 @@ file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
 }
 
 /*
+ * file_set_tde_algorithm () - set encryption algorithm in file header for TDE.
+ *
+ * return        : NO_ERROR, or ER_code
+ * thread_p (in)  : Thread entry
+ * vfid (in)      : File identifier
+ * tde_algo (in) : encryption algorithm - NONE, AES, ARIA
+ *
+ */
+int
+file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  if (!tde_is_loaded () && tde_algo != TDE_ALGORITHM_NONE)
+    {
+      error_code = ER_TDE_CIPHER_IS_NOT_LOADED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_CIPHER_IS_NOT_LOADED, 0);
+      return error_code;
+    }
+
+  /* fix header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+  file_header_sanity_check (thread_p, fhead);
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      TDE_ALGORITHM prev_tde_algo = file_get_tde_algorithm_internal (fhead);
+      log_append_undoredo_data2 (thread_p, RVFL_FHEAD_SET_TDE_ALGORITHM, NULL, page_fhead, 0, sizeof (TDE_ALGORITHM),
+				 sizeof (TDE_ALGORITHM), &prev_tde_algo, &tde_algo);
+    }
+
+  file_set_tde_algorithm_internal (fhead, tde_algo);
+
+  pgbuf_set_dirty_and_free (thread_p, page_fhead);
+
+  return NO_ERROR;
+}
+
+/*
+ * file_rv_set_tde_algorithm () - recovery setting encryption algorithm in file header for TDE.
+ *
+ * return        : NO_ERROR
+ * thread_p (in)  : Thread entry
+ * rcv (in)       : Recovery data
+ *
+ */
+int
+file_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  PAGE_PTR page_fhead = rcv->pgptr;
+  FILE_HEADER *fhead = (FILE_HEADER *) page_fhead;
+  TDE_ALGORITHM tde_algo = *(TDE_ALGORITHM *) rcv->data;
+
+  assert (rcv->length == sizeof (TDE_ALGORITHM));
+
+  file_set_tde_algorithm_internal (fhead, tde_algo);
+
+  pgbuf_set_dirty (thread_p, page_fhead, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+/*
+ * file_set_tde_algorithm_internal () - set encryption algorithm in file header for TDE.
+ *
+ * fhead (in)      : File Header
+ * tde_algo (in) : encryption algorithm - NONE, AES, ARIA
+ *
+ */
+void
+file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo)
+{
+  /* clear encrypted flag */
+  fhead->file_flags &= ~FILE_FLAG_ENCRYPTED_MASK;
+
+  switch (tde_algo)
+    {
+    case TDE_ALGORITHM_AES:
+      fhead->file_flags |= FILE_FLAG_ENCRYPTED_AES;
+      break;
+    case TDE_ALGORITHM_ARIA:
+      fhead->file_flags |= FILE_FLAG_ENCRYPTED_ARIA;
+      break;
+    case TDE_ALGORITHM_NONE:
+      /* already cleared */
+      break;
+    }
+
+  tde_er_log ("file_set_tde_algorithm_internal(): VFID = %d|%d, tde_algorithm = %s\n",
+	      VFID_AS_ARGS (&fhead->self), tde_get_algorithm_name (tde_algo));
+}
+
+/*
+ * file_get_tde_algorithm () - get encryption algorithm in file header for TDE.
+ *
+ * return        : NO_ERROR
+ * thread_p (in)  : Thread entry
+ * vfid (in)      : File identifier
+ * fix_head_cond (in):  file header page latch condition
+ * tde_algo (out) : encryption algorithm - NONE, AES, ARIA
+ *
+ */
+int
+file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_CONDITION fix_head_cond,
+			TDE_ALGORITHM * tde_algo)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  /* fix header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, fix_head_cond);
+  if (page_fhead == NULL)
+    {
+      error_code = ER_FAILED;
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+
+  *tde_algo = file_get_tde_algorithm_internal (fhead);
+
+  pgbuf_unfix (thread_p, page_fhead);
+
+  return NO_ERROR;
+}
+
+/*
+ * file_get_tde_algorithm_internal () - get encryption algorithm in file header for TDE.
+ *
+ * fhead (in)      : File Header
+ * tde_algo (out) : encryption algorithm - NONE, AES, ARIA
+ *
+ */
+TDE_ALGORITHM
+file_get_tde_algorithm_internal (const FILE_HEADER * fhead)
+{
+  // encryption algorithms are exclusive
+  assert (!((fhead->file_flags & FILE_FLAG_ENCRYPTED_AES) && (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)));
+
+  if (fhead->file_flags & FILE_FLAG_ENCRYPTED_AES)
+    {
+      return TDE_ALGORITHM_AES;
+    }
+  else if (fhead->file_flags & FILE_FLAG_ENCRYPTED_ARIA)
+    {
+      return TDE_ALGORITHM_ARIA;
+    }
+  else
+    {
+      return TDE_ALGORITHM_NONE;
+    }
+}
+
+static int
+file_file_map_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR * page, bool * stop, void *args)
+{
+  FILE_SET_TDE_ALGORITHM_ARGS *tde_args = (FILE_SET_TDE_ALGORITHM_ARGS *) args;
+  pgbuf_set_tde_algorithm (thread_p, *page, tde_args->tde_algo, tde_args->skip_logging);
+  return NO_ERROR;
+}
+
+
+/*
+ * file_apply_tde_algorithm () - set encryption algorithm to file and user pages belonging to the file 
+ *
+ * return        : NO_ERROR, or ER_code
+ * thread_p (in)  : Thread entry
+ * vfid (in)      : File identifier
+ * tde_algo (in) : encryption algorithm - NONE, AES, ARIA
+ *
+ * NOTE: The iterating pages part is the same as file_map_pages(). To set TDE to all the pages, unconditional latch has to be latched, but file_map_pages() doesn't support unconditional latch in SERVER_MODE. Becuase this function uses PGBUF_UNCONDITIONAL_LATCH, this has to be called before the file(vfid) is accessed by other thread, or it can cause dead lock (see: file_map_pages()).
+ *
+ */
+int
+file_apply_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, const TDE_ALGORITHM tde_algo)
+{
+  int error_code = NO_ERROR;
+  FILE_SET_TDE_ALGORITHM_ARGS args;
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  FILE_EXTENSIBLE_DATA *extdata_ftab;
+  FILE_MAP_CONTEXT context;
+  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+
+  /* fix header */
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+  file_header_sanity_check (thread_p, fhead);
+
+  prev_tde_algo = file_get_tde_algorithm_internal (fhead);
+
+  if (prev_tde_algo == tde_algo)
+    {
+      /* it is already applied */
+      pgbuf_unfix (thread_p, page_fhead);
+      return NO_ERROR;
+    }
+
+  tde_er_log ("file_apply_tde_algorithm(): VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+	      VFID_AS_ARGS (&fhead->self), fhead->n_page_user, tde_get_algorithm_name (tde_algo));
+
+  error_code = file_set_tde_algorithm (thread_p, vfid, tde_algo);
+  if (error_code != NO_ERROR)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+      return error_code;
+    }
+
+  /* init map context */
+  args.skip_logging = FILE_IS_TEMPORARY (fhead);
+  args.tde_algo = tde_algo;
+  context.func = file_file_map_set_tde_algorithm;
+  context.args = &args;
+  context.latch_cond = PGBUF_UNCONDITIONAL_LATCH;
+  context.latch_mode = PGBUF_LATCH_WRITE;
+  context.stop = false;
+  context.ftab_collector.partsect_ftab = NULL;
+
+  /* collect table pages */
+  error_code = file_table_collect_ftab_pages (thread_p, page_fhead, true, &context.ftab_collector);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* map over partial sectors table */
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+  context.is_partial = true;
+  error_code = file_extdata_apply_funcs (thread_p, extdata_ftab, NULL, NULL, file_sector_map_pages, &context, false,
+					 NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      /* map over full table */
+      context.is_partial = false;
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+      error_code = file_extdata_apply_funcs (thread_p, extdata_ftab, NULL, NULL, file_sector_map_pages, &context,
+					     false, NULL, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  assert (error_code == NO_ERROR);
+
+exit:
+  if (page_fhead != NULL)
+    {
+      pgbuf_unfix (thread_p, page_fhead);
+    }
+  if (context.ftab_collector.partsect_ftab != NULL)
+    {
+      db_private_free (thread_p, context.ftab_collector.partsect_ftab);
+    }
+
+  return error_code;
+}
+
+
+/*
  * file_dealloc () - Deallocate a file page.
  *
  * return	       : Error code
@@ -5646,7 +5989,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
    *
    * temporary files: we do not deallocate the page.
    *
-   * numerable files: we mark the page for 
+   * numerable files: we mark the page for
    */
 
   /* todo: add known is_temp/is_numerable */
@@ -6636,7 +6979,7 @@ file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_
   VSID vsid_this;
   int idx_sect = 0;
 
-  if (!LSA_ISNULL (&extdata->vpid_next))
+  if (!VPID_ISNULL (&extdata->vpid_next))
     {
       VSID_FROM_VPID (&vsid_this, &extdata->vpid_next);
 
@@ -7311,7 +7654,7 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb)
   memset (spacedb, 0, sizeof (SPACEDB_FILES) * SPACEDB_FILE_COUNT);
 
   /* temporary files stats are already cached. */
-  spacedb[SPACEDB_TEMP_FILE] = file_Tempcache->spacedb_temp;
+  spacedb[SPACEDB_TEMP_FILE] = file_Tempcache.spacedb_temp;
 
   /* use file tracker to get info on permanent purpose files */
   error_code = file_tracker_spacedb (thread_p, spacedb);
@@ -8179,13 +8522,13 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 		    "used newly reserved sector's first page %d|%d for partial table.", VPID_AS_ARGS (&vpid_ftab_new));
 
 	  /* update temporary file stats - DISK_SECTOR_NPAGES -1 reserved pages and 1 file table page. */
-	  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, DISK_SECTOR_NPAGES - 1);
-	  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, 1);
+	  ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_reserved, DISK_SECTOR_NPAGES - 1);
+	  ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_ftab, 1);
 	}
       else
 	{
 	  /* update temporary file stats - DISK_SECTOR_NPAGES reserved pages */
-	  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, DISK_SECTOR_NPAGES);
+	  ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_reserved, DISK_SECTOR_NPAGES);
 	}
       assert (!file_extdata_is_full (extdata_part_ftab));
       assert (file_extdata_item_count (extdata_part_ftab) == fhead->offset_to_last_temp_alloc);
@@ -8277,13 +8620,13 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   /* update temporary file stats */
   if (alloc_type == FILE_ALLOC_USER_PAGE)
     {
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_user, 1);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_user, 1);
     }
   else
     {
-      ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, 1);
+      ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_ftab, 1);
     }
-  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved, -1);
+  ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_reserved, -1);
 
   /* done */
   assert (error_code == NO_ERROR);
@@ -8486,11 +8829,11 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   fhead->n_sector_full = nsect_full_new;
 
   /* also update temporary files global stats */
-  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_ftab, collector.npages - fhead->n_page_ftab);
+  ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_ftab, collector.npages - fhead->n_page_ftab);
   fhead->n_page_ftab = collector.npages;
-  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_user, -fhead->n_page_user);
+  ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_user, -fhead->n_page_user);
   fhead->n_page_user = 0;
-  ATOMIC_INC_32 (&file_Tempcache->spacedb_temp.npage_reserved,
+  ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_reserved,
 		 fhead->n_page_total - fhead->n_page_ftab - fhead->n_page_free);
   fhead->n_page_free = fhead->n_page_total - fhead->n_page_ftab;
 
@@ -8567,49 +8910,40 @@ file_tempcache_init (void)
   int ntrans = 1;
 #endif
 
-  assert (file_Tempcache == NULL);
-
-  /* allocate file_Tempcache */
-  memsize = sizeof (FILE_TEMPCACHE);
-  file_Tempcache = (FILE_TEMPCACHE *) malloc (memsize);
-  if (file_Tempcache == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+  /* file_Tempcache.tran_files cannot be NULL if file_Tempcache is initialized */
+  assert (file_Tempcache.tran_files == NULL);
 
   /* initialize free entry list... used to avoid entry allocation/deallocation */
-  file_Tempcache->free_entries = NULL;
-  file_Tempcache->nfree_entries_max = ntrans * 8;	/* I set 8 per transaction, maybe there is a better value */
-  file_Tempcache->nfree_entries = 0;
+  file_Tempcache.free_entries = NULL;
+  file_Tempcache.nfree_entries_max = ntrans * 8;	/* I set 8 per transaction, maybe there is a better value */
+  file_Tempcache.nfree_entries = 0;
 
   /* initialize temporary file cache. we keep two separate lists for numerable and regular files */
-  file_Tempcache->cached_not_numerable = NULL;
-  file_Tempcache->cached_numerable = NULL;
-  file_Tempcache->ncached_max = prm_get_integer_value (PRM_ID_MAX_ENTRIES_IN_TEMP_FILE_CACHE);
-  file_Tempcache->ncached_not_numerable = 0;
-  file_Tempcache->ncached_numerable = 0;
+  file_Tempcache.cached_not_numerable = NULL;
+  file_Tempcache.cached_numerable = NULL;
+  file_Tempcache.ncached_max = prm_get_integer_value (PRM_ID_MAX_ENTRIES_IN_TEMP_FILE_CACHE);
+  file_Tempcache.ncached_not_numerable = 0;
+  file_Tempcache.ncached_numerable = 0;
 
   /* initialize mutex used to protect temporary file cache and entry allocation/deallocation */
-  pthread_mutex_init (&file_Tempcache->mutex, NULL);
+  pthread_mutex_init (&file_Tempcache.mutex, NULL);
 #if !defined (NDEBUG)
-  file_Tempcache->owner_mutex = -1;
+  file_Tempcache.owner_mutex = -1;
 #endif
 
   /* allocate transaction temporary files lists */
-  memsize = ntrans * sizeof (FILE_TEMPCACHE *);
-  file_Tempcache->tran_files = (FILE_TEMPCACHE_ENTRY **) malloc (memsize);
-  if (file_Tempcache->tran_files == NULL)
+  memsize = ntrans * sizeof (FILE_TEMPCACHE_ENTRY *);
+  file_Tempcache.tran_files = (FILE_TEMPCACHE_ENTRY **) malloc (memsize);
+  if (file_Tempcache.tran_files == NULL)
     {
-      pthread_mutex_destroy (&file_Tempcache->mutex);
-      free_and_init (file_Tempcache);
+      pthread_mutex_destroy (&file_Tempcache.mutex);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, memsize);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  memset (file_Tempcache->tran_files, 0, memsize);
+  memset (file_Tempcache.tran_files, 0, memsize);
 
   /* stats */
-  memset (&file_Tempcache->spacedb_temp, 0, sizeof (file_Tempcache->spacedb_temp));
+  memset (&file_Tempcache.spacedb_temp, 0, sizeof (file_Tempcache.spacedb_temp));
 
   /* all ok */
   return NO_ERROR;
@@ -8626,7 +8960,8 @@ file_tempcache_final (void)
   int tran = 0;
   int ntrans;
 
-  if (file_Tempcache == NULL)
+  /* file_Tempcache.tran_files cannot be NULL if file_Tempcache is initialized */
+  if (file_Tempcache.tran_files == NULL)
     {
       return;
     }
@@ -8642,26 +8977,23 @@ file_tempcache_final (void)
   /* free all transaction lists... they should be empty anyway, but be conservative */
   for (tran = 0; tran < ntrans; tran++)
     {
-      if (file_Tempcache->tran_files[tran] != NULL)
+      if (file_Tempcache.tran_files[tran] != NULL)
 	{
 	  /* should be empty */
-	  assert (false);
-	  file_tempcache_free_entry_list (&file_Tempcache->tran_files[tran]);
+	  file_tempcache_free_entry_list (&file_Tempcache.tran_files[tran]);
 	}
     }
-  free_and_init (file_Tempcache->tran_files);
+  free_and_init (file_Tempcache.tran_files);
 
   /* temporary volumes are removed, we don't have to destroy files */
-  file_tempcache_free_entry_list (&file_Tempcache->cached_not_numerable);
-  file_tempcache_free_entry_list (&file_Tempcache->cached_numerable);
+  file_tempcache_free_entry_list (&file_Tempcache.cached_not_numerable);
+  file_tempcache_free_entry_list (&file_Tempcache.cached_numerable);
 
-  file_tempcache_free_entry_list (&file_Tempcache->free_entries);
+  file_tempcache_free_entry_list (&file_Tempcache.free_entries);
 
   file_tempcache_unlock ();
 
-  pthread_mutex_destroy (&file_Tempcache->mutex);
-
-  free_and_init (file_Tempcache);
+  pthread_mutex_destroy (&file_Tempcache.mutex);
 }
 
 /*
@@ -8697,13 +9029,13 @@ file_tempcache_alloc_entry (FILE_TEMPCACHE_ENTRY ** entry)
 {
   file_tempcache_check_lock ();
 
-  if (file_Tempcache->free_entries != NULL)
+  if (file_Tempcache.free_entries != NULL)
     {
-      assert (file_Tempcache->nfree_entries > 0);
+      assert (file_Tempcache.nfree_entries > 0);
 
-      *entry = file_Tempcache->free_entries;
-      file_Tempcache->free_entries = file_Tempcache->free_entries->next;
-      file_Tempcache->nfree_entries--;
+      *entry = file_Tempcache.free_entries;
+      file_Tempcache.free_entries = file_Tempcache.free_entries->next;
+      file_Tempcache.nfree_entries--;
     }
   else
     {
@@ -8734,11 +9066,11 @@ file_tempcache_retire_entry (FILE_TEMPCACHE_ENTRY * entry)
   /* we lock to change free entry list */
   file_tempcache_lock ();
 
-  if (file_Tempcache->nfree_entries < file_Tempcache->nfree_entries_max)
+  if (file_Tempcache.nfree_entries < file_Tempcache.nfree_entries_max)
     {
-      entry->next = file_Tempcache->free_entries;
-      file_Tempcache->free_entries = entry;
-      file_Tempcache->nfree_entries++;
+      entry->next = file_Tempcache.free_entries;
+      file_Tempcache.free_entries = entry;
+      file_Tempcache.nfree_entries++;
     }
   else
     {
@@ -8756,11 +9088,11 @@ file_tempcache_retire_entry (FILE_TEMPCACHE_ENTRY * entry)
 STATIC_INLINE void
 file_tempcache_lock (void)
 {
-  assert (file_Tempcache->owner_mutex != thread_get_current_entry_index ());
-  pthread_mutex_lock (&file_Tempcache->mutex);
-  assert (file_Tempcache->owner_mutex == -1);
+  assert (file_Tempcache.owner_mutex != thread_get_current_entry_index ());
+  pthread_mutex_lock (&file_Tempcache.mutex);
+  assert (file_Tempcache.owner_mutex == -1);
 #if !defined (NDEBUG)
-  file_Tempcache->owner_mutex = thread_get_current_entry_index ();
+  file_Tempcache.owner_mutex = thread_get_current_entry_index ();
 #endif /* !NDEBUG */
 }
 
@@ -8772,11 +9104,11 @@ file_tempcache_lock (void)
 STATIC_INLINE void
 file_tempcache_unlock (void)
 {
-  assert (file_Tempcache->owner_mutex == thread_get_current_entry_index ());
+  assert (file_Tempcache.owner_mutex == thread_get_current_entry_index ());
 #if !defined (NDEBUG)
-  file_Tempcache->owner_mutex = -1;
+  file_Tempcache.owner_mutex = -1;
 #endif /* !NDEBUG */
-  pthread_mutex_unlock (&file_Tempcache->mutex);
+  pthread_mutex_unlock (&file_Tempcache.mutex);
 }
 
 /*
@@ -8787,7 +9119,7 @@ file_tempcache_unlock (void)
 STATIC_INLINE void
 file_tempcache_check_lock (void)
 {
-  assert (file_Tempcache->owner_mutex == thread_get_current_entry_index ());
+  assert (file_Tempcache.owner_mutex == thread_get_current_entry_index ());
 }
 
 /*
@@ -8808,7 +9140,7 @@ file_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FI
 
   file_tempcache_lock ();
 
-  *entry = numerable ? file_Tempcache->cached_numerable : file_Tempcache->cached_not_numerable;
+  *entry = numerable ? file_Tempcache.cached_numerable : file_Tempcache.cached_not_numerable;
   if (*entry != NULL && (*entry)->ftype != ftype)
     {
       /* change type */
@@ -8829,19 +9161,19 @@ file_tempcache_get (THREAD_ENTRY * thread_p, FILE_TYPE ftype, bool numerable, FI
       /* remove from cache */
       if (numerable)
 	{
-	  assert (*entry == file_Tempcache->cached_numerable);
-	  assert (file_Tempcache->ncached_numerable > 0);
+	  assert (*entry == file_Tempcache.cached_numerable);
+	  assert (file_Tempcache.ncached_numerable > 0);
 
-	  file_Tempcache->cached_numerable = file_Tempcache->cached_numerable->next;
-	  file_Tempcache->ncached_numerable--;
+	  file_Tempcache.cached_numerable = file_Tempcache.cached_numerable->next;
+	  file_Tempcache.ncached_numerable--;
 	}
       else
 	{
-	  assert (*entry == file_Tempcache->cached_not_numerable);
-	  assert (file_Tempcache->ncached_not_numerable > 0);
+	  assert (*entry == file_Tempcache.cached_not_numerable);
+	  assert (file_Tempcache.ncached_not_numerable > 0);
 
-	  file_Tempcache->cached_not_numerable = file_Tempcache->cached_not_numerable->next;
-	  file_Tempcache->ncached_not_numerable--;
+	  file_Tempcache.cached_not_numerable = file_Tempcache.cached_not_numerable->next;
+	  file_Tempcache.ncached_not_numerable--;
 	}
 
       (*entry)->next = NULL;
@@ -8895,7 +9227,7 @@ file_tempcache_check_duplicate (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * 
 
   if (is_numerable)
     {
-      for (p = file_Tempcache->cached_numerable; p != NULL; p = p->next)
+      for (p = file_Tempcache.cached_numerable; p != NULL; p = p->next)
 	{
 	  if (VFID_EQ (&p->vfid, &entry->vfid))
 	    {
@@ -8906,7 +9238,7 @@ file_tempcache_check_duplicate (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * 
     }
   else
     {
-      for (p = file_Tempcache->cached_not_numerable; p != NULL; p = p->next)
+      for (p = file_Tempcache.cached_not_numerable; p != NULL; p = p->next)
 	{
 	  if (VFID_EQ (&p->vfid, &entry->vfid))
 	    {
@@ -8951,11 +9283,11 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
   /* lock temporary cache */
   file_tempcache_lock ();
 
-  if (file_Tempcache->ncached_not_numerable + file_Tempcache->ncached_numerable < file_Tempcache->nfree_entries_max)
+  if (file_Tempcache.ncached_not_numerable + file_Tempcache.ncached_numerable < file_Tempcache.ncached_max)
     {
       /* cache not full */
-      assert ((file_Tempcache->cached_not_numerable == NULL) == (file_Tempcache->ncached_not_numerable == 0));
-      assert ((file_Tempcache->cached_numerable == NULL) == (file_Tempcache->ncached_numerable == 0));
+      assert ((file_Tempcache.cached_not_numerable == NULL) == (file_Tempcache.ncached_not_numerable == 0));
+      assert ((file_Tempcache.cached_numerable == NULL) == (file_Tempcache.ncached_numerable == 0));
 
       /* reset file */
       if (file_temp_reset_user_pages (thread_p, &entry->vfid) != NO_ERROR)
@@ -8975,15 +9307,15 @@ file_tempcache_put (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
       /* add numerable temporary file to cached numerable file list, regular file to not numerable list */
       if (FILE_IS_NUMERABLE (&fhead))
 	{
-	  entry->next = file_Tempcache->cached_numerable;
-	  file_Tempcache->cached_numerable = entry;
-	  file_Tempcache->ncached_numerable++;
+	  entry->next = file_Tempcache.cached_numerable;
+	  file_Tempcache.cached_numerable = entry;
+	  file_Tempcache.ncached_numerable++;
 	}
       else
 	{
-	  entry->next = file_Tempcache->cached_not_numerable;
-	  file_Tempcache->cached_not_numerable = entry;
-	  file_Tempcache->ncached_not_numerable++;
+	  entry->next = file_Tempcache.cached_not_numerable;
+	  file_Tempcache.cached_not_numerable = entry;
+	  file_Tempcache.ncached_not_numerable++;
 	}
 
       file_log ("file_tempcache_put",
@@ -9033,12 +9365,12 @@ file_get_tempcache_entry_index (THREAD_ENTRY * thread_p)
 void
 file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
-  if (file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)] != NULL)
+  if (file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)] != NULL)
     {
       file_log ("file_tempcache_drop_tran_temp_files",
 		"drop %d transaction temporary files", file_get_tran_num_temp_files (thread_p));
       file_tempcache_cache_or_drop_entries (thread_p,
-					    &file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)]);
+					    &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)]);
     }
 }
 
@@ -9087,7 +9419,7 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 STATIC_INLINE FILE_TEMPCACHE_ENTRY *
 file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)];
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
   FILE_TEMPCACHE_ENTRY *entry = NULL, *prev_entry = NULL;
 
   for (entry = *tran_files_p; entry != NULL; entry = entry->next)
@@ -9128,7 +9460,7 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 STATIC_INLINE void
 file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)];
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
 
   entry->next = *tran_files_p;
   *tran_files_p = entry;
@@ -9146,7 +9478,7 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
 int
 file_get_tran_num_temp_files (THREAD_ENTRY * thread_p)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache->tran_files[file_get_tempcache_entry_index (thread_p)];
+  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
   FILE_TEMPCACHE_ENTRY *entry;
   int num = 0;
 
@@ -9173,22 +9505,22 @@ file_tempcache_dump (FILE * fp)
   fprintf (fp, "DUMPING file manager's temporary files cache.\n");
   fprintf (fp,
 	   "  max files = %d, regular files count = %d, numerable files count = %d.\n\n",
-	   file_Tempcache->ncached_max, file_Tempcache->ncached_not_numerable, file_Tempcache->ncached_numerable);
+	   file_Tempcache.ncached_max, file_Tempcache.ncached_not_numerable, file_Tempcache.ncached_numerable);
 
-  if (file_Tempcache->cached_not_numerable != NULL)
+  if (file_Tempcache.cached_not_numerable != NULL)
     {
       fprintf (fp, "  cached regular files: \n");
-      for (cached_files = file_Tempcache->cached_not_numerable; cached_files != NULL; cached_files = cached_files->next)
+      for (cached_files = file_Tempcache.cached_not_numerable; cached_files != NULL; cached_files = cached_files->next)
 	{
 	  fprintf (fp, "    VFID = %d|%d, file type = %s \n",
 		   VFID_AS_ARGS (&cached_files->vfid), file_type_to_string (cached_files->ftype));
 	}
       fprintf (fp, "\n");
     }
-  if (file_Tempcache->cached_numerable != NULL)
+  if (file_Tempcache.cached_numerable != NULL)
     {
       fprintf (fp, "  cached numerable files: \n");
-      for (cached_files = file_Tempcache->cached_numerable; cached_files != NULL; cached_files = cached_files->next)
+      for (cached_files = file_Tempcache.cached_numerable; cached_files != NULL; cached_files = cached_files->next)
 	{
 	  fprintf (fp, "    VFID = %d|%d, file type = %s \n",
 		   VFID_AS_ARGS (&cached_files->vfid), file_type_to_string (cached_files->ftype));
@@ -11142,6 +11474,128 @@ file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp)
 
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;
+}
+
+
+/*
+ * xfile_apply_tde_to_class_files () - set TDE information to all permanent files related with class_oid
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * oid (in)     : class oid
+ */
+int
+xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  OR_CLASSREP *or_repr = NULL;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  TDE_ALGORITHM prev_tde_algo = TDE_ALGORITHM_NONE;
+  HFID hfid = HFID_INITIALIZER;
+  VFID hovf_vfid;
+  int idx_in_cache = -1;
+  int error_code = NO_ERROR;
+  int i = 0;
+
+  assert (class_oid != NULL);
+  assert (!OID_ISNULL (class_oid));
+
+  error_code = heap_get_class_tde_algorithm (thread_p, class_oid, &tde_algo);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  /* It is expected for flags in the class record to be set in advance */
+  assert (tde_algo != TDE_ALGORITHM_NONE);
+
+  /* apply to heap file and heap overflow file */
+  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error_code = file_apply_tde_algorithm (thread_p, &hfid.vfid, tde_algo);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (heap_ovf_find_vfid (thread_p, &hfid, &hovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+    {
+      /* not exist */
+      error_code = file_apply_tde_algorithm (thread_p, &hovf_vfid, tde_algo);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_in_cache);
+  if (or_repr == NULL)
+    {
+      error_code = ER_FAILED;
+      goto exit;
+    }
+
+  /* apply to btree files and btree overflow files */
+  for (i = 0; i < or_repr->n_indexes; i++)
+    {
+      VFID bovf_vfid;
+      BTID btid;
+      PAGE_PTR root_page = NULL;
+      VPID root_vpid;
+      BTREE_ROOT_HEADER *root_header = NULL;
+
+      btid = or_repr->indexes[i].btid;
+
+      root_vpid.volid = btid.vfid.volid;	/* read the root page */
+      root_vpid.pageid = btid.root_pageid;
+      root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (root_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+
+#if !defined (NDEBUG)
+      (void) pgbuf_check_page_ptype (thread_p, root_page, PAGE_BTREE);
+#endif /* !NDEBUG */
+
+      root_header = btree_get_root_header (thread_p, root_page);
+      if (root_header == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, root_page);
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      bovf_vfid = root_header->ovfid;
+
+      pgbuf_unfix_and_init (thread_p, root_page);
+
+      error_code = file_apply_tde_algorithm (thread_p, &btid.vfid, tde_algo);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      if (!VFID_ISNULL (&bovf_vfid))
+	{
+	  error_code = file_apply_tde_algorithm (thread_p, &bovf_vfid, tde_algo);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+
+exit:
+  if (or_repr != NULL)
+    {
+      heap_classrepr_free_and_init (or_repr, &idx_in_cache);
+    }
+
+  return error_code;
 }
 
 /************************************************************************/

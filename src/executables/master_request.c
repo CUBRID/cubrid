@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -920,7 +919,14 @@ css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
       goto error_return;
     }
 
-  hb_get_ping_host_info_string (&buffer);
+  if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+    {
+      hb_get_ping_host_info_string (&buffer);
+    }
+  else
+    {
+      hb_get_tcp_ping_host_info_string (&buffer);
+    }
 
   if (buffer == NULL)
     {
@@ -1460,7 +1466,7 @@ css_process_deactivate_heartbeat (CSS_CONN_ENTRY * conn, unsigned short request_
   int result;
   char *message;
   char error_string[LINE_MAX];
-  char request_from[MAXHOSTNAMELEN] = "";
+  char request_from[CUB_MAXHOSTNAMELEN] = "";
 
   if (HA_DISABLED ())
     {
@@ -1622,7 +1628,7 @@ css_process_deact_stop_all (CSS_CONN_ENTRY * conn, unsigned short request_id, ch
 #if !defined(WINDOWS)
   int result;
   char error_string[LINE_MAX];
-  char request_from[MAXHOSTNAMELEN] = "";
+  char request_from[CUB_MAXHOSTNAMELEN] = "";
 
   if (HA_DISABLED ())
     {
@@ -2048,53 +2054,4 @@ css_process_heartbeat_request (CSS_CONN_ENTRY * conn)
 #endif
 
   return;
-}
-
-int
-css_send_to_my_server_the_master_hostname (const char *master_current_hostname, HB_PROC_ENTRY * proc,
-					   CSS_CONN_ENTRY * conn)
-{
-#if !defined (WINDOWS)
-  int rc = NO_ERROR, rv;
-  int master_hostname_length = master_current_hostname == NULL ? 0 : strlen (master_current_hostname);
-  char master_hostname[sizeof (int) + MAXHOSTNAMELEN];
-
-  if (proc == NULL || conn == NULL || IS_INVALID_SOCKET (conn->fd))
-    {
-      /* smth went terribly wrong */
-      assert (false);
-      return ER_FAILED;
-    }
-
-  if (master_current_hostname == NULL || strlen (master_current_hostname) == 0)
-    {
-      proc->knows_master_hostname = false;
-      return NO_ERROR;
-    }
-
-  rc = css_send_heartbeat_request (conn, SERVER_RECEIVE_MASTER_HOSTNAME);
-  if (rc != NO_ERRORS)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  assert (master_hostname_length != 0);
-
-  *((int *) master_hostname) = master_hostname_length;
-  memcpy (master_hostname + sizeof (int), master_current_hostname, master_hostname_length);
-
-  rc = css_send_heartbeat_data (conn, master_hostname, sizeof (int) + master_hostname_length);
-  if (rc != NO_ERRORS)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  proc->knows_master_hostname = true;
-
-  return NO_ERROR;
-#else
-  return ER_FAILED;
-#endif
 }

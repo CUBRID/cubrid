@@ -1,19 +1,19 @@
 #
-# Copyright (C) 2016 Search Solution Corporation. All rights reserved.
-#
-#   This program is free software; you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as published by
-#   the Free Software Foundation; either version 2 of the License, or
-#   (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software
-#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+#  Copyright 2008 Search Solution Corporation
+#  Copyright 2016 CUBRID Corporation
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
 #
 
 if(UNIX)
@@ -22,12 +22,6 @@ if(UNIX)
     ${CMAKE_SOURCE_DIR}/contrib/init.d/cubrid-ha
     ${CMAKE_SOURCE_DIR}/contrib/init.d/cubrid
     DESTINATION ${CUBRID_DATADIR}/init.d)
-
-  # scripts for RPM
-  install(PROGRAMS
-    ${CMAKE_SOURCE_DIR}/contrib/rpm/cubrid.csh
-    ${CMAKE_SOURCE_DIR}/contrib/rpm/cubrid.sh
-    DESTINATION ${CUBRID_DATADIR}/rpm)
 endif(UNIX)
 
 
@@ -88,3 +82,33 @@ if(ENABLE_SYSTEMTAP)
     ${CMAKE_SOURCE_DIR}/contrib/systemtap/scripts/topcallstack/topcallstack
     DESTINATION ${CUBRID_DATADIR}/systemtap/tapset/scripts)
 endif(ENABLE_SYSTEMTAP)
+
+if(WIN32)
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/windows_scripts/cubrid_env.bat
+    DESTINATION ${CUBRID_DATADIR}/windows_scripts/)
+endif(WIN32)
+
+# msi scripts for windows
+if(WIN32)
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/scripts_for_msi/make_demo_msi.bat
+    ${CMAKE_SOURCE_DIR}/contrib/scripts_for_msi/create_for_databases.bat
+    DESTINATION ${CUBRID_DATADIR}/scripts_for_msi/)
+endif(WIN32)
+
+# scripts for setup
+if(UNIX)
+  install(PROGRAMS
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/setup.sh
+    DESTINATION ${CUBRID_DATADIR}/scripts/)
+endif(UNIX)
+
+# cubrid scripts
+if(UNIX)
+  install(PROGRAMS
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/cubrid.sh
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/cubrid.csh
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/unloaddb.sh
+    DESTINATION ${CUBRID_DATADIR}/scripts/)
+endif(UNIX)

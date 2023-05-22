@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -33,6 +32,7 @@
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "db.h"
 #include "locator_cl.h"
 #include "server_interface.h"
@@ -142,40 +142,6 @@ cursor_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_l
     }
 
   return NO_ERROR;
-}
-
-/*
- * cursor_free_list_id () - Area allocated for list file identifier is freed
- *   return: nothing
- *   list_id: List file identifier
- */
-void
-cursor_free_list_id (QFILE_LIST_ID * list_id_p, bool self)
-{
-  if (list_id_p->last_pgptr)
-    {
-      free_and_init (list_id_p->last_pgptr);
-    }
-  if (list_id_p->tpl_descr.f_valp)
-    {
-      free_and_init (list_id_p->tpl_descr.f_valp);
-    }
-  if (list_id_p->tpl_descr.clear_f_val_at_clone_decache)
-    {
-      free_and_init (list_id_p->tpl_descr.clear_f_val_at_clone_decache);
-    }
-  if (list_id_p->sort_list)
-    {
-      free_and_init (list_id_p->sort_list);
-    }
-  if (list_id_p->type_list.domp)
-    {
-      free_and_init (list_id_p->type_list.domp);
-    }
-  if (self)
-    {
-      free_and_init (list_id_p);
-    }
 }
 
 /*
@@ -346,6 +312,7 @@ cursor_fixup_vobjs (DB_VALUE * value_p)
     case DB_TYPE_SEQUENCE:
       /* fixup any set/seq of vobjs into a set/seq of vmops */
       rc = cursor_fixup_set_vobjs (value_p);
+      value_p->need_clear = true;
       break;
 
     default:
@@ -364,14 +331,14 @@ cursor_fixup_vobjs (DB_VALUE * value_p)
  *   db_value(out)      : Set to the set value
  */
 int
-cursor_copy_vobj_to_dbvalue (OR_BUF * buffer_p, DB_VALUE * value_p)
+cursor_copy_vobj_to_dbvalue (struct or_buf *buffer_p, DB_VALUE * value_p)
 {
   int rc;
   DB_VALUE vobj_dbval;
   DB_OBJECT *object_p;
   PR_TYPE *pr_type;
 
-  pr_type = PR_TYPE_FROM_ID (DB_TYPE_VOBJ);
+  pr_type = pr_type_from_id (DB_TYPE_VOBJ);
   if (pr_type == NULL)
     {
       return ER_FAILED;
@@ -382,7 +349,7 @@ cursor_copy_vobj_to_dbvalue (OR_BUF * buffer_p, DB_VALUE * value_p)
       return ER_FAILED;
     }
 
-  if ((*(pr_type->data_readval)) (buffer_p, &vobj_dbval, NULL, -1, true, NULL, 0) != NO_ERROR)
+  if (pr_type->data_readval (buffer_p, &vobj_dbval, NULL, -1, true, NULL, 0) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -432,12 +399,12 @@ cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p, QFIL
     }
 
   /* for all other types, we can use the prim routines */
-  if ((*(pr_type->data_readval)) (buffer_p, value_p, domain_p, -1, is_copy, NULL, 0) != NO_ERROR)
+  if (pr_type->data_readval (buffer_p, value_p, domain_p, -1, is_copy, NULL, 0) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * OIDs must be turned into objects.
    * VOBJs must be turned into vmops.
    */
@@ -552,7 +519,7 @@ cursor_get_list_file_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
   /* find page at buffer area */
   if (VPID_EQ (vpid_p, &cursor_id_p->current_vpid))
     {
-      /* 
+      /*
        * current_vpid can indicate one of pages in buffer area,
        * so do not assign buffer as head of buffer area
        */
@@ -822,7 +789,8 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
   char *tuple_p;
   OID *current_oid_p;
   QFILE_TUPLE current_tuple;
-  int tupel_count, oid_index = 0, current_tuple_length, i;
+  int tuple_count;
+  int oid_index = 0, current_tuple_length, i;
   DB_TYPE type;
 
   if (cursor_id_p == NULL)
@@ -832,15 +800,15 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
     }
 
   /* set tuple count and point to the first tuple */
-  tupel_count = QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
+  tuple_count = QFILE_GET_TUPLE_COUNT (cursor_id_p->buffer);
   current_tuple = cursor_id_p->buffer + QFILE_PAGE_HEADER_SIZE;
   oid_index = 0;
 
-  /* 
+  /*
    * search through the current buffer to store interesting OIDs
    * in the oid_set area, eliminating duplicates.
    */
-  for (i = 0; i < tupel_count; i++)
+  for (i = 0; i < tuple_count; i++)
     {
       current_tuple_length = QFILE_GET_TUPLE_LENGTH (current_tuple);
 
@@ -986,12 +954,7 @@ cursor_buffer_last_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
 
   if (cursor_id_p->list_id.last_pgptr && VPID_EQ (&(cursor_id_p->list_id.first_vpid), vpid_p))
     {
-      if (cursor_id_p->buffer == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      memcpy (cursor_id_p->buffer, cursor_id_p->list_id.last_pgptr, CURSOR_BUFFER_SIZE);
+      cursor_id_p->buffer = cursor_id_p->list_id.last_pgptr;
     }
   else
     {
@@ -1185,7 +1148,7 @@ cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p)
       return;
     }
 
-  /* 
+  /*
    * NOTE: Currently assume a PAGESIZE. In fact, since we can
    * find average tuple count per page from the LIST FILE
    * identifier we can make a good estimate of oid entry count.
@@ -1387,7 +1350,7 @@ cursor_free (CURSOR_ID * cursor_id_p)
       return;
     }
 
-  cursor_free_list_id (&cursor_id_p->list_id, false);
+  cursor_free_list_id (&(cursor_id_p->list_id));
 
   if (cursor_id_p->buffer_area != NULL)
     {
@@ -1540,7 +1503,7 @@ cursor_next_tuple (CURSOR_ID * cursor_id_p)
 	}
 
       QFILE_COPY_VPID (&cursor_id_p->current_vpid, &cursor_id_p->list_id.first_vpid);
-      /* 
+      /*
        * Setup the cursor so that we can proceed through the next "if"
        * statement w/o code duplication.
        */

@@ -1,0 +1,197 @@
+#
+#
+#  Copyright 2016 CUBRID Corporation
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
+name: github-checks
+on: 
+  pull_request:
+    branches:
+      - develop
+      - 'release/11.**'
+      - 'feature/**'
+jobs:
+  license:
+    name: license
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: jitterbit/get-changed-files@v1
+        id: files
+        continue-on-error: true
+      - name: Check license
+        run: |
+          set +e # make this step proceed even if a command returns non-zero
+          license_headers=.github/workflows/license_headers
+          result="PASS"
+
+          for f in ${{ steps.files.outputs.added_modified }}; do
+            if [ -d "$f" ]; then
+              continue
+            fi
+
+            ext=$(expr $f : ".*\(\..*\)")
+            case $ext in
+            .c|.h|.cpp|.hpp|.C|.H|.CPP|.HPP|.ipp|.sh|.bat|.y|.l|.msg) true;; # only these formats are checked.
+            *) continue ;; # skip others
+            esac
+
+            result_for_f="FAIL"
+            for header in `find $license_headers -type f`; do
+              line_cnt=`wc -l < $header`
+              head -n $line_cnt $f | diff -w - $header 2>&1 1>/dev/null
+              if [ $? -eq 0 ]; then
+                result_for_f="PASS"
+                break
+              fi
+            done
+
+            echo "$f: $result_for_f"
+            if [ "$result_for_f" = "FAIL" ]; then
+              result="FAIL"
+            fi
+          done
+
+          test $result = "PASS" # if non-zero, fail
+  pr-style:
+    name: pr-style
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: deepakputhraya/action-pr-title@master
+        with:
+          regex: '^\[[A-Z]+-\d+\]\s.+' # Regex the title should match.
+  code-style:
+    name: code-style
+    runs-on: ubuntu-20.04
+    env:
+      working-directory: .github/workflows
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install packages
+        run: |
+          # dependencies to build GNU indent
+          sudo apt-get -yq install build-essential texi2html wget
+          
+          # install astyle
+          sudo apt-get -yq install astyle
+          
+          # indent 2.2.11, the lastest version (2.2.12) make a different result
+          wget https://ftp.gnu.org/gnu/indent/indent-2.2.11.tar.gz
+          tar xf indent-2.2.11.tar.gz
+          cd indent-2.2.11
+          ./configure
+          sudo make -j install
+          cd ..
+
+          # download google-java-format-1.7-all-deps.jar
+          wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar
+        working-directory: ${{ env.working-directory }}
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'adopt'
+          java-version: '8'
+      - id: files
+        uses: jitterbit/get-changed-files@v1
+        continue-on-error: true
+      - name: Check code style
+        id: stylecheck
+        run: |
+          for f in ${{ steps.files.outputs.added_modified }}; do
+            .github/workflows/codestyle.sh ${f}
+          done 
+          git diff | tee gitdiff
+          test ! -s gitdiff # is empty? yes: 0 no: 1
+      - name: Suggest code changes
+        if: ${{ failure() }}
+        uses: reviewdog/action-suggester@v1
+        with:
+          tool_name: code-style (indent, astyle, google-java-format)
+  cppcheck:
+    name: cppcheck
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Install packages
+        run: |
+          sudo apt-get install -yq wget build-essential
+
+          # Download cppcheck-2.4.1 source
+          wd=`pwd`
+          cd ..
+          wget https://github.com/danmar/cppcheck/archive/2.4.1.tar.gz
+          tar xf 2.4.1.tar.gz
+
+          # build cppcheck-2.4.1
+          cd cppcheck-2.4.1
+          make -j4 SRCDIR=build CFGDIR=cfg CXXFLAGS="-O2 -DNDEBUG -Wall -Wno-sign-compare -Wno-unused-function"
+          echo "CPPCHECK_PATH=`pwd`" >> $GITHUB_ENV
+
+          cd $wd
+      - uses: actions/checkout@v2
+      - uses: jitterbit/get-changed-files@v1
+        id: files
+        continue-on-error: true
+      - name: cppcheck
+        run: |
+          result_file="cppcheck.result"
+          summary_file="cppcheck.summary"
+
+          touch $result_file
+          touch $summary_file
+
+          # to suppress other error, add it to .github/workflows/cppcheck-spr-list
+          for f in ${{ steps.files.outputs.added_modified }}; do
+            if [ -d "$f" ]; then
+              continue
+            fi
+
+            set +e
+            ext=$(expr $f : ".*\(\..*\)")
+            set -e
+
+            case $ext in
+            .c|.h|.cpp|.hpp|.C|.H|.CPP|.HPP) true;; # only these formats are checked.
+            *) continue ;; # skip others
+            esac
+
+            ${{ env.CPPCHECK_PATH }}/cppcheck --force -j4 --inline-suppr --suppressions-list=.github/workflows/cppcheck-spr-list --quiet --enable=warning -iheaplayers $f 2>>$result_file
+          done
+
+          echo "errors: `cat $result_file | grep " error: " | wc -l`" > $summary_file
+          echo "warnings: `cat $result_file | grep " warning: " | wc -l`" >> $summary_file
+
+          echo "-----------------------------Result-------------------------------------"
+          cat $result_file
+          echo "-----------------------------Summary------------------------------------"
+          cat $summary_file
+
+          ! cat $result_file | grep " error: " 1>/dev/null # if has errors, fail
+      - name: Get cppcheck.summary
+        id: get-comment-body
+        if: ${{ failure() }}
+        run: |
+          body=$(cat cppcheck.summary)
+          body="${body//'%'/'%25'}"
+          body="${body//$'\n'/'%0A'}"
+          body="${body//$'\r'/'%0D'}" 
+          echo ::set-output name=body::$body
+      - name: Report cppcheck.summary
+        if: ${{ failure() }}
+        uses: unsplash/comment-on-pr@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          check_for_duplicate_msg: true  # OPTIONAL 
+          msg: |
+            **cppcheck**
+            ${{ steps.get-comment-body.outputs.body }}

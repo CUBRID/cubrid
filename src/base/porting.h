@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -37,25 +36,6 @@
 #define __attribute__(X)
 #endif
 
-#if defined (__GNUC__) && defined (NDEBUG)
-#define ALWAYS_INLINE always_inline
-#else
-#define ALWAYS_INLINE
-#endif
-
-#if defined (__cplusplus) || defined (__GNUC__)
-#define STATIC_INLINE static inline
-#define INLINE inline
-#elif _MSC_VER >= 1000
-#define STATIC_INLINE __forceinline static
-#define INLINE __forceinline
-#else
-/* TODO: we have several cases of using INLINE/STATIC_INLINE and adding function definition in headers. This won't
- * work. */
-#define STATIC_INLINE static
-#define INLINE
-#endif
-
 #if defined (__GNUC__) && defined (__GNUC_MINOR__) && defined (__GNUC_PATCHLEVEL__)
 #define CUB_GCC_VERSION (__GNUC__ * 10000 \
 			 + __GNUC_MINOR__ * 100 \
@@ -63,13 +43,15 @@
 #endif
 
 #if defined (WINDOWS)
-#define IMPORT_VAR 	__declspec(dllimport)
-#define EXPORT_VAR 	__declspec(dllexport)
-#include <WinBase.h>
+#ifdef _EXPORTING
+#define EXPORT_IMPORT    __declspec(dllexport)
 #else
-#define IMPORT_VAR 	extern
-#define EXPORT_VAR
+#define EXPORT_IMPORT    __declspec(dllimport)
 #endif
+#else /* WINDOWS */
+  // all symbols are exported by default
+#define EXPORT_IMPORT
+#endif /* WINDOWS */
 
 #if defined (WINDOWS)
 #define L_cuserid 9
@@ -105,6 +87,11 @@
 #define MEM_SIZE_IS_VALID(size) \
   (((long long unsigned) (size) <= ULONG_MAX) \
    || (sizeof (long long unsigned) <= sizeof (size_t)))
+
+#if defined (__cplusplus)
+#include <type_traits>
+#include <utility>
+#endif // C++
 
 #if defined (WINDOWS)
 #include <fcntl.h>
@@ -154,8 +141,10 @@ extern char *realpath (const char *path, char *resolved_path);
 #define strtok_r            strtok_s
 #define strtoll             _strtoi64
 #define strtoull            _strtoui64
+// todo - remove define stat; name is too common
 #define stat		    _stati64
 #define fstat		    _fstati64
+#define ftell		    _ftelli64
 #define ftime		    _ftime_s
 #define timeb		    _timeb
 #define fileno		_fileno
@@ -242,12 +231,6 @@ extern int poll (struct pollfd *fds, nfds_t nfds, int timeout);
 #define _PC_NAME_MAX 4
 #define _PC_PATH_MAX 5
 #define _PC_NO_TRUNC 8
-
-/*
- * MAXHOSTNAMELEN definition
- * This is defined in sys/param.h on the linux.
- */
-#define MAXHOSTNAMELEN 64
 
 typedef char *caddr_t;
 
@@ -339,6 +322,26 @@ extern int free_space (const char *, int);
 
 #endif /* WINDOWS */
 
+#define snprintf_dots_truncate(dest, max_len, ...) \
+  if (snprintf (dest, max_len, __VA_ARGS__) < 0) \
+    snprintf (dest + max_len - 4, 4, "...")
+#define strncpy_size(buf, str, size) \
+  strncpy (buf, str, size); buf[(size) - 1] = '\0'
+#if defined (__cplusplus)
+// *INDENT-OFF*
+template<typename T>
+inline void
+check_is_array (const T & a)
+{
+  static_assert (std::is_array<T>::value == 1, "expected array");
+}
+#define strncpy_bufsize(buf, str) \
+  strncpy_size (buf, str, sizeof (buf)); check_is_array (buf)
+// *INDENT-ON*
+#else // not C++
+#define strncpy_bufsize(buf, str) \
+  strncpy_size (buf, str, sizeof (buf))
+#endif // not C++
 
 #if defined (WINDOWS)
 #define PATH_SEPARATOR  '\\'
@@ -347,7 +350,11 @@ extern int free_space (const char *, int);
 #endif /* WINDOWS */
 #define PATH_CURRENT    '.'
 
+#if defined (WINDOWS)
+#define IS_PATH_SEPARATOR(c) ((c) == PATH_SEPARATOR || (c) == '/')
+#else
 #define IS_PATH_SEPARATOR(c) ((c) == PATH_SEPARATOR)
+#endif
 
 #if defined (WINDOWS)
 #define IS_ABS_PATH(p) IS_PATH_SEPARATOR((p)[0]) \
@@ -368,11 +375,16 @@ extern int free_space (const char *, int);
 #define SETJMP _setjmp
 #endif
 
-#if defined (WINDOWS)
+/**
+ * RFC1123 - Section 2.1
+ * https://tools.ietf.org/html/rfc1123
+ *
+ * Host software MUST handle host names of up to 63 characters and
+ * SHOULD handle host names of up to 255 characters.
+ */
+#define CUB_MAXHOSTNAMELEN 256	/* 255 + 1(for NULL terminator) */
+
 #define GETHOSTNAME(p, l) css_gethostname(p, l)
-#else /* ! WINDOWS */
-#define GETHOSTNAME(p, l) gethostname(p, l)
-#endif /* ! WINDOWS */
 
 #if defined (WINDOWS)
 #define FINITE(x) _finite(x)

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -32,8 +31,17 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#if !defined (__cplusplus)
+#error C++ required
+#endif // C++ required
+
+#include "dbtype_def.h"
+#include "log_lsa.hpp"
+#include "mvcc.h"
 #include "storage_common.h"
 #include "system_catalog.h"
+
+#include <atomic>
 
 #define OR_ATT_BTID_PREALLOC 8
 
@@ -54,6 +62,29 @@ struct or_default_value
  *    Built from the disk representation of a class.
  *    Part of the OR_CLASSREP structure hierarchy.
  */
+// *INDENT-OFF*
+// work-around for windows compile error:
+// error C2338: You've instantiated std::atomic<T> with sizeof(T) equal to 2/4/8 and alignof(T) < sizeof(T)
+//
+// it may be removed if support for VS versions older than 2015 is dropped.
+union or_aligned_oid
+{
+  std::int64_t dummy_for_alignemnt;
+  OID oid;
+
+  or_aligned_oid () noexcept = default;
+
+  or_aligned_oid (const OID & arg_oid)
+    : oid (arg_oid)
+  {
+  }
+};
+
+struct or_auto_increment
+{
+  std::atomic<or_aligned_oid> serial_obj;
+};
+// *INDENT-ON*
 
 typedef struct or_attribute OR_ATTRIBUTE;
 struct or_attribute
@@ -73,11 +104,7 @@ struct or_attribute
   BTID *btids;			/* B-tree ID's for indexes and constraints */
   TP_DOMAIN *domain;		/* full domain of this attribute */
 
-  union
-  {
-    double dummy;		/* alignment */
-    OID serial_obj;		/* db_serial's instance */
-  } auto_increment;
+  or_auto_increment auto_increment;
 
   int n_btids;			/* Number of ID's in the btids array */
   BTID index;			/* btree id if indexed */
@@ -203,6 +230,7 @@ struct or_class
 
 extern void or_class_rep_dir (RECDES * record, OID * rep_dir_p);
 extern void or_class_hfid (RECDES * record, HFID * hfid);
+extern void or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void or_class_statistics (RECDES * record, OID * oid);
 extern int or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr);
@@ -213,14 +241,12 @@ extern int or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, in
 extern OR_CLASSREP *or_get_classrep (RECDES * record, int repid);
 extern OR_CLASSREP *or_get_classrep_noindex (RECDES * record, int repid);
 extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record);
-extern int or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, int *has_partition_info,
-					REPR_ID * repr_id);
+extern int or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REPR_ID * repr_id,
+					int *has_partition_info);
 const char *or_get_constraint_comment (RECDES * record, const char *constraint_name);
 extern void or_free_classrep (OR_CLASSREP * rep);
 extern int or_get_attrname (RECDES * record, int attrid, char **string, int *alloced_string);
 extern int or_get_attrcomment (RECDES * record, int attrid, char **string, int *alloced_string);
-extern OR_CLASS *or_get_class (RECDES * record);
-extern void or_free_class (OR_CLASS * class_);
 
 /* OLD STYLE INTERFACE */
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -234,4 +260,12 @@ extern void orc_free_class_info (CLS_INFO * info);
 extern int orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr);
 extern int orc_superclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr);
 extern OR_CLASSREP **or_get_all_representation (RECDES * record, bool do_indexes, int *count);
+
+extern int or_replace_rep_id (RECDES * record, int repid);
+
+extern int or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
+extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
+extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit,
+			       int variable_offset_size);
+extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

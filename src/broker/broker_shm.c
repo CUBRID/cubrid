@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -48,6 +47,7 @@
 #include "broker_error.h"
 #include "broker_filename.h"
 #include "broker_util.h"
+#include "host_lookup.h"
 
 #if defined(WINDOWS)
 #include "broker_list.h"
@@ -240,7 +240,7 @@ uw_shm_create (int shm_key, int size, int which_shm)
       goto error_exit;
     }
 
-  /* Initialize an EXPLICIT_ACCESS structure for an ACE. The ACE will allow the Administrators group full access to the 
+  /* Initialize an EXPLICIT_ACCESS structure for an ACE. The ACE will allow the Administrators group full access to the
    * shared memory */
   ea[1].grfAccessPermissions = GENERIC_ALL;
   ea[1].grfAccessMode = SET_ACCESS;
@@ -556,13 +556,21 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
 
   shm_as_p->shard_flag = br_info_p->shard_flag;
 
+#if defined (FOR_ODBC_GATEWAY)
+  strcpy (shm_as_p->cgw_link_server, br_info_p->cgw_link_server);
+  strcpy (shm_as_p->cgw_link_server_ip, br_info_p->cgw_link_server_ip);
+  strcpy (shm_as_p->cgw_link_server_port, br_info_p->cgw_link_server_port);
+  strcpy (shm_as_p->cgw_link_odbc_driver_name, br_info_p->cgw_link_odbc_driver_name);
+  strcpy (shm_as_p->cgw_link_connect_url_property, br_info_p->cgw_link_connect_url_property);
+#endif
+
   if (shm_as_p->shard_flag == OFF)
     {
       assert (shm_proxy_p == NULL);
       return shm_as_p;
     }
 
-  strncpy (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir, sizeof (shm_as_p->proxy_log_dir) - 1);
+  strncpy_bufsize (shm_as_p->proxy_log_dir, br_info_p->proxy_log_dir);
 
   shm_as_p->proxy_log_max_size = br_info_p->proxy_log_max_size;
 
@@ -646,6 +654,9 @@ broker_shm_set_as_info (T_SHM_APPL_SERVER * shm_appl, T_APPL_SERVER_INFO * as_in
   as_info_p->cur_slow_log_mode = br_info_p->slow_log_mode;
 
   as_info_p->as_id = as_index;
+
+  as_info_p->fn_status = -1;
+  as_info_p->session_id = 0;
   return;
 }
 
@@ -670,10 +681,10 @@ shard_shm_set_shard_conn_info (T_SHM_APPL_SERVER * shm_as_p, T_SHM_PROXY * shm_p
       conn_p = &shm_conn_p->shard_conn[i];
       shard_conn_info_p = &shm_as_p->shard_conn_info[i];
 
-      strncpy (shard_conn_info_p->db_user, user_p->db_user, sizeof (shard_conn_info_p->db_user) - 1);
-      strncpy (shard_conn_info_p->db_name, conn_p->db_name, sizeof (shard_conn_info_p->db_name) - 1);
-      strncpy (shard_conn_info_p->db_host, conn_p->db_conn_info, sizeof (shard_conn_info_p->db_host) - 1);
-      strncpy (shard_conn_info_p->db_password, user_p->db_password, sizeof (shard_conn_info_p->db_password) - 1);
+      strncpy_bufsize (shard_conn_info_p->db_user, user_p->db_user);
+      strncpy_bufsize (shard_conn_info_p->db_name, conn_p->db_name);
+      strncpy_bufsize (shard_conn_info_p->db_host, conn_p->db_conn_info);
+      strncpy_bufsize (shard_conn_info_p->db_password, user_p->db_password);
     }
 }
 
@@ -739,7 +750,7 @@ shm_id_to_name (int shm_key)
 static int
 get_host_ip (unsigned char *ip_addr)
 {
-  char hostname[64];
+  char hostname[CUB_MAXHOSTNAMELEN];
   struct hostent *hp;
 
   if (gethostname (hostname, sizeof (hostname)) < 0)
@@ -747,7 +758,7 @@ get_host_ip (unsigned char *ip_addr)
       fprintf (stderr, "gethostname error\n");
       return -1;
     }
-  if ((hp = gethostbyname (hostname)) == NULL)
+  if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
       fprintf (stderr, "unknown host : %s\n", hostname);
       return -1;
@@ -947,6 +958,9 @@ get_appl_server_name (int appl_server_type)
     {
       return APPL_SERVER_CAS_MYSQL_NAME;
     }
-
+  else if (appl_server_type == APPL_SERVER_CAS_CGW)
+    {
+      return APPL_SERVER_CAS_CGW_NAME;
+    }
   return APPL_SERVER_CAS_NAME;
 }

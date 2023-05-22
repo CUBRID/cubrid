@@ -1,18 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; version 2 of the License. 
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA 
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -58,75 +58,105 @@ CUniCASManage::~CUniCASManage()
 
 bool CUniCASManage::bStartUniCAS()
 {
-	CManageRegistry* cReg = new CManageRegistry( "CUBRIDCAS" );
-	char* sPath = cReg->sGetItem( "ROOT_PATH" );
+  CManageRegistry *cReg = new CManageRegistry ( "CUBRIDCAS" );
+  char *sPath = cReg->sGetItem ( "ROOT_PATH" );
 
-	// 2002년 10월 18일 By KingCH
-	// EasyManager Server의 Root Directory 정보를 가져온다.
-	// Working Directory를 바꿔서 실행을 시키면, Log가 시작 메뉴에 남지 않는다.
-	char* sWorkDir = getenv( "CUBRID_BROKER" );
+  // 2002년 10월 18일 By KingCH
+  // EasyManager Server의 Root Directory 정보를 가져온다.
+  // Working Directory를 바꿔서 실행을 시키면, Log가 시작 메뉴에 남지 않는다.
+  char *sWorkDir = getenv ( "CUBRID_BROKER" );
 
 
-	// 2002년 10월 18일 By KingCH
-	// UNITOOL_EMGR가 환경 변수에 없으면, Register를 읽어서, sWorkDir로 활용한다.
-	if( !sWorkDir ) sWorkDir = sPath;
-	int dchdir = _chdir( sWorkDir );
+  // 2002년 10월 18일 By KingCH
+  // UNITOOL_EMGR가 환경 변수에 없으면, Register를 읽어서, sWorkDir로 활용한다.
+  if ( !sWorkDir )
+    {
+      sWorkDir = sPath;
+    }
+  int dchdir = _chdir ( sWorkDir );
 
-	delete cReg;
+  delete cReg;
 
-	if( !sPath ) return false;
+  if ( !sPath )
+    {
+      return false;
+    }
 
-	char sFullName[1024];
-	memset( sFullName, 0x00, sizeof( sFullName ) );
-	sprintf( sFullName, "%s\\bin\\uc start", sPath );
+  char sFullName[1024];
+  memset ( sFullName, 0x00, sizeof ( sFullName ) );
+  sprintf ( sFullName, "%s\\bin\\uc start", sPath );
 
-	int dRes = WinExec( sFullName, SW_HIDE );
-	delete sPath;
-	if( dRes < 31 ) return false;
+  int dRes = WinExec ( sFullName, SW_HIDE );
+  delete sPath;
+  if ( dRes < 31 )
+    {
+      return false;
+    }
 
-	if( bCheckUniCAS() ) return true;
-	return false;
+  if ( bCheckUniCAS() )
+    {
+      return true;
+    }
+  return false;
 }
 
 bool CUniCASManage::bStopUniCAS()
 {
-	CManageRegistry* cReg = new CManageRegistry( "UNICAS" );
-	char* sPath = cReg->sGetItem( "ROOT_PATH" );
-	delete cReg;
+  CManageRegistry *cReg = new CManageRegistry ( "UNICAS" );
+  char *sPath = cReg->sGetItem ( "ROOT_PATH" );
+  delete cReg;
 
-	if( !sPath ) return false;
+  if ( !sPath )
+    {
+      return false;
+    }
 
-	char sFullName[1024];
-	memset( sFullName, 0x00, sizeof( sFullName ) );
-	sprintf( sFullName, "%s\\bin\\uc stop", sPath );
+  char sFullName[1024];
+  memset ( sFullName, 0x00, sizeof ( sFullName ) );
+  sprintf ( sFullName, "%s\\bin\\uc stop", sPath );
 
-	int dRes = WinExec( sFullName, SW_HIDE );
-	delete sPath;
+  int dRes = WinExec ( sFullName, SW_HIDE );
+  delete sPath;
 
-	if( dRes < 31 )	return false;
+  if ( dRes < 31 )
+    {
+      return false;
+    }
 
-	if( bCheckUniCAS() ) return false;
-	return true;
+  if ( bCheckUniCAS() )
+    {
+      return false;
+    }
+  return true;
 }
 
 bool CUniCASManage::bRestartUniCAS()
 {
-	CManageRegistry* cReg = new CManageRegistry( "UNICAS" );
-	char* sPath = cReg->sGetItem( "ROOT_PATH" );
-	delete cReg;
+  CManageRegistry *cReg = new CManageRegistry ( "UNICAS" );
+  char *sPath = cReg->sGetItem ( "ROOT_PATH" );
+  delete cReg;
 
-	if( !sPath ) return false;
+  if ( !sPath )
+    {
+      return false;
+    }
 
-	char sFullName[1024];
-	memset( sFullName, 0x00, sizeof( sFullName ) );
-	sprintf( sFullName, "%s\\bin\\uc restart", sPath );
+  char sFullName[1024];
+  memset ( sFullName, 0x00, sizeof ( sFullName ) );
+  sprintf ( sFullName, "%s\\bin\\uc restart", sPath );
 
-	int dRes = WinExec( sFullName, SW_HIDE );
-	delete sPath;
-	if( dRes < 31 ) return false;
+  int dRes = WinExec ( sFullName, SW_HIDE );
+  delete sPath;
+  if ( dRes < 31 )
+    {
+      return false;
+    }
 
-	if( bCheckUniCAS() ) return true;
-	return false;
+  if ( bCheckUniCAS() )
+    {
+      return true;
+    }
+  return false;
 }
 
 
@@ -135,77 +165,88 @@ bool CUniCASManage::bRestartUniCAS()
 
 bool CUniCASManage::bCheckUniCAS()
 {
-	CManageRegistry* cReg = new CManageRegistry( "UNICAS" );
-	char* sPath = cReg->sGetItem( "ROOT_PATH" );
-	delete cReg;
+  CManageRegistry *cReg = new CManageRegistry ( "UNICAS" );
+  char *sPath = cReg->sGetItem ( "ROOT_PATH" );
+  delete cReg;
 
-	if( !sPath )
-		return false;
+  if ( !sPath )
+    {
+      return false;
+    }
 
-	char sFullName[1024];
-	memset( sFullName, 0x00, sizeof( sFullName ) );
-	sprintf( sFullName, "%s\\bin\\%s", sPath, "cas.exe" );
+  char sFullName[1024];
+  memset ( sFullName, 0x00, sizeof ( sFullName ) );
+  sprintf ( sFullName, "%s\\bin\\%s", sPath, "cas.exe" );
 
-	CProcess* cProc = new CProcess();
-	unsigned long lRes = cProc->FindProcess( sFullName );
-	delete cProc;
+  CProcess *cProc = new CProcess();
+  unsigned long lRes = cProc->FindProcess ( sFullName );
+  delete cProc;
 
-	if( lRes <= 0 ) return false;
-	return true;
+  if ( lRes <= 0 )
+    {
+      return false;
+    }
+  return true;
 }
 
 
 bool CUniCASManage::bInstallStatus()
 {
-	CManageRegistry* cReg = new CManageRegistry( "UNICAS" );
-	char* sPath = cReg->sGetItem( "ROOT_PATH" );
-	delete cReg;
+  CManageRegistry *cReg = new CManageRegistry ( "UNICAS" );
+  char *sPath = cReg->sGetItem ( "ROOT_PATH" );
+  delete cReg;
 
-	if( !sPath || strlen( sPath ) <= 0 )
-		return false;
+  if ( !sPath || strlen ( sPath ) <= 0 )
+    {
+      return false;
+    }
 
-	return true;
+  return true;
 }
 
 
 bool CUniCASManage::bStatusUniCAS()
 {
-	CManageRegistry* cReg = new CManageRegistry( "UNICAS" );
-	char* sPath = cReg->sGetItem( "ROOT_PATH" );
-	delete cReg;
+  CManageRegistry *cReg = new CManageRegistry ( "UNICAS" );
+  char *sPath = cReg->sGetItem ( "ROOT_PATH" );
+  delete cReg;
 
-	if( !sPath )
-		return false;
+  if ( !sPath )
+    {
+      return false;
+    }
 
-	int dSize = strlen( sPath ) + strlen( "monitor.exe" );
-	char* sFullName = new char[ dSize + 5 ];
-	memset( sFullName, 0x00, dSize + 5 );
-	sprintf( sFullName, "%s\\bin\\%s", sPath, "monitor.exe" );
+  int dSize = strlen ( sPath ) + strlen ( "monitor.exe" );
+  char *sFullName = new char[ dSize + 5 ];
+  memset ( sFullName, 0x00, dSize + 5 );
+  sprintf ( sFullName, "%s\\bin\\%s", sPath, "monitor.exe" );
 
-	CCommonMethod* cComMeth = new CCommonMethod();
-	char* sResult = cComMeth->sCatchResult( sFullName );
+  CCommonMethod *cComMeth = new CCommonMethod();
+  char *sResult = cComMeth->sCatchResult ( sFullName );
 
-	delete cComMeth;
-	delete sFullName;
-	delete sPath;
+  delete cComMeth;
+  delete[] sFullName;
+  delete sPath;
 
-	if( !sResult || strlen( sResult ) <= 0 )
-		return false;
+  if ( !sResult || strlen ( sResult ) <= 0 )
+    {
+      return false;
+    }
 
-	char* sTmp;
+  char *sTmp;
 
-	// DB 이름을 이용하여, Linked List를 구성한다.
-	sTmp = strstr( sResult, "broker" );
-	delete sResult;
+  // DB 이름을 이용하여, Linked List를 구성한다.
+  sTmp = strstr ( sResult, "broker" );
+  delete sResult;
 
-	if( !sTmp )
-	{
-		bUNICAS = false;
-		return false;
-	}
+  if ( !sTmp )
+    {
+      bUNICAS = false;
+      return false;
+    }
 
-	bUNICAS = true;
-	return true;
+  bUNICAS = true;
+  return true;
 }
 
 

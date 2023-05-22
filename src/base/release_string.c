@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -70,7 +69,7 @@ typedef enum
  * Copyright Information
  */
 static const char *copyright_header = "\
-Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n\
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n\
 ";
 
 static const char *copyright_body = "\
@@ -88,6 +87,8 @@ static const char *major_release_string = makestring (MAJOR_RELEASE_STRING);
 static const char *build_number = makestring (BUILD_NUMBER);
 static const char *package_string = PACKAGE_STRING;
 static const char *build_os = makestring (BUILD_OS);
+static const char *build_type = makestring (BUILD_TYPE);
+
 #if defined (VERSION_STRING)
 static const char *version_string = VERSION_STRING;
 #endif /* VERSION_STRING */
@@ -99,7 +100,7 @@ static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, 
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 10.15f;
+static float disk_compatibility_level = 11.2f;
 
 /*
  * rel_copy_version_string - version string of the product
@@ -108,33 +109,18 @@ static float disk_compatibility_level = 10.15f;
 void
 rel_copy_version_string (char *buf, size_t len)
 {
-#if defined (NDEBUG)
 #if defined (CUBRID_OWFS)
-  snprintf (buf, len, "%s (%s) (%dbit owfs release build for %s) (%s %s)", rel_name (), rel_build_number (),
-	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
+  snprintf (buf, len, "%s (%s) (%dbit owfs %s build for %s) (%s %s)", rel_name (), rel_build_number (),
+	    rel_bit_platform (), rel_build_type (), rel_build_os (), __DATE__, __TIME__);
 #else /* CUBRID_OWFS */
 #if defined (VERSION_STRING)
-  snprintf (buf, len, "%s (%s) (%dbit release build for %s) (%s %s)", rel_name (), rel_version_string (),
-	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
+  snprintf (buf, len, "%s (%s) (%dbit %s build for %s) (%s %s)", rel_name (), rel_version_string (),
+	    rel_bit_platform (), rel_build_type (), rel_build_os (), __DATE__, __TIME__);
 #else /* VERSION_STRING */
-  snprintf (buf, len, "%s (%s) (%dbit release build for %s) (%s %s)", rel_name (), rel_build_number (),
-	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
+  snprintf (buf, len, "%s (%s) (%dbit %s build for %s) (%s %s)", rel_name (), rel_build_number (),
+	    rel_bit_platform (), rel_build_type (), rel_build_os (), __DATE__, __TIME__);
 #endif /* VERSION_STRING */
-#endif /* !CUBRID_OWFS */
-#else /* NDEBUG */
-#if defined (CUBRID_OWFS)
-  snprintf (buf, len, "%s (%s) (%dbit owfs debug build for %s) (%s %s)", rel_name (), rel_build_number (),
-	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
-#else /* CUBRID_OWFS */
-#if defined (VERSION_STRING)
-  snprintf (buf, len, "%s (%s) (%dbit debug build for %s) (%s %s)", rel_name (), rel_version_string (),
-	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
-#else /* VERSION_STRING */
-  snprintf (buf, len, "%s (%s) (%dbit debug build for %s) (%s %s)", rel_name (), rel_build_number (),
-	    rel_bit_platform (), rel_build_os (), __DATE__, __TIME__);
-#endif /* VERSION_STRING */
-#endif /* !CUBRID_OWFS */
-#endif /* !NDEBUG */
+#endif /* CUBRID_OWFS */
 }
 
 /*
@@ -187,6 +173,16 @@ rel_build_os (void)
   return build_os;
 }
 
+/*
+ * rel_build_type - Build type portion of the release string
+ *   build, release, coverage, profile
+ *   return: static char string
+ */
+const char *
+rel_build_type (void)
+{
+  return build_type;
+}
 
 #if defined (VERSION_STRING)
 /*
@@ -353,7 +349,7 @@ rel_compare (const char *rel_a, const char *rel_b)
   int a, b, retval = 0;
   char *a_temp, *b_temp, *end_p;
 
-  /* 
+  /*
    * If we get a NULL for one of the values (and we shouldn't), guess that
    * the versions are the same.
    */
@@ -363,12 +359,12 @@ rel_compare (const char *rel_a, const char *rel_b)
     }
   else
     {
-      /* 
+      /*
        * Compare strings
        */
       a_temp = (char *) rel_a;
       b_temp = (char *) rel_b;
-      /* 
+      /*
        * The following loop terminates if we determine that one string
        * is greater than the other, or we reach the end of one of the
        * strings.
@@ -387,7 +383,7 @@ rel_compare (const char *rel_a, const char *rel_b)
 	    {
 	      retval = 1;
 	    }
-	  /* 
+	  /*
 	   * This skips over the '.'.
 	   * This means that "?..?" will parse out to "?.?".
 	   */
@@ -410,7 +406,7 @@ rel_compare (const char *rel_a, const char *rel_b)
 
       if (!retval)
 	{
-	  /* 
+	  /*
 	   * Both strings are the same up to this point.  If the rest is zeros,
 	   * they're still equal.
 	   */

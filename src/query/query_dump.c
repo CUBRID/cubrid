@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -26,6 +25,7 @@
 #include "config.h"
 #include <stdio.h>
 
+#include "jansson.h"
 #include "query_dump.h"
 #include "object_primitive.h"
 #include "system_parameter.h"
@@ -33,6 +33,9 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+#include "xasl.h"
+#include "xasl_aggregate.hpp"
+#include "xasl_predicate.hpp"
 
 #define foutput stdout
 
@@ -418,6 +421,8 @@ qdump_target_type_string (TARGET_TYPE type)
       return "set";
     case TARGET_METHOD:
       return "method";
+    case TARGET_DBLINK:
+      return "dblink";
     default:
       return "undefined";
     }
@@ -727,6 +732,10 @@ qdump_print_list (LIST_SPEC_TYPE * list_p)
   qdump_print_regu_variable_list (list_p->list_regu_list_pred);
   fprintf (foutput, "\n	regu_list_rest:");
   qdump_print_regu_variable_list (list_p->list_regu_list_rest);
+  fprintf (foutput, "\n	regu_list_build:");
+  qdump_print_regu_variable_list (list_p->list_regu_list_build);
+  fprintf (foutput, "\n	regu_list_probe:");
+  qdump_print_regu_variable_list (list_p->list_regu_list_probe);
   return true;
 }
 
@@ -800,7 +809,7 @@ qdump_print_list_id (QFILE_LIST_ID * list_id_p)
       return false;
     }
 
-  fprintf (foutput, ")(tuple_cnt:%d)", list_id_p->tuple_cnt);
+  fprintf (foutput, ")(tuple_cnt:%lld)", (long long) list_id_p->tuple_cnt);
   return true;
 }
 
@@ -1187,8 +1196,6 @@ qdump_data_type_string (DB_TYPE type)
 static bool
 qdump_print_value (REGU_VARIABLE * value_p)
 {
-  XASL_NODE *xasl_p;
-
   if (value_p == NULL)
     {
       fprintf (foutput, "NIL");
@@ -1199,10 +1206,9 @@ qdump_print_value (REGU_VARIABLE * value_p)
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
     }
-  xasl_p = REGU_VARIABLE_XASL (value_p);
-  if (xasl_p)
+  if (value_p->xasl)
     {
-      fprintf (foutput, "[xasl:%p]", xasl_p);
+      fprintf (foutput, "[xasl:%p]", value_p->xasl);
     }
 
   fprintf (foutput, "[");
@@ -1212,11 +1218,13 @@ qdump_print_value (REGU_VARIABLE * value_p)
   switch (value_p->type)
     {
     case TYPE_DBVAL:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       qdump_print_db_value (&value_p->value.dbval);
       return true;
 
     case TYPE_CONSTANT:
     case TYPE_ORDERBY_NUM:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       qdump_print_db_value (value_p->value.dbvalptr);
       return true;
 
@@ -1261,6 +1269,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
 
     case TYPE_POS_VALUE:
     case TYPE_OID:
+      fprintf (foutput, "[type:%s]", qdump_data_type_string (value_p->domain->type->id));
       return true;
 
     case TYPE_FUNC:
@@ -1269,140 +1278,6 @@ qdump_print_value (REGU_VARIABLE * value_p)
 
     default:
       return true;
-    }
-}
-
-const char *
-qdump_function_type_string (FUNC_TYPE ftype)
-{
-  switch (ftype)
-    {
-    case PT_MIN:
-      return "MIN";
-    case PT_MAX:
-      return "MAX";
-    case PT_SUM:
-      return "SUM";
-    case PT_AVG:
-      return "AVG";
-    case PT_STDDEV:
-      return "STDDEV";
-    case PT_STDDEV_POP:
-      return "STDDEV_POP";
-    case PT_STDDEV_SAMP:
-      return "STDDEV_SAMP";
-    case PT_VARIANCE:
-      return "VARIANCE";
-    case PT_VAR_POP:
-      return "VAR_POP";
-    case PT_VAR_SAMP:
-      return "VAR_SAMP";
-    case PT_COUNT:
-      return "COUNT";
-    case PT_COUNT_STAR:
-      return "COUNT_STAR";
-    case PT_CUME_DIST:
-      return "CUME_DIST";
-    case PT_PERCENT_RANK:
-      return "PERCENT_RANK";
-    case PT_LEAD:
-      return "LEAD";
-    case PT_LAG:
-      return "LAG";
-    case PT_GROUPBY_NUM:
-      return "GROUPBY_NUM";
-    case PT_AGG_BIT_AND:
-      return "BIT_AND";
-    case PT_AGG_BIT_OR:
-      return "BIT_OR";
-    case PT_AGG_BIT_XOR:
-      return "BIT_XOR";
-    case PT_TOP_AGG_FUNC:
-      return "TOP_AGG_FUNC";
-    case PT_GROUP_CONCAT:
-      return "GROUP_CONCAT";
-    case PT_GENERIC:
-      return "GENERIC";
-    case PT_ROW_NUMBER:
-      return "ROW_NUMBER";
-    case PT_RANK:
-      return "RANK";
-    case PT_DENSE_RANK:
-      return "DENSE_RANK";
-    case PT_NTILE:
-      return "NTILE";
-    case PT_FIRST_VALUE:
-      return "FIRST_VALUE";
-    case PT_LAST_VALUE:
-      return "LAST_VALUE";
-    case PT_NTH_VALUE:
-      return "NTH_VALUE";
-    case PT_MEDIAN:
-      return "MEDIAN";
-    case PT_PERCENTILE_CONT:
-      return "PERCENTILE_CONT";
-    case PT_PERCENTILE_DISC:
-      return "PERCENTILE_DISC";
-    case PT_JSON_ARRAYAGG:
-      return "JSON_ARRAYAGG";
-    case PT_JSON_OBJECTAGG:
-      return "JSON_OBJECTAGG";
-    case F_TABLE_SET:
-      return "F_TABLE_SET";
-    case F_TABLE_MULTISET:
-      return "F_TABLE_MULTISET";
-    case F_TABLE_SEQUENCE:
-      return "F_TABLE_SEQUENCE";
-    case F_TOP_TABLE_FUNC:
-      return "F_TOP_TABLE_FUNC";
-    case F_MIDXKEY:
-      return "F_MIDXKEY";
-    case F_SET:
-      return "F_SET";
-    case F_MULTISET:
-      return "F_MULTISET";
-    case F_SEQUENCE:
-      return "F_SEQUENCE";
-    case F_VID:
-      return "F_VID";
-    case F_GENERIC:
-      return "F_GENERIC";
-    case F_CLASS_OF:
-      return "F_CLASS_OF";
-    case F_INSERT_SUBSTRING:
-      return "INSERT_SUBSTRING";
-    case F_ELT:
-      return "ELT";
-    case F_JSON_OBJECT:
-      return "JSON_OBJECT";
-    case F_JSON_ARRAY:
-      return "JSON_ARRAY";
-    case F_JSON_INSERT:
-      return "JSON_INSERT";
-    case F_JSON_REPLACE:
-      return "JSON_REPLACE";
-    case F_JSON_SET:
-      return "JSON_SET";
-    case F_JSON_KEYS:
-      return "JSON_KEYS";
-    case F_JSON_REMOVE:
-      return "JSON_REMOVE";
-    case F_JSON_ARRAY_APPEND:
-      return "JSON_ARRAY_APPEND";
-    case F_JSON_ARRAY_INSERT:
-      return "JSON_ARRAY_INSERT";
-    case F_JSON_CONTAINS_PATH:
-      return "JSON_CONTAINS_PATH";
-    case F_JSON_SEARCH:
-      return "JSON_SEARCH";
-    case F_JSON_MERGE:
-      return "JSON_MERGE";
-    case F_JSON_MERGE_PATCH:
-      return "JSON_MERGE_PATCH";
-    case F_JSON_GET_ALL_PATHS:
-      return "JSON_GET_ALL_PATHS";
-    default:
-      return "***UNKNOWN***";
     }
 }
 
@@ -1426,7 +1301,7 @@ qdump_print_function_value (REGU_VARIABLE * regu_var_p)
     }
 
   fprintf (foutput, "[TYPE_FUNC]");
-  fprintf (foutput, "[%s]", qdump_function_type_string (regu_var_p->value.funcp->ftype));
+  fprintf (foutput, "[%s]", fcode_get_uppercase_name (regu_var_p->value.funcp->ftype));
   fprintf (foutput, "operand-->");
   qdump_print_regu_variable_list (regu_var_p->value.funcp->operand);
 
@@ -1597,7 +1472,7 @@ qdump_print_rlike_eval_term (EVAL_TERM * term_p)
 static bool
 qdump_print_eval_term (PRED_EXPR * pred_p)
 {
-  EVAL_TERM *term = &pred_p->pe.eval_term;
+  EVAL_TERM *term = &pred_p->pe.m_eval_term;
 
   switch (term->et_type)
     {
@@ -1639,7 +1514,7 @@ qdump_print_term (PRED_EXPR * pred_p)
     case T_NOT_TERM:
       fprintf (foutput, "(NOT ");
 
-      if (!qdump_print_predicate (pred_p->pe.not_term))
+      if (!qdump_print_predicate (pred_p->pe.m_not_term))
 	{
 	  return false;
 	}
@@ -1686,12 +1561,12 @@ qdump_print_lhs_predicate (PRED_EXPR * pred_p)
 {
   fprintf (foutput, "(");
 
-  if (!qdump_print_predicate (pred_p->pe.pred.lhs))
+  if (!qdump_print_predicate (pred_p->pe.m_pred.lhs))
     {
       return false;
     }
 
-  fprintf (foutput, " %s ", qdump_bool_operator_string (pred_p->pe.pred.bool_op));
+  fprintf (foutput, " %s ", qdump_bool_operator_string (pred_p->pe.m_pred.bool_op));
 
   return true;
 }
@@ -1722,7 +1597,7 @@ qdump_print_predicate (PRED_EXPR * pred_p)
       parn_cnt = 1;
 
       /* Traverse right-linear chains of AND/OR terms */
-      for (pred_p = pred_p->pe.pred.rhs; pred_p->type == T_PRED; pred_p = pred_p->pe.pred.rhs)
+      for (pred_p = pred_p->pe.m_pred.rhs; pred_p->type == T_PRED; pred_p = pred_p->pe.m_pred.rhs)
 	{
 	  if (qdump_print_lhs_predicate (pred_p) == false)
 	    {
@@ -1880,15 +1755,6 @@ qdump_print_arith_expression (ARITH_TYPE * arith_p)
       fprintf (foutput, ")");
     }
 
-  if (arith_p->next != NULL)
-    {
-      fprintf (foutput, "; ");
-      if (!qdump_print_arith (ARITH_EXP, (void *) arith_p->next))
-	{
-	  return false;
-	}
-    }
-
   return true;
 }
 
@@ -1897,7 +1763,7 @@ qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr)
 {
   fprintf (foutput, "[%s]", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (aggptr->accumulator.value)));
 
-  fprintf (foutput, "%s(", qdump_function_type_string (aggptr->function));
+  fprintf (foutput, "%s(", fcode_get_uppercase_name (aggptr->function));
 
   fprintf (foutput, "%s ", qdump_option_string (aggptr->option));
 
@@ -1969,7 +1835,7 @@ qdump_print_arith (int type, void *ptr)
  *   xasl(in):
  */
 bool
-qdump_check_xasl_tree (XASL_NODE * xasl_p)
+qdump_check_xasl_tree (xasl_node * xasl_p)
 {
   QDUMP_XASL_CHECK_NODE *chk_nodes[HASH_NUMBER] = { NULL };
 
@@ -2060,7 +1926,7 @@ qdump_check_node (XASL_NODE * xasl_p, QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUM
 
   check_node_p->reachable = 1;
 
-  /* 
+  /*
    * Mark the node its access spec references.  You may need to create
    * it if it is a forward reference.
    */
@@ -2427,7 +2293,7 @@ qdump_print_connect_by_proc_node (XASL_NODE * xasl_p)
  *   xasl(in):
  */
 bool
-qdump_print_xasl (XASL_NODE * xasl_p)
+qdump_print_xasl (xasl_node * xasl_p)
 {
   VAL_LIST *single_tuple_p;
   QPROC_DB_VALUE_LIST value_list;
@@ -2714,10 +2580,12 @@ qdump_print_xasl (XASL_NODE * xasl_p)
   fprintf (foutput, "-->current spec:");
   qdump_print_access_spec (xasl_p->curr_spec);
   fprintf (foutput, "\n");
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
   fprintf (foutput, "-->[next scan on=%d]", xasl_p->next_scan_on);
   fprintf (foutput, "[next scan block on=%d]", xasl_p->next_scan_block_on);
-  fprintf (foutput, "-->[cat fetched=%d]", xasl_p->cat_fetched);
   fprintf (foutput, "\n");
+#endif /* SERVER_MODE || SA_MODE */
 
   switch (xasl_p->type)
     {
@@ -2988,6 +2856,10 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	{
 	  json_object_set_new (scan, "access", json_string ("class_attr"));
 	}
+      else if (type == TARGET_DBLINK)
+	{
+	  json_object_set_new (scan, "access", json_string ("dblink"));
+	}
 
       scan_print_stats_json (&spec->s_id, scan);
 
@@ -3013,7 +2885,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
  *   xasl_p(in):
  */
 void
-qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
+qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
@@ -3307,7 +3179,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
  *   indent(in):
  */
 void
-qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
+qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;

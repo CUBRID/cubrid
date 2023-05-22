@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -30,6 +29,7 @@
 
 // same module includes
 #include "thread_entry.hpp"
+#include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
 
@@ -39,8 +39,17 @@
 #include <mutex>
 #include <vector>
 
+// forward definitions
 template <typename T>
 class resource_shared_pool;
+
+namespace lockfree
+{
+  namespace tran
+  {
+    class system;
+  }
+}
 
 namespace cubthread
 {
@@ -50,8 +59,6 @@ namespace cubthread
   class worker_pool;
   class looper;
   class daemon;
-  class entry_task;
-  class entry_manager;
   class daemon_entry_manager;
 
   // alias for worker_pool<entry>
@@ -110,6 +117,7 @@ namespace cubthread
 
       void alloc_entries (void);
       void init_entries (bool with_lock_free = false);
+      void init_lockfree_system ();
 
       //////////////////////////////////////////////////////////////////////////
       // worker pool management
@@ -131,7 +139,7 @@ namespace cubthread
       void push_task (entry_workpool *worker_pool_arg, entry_task *exec_p);
       // push task on the given core of entry worker pool.
       // read cubthread::worker_pool::execute_on_core for details.
-      void push_task_on_core (entry_workpool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash);
+      void push_task_on_core (entry_workpool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash, bool method_mode);
 
       // try to execute task if there are available thread in worker pool
       // if worker_pool_arg is NULL, the task is executed immediately
@@ -192,6 +200,11 @@ namespace cubthread
 	return m_all_entries;
       }
 
+      lockfree::tran::system &get_lockfree_transys ()
+      {
+	return *m_lf_tran_sys;
+      }
+
       void set_max_thread_count_from_config ();
       void set_max_thread_count (std::size_t count);
 
@@ -250,6 +263,9 @@ namespace cubthread
       std::size_t m_available_entries_count;
       entry_manager *m_entry_manager;
       daemon_entry_manager *m_daemon_entry_manager;
+
+      // lock-free transaction system
+      lockfree::tran::system *m_lf_tran_sys;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -281,6 +297,7 @@ namespace cubthread
   const int LOG_WORKER_POOL_VACUUM = 0x100;
   const int LOG_WORKER_POOL_CONNECTIONS = 0x200;
   const int LOG_WORKER_POOL_TRAN_WORKERS = 0x400;
+  const int LOG_WORKER_POOL_INDEX_BUILDER = 0x800;
   const int LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker pools
 
   // daemons flags

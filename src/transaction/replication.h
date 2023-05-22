@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -33,6 +32,7 @@
 #if defined(SERVER_MODE) || defined(SA_MODE)
 #include "log_impl.h"
 #endif /* defined(SERVER_MODE) || defined(SA_MODE) */
+#include "log_lsa.hpp"
 #include "memory_alloc.h"
 #include "oid.h"
 #include "system_parameter.h"
@@ -65,6 +65,29 @@ struct repl_info_statement
   char *db_user;
   char *sys_prm_context;
 };
+
+#if defined(SERVER_MODE) || defined(SA_MODE)
+enum log_repl_flush
+{
+  LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
+  LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
+  LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
+};
+typedef enum log_repl_flush LOG_REPL_FLUSH;
+
+typedef struct log_repl LOG_REPL_RECORD;
+struct log_repl
+{
+  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA or LOG_REPLICATION_SCHEMA */
+  LOG_RCVINDEX rcvindex;
+  OID inst_oid;
+  LOG_LSA lsa;
+  char *repl_data;		/* the content of the replication log record */
+  int length;
+  LOG_REPL_FLUSH must_flush;
+  bool tde_encrypted;		/* if it contains user data of tde-class */
+};
+#endif
 
 /*
  * STATES OF TRANSACTIONS

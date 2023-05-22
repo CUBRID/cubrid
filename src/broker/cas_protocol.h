@@ -1,25 +1,30 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
 
 /*
  * cas_protocol.h -
+ *
+ * CAUTION!
+ *
+ * In case of common,  
+ * cci repository source (src/cci/broker_cas_protocol.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #ifndef _CAS_PROTOCOL_H_
@@ -35,7 +40,11 @@ extern "C"
 #define SRV_CON_CLIENT_INFO_SIZE	10
 #define SRV_CON_CLIENT_MAGIC_LEN	5
 #define SRV_CON_CLIENT_MAGIC_STR	"CUBRK"
+#define SRV_CON_CLIENT_MAGIC_STR_SSL    "CUBRS"
 #define SRV_CON_MSG_IDX_CLIENT_TYPE	5
+
+#define IS_SSL_CLIENT(driver_info) \
+        (strncmp (driver_info, SRV_CON_CLIENT_MAGIC_STR_SSL, SRV_CON_CLIENT_MAGIC_LEN) == 0)
 
 /* 8th and 9th-byte (index 7 and 8) are reserved for backward compatibility.
  * 8.4.0 patch 1 or earlier versions hold minor and patch version on them.
@@ -73,7 +82,9 @@ extern "C"
     CAS_CLIENT_JDBC = 3,
     CAS_CLIENT_PHP = 4,
     CAS_CLIENT_OLEDB = 5,
-    CAS_CLIENT_TYPE_MAX = 5
+    CAS_CLIENT_SERVER_SIDE_JDBC = 6,
+    CAS_CLIENT_GATEWAY = 7,
+    CAS_CLIENT_TYPE_MAX = 7
   } CAS_CLIENT_TYPE;
 
   typedef enum
@@ -219,7 +230,10 @@ extern "C"
     PROTOCOL_V6 = 6,		/* cci/cas4m support unsigned integer type */
     PROTOCOL_V7 = 7,		/* timezone types, to pin xasl entry for retry */
     PROTOCOL_V8 = 8,		/* JSON type */
-    CURRENT_PROTOCOL = PROTOCOL_V8
+    PROTOCOL_V9 = 9,		/* cas health check: get function status */
+    PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
+    PROTOCOL_V11 = 11,		/* make out resultset */
+    CURRENT_PROTOCOL = PROTOCOL_V11
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
@@ -353,5 +367,13 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+ /*
+  * CAUTION!
+  *
+  * In case of common,  
+  * cci repository source (src/cci/broker_cas_protocol.h) must be updated,
+  * becuase CCI source and Engine source have been separated.
+  */
 
 #endif				/* _CAS_PROTOCOL_H_ */

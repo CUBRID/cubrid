@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -42,7 +41,7 @@
 #include "message_catalog.h"
 #include "language_support.h"
 #include "system_parameter.h"
-#include "md5.h"
+#include "crypt_opfunc.h"
 #if !defined(WINDOWS)
 #include <netinet/in.h>
 #endif /* !WINDOWS */
@@ -2532,12 +2531,16 @@ handle_data_collation_rule (void *data, const char *s, int len)
   assert (len >= 0);
 
   t_rule = &(curr_coll_tail->rules[curr_coll_tail->count_rules]);
-  t_rule->t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + len);
-  if (t_rule->t_buf == NULL)
+  char *const realloc_t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + len);
+  if (realloc_t_buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;
       PRINT_DEBUG_DATA (data, "memory allocation failed", -1);
       return -1;
+    }
+  else
+    {
+      t_rule->t_buf = realloc_t_buf;
     }
 
   /* copy partial data to data buffer */
@@ -2762,12 +2765,16 @@ end_collation_x_rule (void *data, const char *el_name)
 
   assert (strlen (ld->data_buffer) == ld->data_buf_count);
 
-  t_rule->t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + ld->data_buf_count);
-  if (t_rule->t_buf == NULL)
+  char *const realloc_t_buf = (char *) realloc (t_rule->t_buf, t_rule->t_buf_size + ld->data_buf_count);
+  if (realloc_t_buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;
       PRINT_DEBUG_END (data, "memory allocation failed", -1);
       return -1;
+    }
+  else
+    {
+      t_rule->t_buf = realloc_t_buf;
     }
 
   /* copy partial data to rule tailoring buffer (character to be modified) */
@@ -2837,13 +2844,16 @@ end_collation_x_extend (void *data, const char *el_name)
   assert (t_rule->r_buf != NULL);
   assert (ld->data_buf_count > 0);
 
-  t_rule->r_buf = (char *) realloc (t_rule->r_buf, t_rule->r_buf_size + ld->data_buf_count);
-
-  if (t_rule->r_buf == NULL)
+  char *const realloc_r_buf = (char *) realloc (t_rule->r_buf, t_rule->r_buf_size + ld->data_buf_count);
+  if (realloc_r_buf == NULL)
     {
       pd->xml_error = XML_CUB_OUT_OF_MEMORY;
       PRINT_DEBUG_END (data, "memory allocation failed", -1);
       return -1;
+    }
+  else
+    {
+      t_rule->r_buf = realloc_r_buf;
     }
 
   memcpy (t_rule->r_buf + t_rule->r_buf_size, ld->data_buffer, ld->data_buf_count);
@@ -2892,12 +2902,16 @@ end_collation_x_context (void *data, const char *el_name)
 
   if (t_rule->t_buf_size < ld->data_buf_count)
     {
-      t_rule->t_buf = (char *) realloc (t_rule->t_buf, ld->data_buf_count);
-      if (t_rule->t_buf == NULL)
+      char *const realloc_t_buf = (char *) realloc (t_rule->t_buf, ld->data_buf_count);
+      if (realloc_t_buf == NULL)
 	{
 	  pd->xml_error = XML_CUB_OUT_OF_MEMORY;
 	  PRINT_DEBUG_END (data, "memory allocation failed", -1);
 	  return -1;
+	}
+      else
+	{
+	  t_rule->t_buf = realloc_t_buf;
 	}
     }
 
@@ -3478,11 +3492,15 @@ new_locale_collation (LOCALE_DATA * ld)
   assert (ld != NULL);
 
   /* check number of rules, increase array if necessary */
-  ld->collations = (LOCALE_COLLATION *) realloc (ld->collations, sizeof (LOCALE_COLLATION) * (ld->coll_cnt + 1));
-
-  if (ld->collations == NULL)
+  LOCALE_COLLATION *const realloc_collations
+    = (LOCALE_COLLATION *) realloc (ld->collations, sizeof (LOCALE_COLLATION) * (ld->coll_cnt + 1));
+  if (realloc_collations == NULL)
     {
       return NULL;
+    }
+  else
+    {
+      ld->collations = realloc_collations;
     }
 
   loc_collation = &(ld->collations[ld->coll_cnt]);
@@ -3513,13 +3531,16 @@ new_collation_rule (LOCALE_DATA * ld)
   /* check number of rules, increase array if necessary */
   if (curr_coll_tail->count_rules + 1 >= curr_coll_tail->max_rules)
     {
-      curr_coll_tail->rules = (TAILOR_RULE *)
-	realloc (curr_coll_tail->rules,
-		 sizeof (TAILOR_RULE) * (curr_coll_tail->max_rules + LOC_DATA_TAILOR_RULES_COUNT_GROW));
-
-      if (curr_coll_tail->rules == NULL)
+      TAILOR_RULE *const realloc_rules = (TAILOR_RULE *) realloc (curr_coll_tail->rules,
+								  sizeof (TAILOR_RULE) * (curr_coll_tail->max_rules +
+											  LOC_DATA_TAILOR_RULES_COUNT_GROW));
+      if (realloc_rules == NULL)
 	{
 	  return NULL;
+	}
+      else
+	{
+	  curr_coll_tail->rules = realloc_rules;
 	}
 
       curr_coll_tail->max_rules += LOC_DATA_TAILOR_RULES_COUNT_GROW;
@@ -3548,13 +3569,17 @@ new_transform_rule (LOCALE_DATA * ld)
   /* check number of rules, increase array if necessary */
   if (ld->alpha_tailoring.count_rules + 1 >= ld->alpha_tailoring.max_rules)
     {
-      ld->alpha_tailoring.rules = (TRANSFORM_RULE *)
-	realloc (ld->alpha_tailoring.rules,
-		 sizeof (TRANSFORM_RULE) * (ld->alpha_tailoring.max_rules + LOC_DATA_TAILOR_RULES_COUNT_GROW));
-
-      if (ld->alpha_tailoring.rules == NULL)
+      TRANSFORM_RULE *const realloc_alpha_tailoring_rules = (TRANSFORM_RULE *) realloc (ld->alpha_tailoring.rules,
+											sizeof (TRANSFORM_RULE) *
+											(ld->alpha_tailoring.max_rules +
+											 LOC_DATA_TAILOR_RULES_COUNT_GROW));
+      if (realloc_alpha_tailoring_rules == NULL)
 	{
 	  return NULL;
+	}
+      else
+	{
+	  ld->alpha_tailoring.rules = realloc_alpha_tailoring_rules;
 	}
 
       ld->alpha_tailoring.max_rules += LOC_DATA_TAILOR_RULES_COUNT_GROW;
@@ -3585,13 +3610,17 @@ new_collation_cubrid_rule (LOCALE_DATA * ld)
   /* check number of absolute rules, increase array if necessary */
   if (curr_coll_tail->cub_count_rules + 1 >= curr_coll_tail->cub_max_rules)
     {
-      curr_coll_tail->cub_rules = (CUBRID_TAILOR_RULE *)
-	realloc (curr_coll_tail->cub_rules,
-		 sizeof (CUBRID_TAILOR_RULE) * (curr_coll_tail->max_rules + LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW));
-
-      if (curr_coll_tail->cub_rules == NULL)
+      CUBRID_TAILOR_RULE *const realloc_cub_rules = (CUBRID_TAILOR_RULE *) realloc (curr_coll_tail->cub_rules,
+										    sizeof (CUBRID_TAILOR_RULE) *
+										    (curr_coll_tail->max_rules +
+										     LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW));
+      if (realloc_cub_rules == NULL)
 	{
 	  return NULL;
+	}
+      else
+	{
+	  curr_coll_tail->cub_rules = realloc_cub_rules;
 	}
 
       curr_coll_tail->cub_max_rules += LOC_DATA_COLL_CUBRID_TAILOR_COUNT_GROW;
@@ -3918,7 +3947,7 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 
   if (fp == NULL)
     {
-      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->txt_conv_prm.conv_file);
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", ld->txt_conv_prm.conv_file);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       status = ER_LOC_GEN;
       goto error;
@@ -3953,8 +3982,8 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
       /* skip codepoints values above 0xFFFF */
       if (cp_text > 0xffff || (cp_text > 0xff && ld->txt_conv_prm.conv_type == TEXT_CONV_GENERIC_1BYTE))
 	{
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
-		    ld->txt_conv_prm.conv_file, line_count);
+	  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
+				  ld->txt_conv_prm.conv_file, line_count);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto error;
@@ -4001,8 +4030,8 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 
       if (cp_unicode > 0xffff)
 	{
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
-		    ld->txt_conv_prm.conv_file, line_count);
+	  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Codepoint value too big" " in file :%s at line %d",
+				  ld->txt_conv_prm.conv_file, line_count);
 	  LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto error;
@@ -4010,15 +4039,19 @@ load_console_conv_data (LOCALE_DATA * ld, bool is_verbose)
 
       if (txt_conv_count_items >= txt_conv_max_items)
 	{
-	  txt_conv_array =
-	    (TXT_CONV_ITEM *) realloc (txt_conv_array,
-				       sizeof (TXT_CONV_ITEM) * (txt_conv_max_items + TXT_CONV_ITEM_GROW_COUNT));
-
-	  if (txt_conv_array == NULL)
+	  TXT_CONV_ITEM *const realloc_txt_conv_array = (TXT_CONV_ITEM *) realloc (txt_conv_array,
+										   sizeof (TXT_CONV_ITEM) *
+										   (txt_conv_max_items +
+										    TXT_CONV_ITEM_GROW_COUNT));
+	  if (realloc_txt_conv_array == NULL)
 	    {
 	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
 	      status = ER_LOC_GEN;
 	      goto error;
+	    }
+	  else
+	    {
+	      txt_conv_array = realloc_txt_conv_array;
 	    }
 
 	  txt_conv_max_items += TXT_CONV_ITEM_GROW_COUNT;
@@ -4577,8 +4610,10 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
       char msg[ERR_MSG_SIZE];
       const char *xml_err_text = (char *) XML_ErrorString (XML_GetErrorCode (ldml_parser.xml_parser));
 
-      snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, " "line : %d, column : %d. Internal XML: %s",
-		ldml_parser.filepath, ldml_parser.xml_error_line, ldml_parser.xml_error_column, xml_err_text);
+      snprintf_dots_truncate (msg, sizeof (msg) - 1,
+			      "Error parsing file %s, " "line : %d, column : %d. Internal XML: %s",
+			      ldml_parser.filepath, ldml_parser.xml_error_line, ldml_parser.xml_error_column,
+			      xml_err_text);
 
       LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
       er_status = ER_LOC_GEN;
@@ -5114,7 +5149,7 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool 
 	}
       else
 	{
-	  snprintf (msg, sizeof (msg) - 1, "Cannot open file %s", locale_cfg_file);
+	  snprintf_dots_truncate (msg, sizeof (msg) - 1, "Cannot open file %s", locale_cfg_file);
 	  LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 	  err_status = ER_LOC_GEN;
 	  goto exit;
@@ -5147,13 +5182,17 @@ locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool 
       if (num_locales >= max_locales)
 	{
 	  max_locales *= 2;
-	  locale_files = (LOCALE_FILE *) realloc (locale_files, max_locales * sizeof (LOCALE_FILE));
-
-	  if (locale_files == NULL)
+	  LOCALE_FILE *const realloc_locale_files
+	    = (LOCALE_FILE *) realloc (locale_files, max_locales * sizeof (LOCALE_FILE));
+	  if (realloc_locale_files == NULL)
 	    {
 	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
 	      err_status = ER_LOC_INIT;
 	      goto exit;
+	    }
+	  else
+	    {
+	      locale_files = realloc_locale_files;
 	    }
 	}
 
@@ -5409,7 +5448,7 @@ locale_prepare_C_file (void)
   fclose (fp);
   return 0;
 error:
-  snprintf (err_msg, sizeof (err_msg) - 1, "Error opening file %s for rewrite.", c_file_path);
+  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Error opening file %s for rewrite.", c_file_path);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
   return ER_GENERIC_ERROR;
 }
@@ -5484,7 +5523,7 @@ locale_save_to_C_file (LOCALE_FILE lf, LOCALE_DATA * ld)
   return 0;
 
 error:
-  snprintf (err_msg, sizeof (err_msg) - 1, "Error opening file %s for append.", c_file_path);
+  snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Error opening file %s for append.", c_file_path);
   LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
   return ER_GENERIC_ERROR;
 }
@@ -6609,7 +6648,7 @@ comp_func_coll_uca_exp (const void *arg1, const void *arg2)
     }
 
   return lang_strmatch_utf8_uca_w_coll_data (coll, false, (const unsigned char *) str1, size1,
-					     (const unsigned char *) str2, size2, NULL, false, NULL);
+					     (const unsigned char *) str2, size2, NULL, false, NULL, false);
 }
 
 /*
@@ -6820,14 +6859,19 @@ locale_check_and_set_shared_data (const LOC_SHARED_DATA_TYPE lsd_type, const cha
   /* set new shared data */
   if (alloced_shared_data <= count_shared_data)
     {
-      shared_data =
-	(LOC_SHARED_DATA *) realloc (shared_data,
-				     sizeof (LOC_SHARED_DATA) * (alloced_shared_data + SHARED_DATA_INCR_SIZE));
-      if (shared_data == NULL)
+      LOC_SHARED_DATA *const realloc_shared_data = (LOC_SHARED_DATA *) realloc (shared_data,
+										sizeof (LOC_SHARED_DATA) *
+										(alloced_shared_data +
+										 SHARED_DATA_INCR_SIZE));
+      if (realloc_shared_data == NULL)
 	{
 	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_GEN, true);
 	  status = ER_LOC_GEN;
 	  goto exit;
+	}
+      else
+	{
+	  shared_data = realloc_shared_data;
 	}
       alloced_shared_data += SHARED_DATA_INCR_SIZE;
     }
@@ -7128,7 +7172,7 @@ dump_unicode_mapping (UNICODE_MAPPING * um, const int mode)
   next = cur_str;
   while (next < um->buffer + um->size)
     {
-      cp = intl_utf8_to_cp (cur_str, (const int) INTL_UTF8_MAX_CHAR_SIZE, &next);
+      cp = intl_utf8_to_cp (cur_str, (int) INTL_UTF8_MAX_CHAR_SIZE, &next);
       printf ("%04X ", cp);
       cur_str = next;
     }
@@ -7370,7 +7414,7 @@ exit:
         ((char *)((((UINTPTR)(buf) + ((UINTPTR)((align)-1)))) \
                   & ~((UINTPTR)((align)-1))))
 
-/* 
+/*
  * locale_compute_coll_checksum() - Computes the MD5 checksum of collation
  *
  * Returns: error status
@@ -7382,6 +7426,7 @@ locale_compute_coll_checksum (COLL_DATA * cd)
   int input_size = 0;
   char *input_buf = NULL;
   char *buf_pos;
+  int error_code = NO_ERROR;
   int cp, w;
 
   if (cd->uca_opt.sett_expansions)
@@ -7519,13 +7564,10 @@ locale_compute_coll_checksum (COLL_DATA * cd)
   assert (buf_pos - input_buf == input_size);
 
   memset (cd->checksum, 0, sizeof (cd->checksum));
-  md5_buffer (input_buf, input_size, cd->checksum);
+  error_code = crypt_md5_buffer_hex (input_buf, input_size, cd->checksum);
 
   free (input_buf);
-
-  md5_hash_to_hex (cd->checksum, cd->checksum);
-
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -7594,6 +7636,7 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   int input_size = 0;
   char *input_buf = NULL;
   char *buf_pos;
+  int error_code = NO_ERROR;
   int cp;
 
   input_size += sizeof (ld->dateFormat);
@@ -7792,13 +7835,10 @@ locale_compute_locale_checksum (LOCALE_DATA * ld)
   assert (buf_pos - input_buf == input_size);
 
   memset (ld->checksum, 0, sizeof (ld->checksum));
-  md5_buffer (input_buf, input_size, ld->checksum);
+  error_code = crypt_md5_buffer_hex (input_buf, input_size, ld->checksum);
 
   free (input_buf);
-
-  md5_hash_to_hex (ld->checksum, ld->checksum);
-
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -7965,6 +8005,7 @@ start_include_collation (void *data, const char **attr)
   context->ldml_file = strdup (include_file_path);
   context->line_no = 0;
 
+  int ret;
   if (new_pd == NULL)
     {
       char err_msg[ERR_MSG_SIZE] = { 0 };
@@ -7972,15 +8013,15 @@ start_include_collation (void *data, const char **attr)
       switch (pd->xml_error)
 	{
 	case XML_CUB_ERR_INCLUDE_LOOP:
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Inclusion loop found for file %s.", include_file_path);
+	  ret = snprintf (err_msg, sizeof (err_msg) - 1, "Inclusion loop found for file %s.", include_file_path);
 	  break;
 	case XML_CUB_ERR_PARSER_INIT_FAIL:
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Failed to initialize subparser for file path %s.",
-		    include_file_path);
+	  ret = snprintf (err_msg, sizeof (err_msg) - 1, "Failed to initialize subparser for file path %s.",
+			  include_file_path);
 	  break;
 	case XML_CUB_OUT_OF_MEMORY:
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Memory exhausted when creating subparser for file %s.",
-		    include_file_path);
+	  ret = snprintf (err_msg, sizeof (err_msg) - 1, "Memory exhausted when creating subparser for file %s.",
+			  include_file_path);
 	  break;
 	}
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
@@ -7995,8 +8036,8 @@ start_include_collation (void *data, const char **attr)
     {
       char err_msg[ERR_MSG_SIZE] = { 0 };
 
-      snprintf (err_msg, sizeof (err_msg) - 1, "Included file %s does not exist or " "is not accessible.",
-		include_file_path);
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Included file %s does not exist or " "is not accessible.",
+			      include_file_path);
       PRINT_DEBUG_START (data, attr, err_msg, -1);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
 
@@ -8007,13 +8048,12 @@ start_include_collation (void *data, const char **attr)
       char msg[ERR_MSG_SIZE] = { 0 };
       const char *xml_err_text = (char *) XML_ErrorString (XML_GetErrorCode (new_pd->xml_parser));
 
-      snprintf (msg, sizeof (msg) - 1, "Error parsing file %s, " "line: %d, column: %d. Internal XML: %s",
-		new_pd->filepath, new_pd->xml_error_line, new_pd->xml_error_column, xml_err_text);
+      snprintf_dots_truncate (msg, sizeof (msg) - 1, "Error parsing file %s, " "line: %d, column: %d. Internal XML: %s",
+			      new_pd->filepath, new_pd->xml_error_line, new_pd->xml_error_column, xml_err_text);
       LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
 
       return -1;
     }
-
   free (context->ldml_file);
   context->ldml_file = prev_ldml_file;
   context->line_no = prev_line_no;

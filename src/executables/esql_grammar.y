@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -356,7 +355,7 @@ extern varstring *g_subscript;
 %}
 
 %glr-parser
-%error_verbose
+%define parse.error verbose
 
 %union {
   SYMBOL *p_sym;
@@ -614,10 +613,10 @@ extern varstring *g_subscript;
 
 // start
 translation_unit
-	: 
-	  opt_embedded_chunk_list	
+	:
+	  opt_embedded_chunk_list
 		{{
-			
+
 			pp_finish ();
 			vs_free (&pt_statement_buf);
 						/* verify push/pop modes were matched. */
@@ -643,20 +642,20 @@ embedded_chunk_list
 embedded_chunk
 	: chunk_header
 		{DBG_PRINT}
-	  chunk_body 
+	  chunk_body
 		{DBG_PRINT}
-	| '{' 
+	| '{'
 		{{
-			
+
 			pp_push_name_scope ();
-			
-		DBG_PRINT}} 
-	  opt_embedded_chunk_list 
+
+		DBG_PRINT}}
+	  opt_embedded_chunk_list
 		{{
-			
+
 			pp_pop_name_scope ();
-			
-		DBG_PRINT}} 
+
+		DBG_PRINT}}
 	  '}'
 		{DBG_PRINT}
 	;
@@ -669,27 +668,27 @@ chunk_header
 chunk_body
 	: declare_section ';'
 		{{
-			
+
 			esql_yy_enter (ECHO_mode);
 			pp_suppress_echo (false);
-			
+
 		DBG_PRINT}}
 	| esql_statement ';'
 		{{
-			
+
 			esql_yy_enter (ECHO_mode);
 			pp_suppress_echo (false);
-			
+
 		DBG_PRINT}}
 	;
 
 exec
 	: EXEC
 		{{
-			
+
 			esql_yy_enter (CSQL_mode);
 			reset_globals ();
-			
+
 		DBG_PRINT}}
 	;
 
@@ -700,14 +699,14 @@ sql
 
 // sqlx mode
 declare_section
-	: BEGIN_ DECLARE SECTION ';' 
+	: BEGIN_ DECLARE SECTION ';'
 		{{
-			
+
 			esql_yy_enter (C_mode);
 			pp_suppress_echo (false);
-			
+
 		DBG_PRINT}}
-	  declare_section_body 
+	  declare_section_body
 		{DBG_PRINT}
 	  exec sql END DECLARE SECTION
 		{DBG_PRINT}
@@ -716,41 +715,41 @@ declare_section
 esql_statement
 	: opt_repeated embedded_statement
 		{{
-			
+
 			ignore_repeat ();
 			esql_yy_sync_lineno ();
 			esql_yy_set_buf (NULL);
-			
+
 		DBG_PRINT}}
 	| opt_repeated declare_cursor_statement
 		{{
-			
+
 			ignore_repeat ();
-			
+
 		DBG_PRINT}}
-	| opt_repeated 
+	| opt_repeated
 		{{
-			
+
 			vs_clear (&pt_statement_buf);
 			esql_yy_set_buf (&pt_statement_buf);
-			
+
 		DBG_PRINT}}
 	  csql_statement
 		{DBG_PRINT}
 	;
-	
+
 opt_repeated
 	: // empty
 		{{
-			
+
 			repeat_option = false;
-			
+
 		DBG_PRINT}}
 	| REPEATED
 		{{
-			
+
 			repeat_option = true;
-			
+
 		DBG_PRINT}}
 	;
 
@@ -767,17 +766,17 @@ embedded_statement
 		{DBG_PRINT}
 	| describe_statement
 		{DBG_PRINT}
-	| prepare_statement 
+	| prepare_statement
 		{DBG_PRINT}
-	| execute_statement 
+	| execute_statement
 		{DBG_PRINT}
-	| fetch_statement 
+	| fetch_statement
 		{DBG_PRINT}
 	| INCLUDE SQLCA
 		{DBG_PRINT}
 	| INCLUDE SQLDA
 		{DBG_PRINT}
-	| commit_statement 
+	| commit_statement
 		{DBG_PRINT}
 	| rollback_statement
 		{DBG_PRINT}
@@ -791,54 +790,54 @@ whenever_statement
 of_whenever_state
 	: SQLWARNING_
 		{{
-			
+
 			$$ = SQLWARNING;
-			
+
 		DBG_PRINT}}
 	| SQLERROR_
 		{{
-			
+
 			$$ = SQLERROR;
-			
+
 		DBG_PRINT}}
 	| NOT FOUND
 		{{
-			
+
 			$$ = NOT_FOUND;
-			
+
 		DBG_PRINT}}
 	;
 
 whenever_action
 	: of_whenever_state CONTINUE_
 		{{
-			
+
 			pp_add_whenever_to_scope ($1, CONTINUE, NULL);
-			
+
 		DBG_PRINT}}
 	| of_whenever_state STOP_
 		{{
-			
+
 			pp_add_whenever_to_scope ($1, STOP, NULL);
-			
+
 		DBG_PRINT}}
 	| of_whenever_state GOTO_ opt_COLON IDENTIFIER
 		{{
-			
+
 			pp_add_whenever_to_scope ($1, GOTO, $4);
-			
+
 		DBG_PRINT}}
 	| of_whenever_state GO TO opt_COLON IDENTIFIER
 		{{
-			
+
 			pp_add_whenever_to_scope ($1, GOTO, $5);
-			
+
 		DBG_PRINT}}
 	| of_whenever_state CALL_ IDENTIFIER
 		{{
-			
+
 			pp_add_whenever_to_scope ($1, CALL, $3);
-			
+
 		DBG_PRINT}}
 	;
 
@@ -852,32 +851,32 @@ opt_COLON
 connect_statement
 	: CONNECT quasi_string_const opt_id_by_quasi
 		{{
-			
+
 			HOST_LOD *hvars;
 			HOST_REF *href = $2;
-			
+
 			if ($3)
 			  href = $3;
-			
+
 			hvars = pp_input_refs ();
 			esql_Translate_table.tr_connect (CHECK_HOST_REF (hvars, 0),
 							 CHECK_HOST_REF (hvars, 1),
 							 CHECK_HOST_REF (hvars, 2));
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
 opt_id_by_quasi
 	: // empty
 		{{
-			
+
 			$$ = NULL;
-			
+
 		DBG_PRINT}}
 	| IDENTIFIED BY quasi_string_const opt_with_quasi
 		{{
-			
+
 			if ($4)
 			  {
 			    $$ = $4;
@@ -886,78 +885,78 @@ opt_id_by_quasi
 			  {
 			    $$ = $3;
 			  }
-			
+
 		DBG_PRINT}}
 	;
 
 opt_with_quasi
 	: // empty
 		{{
-			
+
 			$$ = NULL;
-			
+
 		DBG_PRINT}}
 	| WITH quasi_string_const
 		{{
-			
-			
+
+
 			$$ = $2;
-			
+
 		DBG_PRINT}}
 	;
 
 disconnect_statement
-	: DISCONNECT 
+	: DISCONNECT
 		{{
-			
+
 			esql_Translate_table.tr_disconnect ();
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
 declare_cursor_statement
-	: DECLARE IDENTIFIER CURSOR_ FOR cursor_query_statement 
+	: DECLARE IDENTIFIER CURSOR_ FOR cursor_query_statement
 		{{
-			
+
 			char **cp = $5;
 			char *c_nam = strdup($2);
 			pp_new_cursor (c_nam, cp[0], (int) (long) cp[1], NULL,
 				       pp_detach_host_refs ());
 			free_and_init(c_nam);
-			
+
 		DBG_PRINT}}
-	| DECLARE IDENTIFIER CURSOR_ FOR dynamic_statement 
+	| DECLARE IDENTIFIER CURSOR_ FOR dynamic_statement
 		{{
-			
+
 			char *c_nam = strdup($2);
 			pp_new_cursor (c_nam, NULL, 0, (STMT *) $5, pp_detach_host_refs ());
 			free_and_init(c_nam);
 			esql_yy_sync_lineno ();
 			esql_yy_set_buf (NULL);
-			
+
 		DBG_PRINT}}
 	;
 
 
-dynamic_statement 
-	: IDENTIFIER 
+dynamic_statement
+	: IDENTIFIER
 		{{
-			
+
 			$$ = pp_new_stmt ($1);
-			
+
 		DBG_PRINT}}
 	;
 
 
 open_statement
-	: OPEN cursor opt_for_read_only using_part 
+	: OPEN cursor opt_for_read_only using_part
 		{{
-			
+
 			CURSOR *cur = $2;
 			int rdonly = $3;
 			HOST_LOD *usg;
-			
+
 			if (cur->static_stmt)
 			  {
 			    if (pp_input_refs ())
@@ -990,25 +989,25 @@ open_statement
 			    esql_yyverror (pp_get_msg (EX_ESQLM_SET, MSG_CURSOR_UNDEFINED),
 					   cur->name);
 			  }
-			
-			
+
+
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
 opt_for_read_only
 	: // empty
 		{{
-			
+
 			$$ = 0;
-			
+
 		DBG_PRINT}}
 	| FOR READ ONLY
 		{{
-			
+
 			$$ = 1;
-			
+
 		DBG_PRINT}}
 	;
 
@@ -1020,67 +1019,67 @@ using_part
 	;
 
 descriptor_name
-	: host_variable_wo_indicator 
+	: host_variable_wo_indicator
 		{{
-			
+
 			HOST_REF *href = $1;
 			char *nam = NULL;
 			if (pp_check_type (href,
 					   NEWSET (C_TYPE_SQLDA),
 					   pp_get_msg (EX_ESQLM_SET, MSG_PTR_TO_DESCR)))
 			  nam = pp_switch_to_descriptor ();
-			
+
 			$$ = nam;
-			
+
 		DBG_PRINT}}
 	;
 
 close_statement
 	: CLOSE cursor
 		{{
-			
+
 			CURSOR *cur = $2;
 			if (cur)
 			  esql_Translate_table.tr_close_cs (cur->cid);
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
 cursor
-	: IDENTIFIER 
+	: IDENTIFIER
 		{{
-			
+
 			CURSOR *cur = NULL;
 			if ((cur = pp_lookup_cursor ($1)) == NULL)
 			  esql_yyverror (pp_get_msg (EX_ESQLM_SET, MSG_CURSOR_UNDEFINED), $1);
-			
+
 			$$ = cur;
-			
+
 		DBG_PRINT}}
 	;
 
 describe_statement
-	: DESCRIBE dynamic_statement INTO descriptor_name 
+	: DESCRIBE dynamic_statement INTO descriptor_name
 		{{
-			
+
 			STMT *d_statement = $2;
 			char *nam = $4;
-			
+
 			if (d_statement && nam)
 			  esql_Translate_table.tr_describe (d_statement->sid, nam);
 			already_translated = true;
-			
+
 		DBG_PRINT}}
-	| DESCRIBE OBJECT host_variable_wo_indicator ON_ id_list_ INTO descriptor_name 
+	| DESCRIBE OBJECT host_variable_wo_indicator ON_ id_list_ INTO descriptor_name
 		{{
-			
+
 			HOST_REF *href = $3;
 			PTR_VEC *pvec = $5;
 			char *nam = $7;
-			
+
 			pp_copy_host_refs ();
-			
+
 			if (href && pvec && nam &&
 			    pp_check_type (href,
 					   NEWSET (C_TYPE_OBJECTID),
@@ -1091,42 +1090,42 @@ describe_statement
 								     (const char **)
 								     pp_ptr_vec_elems (pvec), nam);
 			  }
-			
+
 			pp_free_ptr_vec (pvec);
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
 prepare_statement
-	: PREPARE dynamic_statement FROM quasi_string_const 
+	: PREPARE dynamic_statement FROM quasi_string_const
 		{{
-			
+
 			HOST_REF *href = $4;
 			STMT *d_statement = $2;
-			
+
 			if (d_statement && href)
 			  esql_Translate_table.tr_prepare_esql (d_statement->sid, href);
-			
+
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
 into_result
-	: of_into_to 
+	: of_into_to
 		{{
-			
+
 			pp_gather_output_refs ();
 			esql_yy_erase_last_token ();
 			esql_yy_set_buf (NULL);
-			
+
 		DBG_PRINT}}
-	  host_variable_lod 
+	  host_variable_lod
 		{{
-			
+
 			pp_gather_input_refs ();
-			
+
 		DBG_PRINT}}
 	;
 
@@ -1135,23 +1134,23 @@ of_into_to
 	| TO
 	;
 
-host_variable_lod		
-	: host_variable_list 
+host_variable_lod
+	: host_variable_list
 		{DBG_PRINT}
-	| DESCRIPTOR descriptor_name 
+	| DESCRIPTOR descriptor_name
 		{DBG_PRINT}
 	;
 
-quasi_string_const 
-	: STRING_LIT 
+quasi_string_const
+	: STRING_LIT
 		{{
-			
+
 			$$ = pp_add_host_str ($1);
-			
+
 		DBG_PRINT}}
-	| host_variable_wo_indicator 
+	| host_variable_wo_indicator
 		{{
-			
+
 			HOST_REF *href = $1;
 			$$ = pp_check_type (href,
 					    NEWSET (C_TYPE_CHAR_ARRAY) |
@@ -1161,39 +1160,39 @@ quasi_string_const
 					    NEWSET (C_TYPE_NCHAR) |
 					    NEWSET (C_TYPE_VARNCHAR),
 					    pp_get_msg (EX_ESQLM_SET, MSG_CHAR_STRING));
-			
+
 		DBG_PRINT}}
 	;
 
 host_variable_list
-	: 
+	:
 		{{
-			
+
 			esql_yy_erase_last_token ();
 			structs_allowed = true;
-			
+
 		DBG_PRINT}}
-	  host_variable_list_tail 
+	  host_variable_list_tail
 		{{
-			
+
 			pp_check_host_var_list ();
 			ECHO;
-			
+
 		DBG_PRINT}}
 	;
 
-host_variable_wo_indicator 
+host_variable_wo_indicator
 	:
 		{{
-			
+
 			esql_yy_erase_last_token ();
-			
+
 		DBG_PRINT}}
 	  host_var_w_opt_indicator
 		{{
-			
+
 			HOST_REF *href2;
-			
+
 			href2 = $2;
 			if (href2 && href2->ind)
 			  {
@@ -1202,37 +1201,37 @@ host_variable_wo_indicator
 			    pp_free_host_var (href2->ind);
 			    href2->ind = NULL;
 			  }
-			
+
 			$$ = href2;
-			
+
 		DBG_PRINT}}
 	;
 
-id_list_ 
-	: id_list_ ',' IDENTIFIER 
+id_list_
+	: id_list_ ',' IDENTIFIER
 		{{
-			
+
 			PTR_VEC *pvec = NULL;
 			pvec = pp_add_ptr (pvec, strdup ($3));
 			$$ = pvec;
-			
+
 		DBG_PRINT}}
 	| IDENTIFIER
 		{{
-			
+
 			PTR_VEC *pvec;
 			pvec = pp_new_ptr_vec (&id_list);
 			pp_add_ptr (&id_list, strdup ($1));
-			
+
 			$$ = pvec;
-			
+
 		DBG_PRINT}}
 	;
 
 execute_statement
 	: EXECUTE dynamic_statement using_part opt_into_result
 		{{
-			
+
 			STMT *d_statement = $2;
 			if (d_statement)
 			  {
@@ -1248,17 +1247,17 @@ execute_statement
 							     (const char *) HOST_DESC (outputs));
 			    already_translated = true;
 			  }
-			
+
 		DBG_PRINT}}
-	| EXECUTE IMMEDIATE quasi_string_const 
+	| EXECUTE IMMEDIATE quasi_string_const
 		{{
-			
+
 			HOST_REF *href = $3;
-			
+
 			if (href)
 			  esql_Translate_table.tr_execute_immediate (href);
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
@@ -1268,9 +1267,9 @@ opt_into_result
 	;
 
 fetch_statement
-	: FETCH cursor into_result 
+	: FETCH cursor into_result
 		{{
-			
+
 			CURSOR *cur = $2;
 			if (cur)
 			  {
@@ -1279,18 +1278,18 @@ fetch_statement
 							      HOST_N_REFS (hlod), HOST_REFS (hlod),
 							      (char *) HOST_DESC (hlod));
 			  }
-			
+
 			already_translated = true;
-			
+
 		DBG_PRINT}}
-	| FETCH OBJECT host_variable_wo_indicator ON_ id_list_ into_result 
+	| FETCH OBJECT host_variable_wo_indicator ON_ id_list_ into_result
 		{{
-			
+
 			HOST_REF *href = $3;
 			PTR_VEC *pvec = $5;
 			HOST_LOD *hlod;
-			
-			
+
+
 			if (href && pvec
 			    && (hlod = pp_output_refs ())
 			    && pp_check_type (href,
@@ -1306,209 +1305,209 @@ fetch_statement
 								  HOST_REFS (hlod),
 								  (const char *) HOST_DESC (hlod));
 			  }
-			
+
 			pp_free_ptr_vec (pvec);
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
 commit_statement
 	: COMMIT opt_work
 		{{
-			
+
 			esql_Translate_table.tr_commit ();
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
 opt_work
 	: // empty
 	| WORK
-	; 
+	;
 
 rollback_statement
 	: ROLLBACK opt_work
 		{{
-			
+
 			esql_Translate_table.tr_rollback ();
 			already_translated = true;
-			
+
 		DBG_PRINT}}
 	;
 
 csql_statement_head
-	: ALTER 
+	: ALTER
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| ATTACH 
+	| ATTACH
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| CALL_ 
+	| CALL_
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| CREATE 
+	| CREATE
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| DROP 
+	| DROP
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| END 
+	| END
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| EVALUATE 
+	| EVALUATE
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| EXCLUDE 
+	| EXCLUDE
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| FOR 
+	| FOR
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| GET 
+	| GET
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| GRANT 
+	| GRANT
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| INSERT 
+	| INSERT
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| ON_ 
+	| ON_
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| REGISTER_ 
+	| REGISTER_
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| RENAME 
+	| RENAME
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| REVOKE 
+	| REVOKE
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| SELECT 
+	| SELECT
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| SET 
+	| SET
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| TRIGGER 
+	| TRIGGER
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
-	| USE 
+	| USE
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = NO_CURSOR;
-			
+
 		DBG_PRINT}}
 	| DELETE_
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = CURSOR_DELETE;
-			
+
 		DBG_PRINT}}
-	| UPDATE 
+	| UPDATE
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
 			$$ = CURSOR_UPDATE;
-			
+
 		DBG_PRINT}}
 	;
 
 csql_statement
-	: 
+	:
 		{{
-			
+
 			esql_yy_set_buf (&pt_statement_buf);
 			esql_yy_push_mode (BUFFER_mode);
-			
+
 		DBG_PRINT}}
-	  csql_statement_head 
+	  csql_statement_head
 		{{
-			
+
 			g_cursor_type = $2;
 						//esql_yy_push_mode(BUFFER_mode);
-			
+
 		DBG_PRINT}}
 	  csql_statement_tail
 		{DBG_PRINT}
@@ -1538,18 +1537,18 @@ ext_decl_list
 	;
 
 external_declaration
-	: 
+	:
 		{{
-			
+
 			pp_reset_current_type_spec ();
-			
+
 		DBG_PRINT}}
 	  opt_specifier_list optional_declarators
 		{{
-			
+
 			LINK *plink = $2;
 			SYMBOL *psym = $3;
-			
+
 			if (psym)
 			  {
 			    pp_add_spec_to_decl (plink, psym);
@@ -1583,45 +1582,45 @@ external_declaration
 			  }
 			if (plink && !plink->tdef)
 			  pp_discard_link_chain (plink);
-			
-		DBG_PRINT}} 
+
+		DBG_PRINT}}
 	  end_declarator_list
 	;
 
 opt_specifier_list
 	: // empty
 		{{
-			
+
 			$$ = pp_current_type_spec ();
-			
+
 		DBG_PRINT}}
 	| specifier_list
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
 optional_declarators
 	: // empty
 		{{
-			
+
 			$$ = NULL;
-			
+
 		DBG_PRINT}}
 	| init_declarator_list
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
 end_declarator_list
-	: nS_td ';' 
+	: nS_td ';'
 		{{
-			
+
 						/*
 						 * The specifier for this declarator list may have
 						 * been a VARCHAR (or maybe not); if it was, echoing
@@ -1629,127 +1628,127 @@ end_declarator_list
 						 * Either way, we want to turn echoing back on.
 						 */
 			pp_suppress_echo (false);
-			
+
 		DBG_PRINT}}
 	;
 
 specifier_list
 	: specifier_list specifier_
 		{{
-			
+
 			$$ = pp_current_type_spec ();
-			
+
 		DBG_PRINT}}
 	| specifier_
 		{{
-			
+
 			$$ = pp_current_type_spec ();
-			
+
 		DBG_PRINT}}
 	;
 
 specifier_
-	: storage_class_specifier 
+	: storage_class_specifier
 		{DBG_PRINT}
-	| type_specifier 
+	| type_specifier
 		{DBG_PRINT}
 	| type_qualifier
 		{DBG_PRINT}
 	;
 
 storage_class_specifier
-	: TYPEDEF_ 
+	: TYPEDEF_
 		{{
-			
+
 			pp_add_storage_class (TYPEDEF_);
-			
+
 		DBG_PRINT}}
-	| EXTERN_ 
+	| EXTERN_
 		{{
-			
+
 			pp_add_storage_class (EXTERN_);
-			
+
 		DBG_PRINT}}
-	| STATIC_ 
+	| STATIC_
 		{{
-			
+
 			pp_add_storage_class (STATIC_);
-			
+
 		DBG_PRINT}}
-	| AUTO_ 
+	| AUTO_
 		{{
-			
+
 			pp_add_storage_class (AUTO_);
-			
+
 		DBG_PRINT}}
-	| REGISTER_ 
+	| REGISTER_
 		{{
-			
+
 			pp_add_storage_class (REGISTER_);
-			
+
 		DBG_PRINT}}
 	;
 
 type_specifier
-	: nS_ntd base_type_specifier 
+	: nS_ntd base_type_specifier
 		{DBG_PRINT}
-	| type_adjective 
+	| type_adjective
 		{DBG_PRINT}
-	| struct_specifier 
+	| struct_specifier
 		{{
-			
+
 			pp_add_struct_spec ($1);
-			
+
 		DBG_PRINT}}
-	| enum_specifier 
+	| enum_specifier
 		{{
-			
+
 			pp_add_type_noun (INT_);
 			pp_add_type_adj (INT_);
-			
+
 		DBG_PRINT}}
 	;
 
 base_type_specifier
-	: VOID_ 
+	: VOID_
 		{{
-			
+
 			pp_add_type_noun (VOID_);
-			
+
 		DBG_PRINT}}
-	| CHAR_ 
+	| CHAR_
 		{{
-			
+
 			pp_add_type_noun (CHAR_);
-			
+
 		DBG_PRINT}}
-	| INT_ 
+	| INT_
 		{{
-			
+
 			pp_add_type_noun (INT_);
-			
+
 		DBG_PRINT}}
-	| FLOAT_ 
+	| FLOAT_
 		{{
-			
+
 			pp_add_type_noun (FLOAT_);
-			
+
 		DBG_PRINT}}
-	| DOUBLE_ 
+	| DOUBLE_
 		{{
-			
+
 			pp_add_type_noun (DOUBLE_);
-			
+
 		DBG_PRINT}}
-	| TYPEDEF_NAME 
+	| TYPEDEF_NAME
 		{{
-			
+
 			pp_add_typedefed_spec (g_identifier_symbol->type);
-			
+
 		DBG_PRINT}}
-	| VARCHAR_ 
+	| VARCHAR_
 		{{
-			
+
 						/*
 						 * The VARCHAR_ token turns OFF echoing (the magic
 						 * happens in check_c_identifier()) because we're
@@ -1762,158 +1761,158 @@ base_type_specifier
 						 * current specifier.
 						 */
 			pp_add_type_noun (VARCHAR_);
-			
+
 		DBG_PRINT}}
 	| BIT_ opt_varying
 		{{
-			
+
 			pp_add_type_noun ($2);
-			
+
 		DBG_PRINT}}
 	;
 
 opt_varying
 	: // empty
 		{{
-			
+
 			$$ = BIT_;
-			
+
 		DBG_PRINT}}
-	| VARYING 
+	| VARYING
 		{{
-			
+
 			$$ = VARBIT_;
-			
+
 		DBG_PRINT}}
 	;
 
 type_adjective
-	: SHORT_ 
+	: SHORT_
 		{{
-			
+
 			pp_add_type_adj (SHORT_);
-			
+
 		DBG_PRINT}}
-	| LONG_ 
+	| LONG_
 		{{
-			
+
 			pp_add_type_adj (LONG_);
-			
+
 		DBG_PRINT}}
-	| SIGNED_ 
+	| SIGNED_
 		{{
-			
+
 			pp_add_type_adj (SIGNED_);
-			
+
 		DBG_PRINT}}
-	| UNSIGNED_ 
+	| UNSIGNED_
 		{{
-			
+
 			pp_add_type_adj (UNSIGNED_);
-			
+
 		DBG_PRINT}}
 	;
 
-type_qualifier			
-	: CONST_ 
+type_qualifier
+	: CONST_
 		{{
-			
+
 			pp_add_type_adj (CONST_);
-			
+
 		DBG_PRINT}}
-	| VOLATILE_ 
+	| VOLATILE_
 		{{
-			
+
 			pp_add_type_adj (VOLATILE_);
-			
+
 		DBG_PRINT}}
 	;
 
 struct_specifier
-	: nS_ntd 
-	  of_struct_union 
+	: nS_ntd
+	  of_struct_union
 		{{
-			
+
 			g_su = $2;
 			g_sdef2 = NULL;
-			
+
 		DBG_PRINT}}
-	  struct_specifier_body 
+	  struct_specifier_body
 		{{
-			
+
 			STRUCTDEF *sdef = $4;
 			$$ = sdef;
-			
+
 		DBG_PRINT}}
-	| nS_ntd 
+	| nS_ntd
 	  of_struct_union
 	  struct_tag
 		{{
-			
+
 			g_su = $2;
 			g_sdef2 = $3;
-			
+
 		DBG_PRINT}}
 	  opt_struct_specifier_body
 		{{
-			
+
 			STRUCTDEF *sdef = $5;
 			sdef = g_sdef2;
 			sdef->by_name = true;
 			$$ = sdef;
-			
+
 		DBG_PRINT}}
 	;
 
 of_struct_union
 	: STRUCT_
 		{{
-			
+
 			$$ = 1;
-			
+
 		DBG_PRINT}}
 	| UNION_
 		{{
-			
+
 			$$ = 0;
-			
+
 		DBG_PRINT}}
 	;
 
 opt_struct_specifier_body
 	: // emtpy
 		{{
-			
+
 			$$ = NULL;
-			
+
 		DBG_PRINT}}
 	| struct_specifier_body
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
 struct_specifier_body
-	: nS_td 
-	  '{' 
+	: nS_td
+	  '{'
 		{{
-			
+
 			pp_push_spec_scope ();
-			
+
 		DBG_PRINT}}
-	  struct_declaration_list 
+	  struct_declaration_list
 		{{
-			
+
 			pp_pop_spec_scope ();
-			
+
 		DBG_PRINT}}
-	  '}' 
+	  '}'
 		{{
-			
+
 			SYMBOL *psym = $4;
-			
+
 			if (g_sdef2 == NULL)
 			  {
 			    g_sdef2 = pp_new_structdef (NULL);
@@ -1939,20 +1938,20 @@ struct_specifier_body
 			    g_sdef2->type_string = (unsigned char *) (g_su ? "struct" : "union");
 			    g_sdef2->fields = psym;
 			  }
-			
+
 			$$ = g_sdef2;
-			
+
 		DBG_PRINT}}
 	;
 
 struct_tag
-	: IDENTIFIER 
+	: IDENTIFIER
 		{{
-			
+
 			STRUCTDEF *sdef;
 			SYMBOL dummy;
 			dummy.name = $1;
-			
+
 			if (!
 			    (sdef =
 			     (STRUCTDEF *) pp_Struct_table->find_symbol (pp_Struct_table, &dummy)))
@@ -1960,16 +1959,16 @@ struct_tag
 			    sdef = pp_new_structdef (strdup($1));
 			    pp_Struct_table->add_symbol (pp_Struct_table, sdef);
 			  }
-			
+
 			$$ = sdef;
-			
+
 		DBG_PRINT}}
 	;
 
-struct_declaration_list 
-	: struct_declaration_list struct_declaration 
+struct_declaration_list
+	: struct_declaration_list struct_declaration
 		{{
-			
+
 			SYMBOL *last_field = $1;
 			if (last_field)
 			  {
@@ -1977,26 +1976,26 @@ struct_declaration_list
 			    last_field->next = $2;
 			    last_field->next->next = tmp;
 			  }
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
-	| struct_declaration 
+	| struct_declaration
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
 struct_declaration
-	: specifier_qualifier_list optional_struct_declarator_list 
+	: specifier_qualifier_list optional_struct_declarator_list
 		{{
-			
+
 			LINK *plink = $1;
 			SYMBOL *psym = $2;
 			SYMBOL *sym = NULL;
-			
+
 			if (psym)
 			  {
 			    pp_add_spec_to_decl (plink, psym);
@@ -2015,113 +2014,113 @@ struct_declaration
 			  }
 			else
 			  sym = NULL;
-			
+
 			if (!plink->tdef)
 			  pp_discard_link_chain (plink);
-			
+
 			g_struct_declaration_sym = sym;
-			
+
 		DBG_PRINT}}
 	  end_declarator_list
 		{{
-			
+
 			$$ = g_struct_declaration_sym;
-			
+
 		DBG_PRINT}}
 	;
 
-specifier_qualifier_list 
+specifier_qualifier_list
 	:
 		{{
-			
+
 			pp_reset_current_type_spec ();
 			pp_disallow_storage_classes ();
-			
+
 		DBG_PRINT}}
-	  specifier_list 
+	  specifier_list
 		{{
-			
+
 			$$ = $2;
-			
+
 		DBG_PRINT}}
 	;
 
-optional_struct_declarator_list 
+optional_struct_declarator_list
 	: // empty
 		{{
-			
+
 			$$ = NULL;
-			
+
 		DBG_PRINT}}
 	| struct_declarator_list
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
-struct_declarator_list 
+struct_declarator_list
 	: struct_declarator_list ',' struct_declarator
 		{{
-			
+
 			SYMBOL *psym = $1;
 			if (psym)
 			  {
 			    psym->next = $3;
 			  }
-			
+
 			$$ = psym;
-			
+
 		DBG_PRINT}}
 	| struct_declarator
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
-struct_declarator 
+struct_declarator
 	: ':'
 		{{
-			
+
 			esql_yy_push_mode (EXPR_mode);
-			
-		DBG_PRINT}}
-	  c_expression 
-		{{
-			
-			SYMBOL *psym = NULL;
-			$$ = psym;
-			
-		DBG_PRINT}}
-	| declarator_
-	  ':' 
-		{{
-			
-			esql_yy_push_mode (EXPR_mode);
-			
+
 		DBG_PRINT}}
 	  c_expression
 		{{
-			
-			$$ = $1;
-			
+
+			SYMBOL *psym = NULL;
+			$$ = psym;
+
 		DBG_PRINT}}
-	| declarator_ 
+	| declarator_
+	  ':'
 		{{
-			
+
+			esql_yy_push_mode (EXPR_mode);
+
+		DBG_PRINT}}
+	  c_expression
+		{{
+
 			$$ = $1;
-			
+
+		DBG_PRINT}}
+	| declarator_
+		{{
+
+			$$ = $1;
+
 		DBG_PRINT}}
 	;
 
 enum_specifier
-	: ENUM '{' enumerator_list '}' 
-	| ENUM identifier optional_enumerator_list 
+	: ENUM '{' enumerator_list '}'
+	| ENUM identifier optional_enumerator_list
 		{{
-			
+
 			SYMBOL *dl = $2;
 			if (dl->type)
 			  {
@@ -2131,7 +2130,7 @@ enum_specifier
 			  {
 			    pp_discard_symbol (dl);
 			  }
-			
+
 		DBG_PRINT}}
 	;
 
@@ -2150,125 +2149,125 @@ enumerator_list
 	;
 
 enumerator
-	: identifier 
+	: identifier
 		{{
-			
+
 			SYMBOL *dl = $1;
 			pp_do_enum (dl);
-			
+
 		DBG_PRINT}}
-	| identifier 
-	  '=' 
+	| identifier
+	  '='
 		{{
-			
+
 			esql_yy_push_mode (EXPR_mode);
-			
+
 		DBG_PRINT}}
-	  c_expression 
+	  c_expression
 		{{
-			
+
 			SYMBOL *dl = $1;
 			pp_do_enum (dl);
-			
+
 		DBG_PRINT}}
 	;
 
-init_declarator_list 
-	: init_declarator_list ',' init_declarator 
+init_declarator_list
+	: init_declarator_list ',' init_declarator
 		{{
-			
+
 			SYMBOL *psym = $1;
 			SYMBOL *psym3 = $3;
 			if (psym3)
 			  {
 			    psym3->next = psym;
 			  }
-			
+
 			$$ = psym3;
-			
+
 		DBG_PRINT}}
-		
+
 	| init_declarator
 		{{
-			
+
 			SYMBOL *psym = $1;
 			if (psym)
 			  psym->next = NULL;
 			$$ = psym;
-			
+
 		DBG_PRINT}}
 	;
 
-init_declarator 
-	: declarator_ 
+init_declarator
+	: declarator_
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	| declarator_
 	  nS_td
 	  '='
 		{{
-			
+
 			esql_yy_push_mode (EXPR_mode);
-			
+
 		DBG_PRINT}}
-	  c_expression nS_ntd 
+	  c_expression nS_ntd
 		{{
-			
+
 			SYMBOL *psym = $1;
 			pp_add_initializer (psym);
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
 declarator_
-	: direct_declarator 
+	: direct_declarator
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
-	| pointer declarator_ 
+	| pointer declarator_
 		{{
-			
+
 			SYMBOL *psym = $2;
 			if (psym)
 			  pp_add_declarator (psym, D_POINTER);
 			$$ = psym;
-			
+
 		DBG_PRINT}}
 	;
 
-direct_declarator 
-	: IDENTIFIER 
+direct_declarator
+	: IDENTIFIER
 		{{
-			
+
 			SYMBOL *psym = pp_new_symbol ($1, pp_nesting_level);
 			g_psym = psym;
-			
+
 		DBG_PRINT}}
 	  opt_param_spec_list
 		{{
-			
+
 			$$ = g_psym;
-			
+
 		DBG_PRINT}}
-	| '(' declarator_ ')' 
+	| '(' declarator_ ')'
 		{{
-			
+
 			SYMBOL *psym = pp_new_symbol ($2, pp_nesting_level);
 			g_psym = psym;
-			
+
 		DBG_PRINT}}
 	  opt_param_spec_list
 		{{
-			
+
 			$$ = g_psym;
-			
+
 		DBG_PRINT}}
 	;
 
@@ -2282,49 +2281,49 @@ opt_param_spec_list
 param_spec_list
 	: param_spec_list param_spec
 		{{
-			
+
 			SYMBOL *args = $2;
 			if (g_psym)
 			  {
 			    pp_add_declarator (g_psym, D_FUNCTION);
 			    g_psym->etype->decl.d.args = args;
 			  }
-			
+
 		DBG_PRINT}}
 	| param_spec_list c_subscript
 		{{
-			
+
 			const char *sub = $2;
 			if (g_psym)
 			  {
 			    pp_add_declarator (g_psym, D_ARRAY);
 			    g_psym->etype->decl.d.num_ele = (char *) sub;
 			  }
-			
+
 		DBG_PRINT}}
 	| param_spec
 		{{
-			
+
 			SYMBOL *args = $1;
 			if (g_psym)
 			  {
 			    pp_add_declarator (g_psym, D_FUNCTION);
 			    g_psym->etype->decl.d.args = args;
 			  }
-			
+
 		DBG_PRINT}}
 	| c_subscript
 		{{
-			
+
 			const char *sub = $1;
 			if (g_psym)
 			  {
 			    pp_add_declarator (g_psym, D_ARRAY);
 			    g_psym->etype->decl.d.num_ele = (char *) sub;
 			  }
-			
+
 		DBG_PRINT}}
-	; 
+	;
 
 pointer
 	: '*' opt_type_qualifier_list
@@ -2345,240 +2344,240 @@ type_qualifier_list
 		{DBG_PRINT}
 	;
 
-param_spec 
+param_spec
 	: '(' ')'
 		{{
-			
+
 			$$ = NULL;
-			
+
 		DBG_PRINT}}
 	| '(' push_name_scope param_type_list pop_name_scope ')'
 		{{
-			
+
 			$$ = $3;
-			
+
 		DBG_PRINT}}
 	| '(' push_name_scope id_list_ pop_name_scope ')'
 		{{
-			
+
 			$$ = $3;
-			
+
 		DBG_PRINT}}
 	;
 
 push_name_scope
-	: // empty		 
+	: // empty
 		{{
-			
+
 			pp_push_name_scope ();
-			
+
 		DBG_PRINT}}
 	;
 
 pop_name_scope
-	: // empty		 
+	: // empty
 		{{
-			
+
 			pp_pop_name_scope ();
-			
+
 		DBG_PRINT}}
 	;
 
 push_spec_scope
-	: // empty 
+	: // empty
 		{{
-			
+
 			pp_push_spec_scope ();
-			
+
 		DBG_PRINT}}
 	;
 
 pop_spec_scope
 	: // empty
 		{{
-			
+
 			pp_pop_spec_scope ();
-			
+
 		DBG_PRINT}}
 	;
 
-param_type_list 
+param_type_list
 	: push_spec_scope parameter_list pop_spec_scope
 		{{
-			
+
 			$$ = $2;
-			
+
 		DBG_PRINT}}
 	;
 
-parameter_list 
+parameter_list
 	: parameter_declaration trailing_params
 		{{
-			
+
 			SYMBOL *psym = $1;
 			psym->next = $2;
 			$$ = psym;
-			
+
 		DBG_PRINT}}
-	| parameter_declaration 
+	| parameter_declaration
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
-trailing_params 
+trailing_params
 	: param_decl_tail_list
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
-	| ',' ELLIPSIS 
+	| ',' ELLIPSIS
 		{{
-			
+
 			$$ = NULL;			// ???
-			
+
 		DBG_PRINT}}
   	;
 
 param_decl_tail_list
 	: param_decl_tail_list ',' parameter_declaration
 		{{
-			
+
 			SYMBOL *psym = $1;
 			SYMBOL *tmp = $3;
 			g_last->next = tmp;
 			g_last = tmp;
-			
+
 			$$ = psym;
-			
+
 		DBG_PRINT}}
 	| ',' parameter_declaration
 		{{
-			
+
 			$$ = g_last = $2;
-			
+
 		DBG_PRINT}}
 	;
 
 parameter_declaration
-	: 
+	:
 		{{
-			
+
 			pp_reset_current_type_spec ();
-			
+
 		DBG_PRINT}}
-	  specifier_list 
-	  opt_abstract_declarator 
+	  specifier_list
+	  opt_abstract_declarator
 	  nS_td
 		{{
-			
+
 			SYMBOL *psym = $3;
 			LINK *plink = $2;
-			
+
 			if (psym == NULL)
 			  psym = pp_new_symbol (NULL, pp_nesting_level);
-			
+
 			pp_add_spec_to_decl (plink, psym);
 			if (plink && !plink->tdef)
 			  pp_discard_link_chain (plink);
-			
+
 			$$ = psym;
-			
+
 		DBG_PRINT}}
 	;
 
 opt_abstract_declarator
 	: // empty
 		{{
-			
+
 			$$ = NULL;
-			
+
 		DBG_PRINT}}
 	| abstract_declarator
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
 abstract_declarator
-	: pointer opt_abstract_declarator 
+	: pointer opt_abstract_declarator
 		{{
-			
+
 			SYMBOL *psym = $2;
-			
+
 			if (psym == NULL)
 			  psym = pp_new_symbol (NULL, pp_nesting_level);
 			if (psym)
 			  pp_add_declarator (psym, D_POINTER);
-			
+
 		DBG_PRINT}}
-	| direct_abstract_declarator 
+	| direct_abstract_declarator
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
-direct_abstract_declarator 
+direct_abstract_declarator
 	: '(' abstract_declarator ')'
 		{{
-			
+
 			g_psym = $2;
-			
+
 		DBG_PRINT}}
 	  opt_direct_adecl_tail
 		{{
-			
+
 			$$ = g_psym;
-			
+
 		DBG_PRINT}}
 	| '(' opt_param_type_list ')'
 		{{
-			
+
 			SYMBOL *args = $2;
 			g_psym = pp_new_symbol (NULL, pp_nesting_level);
 			pp_add_declarator (g_psym, D_FUNCTION);
 			g_psym->etype->decl.d.args = args;
-			
-		DBG_PRINT}} 
+
+		DBG_PRINT}}
 	  opt_direct_adecl_tail
 		{{
-			
+
 			$$ = g_psym;
-			
+
 		DBG_PRINT}}
-	| IDENTIFIER 
+	| IDENTIFIER
 		{{
-			
+
 			g_psym = pp_new_symbol ($1, pp_nesting_level);
-			
+
 		DBG_PRINT}}
 	  opt_direct_adecl_tail
 		{{
-			
+
 			$$ = g_psym;
-			
+
 		DBG_PRINT}}
-	| c_subscript 
+	| c_subscript
 		{{
-			
+
 			const char *sub = $1;
 			g_psym = pp_new_symbol (NULL, pp_nesting_level);
 			pp_add_declarator (g_psym, D_ARRAY);
 			g_psym->etype->decl.d.num_ele = (char *) sub;
-			
-		DBG_PRINT}} 
+
+		DBG_PRINT}}
 	  opt_direct_adecl_tail
 		{{
-			
+
 			$$ = g_psym;
-			
+
 		DBG_PRINT}}
 	;
 
@@ -2590,106 +2589,106 @@ opt_direct_adecl_tail
 direct_adecl_tail
 	: direct_adecl_tail c_subscript
 		{{
-			
+
 			const char *sub = $2;
 			pp_add_declarator (g_psym, D_ARRAY);
 			g_psym->etype->decl.d.num_ele = (char *) sub;
-			
+
 		DBG_PRINT}}
 	| direct_adecl_tail '(' opt_param_type_list ')'
 		{{
-			
+
 			SYMBOL *args = $3;
 			pp_add_declarator (g_psym, D_FUNCTION);
 			g_psym->etype->decl.d.args = args;
-			
+
 		DBG_PRINT}}
 	| c_subscript
 		{{
-			
+
 			const char *sub = $1;
 			pp_add_declarator (g_psym, D_ARRAY);
 			g_psym->etype->decl.d.num_ele = (char *) sub;
-			
+
 		DBG_PRINT}}
 	| '(' opt_param_type_list ')'
 		{{
-			
+
 			SYMBOL *args = $2;
 			pp_add_declarator (g_psym, D_FUNCTION);
 			g_psym->etype->decl.d.args = args;
-			
+
 		DBG_PRINT}}
-	; 
+	;
 
 opt_param_type_list
 	: // empty
 		{{
-			
+
 			$$ = NULL;
-			
+
 		DBG_PRINT}}
 	| param_type_list
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
 nS_ntd
 	: // empty
 		{{
-			
+
 			pp_make_typedef_names_visible (0);
-			
+
 		DBG_PRINT}}
 	;
 
 nS_td
 	: // empty
 		{{
-			
+
 			pp_make_typedef_names_visible (1);
-			
+
 		DBG_PRINT}}
 	;
 
-identifier 
+identifier
 	: nS_ntd TYPEDEF_NAME nS_td
 		{{
-			
+
 			SYMBOL *result = pp_new_symbol ($2, pp_nesting_level);
 			$$ = result;
-			
+
 		DBG_PRINT}}
    	| IDENTIFIER
 		{{
-			
+
 			SYMBOL *result;
 			if (!g_identifier_symbol || g_identifier_symbol->level != pp_nesting_level)
 			  result = pp_new_symbol ($1, pp_nesting_level);
 			else
 			  result = g_identifier_symbol;
-			
+
 			$$ = result;
-			
+
 		DBG_PRINT}}
    	| ENUMERATION_CONSTANT
 		{{
-			
+
 			SYMBOL *result = pp_new_symbol ($1, pp_nesting_level);
 			$$ = result;
-			
+
 		DBG_PRINT}}
   	;
 
-c_subscript 
-	: '[' 
+c_subscript
+	: '['
 		{{
-			
+
 			varstring *subscript_buf = malloc (sizeof (varstring));
-			
+
 			esql_yy_push_mode (EXPR_mode);
 			if (IS_PSEUDO_TYPE (pp_current_type_spec ()))
 			  {
@@ -2704,17 +2703,17 @@ c_subscript
 			    (void) pp_set_echo (&echo_vstr);
 			    pp_suppress_echo (false);
 			  }
-			
+
 			g_subscript = subscript_buf;
-			
+
 		DBG_PRINT}}
-	  c_subscript_body 
+	  c_subscript_body
 	  ']'
 		{{
-			
+
 			char *subscript = NULL;
 			varstring *subscript_buf = g_subscript;
-			
+
 			if (IS_PSEUDO_TYPE (pp_current_type_spec ()))
 			  {
 			    /*
@@ -2727,11 +2726,11 @@ c_subscript
 			    subscript = pp_strdup (vs_str (subscript_buf));
 			    vs_free (subscript_buf);
 			  }
-			
+
 			esql_yy_pop_mode ();
-			
+
 			$$ = subscript;
-			
+
 		DBG_PRINT}}
 	;
 
@@ -2742,16 +2741,16 @@ c_subscript
 c_subscript_body
 	: // empty
 		{DBG_PRINT}
-	| c_expr 
+	| c_expr
 		{DBG_PRINT}
 	;
 
 c_expression
-	: c_expr 
+	: c_expr
 		{{
-			
+
 			esql_yy_pop_mode ();
-			
+
 		DBG_PRINT}}
 	;
 
@@ -2780,7 +2779,7 @@ acs_list
 	| of_any_comma_semi
 		{DBG_PRINT}
 	;
-	
+
 of_any_comma_semi
 	: any
 		{DBG_PRINT}
@@ -2791,11 +2790,11 @@ of_any_comma_semi
 	;
 
 any
-	: GENERIC_TOKEN 
+	: GENERIC_TOKEN
 		{DBG_PRINT}
-	| '(' any_expr ')' 
+	| '(' any_expr ')'
 		{DBG_PRINT}
-	| '[' any_expr ']' 
+	| '[' any_expr ']'
 		{DBG_PRINT}
 	| '{' any_expr '}'
 		{DBG_PRINT}
@@ -2807,163 +2806,163 @@ any
 host_variable_list_tail
 	: host_variable_list_tail ',' host_var_w_opt_indicator
 		{{
-			
+
 			ECHO_STR (", ", strlen (", "));
-			
+
 		DBG_PRINT}}
-	| host_var_w_opt_indicator 
+	| host_var_w_opt_indicator
 		{DBG_PRINT}
 	;
 
-indicator_var 
-	: // empty	
+indicator_var
+	: // empty
 		{{
-			
+
 			$$ = NULL;
 			g_indicator = false;
-			
+
 		DBG_PRINT}}
-	| '#' hostvar					
+	| '#' hostvar
 		{{
-			
+
 			$$ = $2;
 			g_indicator = false;
-			
+
 		DBG_PRINT}}
 	| INDICATOR '#' hostvar
 		{{
-			
+
 			$$ = $3;
 			g_indicator = false;
-			
+
 		DBG_PRINT}}
-	| INDICATOR hostvar	
+	| INDICATOR hostvar
 		{{
-			
+
 			$$ = $2;
 			g_indicator = false;
-			
+
 		DBG_PRINT}}
 	;
 
 
-host_var_w_opt_indicator 
-	: 
+host_var_w_opt_indicator
+	:
 		{{
-			
+
 			HOST_REF *href = NULL;
 			g_delay[0] = 0;
 			g_varstring = esql_yy_get_buf ();
-			
+
 			esql_yy_push_mode (VAR_mode);
 			esql_yy_set_buf (NULL);
 			structs_allowed = true;
-			
+
 		DBG_PRINT}}
 	  host_variable indicator_var
 		{{
-			
+
 			HOST_REF *href;
 			HOST_VAR *hvar1, *hvar2;
 			hvar1 = $2;
 			hvar2 = $3;
-			
+
 			esql_yy_pop_mode ();
 			esql_yy_set_buf (g_varstring);
-			
+
 			href = pp_add_host_ref (hvar1, hvar2, structs_allowed, &n_refs);
 			ECHO_STR ("? ", strlen ("? "));
 			for (i = 1; i < n_refs; i++)
 			  ECHO_STR (", ? ", strlen (", ? "));
-			
+
 			ECHO_STR (g_delay, strlen (g_delay));
-			
+
 			$$ = href;
-			
+
 		DBG_PRINT}}
 	;
 
-host_variable 
-	: ':' 
+host_variable
+	: ':'
 		{{
-			
+
 			g_indicator = true;
-			
+
 		DBG_PRINT}}
-	  hostvar 
+	  hostvar
 		{{
-			
+
 			$$ = $3;
-			
+
 		DBG_PRINT}}
 	;
 
-hostvar 
-	: host_ref 
+hostvar
+	: host_ref
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
-	| '*' CONST_ hostvar 
+	| '*' CONST_ hostvar
 		{{
-			
+
 			HOST_VAR *hvar = NULL;
 			HOST_VAR *hvar2 = $3;
 			if ((hvar = pp_ptr_deref (hvar2, 0)) == NULL)
 			  pp_free_host_var (hvar2);
 			else
 			  vs_prepend (&hvar->expr, "*");
-			
+
 			$$ = hvar;
-			
+
 		DBG_PRINT}}
-	| '*' VOLATILE_ hostvar 
+	| '*' VOLATILE_ hostvar
 		{{
-			
+
 			HOST_VAR *hvar = NULL;
 			HOST_VAR *hvar2 = $3;
 			if ((hvar = pp_ptr_deref (hvar2, 0)) == NULL)
 			  pp_free_host_var (hvar2);
 			else
 			  vs_prepend (&hvar->expr, "*");
-			
+
 			$$ = hvar;
-			
+
 		DBG_PRINT}}
-	| '*' hostvar 
+	| '*' hostvar
 		{{
-			
+
 			HOST_VAR *hvar = NULL;
 			HOST_VAR *hvar2 = $2;
 			if ((hvar = pp_ptr_deref (hvar2, 0)) == NULL)
 			  pp_free_host_var (hvar2);
 			else
 			  vs_prepend (&hvar->expr, "*");
-			
+
 			$$ = hvar;
-			
+
 		DBG_PRINT}}
-	| '&' host_ref 
+	| '&' host_ref
 		{{
-			
+
 			HOST_VAR *hvar;
 			HOST_VAR *href2 = $2;
-			
+
 			if ((hvar = pp_addr_of (href2)) == NULL)
 			  pp_free_host_var (href2);
 			else
 			  vs_prepend (&hvar->expr, "&");
-			
+
 			$$ = hvar;
-			
+
 		DBG_PRINT}}
 	;
 
-host_ref 
-	: IDENTIFIER			
+host_ref
+	: IDENTIFIER
 		{{
-			
+
 			HOST_VAR *href = NULL;
 			SYMBOL *sym = pp_findsym (pp_Symbol_table, $1);
 			if (sym == NULL)
@@ -2973,22 +2972,22 @@ host_ref
 			  }
 			else
 			  href = pp_new_host_var (NULL, sym);
-			
+
 			g_href = href;
-			
-		DBG_PRINT}} 	
-	  opt_host_ref_tail 		
+
+		DBG_PRINT}}
+	  opt_host_ref_tail
 		{{
-			
+
 			HOST_VAR *href = $3;
 			if (href == NULL)
 			  href = g_href;
 			$$ = href;
-			
-		DBG_PRINT}}		
-	| '(' hostvar ')' 		
+
+		DBG_PRINT}}
+	| '(' hostvar ')'
 		{{
-			
+
 			HOST_VAR *href = $2;
 			if (href)
 			  {
@@ -2996,172 +2995,172 @@ host_ref
 			    vs_strcat (&href->expr, ")");
 			  }
 			g_href = href;
-			
-		DBG_PRINT}} 
-	  opt_host_ref_tail			
+
+		DBG_PRINT}}
+	  opt_host_ref_tail
 		{{
-			
+
 			HOST_VAR *href = $5;
 			if (href == NULL)
 			  href = g_href;
 			$$ = href;
-			
-		DBG_PRINT}}		
+
+		DBG_PRINT}}
 	;
 
 opt_host_ref_tail
 	: 			%dprec 1
 		// empty
 		{{
-			
+
 			$$ = NULL;
-			
+
 		DBG_PRINT}}
 	| host_ref_tail		%dprec 2
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	;
 
 host_ref_tail
-	: host_ref_tail host_var_subscript 
+	: host_ref_tail host_var_subscript
 		{{
-			
+
 			$$ = $2;
-			
+
 		DBG_PRINT}}
 	| host_ref_tail '.' IDENTIFIER
 		{{
-			
+
 			HOST_VAR *href;
 			if ((href = pp_struct_deref (g_href, $3, 0)) == NULL)
 			  pp_free_host_var (g_href);
 			else
 			  vs_sprintf (&href->expr, ".%s", $3);
-			
+
 			$$ = href;
-			
+
 		DBG_PRINT}}
 	| host_ref_tail PTR_OP IDENTIFIER
 		{{
-			
+
 			HOST_VAR *href;
 			if ((href = pp_struct_deref (g_href, $3, 1)) == NULL)
 			  pp_free_host_var (g_href);
 			else
 			  vs_sprintf (&href->expr, "->%s", $3);
-			
+
 			$$ = href;
-			
+
 		DBG_PRINT}}
-	| host_var_subscript 
+	| host_var_subscript
 		{{
-			
+
 			$$ = $1;
-			
+
 		DBG_PRINT}}
 	| '.' IDENTIFIER
 		{{
-			
+
 			HOST_VAR *href;
 			if ((href = pp_struct_deref (g_href, $2, 0)) == NULL)
 			  pp_free_host_var (g_href);
 			else
 			  vs_sprintf (&href->expr, ".%s", $2);
-			
+
 			$$ = href;
-			
+
 		DBG_PRINT}}
 	| PTR_OP IDENTIFIER
 		{{
-			
+
 			HOST_VAR *href;
 			if ((href = pp_struct_deref (g_href, $2, 1)) == NULL)
 			  pp_free_host_var (g_href);
 			else
 			  vs_sprintf (&href->expr, "->%s", $2);
-			
+
 			$$ = href;
-			
+
 		DBG_PRINT}}
 	;
 
 host_var_subscript
-	: '[' 
+	: '['
 		{{
-			
+
 			vs_clear (&pp_subscript_buf);
 			esql_yy_push_mode (HV_mode);
-			
+
 		DBG_PRINT}}
 	  host_var_subscript_body
 		{{
-			
+
 			$$ = $3;
-			
+
 		DBG_PRINT}}
 	;
 
 
 host_var_subscript_body
-	: opt_hv_sub_list ']' 
+	: opt_hv_sub_list ']'
 		{{
-			
+
 			HOST_VAR *href;
-			
+
 			esql_yy_pop_mode ();
 			if ((href = pp_ptr_deref (g_href, 1)) == NULL)
 			  pp_free_host_var (g_href);
 			else
 			  vs_sprintf (&href->expr, "[%s%s", vs_str (&pp_subscript_buf), "]");
-			
+
 			$$ = href;
-			
+
 		DBG_PRINT}}
 	;
 
 // HV_mode
 hv_sub
-	: '(' 
+	: '('
 		{{
-			
+
 			vs_strcat (&pp_subscript_buf, "(");
-			
+
 		DBG_PRINT}}
-	  opt_hv_sub_list 
-	  ')' 
+	  opt_hv_sub_list
+	  ')'
 		{{
-			
+
 			vs_strcat (&pp_subscript_buf, ")");
-			
+
 		DBG_PRINT}}
-	| '[' 
+	| '['
 		{{
-			
+
 			vs_strcat (&pp_subscript_buf, "[");
-			
+
 		DBG_PRINT}}
-	  opt_hv_sub_list 
-	  ']' 
+	  opt_hv_sub_list
+	  ']'
 		{{
-			
+
 			vs_strcat (&pp_subscript_buf, "]");
-			
+
 		DBG_PRINT}}
-	| '{' 
+	| '{'
 		{{
-			
+
 			vs_strcat (&pp_subscript_buf, "{");
-			
+
 		DBG_PRINT}}
-	  opt_hv_sub_list 
-	  '}' 
+	  opt_hv_sub_list
+	  '}'
 		{{
-			
+
 			vs_strcat (&pp_subscript_buf, "}");
-			
+
 		DBG_PRINT}}
 	;
 
@@ -3184,10 +3183,10 @@ hv_sub_list
 // BUFFER_mode
 
 
-csql_statement_tail 
+csql_statement_tail
 	: opt_buffer_sql_list
 		{{
-			
+
 			PT_NODE **pt, *cursr;
 			char *statement, *text;
 			PT_HOST_VARS *result;
@@ -3198,17 +3197,17 @@ csql_statement_tail
 			esql_yy_pop_mode ();
 			statement = vs_str (&pt_statement_buf);
 			length = (int) vs_strlen (&pt_statement_buf);
-			
+
 			PRINT_1 ("statement: %s\n", statement);
 			pt = parser_parse_string (parser, statement);
-			
+
 			if (!pt || !pt[0])
 			  {
 			    pt_print_errors (parser);
 			  }
 			else
 			  {
-			
+
 			    is_upd_obj = pt_is_update_object (pt[0]);
 			    result = pt_host_info (parser, pt[0]);
 			    inputs = pp_input_refs ();
@@ -3279,10 +3278,10 @@ csql_statement_tail
 			      }
 			    pt_free_host_info (result);
 			  }
-			
+
 			esql_yy_sync_lineno ();
 			esql_yy_set_buf (NULL);
-			
+
 		DBG_PRINT}}
 	;
 
@@ -3294,30 +3293,30 @@ opt_buffer_sql_list
 	;
 
 buffer_sql_list
-	: buffer_sql_list buffer_sql		
+	: buffer_sql_list buffer_sql
 		{DBG_PRINT}
-	| buffer_sql			
+	| buffer_sql
 		{DBG_PRINT}
 	;
 
 buffer_sql
-	: host_var_w_opt_indicator 
+	: host_var_w_opt_indicator
 		{DBG_PRINT}
-	| DESCRIPTOR host_variable_wo_indicator 
+	| DESCRIPTOR host_variable_wo_indicator
 		{{
-			
+
 			HOST_REF *href = $2;
 			if (pp_check_type (href,
 					   NEWSET (C_TYPE_SQLDA),
 					   pp_get_msg (EX_ESQLM_SET, MSG_PTR_TO_DESCR)))
 			  pp_switch_to_descriptor ();
-			
+
 		DBG_PRINT}}
 	| var_mode_follow_set
 		{DBG_PRINT}
 	;
 
-var_mode_follow_set 
+var_mode_follow_set
 	: '*'
 		{DBG_PRINT}
 	| ','
@@ -3330,68 +3329,68 @@ var_mode_follow_set
 		{DBG_PRINT}
 	| '}'
 		{DBG_PRINT}
-	| GENERIC_TOKEN 
+	| GENERIC_TOKEN
 		{DBG_PRINT}
-	| IDENTIFIER 
+	| IDENTIFIER
 		{DBG_PRINT}
-	| INTO	
+	| INTO
 		{{
-			
+
 			pp_gather_output_refs ();
-			
+
 		DBG_PRINT}}
 	| TO
 		{{
-			
+
 			pp_gather_output_refs ();
-			
+
 		DBG_PRINT}}
-	| FROM 
+	| FROM
 		{{
-			
+
 			pp_gather_input_refs ();
-			
+
 		DBG_PRINT}}
-	| SELECT 
+	| SELECT
 		{{
-			
+
 			pp_gather_input_refs ();
-			
+
 		DBG_PRINT}}
-	| VALUES 
+	| VALUES
 		{{
-			
+
 			pp_gather_input_refs ();
-			
+
 		DBG_PRINT}}
-	| ON_ 
+	| ON_
 		{DBG_PRINT}
 	| WITH
 		{DBG_PRINT}
 	;
 
-cursor_query_statement 
-	: 
+cursor_query_statement
+	:
 		{{
-			
+
 			vs_clear (&pt_statement_buf);
 			esql_yy_set_buf (&pt_statement_buf);
 			esql_yy_push_mode (BUFFER_mode);
-			
+
 		DBG_PRINT}}
 	  of_select_lp opt_buffer_sql_list
 		{{
-			
+
 			char *statement;
 			char *text = NULL;
 			long length;
 			PT_NODE **pt;
 			char **cp = malloc (sizeof (char *) * 2);
-			
+
 			esql_yy_pop_mode ();
 			statement = vs_str (&pt_statement_buf);
 			length = vs_strlen (&pt_statement_buf);
-			
+
 			PRINT_1 ("statement: %s\n", statement);
 			pt = parser_parse_string (parser, statement);
 			if (!pt || !pt[0])
@@ -3400,15 +3399,15 @@ cursor_query_statement
 			  }
 			else
 			  text = statement;
-			
+
 			cp[0] = text;
 			cp[1] = (char *) length;
-			
+
 			esql_yy_sync_lineno ();
 			esql_yy_set_buf (NULL);
-			
+
 			$$ = cp;
-			
+
 		DBG_PRINT}}
 	;
 
@@ -3416,24 +3415,24 @@ cursor_query_statement
 of_select_lp
 	: SELECT
 		{{
-			
+
 			ECHO_STR ($1, strlen ($1));
-			
+
 		DBG_PRINT}}
 	| '('
 		{{
-			
+
 			ECHO_STR ("(", strlen ("("));
-			
+
 		DBG_PRINT}}
 	;
 
 
-//#lexclass COMMENT_mode		
+//#lexclass COMMENT_mode
 
 
 
-%% 
+%%
 
 #define UCI_OPT_UNSAFE_NULL     0x0001
 #define makestring1(x) #x
@@ -3868,7 +3867,7 @@ main (int argc, char **argv)
     {
       exit (1);
     }
-    
+
   lang_set_charset_lang ("en_US.iso88591");
 
   parser = parser_create_parser ();
@@ -4552,12 +4551,12 @@ int mm_size = 0;
  * return : char*
  * size(in) :
  */
-char* 
+char*
 mm_malloc (int size)
 {
   char* ret;
 
-  if (mm_buff==NULL) 
+  if (mm_buff==NULL)
     {
       mm_size = 1024*1024;
       mm_buff = pp_malloc(mm_size);
@@ -4583,14 +4582,14 @@ mm_malloc (int size)
  * return : char*
  * str(in) :
  */
-char* 
+char*
 mm_strdup (char* str)
 {
   const int max_len = 1024 * 1024 * 10;
   char* buff;
   int len = strnlen(str, max_len);
 
-  if (len == max_len) 
+  if (len == max_len)
     {
       esql_yyverror("(mm_strdup) internal error: string size is too large");
       exit (1);

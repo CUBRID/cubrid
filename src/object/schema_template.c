@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -95,10 +94,6 @@ static int add_resolution (SM_TEMPLATE * template_, MOP super_class, const char 
 static int delete_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, SM_NAME_SPACE name_space);
 static int smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, const bool add_first,
 				      const char *add_after_attribute);
-static int smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name,
-				  DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
-				  const char **att_names, const int *asc_desc, const SM_PREDICATE_INFO * filter_index,
-				  const SM_FUNCTION_INFO * function_index);
 static int smt_change_attribute (SM_TEMPLATE * template_, const char *name, const char *new_name,
 				 const char *new_domain_string, DB_DOMAIN * new_domain, const SM_NAME_SPACE name_space,
 				 const bool change_first, const char *change_after_attribute,
@@ -707,10 +702,12 @@ def_class_internal (const char *name, int class_type)
 
   if (sm_check_name (name))
     {
-      type = pr_find_type (name);
+      const char *class_name = sm_remove_qualifier_name (name);
+
+      type = pr_find_type (class_name);
       if (type != NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CLASS_WITH_PRIM_NAME, 1, class_name);
 	}
       else
 	{
@@ -1228,7 +1225,7 @@ smt_add_set_attribute_domain (SM_TEMPLATE * template_, const char *name, int cla
 	    }
 	  else
 	    {
-	      /* We need to make sure that we don't update a cached domain since we may not be the only one pointing to 
+	      /* We need to make sure that we don't update a cached domain since we may not be the only one pointing to
 	       * it.  If the domain is cached, make a copy of it, update it, then cache it. */
 	      if (att->domain->is_cached)
 		{
@@ -1394,7 +1391,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 
 	      /* if there wasn't an previous original value, take this one. This can only happen for new templates OR
 	       * if this is a new attribute that was added during this template OR if this is the first time setting a
-	       * default value to the attribute. This should be handled by using candidates in the template and storing 
+	       * default value to the attribute. This should be handled by using candidates in the template and storing
 	       * an extra bit field in the candidate structure. See the comment above sm_attribute for more information
 	       * about "original_value". */
 	      if (att->flags & SM_ATTFLAG_NEW)
@@ -1554,21 +1551,32 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
 
   db_make_null (&cnstr_val);
 
-  /* 
-   *  Check if the constraint already exists. Skip it if we have an online index building done. 
+  /*
+   *  Check if the constraint already exists. Skip it if we have an online index building done.
    */
-  if (index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
     {
-      if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
-	{
-	  ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
-	  goto end;
-	}
+      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
+      goto end;
     }
 
-  if (classobj_put_index (&template_->properties, type, constraint_name, atts, asc_desc, attr_prefix_length, NULL,
-			  filter_index, fk_info, shared_cons_name, function_index, comment, index_status, true)
-      != NO_ERROR)
+  // Declare and use a temporary variable to match the prototype of the classobj_put_index() function.
+  SM_CLASS_CONSTRAINT con;
+
+  con.type = type;
+  con.name = constraint_name;
+  con.attributes = atts;
+  con.asc_desc = (int *) asc_desc;
+  con.attrs_prefix_length = (int *) attr_prefix_length;
+  con.filter_predicate = filter_index;
+  con.func_index_info = function_index;
+  con.comment = comment;
+  con.index_status = index_status;
+  con.index_btid = BTID_INITIALIZER;
+  con.fk_info = NULL;
+  con.shared_cons_name = NULL;
+
+  if (classobj_put_index (&template_->properties, &con, NULL, fk_info, shared_cons_name, true) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
     }
@@ -1578,6 +1586,39 @@ end:
 
   return error;
 }
+
+
+static int
+smt_check_type_collation_match_4_fk (SM_ATTRIBUTE * attr1, SM_ATTRIBUTE * attr2)
+{
+  int error = NO_ERROR;
+
+  if (attr1->type->id != attr2->type->id
+      || (TP_TYPE_HAS_COLLATION (attr1->type->id)
+	  && TP_DOMAIN_COLLATION (attr1->domain) != TP_DOMAIN_COLLATION (attr2->domain)))
+    {
+      char *tp_col_nm1, *tp_col_nm2;
+      char *ekind;
+      if (attr1->type->id != attr2->type->id)
+	{
+	  tp_col_nm1 = (char *) pr_type_from_id (attr1->type->id)->get_name ();
+	  tp_col_nm2 = (char *) pr_type_from_id (attr2->type->id)->get_name ();
+	  ekind = (char *) "data type";
+	}
+      else
+	{
+	  tp_col_nm1 = lang_get_collation (attr1->domain->collation_id)->coll.coll_name;
+	  tp_col_nm2 = lang_get_collation (attr2->domain->collation_id)->coll.coll_name;
+	  ekind = (char *) "collation";
+	}
+
+      ERROR5 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, attr1->header.name, attr2->header.name, ekind, tp_col_nm1,
+	      tp_col_nm2);
+    }
+
+  return error;
+}
+
 
 /*
  * smt_check_foreign_key()
@@ -1715,11 +1756,8 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 	      goto err;
 	    }
 
-	  if (ref_attr->type->id != atts[j]->type->id
-	      || (TP_TYPE_HAS_COLLATION (ref_attr->type->id)
-		  && TP_DOMAIN_COLLATION (ref_attr->domain) != TP_DOMAIN_COLLATION (atts[j]->domain)))
+	  if ((error = smt_check_type_collation_match_4_fk (atts[j], ref_attr)) != NO_ERROR)
 	    {
-	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, atts[j]->header.name, ref_attr->header.name);
 	      goto err;
 	    }
 
@@ -1733,15 +1771,16 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 	      fk_info->ref_attrs[i] = fk_info->ref_attrs[j];
 	      fk_info->ref_attrs[j] = tmp;
 	    }
-
 	}
       else
 	{
-	  if (pk->attributes[i]->type->id != atts[i]->type->id
-	      || (TP_TYPE_HAS_COLLATION (atts[i]->type->id)
-		  && TP_DOMAIN_COLLATION (pk->attributes[i]->domain) != TP_DOMAIN_COLLATION (atts[i]->domain)))
+	  /*  This is the case where there is only a referenced table name and a specific column name is omitted.
+	   **  ex) create table tbl (id char(3) not null  PRIMARY KEY);
+	   **      create table tf_tbl (f_id int references tbl); 
+	   **  In this case, the PK column name is used.
+	   */
+	  if ((error = smt_check_type_collation_match_4_fk (atts[i], pk->attributes[i])) != NO_ERROR)
 	    {
-	      ERROR2 (error, ER_FK_HAS_DEFFERENT_TYPE_WITH_PK, atts[i]->header.name, pk->attributes[i]->header.name);
 	      goto err;
 	    }
 	}
@@ -1876,7 +1915,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char
  *   filter_index(in): filter index info
  *   function_index(in): function index info
  */
-static int
+int
 smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 		       const char *constraint_name, const char **att_names, const int *asc_desc,
 		       const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * function_index)
@@ -1956,15 +1995,11 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   assert (template_ != NULL);
 
-  /* Skip this check if we have an online index building done. */
-  if (index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
+				 asc_desc, filter_index, function_index);
+  if (error != NO_ERROR)
     {
-      error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
-				     asc_desc, filter_index, function_index);
-      if (error != NO_ERROR)
-	{
-	  goto error_return;
-	}
+      goto error_return;
     }
 
   constraint = SM_MAP_CONSTRAINT_TO_ATTFLAG (constraint_type);
@@ -2108,7 +2143,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       goto error_return;
     }
 
-  /* 
+  /*
    *  Process constraint
    */
   if (SM_IS_ATTFLAG_INDEX_FAMILY (constraint))
@@ -2189,7 +2224,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     }
   else if (constraint == SM_ATTFLAG_NON_NULL)
     {
-      /* 
+      /*
        *  We do not support NOT NULL constraints for;
        *    - normal (not class and shared) attributes of virtual classes
        *    - multiple attributes
@@ -2331,11 +2366,11 @@ smt_add_method_any (SM_TEMPLATE * template_, const char *name, const char *funct
 	{
 	  if (template_->name != NULL)
 	    {
-	      sprintf (iname, "%s_%s", template_->name, name);
+	      sprintf (iname, "%s_%s", sm_remove_qualifier_name (template_->name), name);
 	    }
 	  else if (template_->op != NULL)
 	    {
-	      sprintf (iname, "%s_%s", sm_get_ch_name (template_->op), name);
+	      sprintf (iname, "%s_%s", sm_remove_qualifier_name (sm_get_ch_name (template_->op)), name);
 	    }
 	  else
 	    {
@@ -2732,7 +2767,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons, const
 	}
       else
 	{
-	  /* Class references to another one (owner class). The below rename FK ref in owner class and update the owner 
+	  /* Class references to another one (owner class). The below rename FK ref in owner class and update the owner
 	   * class. */
 	  error = sm_rename_foreign_key_ref (ref_clsop, btid, old_name, new_name);
 	}
@@ -3446,7 +3481,7 @@ smt_delete_super_connect (SM_TEMPLATE * template_, MOP super_class)
 	      error = ml_append (&template_->inheritance, s->op, NULL);
 	    }
 
-	  /* It is unclear what the semantics of inheriting resolutions are force the user to respecify resolutions for 
+	  /* It is unclear what the semantics of inheriting resolutions are force the user to respecify resolutions for
 	   * conflicts on super supers */
 	}
     }
@@ -3686,7 +3721,7 @@ check_local_definition (SM_TEMPLATE * template_, const char *name, const char *a
       comp = find_component (template_, alias, class_stuff);
       if (comp != NULL)
 	{
-	  /* Can't use "alias" as an alias for inherited component "name", there is already a locally defined component 
+	  /* Can't use "alias" as an alias for inherited component "name", there is already a locally defined component
 	   * with that name */
 	  ERROR2 (error, ER_SM_ALIAS_COMPONENT_EXISTS, alias, name);
 	  return error;
@@ -4407,6 +4442,8 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
   int is_class_attr;
   DB_VALUE *orig_value = NULL;
   DB_VALUE *new_orig_value = NULL;
+  DB_VALUE default_value;
+  DB_DEFAULT_EXPR default_expr;
   TP_DOMAIN_STATUS status;
 
   *found_att = NULL;
@@ -4423,22 +4460,47 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
       return error;
     }
 
+  /* 
+     The default value's domain should be checked even though the new default is not specified
+   */
+  db_make_null (&default_value);
+  if (new_default_value == NULL && new_default_expr->default_expr_type == DB_DEFAULT_NONE)
+    {
+      pr_clone_value (&(*found_att)->default_value.value, &default_value);
+      default_expr = (*found_att)->default_value.default_expr;
+
+      if (!DB_IS_NULL (&default_value))
+	{
+	  new_default_value = &default_value;
+	}
+
+      if (default_expr.default_expr_type != DB_DEFAULT_NONE)
+	{
+	  new_default_expr = &default_expr;
+	}
+    }
+
   is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);
   if (new_default_value != NULL || (new_default_expr != NULL && new_default_expr->default_expr_type != DB_DEFAULT_NONE))
     {
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
       error = smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name), is_class_attr, new_default_value,
 					 new_default_expr);
+
+      db_value_clear (&default_value);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
     }
 
-  error = smt_set_attribute_on_update (def, ((new_name != NULL) ? new_name : name), is_class_attr, on_update_expr);
-  if (error != NO_ERROR)
+  if (on_update_expr != DB_DEFAULT_NONE)
     {
-      return error;
+      error = smt_set_attribute_on_update (def, ((new_name != NULL) ? new_name : name), is_class_attr, on_update_expr);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   /* change original default : continue only for normal attributes */
@@ -4558,7 +4620,7 @@ smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att, DB_DOMAIN * new_do
 
   /* cast the value to new domain : explicit cast */
   new_value = pr_make_ext_value ();
-  cast_status = db_value_coerce (current_value, new_value, new_domain);
+  cast_status = tp_value_cast (current_value, new_value, new_domain, false);
   if (cast_status == DOMAIN_COMPATIBLE)
     {
       pr_clear_value (&att->default_value.value);
@@ -4582,7 +4644,7 @@ smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att, DB_DOMAIN * new_do
  *
  *   return: MOP on success, NULL for ERROR
  *   ctemplate(in): class template
- *   constrant_name(in): 
+ *   constrant_name(in):
  *
  *   Note: This function requires that the given constraint must exist in the
  *         class of ctemplate.

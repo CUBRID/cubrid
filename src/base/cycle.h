@@ -52,7 +52,7 @@
    defined according to whether the corresponding function/type/header
    is available on your system.  The necessary macros are most
    conveniently defined if you are using GNU autoconf, via the tests:
-   
+
    dnl ---------------------------------------------------------------------
 
    AC_C_INLINE
@@ -197,7 +197,7 @@ INLINE_ELAPSED (__inline__)
 #endif
 /*----------------------------------------------------------------*/
 /*
- * Pentium cycle counter 
+ * Pentium cycle counter
  */
 #if (defined(__GNUC__) || defined(__ICC)) && defined(__i386__)  && !defined(HAVE_TICK_COUNTER)
      typedef unsigned long long ticks;
@@ -351,7 +351,7 @@ INLINE_ELAPSED (inline)
 #endif
 /*----------------------------------------------------------------*/
 /*
- * PA-RISC cycle counter 
+ * PA-RISC cycle counter
  */
 #if defined(__hppa__) || defined(__hppa) && !defined(HAVE_TICK_COUNTER)
      typedef unsigned long ticks;
@@ -396,7 +396,7 @@ INLINE_ELAPSED (__inline__)
 /*----------------------------------------------------------------*/
 #if defined(__GNUC__) && defined(__alpha__) && !defined(HAVE_TICK_COUNTER)
 /*
- * The 32-bit cycle counter on alpha overflows pretty quickly, 
+ * The 32-bit cycle counter on alpha overflows pretty quickly,
  * unfortunately.  A 1GHz machine overflows in 4 seconds.
  */
      typedef unsigned int ticks;

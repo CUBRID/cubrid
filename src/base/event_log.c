@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -36,6 +35,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "environment_variable.h"
+#include "log_impl.h"
 #include "query_executor.h"
 #include "object_primitive.h"
 #include "porting.h"
@@ -60,7 +60,7 @@ static char event_log_file_path[PATH_MAX];
 
 static FILE *event_file_open (const char *path);
 static FILE *event_file_backup (FILE * fp, const char *path);
-static void event_log_print_client_ids_info (LOG_CLIENTIDS * client_info, int indent);
+static void event_log_print_client_ids_info (CLIENTIDS * client_info, int indent);
 
 /*
  * event_init - Initialize event log module
@@ -305,7 +305,7 @@ event_log_end (THREAD_ENTRY * thread_p)
  *   return:
  */
 static void
-event_log_print_client_ids_info (LOG_CLIENTIDS * client_info, int indent)
+event_log_print_client_ids_info (CLIENTIDS * client_info, int indent)
 {
   if (event_Fp == NULL)
     {
@@ -321,8 +321,8 @@ event_log_print_client_ids_info (LOG_CLIENTIDS * client_info, int indent)
     {
       fprintf (event_Fp, "%*c", indent, ' ');
     }
-  fprintf (event_Fp, "client: %s@%s|%s(%d)\n", client_info->db_user, client_info->host_name, client_info->program_name,
-	   client_info->process_id);
+  fprintf (event_Fp, "client: %s@%s|%s(%d)\n", client_info->get_db_user (), client_info->get_host_name (),
+	   client_info->get_program_name (), client_info->process_id);
 }
 
 /*
@@ -334,7 +334,7 @@ event_log_print_client_ids_info (LOG_CLIENTIDS * client_info, int indent)
 void
 event_log_print_client_info (int tran_index, int indent)
 {
-  char *prog, *user, *host;
+  const char *prog, *user, *host;
   int pid;
 
   if (event_Fp == NULL)
@@ -349,6 +349,44 @@ event_log_print_client_info (int tran_index, int indent)
       fprintf (event_Fp, "%*c", indent, ' ');
     }
   fprintf (event_Fp, "client: %s@%s|%s(%d)\n", user, host, prog, pid);
+}
+
+/*
+ * event_log_sql_without_user_oid
+ *   print sql without user oid for event log
+ *   return: none
+*/
+void
+event_log_sql_without_user_oid (FILE * fp, const char *format, int indent, const char *hash_text)
+{
+  /* start from user=0|0|0, length = 10 */
+  int i, start = strlen (hash_text) - 10;
+  char *k;
+
+  for (i = start; i >= 0; i--)
+    {
+      if ((k = strstr ((char *) hash_text, "user=")) != NULL)
+	{
+	  /* cut the hash_text to exclude "user=" */
+	  *k = 0;
+	  break;
+	}
+    }
+
+  if (format)
+    {
+      fprintf (fp, format, indent, ' ', hash_text);
+    }
+  else
+    {
+      fprintf (fp, "%s\n", hash_text);
+    }
+
+  /* if "user=" was found then restore it */
+  if (k != NULL)
+    {
+      *k = 'u';
+    }
 }
 
 /*
@@ -381,7 +419,7 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id,
 
   if (ent != NULL && ent->sql_info.sql_hash_text != NULL)
     {
-      fprintf (log_fp, "%s\n", ent->sql_info.sql_hash_text);
+      event_log_sql_without_user_oid (log_fp, NULL, 0, ent->sql_info.sql_hash_text);
     }
   else
     {
@@ -422,7 +460,7 @@ event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, i
 
   for (i = 0; i < tdes->bind_history[bind_index].size; i++)
     {
-      val_str = pr_valstring (thread_p, &tdes->bind_history[bind_index].vals[i]);
+      val_str = pr_valstring (&tdes->bind_history[bind_index].vals[i]);
       fprintf (log_fp, "%*cbind: %s\n", indent, ' ', (val_str == NULL) ? "(null)" : val_str);
 
       if (val_str != NULL)
@@ -443,7 +481,7 @@ event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, i
  *   writer_time(in): time spent by last LWT (normally same as flush wait time)
  */
 void
-event_log_log_flush_thr_wait (THREAD_ENTRY * thread_p, int flush_count, LOG_CLIENTIDS * client_info, int flush_time,
+event_log_log_flush_thr_wait (THREAD_ENTRY * thread_p, int flush_count, clientids * client_info, int flush_time,
 			      int flush_wait_time, int writer_time)
 {
   FILE *log_fp;

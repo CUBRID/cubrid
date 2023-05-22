@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -143,6 +142,9 @@ typedef struct tf_ct_class
 #define CT_AUTHORIZATION_NAME      "db_authorization"
 #define CT_AUTHORIZATIONS_NAME     "db_authorizations"
 #define CT_CHARSET_NAME		   "_db_charset"
+#define CT_DUAL_NAME               "dual"
+#define CT_DB_SERVER_NAME          "_db_server"
+#define CT_SYNONYM_NAME            "_db_synonym"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
@@ -163,6 +165,8 @@ typedef struct tf_ct_class
 #define CTV_PARTITION_NAME         "db_partition"
 #define CTV_DB_COLLATION_NAME      "db_collation"
 #define CTV_DB_CHARSET_NAME	   "db_charset"
+#define CTV_DB_SERVER_NAME         "db_server"
+#define CTV_SYNONYM_NAME           "db_synonym"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"
 #define CT_DBCOLL_COLL_NAME_COLUMN	   "coll_name"
@@ -177,7 +181,14 @@ typedef struct tf_ct_class
                          sprintf(SR_NAME, "%s_ai_%s", CL_NAME, AT_NAME)
 
 #define AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH (4)
-#define AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH ((DB_MAX_IDENTIFIER_LENGTH - 1) * 2 + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1)
+
+/*
+ * AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH : (255 - 1) + 4 + (255 -1) + 1 = 513
+ *   - sprintf (..., "%s_ai_%s", unique_name, attribute_name)
+ */
+#define AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH \
+  ((DB_MAX_IDENTIFIER_LENGTH - 1) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + (DB_MAX_IDENTIFIER_LENGTH - 1) + 1)
+#define DB_MAX_SERIAL_NAME_LENGTH             (AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH)
 
 /*
  * Metaclass definitions

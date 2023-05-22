@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -290,7 +289,7 @@ pp_discard_link (LINK * p)
 STRUCTDEF *
 pp_new_structdef (const char *tag)
 {
-  /* 
+  /*
    * Structs, even "anonymous" ones, must always have tag names for the
    * benefit of the symbol table manager, so if none was supplied at
    * creation time we must manufacture one ourselves.  These variables
@@ -424,7 +423,7 @@ pp_new_pseudo_def (SPECIFIER_NOUN type, const char *subscript)
   pp_reset_current_type_spec ();
   pp_add_typedefed_spec (db_int32->type);
   pp_add_spec_to_decl (pp_current_type_spec (), length_field);
-  /* 
+  /*
    * Don't use pp_discard_link(pp_current_spec()) here, since it came
    * from a typedef.
    */
@@ -518,11 +517,11 @@ pp_clone_symbol (SYMBOL * sym)
 LINK *
 pp_clone_type (LINK * tchain, LINK ** endp)
 {
-  LINK *last = NULL, *head = NULL;
+  LINK *last = nullptr, *head = nullptr;
 
   for (; tchain; tchain = tchain->next)
     {
-      if (head == NULL && last == NULL)	/* 1st node in the chain */
+      if (head == nullptr && last == nullptr)	/* 1st node in the chain */
 	{
 	  head = last = pp_new_link ();
 	}
@@ -708,7 +707,7 @@ pp_type_str (LINK * link)
 	  /* it's a specifier */
 	  const char *noun_str;
 
-	  strncpy (buf, pp_attr_str (link), sizeof (buf));
+	  strncpy_bufsize (buf, pp_attr_str (link));
 
 	  switch (link->decl.s.noun)
 	    {
@@ -809,13 +808,15 @@ pp_print_syms (FILE * fp)
   if (pp_Symbol_table->get_symbol_count (pp_Symbol_table))
     {
       fprintf (fp, " *\n * Symbol table:\n *\n");
-      pp_Symbol_table->print_table (pp_Symbol_table, (void (*)()) es_print_symbol, fp, 1);	//TODO: get rid of function pointer conversion
+      //TODO: get rid of function pointer conversion
+      pp_Symbol_table->print_table (pp_Symbol_table, (void (*)()) es_print_symbol, fp, 1);
     }
 
   if (pp_Struct_table->get_symbol_count (pp_Struct_table))
     {
       fprintf (fp, " *\n * Structure table:\n *\n");
-      pp_Struct_table->print_table (pp_Struct_table, (void (*)()) es_print_struct, fp, 1);	//TODO: get rid of function pointer conversion
+      //TODO: get rid of function pointer conversion
+      pp_Struct_table->print_table (pp_Struct_table, (void (*)()) es_print_struct, fp, 1);
     }
 }
 
@@ -867,7 +868,7 @@ pp_symbol_init (void)
 void
 pp_symbol_finish (void)
 {
-  /* 
+  /*
    * Make sure that the symbols that are about to be freed from the
    * symbol tables are returned to the malloc pool rather than to our
    * free lists.

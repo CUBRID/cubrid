@@ -1,19 +1,21 @@
+
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -72,6 +74,8 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Longueur ou caractère non valide '%1$c' dans le nom de la base de données '%2$s'\n
@@ -83,7 +87,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 9 \
 %1$s (utilitaires CUBRID)\n\
 %2$s\n\
-Copyright (C) 2008 Search Solution Corporation. Tous droits réservés par Search Solution.\n
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 10 \
 utilitaire d'administration CUBRID, version %1$s\n\
 usage: %2$s <utility-name> [args]\n\
@@ -124,6 +128,8 @@ Nom d'utilitaires d'administration disponible:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s est un outil de SGBD.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -146,8 +152,10 @@ Utilitaires de service disponibles\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Utilitaires d'administrateur disponibles:\n\
     addvoldb\n\
@@ -182,6 +190,8 @@ Utilitaires d'administrateur disponibles:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s is a tool for DBMS.\n\
 Pour plus d'informations, reportez-vous à http://www.cubrid.org\n
@@ -248,10 +258,39 @@ Commandes disponibles:\n\
 41 Serveur de gestion CUBRID n'est pas installé.\n
 42 Argument invalide.\n
 43 Erreur d'ouverture du fichier(%1$s).\n
+44 utilitaire CUBRID, version %1$s\n\
+usage: %2$s javasp <command> [args]\n\
+\n\
+Commandes disponibles:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
+45 cubrid utility, version %1$s\n\
+usage: %2$s gateway <command> [args]\n\
+\n\
+Available command:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
+    on          gateway-name\n\
+    off         gateway-name\n\
+    reset       gateway-name\n\
+    acl         <status|reload> [gateway-name]\n
+46 La longueur de owner_name doit être inférieure à %1$d et la longueur de class_name doit être inférieure à %2$d octets.\n
+47 Format non valide pour nom_propriétaire.nom_classe ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 AVERTISSEMENT: l'option -t est ignoré dans le mode d'exécution autonome.\n
 31 ERREUR: Le chemin de destination n'existe pas ou n'est pas un répertoire.\n
+32 En utilisant l'option --separate-keys, il sépare le fichier de clé (_keys) du volume de sauvegarde.\n\
+Si le fichier de clé est perdu, la restauration (restauréeb) peut ne pas fonctionner correctement même s'il existe un volume de sauvegarde.\n
+33 Le volume de sauvegarde comprend le fichier de clé (_keys).\n\
+Si une table est chiffrée par TDE, cela peut entraîner un problème de sécurité pour ces données.\n\
+Pour séparer le fichier de clé afin de l'empêcher, utilisez l'option --separate-keys.\n
+34 ERREUR: impossible d'utiliser le fichier FIFO comme chemin de destination avec une clé séparée.\n
 60 \
 backupdb: Sauvegarde une base de données.\n\
 usage: %1$s backupdb [OPTION] database-name\n\
@@ -269,9 +308,9 @@ options valides:\n\
   -C, --CS-mode                exécution en mode client-serveur\n\
       --no-check               ne vérifie pas la cohérence de la base de données; par défaut: vérifier\n\
   -t, --thread-count=NOMBRE    NOMBRE de fils d'exécution; par défaut: 0 (auto)\n\
-  -z, --compress               comprimer les volumes de sauvegarde; par défaut: décompresser\n\
-  -e, --except-active-log      ne comprennent pas un volume de journal actif; par défaut comprennent\n\
-      --sleep-msecs=N          veille N millisecondes par 1M lit; par défaut: 0\n
+      --no-compress            ne compressez pas les volumes de sauvegarde ; par défaut : compression\n\
+      --sleep-msecs=N          veille N millisecondes par 1M lit; par défaut: 0\n\
+  -k, --separate-keys          fichier de clés (_keys) pour TDE n'est pas inclus dans le volume de sauvegarde, mais est séparé dans un fichier à la place\n
 71 Arguments incompatibles, \"%1$s\", et \"%2$s\"\n
 
 
@@ -391,7 +430,8 @@ options valids:\n\
   -l, --level=NIVEAU                NIVEAU de sauvegarde à restaurer, consultez l'usage de sauvegarde; par défaut: 0 (sauvegarde complète)\n\
   -p, --partial-recovery            effectue une récupération partielle si une archive de journal est manquante\n\
   -o, --output-file=FICHIER         redirige les messages de sortie à FICHIER; par défaut: aucun\n\
-  -u, --use-database-location-path  restaure les volumes de base de données et du journal dans le chemin spécifié dans le fichier d'emplacement de base de données\n
+  -u, --use-database-location-path  restaure les volumes de base de données et du journal dans le chemin spécifié dans le fichier d'emplacement de base de données\n\
+  -k, --keys-file-path              Chemin du fichier de clé (_keys) pour TDE à utiliser lors de la restauration\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -404,7 +444,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** Vérification de la syntaxe ***\n\n
 26 %1$d erreurs détectées.\n
 27 \n***  Insertion d'objets ***\n\n
-28 Un total de %1$8d objets insérés.\n
+28 Un total de %1$ld objets insérés.\n
 29 Un total de %1$8d objets référencés inséré avec le contenu par défaut.\n
 30 \n*** Validation de la transaction ***\n
 31 \n*** Fermeture de la de base de données ***\n
@@ -424,59 +464,78 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instance %1$d de la classe %2$s a été déjà  définie\n
 46 Instance %1$d de la classe %2$s a été déjà réservée\n
 47 Violation d'UNIQUE sur l'attribut '%1$s', converti en NULL\n
-48   %1$d instances\n
+48 %1$s %2$ld instances\n
 49 Classe %1$s\n
 50 Mot de passe:
 51 \n*** Mise à jour des statistiques de classe ***\n
 52 %1$s Près de ligne %2$d (texte était '%3$s')\n
-53 Erreur lexicale
+53 Erreur lexicale\n
 54 ligne %1$d: erreur de syntaxe à \"%2$s\"
 55 manquant
 56 dans %1$s
 57 arguments incompatible, \"%1$s\", et \"%2$s\"\n
-58 %1$d instances validées\n
+58 %1$s %2$ld instances validées\n
 59 \nImpossible d'invoquer la non-optimisé version de loaddb.\n
 60 Erreur d'analyse du \"%1$s\", comme type %2$s.\n
-112   %1$d instances\r
-113 Dernière ligne validée: %1$d
+61 La référence d'objet n'est pas prise en charge en mode CS.\n
+62 Statistiques mises à jour pour la classe %1$s.\n
+112   %1$ld instances\r
+113 Dernière ligne validée: %1$d\n
 114 error-control-file
 115 fichier d'entrée pour le contrôle d'erreur(s) pendant le chargement
-116 Total %8d object(s) inserted, %d object(s) failed.\n
+116 Total %1$ld objets inséré, %2$ld objets a échoué.\n
 117 Chargement échoué.\n
-118 La longueur maximale du nom de classe est %1$d bytes.\n
-120 \
+118 Maximum length of class name is %1$d bytes.\n
+119 Total des objets %1$8d vérifiés, %2$d objets d échoué.\n
+120 le fichier de données ne contient pas le spécificateur '%%class' ou l'option '--table' est manquante\n
+121 La classe %1$s est ignorée.\n
+122 Maximum length of user name is %1$d bytes.\n
+123 %1$s est un fichier vide.\n
+124 \
 loaddb: Importe les objets et les schémas dans la base de données.\n\
-usage: %1$s loaddb [OPTION] database-name\n\
+usage: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
 options valids:\n\
-  -u, --user=ID                 ID d'utilisateur pour l'accès à la base de données, par défaut: "public"\n\
-  -p, --password=MOT-DE-PASSE   MOT DE PASSE d'utilisateur; par défaut: aucun\n\
-      --data-file-check-only    vérifie la syntaxe pour le fichier de données sans chargement; par défaut: chargement après vérification\n\
-  -l, --load-only               charge le fichier de données sans vérification de la syntaxe; par défaut: chargement après vérification\n\
-      --estimated-size=NOMBRE   estimation du NOMBRE des instances; par défaut: 5000\n\
-  -v, --verbose                 activer les messages verbeux d'état; par défaut: désactivé\n\
-  -c, --periodic-commit=COMPTE  COMPTE d'insertion pour la validation périodique; par défaut: aucune validation pendant le chargement\n\
-      --no-oid                  utilise pas l'OID\n\
-      --no-statistics           ne met pas à jour les statistiques pendant le chargement\n\
-  -s, --schema-file=FICHIER[:LIGNE] crée le schéma de la LIGNE en utilisant le FICHIER\n\
-  -i, --index-file=FICHIER[:LIGNE]  crée un index de la LIGNE en utilisant le FICHIER\n\
-  -d, --data-file=FICHIER           charge des données en utilisant le FICHIER\n\
-  -t, --table=TABLE                 nom de la TABLE qui se substitue à en-tête de\n\
-                                    classe manquante dans le fichier de données\n\
-      --error-control-file=FICHIER  FICHIER de contrôle d'erreur(s) pendant le chargement\n\
-      --ignore-class-file=FICHIER   FICHIER d'entrée avec les noms de classe qui saut le chargement\n
+  -S, --SA-mode                      exécution en mode autonome\n\
+  -C, --CS-mode                      exécution en mode client-serveur\n\
+                                     ATTENTION : En mode HA, seuls les fichiers de données (-d, --data-file=FILE) peuvent être chargés en mode client-serveur.\n\
+  -u, --user=ID                      ID d'utilisateur pour l'accès à la base de données, par défaut: "public"\n\
+  -p, --password=MOT-DE-PASSE        MOT DE PASSE d'utilisateur; par défaut: aucun\n\
+      --data-file-check-only         check syntax for data file without load; default: disabled\n\
+  -l, --load-only                    load data file without prior syntax checking; SA_MODE only\n\
+      --estimated-size=NOMBRE        estimation du NOMBRE des instances; par défaut: 5000\n\
+  -v, --verbose                      activer les messages verbeux d'état; par défaut: désactivé\n\
+  -c, --periodic-commit=COMPTE       COMPTE d'insertion pour la validation périodique; 10240\n\
+      --no-oid                       utilise pas l'OID\n\
+      --no-statistics                ne met pas à jour les statistiques pendant le chargement\n\
+  -s, --schema-file=FICHIER[:LIGNE]  crée le schéma de la LIGNE en utilisant le FICHIER\n\
+  -i, --index-file=FICHIER[:LIGNE]   crée un index de la LIGNE en utilisant le FICHIER\n\
+      --trigger-file=FICHIER[:LIGNE] crée un trigger de la LIGNE en utilisant le FICHIER\n\
+  -d, --data-file=FICHIER            charge des données en utilisant le FICHIER\n\
+  -t, --table=TABLE                  nom de la TABLE qui se substitue à en-tête de\n\
+                                     classe manquante dans le fichier de données\n\
+      --error-control-file=FICHIER   FICHIER de contrôle d'erreur(s) pendant le chargement\n\
+      --ignore-class-file=FICHIER    FICHIER d'entrée avec les noms de classe qui saut le chargement\n\
+      --no-user-specified-name       Find classes, serials, and triggers by their object names without their owner names.\n\
+                                     This is to load files generated by cubrid before version 11.2.\n\
+      --schema-file-list=FILE        Le contenu de ce fichier est une liste de noms de fichiers de schéma à utiliser dans loaddb.\n\
+                                     loaddb est exécuté séquentiellement à partir du haut.\n\
+                                     AVERTISSEMENT : ne peut pas être utilisé avec l'option -s.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Valeur de cached-pages n'est pas valide.\n
 42 Valeur de cached-page-size n'est pas valide.\n
-43 %1$d objects sauvegardées.\n
+43 %1$ld objects sauvegardées.\n
 44 Classe %1$s
 45 , %1$d instances.\n
-46 Seulement %1$d de  %2$d objets sauvegardées avec succès.\n
+46 Seulement %1$ld de  %2$ld objets sauvegardées avec succès.\n
 47 répertoire de sortie est trop long.\n
 48 LSA : %1$d %2$d \n
 49 Mot de passe:
+50 Maximum length of class name is %1$d bytes.\n
+51 Maximum length of user name is %1$d bytes.\n
+52 Class %1$s not found.\n
 60 \
 unloaddb: Exporte des objets et des schémas de la base de données.\n\
 usage: %1$s unloaddb [OPTION] database-name\n\
@@ -495,11 +554,15 @@ options valids:\n\
   -d, --data-only                 sauvegarde seulement les objets; par défaut: schéma et les objets\n\
       --output-prefix=PRÉFIXE     PRÉFIXE pour les fichiers de sortie, par défaut: le nom de de base de données\n\
       --hash-file=FICHIER         FICHIER pour hachage; valeur par défaut: générer par tmpnam ()\n\
+      --latest-image              lors du vidage d'objets, il vide la dernière image des objets dans les volumes de données, sans se référer aux volumes de journaux (ignorant MVCC)\n\
+                                  Cela peut inclure des données non validées et des données supprimées qui ne sont pas aspirées ; par défaut : désactivé\n\
   -v, --verbose                   active les messages verbeux d'état; par défaut: désactivé\n\
       --use-delimiter             utilise '"' dans les endroits où un identificateur commence ou se termine; par défaut: ne pas utiliser\n\
   -S, --SA-mode                   exécution en mode autonome\n\
   -C, --CS-mode                   exécution en mode client-serveur\n\
-      --datafile-per-class        créer un fichier objet pour chaque classe; par défaut: désactivé
+      --datafile-per-class        créer un fichier objet pour chaque classe; par défaut: désactivé\n\
+      --split-schema-files        diviser les informations de schéma par objet et générer chaque fichier ; Par défaut : générer un fichier de schéma avec tous les objets\n\
+      --as-dba                    Si l'utilisateur de connexion est membre du groupe DBA, extrayez le même fichier de schéma que le DBA.\n
 
 
 
@@ -540,6 +603,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \nPass 3 \n \n
 45 Compactage du tas a échoué ... \n
 46 Compactage du tas a réussi ... \n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: Libére de l'espace inutilisé dans une base de données.\n\
 usage: %1$s compactdb [OPTION] database-name [class_name1 class_name2 ...]\n\
@@ -549,16 +614,17 @@ options valids:\n\
   -i, --input-class-file=FICHIER    FICHIER d'entrée des noms de tables\n\
                                     liste class_name doit être vide\n\
                                     par défaut: compactage de toutes les classes\n\
-                                    activé seulement en mode client-serveur\n\
   -p, --pages-commited-once=NOMBRE  NOMBRE maximum de pages d'enregistrer une fois\n\
                                     par défaut: 10\n\
                                     activé seulement en mode client-serveur\n\
   -S, --SA-mode                     exécution en mode autonome\n\
   -C, --CS-mode                     exécution en mode client-serveur\n\
   -d, --delete-old-repr             supprime des représentations anciennes des classes à partir du catalogue; par défaut: désactivé\n\
-  class_name_list                   activé seulement en mode client-serveur\n\
   -I, --Instance-lock-timeout       délai d'attente de verrouillage d'instance\n\
-  -c, --class-lock-timeout          délai d'attente de verrouillage de classes\n
+                                    activé seulement en mode client-serveur\n\
+  -c, --class-lock-timeout          délai d'attente de verrouillage de classes\n\
+                                    activé seulement en mode client-serveur\n\
+  class_name_list                   liste de noms de classe être compactés\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Le maître CUBRID en cours d'exécution sur l'hôte %1$s \na été lancé à %2$s
@@ -597,6 +663,7 @@ options valids:\n\
 39 L'option -i(--immediately) doit être utilisée avec l'option --deact-stop-all.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Veuillez exécuter sans l'option --recreate-log ou supprimez le volume de journal actif manuellement.\n
 60 \
 emergency_patchlog: Patche une base de données en cas d'urgence.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -617,7 +684,7 @@ options valids:\n\
       --db-volume-size=TAILLE      TAILLE du volume supplémentaire; par défaut: db_volume_size dans cubrid.conf\n\
       --max-writesize-in-sec=SIZE  la quantité de données écrite par seconde; (ex. 512K, 1M, 10M);par défaut: non utilisé; minimum: 160K\n\
   -n, --volume-name=NOM            NOM du volume d'information; par défaut: générer tels que "db"_ext1)\n\
-  -F, --file-path=CHEMIN           CHEMIN pour l'ajout de fichier de volume; par défaut: répertoire de travail\n\
+  -F, --file-path=CHEMIN           CHEMIN pour l'ajout de fichier de volume; par défaut: volume_extension_path\n\
       --comment=COMMENTAIRE        COMMENTAIRE pour ajouter du volume; par défaut: aucun\n\
   -p, --purpose=BUT                BUT pour l'ajout de fichier de volume; permis:\n\
                                            DATA - seulement pour les données\n\
@@ -779,7 +846,7 @@ lockdb: Affiche l'état du verrouillage de la base de données.\n\
 usage: %1$s lockdb [OPTION] database-name\n\
 \n\
 options valids:\n\
-  -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n\
+  -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
@@ -804,6 +871,7 @@ options valids:\n\
       --kill-program-name=NOM        arrête tous les transactions avec cet NOM du programme du client\n\
       --kill-sql-id=SQL_ID           arrêter toutes les transactions avec SQL_ID\n\
   -p, --dba-password=MOT-DE-PASSE    MOT DE PASSE de l'utilisateur DBA; demandé si ne pas spécifier\n\
+                                     (ne fonctionne qu'avec les options -i ou --kill. Sinon, obtient une erreur)\n\
   -d, --display-information          affiche des informations sur les transactions actives\n\
   -q, --query-exec-info              afficher des informations sur l'exécution de requêtes au sein des transactions actives\n\
   -f, --force                        arrête la transaction sans demande de vérification\n
@@ -843,8 +911,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 argument obligatoire, aucun défaut
 3 java-class-file
 4 argument obligatoire, aucun défaut
-5 force-overwrite
-6 remplace le fichier de classe si lui existe, par défaut non
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              remplace le fichier de classe si lui existe, par défaut non\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Impossible d'ouvrir le fichier de sortie '%1$s'\n
@@ -906,7 +977,7 @@ options valids:\n\
   -L, --log-path=CHEMIN     CHEMIN vers un répertoire pour les volumes de journaux copiés\n\
   -m, --mode=MODE           mode de fonctionnement; par défaut: sync\n\
                             MODE: sync ou semisync ou async\n\
-  -S, --start-page-id=ID    first log page to copy\n 
+  -S, --start-page-id=ID    first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Entrez mot de passe DBA:
@@ -937,6 +1008,7 @@ options valids:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 Entrez mot de passe DBA:
 22 Le serveur n'a pas été configuré pour HA.\n
+57 Impossible de générer les informations appliquées en raison d'un chemin non valide de l'option -L ou de l'absence d'informations associées dans la table de catalogue db_ha_apply_info.\n
 58 HA fonctionnalité n'est pas supportée par cette plate-forme.\n
 59 applyinfo ne peut pas fonctionner en mode autonome.\n
 60 \
@@ -945,9 +1017,9 @@ usage: %1$s applyinfo [OPTION] database-name\n\
 \n\
 options valids:\n\
   -r, --remote-host-name        nom d'hôte distant; affiche les informations du journal actif du noeud distant\n\
-  -a, --applied-info            affiche infomation appliquée\n\
   -L, --copied-log-path=CHEMIN  CHEMIN de volumes du journal copiés; affiche les informations du journal copié\n\
-  -p, --page=ID                 id de page; par défaut : 0\n\
+  -a, --applied-info            affiche infomation appliquée; l'option -L est obligatoire\n\
+  -p, --page=ID                 id de page; l'option -L est obligatoire; par défaut : 0\n\
   -v, --verbose                 active les messages verbeux d'état; par défaut: désactivé\n\
   -i, --interval=S              print information every S secs\n
 
@@ -1043,19 +1115,19 @@ options valides:\n\
   -f, --force-only    Mises à jour des classements dans les bases de données d'être les mêmes que les classements de sytem nouvelle configuration.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Entrez le mot de passe %1$s: 
-22 Indice de tran.       Utilisateur         Nom d'hôte      ID de processus   Nom du programme\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 Entrez le mot de passe %1$s:
+22 Indice de tran.         Utilisateur         Nom d'hôte      ID de processus   Nom du programme\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 Il n'ya pas de transactions\n
 26 tranlist peuvent être effectuées uniquement par le DBA ou un membre du groupe DBA.\n
 27 Numéro de la colonne de clé de tri(%1$d) n'est pas valid.\n
-32 Indice de tran.    Processus id  Nom du programme          Temps de req. Temps de tran.         Attendre le dét. de verr. SQL_ID       SQL Texte\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Indice de tran.      Processus id  Nom du programme          Temps de req. Temps de tran.         Attendre le dét. de verr. SQL_ID       SQL Texte\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
 42 Indice de tran.     Utilisateur    Nom d'hôte     Processus id  Nom du programme          Temps de req. Temps de tran.         Attendre le dét. de verr. SQL_ID       SQL Texte\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Indice de transaction: %1$d
 46 SQL_ID: %1$s\n
 59 tranlist ne peut pas fonctionner en mode autonome.\n
@@ -1064,8 +1136,6 @@ tranlist: Affiche les informations de transaction active.\n\
 usage: %1$s tranlist [OPTION] database-name\n\
 \n\
 options valides:\n\
-  -u, --user=ID                ID d'utilisateur pour l'accès à la base de données; par défaut: utilisateur DBA\n\
-  -p, --password=PASS          mot de passe d'utilisateur; par défaut: aucun\n\
   -s, --summary                affichage des informations résumées de(s) transaction(s)\n\
       --sort-key=COLUMN_NUMBER numéro de colonne à trier\n\
       --reverse                inverser le résultat du tri\n
@@ -1133,7 +1203,8 @@ options valides:\n\
       --list                       afiche la liste des volumes de sauvegarde sans restauration\n\
   -B, --backup-file-path=VOIE      VOIE est un répertoire de volumes de sauvegarde a restaurer\n\
   -o, --output-file=FICHIER        rediriger les messages de sortie vers le FICHIER; par défaut: aucun\n\
-  -u, --use-database-location-path restaurer la base de données et loguer les volumes au chemin spécifié dans le ficher d'emplacement de la base de données\n
+  -u, --use-database-location-path restaurer la base de données et loguer les volumes au chemin spécifié dans le ficher d'emplacement de la base de données\n\
+  -k, --keys-file-path             Chemin du fichier de clé (_keys) pour TDE à utiliser lors de la restauration\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Prêt à éliminer les volumes suivantes:\n\n
@@ -1156,17 +1227,21 @@ options valides:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb est temporairement pas disponible pour le mode client-serveur\n
 21 L'operation de vidage à échoué\n
+22 Impossible d'ouvrir le fichier de sortie '%1$s'\n
 60 \
 vacuumdb: Supprime les entrées expirés depuis la base de données.\n\
 usage: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 options valides:\n\
   -S, --SA-mode                mode d'exécution autonome\n\
-  -C, --CS-mode                mode d'exécution client-serveur\n
+  -C, --CS-mode                mode d'exécution client-serveur\n\
+      --dump                   vidage de l'état actuel du vide\n\
+  -o, --output-file=FICHIER    redirige les messages de sortie à FICHIER; par défaut: aucun\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Impossible de charger les noms de table dans %1$s.\n
-2 checksumdb doit être exécuté sur un serveur HA actif. %1$s (état courant: %2$s)\n 
+2 checksumdb doit être exécuté sur un serveur HA actif. %1$s (état courant: %2$s)\n
+3 Le propriétaire de la table pour enregistrer le résultat de la somme de contrôle doit être DBA.\n
 58 Fonctionnalité HA est pas supporté sur cette plate-forme.\n
 59 checksumdb ne peut pas être exécuté dans le mode autonome.\n
 60 \
@@ -1180,9 +1255,67 @@ options valides:\n\
   -i, --include-class-file=FICHIER entrée FICHIER de noms des tables à inclure\n\
   -e, --exclude-class-file=FICHIER entrée FICHIER de noms des tables à exclure; seulement -i ou -e peuvent être utilisé, pas le deux\n\
   -t, --timeout=NUMÉRO             délai d'attente de requête en millisecondes; par défaut: 1000ms\n\
-  -n, --table-name=NOM             NOM de la table  pour enregistrer les résultats de somme de contrôle; par défaut: db_ha_checksums\n\
+  -n, --table-name=NOM             NOM de la table  pour enregistrer les résultats de somme de contrôle; par défaut: dba.db_ha_checksum\n\
   -r, --report-only                rapporter l'intégrité de la replication en se basant sur la calculation des sommes de contrôle\n\
                                    tous les options, avec l'exception de --table-name, seront ignorés\n\
       --resume                     reprendre la calculation des sommes de contrôle\n\
       --schema-only                vérifier seulement la cohérence du schéma\n\
       --cont-on-error              continuer en cas d'erreur de calcul\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 Entrez le mot de passe DBA:
+25 Impossible d'obtenir les informations clés définies dans la base de données\n
+26 Tentative de modification de la clé de la clé (index: %1$d) à la clé (index: %2$d) ..\n
+27 La clé est passée de la clé (index: %1$d) à la clé (index: %2$d)\n
+28 La clé définie sur la base de données ne peut pas être supprimée\n
+29 La clé (index: %1$d) a été supprimée\n
+30 Une nouvelle clé a été générée - index de clé: %1$d créé sur%2$s
+60 \
+tde: gestion du chiffrement transparent des données (TDE)\n\
+utilisation: %1$s tde OPERATION (-s|-n|-d|-c) [OPTION] nom-base de données\n\
+\n\
+options valides:\n\
+    -p, --dba-password=PASS 	mot de passe de l'utilisateur DBA; demandera si ne spécifiez pas\n\
+\n\
+OPÉRATIONS: l'une des opérations doit être donnée, et elles sont exclusives\n\
+    -s, --show-keys             imprime les informations de clé définies sur la base de données et le fichier de clé (_keys)\n\
+    -n, --generate-new-key      génère une nouvelle clé dans le fichier de clé (_keys); nombre maximum: 128\n\
+    -d, --delete-key=KEY_INDEX  supprime une clé dans le fichier de clés (_keys)\n\
+    -c, --change-key=KEY_INDEX  modifier le jeu de clés de la base de données pour une autre clé dans le fichier de clés (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 Saisissez le mot de passe DBA :
+2 Format de date non valide, le format valide est jj-mm-aaaa:hh:mm:ss\n
+3 La date de début (%1$s) doit être inférieure à la date de fin (%2$s)\n
+4 Veuillez essayer avec une date antérieure à la date actuelle (%1$s) ou postérieure à la création de la base de données (%2$s)\n
+5 La table (%1$s) n'existe pas dans la base de données\n
+6 Trop de transactions pour revenir en arrière. Veuillez raccourcir l'intervalle entre la date de début et la date de fin\n
+7 Impossible d'obtenir le flashback car le schéma (%1$s) a été modifié.\n
+8 Le volume du journal a été supprimé. Veuillez essayer avec une date ultérieure\n
+9 Impossible d'ouvrir le fichier de sortie '%1$s'\n
+10 L'ID de transaction (%1$d) n'existe pas\n
+11 Veuillez définir 'supplemental_log' dans 'cubrid.conf'. Seuls les journaux SQL exécutés après la définition de 'supplemental_log' peuvent faire l'objet d'un flashback.\n
+12 L'ID de transaction doit être saisi dans %1$d secondes. Le délai peut être ajusté via le paramètre 'flashback_timeout' dans 'cubrid.conf'.\n
+13 Flashback est déjà en cours d'exécution. Flashback ne peut pas être exécuté par deux processus.\n
+14 Flashback ne peut pas s'exécuter en mode autonome.\n
+15 La classe de catalogue système (%1$s) n'est pas prise en charge dans Flashback.\n
+60 \
+flashback : fournit des instructions pour revenir en arrière sur une transaction spécifique.\n\
+utilisation : %1$s flashback [OPTION] nom-base de données nom_propriétaire.nom_classe1 [nom_propriétaire.nom_classe2 ...]\n\
+\n\
+options valides :\n\
+    -o, --output-file=FILE        redirige le message de sortie vers FILE ; par défaut : aucun.\n\
+    -u, --user=ID                 spécifiez l'utilisateur qui a exécuté l'instruction SQL à flashback ; par défaut : TOUT.\n\
+    -p, --dba-password            mot de passe de l'utilisateur DBA ; demandera si vous ne spécifiez pas\n\
+    -s, --start-date=DATE         spécifiez la DATE de début du flashback. Les journaux SQL sont extraits de la DATE.\n\
+                                  La DATE est donnée comme suit : jj-mm-aaaa:hh:mm:ss.\n\
+    -e, --end-date=DATE           spécifiez la DATE de fin du flashback. Les journaux SQL sont extraits jusqu'au DATE.\n\
+                                  si la date de début n'est pas spécifiée, alors ((END - 10min) ~ END) est défini sur la plage,\n\
+                                  et sinon si END n'est pas spécifié, alors (start ~ (start + 10min)) est défini.\n\
+                                  Et ni une date de début ni une date de fin n'est spécifiée,\n\
+                                  les logs SQL, exécutés entre le (heure actuelle - 10min) et l'heure actuelle, sont extraits.\n\
+    --detail                      affiche des informations détaillées pour chaque instruction SQL.\n\
+                                  L'ID de transaction, le nom d'utilisateur et l'instruction SQL d'origine seront renvoyés avec l'instruction SQL\n\
+                                  pour le flash-back ; par défaut : génère uniquement des instructions SQL pour le flashback\n\
+    --oldest                      flashback le plus ancien est exécuté dans l'ordre chronologique pour les instructions SQL exécutées\n\
+                                  de l'heure de début à l'heure de fin ; par défaut : le plus récent\n

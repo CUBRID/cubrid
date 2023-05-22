@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -53,6 +52,7 @@
 #include "environment_variable.h"
 #include "authenticate.h"
 #include "dbtype.h"
+#include "object_primitive.h"
 
 #define UCI_OPT_UNSAFE_NULL     0x0001
 
@@ -854,7 +854,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
 		  if (insert_value == NULL
 		      || (db_gadget_bind (gadget, gadget->attrs[i].attr_desc->name, insert_value)) != NO_ERROR)
 		    {
-		      /* If we've had a binding error or encountered a node type we can't handle, free gadget and run a 
+		      /* If we've had a binding error or encountered a node type we can't handle, free gadget and run a
 		       * regular insert statement */
 		      db_gadget_destroy (gadget);
 		      gadget = NULL;
@@ -1406,7 +1406,7 @@ uci_execute (int stmt_no, int num_out_vars)
       pop_uci_environment ();
     }
 
-  /* 
+  /*
    * It is evidently ok to return here without closing dt->session, since
    * it will be closed by alloc_dynamic() the next time we need a
    * statement.
@@ -1660,7 +1660,7 @@ free_db_values (void)
       db_value_clear (&db_Value_table.db_values[--db_Value_table.db_value_top]);
     }
 
-  /* 
+  /*
    * free() used intentionally here (rather than free_and_init()) to avoid
    * misleading shutdown messages about space leaks.
    */
@@ -1707,7 +1707,7 @@ uci_put_value (DB_INDICATOR * indicator, DB_TYPE type, int precision, int scale,
       return;
     }
 
-  /* 
+  /*
    * (char *) pointers cause special problems, because there is no way
    * for the preprocessor to guess the precision or buffer length.
    * Instead, we simply have it emit 0 for those things and then we
@@ -1861,7 +1861,7 @@ uci_get_value (int cs_no, DB_INDICATOR * ind, void *buf, DB_TYPE_C type, int siz
 
   if (outlen > 0)
     {
-      /* 
+      /*
        * If truncation occurred, set the truncation warning flag in the
        * SQLCA regardless of whether an indicator variable has been
        * supplied.
@@ -1871,7 +1871,7 @@ uci_get_value (int cs_no, DB_INDICATOR * ind, void *buf, DB_TYPE_C type, int siz
 
   if (ind)
     {
-      /* 
+      /*
        * If no truncation occurred (and there's no NULL value), the
        * indicator should be set to zero.  Truncation will be indicated
        * by an outlen that's greater than the buffer size.  If truncation
@@ -1941,26 +1941,26 @@ uci_get_value_indirect (int cs_no, DB_INDICATOR * ind, void **bufp, int *sizep)
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       {
-	/* 
+	/*
 	 * Why doesn't this cause us storage management problems?
 	 * It would if the user tried to hang on to the pointer
 	 * for more than a row.
 	 */
-	*bufp = db_get_string (&val);
+	*bufp = CONST_CAST (char *, db_get_string (&val));
 	*sizep = db_get_string_size (&val);
       }
       break;
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       {
-	*bufp = db_get_string (&val);
+	*bufp = CONST_CAST (char *, db_get_string (&val));
 	*sizep = db_get_string_size (&val);
       }
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       {
-	*bufp = db_get_string (&val);
+	*bufp = CONST_CAST (char *, db_get_string (&val));
 	*sizep = db_get_string_size (&val);
       }
       break;
@@ -2138,7 +2138,7 @@ alloc_repetitive (int no, DB_SESSION * session, STATEMENT_ID stmt_id, CUBRID_STM
   rt->stmt_type = stmt_type;
   rt->gadget = gadget;
 
-  /* mark the last searched index (`last_repetitive') so that the immediately succeeding get_repetitive() can find this 
+  /* mark the last searched index (`last_repetitive') so that the immediately succeeding get_repetitive() can find this
    * entry with minimum cost. And increment # of repetitive statements. */
   last_repetitive = num_repetitive_stmts++;
 
@@ -2466,7 +2466,7 @@ free_cursor (int no)
 	  /* free results */
 	  if (cs->result != NULL)
 	    {
-	      /* 
+	      /*
 	       * db_query_end() may "fail" if if there was a runtime error in
 	       * the statement it is associated with.  That is of no concern
 	       * here, and we need to make sure that we continue on to clean up

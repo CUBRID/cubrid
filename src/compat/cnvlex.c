@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -768,15 +767,15 @@ static int input YY_PROTO ((void));
 
 YY_DECL
 {
-  register yy_state_type yy_current_state;
-  register YY_CHAR *yy_cp, *yy_bp;
-  register int yy_act;
+  yy_state_type yy_current_state;
+  YY_CHAR *yy_cp, *yy_bp;
+  int yy_act;
 
 
   /* Preliminary "actions" */
   if (cnv_fmt__unlex && yy_current_buffer->yy_eof_status != EOF_DONE)
     {
-      /* 
+      /*
        * Push back current token so that it can be read again.
        * See cnv_fmt_unlex().
        */
@@ -828,7 +827,7 @@ YY_DECL
     yy_match:
       do
 	{
-	  register YY_CHAR yy_c = yy_ec[*yy_cp];
+	  YY_CHAR yy_c = yy_ec[*yy_cp];
 	  if (yy_accept[yy_current_state])
 	    {
 	      yy_last_accepting_state = yy_current_state;
@@ -1410,8 +1409,8 @@ YY_DECL
 
 		    if (yywrap ())
 		      {
-			/* note: because we've taken care in yy_get_next_buffer() to have set up yytext, we can now set 
-			 * up yy_c_buf_p so that if some total hoser (like flex itself) wants to call the scanner after 
+			/* note: because we've taken care in yy_get_next_buffer() to have set up yytext, we can now set
+			 * up yy_c_buf_p so that if some total hoser (like flex itself) wants to call the scanner after
 			 * we return the YY_NULL, it'll still work - another YY_NULL will get returned. */
 			yy_c_buf_p = yytext + YY_MORE_ADJ;
 
@@ -1462,9 +1461,9 @@ YY_DECL
  *
  * synopsis
  *     int yy_get_next_buffer();
- *     
+ *
  * returns a code representing an action
- *     EOB_ACT_LAST_MATCH - 
+ *     EOB_ACT_LAST_MATCH -
  *     EOB_ACT_CONTINUE_SCAN - continue scanning from current position
  *     EOB_ACT_END_OF_FILE - end of file
  */
@@ -1472,9 +1471,9 @@ YY_DECL
 static int
 yy_get_next_buffer ()
 {
-  register YY_CHAR *dest = yy_current_buffer->yy_ch_buf;
-  register YY_CHAR *source = yytext - 1;	/* copy prev. char, too */
-  register int number_to_move, i;
+  YY_CHAR *dest = yy_current_buffer->yy_ch_buf;
+  YY_CHAR *source = yytext - 1;	/* copy prev. char, too */
+  int number_to_move, i;
   int ret_val;
 
   if (yy_c_buf_p > &yy_current_buffer->yy_ch_buf[yy_n_chars + 1])
@@ -1547,14 +1546,14 @@ yy_get_next_buffer ()
 static yy_state_type
 yy_get_previous_state ()
 {
-  register yy_state_type yy_current_state;
-  register YY_CHAR *yy_cp;
+  yy_state_type yy_current_state;
+  YY_CHAR *yy_cp;
 
   yy_current_state = yy_start;
 
   for (yy_cp = yytext + YY_MORE_ADJ; yy_cp < yy_c_buf_p; ++yy_cp)
     {
-      register YY_CHAR yy_c = (*yy_cp ? yy_ec[*yy_cp] : 1);
+      YY_CHAR yy_c = (*yy_cp ? yy_ec[*yy_cp] : 1);
       if (yy_accept[yy_current_state])
 	{
 	  yy_last_accepting_state = yy_current_state;
@@ -1581,7 +1580,7 @@ yy_get_previous_state ()
 
 #ifdef YY_USE_PROTOS
 static yy_state_type
-yy_try_NUL_trans (register yy_state_type yy_current_state)
+yy_try_NUL_trans (yy_state_type yy_current_state)
 #else
 static yy_state_type
 yy_try_NUL_trans (yy_current_state)
@@ -1589,10 +1588,10 @@ yy_try_NUL_trans (yy_current_state)
 #endif
 
 {
-  register int yy_is_jam;
-  register YY_CHAR *yy_cp = yy_c_buf_p;
+  int yy_is_jam;
+  YY_CHAR *yy_cp = yy_c_buf_p;
 
-  register YY_CHAR yy_c = 1;
+  YY_CHAR yy_c = 1;
   if (yy_accept[yy_current_state])
     {
       yy_last_accepting_state = yy_current_state;
@@ -1613,7 +1612,7 @@ yy_try_NUL_trans (yy_current_state)
 
 #ifdef YY_USE_PROTOS
 static void
-yyunput (YY_CHAR c, register YY_CHAR * yy_bp)
+yyunput (YY_CHAR c, YY_CHAR * yy_bp)
 #else
 static void
 yyunput (c, yy_bp)
@@ -1622,16 +1621,16 @@ yyunput (c, yy_bp)
 #endif
 
 {
-  register YY_CHAR *yy_cp = yy_c_buf_p;
+  YY_CHAR *yy_cp = yy_c_buf_p;
 
   /* undo effects of setting up yytext */
   *yy_cp = yy_hold_char;
 
   if (yy_cp < yy_current_buffer->yy_ch_buf + 2)
     {				/* need to shift things up to make room */
-      register int number_to_move = yy_n_chars + 2;	/* +2 for EOB chars */
-      register YY_CHAR *dest = &yy_current_buffer->yy_ch_buf[yy_current_buffer->yy_buf_size + 2];
-      register YY_CHAR *source = &yy_current_buffer->yy_ch_buf[number_to_move];
+      int number_to_move = yy_n_chars + 2;	/* +2 for EOB chars */
+      YY_CHAR *dest = &yy_current_buffer->yy_ch_buf[yy_current_buffer->yy_buf_size + 2];
+      YY_CHAR *source = &yy_current_buffer->yy_ch_buf[number_to_move];
 
       while (source > yy_current_buffer->yy_ch_buf)
 	*--dest = *--source;
@@ -1760,7 +1759,7 @@ yy_switch_to_buffer (new_buffer)
   yy_current_buffer = new_buffer;
   yy_load_buffer_state ();
 
-  /* we don't actually know whether we did this switch during EOF (yywrap()) processing, but the only time this flag is 
+  /* we don't actually know whether we did this switch during EOF (yywrap()) processing, but the only time this flag is
    * looked at is after yywrap() is called, so it's safe to go ahead and always set it. */
   yy_did_buffer_switch_on_eof = 1;
 }
@@ -1955,7 +1954,7 @@ cnv_fmt_number_mode (INTL_ZONE zone)
 
 
 /*
- * cnv_fmt_time_mode() - Return the time value scan mode for the given zone. 
+ * cnv_fmt_time_mode() - Return the time value scan mode for the given zone.
  * return:
  * zone(in) :
  */

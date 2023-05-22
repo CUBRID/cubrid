@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -34,6 +33,8 @@
 
 #include <stdio.h>
 #include <time.h>
+
+#include "dbtran_def.h"
 #include "dbtype_def.h"
 #include "db_date.h"
 #include "db_elo.h"
@@ -192,7 +193,7 @@ extern "C"
   extern int db_drop_class (DB_OBJECT * classobj);
   extern int db_drop_class_ex (DB_OBJECT * classobj, bool is_cascade_constraints);
   extern int db_rename_class (DB_OBJECT * classobj, const char *new_name);
-  extern int db_truncate_class (DB_OBJECT * classobj);
+  extern int db_truncate_class (DB_OBJECT * classobj, bool is_cascade);
 
   extern int db_add_index (DB_OBJECT * classobj, const char *attname);
   extern int db_drop_index (DB_OBJECT * classobj, const char *attname);
@@ -248,6 +249,8 @@ extern "C"
   extern const char *db_get_type_name (DB_TYPE type_id);
   extern DB_TYPE db_type_from_string (const char *name);
   extern int db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val);
+  extern char *db_get_client_ip_addr (void);
+  extern void db_set_client_ip_addr (const char *ip_addr);
 
   extern void db_clear_host_status (void);
   extern void db_set_host_status (char *hostname, int status);
@@ -267,6 +270,8 @@ extern "C"
   extern DB_OBJECT *db_find_class_of_index (const char *const index, const DB_CONSTRAINT_TYPE type);
   extern DB_OBJECT *db_find_class (const char *name);
   extern DB_OBJECT *db_find_class_with_purpose (const char *name, bool for_update);
+  extern DB_OBJECT *db_find_synonym (const char *name);
+  extern char *db_get_synonym_target_name (MOP synonym, char *buf, int buf_size);
   extern DB_OBJECT *db_get_class (DB_OBJECT * obj);
   extern DB_OBJLIST *db_get_all_objects (DB_OBJECT * classobj);
   extern DB_OBJLIST *db_get_all_classes (void);
@@ -559,6 +564,11 @@ extern "C"
 
 /* query post-processing functions */
   extern int db_query_plan_dump_file (char *filename);
+  extern FILE *db_query_plan_dump_fp_open ();
+  extern void db_query_plan_dump_fp_close ();
+  extern FILE *db_query_get_plan_dump_fp ();
+  extern bool db_query_is_plan_dump_opened ();
+  extern char *db_query_get_plan_dump_file ();
 
 /* sql query routines */
   extern DB_SESSION *db_open_buffer (const char *buffer);

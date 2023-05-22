@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -31,12 +30,14 @@ namespace test_packing
 
   int test_packing_buffer1 (void);
 
+  int test_packing_all (void);
+
   class buffer_manager : public cubbase::pinner
   {
     private:
-      std::vector<mem::pinnable_buffer *> buffers;
+      std::vector<cubmem::pinnable_buffer *> buffers;
     public:
-      void allocate_bufer (mem::pinnable_buffer *&buf, const size_t &amount);
+      void allocate_bufer (cubmem::pinnable_buffer *&buf, const size_t &amount);
 
       void free_storage();
 
@@ -45,6 +46,12 @@ namespace test_packing
   class po1 : public cubpacking::packable_object
   {
     public:
+      enum rgb
+      {
+	RED, GREEN, BLUE,
+	MAX
+      };
+
       int i1;
       short sh1;
       std::int64_t b1;
@@ -55,15 +62,16 @@ namespace test_packing
       std::string large_str;
       std::string str1;
       char str2[300];
+      rgb color;
 
     public:
 
-      int pack (cubpacking::packer *serializator);
-      int unpack (cubpacking::packer *serializator);
+      void pack (cubpacking::packer &serializator) const;
+      void unpack (cubpacking::unpacker &deserializator);
 
       bool is_equal (const packable_object *other);
 
-      size_t get_packed_size (cubpacking::packer *serializator);
+      size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const override;
 
       void generate_obj (void);
   };

@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -763,9 +762,6 @@ css_process_new_connection (SOCKET fd)
 	  /* here the server wants to manage its own connection port */
 	  css_register_new_server2 (conn, rid);
 	  break;
-	case SERVER_REQUEST_CONNECT_NEW_SLAVE:
-	  css_send_to_existing_server (conn, rid, SERVER_CONNECT_NEW_SLAVE);
-	  break;
 	default:
 	  css_free_conn (conn);
 	  break;
@@ -1128,10 +1124,11 @@ main (int argc, char **argv)
   int port_id;
   CSS_CONN_ENTRY *conn;
   static const char suffix[] = "_master.err";
-  char hostname[MAXHOSTNAMELEN + sizeof (suffix)];
+  char hostname[CUB_MAXHOSTNAMELEN + sizeof (suffix)];
   char *errlog = NULL;
   int status = EXIT_SUCCESS;
   const char *msg_format;
+  bool util_config_ret;
 
   if (utility_initialize () != NO_ERROR)
     {
@@ -1149,11 +1146,13 @@ main (int argc, char **argv)
     }
 #endif /* WINDOWS */
 
-  if (GETHOSTNAME (hostname, MAXHOSTNAMELEN) == 0)
+  util_config_ret = master_util_config_startup ((argc > 1) ? argv[1] : NULL, &port_id);
+
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) == 0)
     {
       /* css_gethostname won't null-terminate if the name is overlong.  Put in a guaranteed null-terminator of our own
        * so that strcat doesn't go wild. */
-      hostname[MAXHOSTNAMELEN] = '\0';
+      hostname[CUB_MAXHOSTNAMELEN] = '\0';
       strcat (hostname, suffix);
       errlog = hostname;
     }
@@ -1164,7 +1163,7 @@ main (int argc, char **argv)
       status = EXIT_FAILURE;
       goto cleanup;
     }
-  if (master_util_config_startup ((argc > 1) ? argv[1] : NULL, &port_id) == false)
+  if (util_config_ret == false)
     {
       msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MASTER, MASTER_MSG_NO_PARAMETERS);
       css_master_error (msg_format);
@@ -1473,7 +1472,7 @@ css_daemon_start (void)
       goto out;
     }
 
-  /* 
+  /*
    * Ignore the terminal stop signals (BSD).
    */
 
@@ -1496,7 +1495,7 @@ css_daemon_start (void)
     }
 #endif
 
-  /* 
+  /*
    * Call fork and have the parent exit.
    * This does several things. First, if we were started as a simple shell
    * command, having the parent terminate makes the shell think that the
@@ -1517,7 +1516,7 @@ css_daemon_start (void)
     }
   else
     {
-      /* 
+      /*
        * Wait until the parent process has finished. Coded with polling since
        * the parent should finish immediately. SO, it is unlikely that we are
        * going to loop at all.
@@ -1528,7 +1527,7 @@ css_daemon_start (void)
 	}
     }
 
-  /* 
+  /*
    * Create a new session and make the child process the session leader of
    * the new session, the process group leader of the new process group.
    * The child process has no controlling terminal.
@@ -1543,7 +1542,7 @@ css_daemon_start (void)
 
 out:
 
-  /* 
+  /*
    * Close unneeded file descriptors which prevent the daemon from holding
    * open any descriptors that it may have inherited from its parent which
    * could be a shell. For now, leave in/out/err open
@@ -1558,7 +1557,7 @@ out:
 
   errno = 0;			/* Reset errno from last close */
 
-  /* 
+  /*
    * The file mode creation mask that is inherited could be set to deny
    * certain permissions. Therefore, clear the file mode creation mask.
    */

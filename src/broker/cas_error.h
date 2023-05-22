@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright (C) 2008 Search Solution Corporation. 
+ * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
@@ -30,6 +31,12 @@
 
 /*
  * cas_error.h -
+ *
+ * CAUTION!
+ *
+ * In case of common,  
+ * cci repository source (src/cci/broker_cas_error.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
  */
 
 #ifndef	_CAS_ERROR_H_
@@ -76,6 +83,7 @@ extern "C"
     CAS_ER_NOT_IMPLEMENTED = -10100,
     CAS_ER_MAX_CLIENT_EXCEEDED = -10101,
     CAS_ER_INVALID_CURSOR_POS = -10102,
+    CAS_ER_SSL_TYPE_NOT_ALLOWED = -10103,
     CAS_ER_IS = -10200,
   } T_CAS_ERROR_CODE;
 
@@ -83,5 +91,13 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+/*
+ * CAUTION!
+ *
+ * In case of common,  
+ * cci repository source (src/cci/broker_cas_error.h) must be updated,
+ * becuase CCI source and Engine source have been separated.
+ */
 
 #endif				/* _CAS_ERROR_H_ */

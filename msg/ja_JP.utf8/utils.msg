@@ -1,19 +1,21 @@
+
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -72,6 +74,8 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 レングスが正しくないか、正しくない文字「%1$c」がデータベース名「%2$s」に入っています。\n
@@ -83,7 +87,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 9 \
 %1$s (CUBRID ユーティリティー)\n\
 %2$s\n\
-Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.\n
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 10 \
 cubrid 管理者ユーティリティー、バージョン　%1$s\n\
 使い方: %2$s <ユーティリティー名> [オプション]\n\
@@ -124,6 +128,8 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$sはDBMS管理道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -146,8 +152,10 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 正しい管理者ユーティリティー名:\n\
     addvoldb\n\
@@ -182,6 +190,8 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$sはDBMS道具です。\n\
 追加情報は次のサイトをご覧になってください。http://www.cubrid.org\n
@@ -248,10 +258,39 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
 41 CUBRID Managerサーバがインストールされていません。\n
 42 無効なパラメーターです。\n
 43 ファイル「%1$s」のオープンに失敗しました。\n
+44 cubridユーティリティー、バージョン %1$s\n\
+使い方: %2$s javasp <コマンド> [パラメーター]\n\
+\n\
+正しいコマンド:\n\
+    start       [データベース名]\n\
+    stop        [データベース名]\n\
+    restart     [データベース名]\n\
+    status      [データベース名]\n
+45 cubridユーティリティー、バージョン %1$s\n\
+使い方: %2$s gateway <コマンド> [パラメーター]\n\
+\n\
+正しいコマンド:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
+    on          <ゲートウェイ名>\n\
+    off         <ゲートウェイ名>\n\
+    reset       <ゲートウェイ名>\n\
+    acl         <status|reload> [ゲートウェイ名]\n
+46 owner_nameの長さは%1$d未満である必要があり、class_nameの長さは%2$dバイト未満である必要があります。\n
+47 owner_name.class_name（'%1$s'）の形式が無効です。\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 警告: -tオプションは独立実行モードでは無視されます。\n
 31 エラー：ターゲットパスが存在しないか、ディレクトリではありません。\n
+32 --separate-keysオプションを使用すると、キーファイル（_keys）がバックアップボリュームから分離されます。\n\
+キーファイルを紛失した場合、バックアップボリュームがあっても復元（restoredb）が正常に動作しない場合があります。\n
+33 バックアップボリュームにはキーファイル（_keys）が含まれています。\n\
+テーブルがTDEで暗号化されている場合、そのデータのセキュリティ問題が発生する可能性があります。\n\
+キーファイルを分離して防止するには、--separate-keysオプションを使用します。\n
+34 エラー：FIFOファイルを--separate-keyの宛先パスとして使用できません。\n
 60 \
 backupdb: データーベースをバックアップします。\n\
 使い方: %1$s backupdb [オプション] <データーベース名>\n\
@@ -269,9 +308,9 @@ backupdb: データーベースをバックアップします。\n\
   -C, --CS-mode                クライアント−サーバーモード\n\
       --no-check               データーベースの整合性を確認する作業を実行しません。;　デフォルト:実行\n\
   -t, --thread-count=COUNT     バックアップをするスレッド数。;　デフォルト:自動\n\
-  -z, --compress               バックアップボリュームを圧縮します。;　デフォルト:圧縮しない\n\
-  -e, --except-active-log      バックアップボリュームにアクティブログを含めません。;　デフォルト:含める\n\
-      --sleep-msecs            １メガバイトを読むたびにNミリセコンドを休みます。;　デフォルト: 0 \n
+      --no-compress            バックアップボリュームを圧縮しないでください。デフォルト：圧縮\n\
+      --sleep-msecs            １メガバイトを読むたびにNミリセコンドを休みます。;　デフォルト: 0 \n\
+  -k, --separate-keys          TDEのキーファイル（_keys）はバックアップボリュームに含まれていませんが、代わりにファイルに分割されています\n
 71 「%1$s」と「%2$s」は共に使えません。\n
 
 
@@ -297,7 +336,7 @@ copydb: データーベースコピー。\n\
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
 40 グループ「%1$s」は存在しません。\n
-41 ユーザー「%1$s」は存在しません。\n 
+41 ユーザー「%1$s」は存在しません。\n
 42 正しくないコマンド「%1$s」\n
 43 出力ファイル「%1$s」が開けられません。\n
 44 既存データベースが削除できません。\n
@@ -389,7 +428,8 @@ restoredb: データベース復旧\n\
   -l, --level=LEVEL                 復旧に使うバックアップのレベル; デフォルト: 0(Full backup)\n\
   -p, --partial-recovery            アーカイブログがなければ強制にパーシャルリカバリーを実行する。\n\
   -o, --output-file=FILE            出力メッセージがセーブされるファイル; デフォルト: なし\n\
-  -u, --use-database-location-path  データベース位置ファイルに設定されたパスにデータベースボリュームとログボリュームを復旧\n
+  -u, --use-database-location-path  データベース位置ファイルに設定されたパスにデータベースボリュームとログボリュームを復旧\n\
+  -k、--keys-file-path              復元中に使用されるTDEのキーファイル（_keys）のパス\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -402,7 +442,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** 文法チェック ***\n\n
 26 %1$d個のエラーが検出されました。\n
 27 \n*** オブジェクト挿入中 ***\n\n
-28 総%1$8d個のオブジェクトが挿入されました。\n
+28 総%1$ld個のオブジェクトが挿入されました。\n
 29 総%1$8d個のれレファレンスされたオブジェクトがデフォルトバリューで入力されました。\n
 30 \n*** トランザクションコミット中 ***\n
 31 \n*** データベースを閉まっています ***\n
@@ -422,57 +462,77 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 クラス「%2$s」のインスタンス「%1$d」はすでに正義されました。\n
 46 クラス「%2$s」のインスタンス「%1$d」はもう使用されました。\n
 47 アトリビュート「%1$s」のUNIQUE違反。NULLに変換しました。\n
-48    %1$d インスタンス\n
+48 %1$s %2$ld インスタンス\n
 49 クラス %1$s\n
-50 パスワード: 
+50 パスワード:
 51 \n*** クラススタティスティックス情報を更新中 ***\n
 52 %1$sエラーがライン%2$dで発生「%3$s」\n
-53 Lexicalエラー
+53 Lexicalエラー\n
 54 ライン %1$d: 「%2$s」で文法エラー
 55 missing
 56 in %1$s
 57 一緒に使えないパラメーター「%1$s」と「%2$s」\n
-58 %1$dインスタンスをコミットしました。\n
-59 \n以前バージョンのloaddbが実行できません。\n 
+58 %1$s %2$ldインスタンスをコミットしました。\n
+59 \n以前バージョンのloaddbが実行できません。\n
 60 「%1$s」を「%2$s」タイプにパーシングエラー \n
-112   %1$d個のインスタンス\r
-113 最後にコミットされたライン : %1$d
+61 Object Reference is not supported in CS mode.\n
+62 Updated statistics for class %1$s.\n
+112   %1$ld個のインスタンス\r
+113 最後にコミットされたライン : %1$d\n
 114 エラーコントロールファイル
 115 ロードする時にエラー制御のための入力ファイル
-116 Total %1$8d object(s) inserted, %2$d object(s) failed.\n
+116 Total %1$ld object(s) inserted, %2$ld object(s) failed.\n
 117 Load failed.\n
 118 Maximum length of class name is %1$d bytes.\n
-120 \
+119 Total %1$8d object(s) checked, %2$d object(s) failed.\n
+120 data file does not contain '%%class' specifier or '--table' option is missing\n
+121 Class %1$s is ignored.\n
+122 Maximum length of user name is %1$d bytes.\n
+123 %1$s は空のファイルです。\n
+124 \
 loaddb: データベースにオブジェクトやスキーマロード\n\
-使い方: %1$s loaddb [オプション] <データベース名>\n\
+使い方: %1$s loaddb [オプション] データベース名[@ホスト]\n\
 \n\
 オプション:\n\
-  -u, --user=ID                 データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
-  -p, --password=PASS           ユーザーパスワード; デフォルト: なし\n\
-      --data-file-check-only    文法チェックだけを実行; デフォルト: 文法チェックの後、ロード\n\
-  -l, --load-only               文法チェックなしでロード; デフォルト: 文法チェックの後、ロード\n\
-      --estimated-size=NUMBER   インスタンスの予測数; デフォルト: 5000\n\
-  -v, --verbose                 多様な進行情報を出力; デフォルト: 出力しない\n\
-  -c, --periodic-commit=COUNT   周期的なコミットに関するカウント; デフォルト: ロード中にコミットしない\n\
-      --no-oid                  OIDを未使用\n\
-      --no-statistics           ロードの後、スタティスティックス情報を更新しない。\n\
-  -s, --schema-file=FILE[:LINE] ファイル[:ライン]情報でスキーマ生成\n\
-  -i, --index-file=FILE[:LINE]  ファイル[:ライン]情報でインデックス生成\n\
-  -d, --data-file=FILE          ロードするデータファイル\n\
-  -t, --table=TABLE             データをロードするテーブル名; データファイルにテーブル情報がない場合使う\n\
-      --error-control-file=FILE ロード中に発生するエラーに関するコントロールファイル\n\
-      --ignore-class-file=FILE  ロードしないクラス名が入っているファイル\n
+  -S, --SA-mode                  独立モードで実行\n\
+  -C, --CS-mode                  クライアントーサーバモードで実行\n\
+                                 警告: HA モードの場合、クライアント/サーバー モードではデータ ファイル (-d、--data-file=FILE) のみをロードできます。\n\
+  -u, --user=ID                  データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
+  -p, --password=PASS            ユーザーパスワード; デフォルト: なし\n\
+      --data-file-check-only     check syntax for data file without load; default: disabled\n\
+  -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
+      --estimated-size=NUMBER    インスタンスの予測数; デフォルト: 5000\n\
+  -v, --verbose                  多様な進行情報を出力; デフォルト: 出力しない\n\
+  -c, --periodic-commit=COUNT    周期的なコミットに関するカウント; デフォルト: 10240\n\
+      --no-oid                   OIDを未使用\n\
+      --no-statistics            ロードの後、スタティスティックス情報を更新しない。\n\
+  -s, --schema-file=FILE[:LINE]  ファイル[:ライン]情報でスキーマ生成\n\
+  -i, --index-file=FILE[:LINE]   ファイル[:ライン]情報でインデックス生成\n\
+      --trigger-file=FILE[:LINE] create trigger from LINE with FILE\n\
+  -d, --data-file=FILE           ロードするデータファイル\n\
+  -t, --table=TABLE              データをロードするテーブル名; データファイルにテーブル情報がない場合使う\n\
+      --error-control-file=FILE  ロード中に発生するエラーに関するコントロールファイル\n\
+      --ignore-class-file=FILE   ロードしないクラス名が入っているファイル\n\
+      --no-user-specified-name   Find classes, serials, and triggers by their object names without their owner names.\n\
+                                 This is to load files generated by cubrid before version 11.2.\n\
+      --schema-file-list=FILE    このファイルの内容は、loaddb で使用されるスキーマ ファイル名のリストです。\n\
+                                 loaddb は上から順に実行されます。\n\
+                                 警告: -s オプションと一緒に使用することはできません。\n
+
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pagesが正しくありません。\n
 42 cached-page-sizeが正しくありません。\n
-43 %1$dこのオブジェクトがダンプされました。\n
+43 %1$ldこのオブジェクトがダンプされました。\n
 44 クラス %1$s
 45 , %1$dこのインスタンス。\n
-46 %1$dこのオブジェクトが(全体%2$d個)問題なくダンプされました。\n
+46 %1$ldこのオブジェクトが(全体%2$ld個)問題なくダンプされました。\n
 47 出力ディレクトリー名が長過ぎます。\n
 48 LSA : %1$d %2$d \n
-49 パスワード: 
+49 パスワード:
+50 Maximum length of class name is %1$d bytes.\n
+51 Maximum length of user name is %1$d bytes.\n
+52 Class %1$s not found.\n
 60 \
 unloaddb: データベースからスキーマとオブジェクトをアンロード\n\
 使い方: %1$s unloaddb [オプション] <データベース名>\n\
@@ -491,11 +551,15 @@ unloaddb: データベースからスキーマとオブジェクトをアンロ�
   -d, --data-only             オブジェクトだけを処理; デフォルト: スキーマとオブジェクト処理\n\
       --output-prefix=PREFIEX 出力ファイルのprefix; デフォルト: データベース名\n\
       --hash-file=FILE        ハッシュファイル名; デフォルト: ファイルを作るために「tmpnam()」使う。\n\
+      --latest-image          オブジェクトをダンプするとき、ログボリュームを参照せずに（MVCCを無視して）データボリューム内のオブジェクトの最新のイメージをダンプします\n\
+                              コミットされていないデータや、バキュームされていない削除されたデータが含まれる可能性があります。 デフォルト：無効\n\
   -v, --verbose               多様な進行情報を出力; デフォルト: 出力しない\n\
       --use-delimiter         識別者の最初と最後に「"」をつける; デフォルト: つけない\n\
   -S, --SA-mode               独立モードで実行\n\
   -C, --CS-mode               クライアントーサーバモードで実行\n\
-      --datafile-per-class    格クラス別にオブジェクトファイル生成; デフォルト:　ひとつのオブジェクトファイルを生成\n
+      --datafile-per-class    格クラス別にオブジェクトファイル生成; デフォルト:　ひとつのオブジェクトファイルを生成\n\
+      --split-schema-files    オブジェクトごとにスキーマ情報を分割し、各ファイルを生成します。 デフォルト: すべてのオブジェクトを含む 1 つのスキーマ ファイルを生成する\n\
+      --as-dba                ログイン ユーザーが DBA グループのメンバーである場合、DBA と同じスキーマ ファイルを抽出します。\n
 
 
 
@@ -536,6 +600,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 パス 3\n\n
 45 ヒープコンパクト失敗...\n
 46 ヒープコンパクト成功...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: データベースで使用しない領域を解除。\n\
 使い方: %1$s compactdb [オプション] <データベース名>\n\
@@ -545,16 +611,17 @@ compactdb: データベースで使用しない領域を解除。\n\
   -i, --input-class-file=FILE       テーブル名が入っているファイルを入力\n\
                                     class_nameリストは必ず空いている必要があります。\n\
                                     デフォルト: すべてのクラスをコンパクト\n\
-                                    クライアントーサーバモードでしか作動しない。\n\
   -p, --pages-commited-once=NUMBER  一回にコミットする最大ページ数\n\
                                     デフォルト: 10\n\
                                     クライアントーサーバモードでしか作動しない。\n\
   -S, --SA-mode                     スタンドアロンモードで実行\n\
   -C, --CS-mode                     クライアントーサーバモードで実行\n\
   -d, --delete-old-repr             カタログから古いクラス情報を削除; デフォルト: 削除しない\n\
-  class_name_list                   クライアントーサーバモードでしか作動しない。\n\
   -I, --Instance-lock-timeout       インスタンスロックのタイムアウト\n\
-  -c, --class-lock-timeout          クラスロックのタイムアウト\n
+                                    クライアントーサーバモードでしか作動しない。\n\
+  -c, --class-lock-timeout          クラスロックのタイムアウト\n\
+                                    クライアントーサーバモードでしか作動しない。\n\
+  class_name_list                   圧縮するクラス名のリスト\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 CUBRIDマスターがホスト%1$sで実行中です。%2$sに始まって
@@ -587,12 +654,13 @@ cub_commdb: このユーティリティーは使わないでください。そ�
 33 マスター%1$d分あとにシャットダウンします。\n
 34 クライアントーからでーたが受け取れない。
 35 データベースサーバー%1$sは現在作動中ではありません。
-36 シェル「%1$s」が始まりません。%2$s, %3$s 
+36 シェル「%1$s」が始まりません。%2$s, %3$s
 37 プロセスfork %1$s, 返還 %2$d, %3$s
 38 %1$sが実行せきません。
 39 -i(--immediately) オプションは、--deact-stop-all オプションと一緒に使用する必要があります。\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 --recreate-logオプションを指定せずに実行するか、アクティブなログボリュームを手動で削除してください。\n
 60 \
 emergency_patchlog: 緊急状況でデータベースログのパッチ\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -613,7 +681,7 @@ addvoldb: データベースボリュームファイルを追加。\n\
       --db-volume-size=SIZE        追加するボリュームのサイズ; デフォルト: 設定から読み込む。\n\
       --max-writesize-in-sec=SIZE  一秒に書かれるボリューム量; (ex. 512K, 1M, 10M); デフォルト: 使用しない; 最小: 160K\n\
   -n, --volume-name=NAME           ボリューム名; デフォルト: "db"_ext1のような名前で生成。\n\
-  -F, --file-path=PATH             データベースファイルのパス; デフォルト: 現在ディレクトリー\n\
+  -F, --file-path=PATH             データベースファイルのパス; デフォルト: volume_extension_path\n\
       --comment=COMMENT            ボリュームコメント; デフォルト: なし\n\
   -p, --purpose=PURPOSE            ボリュームの使い道; 次のような使い道ができます。\n\
                                            DATA - データヴォリューム\n\
@@ -800,6 +868,7 @@ killtran: データベーストランザクションを管理\n\
       --kill-program-name=NAME       NAMEに対するトランザクションを全部終了\n\
       --kill-sql-id=SQL_ID           SQL_IDに対するすべてのトランザクションを中止する。\n\
   -p, --dba-password=PASS            DBAパスワード; 指定されてない場合は入力プロンプトが表示される。\n\
+                                     (-iまたは--killオプションでのみ機能します。そうでない場合、エラーが発生します)\n\
   -d, --display-information          現在アクティブトランザクションの情報を表示\n\
   -q, --query-exec-info              アクティブトランザクションのクエリ実行情報を表示する。\n\
   -f, --force                        強制に確認なしでトランザクションを終了\n
@@ -816,11 +885,11 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 21 「%1$s」はバージョンが低すぎるので「%2$s」にマイグレーションできません。\n
 22 「%1$s」はマイグレーションが要りません。\n
 23 「%1$s」はマイグレーションが必要です。\n
-24 マイグレーションの後、バックアップすることをおすすめします。今バックアップしますか？ (y/n): 
+24 マイグレーションの後、バックアップすることをおすすめします。今バックアップしますか？ (y/n):
 25 マイグレーションの後、バックアップすることをおすすめします。
-26 \n*** 警告: %1$sにマイグレーションする前にデータベースをバックアップしてください ***\n\nマイグレーションの途中に問題が発生する恐れがあるので、障害を復旧するために必ずバックアップが必要になります。\nバックアップしましたか？ (y/n): 
+26 \n*** 警告: %1$sにマイグレーションする前にデータベースをバックアップしてください ***\n\nマイグレーションの途中に問題が発生する恐れがあるので、障害を復旧するために必ずバックアップが必要になります。\nバックアップしましたか？ (y/n):
 27 \n1. バックアップ実行 \n2. 新しいデータベースのバックアップパスを入力。(現在バックアップパス: %1$s) \n3. 終了 \n
-28 \n新しいデータベースのバックアップパス: 
+28 \n新しいデータベースのバックアップパス:
 29 \nマイグレーションとバックアップを問題なく完了しました。
 30 バックアップに失敗しました。また遣り直してください。
 31 \n\n*** 警告: マイグレーションが完了すると、以前バージョンのバックアップファイルを使って復旧できません。\n以前バージョンのバックアップファイルは、当バージョンでしか復旧できません。\n以前バージョンのバックアップファイルを保存してください。 ***\n
@@ -839,8 +908,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 必須パラメーター; デフォルト: なし
 3 ジャバークラスーファイル
 4 必須パラメーター; デフォルト: なし
-5 強制ーオーバーライト
-6 クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              クラスファイルがもう存在したらオーバーライトする。; デフォルト: オーバーライトしない\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 出力ファイル「%1$s」が開けません。\n
@@ -902,7 +974,7 @@ copylogdb: サーバーからログページをコピー\n\
   -L, --log-path=PATH         コピーしたログボリュームのディレクトリーパス\n\
   -m, --mode=MODE             運営モード; デフォルト: sync\n\
                               MODE: sync or semisync or async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBAパスワードを入力してください。:
@@ -933,6 +1005,7 @@ valid options:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBAパスワードを入力してください。:
 22 サーバーがHAモードで設定されていません。\n
+57 -Lオプションのパスが無効であるか、db_ha_apply_infoカタログ表に関連情報がないため、適用された情報を生成できません。\n
 58 HA機能を支援しないプラットホームです。\n
 59 applyinfoはスタンドアロンモードで実行できません。\n
 60 \
@@ -941,9 +1014,9 @@ applyinfo: CUBRID HA Apply情報を出力。\n\
 \n\
 オプション:\n\
   -r, --remote-host-name      リモートホスト名; リモートノードのアクティブログ情報を出力\n\
-  -a, --applied-info          適用された情報を出力\n\
   -L, --copied-log-path=PATH  コピーしたログブリュームのパス; コピーしたログ情報を出力。\n\
-  -p, --page=ID               ページID; デフォルト : 0\n\
+  -a, --applied-info          適用された情報を出力; -Lオプションが必要です\n\
+  -p, --page=ID               ページID; -Lオプションが必要です; デフォルト : 0\n\
   -v, --verbose               多様な進行情報を出力; デフォルト: 出力しない\n\
   -i, --interval=S            S秒のたびに表示される情報を更新する。\n
 
@@ -1032,19 +1105,19 @@ synccolldb: データベースのコーレーションをシステムコーレ�
   -f, --force-only    データベースのコーレーションをシステムの新しいコーレーションに強制更新します。\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 「%1$s」のパスワードを入力してください: 
-22 トランザクションーインデックス  ユーザー名     ホスト名     プロセスID     プログラム名\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 「%1$s」のパスワードを入力してください:
+22 トランザクションーインデックス    ユーザー名     ホスト名     プロセスID     プログラム名\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 トランザクションがありません。\n
 26 tranlistはDBAユーザー、またはDBAグループのメンバーが実行できます。\n
 27 正しくないソートキーのカラム番号(%1$d)。\n
-32 トランインデックス　　　　プロセスid       プログラム名　　　　　　　　　　　　　クエリタイム　　　　トランタイム　　　　　　　　　　　ロックゴールだウェート　　　　     SQL ID        SQLテキスト\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 トランインデックス　　　　　ユーザー名　　　　　　ホスト名　　　　　　　プロセスid　　　　　プログラム名　　　　　　　　　　　　　クエリタイム　　　　トランタイム　　　　　　　　　　　ロックウェート　　　　　　　　　ホルダー　　　　　SQL_ID       SQLテキスト\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 トランインデックス　　　　  プロセスid       プログラム名　　　　　　　　　　　　　クエリタイム　　　　トランタイム　　　　　　　　　　　ロックゴールだウェート　　　　     SQL ID        SQLテキスト\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 トランインデックス　　　　　  ユーザー名　　　　　　ホスト名　　　　　　　プロセスid　　　　　プログラム名　　　　　　　　　　　　　クエリタイム　　　　トランタイム　　　　　　　　　　　ロックウェート　　　　　　　　　ホルダー　　　　　SQL_ID       SQLテキスト\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 トランザクションインデックス : %1$d
 46 SQL_ID: %1$s\n
 59 tranlistはスタンドアロンモードで実行できません。\n
@@ -1053,8 +1126,6 @@ tranlist: アクティブトランザクション情報をダンプします。\
 使い方: %1$s tranlist [オプション] データベース名\n\
 \n\
 オプション:\n\
-  -u, --user=ID                データベースに接続するユーザーID; デフォルト: DBAユーザー\n\
-  -p, --password=PASS          ユーザーパスワード; デフォルト: なし\n\
   -s, --summary                トランザクション情報を要約して出力する。\n\
       --sort-key=COLUMN_NUMBER ソートされるカラム番号\n\
       --reverse                ソート結果を逆にする。\n
@@ -1124,7 +1195,8 @@ restoreslave: スレーブデータベースを復元します。\n\
       --list                        復元せずにバックアップボリュームのリストを表示\n\
   -B, --backup-file-path=PATH       PATHには、バックアップボリュームのディレクトリを復元することを意味します\n\
   -o, --output-file=FILE            FILEに出力メッセージをリダイレクトします; デフォルト: none\n\
-  -u, --use-database-location-path  データベース・ロケーション・ファイルで指定したパスにデータベースとログボリュームを復元します\n
+  -u, --use-database-location-path  データベース・ロケーション・ファイルで指定したパスにデータベースとログボリュームを復元します\n\
+  -k、--keys-file-path               復元中に使用されるTDEのキーファイル（_keys）のパス\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 次のボリュームを削除する準備ができました:\n\n
@@ -1147,17 +1219,21 @@ delvoldb: データベースの空のボリューム・ファイルを削除し�
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdbはclient-serverモードで一時的に利用することができません\n
 21 vacuum操作に失敗しました\n
+22 出力ファイル「%1$s」が開けません。\n
 60 \
 vacuumdb: データベースから死亡レコードを掃除。\n\
 使い方: %1$s vacuumdb [OPTION] database-name\n\
 \n\
 オプション:\n\
   -S, --SA-mode                stand-aloneモードの実行\n\
-  -C, --CS-mode                client-serverモードの実行\n
+  -C, --CS-mode                client-serverモードの実行\n\
+      --dump                   真空の現在の状態をダンプします\n\
+  -o, --output-file=FILE       出力メッセージをセーブするファイル; デフォルト: なし\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 %1$sからテーブル名の読み込みに失敗しました。\n
 2 checksumdbはHAアクティブなサーバー上で実行する必要があります。 %1$s (現在の状態: %2$s)\n
+3 チェックサム結果を保存するテーブルの所有者はDBAである必要があります。\n
 58 HA機能はこのプラットフォームではサポートされません。\n
 59 checksumdbはスタンドアロンモードで実行することはできません。\n
 60 \
@@ -1171,9 +1247,67 @@ checksumdb: レプリケーションの整合性を確認します。\n\
   -i, --include-class-file=FILE FILE内のテーブル名が含まれます。\n\
   -e, --exclude-class-file=FILE FILE内のテーブル名が除外されます。-iまたは-eを使用することができますが、どちらか一方。\n\
   -t, --timeout=NUMBER          ミリ秒単位のクエリタイムアウト; デフォルト: 1000 ms\n\
-  -n, --table-name=NAME         チェックサムの結果を格納するテーブル名; デフォルト: db_ha_checksums\n\
+  -n, --table-name=NAME         チェックサムの結果を格納するテーブル名; デフォルト: dba.db_ha_checksum\n\
   -r, --report-only             チェックサムの計算に基づいたレプリケーションの整合性を報告します。\n\
                                 --table-name以外のすべてのオプションは無視されます。\n\
       --resume                  チェックサムの計算を再開\n\
       --schema-only             スキーマ整合性のみをチェックします。\n\
       --cont-on-error           計算エラーが発生したときに継続\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 DBAパスワードを入力します。
+25 データベースに設定されているキー情報を取得できませんでした\n
+26 キーをキー（インデックス：%1$d）からキー（インデックス：%2$d）に変更しようとしています。。\n
+27 キーがキー（インデックス：%1$d）からキー（インデックス：%2$d）に変更されました\n
+28 データベースに設定されているキーは削除できません\n
+29 キー（インデックス：%1$d）が削除されました\n
+30 新しいキーが生成されました-キーインデックス：%2$sに%1$dが作成されました
+60 \
+tde：透過的データ暗号化（TDE）管理\n\
+使用法：%1$s tde OPERATION（-s|-n|-d|-c）[オプション]データベース名\n\
+\n\
+有効なオプション：\n\
+    -p, --dba-password=PASS       DBAユーザーのパスワード。指定しない場合はプロンプトが表示されます\n\
+\n\
+操作：操作の1つを指定する必要があり、それらは排他的です\n\
+    -s, --show-keys               は、データベースとキーファイル（_keys）に設定されたキー情報を出力します\n\
+    -n, --generate-new-key        キーファイル（_keys）に新しいキーを生成します。最大数：128\n\
+    -d, --delete-key=KEY_INDEX    キーファイル（_keys）のキーを削除します\n\
+    -c, --change-key=KEY_INDEX    データベースに設定されているキーを、キーファイル（_keys）内の別のキーに変更します\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBAパスワードを入力します。
+2 無効な日付形式、有効な形式はdd-mm-yyyy：hh：mm：ss \n
+3 開始日（%1$s）は終了日（%2$s）よりも小さくする必要があります\n
+4 現在の日付より前（%1$s）またはデータベースが作成された後（%2$s）の日付で試してください\n
+5 テーブル（%1$s）がデータベースに存在しません\n
+6 フラッシュバックするにはトランザクションが多すぎます。開始日と終了日の間隔を短くしてください\n
+7 スキーマ（%1$s）が変更されたため、フラッシュバックを取得できません。\n
+8 ログボリュームが削除されました。後日お試しください\n
+9 出力ファイル'%1$s'を開けませんでした\n
+10 トランザクションID（%1$d）が存在しません\n
+11 「cubrid.conf」に「supplemental_log」を設定してください。フラッシュバックできるのは、「supplemental_log」の設定後に実行されたSQLログのみです。\n
+12 トランザクションIDは%1$d秒で入力する必要があります。タイムアウトは、「cubrid.conf」の「flashback_timeout」設定で調整できます。\n
+13 フラッシュバックはすでに実行されています。フラッシュバックは2つのプロセスで実行できません。\n
+14 フラッシュバックをスタンドアロンモードとして実行することはできません。\n
+15 システムカタログクラス（%1$s）はフラッシュバックではサポートされていません。\n
+60 \
+flashback：特定のトランザクションをフラッシュバックするステートメントを提供します。\n\
+使用法：%1$s flashback [オプション] データベース名owner_name.class_name1[owner_name.class_name2...] \n\
+\n\
+有効なオプション：\n\
+    -o、--output-file=FILE        出力メッセージをFILEにリダイレクトします。デフォルト：なし。\n\
+    -u、--user = ID               は、フラッシュバックするSQLステートメントを実行したユーザーを指定します。デフォルト：ALL。\n\
+    -p、--dba-password            DBAユーザーのパスワードパスワード。指定しない場合はプロンプトが表示されます\n\
+    -s、--start-date=DATE         はフラッシュバックの開始日を指定します。 SQLログはDATEから抽出されます。\n\
+                                  DATEは次のように指定されます：dd-mm-yyyy：hh：mm：ss。\n\
+    -e、--end-date=DATE           はフラッシュバックの終了日を指定します。 SQLログはDATEまで抽出されます。\n\
+                                  開始日が指定されていない場合、（（END-10min）〜END）は範囲に設定されます\n\
+                                  それ以外の場合、ENDが指定されていない場合は、（start〜（start + 10min））が設定されます。\n\
+                                  また、開始日も終了日も指定されていません。\n\
+                                  （現在の時刻-10分）から現在の時刻までの間に実行されたSQLログが抽出されます。\n\
+    --detail                      は、各SQLステートメントの詳細情報を出力します。\n\
+                                  トランザクションID、ユーザー名、および元のSQLステートメントはSQLステートメントとともに返されます\n\
+                                  フラッシュバック用。デフォルト：フラッシュバックのSQLステートメントのみを出力します\n\
+    --oldest                      フラッシュバックは、開始時刻から終了時刻まで実行されたSQLステートメントに対して時系列で実行されます;\n\
+                                  デフォルト：最新\n

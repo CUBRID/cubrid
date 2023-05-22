@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -30,7 +29,9 @@
 #include "fault_injection.h"
 #include "list_file.h"
 #include "lock_free.h"
+#include "lockfree_transaction_system.hpp"
 #include "log_compress.h"
+#include "log_system_tran.hpp"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "resource_tracker.hpp"
@@ -76,10 +77,10 @@ namespace cubthread
   entry::entry ()
   // public:
     : index (-1)
-    , type (TT_WORKER)
+    , type (TT_NONE)
     , emulate_tid ()
     , client_id (-1)
-    , tran_index (-1)
+    , tran_index (NULL_TRAN_INDEX)
     , private_lru_index (-1)
     , tran_index_lock ()
     , rid (0)
@@ -114,6 +115,7 @@ namespace cubthread
     , log_zip_redo (NULL)
     , log_data_ptr (NULL)
     , log_data_length (0)
+    , no_logging (false)
     , net_request_index (-1)
     , vacuum_worker (NULL)
     , sort_stats_active (false)
@@ -122,11 +124,15 @@ namespace cubthread
     , on_trace (false)
     , clear_trace (false)
     , tran_entries ()
+    , no_supplemental_log (false)
+    , trigger_involved (false)
+    , is_cdc_daemon (false)
 #if !defined (NDEBUG)
     , fi_test_array (NULL)
     , count_private_allocators (0)
 #endif /* DEBUG */
     , m_qlist_count (0)
+    , m_loaddb_driver (NULL)
       // private:
     , m_id ()
     , m_error ()
@@ -136,6 +142,8 @@ namespace cubthread
     , m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
+    , m_systdes (NULL)
+    , m_lf_tran_index (lockfree::tran::INVALID_INDEX)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -249,6 +257,14 @@ namespace cubthread
 	free (log_data_ptr);
       }
 
+    no_logging = false;
+
+    no_supplemental_log = false;
+
+    trigger_involved = false;
+
+    is_cdc_daemon = false;
+
     end_resource_tracks ();
 
     db_destroy_private_heap (this, private_heap_id);
@@ -263,6 +279,8 @@ namespace cubthread
 #if !defined (NDEBUG)
     fi_thread_final (this);
 #endif // DEBUG
+
+    assert (m_systdes == NULL);
 
     m_cleared = true;
   }
@@ -318,10 +336,7 @@ namespace cubthread
       {
 	if (tran_entries[i] != NULL)
 	  {
-	    if (lf_tran_return_entry (tran_entries[i]) != NO_ERROR)
-	      {
-		assert (false);
-	      }
+	    lf_tran_return_entry (tran_entries[i]);
 	    tran_entries[i] = NULL;
 	  }
       }
@@ -377,6 +392,42 @@ namespace cubthread
     m_alloc_tracker.pop_track ();
     m_pgbuf_tracker.pop_track ();
     m_csect_tracker.stop ();
+  }
+
+  void
+  entry::claim_system_worker ()
+  {
+    assert (m_systdes == NULL);
+    m_systdes = new log_system_tdes ();
+    tran_index = LOG_SYSTEM_TRAN_INDEX;
+  }
+
+  void
+  entry::retire_system_worker ()
+  {
+    delete m_systdes;
+    m_systdes = NULL;
+    tran_index = NULL_TRAN_INDEX;
+  }
+
+  void
+  entry::assign_lf_tran_index (lockfree::tran::index idx)
+  {
+    m_lf_tran_index = idx;
+  }
+
+  lockfree::tran::index
+  entry::pull_lf_tran_index ()
+  {
+    lockfree::tran::index ret = m_lf_tran_index;
+    m_lf_tran_index = lockfree::tran::INVALID_INDEX;
+    return ret;
+  }
+
+  lockfree::tran::index
+  entry::get_lf_tran_index ()
+  {
+    return m_lf_tran_index;
   }
 
 } // namespace cubthread
@@ -659,6 +710,8 @@ thread_type_to_string (thread_type type)
       return "WORKER";
     case TT_DAEMON:
       return "DAEMON";
+    case TT_LOADDB:
+      return "LOADDB";
     case TT_VACUUM_MASTER:
       return "VACUUM_MASTER";
     case TT_VACUUM_WORKER:

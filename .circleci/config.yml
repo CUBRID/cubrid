@@ -2,6 +2,11 @@ defaults: &defaults
   working_directory: /home
   docker:
     - image: cubridci/cubridci:develop
+    
+oraclelinux: &oraclelinux
+  working_directory: /home
+  docker:
+    - image: cubridci/cubridci:ol7.8 
 
 test_defaults: &test_defaults
   steps:
@@ -13,7 +18,7 @@ test_defaults: &test_defaults
         environment:
           _JAVA_OPTIONS: -Xmx1g
         command: |
-          ulimit -c unlimited
+          ulimit -c 1
           /entrypoint.sh checkout
           circleci tests glob cubrid-testcases/$TEST_SUITE/_* | circleci tests split | tee tc.list
           find cubrid-testcases/$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
@@ -25,7 +30,7 @@ test_defaults: &test_defaults
           mv -f CUBRID/log /tmp/logs/cubrid_log
           mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
           find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
-          dmesg > /tmp/logs/dmesg.out
+          #dmesg > /tmp/logs/dmesg.out
         when: on_fail
     - store_test_results:
         path: /tmp/tests
@@ -37,32 +42,61 @@ jobs:
   build:
     <<: *defaults
     environment:
-      MAKEFLAGS: -j2
-    
+      MAKEFLAGS: -j 10
+    resource_class: large
     steps:
-      - checkout:
-          path: cubrid
+      - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule sync
+            git submodule update --init
       - run:
           name: Build
-          command: scl enable devtoolset-6 -- /entrypoint.sh build
+          command: |
+            mkdir -p /tmp/build_logs
+            scl enable devtoolset-8 -- /entrypoint.sh build
+            mv -f build.log /tmp/build_logs
+      - run:
+          name: Commits
+          command: |
+            mkdir -p /tmp/build_logs
+            git log | head -n 1000 > commits.log || true
+            mv -f commits.log /tmp/build_logs
       - persist_to_workspace:
           root: .
           paths:
             - CUBRID
       - store_artifacts:
-          path: build.log
-
+          path: /tmp/build_logs
   test_medium:
     <<: *defaults
     environment:
       TEST_SUITE: medium
+    resource_class: medium
     <<: *test_defaults
 
   test_sql:
     <<: *defaults
     environment:
       TEST_SUITE: sql
-    parallelism: 4
+    resource_class: medium
+    parallelism: 8
+    <<: *test_defaults
+
+  test_medium_ol:
+    <<: *oraclelinux
+    environment:
+      TEST_SUITE: medium
+    resource_class: medium
+    <<: *test_defaults
+
+  test_sql_ol:
+    <<: *oraclelinux
+    environment:
+      TEST_SUITE: sql
+    resource_class: medium
+    parallelism: 8
     <<: *test_defaults
 
 workflows:
@@ -74,5 +108,12 @@ workflows:
           requires:
             - build
       - test_sql:
+          requires:
+            - build
+
+      - test_medium_ol:
+          requires:
+            - build
+      - test_sql_ol:
           requires:
             - build

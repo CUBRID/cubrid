@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -39,6 +38,7 @@
 #include <sys/time.h>
 #include <sys/param.h>
 #include <sys/socket.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #if !defined(WINDOWS)
 #include <netinet/ip.h>
@@ -76,6 +76,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "tcp.h"
+#include "host_lookup.h"
 
 #ifndef HAVE_GETHOSTBYNAME_R
 #include <pthread.h>
@@ -102,6 +103,54 @@ static const int css_Maximum_server_count = 1000;
 static void css_sockopt (SOCKET sd);
 static int css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * slen);
 static int css_fd_error (SOCKET fd);
+
+/*
+ * Put the canonical name of the current host in name out variable.
+ * The result is null-terminated if namelen is large enough for the full name and the terminator.
+ *   return: 0 if success, or error
+ *   name(out): buffer for name
+ *   namelen(in): max buffer size
+ */
+int
+css_gethostname (char *name, size_t namelen)
+{
+  if (namelen <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  size_t namelen_ = (size_t) namelen;
+  addrinfo hints, *result = NULL;
+
+  memset (&hints, 0, sizeof (hints));
+  hints.ai_family = AF_UNSPEC;	// either IPV4 or IPV6
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_CANONNAME;
+
+  char hostname[namelen_];
+  hostname[namelen_ - 1] = '\0';
+  gethostname (hostname, namelen_);
+
+  int gai_error = getaddrinfo_uhost (hostname, NULL, &hints, &result);
+  if (gai_error != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 1, hostname);
+      return ER_GAI_ERROR;
+    }
+
+  size_t canonname_size = strlen (result->ai_canonname) + 1;	// +1 for NULL terminator
+  if (canonname_size > namelen_)
+    {
+      freeaddrinfo (result);
+      return ER_FAILED;
+    }
+
+  memcpy (name, result->ai_canonname, canonname_size);
+  name[canonname_size] = '\0';
+
+  freeaddrinfo (result);
+  return NO_ERROR;
+}
 
 char *
 css_get_master_domain_path (void)
@@ -180,7 +229,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 {
   in_addr_t in_addr;
 
-  /* 
+  /*
    * First try to convert to the host name as a dotted-decimal number.
    * Only if that fails do we call gethostbyname.
    */
@@ -198,9 +247,9 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -209,9 +258,9 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -219,9 +268,9 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       struct hostent hent;
       struct hostent_data ht_data;
 
-      if (gethostbyname_r (host, &hent, &ht_data) == -1)
+      if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -232,11 +281,11 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       struct hostent *hp;
 
       pthread_mutex_lock (&gethostbyname_lock);
-      hp = gethostbyname (host);
+      hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
@@ -262,14 +311,14 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
   struct sockaddr_un unix_saddr;
   in_addr_t in_addr;
 
-  /* 
+  /*
    * Construct address for TCP socket
    */
   memset ((void *) &tcp_saddr, 0, sizeof (tcp_saddr));
   tcp_saddr.sin_family = AF_INET;
   tcp_saddr.sin_port = htons (port);
 
-  /* 
+  /*
    * First try to convert to the host name as a dotten-decimal number.
    * Only if that fails do we call gethostbyname.
    */
@@ -286,7 +335,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
@@ -297,7 +346,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       int herr;
       char buf[1024];
 
-      if (gethostbyname_r (host, &hent, buf, sizeof (buf), &herr) == NULL)
+      if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
@@ -307,7 +356,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       struct hostent hent;
       struct hostent_data ht_data;
 
-      if (gethostbyname_r (host, &hent, &ht_data) == -1)
+      if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
 	  return INVALID_SOCKET;
@@ -321,7 +370,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       int r;
 
       r = pthread_mutex_lock (&gethostbyname_lock);
-      hp = gethostbyname (host);
+      hp = gethostbyname_uhost (host);
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
@@ -333,7 +382,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 #endif /* !HAVE_GETHOSTBYNAME_R */
     }
 
-  /* 
+  /*
    * Compare with the TCP address with localhost.
    * If it is, use Unix domain socket rather than TCP for the performance
    */
@@ -398,7 +447,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 	  css_sockopt (sd);
 	}
 
-      /* 
+      /*
        * If we get an ECONNREFUSED from the connect, we close the socket, and
        * retry again. This is needed since the backlog parameter of the SUN
        * machine is too small (See man page of listen...see BUG section).
@@ -425,7 +474,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Wait a little bit to change the load of the server.
 	       * Don't wait for more than 1/2 min or the timeout period
 	       */
@@ -434,7 +483,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 		  sleep_nsecs = 30;
 		}
 
-	      /* 
+	      /*
 	       * Sleep only when we have not timed out. That is, when nsecs is
 	       * negative.
 	       */
@@ -455,7 +504,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 	  will_retry = false;	/* Don't retry */
 	}
 
-      /* 
+      /*
        * According to the Sun man page of connect & listen. When a connect
        * was forcefully rejected. The calling program must close the
        * socket descriptor, before another connect is retried.
@@ -620,7 +669,7 @@ css_tcp_master_open (int port, SOCKET * sockfd)
   int reuseaddr_flag = 1;
   struct stat unix_socket_stat;
 
-  /* 
+  /*
    * We have to create a socket ourselves and bind our well-known address to it.
    */
 
@@ -641,13 +690,13 @@ css_tcp_master_open (int port, SOCKET * sockfd)
   unix_srv_addr.sun_family = AF_UNIX;
   strncpy (unix_srv_addr.sun_path, css_get_master_domain_path (), sizeof (unix_srv_addr.sun_path) - 1);
 
-  /* 
+  /*
    * Create the socket and Bind our local address so that any
    * client may send to us.
    */
 
 retry:
-  /* 
+  /*
    * Allow the new master to rebind the CUBRID port even if there are
    * clients with open connections from previous masters.
    */
@@ -680,7 +729,7 @@ retry:
       return ERR_CSS_TCP_BIND_ABORT;
     }
 
-  /* 
+  /*
    * And set the listen parameter, telling the system that we're
    * ready to accept incoming connection requests.
    */
@@ -691,7 +740,7 @@ retry:
       return ERR_CSS_TCP_ACCEPT_ERROR;
     }
 
-  /* 
+  /*
    * Since the master now forks /M drivers, make sure we do a close
    * on exec on the socket.
    */
@@ -831,7 +880,7 @@ css_master_accept (SOCKET sockfd)
  *       the new socket fd
  */
 bool
-css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
+css_tcp_setup_server_datagram (const char *pathname, SOCKET * sockfd)
 {
   int servlen;
   struct sockaddr_un serv_addr;
@@ -854,7 +903,7 @@ css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
       return false;
     }
 
-  /* 
+  /*
    * some operating system does not set the permission for unix domain socket.
    * so a server can't connect to master which is initiated by other user.
    */
@@ -931,7 +980,7 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
 
   do
     {
-      /* 
+      /*
        * If we get an ECONNREFUSED from the connect, we close the socket, and
        * retry again. This is needed since the backlog parameter of the SUN
        * machine is too small (See man page of listen...see BUG section).
@@ -1286,7 +1335,7 @@ in_cksum (u_short * addr, int len)
   int sum = 0;
   u_short answer = 0;
 
-  /* 
+  /*
    * Our algorithm is simple, using a 32 bit accumulator (sum), we add
    * sequential 16 bit words to it, and at the end, fold back all the
    * carry bits from the top 16 bits into the lower 16 bits.
@@ -1389,7 +1438,7 @@ css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout)
 	  ip = (struct ip *) recvbuf;
 	  hlen = (ip->ip_hl) << 2;
 	  icmp = (struct icmp *) (recvbuf + hlen);
-	  /* 
+	  /*
 	   * We did received somthing, but is it what we were expecting?
 	   * Is is ICMP_ECHO_REPLY packet with the proper PID value?
 	   */
@@ -1465,7 +1514,7 @@ css_peer_alive (SOCKET sd, int timeout)
   saddr.sin_port = htons (7);	/* port ECHO */
   n = connect (nsd, (struct sockaddr *) &saddr, slen);
 
-  /* 
+  /*
    * Connection will be established or refused immediately.
    * Either way it means that the peer host is alive.
    */
@@ -1557,7 +1606,7 @@ css_get_peer_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return errno;
     }
-  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+  return getnameinfo_uhost (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
 }
 
 /*
@@ -1583,5 +1632,5 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
     {
       return errno;
     }
-  return getnameinfo (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
+  return getnameinfo_uhost (saddr, saddr_len, hostname, len, NULL, 0, NI_NOFQDN);
 }

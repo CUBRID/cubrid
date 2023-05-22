@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -288,7 +287,7 @@ get_master_shm_id (void)
 
   if (conf_file != NULL)
     {
-      strncpy (conf_file_path, conf_file, strlen (conf_file));
+      strncpy_bufsize (conf_file_path, conf_file);
     }
   else
     {
@@ -377,8 +376,8 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
       req = cci_prepare (conn_handle, query_with_hint, 0, &err_buf);
       if (req < 0)
 	{
-	  snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
-		    err_buf.err_msg);
+	  snprintf_dots_truncate (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n",
+				  err_buf.err_code, err_buf.err_msg);
 	  ret = -1;
 	  err_num++;
 	  goto end_tran;
@@ -387,8 +386,8 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
       ret = cci_execute (req, 0, 0, &err_buf);
       if (ret < 0)
 	{
-	  snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
-		    err_buf.err_msg);
+	  snprintf_dots_truncate (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n",
+				  err_buf.err_code, err_buf.err_msg);
 	  err_num++;
 	  goto end_tran;
 	}
@@ -400,8 +399,8 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 	  ret = cci_get_shard_id_with_req_handle (req, &shard_id, &err_buf);
 	  if (ret < 0)
 	    {
-	      snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
-			err_buf.err_msg);
+	      snprintf_dots_truncate (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n",
+				      err_buf.err_code, err_buf.err_msg);
 	      err_num++;
 	      goto end_tran;
 	    }
@@ -412,8 +411,8 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 	  col_info = cci_get_result_info (req, &cmd_type, &col_count);
 	  if (cmd_type == CUBRID_STMT_SELECT && col_info == NULL)
 	    {
-	      snprintf (tester_err_msg, sizeof (tester_err_msg), "ERROR CODE : %d\n%s\n\n", err_buf.err_code,
-			err_buf.err_msg);
+	      snprintf_dots_truncate (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n",
+				      err_buf.err_code, err_buf.err_msg);
 	      ret = -1;
 	      err_num++;
 	    }
@@ -841,6 +840,16 @@ main (int argc, char *argv[])
 	    br_tester_info.db_name);
   conn_handle = cci_connect_with_url_ex (conn_url, br_tester_info.db_user, br_tester_info.db_passwd, &err_buf);
 
+  if (br_tester_info.output_file_name != NULL)
+    {
+      out_file_fp = fopen (br_tester_info.output_file_name, "w");
+      if (out_file_fp == NULL)
+	{
+	  fprintf (stderr, "cannot open output file %s\n", br_tester_info.input_file_name);
+	  goto end;
+	}
+    }
+
   print_conn_result (broker_name, conn_handle);
 
   if (conn_handle < 0)
@@ -857,15 +866,6 @@ main (int argc, char *argv[])
       goto end;
     }
 
-  if (br_tester_info.output_file_name != NULL)
-    {
-      out_file_fp = fopen (br_tester_info.output_file_name, "w");
-      if (out_file_fp == NULL)
-	{
-	  fprintf (stderr, "cannot open output file %s\n", br_tester_info.input_file_name);
-	  goto end;
-	}
-    }
 
   print_shard_result ();
 

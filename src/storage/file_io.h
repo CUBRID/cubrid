@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -30,10 +29,11 @@
 
 #include "config.h"
 #include "dbtype_def.h"
-#include "lzo/lzoconf.h"
-#include "lzo/lzo1x.h"
+#include "log_lsa.hpp"
+#include "lz4.h"
 #include "memory_hash.h"
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "release_string.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -44,6 +44,7 @@
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
 
 #define FILEIO_INITIAL_BACKUP_UNITS    0
+#define FILEIO_NO_BACKUP_UNITS         -1
 
 /* Note: this value must be at least as large as PATH_MAX */
 #define FILEIO_MAX_USER_RESPONSE_SIZE 2000
@@ -57,6 +58,12 @@
 #define FILEIO_SECOND_BACKUP_VOL_INFO     1
 #define FILEIO_BACKUP_NUM_THREADS_AUTO    0
 #define FILEIO_BACKUP_SLEEP_MSECS_AUTO    0
+
+/* FILEIO_PAGE_FLAG (pflag in FILEIO_PAGE_RESERVED) */
+#define FILEIO_PAGE_FLAG_ENCRYPTED_AES 0x1
+#define FILEIO_PAGE_FLAG_ENCRYPTED_ARIA 0x2
+
+#define FILEIO_PAGE_FLAG_ENCRYPTED_MASK 0x3
 
 #if defined(WINDOWS)
 #define STR_PATH_SEPARATOR "\\"
@@ -83,6 +90,7 @@
 #define FILEIO_VOLINFO_SUFFIX        "_vinf"
 #define FILEIO_VOLLOCK_SUFFIX        "__lock"
 #define FILEIO_SUFFIX_DWB            "_dwb"
+#define FILEIO_SUFFIX_KEYS           "_keys"
 #define FILEIO_MAX_SUFFIX_LENGTH     7
 
 typedef enum
@@ -96,27 +104,18 @@ typedef enum
 typedef enum
 {
   FILEIO_ZIP_NONE_METHOD,	/* None */
-  FILEIO_ZIP_LZO1X_METHOD,	/* LZO1X */
+  FILEIO_ZIP_LZO1X_METHOD,	/* LZO1X - Unsupported */
   FILEIO_ZIP_ZLIB_METHOD,	/* ZLIB */
+  FILEIO_ZIP_LZ4_METHOD,	/* LZ4X */
   FILEIO_ZIP_UNDEFINED_METHOD	/* Undefined (must be highest ordinal value) */
 } FILEIO_ZIP_METHOD;
 
 typedef enum
 {
   FILEIO_ZIP_NONE_LEVEL,	/* None */
-  FILEIO_ZIP_1_LEVEL,		/* best speed */
-  FILEIO_ZIP_2_LEVEL,
-  FILEIO_ZIP_3_LEVEL,
-  FILEIO_ZIP_4_LEVEL,
-  FILEIO_ZIP_5_LEVEL,
-  FILEIO_ZIP_6_LEVEL,
-  FILEIO_ZIP_7_LEVEL,
-  FILEIO_ZIP_8_LEVEL,
-  FILEIO_ZIP_9_LEVEL,		/* best compression */
+  FILEIO_ZIP_1_LEVEL,
   FILEIO_ZIP_UNDEFINED_LEVEL,	/* Undefined (must be highest ordinal value) */
-  FILEIO_ZIP_LZO1X_999_LEVEL = FILEIO_ZIP_9_LEVEL,
-  FILEIO_ZIP_LZO1X_DEFAULT_LEVEL = FILEIO_ZIP_1_LEVEL,
-  FILEIO_ZIP_ZLIB_DEFAULT_LEVEL = FILEIO_ZIP_6_LEVEL
+  FILEIO_ZIP_LZ4_DEFAULT_LEVEL = FILEIO_ZIP_1_LEVEL
 } FILEIO_ZIP_LEVEL;
 
 typedef enum
@@ -176,10 +175,10 @@ struct fileio_page_reserved
   INT32 pageid;			/* Page identifier */
   INT16 volid;			/* Volume identifier where the page reside */
   unsigned char ptype;		/* Page type */
-  unsigned char pflag_reserve_1;	/* unused - Reserved field */
+  unsigned char pflag;
   INT32 p_reserve_1;
   INT32 p_reserve_2;		/* unused - Reserved field */
-  INT64 p_reserve_3;		/* unused - Reserved field */
+  INT64 tde_nonce;		/* tde nonce. atomic counter for temp pages, lsa for perm pages */
 };
 
 typedef struct fileio_page_watermark FILEIO_PAGE_WATERMARK;
@@ -212,22 +211,6 @@ fileio_init_lsa_of_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
 
   FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
   LSA_SET_NULL (&prv2->lsa);
-}
-
-STATIC_INLINE void
-fileio_init_lsa_of_temp_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
-{
-  LOG_LSA *lsa_ptr;
-
-  lsa_ptr = &io_page->prv.lsa;
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-
-  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
-
-  lsa_ptr = &prv2->lsa;
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
 }
 
 STATIC_INLINE void
@@ -313,7 +296,7 @@ struct fileio_backup_header
   char db_fullname[PATH_MAX];	/* Fullname of backed up database. Really more than one byte */
   PGLENGTH db_iopagesize;	/* Size of database pages */
   FILEIO_BACKUP_LEVEL level;	/* Backup level: one of the following level 0: Full backup, every database page that
-				 * has been allocated. level 1: All database pages that have changed since last level 0 
+				 * has been allocated. level 1: All database pages that have changed since last level 0
 				 * backup level 2: All database pages that have changed since last level 0 or 1. */
   LOG_LSA start_lsa;		/* A page with a LSA greater than this value is going to be backed up. */
   LOG_LSA chkpt_lsa;		/* LSA for next incremental backup */
@@ -350,8 +333,8 @@ struct fileio_backup_buffer
   char current_path[PATH_MAX];
 
   int dtype;			/* Set to the type (dir, file, dev) */
-  int iosize;			/* Optimal I/O pagesize for backup device */
-  int count;			/* Number of current buffered bytes */
+  INT64 iosize;			/* Optimal I/O pagesize for backup device */
+  INT64 count;			/* Number of current buffered bytes */
   INT64 voltotalio;		/* Total number of bytes that have been either read or written (current volume) */
   INT64 alltotalio;		/* total for all volumes */
   char *buffer;			/* Pointer to the buffer */
@@ -364,7 +347,7 @@ typedef struct fileio_backup_db_buffer FILEIO_BACKUP_DB_BUFFER;
 struct fileio_backup_db_buffer
 {
   FILEIO_BACKUP_LEVEL level;	/* Backup level: one of the following level 0: Full backup, every database page that
-				 * has been allocated. level 1: All database pages that have changed since last level 0 
+				 * has been allocated. level 1: All database pages that have changed since last level 0
 				 * backup level 2: All database pages that have changed since last level 0 or 1. */
   LOG_LSA lsa;			/* A page with a LSA greater than this value is going to be backed up. */
   int vdes;			/* Open file descriptor of device name for writing purposes */
@@ -380,8 +363,15 @@ struct fileio_backup_db_buffer
 typedef struct file_zip_page FILEIO_ZIP_PAGE;
 struct file_zip_page
 {
-  lzo_uint buf_len;		/* compressed block size */
-  lzo_byte buf[1];		/* data block */
+  int buf_len;			/* compressed block size */
+  char buf[1];			/* data block */
+};
+
+typedef struct file_zip_info FILEIO_ZIP_INFO;
+struct file_zip_info
+{
+  int buf_size;			/* allocated block size */
+  FILEIO_ZIP_PAGE zip_page;	/* zip page */
 };
 
 typedef struct fileio_node FILEIO_NODE;
@@ -393,8 +383,7 @@ struct fileio_node
   bool writeable;
   ssize_t nread;
   FILEIO_BACKUP_PAGE *area;	/* Area to read/write the page */
-  FILEIO_ZIP_PAGE *zip_page;	/* Area to compress/decompress the page */
-  lzo_bytep wrkmem;
+  FILEIO_ZIP_INFO *zip_info;	/* Zip info containing area to compress/decompress the page */
 };
 
 typedef struct fileio_queue FILEIO_QUEUE;
@@ -484,10 +473,11 @@ extern void fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vla
 extern int fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vdes, DKNPAGES npages, const char *to_vlabel,
 			       VOLID to_volid, bool reset_recvinfo);
 extern int fileio_reset_volume (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, DKNPAGES npages,
-				LOG_LSA * reset_lsa);
+				const LOG_LSA * reset_lsa);
 extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			 int lockwait, bool dosync);
 extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);
+extern void fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vdes);
 extern void fileio_dismount_all (THREAD_ENTRY * thread_p);
 extern void *fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size);
 extern void *fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
@@ -551,6 +541,11 @@ extern void fileio_make_backup_volume_info_name (char *backup_volinfo_name, cons
 extern void fileio_make_backup_name (char *backup_name, const char *nopath_volname, const char *backup_path,
 				     FILEIO_BACKUP_LEVEL level, int unit_num);
 extern void fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_name_p);
+extern void fileio_make_keys_name (char *keys_name_p, const char *db_name_p);
+extern void fileio_make_keys_name_given_path (char *keys_name_p, const char *keys_path_p, const char *db_name_p);
+#ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
+extern void fileio_make_ha_sock_name (char *sock_path_p, const char *base_path_p, const char *sock_name_p);
+#endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 extern void fileio_remove_all_backup (THREAD_ENTRY * thread_p, int level);
 extern FILEIO_BACKUP_SESSION *fileio_initialize_backup (const char *db_fullname, const char *backup_destination,
 							FILEIO_BACKUP_SESSION * session, FILEIO_BACKUP_LEVEL level,
@@ -631,4 +626,5 @@ extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * p
 extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
 extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
 extern void fileio_page_hexa_dump (const char *data, int length);
+extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page);
 #endif /* _FILE_IO_H_ */

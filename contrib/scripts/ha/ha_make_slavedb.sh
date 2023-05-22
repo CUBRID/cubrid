@@ -1,4 +1,20 @@
 #!/bin/bash
+#
+#  Copyright 2008 Search Solution Corporation
+#  Copyright 2016 CUBRID Corporation
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+# 
 
 CURR_DIR=$(dirname $0)
 WORK_DIR=$(pwd)
@@ -16,9 +32,10 @@ repl_log_home=$CUBRID_DATABASES
 db_name=
 
 backup_dest_path=
-backup_option=
+backup_option="-z --no-check"
 restore_option=
 scp_option="-l 131072"		# default - limit : 16M*1024*8=131072
+ssh_port=22
 
 #################################################################################
 # program variables
@@ -132,7 +149,7 @@ function ssh_cubrid()
 	if $verbose; then
 		echo "[$cubrid_user@$host]$ $command"
 	fi
-	ssh -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; $command"
+	ssh -p $ssh_port -t $cubrid_user@$host "export PATH=$PATH; export LD_LIBRARY_PATH=$LD_LIBRARY_PATH; export CUBRID=$CUBRID; export CUBRID_DATABASES=$CUBRID_DATABASES; $command"
 }
 
 function ssh_expect()
@@ -166,7 +183,7 @@ function ssh_expect()
 	if [ ! -z "$command5" ]; then
 		echo "[$user@$host]$ $command5"
 	fi
-	expect $CURR_DIR/expect/ssh.exp "$user" "$password" "$host" "$command1" "$command2" "$command3" "$command4" "$command5" >/dev/null 2>&1
+	expect $CURR_DIR/expect/ssh.exp "$user" "$password" "$host" "$ssh_port" "$command1" "$command2" "$command3" "$command4" "$command5" >/dev/null 2>&1
 }
 
 function scp_cubrid_to()
@@ -177,8 +194,8 @@ function scp_cubrid_to()
 	source=$2
 	target=$3
 
-	echo "[$cubrid_user@$current_host]$ scp $scp_option -r $source $cubrid_user@$host:$target"
-	scp $scp_option -r $source $cubrid_user@$host:$target
+	echo "[$cubrid_user@$current_host]$ scp -P $ssh_port $scp_option -r $source $cubrid_user@$host:$target"
+	scp -P $ssh_port $scp_option -r $source $cubrid_user@$host:$target
 }
 
 function scp_to_expect()
@@ -193,8 +210,8 @@ function scp_to_expect()
 	host=$4
 	target=$5
 	
-	echo "[$user@$current_host]$ scp $scp_option -r $source $user@$host:$target"
-	expect $CURR_DIR/expect/scp_to.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
+	echo "[$user@$current_host]$ scp -P $ssh_port $scp_option -r $source $user@$host:$target"
+	expect $CURR_DIR/expect/scp_to.exp "$user" "$password" "$source" "$host" "$target" "$ssh_port" >/dev/null 2>&1
 }
 
 function scp_from_expect()
@@ -209,8 +226,8 @@ function scp_from_expect()
 	host=$4
 	target=$5
 	
-	echo "[$user@$current_host]$ scp $scp_option -r $user@$host:$source $target"
-	expect $CURR_DIR/expect/scp_from.exp "$user" "$password" "$source" "$host" "$target" >/dev/null 2>&1
+	echo "[$user@$current_host]$ scp -P $ssh_port $scp_option -r $user@$host:$source $target"
+	expect $CURR_DIR/expect/scp_from.exp "$user" "$password" "$source" "$host" "$target" "$ssh_port" >/dev/null 2>&1
 }
 
 function scp_cubrid_from()
@@ -223,7 +240,7 @@ function scp_cubrid_from()
 	source=$2
 	target=$3
 
-	scp $scp_option -r $cubrid_user@$host:$source $target
+	scp -P $ssh_port $scp_option -r $cubrid_user@$host:$source $target
 }
 
 function get_output_from_replica()
@@ -268,13 +285,8 @@ function check_args()
 function init_conf()
 {
 	# init path
-	mkdir -p $ha_temp_home
-	if [ -n $backup_dest_path ]; then 
-		backup_dest_path=$ha_temp_home/backup
-		if [ ! -d $backup_dest_path ]; then
-			mkdir $backup_dest_path
-		fi
-	fi
+	backup_dest_path=${backup_dest_path:-$ha_temp_home/backup}
+	mkdir -p $ha_temp_home $backup_dest_path
 	repl_log_home=${repl_log_home%%/}
 	backup_dest_path=${backup_dest_path%%/}
 	backup_dest_path=$(readlink -f $backup_dest_path)
@@ -723,19 +735,19 @@ function copy_backup_db_from_target()
 	
 	# 1. check if the databases information is already registered.
 	echo -ne "\n - 1. check if the databases information is already registered.\n\n"
-	line=$(grep "^$db_name" $CUBRID_DATABASES/databases.txt) 
+	line=$(grep -w "^$db_name" $CUBRID_DATABASES/databases.txt)
 	if [ -z "$line" ]; then
 		execute "mv -f $CUBRID_DATABASES/databases.txt $CUBRID_DATABASES/databases.txt.$now"
 		scp_cubrid_from $target_host "$CUBRID_DATABASES/databases.txt" "$CUBRID_DATABASES/."
 	else
 		echo -ne "\n - there is already $db_name information in $CUBRID_DATABASES/databases.txt" 
-		echo "[$current_host]$ grep $db_name $CUBRID_DATABASES/databases.txt" 
+		echo "[$current_host]$ grep -w $db_name $CUBRID_DATABASES/databases.txt"
 		echo "$line"
 	fi
 	
 	# 2. get db_vol_path and db_log_path from databases.txt.
 	echo -ne "\n - 2. get db_vol_path and db_log_path from databases.txt.\n\n"
-	line=($(grep "^$db_name" $CUBRID_DATABASES/databases.txt))
+	line=($(grep -w "^$db_name" $CUBRID_DATABASES/databases.txt))
 	db_vol_path=${line[1]}
 	db_log_path=${line[3]}
 	if [ -z "$db_vol_path" -o -z "$db_log_path" ]; then

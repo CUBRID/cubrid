@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -29,6 +28,7 @@
 #include "page_buffer.h"
 #include "overflow_file.h"
 #include "perf_monitor.h"
+#include "porting_inline.hpp"
 #include "vacuum.h"
 
 #define MVCC_IS_REC_INSERTER_ACTIVE(thread_p, rec_header_p) \
@@ -78,10 +78,6 @@ static INLINE bool mvcc_is_active_id (THREAD_ENTRY * thread_p, MVCCID mvccid) __
 STATIC_INLINE bool
 mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p, MVCCID mvcc_id, MVCC_SNAPSHOT * snapshot)
 {
-  unsigned int i;
-  MVCCID position;
-  UINT64 *p_area;
-
   assert (snapshot != NULL);
 
   if (MVCC_ID_PRECEDES (mvcc_id, snapshot->lowest_active_mvccid))
@@ -96,27 +92,7 @@ mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p, MVCCID mvcc_id, MVCC_SNAPSHOT *
       return true;
     }
 
-  if (snapshot->bit_area_length > 0 && mvcc_id >= snapshot->bit_area_start_mvccid)
-    {
-      position = mvcc_id - snapshot->bit_area_start_mvccid;
-      p_area = MVCC_GET_BITAREA_ELEMENT_PTR (snapshot->bit_area, position);
-      if (((*p_area) & MVCC_BITAREA_MASK (position)) == 0)
-	{
-	  /* active transaction found */
-	  return true;
-	}
-    }
-
-  for (i = 0; i < snapshot->long_tran_mvccids_length; i++)
-    {
-      /* long transactions - rare case */
-      if (MVCCID_IS_EQUAL (mvcc_id, snapshot->long_tran_mvccids[i]))
-	{
-	  return true;
-	}
-    }
-
-  return false;
+  return snapshot->m_active_mvccs.is_active (mvcc_id);
 }
 
 /*
@@ -136,15 +112,6 @@ mvcc_is_active_id (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   MVCC_INFO *curr_mvcc_info = NULL;
-  MVCCTABLE *mvcc_table = &log_Gl.mvcc_table;
-  UINT64 *p_area;
-  int local_bit_area_length;
-  MVCCID position, local_bit_area_start_mvccid;
-  bool is_active;
-  unsigned int i;
-  MVCC_TRANS_STATUS *trans_status;
-  int index;
-  unsigned int trans_status_version;
 
   assert (tdes != NULL && mvccid != MVCCID_NULL);
 
@@ -159,82 +126,11 @@ mvcc_is_active_id (THREAD_ENTRY * thread_p, MVCCID mvccid)
       return true;
     }
 
-#if defined(HAVE_ATOMIC_BUILTINS)
-start_check_active:
-  index = ATOMIC_INC_32 (&mvcc_table->trans_status_history_position, 0);
-  trans_status = mvcc_table->trans_status_history + index;
-  trans_status_version = ATOMIC_INC_32 (&trans_status->version, 0);
-
-  local_bit_area_start_mvccid = ATOMIC_INC_64 (&trans_status->bit_area_start_mvccid, 0LL);
-  local_bit_area_length = ATOMIC_INC_32 (&trans_status->bit_area_length, 0);
-
-#else
-  (void) pthread_mutex_lock (&mvcc_table->active_trans_mutex);
-  local_bit_area_length = trans_status->bit_area_length;
-  if (local_bit_area_length == 0)
-    {
-      return false;
-    }
-  local_bit_area_start_mvccid = mvcc_table->current_trans_status->bit_area_start_mvccid;
-#endif
-
-  /* no one can change active transactions while I'm in CS */
-  if (MVCC_ID_PRECEDES (mvccid, local_bit_area_start_mvccid))
-    {
-      is_active = false;
-      /* check long time transactions */
-      if (trans_status->long_tran_mvccids_length > 0 && trans_status->long_tran_mvccids != NULL)
-	{
-	  /* called rarely - has long transactions */
-	  for (i = 0; i < trans_status->long_tran_mvccids_length; i++)
-	    {
-	      if (trans_status->long_tran_mvccids[i] == mvccid)
-		{
-		  break;
-		}
-	    }
-	  if (i < trans_status->long_tran_mvccids_length)
-	    {
-	      /* MVCCID of long transaction found */
-	      is_active = true;
-	    }
-	}
-    }
-  else if (local_bit_area_length == 0)
-    {
-      /* mvccid > highest completed MVCCID */
-      is_active = true;
-    }
-  else
-    {
-      is_active = true;
-      position = mvccid - local_bit_area_start_mvccid;
-      if ((int) position < local_bit_area_length)
-	{
-	  p_area = MVCC_GET_BITAREA_ELEMENT_PTR (trans_status->bit_area, position);
-	  if (((*p_area) & MVCC_BITAREA_MASK (position)) != 0)
-	    {
-	      /* committed transaction found */
-	      is_active = false;
-	    }
-	}
-    }
-
-#if defined(HAVE_ATOMIC_BUILTINS)
-  if (trans_status_version != ATOMIC_INC_32 (&trans_status->version, 0))
-    {
-      /* The transaction status version overwritten, need to read again */
-      goto start_check_active;
-    }
-#else
-  (void) pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
-#endif
-
-  return is_active;
+  return log_Gl.mvcc_table.is_active (mvccid);
 }
 
 /*
- * mvcc_satisfies_snapshot () - Check whether a record is valid for 
+ * mvcc_satisfies_snapshot () - Check whether a record is valid for
  *				    a snapshot
  *   return: - SNAPSHOT_SATISFIED: record is valid for snapshot
  *	     - TOO_NEW_FOR_SNAPSHOT: record was either inserted or updated recently; commited after snapshot
@@ -466,7 +362,7 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
 }
 
 /*
- * mvcc_satisfies_delete () - Check whether a record is valid for 
+ * mvcc_satisfies_delete () - Check whether a record is valid for
  *			instant snapshot
  *   return: true, if the record is valid for snapshot
  *   thread_p(in): thread entry
@@ -742,3 +638,61 @@ mvcc_is_mvcc_disabled_class (const OID * class_oid)
 
   return false;
 }
+
+// *INDENT-OFF*
+mvcc_snapshot::mvcc_snapshot ()
+  : lowest_active_mvccid (MVCCID_NULL)
+  , highest_completed_mvccid (MVCCID_NULL)
+  , m_active_mvccs ()
+  , snapshot_fnc (NULL)
+  , valid (false)
+{
+}
+
+void
+mvcc_snapshot::reset ()
+{
+  snapshot_fnc = NULL;
+  lowest_active_mvccid = MVCCID_NULL;
+  highest_completed_mvccid = MVCCID_NULL;
+
+  m_active_mvccs.reset ();
+
+  valid = false;
+}
+
+void
+mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
+{
+  dest.m_active_mvccs.initialize ();
+  m_active_mvccs.copy_to (dest.m_active_mvccs, mvcc_active_tran::copy_safety::THREAD_SAFE);
+
+  dest.lowest_active_mvccid = lowest_active_mvccid;
+  dest.highest_completed_mvccid = highest_completed_mvccid;
+  dest.snapshot_fnc = snapshot_fnc;
+  dest.valid = valid;
+}
+
+mvcc_info::mvcc_info ()
+  : snapshot ()
+  , id (MVCCID_NULL)
+  , recent_snapshot_lowest_active_mvccid (MVCCID_NULL)
+  , sub_ids ()
+{
+}
+
+void
+mvcc_info::init ()
+{
+  new (this) mvcc_info ();
+}
+
+void
+mvcc_info::reset ()
+{
+  snapshot.reset ();
+  id = MVCCID_NULL;
+  recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
+  sub_ids.clear ();
+}
+// *INDENT-ON*

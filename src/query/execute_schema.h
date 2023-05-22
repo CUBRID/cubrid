@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -32,7 +31,6 @@
 #endif /* SERVER_MODE */
 
 #include "dbi.h"
-#include "xasl.h"
 #include "schema_manager.h"
 
 #define UNIQUE_PARTITION_SAVEPOINT_GRANT "pARTITIONgRANT"
@@ -105,5 +103,9 @@ extern int do_recreate_func_index_constr (PARSER_CONTEXT * parser, SM_CONSTRAINT
 					  const char *new_cls_name);
 extern int do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * filter_index_info,
 					    PT_NODE * alter, const char *src_cls_name, const char *new_cls_name);
+
+extern int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
+			     int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count,
+			     DB_VALUE ** values, int *values_cnt, bool has_delete);
 
 #endif /* _EXECUTE_SCHEMA_H_ */

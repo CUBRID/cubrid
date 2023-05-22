@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -94,15 +93,15 @@ pt_tag_start_of_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 
   if (node->next && node->next->type_enum == PT_TYPE_LOGICAL)
     {
-      node->next->is_cnf_start = false;
+      node->next->flag.is_cnf_start = false;
     }
 
   if (node->or_next && node->or_next->type_enum == PT_TYPE_LOGICAL)
     {
-      node->or_next->is_cnf_start = false;
+      node->or_next->flag.is_cnf_start = false;
     }
 
-  node->is_cnf_start = true;
+  node->flag.is_cnf_start = true;
   return node;
 }
 
@@ -562,7 +561,7 @@ pt_calculate_similarity (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       ctx->accumulated_opcode += node->info.expr.op;
     }
 
-  if (node->is_cnf_start)
+  if (node->flag.is_cnf_start)
     {
       *continue_walk = PT_CONTINUE_WALK;
     }
@@ -686,7 +685,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	      rhs_ctx.accumulated_node_type = 0;
 	      (void) parser_walk_tree (parser, rhs, pt_calculate_similarity, &rhs_ctx, NULL, NULL);
 
-	      /* 
+	      /*
 	       * Because the cost of parser_print_tree() is very high. we use
 	       * a simple way to test whether lhs and rhs node are similar.
 	       * Only when they are similar, we call parser_print_tree().
@@ -888,7 +887,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 		    {
 		      ;
 		    }
-		  /* if LHS is the last node, this RHS is the last one to be used; so point to directly without cloning 
+		  /* if LHS is the last node, this RHS is the last one to be used; so point to directly without cloning
 		   */
 		  if (lhs_next == NULL)
 		    {

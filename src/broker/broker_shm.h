@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -114,7 +113,7 @@
 
 #define		APPL_NAME_LENGTH	128
 
-#define		JOB_QUEUE_MAX_SIZE	2048
+#define		JOB_QUEUE_MAX_SIZE	4096
 
 #define MAX_CRYPT_STR_LENGTH            32
 
@@ -125,7 +124,7 @@
 #define PROXY_LOG_RESET_REOPEN 		0x01
 
 #define MAX_DBNAME_LENGTH       (64)	/* maximum length of mysql database name and '\0' */
-#define MAX_CONN_INFO_LENGTH    ((MAXHOSTNAMELEN + 1) * 2)	/* host1:host2 */
+#define MAX_CONN_INFO_LENGTH    ((CUB_MAXHOSTNAMELEN + 1) * 2)	/* host1:host2 */
 
 #define IP_BYTE_COUNT           5
 #define ACL_MAX_ITEM_COUNT      50
@@ -135,7 +134,7 @@
 
 #define MAX_PROXY_NUM            8
 
-#define APPL_SERVER_NUM_LIMIT    2048
+#define APPL_SERVER_NUM_LIMIT    4096
 
 #define SHM_BROKER_PATH_MAX      (PATH_MAX)
 #define SHM_PROXY_NAME_MAX       (SHM_BROKER_PATH_MAX)
@@ -152,8 +151,8 @@
 #define PAIR_LIST                (2)
 
 /*
- * proxy need to reserve FD for 
- * broker, cas, log etc.. 
+ * proxy need to reserve FD for
+ * broker, cas, log etc..
  */
 #if defined(LINUX)
 #define PROXY_RESERVED_FD 	(256)
@@ -351,7 +350,7 @@ struct t_appl_server_info
   char auto_commit_mode;
   bool fixed_shard_user;
   char database_name[SRV_CON_DBNAME_SIZE];
-  char database_host[MAXHOSTNAMELEN];
+  char database_host[CUB_MAXHOSTNAMELEN];
   char database_user[SRV_CON_DBUSER_SIZE];
   char database_passwd[SRV_CON_DBPASSWD_SIZE];
   char cci_default_autocommit;
@@ -375,6 +374,8 @@ struct t_appl_server_info
   short shard_id;
   short shard_cas_id;
   short as_id;
+  unsigned int session_id;
+  int fn_status;
 
   int advance_activate_flag;	/* it is used only in shard */
   int proxy_conn_wait_timeout;	/* it is used only in shard */
@@ -549,7 +550,7 @@ typedef struct t_db_server T_DB_SERVER;
 struct t_db_server
 {
   char database_name[SRV_CON_DBNAME_SIZE];
-  char database_host[MAXHOSTNAMELEN];
+  char database_host[CUB_MAXHOSTNAMELEN];
   int state;
 };
 
@@ -630,6 +631,12 @@ struct t_shm_appl_server
 #if !defined(WINDOWS)
   sem_t acl_sem;
 #endif
+
+  char cgw_link_server[CGW_LINK_SERVER_NAME_LEN];
+  char cgw_link_server_ip[CGW_LINK_SERVER_IP_LEN];
+  char cgw_link_server_port[CGW_LINK_SERVER_PORT_LEN];
+  char cgw_link_odbc_driver_name[CGW_LINK_ODBC_DRIVER_NAME_LEN];
+  char cgw_link_connect_url_property[CGW_LINK_CONNECT_URL_PROPERTY_LEN];
 
   ACCESS_INFO access_info[ACL_MAX_ITEM_COUNT];
 

@@ -1,19 +1,21 @@
+
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -72,6 +74,8 @@ $       52      dump_tz
 $       53      restoreslave
 $       54      delvoldb
 $       56      checksumdb
+$       57      tde
+$       58      flashback
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Ungültige Länge oder Zeichen '%1$c' in Datenbank '%2$s'\n
@@ -83,7 +87,7 @@ $set 1 MSGCAT_UTIL_SET_GENERIC
 9 \
 %1$s (CUBRID Utility)\n\
 %2$s\n\
-Copyright (C) 2008 Search Solution Corporation. Alle Rechte vorbehalten.\n
+Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 10 \
 Cubrid Administratorutility, Version %1$s\n\
 Anwendung: %2$s <utility-name> [args]\n\
@@ -124,6 +128,8 @@ Vorhandene Admin-Utilitynamen:\n\
     dump_tz\n\
     restoreslave\n\
     vacuumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org besuchen\n
@@ -146,8 +152,10 @@ Vorhandene Serviceutilities:\n\
     service\n\
     server\n\
     broker\n\
+    gateway\n\
     manager\n\
     heartbeat\n\
+    javasp\n\
 \n\
 Vorhandene Administratorutilities:\n\
     addvoldb\n\
@@ -182,6 +190,8 @@ Vorhandene Administratorutilities:\n\
     dump_tz\n\
     vacuumdb\n\
     checksumdb\n\
+    tde\n\
+    flashback\n\
 \n\
 %4$s ist ein Werkzeug für DBMS.\n\
 Für zusätzliche Informationen, http://www.cubrid.org, besuchen\n
@@ -248,10 +258,39 @@ Vorhandene Befehle:\n\
 41 cubrid manager server nicht installiert ist.\n
 42 Parameter ist Ungültig.\n
 43 Datei(%1$s) offene Fehler.\n
+44 Cubrid Utility, Version %1$s\n\
+Anwendung: %2$s javasp <Befehl> [args]\n\
+\n\
+Vorhandene Befehle:\n\
+    start       [database-name]\n\
+    stop        [database-name]\n\
+    restart     [database-name]\n\
+    status      [database-name]\n
+45 cubrid utility, version %1$s\n\
+usage: %2$s gateway <command> [args]\n\
+\n\
+Available command:\n\
+    start\n\
+    stop\n\
+    restart\n\
+    info\n\
+    status      [-b] [-f] [-q] [-t] [-s <sec>] [-c] [-u] [<expr>]\n\
+    on          gateway-name\n\
+    off         gateway-name\n\
+    reset       gateway-name\n\
+    acl         <status|reload> [gateway-name]\n
+46 Die Länge von owner_name muss kleiner als %1$d sein und die Länge von class_name muss kleiner als %2$d Bytes sein.\n
+47 Ungültiges Format für Besitzername.Klassenname ('%1$s').\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNUNG: -t Option wird in Stand-Alone-Ausführung ignoriert.\n
 31 FEHLER: Destination-Pfad existiert nicht oder ist kein Verzeichnis.\n
+32 Mit der Option --separate-keys wird die Schlüsseldatei (_keys) vom Sicherungsdatenträger getrennt.\n\
+Wenn die Schlüsseldatei verloren geht, funktioniert die Wiederherstellung (restoredb) möglicherweise nicht ordnungsgemäß, selbst wenn das Sicherungsvolume vorhanden ist.\n
+33 Das Sicherungsvolume enthält die Schlüsseldatei (_keys).\n\
+Wenn eine Tabelle TDE-verschlüsselt ist, kann dies zu einem Sicherheitsproblem für diese Daten führen.\n\
+Verwenden Sie die Option --separate-keys, um die Schlüsseldatei zu trennen, um dies zu verhindern.\n
+34 FEHLER: FIFO-Datei kann nicht als Zielpfad mit separatem Schlüssel verwendet werden.\n
 60 \
 backupdb: Datenbank sichern.\n\
 Anwendung: %1$s backupdb [OPTION] Datenbanknamen\n\
@@ -268,10 +307,10 @@ gültige Optionen:\n\
   -S, --SA-mode                Stand-Alone-Ausführung\n\
   -C, --CS-mode                Client-Server-Ausführung\n\
       --no-check               Konsistenz der Datenbank nicht überprüfen; Standard: prüfen\n\
-  -t, --thread-count=ANZAHL     Anzahl der Threads; Standard: 0(auto)\n\
-  -z, --compress               Backupdatenträger komprimieren; Standard: nicht komprimiert\n\
-  -e, --except-active-log      einen aktiven Logdatenträger nicht einfügen; Standard: einfügen\n\
-      --sleep-msecs=N          N Millisekunden per gelesenen 1M schlafen; Standard: 0\n
+  -t, --thread-count=ANZAHL    Anzahl der Threads; Standard: 0(auto)\n\
+      --no-compress            komprimieren Sie keine Backup-Volumes; Standard: Komprimierung\n\
+      --sleep-msecs=N          N Millisekunden per gelesenen 1M schlafen; Standard: 0\n\
+  -k, --separate-keys          Schlüsseldatei (_keys) für TDE ist nicht im Sicherungsvolume enthalten, sondern wird stattdessen in eine Datei aufgeteilt\n
 71 Nicht kompatible Argumente, \"%1$s\", und \"%2$s\"\n
 
 
@@ -389,7 +428,8 @@ gültige Optionen:\n\
   -l, --level=LEVEL                 Backup-LEVEL zu wiederherstellen; siehe Backupanwendung; Standard: 0(volles Backup)\n\
   -p, --partial-recovery            partielle Wiederherstellung ausführen, wenn jene Logarchiven fehlen \n\
   -o, --output-file=DATEI            Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n\
-  -u, --use-database-location-path  Datenbank und Logdatenträger in dem Ort wiederherstellen, wie in der Datenbankortdatei spezifiziert ist\n
+  -u, --use-database-location-path  Datenbank und Logdatenträger in dem Ort wiederherstellen, wie in der Datenbankortdatei spezifiziert ist\n\
+  -k, --keys-file-path              Pfad der Schlüsseldatei (_keys) für TDE, die beim Wiederherstellen verwendet werden soll\n
 
 
 $set 12 MSGCAT_UTIL_SET_LOADDB
@@ -402,7 +442,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 25 \n*** Syntaxprüfung ***\n\n
 26 %1$d Fehler erkannt.\n
 27 \n*** Einfügen von Objekten ***\n\n
-28 %1$8d Objekte eingefügt ins gesamt.\n
+28 %1$ld Objekte eingefügt ins gesamt.\n
 29 %1$8d referenzierte Objekte mit Standardinhalt ins gesamt eingefügt.\n
 30 \n*** Transaktion wird festgeschrieben ***\n
 31 \n*** Datenbank wird geschlossen ***\n
@@ -422,80 +462,104 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 45 Instanz %1$d der Klasse %2$s wurde schon definiert\n
 46 Instanz %1$d der Klasse %2$s wurde schon reserviert\n
 47 UNIQUE Verletzung auf Attribut '%1$s', konvertiert zu NULL\n
-48   %1$d Instanzen\n
+48 %1$s %2$ld Instanzen\n
 49 Klasse %1$s\n
 50 Passwort:
 51 \n*** Klassenstatistiken werden aktualisiert ***\n
 52 %1$s bei Zeile %2$d (Text war '%3$s')\n
-53 Lexik-Fehler 
+53 Lexik-Fehler\n
 54 Zeile %1$d: Syntaxfehler bei \"%2$s\"
 55 fehlt
 56 in %1$s
 57 Inkompatible Argumente, \"%1$s\", und \"%2$s\"\n
-58 %1$d Instanzen festgeschrieben\n
+58 %1$s %2$ld Instanzen festgeschrieben\n
 59 \nNicht optimierte Version von loaddb kann nicht aufgerufen werden.\n
 60 Parse-Fehler \"%1$s\", wie %2$s Typ.\n
-112   %1$d Instanzen\r
-113 Letzte festgeschriebene Zeile: %1$d
+61 Objektreferenz wird im CS-Modus nicht unterstützt.\n
+62 Aktualisierte Statistiken für die Klasse %1$s.\n
+112   %1$ld Instanzen\r
+113 Letzte festgeschriebene Zeile: %1$d\n
 114 Fehler-Kontroll-Datei
-115 Eingangsdatei für Fehlerkontrolle während Ladung 
-116 Total %8d object(s) inserted, %d object(s) failed.\n
+115 Eingangsdatei für Fehlerkontrolle während Ladung
+116 Insgesamt %ld Objekt(e) eingefügt, %2$ld Objekt(e) fehlgeschlagen.\n
 117 Laden fehlgeschlagen.\n
-118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
-120 \
+118 Maximum length of class name is %1$d bytes.\n
+119 Insgesamt %1$8d Objekt(e) überprüft, %2$d Objekt(e) fehlgeschlagen.\n
+120 Die Objektdatei enthält keinen '%% class'-Bezeichner, oder die Option' --table 'fehlt\n
+121 Klasse %1$s wird ignoriert.\n
+122 Maximum length of user name is %1$d bytes.\n
+123 %1$s is een leeg bestand.\n
+124 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
-Anwendung: %1$s loaddb [OPTION] Datenbanknamen\n\
+Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 \n\
 gültige Optionen:\n\
-  -u, --user=ID                 Benutzer ID für Datenbankzugang; Standard: "public"\n\
-  -p, --password=PASSWORT           Benutzerpasswort; Standard: keinen\n\
-      --data-file-check-only    Syntaxprüfung für Daten ohne Ladung; Standard: Ladung nach Prüfung\n\
-  -l, --load-only               Daten ohne Syntaxprüfung laden; Standard: Ladung nach Prüfung\n\
-      --estimated-size=ANZAHL   abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
-  -v, --verbose                 ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-  -c, --periodic-commit=ANZAHL   Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
-      --no-oid                  OID nicht anwenden\n\
-      --no-statistics           Statistiken während Ladung nicht aktualisieren \n\
-  -s, --schema-file=DATEI[:ZEILE] Schema ab ZEILE mit DATEI erstellen \n\
-  -i, --index-file=DATEI[:ZEILE]  Index ab ZEILE mit DATEI erstellen \n\
-  -d, --data-file=DATEI          DATEI laden \n\
-  -t, --table=TABLE             Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird \n\
-      --error-control-file=DATEI DATEI für Fehlerkontrolle während Ladung\n\
-      --ignore-class-file=DATEI  Eingangsdatei für Klassenamen, die nicht geladen werden\n
+  -S, --SA-mode                    Stand-Alone-Ausführung\n\
+  -C, --CS-mode                    Client-Server-Ausführung\n\
+                                   WAARSCHUWING: In de HA-modus kunnen alleen gegevensbestanden (-d, --data-file=FILE) worden geladen in client-server-modus.\n\
+  -u, --user=ID                    Benutzer ID für Datenbankzugang; Standard: "public"\n\
+  -p, --password=PASSWORT          Benutzerpasswort; Standard: keinen\n\
+      --data-file-check-only       Syntaxprüfung der Datei ohne Ladung; Standard: inaktiv\n\
+  -l, --load-only                  Dateiladung ohne vorherige Syntaxprüfung; nur im SA_MODE\n\
+      --estimated-size=ANZAHL      abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
+  -v, --verbose                    ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
+  -c, --periodic-commit=ANZAHL     Einfügungsanzahl für periodische Festschreibung; Standard: 10240\n\
+      --no-oid                     OID nicht anwenden\n\
+      --no-statistics              Statistiken während Ladung nicht aktualisieren\n\
+  -s, --schema-file=DATEI[:ZEILE]  Schema ab ZEILE mit DATEI erstellen\n\
+  -i, --index-file=DATEI[:ZEILE]   Index ab ZEILE mit DATEI erstellen\n\
+      --trigger-file=DATEI[:ZEILE] Trigger ab ZEILE mit DATEI erstellen\n\
+  -d, --data-file=DATEI            DATEI laden\n\
+  -t, --table=TABLE                Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird\n\
+      --error-control-file=DATEI   DATEI für Fehlerkontrolle während Ladung\n\
+      --ignore-class-file=DATEI    Eingangsdatei für Klassenamen, die nicht geladen werden\n\
+      --no-user-specified-name     Find classes, serials, and triggers by their object names without their owner names.\n\
+                                   This is to load files generated by cubrid before version 11.2.\n\
+      --schema-file-list=FILE      De inhoud van dit bestand is een lijst met schemabestandsnamen die in loaddb moeten worden gebruikt.\n\
+                                   loaddb wordt sequentieel vanaf de bovenkant uitgevoerd.\n\
+                                   WAARSCHUWING: kan niet worden gebruikt met de optie -s.\n
+
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Cached-Seiten-Anzahl ungültig.\n
 42 Cached-Seitengröße ungültig.\n
-43 %1$d Objekte exportiert.\n
+43 %1$ld Objekte exportiert.\n
 44 Klasse %1$s
 45 , %1$d Instanzen.\n
-46 Nur %1$d von %2$d Objekten erfolgreich exportiert.\n
+46 Nur %1$ld von %2$ld Objekten erfolgreich exportiert.\n
 47 Ausgabeverzeichnis zu lang.\n
 48 LSA : %1$d %2$d \n
 49 Passwort:
+50 Maximum length of class name is %1$d bytes.\n
+51 Maximum length of user name is %1$d bytes.\n
+52 Class %1$s not found.\n
 60 \
 unloaddb: Export Objekte und Schemas aus der Datenbank.\n\
 Anwendung: %1$s unloaddb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
-  -u, --user=ID               Benutzer ID für Datenbankzugang; Standard: "dba"\n\
-  -p, --password=PASSWORT     Benutzerpasswort; Standard: keinen\n\
+  -u, --user=ID                Benutzer ID für Datenbankzugang; Standard: "dba"\n\
+  -p, --password=PASSWORT      Benutzerpasswort; Standard: keinen\n\
   -i, --input-class-file=DATEI Eingangsdatei für Tabellennamen; Standard: Alle Klassen exportieren\n\
-      --include-reference     referenzierte Tabellen einfügen; mit -i Option; Standard: deaktiviert\n\
-      --input-class-only      nur angegebene Klasse einfügen; mit -i Option; Standard: deaktiviert\n\
+      --include-reference      referenzierte Tabellen einfügen; mit -i Option; Standard: deaktiviert\n\
+      --input-class-only       nur angegebene Klasse einfügen; mit -i Option; Standard: deaktiviert\n\
       --lo-count=ANZAHL        lo Datei ANZAHL per Verzeichnis; Standard: 0\n\
-      --estimated-size=ANZAHL abgeschätzte ANZAHL von Instanzen; Standard: autoberechnet\n\
-      --cached-pages= ANZAHL  ANZAHL der cached Seiten; Standard: 100\n\
-  -O, --output-path=PFAD      PFAD des Ausgangsverzeichnis; Standard: Arbeitsverzeichnis\n\
-  -s, --schema-only           nur Schema exportieren; Standard: Schema und die Objekte\n\
-  -d, --data-only             nur Objekte exportieren; Standard: Schema und die Objekte\n\
-      --output-prefix=PRÄFIX PRÄFIX für die Ausgangdateien; Standard: Datenbanknamen\n\
+      --estimated-size=ANZAHL  abgeschätzte ANZAHL von Instanzen; Standard: autoberechnet\n\
+      --cached-pages= ANZAHL   ANZAHL der cached Seiten; Standard: 100\n\
+  -O, --output-path=PFAD       PFAD des Ausgangsverzeichnis; Standard: Arbeitsverzeichnis\n\
+  -s, --schema-only            nur Schema exportieren; Standard: Schema und die Objekte\n\
+  -d, --data-only              nur Objekte exportieren; Standard: Schema und die Objekte\n\
+      --output-prefix=PRÄFIX   PRÄFIX für die Ausgangdateien; Standard: Datenbanknamen\n\
       --hash-file=DATEI        Datei für Hash; Standard: erzeugt bei tmpnam()\n\
-  -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-      --use-delimiter         '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
-  -S, --SA-mode               Stand-Alone-Ausführung\n\
-  -C, --CS-mode               Client-Server-Ausführung\n\
-      --datafile-per-class    eine Objektdatei für jede Klasse erzeugen; Standard: inaktiv\n
+      --latest-image           beim Dumpen von Objekten wird das neueste Image von Objekten in Datenvolumes ausgegeben, nicht auf Log-Volumes (ohne MVCC)\n\
+                               Es könnte nicht festgeschriebene Daten und gelöschte Daten enthalten, die nicht bereinigt wurden; Standard: deaktiviert\n\
+  -v, --verbose                ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
+      --use-delimiter          '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
+  -S, --SA-mode                Stand-Alone-Ausführung\n\
+  -C, --CS-mode                Client-Server-Ausführung\n\
+      --datafile-per-class     eine Objektdatei für jede Klasse erzeugen; Standard: inaktiv\n\
+      --split-schema-files     Schemainformationen nach Objekt aufteilen und jede Datei generieren; Standard: Eine Schemadatei mit allen Objekten generieren\n\
+      --as-dba                 Als de ingelogde gebruiker lid is van de DBA-groep, pak dan hetzelfde schemabestand uit als de DBA.\n
 
 
 
@@ -536,6 +600,8 @@ $set 14 MSGCAT_UTIL_SET_COMPACTDB
 44 \n3. Durchlauf\n\n
 45 Heap Komprimierung fehlgeschlagen...\n
 46 Heap Komprimierung erfolgreich...\n
+47 Maximum length of class name is %1$d bytes.\n
+48 Maximum length of user name is %1$d bytes.\n
 60 \
 compactdb: Unbenutzten Speicher in einer Datenbank befreien.\n\
 Anwendung: %1$s compactdb [OPTION] Datenbanknamen [Klassenname1 Klassenname 2 ...]\n\
@@ -545,16 +611,17 @@ gültige Optionen:\n\
   -i, --input-class-file=DATEI      Eingabedatei mit Tabellennamen \n\
                                     Klassenname Liste muss leer sein \n\
                                     Standard: alle Klassen komprimieren\n\
-                                    Nur in CS-Modus aktiviert\n\
   -p, --pages-commited-once=ANZAHL  maximale Anzahl der Seiten, die einmal festgeschrieben werden dürfen \n\
                                     Standard: 10\n\
                                     Nur in CS-Modus aktiviert\n\
   -S, --SA-mode                     Stand-Alone-Ausführung\n\
   -C, --CS-mode                     Client-Server-Ausführung\n\
   -d, --delete-old-repr             alte Klasserepräsentierungen aus dem Katalog löschen; Standard: inaktiv\n\
-  class_name_list                   Nur in CS-Modus aktiviert\n\
   -I, --Instance-lock-timeout       Timeout für Instanz-Lock\n\
-  -c, --class-lock-timeout          Timeout für Klassen-Lock \n
+                                    Nur in CS-Modus aktiviert\n\
+  -c, --class-lock-timeout          Timeout für Klassen-Lock \n\
+                                    Nur in CS-Modus aktiviert\n\
+  class_name_list                   Liste der zu komprimierenden Klassennamen\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
 21 Der CUBRID Master auf Host %1$s \nwurde am %2$s gestartet
@@ -593,6 +660,7 @@ gültige Optionen:\n\
 39 -i(--immediately) option muss mit --deact-stop-all verwendet werden.\n
 
 $set 16 MSGCAT_UTIL_SET_PATCHDB
+1 Bitte ohne die Option --recreate-log ausführen oder das aktive Protokoll-Volume manuell entfernen.\n
 60 \
 emergency_patchlog: Eine Datenbank im Notfall patchen.\n\
 usage: %1$s emergency_patchlog [OPTION] database-name [database-locale]\n\
@@ -613,7 +681,7 @@ gültige Optionen:\n\
       --db-volume-size=GRÖSSE      Größe des zusätzlichen Datenträger; Standard: db_volume_size in cubrid.conf\n\
       --max-writesize-in-sec=SIZE  Speichergröße pro Sekunde; (ex. 512K, 1M, 10M); Standardwert: nicht benutzt; Minimum: 160K\n\
   -n, --volume-name=NAME           NAME des Datenträgers; Standard: erzeugt wie "db"_ext1)\n\
-  -F, --file-path=PFAD             PFAD des neuen Datenträgers; Standard: Arbeitsverzeichnis\n\
+  -F, --file-path=PFAD             PFAD des neuen Datenträgers; Standard: volume_extension_path\n\
       --comment=KOMMENTAR          KOMMENTAR fürs neue Datenträger; Standard: keinen\n\
   -p, --purpose=ZWECK              ZWECK des neuen Datenträgers; erlaubte Werte:\n\
                                            DATA - nur für Daten\n\
@@ -800,6 +868,7 @@ gültige Optionen:\n\
       --kill-program-name=NAME       alle Transaktionen mit Client-Programm NAME abbrechen\n\
       --kill-sql-id=SQL_ID           alle Transaktionen mit SQL_ID schließen\n\
   -p, --dba-password=PASSWORT        Passwort des DBA-Benutzers; es wird angefordert, wenn nicht angegeben\n\
+                                     (Arbeiten Sie nur mit den Optionen -i oder --kill. Andernfalls wird ein Fehler angezeigt)\n\
   -d, --display-information          Information über aktive Transaktionen anzeigen \n\
   -q, --query-exec-info              Informationen zur Abfrageausführung anzeigen; Informationen zur aktiven Transaktionen\n\
   -f, --force                        Transaktion ohne Bestätigung abbrechen \n
@@ -809,7 +878,7 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 1 Datenbanknamen
 2 erforderlicher Argument, keinen Standardwert
 3 Kompatibilitätsprüfung
-4 nur Kompatibilitätsprüfung 
+4 nur Kompatibilitätsprüfung
 5 Backup-Ziel
 6 ein Verzeichnispfad oder ein Gerät als Ziel des Backupdatenträgers
 20 Datenbank '%1$s' existiert nicht.
@@ -839,8 +908,11 @@ $set 34 MSGCAT_UTIL_SET_LOADJAVA
 2 erforderlicher Argument, kein Standardwert
 3 Java-Klassendatei
 4 erforderlicher Argument, kein Standardwert
-5 force-overwrite
-6 Klassendatei, wenn vorhanden, überschreiben, Standard nein
+60 \
+Usage: loadjava [OPTION] database-name java-class-file\n\
+\n\
+valid options:\n\
+  -y, --overwrite              Klassendatei, wenn vorhanden, überschreiben, Standard nein\n
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Ausgangdatei '%1$s' kann nicht geöffnet werden\n
@@ -902,7 +974,7 @@ gültige Optionen:\n\
   -L, --log-path=PFAD         Verzeichnispfad für kopierten Logdatenträger\n\
   -m, --mode=MODE             Operationsmodus; Standard: sync\n\
                               MODUS: sync oder semisync oder async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA-Passwort eingeben:
@@ -933,6 +1005,7 @@ gültige Optionen:\n\
 $set 44 MSGCAT_UTIL_SET_APPLYINFO
 21 DBA-Passwort eingeben:
 22 Der Server wurde für HA nicht konfiguriert.\n
+57 Die angewendeten Informationen können aufgrund eines ungültigen Pfads der Option -L oder aufgrund fehlender zugehöriger Informationen in der Katalogtabelle db_ha_apply_info nicht generiert werden.\n
 58 HA-Funktion wird auf dieser Plattform nicht unterstützt.\n
 59 applyinfo kann nicht in Stand-Alone-Modus ausgeführt werden.\n
 60 \
@@ -941,9 +1014,9 @@ Anwendung: %1$s applyinfo [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
   -r, --remote-host-name      Remote-Hostnamen; aktiven Log-Information des Remoteknoten anzeigen\n\
-  -a, --applied-info          Übernommene Information anzeigen \n\
   -L, --copied-log-path=PFAD  Pfad der kopierten Logdatenträger; kopierte Loginformation anzeigen \n\
-  -p, --page=ID               Seiten-ID; Standard: 0\n\
+  -a, --applied-info          Übernommene Information anzeigen; Die Option -L ist erforderlich \n\
+  -p, --page=ID               Seiten-ID; Die Option -L ist erforderlich; Standard: 0\n\
   -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
   -i, --interval=S            Druckinformationen alle S secs\n
 
@@ -1032,19 +1105,19 @@ gültige Optionen:\n\
   -f, --force-only    Aktualisiert die Kollationen in der Datenbank, so dass sie gleich mit den Kollationen einer neuen Systemkonfiguration sind.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Passwort %1$s eingeben: 
-22 Tran index          Benutzername      Hostname      Prozess ID      Programmname\n
-23 -------------------------------------------------------------------------------\n
-24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
+20 Passwort %1$s eingeben:
+22 Tran index            Benutzername      Hostname      Prozess ID      Programmname\n
+23 ---------------------------------------------------------------------------------\n
+24 %1$4d%2$-12s %3$14s %4$14s %5$15d %6$17s\n
 25 Es gibt keine Transaktionen\n
 26 tranlist darf nur von DBA oder einem Mitglied der DBA Gruppe durchgeführt werden.\n
 27 sort-key Spalte (%1$d) ist ungültig.\n
-32 Tran index         Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
-33 %1$4d%2$-10s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
-34 --------------------------------------------------------------------------------------------------------------------------------------------------\n
-42 Tran index          Benutzername   Hostname       Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
-43 %1$4d%2$-10s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
-44 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
+32 Tran index           Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
+33 %1$4d%2$-12s %3$14d    %4$-25s %5$10.2f %6$12.2f    %7$28s     %8$13s   %9$s\n
+34 ----------------------------------------------------------------------------------------------------------------------------------------------------\n
+42 Tran index            Benutzername   Hostname       Prozess ID    Programmname              Abfragezeit   Tran Zeit              Warten auf Sperrhalter    SQL_ID       SQL Text\n
+43 %1$4d%2$-12s %3$14s %4$14s %5$14d    %6$-25s %7$10.2f %8$12.2f    %9$28s     %10$13s   %11$s\n
+44 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n
 45 Tran index : %1$d
 46 SQL_ID: %1$s\n
 59 tranlist dar nicht in Stand-Alone-Modus durchgeführt werden.\n
@@ -1053,8 +1126,6 @@ tranlist: Informationen der aktiven Transaktion wegwerfen.\n\
 usage: %1$s tranlist [OPTION] Datenbankname\n\
 \n\
 gültige Optionen:\n\
-  -u, --user=ID                Benutzer ID für Datenbankzugang; Standardwert: DBA Benutzer\n\
-  -p, --password=PASS          Benutzerpasswort; Standardwert: Keinen\n\
   -s, --summary                zusammengefasste Transaktionsinformationen anzeigen\n\
       --sort-key=SPALTENNUMMER Spalte zu sortieren\n\
       --reverse                Ergebnisse umgekehrt sortieren\n
@@ -1121,7 +1192,8 @@ gültigen Optionen:\n\
       --list                        eine Liste der Sicherungsdatenträger angezeigt werden, ohne die Wiederherstellung\n\
   -B, --backup-file-path=PATH       PATH ein Verzeichnis der Sicherungsdatenträger wiederhergestellt werden\n\
   -o, --output-file=FILE            umleiten Ausgabemeldungen in FILE; Standard: Keine\n\
-  -u, --use-database-location-path  Stellen Sie die Datenbank und Log-Volumes auf die in der Datenbank-Datei Speicherort angegebenen Pfad\n
+  -u, --use-database-location-path  Stellen Sie die Datenbank und Log-Volumes auf die in der Datenbank-Datei Speicherort angegebenen Pfad\n\
+  -k, --keys-file-path              Pfad der Schlüsseldatei (_keys) für TDE, die beim Wiederherstellen verwendet werden soll\n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
 21 Bereit, die folgenden Mengen zu entfernen:\n\n
@@ -1144,17 +1216,21 @@ gültigen Optionen:\n\
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 vacuumdb vorübergehend nicht verfügbar ist für Client-Server-Modus\n
 21 Der Vakuumbetrieb gescheitert\n
+22 Ausgangsdatei '%1$s' konnte nicht geöffnet werden \n
 60 \
 vacuumdb: Vakuum Toten Datensätze aus der Datenbank.\n\
 Anwendung: %1$s vacuumdb [OPTION] Datenbank-Name\n\
 \n\
 gültigen Optionen:\n\
   -S, --SA-mode                    Stand-alone-Modus Ausführung\n\
-  -C, --CS-mode                    Client-Server-Modus Ausführung\n
+  -C, --CS-mode                    Client-Server-Modus Ausführung\n\
+      --dump                       aktuellen Vakuumzustand entleeren\n\
+  -o, --output-file=DATEI          Umleiten der Ausgabemeldungen in DATEI; Standard: keine\n
 
 $set 56 MSGCAT_UTIL_SET_CHECKSUMDB
 1 Fehler beim Tabellennamen in %1$s zu laden.\n
 2 checksumdb muss auf einem HA-Server ausführen aktiven. %1$s (aktuellen Status: %2$s)\n
+3 Der Eigentümer der Tabelle zum Speichern des Prüfsummenergebnisses muss DBA sein.\n
 58 HA Feature ist um dieser Plattform nich unterstützt.\n
 59 checksumdb kann nicht laufen als Standalone-Modus.\n
 60 \
@@ -1169,9 +1245,68 @@ gültigen Optionen:\n\
   -e, --exclude-class-file=FILE Eingabedatei der Tabellennamen, um auszuschließen; entweder -i oder -e,\n\
                                 verwendet werden, jedoch nicht beides\n\
   -t, --timeout=NUMBER          Abfrage-Timeout in Millisekunden; Standard: 1000 ms\n\
-  -n, --table-name=NAME         Tabellennamen, um Prüfsumme Ergebnisse zu speichern; Standard: db_ha_checksums\n\
+  -n, --table-name=NAME         Tabellennamen, um Prüfsumme Ergebnisse zu speichern; Standard: dba.db_ha_checksum\n\
   -r, --report-only             Bericht Replikationsintegrität auf der Grundlage Prüfsummenberechnung\n\
                                 alle Optionen außer --table-name werden ignoriert\n\
       --resume                  Wiederaufnahme der Berechnung Prüfsumme\n\
       --schema-only             überprüfen nur Schemakonsistenz\n\
       --cont-on-error           weiter auf Berechnungsfehler\n
+
+$set 57 MSGCAT_UTIL_SET_TDE
+21 Geben Sie das DBA-Passwort ein:
+25 Die in der Datenbank festgelegten Schlüsselinformationen konnten nicht abgerufen werden\n
+26 Versuch, den Schlüssel vom Schlüssel (Index: %1$d) zum Schlüssel (Index: %2$d) zu ändern ..\n
+27 Der Schlüssel wurde vom Schlüssel (index: %1$d) zum Schlüssel (index: %2$d) geändert\n
+28 Der in der Datenbank festgelegte Schlüssel kann nicht gelöscht werden\n
+29 Der Schlüssel (index: %1$d) wurde gelöscht\n
+30 Ein neuer Schlüssel wurde generiert - Schlüsselindex: %1$d erstellt auf%2$s
+60 \
+tde: Verwaltung der transparenten Datenverschlüsselung (TDE)\n\
+Verwendung: %1$s tde OPERATION (-s|-n|-d|-c) [OPTION] Datenbankname\n\
+\n\
+gültige Optionen:\n\
+    -p, --dba-password=PASS-Passwort    des DBA-Benutzers; wird gefragt, wenn nicht angegeben wird\n\
+\n\
+OPERATIONEN: Eine der Operationen muss angegeben werden und sie sind exklusiv\n\
+    -s, --show-keys                     druckt Schlüsselinformationen, die in der Datenbank und in der Schlüsseldatei (_keys) festgelegt sind\n\
+    -n, --generate-new-key              generiert einen neuen Schlüssel in der Schlüsseldatei (_keys); maximale Anzahl: 128\n\
+    -d, --delete-key=KEY_INDEX          löscht einen Schlüssel in der Schlüsseldatei (_keys)\n\
+    -c, --change-key=KEY_INDEX          Ändern Sie den in der Datenbank festgelegten Schlüssel für einen anderen Schlüssel in der Schlüsseldatei (_keys)\n
+
+$set 58 MSGCAT_UTIL_SET_FLASHBACK
+1 DBA-Passwort eingeben:
+2 Ungültiges Datumsformat, gültiges Format ist tt-mm-jjjj:hh:mm:ss\n
+3 Startdatum (%1$s) muss kleiner sein als Enddatum (%2$s)\n
+4 Bitte versuchen Sie es mit einem Datum vor dem aktuellen (%1$s) oder nachdem die Datenbank erstellt wurde (%2$s)\n
+5 Tabelle (%1$s) existiert nicht in Datenbank\n
+6 Zu viele Transaktionen für Flashback. Bitte verkürzen Sie das Intervall zwischen Startdatum und Enddatum\n
+7 Flashback kann nicht abgerufen werden, da das Schema (%1$s) geändert wurde.\n
+8 Log-Volume wurde entfernt. Bitte versuchen Sie es mit dem späteren Datum\n
+9 Ausgabedatei '%1$s' konnte nicht geöffnet werden\n
+10 Transaktions-ID (%1$d) existiert nicht\n
+11 Bitte setzen Sie 'supplemental_log' in 'cubrid.conf'. Nur die SQL-Protokolle, die nach dem Setzen von „supplemental_log“ ausgeführt werden, können per Flashback gesichert werden.\n
+12 Transaktions-ID sollte in %1$d Sekunden eingegeben werden. Das Timeout kann über die Einstellung „flashback_timeout“ in „cubrid.conf“ angepasst werden.\n
+13 Flashback läuft bereits. Flashback kann nicht von zwei Prozessen ausgeführt werden.\n
+14 Flashback kann nicht im eigenständigen Modus ausgeführt werden.\n
+15 Die Systemkatalogklasse (%1$s) wird in Flashback nicht unterstützt.\n
+60 \
+flashback: Stellt Anweisungen zum Flashback einer bestimmten Transaktion bereit.\n\
+Verwendung: %1$s flashback [OPTION] Datenbankname Besitzername.Klassenname1 [Besitzername.Klassenname2 ...]\n\
+\n\
+gültige Optionen:\n\
+    -o, --output-file=DATEI             Ausgabenachricht an DATEI umleiten; Standard: keine.\n\
+    -u, --user=ID                       gibt den Benutzer an, der die SQL-Anweisung für die Rückblende ausgeführt hat; Standard: ALLE.\n\
+    -p, --dba-password                  Passwort des DBA-Benutzers; wird aufgefordert, wenn nicht angegeben\n\
+    -s, --start-date=DATUM              gibt das Startdatum für die Rückblende an. SQL-Protokolle werden aus DATE extrahiert.\n\
+                                        DATUM wird wie folgt angegeben: tt-mm-jjjj:hh:mm:ss.\n\
+    -e, --end-date=DATUM                Enddatum für die Rückblende angeben. SQL-Protokolle werden bis zum DATE extrahiert.\n\
+                                        wenn start-date nicht angegeben ist, dann wird ((END - 10min) ~ END) auf range gesetzt,\n\
+                                        und sonst, wenn END nicht angegeben ist, dann wird (start ~ (start + 10min)) gesetzt.\n\
+                                        Und weder ein Startdatum noch ein Enddatum ist angegeben,\n\
+                                        Die SQL-Protokolle, die zwischen der (aktuellen Uhrzeit - 10 Minuten) und der aktuellen Uhrzeit\n\
+                                        ausgeführt wurden, werden extrahiert.\n\
+    --detail                            Gibt detaillierte Informationen für jede SQL-Anweisung aus.\n\
+                                        Transaktions-ID, Benutzername und ursprüngliche SQL-Anweisung werden mit der SQL-Anweisung\n\
+                                        zurückgegeben für Rückblende; Standard: gibt nur SQL-Anweisungen für Flashback aus\n\
+    --oldest                            Flashback wird in chronologischer Reihenfolge für SQL-Anweisungen durchgeführt,\n\
+                                        die von der Startzeit bis zur Endzeit ausgeführt werden; Standard: neueste\n

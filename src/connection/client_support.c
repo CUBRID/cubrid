@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -229,6 +228,7 @@ css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffe
 
   entry->conn->set_tran_index (tm_Tran_index);
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+  entry->conn->in_method = tran_is_in_libcas ();
 
   css_Errno = css_send_request_with_data_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
 						 data_buffer_size);
@@ -273,6 +273,7 @@ css_send_req_to_server (char *host, int request, char *arg_buffer, int arg_buffe
 
   entry->conn->set_tran_index (tm_Tran_index);
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+  entry->conn->in_method = tran_is_in_libcas ();
 
   /* if the latest query status is committed, fetch won't be issued. */
   assert (!tran_was_latest_query_committed () || request != NET_SERVER_LS_GET_LIST_FILE_PAGE);
@@ -373,6 +374,7 @@ css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int ar
 
   entry->conn->set_tran_index (tm_Tran_index);
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+  entry->conn->in_method = tran_is_in_libcas ();
 
   css_Errno = css_send_req_with_3_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data1_buffer,
 					   data1_buffer_size, data2_buffer, data2_buffer_size, reply_buffer,
@@ -410,6 +412,7 @@ css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer, int 
 
   entry->conn->set_tran_index (tm_Tran_index);
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+  entry->conn->in_method = tran_is_in_libcas ();
 
   css_Errno = css_send_request_no_reply (entry->conn, request, &rid, arg_buffer, arg_buffer_size);
   if (css_Errno != NO_ERRORS)
@@ -480,6 +483,7 @@ css_send_error_to_server (char *host, unsigned int eid, char *buffer, int buffer
 
   entry->conn->set_tran_index (tm_Tran_index);
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+  entry->conn->in_method = tran_is_in_libcas ();
   entry->conn->db_error = er_errid ();
 
   css_Errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
@@ -516,6 +520,7 @@ css_send_data_to_server (char *host, unsigned int eid, char *buffer, int buffer_
 
   entry->conn->set_tran_index (tm_Tran_index);
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+  entry->conn->in_method = tran_is_in_libcas ();
 
   css_Errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
   if (css_Errno != NO_ERRORS)
@@ -615,7 +620,7 @@ css_receive_error_from_server (unsigned int eid, char **buffer, int *size)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Normally, we disconnect upon any type of receive error.  However,
 	   * in the case of allocation errors, we want to continue and
 	   * propagate the error.
@@ -655,7 +660,7 @@ css_terminate (bool server_error)
   css_windows_shutdown ();
 #endif /* WINDOWS */
 
-  /* 
+  /*
    * If there was a previous signal handler. restore it at this point.
    */
 #if !defined(WINDOWS)

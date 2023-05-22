@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -31,17 +30,18 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "boot.h"
+#include "config.h"
 #include "error_manager.h"
 #include "file_io.h"
+#include "intl_support.h"
 #include "locator.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "query_list.h"
 #include "query_manager.h"
 #include "perf_monitor.h"
@@ -49,8 +49,14 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+#include <vector>
+
 // forward definitions
 struct compile_context;
+struct xasl_cache_ent;
+struct xasl_stream;
+struct xasl_node_header;
+struct method_sig_list;
 
 extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
@@ -64,7 +70,8 @@ extern int xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIA
 extern int xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index);
 extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 			 bool delete_unneeded_logarchives, const char *backup_verbose_file, int num_threads,
-			 FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
+			 FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs,
+			 bool separate_keys);
 extern DISK_ISVALID xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * index_btid);
 extern int xboot_check_db_consistency (THREAD_ENTRY * thread_p, int check_flag, OID * oids, int num_oids,
 				       BTID * index_btid);
@@ -126,7 +133,13 @@ extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
 extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool reuse_oid);
 extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid);
-extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid);
+extern int xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
+					const bool force = false);
+
+extern int xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid);
+
+extern int xtde_get_mk_info (THREAD_ENTRY * thread_p, int *mk_index, time_t * created_time, time_t * set_time);
+extern int xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index);
 
 extern TRAN_STATE xtran_server_commit (THREAD_ENTRY * thrd, bool retain_lock);
 extern TRAN_STATE xtran_server_abort (THREAD_ENTRY * thrd);
@@ -160,7 +173,7 @@ extern bool logtb_has_updated (THREAD_ENTRY * thread_p);
 
 
 extern BTID *xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
-			       int unique_pk, int num_oids, int num_nulls, int num_keys);
+			       int unique_pk, long long num_oids, long long num_nulls, long long num_keys);
 extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
 				OID * class_oids, int n_classes, int n_attrs, int *attr_ids, int *attrs_prefix_length,
 				HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid,
@@ -171,7 +184,7 @@ extern BTID *xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, con
 				       int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
 				       OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
 				       char *pred_stream, int pred_stream_size, char *expr_stream, int expr_steram_size,
-				       int func_col_id, int func_attr_index_start);
+				       int func_col_id, int func_attr_index_start, int ib_thread_count);
 
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
@@ -204,12 +217,12 @@ extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id
 				      char *page_bufp, int *page_sizep);
 
 /* new query interface */
-extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, compile_context * ctx, XASL_STREAM * stream);
+extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, compile_context * ctx, xasl_stream * stream);
 
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd, const XASL_ID * xasl_id, QUERY_ID * query_idp,
 					   int dbval_cnt, void *data, QUERY_FLAG * flagp, CACHE_TIME * clt_cache_time,
 					   CACHE_TIME * srv_cache_time, int query_timeout,
-					   XASL_CACHE_ENTRY ** ret_cache_entry_p);
+					   xasl_cache_ent ** ret_cache_entry_p);
 extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, char *xasl_stream, int xasl_stream_size,
 						       QUERY_ID * query_id, int dbval_cnt, void *data,
 						       QUERY_FLAG * flag, int query_timeout);
@@ -220,6 +233,7 @@ extern void xqmgr_dump_query_cache (THREAD_ENTRY * thread_p, FILE * outfp);
 
 /* server execution statistics */
 extern void xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats);
+extern void xperfmon_server_copy_stats_for_trace (THREAD_ENTRY * thread_p, UINT64 * to_stats);
 extern void xperfmon_server_copy_global_stats (UINT64 * to_stats);
 /* catalog manager interface */
 
@@ -232,12 +246,6 @@ extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_p,
 				       int include_query_exec_info);
 
-extern LOB_LOCATOR_STATE xlog_find_lob_locator (THREAD_ENTRY * thread_p, const char *locator, char *real_locator);
-extern int xlog_add_lob_locator (THREAD_ENTRY * thread_p, const char *locator, LOB_LOCATOR_STATE state);
-extern int xlog_change_state_of_locator (THREAD_ENTRY * thread_p, const char *locator, const char *new_locator,
-					 LOB_LOCATOR_STATE state);
-extern int xlog_drop_lob_locator (THREAD_ENTRY * thread_p, const char *locator);
-extern void log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_commit, LOG_LSA * savept_lsa);
 extern int xboot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes, int space_to_process,
 			     int instance_lock_timeout, int class_lock_timeout, bool delete_old_repr,
 			     OID * last_processed_class_oid, OID * last_processed_oid, int *total_objects,
@@ -263,7 +271,7 @@ extern int xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p);
 extern int xsession_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1,
 					       char *info, int info_len);
 extern int xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
-					    XASL_ID * xasl_id, XASL_NODE_HEADER * xasl_header_p);
+					    XASL_ID * xasl_id, xasl_node_header * xasl_header_p);
 extern int xsession_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name);
 
 extern int xlogin_user (THREAD_ENTRY * thread_p, const char *username);
@@ -283,4 +291,11 @@ extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *
 extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
 extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
 extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
+
+// *INDENT-OFF*
+extern int xmethod_invoke_fold_constants (THREAD_ENTRY * thread_p, const method_sig_list &sig_list, std::vector<std::reference_wrapper<DB_VALUE>> &args, DB_VALUE &result);
+// *INDENT-ON*
+
+extern void xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp);
+
 #endif /* _XSERVER_INTERFACE_H_ */

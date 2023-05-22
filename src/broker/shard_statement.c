@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -485,7 +484,7 @@ shard_stmt_new_internal (int stmt_type, char *sql_stmt, int ctx_cid, unsigned in
 
       stmt_p->ctx_cid = ctx_cid;
       stmt_p->ctx_uid = ctx_uid;
-      strncpy (stmt_p->database_user, ctx_p->database_user, SRV_CON_DBUSER_SIZE - 1);
+      strncpy_bufsize (stmt_p->database_user, ctx_p->database_user);
 
       stmt_p->num_pinned = 0;
       stmt_p->lru_prev = NULL;
@@ -679,9 +678,9 @@ shard_stmt_free (T_SHARD_STMT * stmt_p)
 }
 
 
-/* 
- * 
- * return : stored server handle id 
+/*
+ *
+ * return : stored server handle id
  */
 int
 shard_stmt_find_srv_h_id_for_shard_cas (int stmt_h_id, int shard_id, int cas_id)
@@ -708,7 +707,7 @@ shard_stmt_find_srv_h_id_for_shard_cas (int stmt_h_id, int shard_id, int cas_id)
   return srv_h_id;
 }
 
-/* 
+/*
  *
  * return : success or fail
  */
@@ -829,19 +828,10 @@ shard_stmt_set_hint_list (T_SHARD_STMT * stmt_p)
   hint_p = sp_get_first_hint (stmt_p->parser);
   while (hint_p != NULL)
     {
-      if (hint_type == HT_NONE)
-	{
-	  hint_type = hint_p->hint_type;
-	}
-      else if (hint_type != hint_p->hint_type)
-	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected hint type. (expect:%d, current:%d).", hint_p->hint_type,
-		     hint_type);
-	  return -1;
-	}
+      hint_type = hint_p->hint_type;
 
       /* currently only support HT_KEY and HT_ID */
-      if (hint_type != HT_KEY && hint_type != HT_ID)
+      if (hint_type != HT_KEY && hint_type != HT_ID && hint_type != HT_VAL)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unsupported hint type. (hint_type:%d).", hint_type);
 	  return -1;

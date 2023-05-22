@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -41,6 +40,7 @@
 #include "system_parameter.h"
 #include "byte_order.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 
 #if defined (__cplusplus)
 #include <cmath>
@@ -716,7 +716,7 @@ numeric_is_long (DB_C_NUMERIC arg)
       return (false);
     }
 
-  /* 
+  /*
    * Loop through arg's bits except the 32 LSB looking for non-sign
    * extended values
    */
@@ -751,7 +751,7 @@ numeric_is_bigint (DB_C_NUMERIC arg)
       return (false);
     }
 
-  /* 
+  /*
    * Loop through arg's bits except the 64 LSB looking for non-sign
    * extended values
    */
@@ -1631,6 +1631,10 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	{
 	  goto exit_on_error;
 	}
+      else
+	{
+	  er_clear ();
+	}
     }
   else if (ret != NO_ERROR)
     {
@@ -1639,7 +1643,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   /* Perform the addition */
   numeric_add (db_locate_numeric (&dbv1_common), db_locate_numeric (&dbv2_common), temp, DB_NUMERIC_BUF_SIZE);
-  /* 
+  /*
    * Update the domin information of the answer. Check to see if precision
    * needs to be updated due to carry
    */
@@ -1727,6 +1731,10 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	{
 	  goto exit_on_error;
 	}
+      else
+	{
+	  er_clear ();
+	}
     }
   else if (ret != NO_ERROR)
     {
@@ -1735,7 +1743,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
   /* Perform the subtraction */
   numeric_sub (db_locate_numeric (&dbv1_common), db_locate_numeric (&dbv2_common), temp, DB_NUMERIC_BUF_SIZE);
-  /* 
+  /*
    * Update the domin information of the answer. Check to see if precision
    * needs to be updated due to carry
    */
@@ -1916,7 +1924,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	}
     }
 
-  /* 
+  /*
    * Update the domain information of the answer. Check to see if precision
    * needs to be updated due to carry
    */
@@ -2342,6 +2350,11 @@ int
 numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
 {
   DB_NUMERIC zero_scale_numeric, numeric_rem, numeric_tmp;
+
+  zero_scale_numeric.d.buf[0] = '\0';
+  numeric_rem.d.buf[0] = '\0';
+  numeric_tmp.d.buf[0] = '\0';
+
   DB_C_NUMERIC zero_scale_arg = zero_scale_numeric.d.buf;
   DB_C_NUMERIC rem = numeric_rem.d.buf;
   DB_C_NUMERIC tmp = numeric_tmp.d.buf;
@@ -2567,7 +2580,7 @@ numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec
   num[DB_NUMERIC_BUF_SIZE - 3] = (scaled_int >> 16) & 0xff;
   num[DB_NUMERIC_BUF_SIZE - 4] = (scaled_int >> 24) & 0xff;
   memset (num, (scaled_int < 0) ? 0xff : 0x0, DB_NUMERIC_BUF_SIZE - 4);
-  /* 
+  /*
    * Now try to make an educated guess at the actual precision.  The
    * actual value of scaled_int is no longer of much interest, just so
    * long as the general magnitude is maintained (i.e., make sure you
@@ -2619,7 +2632,7 @@ numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec
       estimated_precision = 10;
     }
 
-  /* 
+  /*
    * No matter what we think it is, it has to be at least as big as the
    * scale.
    */
@@ -2883,7 +2896,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 	{
 	  if (NUMERIC_ABS (adouble) < DB_NUMERIC_UNDERFLOW_LIMIT)
 	    {
-	      /* the floating-point number underflows any possible CUBRID NUMERIC domain type, so just return 0 with no 
+	      /* the floating-point number underflows any possible CUBRID NUMERIC domain type, so just return 0 with no
 	       * other conversion */
 	      *scale = dst_scale;
 	      *prec = dst_scale ? dst_scale : 1;
@@ -3030,7 +3043,7 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 int
 numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *scale)
 {
-  /* 
+  /*
    *   return numeric_internal_double_to_num(adouble, DB_MAX_NUMERIC_PRECISION,
    */
   return numeric_internal_double_to_num (adouble, 16, num, prec, scale);
@@ -3282,7 +3295,7 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
       num_string[orig_length - scale_diff] = '\0';
     }
 
-  /* 
+  /*
    * Check to see if the scaled number 'fits' into the desired precision
    * and scaling by looking for significant digits prior to the last
    * 'precision' digits.
@@ -3839,6 +3852,8 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   bool found_first_non_zero = false;
   int scale = db_value_scale (val);
 
+  static bool oracle_style_number = prm_get_bool_value (PRM_ID_ORACLE_STYLE_NUMBER_RETURN);
+
   assert (val != NULL && buf != NULL);
 
   if (DB_IS_NULL (val))
@@ -3858,15 +3873,36 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
       /* Add the negative sign */
       if (temp[i] == '-')
 	{
-	  buf[nbuf] = '-';
-	  nbuf++;
+	  buf[nbuf++] = '-';
 	}
 
       /* Add decimal point */
       if (i == temp_size - scale)
 	{
-	  buf[nbuf] = '.';
-	  nbuf++;
+	  int k = temp_size - 1;
+
+	  if (oracle_style_number)
+	    {
+	      /* remove trailing zero */
+	      while (k > i && temp[k] == '0')
+		{
+		  k--;
+		}
+
+	      temp_size = k + 1;
+	      if (temp[k] == '0')
+		{
+		  continue;
+		}
+	      else if (k >= i)
+		{
+		  buf[nbuf++] = '.';
+		}
+	    }
+	  else
+	    {
+	      buf[nbuf++] = '.';
+	    }
 	}
 
       /* Check to see if the first significant digit has been found */
@@ -3878,8 +3914,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
       /* Remove leading zeroes */
       if (found_first_non_zero || i >= temp_size - scale - 1)
 	{
-	  buf[nbuf] = temp[i];
-	  nbuf++;
+	  buf[nbuf++] = temp[i];
 	}
     }
 

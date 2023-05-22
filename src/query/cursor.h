@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -31,8 +30,9 @@
 #include "error_manager.h"
 #include "query_list.h"
 #include "storage_common.h"
-#include "object_primitive.h"
-#include "object_representation.h"
+
+// forward definitions
+struct or_buf;
 
 enum
 {
@@ -82,8 +82,36 @@ struct cursor_id
 };
 
 extern int cursor_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_ID * src_list_id);
-extern void cursor_free_list_id (QFILE_LIST_ID * list_id, bool self);
-extern int cursor_copy_vobj_to_dbvalue (OR_BUF * buf, DB_VALUE * db_value);
+
+#define cursor_free_list_id(list_id) \
+        do { \
+          QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) (list_id); \
+          if (list_id_p != NULL) { \
+            if (list_id_p->last_pgptr) { \
+              free_and_init (list_id_p->last_pgptr); \
+            } \
+            if (list_id_p->tpl_descr.f_valp) { \
+              free_and_init (list_id_p->tpl_descr.f_valp); \
+            } \
+            if (list_id_p->tpl_descr.clear_f_val_at_clone_decache) { \
+              free_and_init (list_id_p->tpl_descr.clear_f_val_at_clone_decache); \
+            } \
+            if (list_id_p->sort_list) { \
+              free_and_init (list_id_p->sort_list); \
+            } \
+            if (list_id_p->type_list.domp) { \
+              free_and_init (list_id_p->type_list.domp); \
+            } \
+          } \
+        } while (0)
+
+#define cursor_free_self_list_id(list_id) \
+        do { \
+          cursor_free_list_id (list_id); \
+          free_and_init (list_id); \
+        } while (0)
+
+extern int cursor_copy_vobj_to_dbvalue (struct or_buf *buf, DB_VALUE * db_value);
 extern int cursor_fetch_page_having_tuple (CURSOR_ID * cursor_id, VPID * vpid, int position, int offset);
 #if defined (WINDOWS) || defined (CUBRID_DEBUG)
 extern void cursor_print_list (QUERY_ID query_id, QFILE_LIST_ID * list_id);

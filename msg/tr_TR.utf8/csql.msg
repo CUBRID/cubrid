@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version. 
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -40,13 +41,17 @@ geçerli ayarlar:\n\
   -c, --command=ARG            CSQL-komutları\n\
   -l, --line-output            bir çizgi üzerinde her değeri görüntüle\n\
   -r, --read-only              sadece-oku modu\n\
-  -t, --plain-output           komut dostu formatta göster sonuçları (-c ve -i sadece çalışır)\n\
+  -t, --plain-output           sonuçları komut dosyası için uygun bir formatta görüntülemek (-c ve -i sadece çalışır)\n\
+  -q, --query-output           sonuçları sorguyla uyumlu bir biçimde göster (-c ve -i sadece çalışır)\n\
+  -d, --loaddb-output          sonuçları loaddb için uygun bir formatta görüntüleyin (-c ve -i sadece çalışır)\n\
   -N, --skip-column-names      sonuçlarında sütun adları gösterilmeyecek (-c ve -i sadece çalışır)\n\
       --string-width           bu genişlikte bir dizin tipi olan her sütunu görüntüler\n\
       --no-auto-commit         Otomatik tamamlama modu yürütme devre dışı\n\
       --no-pager               pager kullanmayın\n\
       --no-single-line         tek satır odaklı yürütmeyi kapatın\n\
       --no-trigger-action      tetikleyicileri devre dışı bırak\n\
+      --delimiter=ARG          sütunlar arası sınırlayıcı (-q sadece çalışır)\n\
+      --enclosure=ARG          bir sonuç dizesi için kapsam (-q sadece çalışır)\n\
 \n\
 Ek bilgi için, adresine bakın http://www.cubrid.org\n
 41 %1$s: doğru olmayan %2$s_MODE ortam değeri. \n%3$s veya %4$s olmalıdır.\n
@@ -87,6 +92,7 @@ $  Bu 3 boş bırakılmalı
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 Çok az argüman verildi.
 
 145 <Help: Bir Sınıf Şeması>
 146 none
@@ -107,6 +113,7 @@ $  Bu 3 boş bırakılmalı
 194 Komut satırı argümanlarının geçersiz kombinasyonu (seçenekler).
 196 Tanımlanamayan bir hata oluıtu.
 197 Çıkış yönlendirildişinde ';edit' izin verilmez.
+198 Biçimlendirme başarısız oldu.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -148,7 +155,7 @@ $ csql help messages
    ;EXit                        - programdan çık.\n\
 \n\
    ;CLear                       - komut buffer temizle.\n\
-   ;EDIT                        - komut buffer ile sistem editörü çağırmak.\n\
+   ;EDIT   [format/fmt]         - komut arabelleği ile [biçimlendiriciden sonra] sistem düzenleyicisini çağırın.\n\
    ;LISt                        - komut buffwe içerik görüntüle.\n\
 \n\
    ;RUn                         - komut buffer içinde SQL yürüt.\n\
@@ -157,12 +164,15 @@ $ csql help messages
    ;COMmit                      - geçerli işlemleri iıle.\n\
    ;ROllback                    - geçerli işlemleri geri iıle.\n\
    ;AUtocommit [ON|OFF]         - otomatik tamamlama modunu etkinleştirme / devre dışı bırakma.\n\
-   ;REStart                     - veritabanını yeniden başlat.\n\
+   ;REStart                     - CSQL oturumunda hedef veritabanına yeniden bağlanın.\n\
+   ;CHeckpoint                  - kontrol noktasını yürütün (yalnızca --sysadm ile CSQL).\n\
+   ;Killtran                    - işlem durumu bilgilerini kontrol edin veya belirli bir işlemi sonlandırın. (yalnızca --sysadm ile CSQL).\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - varsayılan dış kabuğu ayarla, editör, yazdır ve çağrı cihazı\n\
-   ;EDITOR_Cmd   [editor-cmd]     yeni bir tane komut ver veya geçerli olanı görüntüle\n\
-   ;PRINT_Cmd    [print-cmd]      bir, sırasıyla.\n\
-   ;PAger_cmd    [pager-cmd]\n\
+   ;SHELL_Cmd     [shell-cmd]   - varsayılan dış kabuğu ayarla, editör, yazdır, çağrı cihazı ve biçimlendirici\n\
+   ;EDITOR_Cmd    [editor-cmd]    yeni bir tane komut ver veya geçerli olanı görüntüle\n\
+   ;PRINT_Cmd     [print-cmd]     bir, sırasıyla.\n\
+   ;PAger_cmd     [pager-cmd]\n\
+   ;FOrmatter_cmd [formatter-cmd]\n\
 \n\
    ;DATE                        - yerel saat görüntüle, tarih.\n\
    ;DATAbase                    - veritabanı erişilen adını görüntüler.\n\
@@ -180,6 +190,13 @@ $ csql help messages
    ;HISTORYList                 - çalıştırılan sorguların listesini görüntüleyebilir.\n\
    ;HISTORYRead <history_num>   - komut buffer içine geçmiş numarası üzerinde giriş okuyun.\n\
    ;TRAce [ON/OFF] [text/json]  - sql otomatik iz etkinleştirmek/devre dışı.\n\
+   ;SIngleline [ON|OFF]         - tek hat modunu etkinleştir/devre dışı bırak.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - mevcut veya diğer veritabanlarına bir kullanıcı adı olarak bağlanın.\n\
+   ;.Hist [ON/OFF]              - CSQL'de istatistik bilgisi toplamayı başlat/durdur (yalnızca DBA mevcuttur).\n\
+   ;.Clear_hist                 - tampondaki CSQL istatistik bilgilerini temizler.\n\
+   ;.Dump_hist                  - CSQL istatistik bilgilerini CSQL'de görüntüler.\n\
+   ;.X_hist                     - CSQL'de CSQL istatistik bilgilerini, istatistik verileri başlatıldı.\n\
    ;HElp                        - yardım mesajını görüntüler.\n\n
 
 232 <Constraints> 

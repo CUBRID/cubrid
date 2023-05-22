@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
  */
 
 /*
@@ -44,12 +44,11 @@
 #include <functional>
 
 class string_buffer
-  : public mem::block_ext
 {
   public:
     string_buffer ()
-      : mem::block_ext ()
-      , m_len (0)
+      : m_len (0)
+      , m_ext_block ()
     {
     }
 
@@ -58,25 +57,30 @@ class string_buffer
       m_len = 0; //dtor
     }
 
-    string_buffer (std::function<void (block &b, size_t n)> extend, std::function<void (block &b)> dealloc)
-      : mem::block_ext {extend, dealloc}
-      , m_len {0}
+    string_buffer (const cubmem::block_allocator &alloc)
+      : m_len {0}
+      , m_ext_block { alloc }
     {
     }
 
-    using mem::block_ext::move_ptr;
+    string_buffer (const cubmem::block_allocator &alloc, size_t initial_size)
+      : string_buffer (alloc)
+    {
+      m_ext_block.extend_to (initial_size);
+      m_ext_block.get_ptr ()[m_len] = '\0';
+    }
 
     const char *get_buffer () const
     {
-      return this->ptr;
+      return this->m_ext_block.get_read_ptr ();
     }
 
     void clear ()
     {
-      if (ptr)
+      if (m_ext_block.get_ptr () != NULL)
 	{
 	  m_len = 0;
-	  ptr[m_len] = '\0';
+	  *m_ext_block.get_ptr () = '\0';
 	}
     }
 
@@ -86,42 +90,49 @@ class string_buffer
       return m_len;
     }
 
+    char *release_ptr ()
+    {
+      return m_ext_block.release_ptr ();
+    }
+
     inline void operator+= (const char ch);                       //add a single char
 
-    void add_bytes (size_t len, void *bytes);                     //add "len" bytes (can have '\0' in the middle)
+    void add_bytes (size_t len, const char *bytes);                     //add "len" bytes (can have '\0' in the middle)
 
     template<typename... Args> inline int operator() (Args &&... args); //add with printf format
 
-  private:
-    size_t m_len;                                                 //current content length not including ending '\0'
+    void hex_dump (const string_buffer &in, const size_t max_to_dump, const size_t line_size = 16,
+		   const bool print_ascii = true);
+    void hex_dump (const char *ptr, const size_t length, const size_t line_size = 16, const bool print_ascii = true);
 
+  private:
     string_buffer (const string_buffer &) = delete;               //copy ctor
     string_buffer (string_buffer &&) = delete;                    //move ctor
     void operator= (const string_buffer &) = delete;              //copy assign
     void operator= (string_buffer &&) = delete;                   //move assign
+
+    size_t m_len;                                                 //current content length not including ending '\0'
+    cubmem::extensible_block m_ext_block;
 };
 
 //implementation for small (inline) methods
 
 void string_buffer::operator+= (const char ch)
 {
-  if (dim == 0)
+  if (m_ext_block.get_size () == 0)
     {
-      extend (2); // 2 new bytes needed: ch + '\0'
+      m_ext_block.extend_to (2); // 2 new bytes needed: ch + '\0'
     }
   else
     {
-      assert (ptr[m_len] == '\0');
+      assert (m_ext_block.get_ptr ()[m_len] == '\0');
 
       // (m_len + 1) is the current number of chars including ending '\0'
-      if (dim <= m_len + 1)
-	{
-	  extend (1);
-	}
+      m_ext_block.extend_to (m_len + 2);
     }
 
-  ptr[m_len] = ch;
-  ptr[++m_len] = '\0';
+  m_ext_block.get_ptr ()[m_len] = ch;
+  m_ext_block.get_ptr ()[++m_len] = '\0';
 }
 
 template<typename... Args> int string_buffer::operator() (Args &&... args)
@@ -130,12 +141,9 @@ template<typename... Args> int string_buffer::operator() (Args &&... args)
 
   assert (len >= 0);
 
-  if (dim <= m_len + size_t (len) + 1)
-    {
-      extend (m_len + size_t (len) + 1 - dim); //ask to extend to fit at least additional len chars
-    }
+  m_ext_block.extend_to (m_len + size_t (len) + 2);
 
-  snprintf (ptr + m_len, dim - m_len, std::forward<Args> (args)...);
+  snprintf (m_ext_block.get_ptr () + m_len, m_ext_block.get_size () - m_len, std::forward<Args> (args)...);
   m_len += len;
 
   return len;

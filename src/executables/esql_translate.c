@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -205,7 +204,7 @@ emit_end (void)
 static void
 get_quasi_string (HOST_REF * ref, const char **buf_str, const char **bufsize_str)
 {
-  /* 
+  /*
    * Take any host variable that can legitimately act as a string
    * "constant" for input purposes, and return strings to expressions
    * that describe the start of the char buffer and the length of the
@@ -259,7 +258,7 @@ tr_connect (HOST_REF * db_name, HOST_REF * user_name, HOST_REF * passwd)
 
   emit_start (1);
 
-  /* 
+  /*
    * Notice that the code we're emitting here is ignoring buffer lengths,
    * so it's not going to fare well with embedded nulls.  This probably
    * isn't much of a practical concern, since the strings we're coping
@@ -723,7 +722,7 @@ tr_prepare_esql (int stmt_no, HOST_REF * stmt)
 
   emit_start (1);
 
-  /* 
+  /*
    * The parser should have guaranteed that only a HOST_REF that smells
    * like some sort of pseudo-string can get in here.  Other types should
    * be impossible.
@@ -1343,7 +1342,7 @@ emit_put_db_value (HOST_REF * host)
     case C_TYPE_SQLDA:
     case NUM_C_TYPES:
       {
-	/* 
+	/*
 	 * These cases should be impossible.
 	 */
 	esql_yyverror (pp_get_msg (EX_TRANS_SET, MSG_BAD_CASE), "emit_put_db_value");
@@ -1383,7 +1382,7 @@ emit_get_db_value (int cs_no, HOST_REF * host)
       emit_line_directive ();
       return;
     }
-  /* 
+  /*
    * Since the various calls to pp_get_<whatever> tend to share common
    * scratch areas, putting all of them in one giant fprintf() will
    * create havoc.  It's safer to sequence the calls through separate
@@ -1531,7 +1530,7 @@ escape_string (const char *in_str, int length, int *counter)
     }
 
   add_count = 0;
-  /* 
+  /*
    * Need four times the size of the input string  since this is the
    * max size the out string could be.
    */
@@ -1547,7 +1546,7 @@ escape_string (const char *in_str, int length, int *counter)
 
   while (in_str <= end)
     {
-      /* 
+      /*
        * If input char is double quote,single quote, escape char, newline
        * of form feed, precede it by an escape character in the emitted
        * string
@@ -1560,7 +1559,7 @@ escape_string (const char *in_str, int length, int *counter)
 	  add_count++;
 	}
 
-      /* 
+      /*
        * If input char is the null character, then replace it with
        * escape char 000 (octal 0) in the emitted string so that
        * the 'C' compilers will not choke on an unescaped null char
@@ -1588,7 +1587,7 @@ escape_string (const char *in_str, int length, int *counter)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Emit current char.
 	   * Increment input string pointer by 1.
 	   * Increment output string pointer by 1.

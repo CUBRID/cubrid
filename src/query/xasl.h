@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -29,9 +28,11 @@
 #include <assert.h>
 
 #include "access_json_table.hpp"
+#include "access_spec.hpp"
 #include "memory_hash.h"
+#include "method_def.hpp"
 #include "query_list.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "storage_common.h"
 #include "string_opfunc.h"
 
@@ -50,7 +51,10 @@
 struct binary_heap;
 #endif // SERVER_MODE || SA_MODE
 
-
+struct xasl_node;
+typedef struct xasl_node XASL_NODE;
+struct xasl_unpack_info;
+typedef struct xasl_unpack_info XASL_UNPACK_INFO;
 
 /* XASL HEADER */
 /*
@@ -109,13 +113,6 @@ struct xasl_node_header
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef enum
 {
-  HS_NONE = 0,			/* no hash aggregation */
-  HS_ACCEPT_ALL,		/* accept tuples in hash table */
-  HS_REJECT_ALL			/* reject tuples, use normal sort-based aggregation */
-} AGGREGATE_HASH_STATE;
-
-typedef enum
-{
   XASL_CLEARED,
   XASL_SUCCESS,
   XASL_FAILURE,
@@ -134,8 +131,21 @@ typedef struct list_spec_node LIST_SPEC_TYPE;
 typedef struct showstmt_spec_node SHOWSTMT_SPEC_TYPE;
 typedef struct set_spec_node SET_SPEC_TYPE;
 typedef struct method_spec_node METHOD_SPEC_TYPE;
+typedef struct dblink_spec_node DBLINK_SPEC_TYPE;
 typedef struct reguval_list_spec_node REGUVAL_LIST_SPEC_TYPE;
 typedef union hybrid_node HYBRID_NODE;
+
+// *INDENT-OFF*
+namespace cubxasl
+{
+  struct aggregate_list_node;
+  struct analytic_eval_type;
+  struct pred_expr;
+} // namespace cubxasl
+using AGGREGATE_TYPE = cubxasl::aggregate_list_node;
+using ANALYTIC_EVAL_TYPE = cubxasl::analytic_eval_type;
+using PRED_EXPR = cubxasl::pred_expr;
+// *INDENT-ON*
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct groupby_stat GROUPBY_STATS;
@@ -145,8 +155,13 @@ typedef struct xasl_stat XASL_STATS;
 typedef struct topn_tuple TOPN_TUPLE;
 typedef struct topn_tuples TOPN_TUPLES;
 
-typedef struct aggregate_hash_value AGGREGATE_HASH_VALUE;
-typedef struct aggregate_hash_key AGGREGATE_HASH_KEY;
+// *INDENT-OFF*
+namespace cubquery
+{
+  struct aggregate_hash_context;
+}
+using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
+// *INDENT-ON*
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
@@ -175,6 +190,29 @@ typedef enum
   CTE_PROC
 } PROC_TYPE;
 
+typedef struct qproc_db_value_list *QPROC_DB_VALUE_LIST;	/* TODO */
+struct qproc_db_value_list
+{
+  QPROC_DB_VALUE_LIST next;
+  DB_VALUE *val;
+  TP_DOMAIN *dom;
+
+  // *INDENT-OFF*
+  qproc_db_value_list () = default;
+  // *INDENT-ON*
+};
+
+typedef struct val_list_node VAL_LIST;	/* value list */
+struct val_list_node
+{
+  QPROC_DB_VALUE_LIST valp;	/* first value node */
+  int val_cnt;			/* value count */
+
+  // *INDENT-OFF*
+  val_list_node () = default;
+  // *INDENT-ON*
+};
+
 /* To handle selected update list, click counter related */
 typedef struct selupd_list SELUPD_LIST;
 struct selupd_list
@@ -186,41 +224,6 @@ struct selupd_list
   REGU_VARLIST_LIST select_list;	/* Regu list to be selected */
   int wait_msecs;		/* lock timeout in milliseconds */
 };
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-typedef struct aggregate_hash_context AGGREGATE_HASH_CONTEXT;
-struct aggregate_hash_context
-{
-  /* hash table stuff */
-  MHT_TABLE *hash_table;	/* memory hash table for hash aggregate eval */
-  AGGREGATE_HASH_KEY *temp_key;	/* temporary key used for fetch */
-  AGGREGATE_HASH_STATE state;	/* state of hash aggregation */
-  TP_DOMAIN **key_domains;	/* hash key domains */
-  AGGREGATE_ACCUMULATOR_DOMAIN **accumulator_domains;	/* accumulator domains */
-
-  /* runtime statistics stuff */
-  int hash_size;		/* hash table size */
-  int group_count;		/* groups processed in hash table */
-  int tuple_count;		/* tuples processed in hash table */
-
-  /* partial list file stuff */
-  SCAN_CODE part_scan_code;	/* scan status of partial list file */
-  QFILE_LIST_ID *part_list_id;	/* list with partial accumulators */
-  QFILE_LIST_ID *sorted_part_list_id;	/* sorted list with partial acc's */
-  QFILE_LIST_SCAN_ID part_scan_id;	/* scan on partial list */
-  DB_VALUE *temp_dbval_array;	/* temporary array of dbvalues, used for saving entries to list files */
-
-  /* partial list file sort stuff */
-  QFILE_TUPLE_RECORD input_tuple;	/* tuple record used while sorting */
-  SORTKEY_INFO sort_key;	/* sort key for partial list */
-  RECDES tuple_recdes;		/* tuple recdes */
-  AGGREGATE_HASH_KEY *curr_part_key;	/* current partial key */
-  AGGREGATE_HASH_KEY *temp_part_key;	/* temporary partial key */
-  AGGREGATE_HASH_VALUE *curr_part_value;	/* current partial value */
-  AGGREGATE_HASH_VALUE *temp_part_value;	/* temporary partial value */
-  int sorted_count;
-};
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /*update/delete class info structure */
 typedef struct upddel_class_info UPDDEL_CLASS_INFO;
@@ -262,6 +265,10 @@ struct odku_info
   UPDATE_ASSIGNMENT *assignments;	/* assignments */
   HEAP_CACHE_ATTRINFO *attr_info;	/* attr info */
   int *attr_ids;		/* ID's of attributes (array) */
+
+  // *INDENT-OFF*
+  odku_info () = default;
+  // *INDENT-ON*
 };
 
 /* new type used by function index for cleaner code */
@@ -270,6 +277,10 @@ struct func_pred
 {
   REGU_VARIABLE *func_regu;	/* function expression regulator variable */
   HEAP_CACHE_ATTRINFO *cache_attrinfo;
+
+  // *INDENT-OFF*
+  func_pred () = default;
+  // *INDENT-ON*
 };
 
 /* UNION_PROC, DIFFERENCE_PROC, INTERSECTION_PROC */
@@ -315,9 +326,6 @@ struct buildlist_proc_node
   OUTPTR_LIST *a_outptr_list_ex;	/* ext output ptr list */
   OUTPTR_LIST *a_outptr_list_interm;	/* intermediate output list */
   VAL_LIST *a_val_list;		/* analytic value list */
-  PRED_EXPR *a_instnum_pred;	/* instnum predicate for query with analytic */
-  DB_VALUE *a_instnum_val;	/* inst_num() value for query with analytic */
-  int a_instnum_flag;		/* inst_num() flag for query with analytic */
   int g_grbynum_flag;		/* stop or continue grouping? */
   bool g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
   int g_hash_eligible;		/* eligible for hash aggregate evaluation */
@@ -327,7 +335,7 @@ struct buildlist_proc_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   EHID *upddel_oid_locator_ehids;	/* array of temporary extensible hash for UPDATE/DELETE generated SELECT
 					 * statement */
-  AGGREGATE_HASH_CONTEXT agg_hash_context;	/* hash aggregate context, not serialized */
+  AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int g_agg_domains_resolved;	/* domain status (not serialized) */
 };
@@ -366,6 +374,7 @@ struct update_proc_node
   UPDATE_ASSIGNMENT *assigns;	/* assignments array */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
+  int no_supplemental_log;	/* no supplemental log */
   int num_orderby_keys;		/* no of keys for ORDER_BY */
   int num_assign_reev_classes;
   int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
@@ -401,6 +410,7 @@ struct delete_proc_node
   int num_classes;		/* total number of classes involved */
   int wait_msecs;		/* lock timeout in milliseconds */
   int no_logging;		/* no logging */
+  int no_supplemental_log;	/* no supplemental log */
   int num_reev_classes;		/* no of classes involved in mvcc condition */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions */
@@ -455,6 +465,7 @@ struct cte_proc_node
 #define XASL_INSTNUM_FLAG_SCAN_STOP	    0x04
 #define XASL_INSTNUM_FLAG_SCAN_LAST_STOP    0x08
 #define XASL_INSTNUM_FLAG_EVAL_DEFER	    0x10
+#define XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC	    0x20
 
 /*
  * Macros for buildlist block
@@ -481,6 +492,8 @@ struct cte_proc_node
 #define XASL_DECACHE_CLONE	      0x1000	/* decache clone */
 #define XASL_RETURN_GENERATED_KEYS    0x2000	/* return generated keys */
 #define XASL_NO_FIXED_SCAN	      0x4000	/* disable fixed scan for this proc */
+#define XASL_NEED_SINGLE_TUPLE_SCAN   0x8000	/* for exists operation */
+#define XASL_INCLUDES_TDE_CLASS	      0x10000	/* is any tde class related */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -489,7 +502,7 @@ struct cte_proc_node
 #define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v) \
   do \
     { \
-      XASL_NODE *_x = REGU_VARIABLE_XASL(r); \
+      XASL_NODE *_x = (r)->xasl; \
       \
       /* check for xasl node */ \
       if (_x) \
@@ -516,7 +529,7 @@ struct cte_proc_node
   while (0)
 
 #define CHECK_REGU_VARIABLE_XASL_STATUS(r) \
-    (REGU_VARIABLE_XASL(r) ? (REGU_VARIABLE_XASL(r))->status : XASL_SUCCESS)
+    ((r)->xasl != NULL ? ((r)->xasl)->status : XASL_SUCCESS)
 
 #define QPROC_IS_INTERPOLATION_FUNC(func_p) \
   (((func_p)->function == PT_MEDIAN) \
@@ -657,25 +670,6 @@ struct xasl_stream
                             GET_XASL_HEADER_N_OID_LIST(header) * sizeof(OID) + \
                             GET_XASL_HEADER_N_OID_LIST(header) * sizeof(int))) = (cnt))
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-/* aggregate evaluation hash value */
-struct aggregate_hash_value
-{
-  int curr_size;		/* last computed size of structure */
-  int tuple_count;		/* # of tuples aggregated in structure */
-  int func_count;		/* # of functions (i.e. accumulators) */
-  AGGREGATE_ACCUMULATOR *accumulators;	/* function accumulators */
-  QFILE_TUPLE_RECORD first_tuple;	/* first aggregated tuple */
-};
-
-/* aggregate evaluation hash key */
-struct aggregate_hash_key
-{
-  int val_count;		/* key size */
-  bool free_values;		/* true if values need to be freed */
-  DB_VALUE **values;		/* value array */
-};
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
 /* access spec                                                          */
@@ -690,7 +684,8 @@ typedef enum
   TARGET_JSON_TABLE,
   TARGET_METHOD,
   TARGET_REGUVAL_LIST,
-  TARGET_SHOWSTMT
+  TARGET_SHOWSTMT,
+  TARGET_DBLINK
 } TARGET_TYPE;
 
 typedef enum
@@ -756,6 +751,9 @@ struct list_spec_node
 {
   REGU_VARIABLE_LIST list_regu_list_pred;	/* regu list for the predicate */
   REGU_VARIABLE_LIST list_regu_list_rest;	/* regu list for rest of attrs */
+  REGU_VARIABLE_LIST list_regu_list_build;	/* regu list for hash build */
+  REGU_VARIABLE_LIST list_regu_list_probe;	/* regu list for hash probe */
+  int hash_list_scan_yn;	/* Is hash list scan possible? */
   XASL_NODE *xasl_node;		/* the XASL node that contains the list file identifier */
 };
 
@@ -771,25 +769,6 @@ struct set_spec_node
   REGU_VARIABLE *set_ptr;	/* set regu variable */
 };
 
-#define VACOMM_BUFFER_HEADER_SIZE           (OR_INT_SIZE * 3)
-#define VACOMM_BUFFER_HEADER_LENGTH_OFFSET  (0)
-#define VACOMM_BUFFER_HEADER_STATUS_OFFSET  (OR_INT_SIZE)
-#define VACOMM_BUFFER_HEADER_NO_VALS_OFFSET (OR_INT_SIZE * 2)
-#define VACOMM_BUFFER_HEADER_ERROR_OFFSET   (OR_INT_SIZE * 2)
-
-typedef enum
-{
-  METHOD_SUCCESS = 1,
-  METHOD_EOF,
-  METHOD_ERROR
-} METHOD_CALL_STATUS;
-
-typedef enum
-{
-  VACOMM_BUFFER_SEND = 1,
-  VACOMM_BUFFER_ABORT
-} VACOMM_BUFFER_CLIENT_ACTION;
-
 struct method_spec_node
 {
   REGU_VARIABLE_LIST method_regu_list;	/* regulator variable list */
@@ -797,6 +776,18 @@ struct method_spec_node
   /* list file ID for the method */
   /* arguments */
   METHOD_SIG_LIST *method_sig_list;	/* method signature list */
+};
+
+struct dblink_spec_node
+{
+  REGU_VARIABLE_LIST dblink_regu_list_pred;	/* regu list for the predicate */
+  REGU_VARIABLE_LIST dblink_regu_list_rest;	/* regu list for rest of attrs */
+  int host_var_count;		/* host variable count for dblink spec */
+  int *host_var_index;		/* host variable indexes for dblink spec */
+  char *conn_url;		/* connection URL for remote DB server */
+  char *conn_user;		/* user name for remote DB server */
+  char *conn_password;		/* password for remote user */
+  char *conn_sql;		/* SQL command text for remote database */
 };
 
 struct reguval_list_spec_node
@@ -811,6 +802,7 @@ union hybrid_node
   SHOWSTMT_SPEC_TYPE showstmt_node;	/* show stmt specification */
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
+  DBLINK_SPEC_TYPE dblink_node;	/* dblink specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
   json_table_spec_node json_table_node;	/* json_table specification */
 };				/* class/list access specification */
@@ -848,6 +840,9 @@ union hybrid_node
 
 #define ACCESS_SPEC_LIST_ID(ptr) \
         (ACCESS_SPEC_XASL_NODE(ptr)->list_id)
+
+#define ACCESS_SPEC_CONNECT_BY_LIST_ID(ptr) \
+        (ACCESS_SPEC_XASL_NODE(ptr)->proc.connect_by.input_list_id)
 
 #define ACCESS_SPEC_RLIST_VALPTR_LIST(ptr) \
         ((ptr)->s.reguval_list_node.valptr_list)
@@ -887,6 +882,15 @@ union hybrid_node
 
 #define ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT(ptr) \
         ((ptr)->s.json_table_node.m_node_count)
+
+#define ACCESS_SPEC_DBLINK_SPEC(ptr) \
+	((ptr)->s.dblink_node)
+
+#define ACCESS_SPEC_DBLINK_XASL_NODE(ptr) \
+	((ptr)->s.dblink_node.xasl_node)
+
+#define ACCESS_SPEC_DBLINK_LIST_ID(ptr) \
+	(ACCESS_SPEC_DBLINK_XASL_NODE(ptr)->list_id)
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 struct orderby_stat
@@ -1017,12 +1021,6 @@ struct xasl_node
 
   ACCESS_SPEC_TYPE *curr_spec;	/* current spec. node */
   int instnum_flag;		/* stop or continue scan? */
-  int next_scan_on;		/* next scan is initiated ? */
-  int next_scan_block_on;	/* next scan block is initiated ? */
-
-  int cat_fetched;		/* catalog information fetched? */
-  int query_in_progress;	/* flag which tells if the query is currently executing.  Used by
-				 * qmgr_clear_trans_wakeup() to determine how much of the xasl tree to clean up. */
 
   SCAN_OPERATION_TYPE scan_op_type;	/* scan type */
   int upd_del_class_cnt;	/* number of classes affected by update or delete (used only in case of UPDATE or
@@ -1049,11 +1047,8 @@ struct xasl_node
     CTE_PROC_NODE cte;		/* CTE_PROC */
   } proc;
 
-  double cardinality;		/* estimated cardinality of result */
-
   /* XASL cache related information */
   OID creator_oid;		/* OID of the user who created this XASL */
-  int projected_size;		/* # of bytes per result tuple */
   int n_oid_list;		/* size of the referenced OID list */
   OID *class_oid_list;		/* list of class/serial OIDs referenced in the XASL */
   int *class_locks;		/* list of locks for class_oid_list. */
@@ -1062,7 +1057,10 @@ struct xasl_node
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;
 
-  int max_iterations;		/* Number of maximum iterations (used during run-time for recursive CTE) */
+#if defined (CS_MODE) || defined (SA_MODE)
+  int projected_size;		/* # of bytes per result tuple */
+  double cardinality;		/* estimated cardinality of result */
+#endif
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
   ORDERBY_STATS orderby_stats;
@@ -1072,6 +1070,12 @@ struct xasl_node
   TOPN_TUPLES *topn_items;	/* top-n tuples for orderby limit */
 
   XASL_STATUS status;		/* current status */
+
+  int query_in_progress;	/* flag which tells if the query is currently executing.  Used by
+				 * qmgr_clear_trans_wakeup() to determine how much of the xasl tree to clean up. */
+  int next_scan_on;		/* next scan is initiated ? */
+  int next_scan_block_on;	/* next scan block is initiated ? */
+  int max_iterations;		/* Number of maximum iterations (used during run-time for recursive CTE) */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
@@ -1081,7 +1085,7 @@ struct pred_expr_with_context
   int num_attrs_pred;		/* number of atts from the predicate */
   ATTR_ID *attrids_pred;	/* array of attr ids from the pred */
   HEAP_CACHE_ATTRINFO *cache_pred;	/* cache for the pred attrs */
-  void *unpack_info;		/* Buffer information. */
+  XASL_UNPACK_INFO *unpack_info;	/* Buffer information. */
 };
 typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
 

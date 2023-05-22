@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -29,6 +28,9 @@
 
 #include "storage_common.h"
 #include "dbtype_def.h"
+#ifdef __cplusplus
+#include <functional>
+#endif
 
 #define ROOTCLASS_NAME "Rootclass"	/* Name of Rootclass */
 
@@ -91,41 +93,29 @@
   } while(0)
 
 #define OID_EQ(oidp1, oidp2) \
-  ((oidp1) == (oidp2) || ((oidp1)->pageid == (oidp2)->pageid && \
-			  (oidp1)->slotid == (oidp2)->slotid && \
-			  (oidp1)->volid  == (oidp2)->volid))
+  ( (oidp1)->pageid == (oidp2)->pageid && \
+    (oidp1)->slotid == (oidp2)->slotid && \
+    (oidp1)->volid  == (oidp2)->volid )
 
 #define OID_GT(oidp1, oidp2) \
-  ((oidp1) != (oidp2) &&						      \
-   ((oidp1)->volid > (oidp2)->volid ||					      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid > (oidp2)->pageid) ||\
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid > (oidp2)->slotid)))
+   ( ((oidp1)->volid != (oidp2)->volid) ? ((oidp1)->volid > (oidp2)->volid)          \
+        : ((oidp1)->pageid != (oidp2)->pageid) ? ((oidp1)->pageid > (oidp2)->pageid) \
+        : ((oidp1)->slotid > (oidp2)->slotid) )
 
 #define OID_GTE(oidp1, oidp2) \
-  ((oidp1) == (oidp2) ||						      \
-   ((oidp1)->volid > (oidp2)->volid ||					      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid > (oidp2)->pageid) ||\
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid > (oidp2)->slotid) ||				      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid == (oidp2)->slotid)))
+   ( ((oidp1)->volid != (oidp2)->volid) ? ((oidp1)->volid > (oidp2)->volid)          \
+        : ((oidp1)->pageid != (oidp2)->pageid) ? ((oidp1)->pageid > (oidp2)->pageid) \
+        : ((oidp1)->slotid >= (oidp2)->slotid) )
 
 #define OID_LT(oidp1, oidp2) \
-  ((oidp1) != (oidp2) &&						      \
-   ((oidp1)->volid < (oidp2)->volid ||					      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid < (oidp2)->pageid) ||\
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid < (oidp2)->slotid)))
+   ( ((oidp1)->volid != (oidp2)->volid) ? ((oidp1)->volid < (oidp2)->volid)          \
+        : ((oidp1)->pageid != (oidp2)->pageid) ? ((oidp1)->pageid < (oidp2)->pageid) \
+        : ((oidp1)->slotid < (oidp2)->slotid) )
 
 #define OID_LTE(oidp1, oidp2) \
-  ((oidp1) == (oidp2) ||						      \
-   ((oidp1)->volid < (oidp2)->volid ||					      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid < (oidp2)->pageid) ||\
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid < (oidp2)->slotid) ||				      \
-    ((oidp1)->volid == (oidp2)->volid && (oidp1)->pageid == (oidp2)->pageid   \
-     && (oidp1)->slotid == (oidp2)->slotid)))
+   ( ((oidp1)->volid != (oidp2)->volid) ? ((oidp1)->volid < (oidp2)->volid)          \
+        : ((oidp1)->pageid != (oidp2)->pageid) ? ((oidp1)->pageid < (oidp2)->pageid) \
+        : ((oidp1)->slotid <= (oidp2)->slotid) )
 
 /* It is used for hashing purposes */
 #define OID_PSEUDO_KEY(oidp) \
@@ -133,6 +123,29 @@
    ((oidp)->slotid | (((unsigned int)(oidp)->pageid) << 8)) ^ \
    ((((unsigned int)(oidp)->pageid) >> 8) | \
     (((unsigned int)(oidp)->volid) << 24)))
+
+#ifdef __cplusplus
+// *INDENT-OFF*
+template <>
+struct std::hash<OID>
+{
+  size_t operator()(const OID& oid) const
+  {
+    return OID_PSEUDO_KEY (&oid);
+  }
+};
+
+inline bool operator==(const OID& oid1, const OID& oid2)
+{
+  return OID_EQ (&oid1, &oid2);
+}
+
+inline bool operator!=(const OID& oid1, const OID& oid2)
+{
+  return !OID_EQ (&oid1, &oid2);
+}
+// *INDENT-ON*
+#endif
 
 #define OID_IS_VIRTUAL_CLASS_OF_DIR_OID(oidp) \
   ((((oidp)->slotid & VIRTUAL_CLASS_DIR_OID_MASK) \
@@ -186,6 +199,8 @@ enum
   OID_CACHE_AUTH_CLASS_ID,
   OID_CACHE_OLD_ROOT_CLASS_ID,
   OID_CACHE_DB_ROOT_CLASS_ID,
+  OID_CACHE_DB_SERVER_CLASS_ID,
+  OID_CACHE_SYNONYM_CLASS_ID,
 
   OID_CACHE_SIZE
 };
@@ -218,5 +233,5 @@ extern void oid_set_cached_class_oid (const int cache_id, const OID * oid);
 extern const char *oid_get_cached_class_name (const int cache_id);
 extern bool oid_is_cached_class_oid (const OID * class_oid);
 extern OID *oid_get_rep_read_tran_oid (void);
-extern int oid_is_system_class (const OID * class_oid, bool * is_system_class_p);
+extern bool oid_is_system_class (const OID * class_oid);
 #endif /* _OID_H_ */

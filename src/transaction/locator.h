@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -28,7 +27,7 @@
 
 #ident "$Id$"
 
-#include "object_representation.h"
+#include "object_representation_constants.h"
 #include "oid.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -131,7 +130,7 @@ typedef enum
  *   Currently, classes does not have versions. So, fetching current, MVCC or
  * dirty version lead to same result when classes are fetched. However,
  * using LC_FETCH_CURRENT_VERSION is recommended in this case.
- * 
+ *
  *   When need to read an instance (DB_FETCH_READ) for SELECT purpose, use MVCC
  * version type. This means visible version for current transaction, without
  * locking. In this way, we respect the rule "do not lock instances at select"
@@ -200,6 +199,8 @@ typedef enum
 #define LC_FLAG_HAS_INDEX	0x01	/* Used for flushing, set if object has index */
 #define LC_FLAG_UPDATED_BY_ME	0x02	/* Used by MVCC to identify that an object was updated by current transaction. */
 #define LC_FLAG_HAS_UNIQUE_INDEX 0x04	/* Used for flushing, set if object has unique index */
+#define LC_FLAG_TRIGGER_INVOLVED 0x08	/* Used for supplemental logging to know whether trigger is involved
+					   or not, set if do_Trigger_involved is true */
 
 #define LC_ONEOBJ_SET_HAS_INDEX(obj) \
   (obj)->flag |= LC_FLAG_HAS_INDEX
@@ -213,6 +214,11 @@ typedef enum
 #define LC_ONEOBJ_SET_UPDATED_BY_ME(obj) \
   (obj)->flag |= LC_FLAG_UPDATED_BY_ME
 
+#define LC_ONEOBJ_SET_TRIGGER_INVOLVED(obj) \
+  (obj)->flag |= LC_FLAG_TRIGGER_INVOLVED
+
+#define LC_ONEOBJ_IS_TRIGGER_INVOLVED(obj) \
+  (((obj)->flag & LC_FLAG_TRIGGER_INVOLVED) != 0)
 
 typedef struct lc_copyarea_oneobj LC_COPYAREA_ONEOBJ;
 struct lc_copyarea_oneobj
@@ -226,12 +232,18 @@ struct lc_copyarea_oneobj
   int offset;			/* location in the copy area where the content of the object is stored */
 };
 
+enum MULTI_UPDATE_FLAG
+{
+  IS_MULTI_UPDATE = 0x01,
+  START_MULTI_UPDATE = 0x02,
+  END_MULTI_UPDATE = 0x04
+};
+
 typedef struct lc_copyarea_manyobjs LC_COPYAREA_MANYOBJS;
 struct lc_copyarea_manyobjs
 {
   LC_COPYAREA_ONEOBJ objs;
-  int start_multi_update;	/* the start of flush request */
-  int end_multi_update;		/* the end of flush request */
+  int multi_update_flags;	/* start/is/end/ for unique statistics gathering */
   int num_objs;			/* How many objects */
 };
 
@@ -273,7 +285,7 @@ struct lc_lockset_classof
 typedef struct lc_lock_set LC_LOCKSET;
 struct lc_lock_set
 {				/* Fetch many area definition */
-  char *mem;			/* Pointer to location of chunk of area where the desired objects and their classes are 
+  char *mem;			/* Pointer to location of chunk of area where the desired objects and their classes are
 				 * described */
   int length;			/* Length of the area */
 
@@ -290,7 +302,7 @@ struct lc_lock_set
   /* *** Things related to classes of the requested objects *** */
   int num_classes_of_reqobjs;	/* Number of known classes for the requested objects. */
   int num_classes_of_reqobjs_processed;	/* Number of classes processed by the server */
-  int last_classof_reqobjs_cached;	/* Last requested object that has been cached by workspace manger. Used only bt 
+  int last_classof_reqobjs_cached;	/* Last requested object that has been cached by workspace manger. Used only bt
 					 * client. Don't need to be send to server or from server. */
   int quit_on_errors;		/* Quit when errors are found */
   int packed_size;		/* Size of packed lock request area */
@@ -431,6 +443,10 @@ extern int locator_get_packed_oid_set_size (LC_OIDSET * oidset);
 extern char *locator_pack_oid_set (char *buffer, LC_OIDSET * oidset);
 extern LC_OIDSET *locator_unpack_oid_set_to_new (THREAD_ENTRY * thread_p, char *buffer);
 extern bool locator_unpack_oid_set_to_exist (char *buffer, LC_OIDSET * use);
+
+extern bool locator_manyobj_flag_is_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
+extern void locator_manyobj_flag_remove (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
+extern void locator_manyobj_flag_set (LC_COPYAREA_MANYOBJS * copyarea, enum MULTI_UPDATE_FLAG muf);
 
 /* For Debugging */
 #if defined(CUBRID_DEBUG)

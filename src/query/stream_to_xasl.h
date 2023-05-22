@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -25,18 +24,21 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "thread_compat.hpp"
-#include "xasl.h"
 
-extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool use_xasl_clone,
-				   char *xasl_stream, int xasl_stream_size, void **xasl_unpack_info_ptr);
-extern int stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred_expr_tree,
+// forward definitions
+struct func_pred;
+struct pred_expr_with_context;
+struct xasl_node;
+struct xasl_node_header;
+struct xasl_unpack_info;
+
+extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool use_xasl_clone,
+				   char *xasl_stream, int xasl_stream_size, xasl_unpack_info ** xasl_unpack_info_ptr);
+extern int stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context ** pred_expr_tree,
 					  char *pred_stream, int pred_stream_size);
-extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *xasl_stream,
-					int xasl_stream_size, void **xasl_unpack_info_ptr);
-extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * xasl_header_p,
+extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *xasl_stream,
+					int xasl_stream_size, xasl_unpack_info ** xasl_unpack_info_ptr);
+extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, xasl_node_header * xasl_header_p,
 					       char *xasl_stream);
-extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
-extern void stx_free_additional_buff (THREAD_ENTRY * thread_p, void *unpack_info_ptr);
-extern void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
 
 #endif /* _STREAM_TO_XASL_H_ */

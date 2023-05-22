@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -24,13 +23,18 @@
 #include <assert.h>
 #include "partition_sr.h"
 
-#include "heap_file.h"
+#include "dbtype.h"
 #include "fetch.h"
-#include "dbtype.h"
-#include "stream_to_xasl.h"
-#include "query_executor.h"
+#include "heap_file.h"
 #include "object_primitive.h"
-#include "dbtype.h"
+#include "object_representation.h"
+#include "query_aggregate.hpp"
+#include "query_executor.h"
+#include "query_opfunc.h"
+#include "stream_to_xasl.h"
+#include "xasl.h"
+#include "xasl_predicate.hpp"
+#include "xasl_unpack_info.hpp"
 
 typedef enum match_status
 {
@@ -886,6 +890,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 				    NULL);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto cleanup;
 	}
     }
@@ -893,6 +898,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
   spec = (PARTITION_SPEC_TYPE *) db_private_alloc (pinfo->thread_p, cnt * sizeof (PARTITION_SPEC_TYPE));
   if (spec == NULL)
     {
+      assert (false);
       error = ER_FAILED;
       goto cleanup;
     }
@@ -920,6 +926,7 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
 
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto cleanup;
 	    }
 	}
@@ -1218,7 +1225,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
     case PO_EQ:
       if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (val_p))
 	{
-	  /* We have a problem here because type checking might not have coerced val to the type of the column. If this 
+	  /* We have a problem here because type checking might not have coerced val to the type of the column. If this
 	   * is the case, we have to do it here */
 	  if (tp_value_cast (val_p, &val, col_domain, false) == DOMAIN_INCOMPATIBLE)
 	    {
@@ -1598,7 +1605,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_INARITH:
       /* We can't evaluate the general form of TYPE_INARITH but we can handle "pseudo constants" (SYS_DATE, SYS_TIME,
-       * etc) and the CAST operator applied to constants. Eventually, it would be great if we could evaluate all pseudo 
+       * etc) and the CAST operator applied to constants. Eventually, it would be great if we could evaluate all pseudo
        * constant here (like cast ('1' as int) + 1) */
       if (partition_get_value_from_inarith (pinfo, regu, value_p, is_value) != NO_ERROR)
 	{
@@ -1838,7 +1845,7 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	 * partitions matching the right PRED_EXPR and merge or intersect the lists */
 	PRUNING_BITSET left_set, right_set;
 	MATCH_STATUS lstatus, rstatus;
-	BOOL_OP op = pr->pe.pred.bool_op;
+	BOOL_OP op = pr->pe.m_pred.bool_op;
 
 	if (op != B_AND && op != B_OR)
 	  {
@@ -1850,21 +1857,21 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	pruningset_init (&left_set, PARTITIONS_COUNT (pinfo));
 	pruningset_init (&right_set, PARTITIONS_COUNT (pinfo));
 
-	lstatus = partition_match_pred_expr (pinfo, pr->pe.pred.lhs, &left_set);
-	rstatus = partition_match_pred_expr (pinfo, pr->pe.pred.rhs, &right_set);
+	lstatus = partition_match_pred_expr (pinfo, pr->pe.m_pred.lhs, &left_set);
+	rstatus = partition_match_pred_expr (pinfo, pr->pe.m_pred.rhs, &right_set);
 
 	if (op == B_AND)
 	  {
 	    /* do intersection between left and right */
 	    if (lstatus == MATCH_NOT_FOUND)
 	      {
-		/* pr->pe.pred.lhs does not refer part_expr so return right */
+		/* pr->pe.m_pred.lhs does not refer part_expr so return right */
 		pruningset_copy (pruned, &right_set);
 		status = rstatus;
 	      }
 	    else if (rstatus == MATCH_NOT_FOUND)
 	      {
-		/* pr->pe.pred.rhs does not refer part_expr so return right */
+		/* pr->pe.m_pred.rhs does not refer part_expr so return right */
 		pruningset_copy (pruned, &left_set);
 		status = lstatus;
 	      }
@@ -1894,7 +1901,7 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
       }
 
     case T_EVAL_TERM:
-      switch (pr->pe.eval_term.et_type)
+      switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
 	  {
@@ -1902,9 +1909,9 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	    REGU_VARIABLE *left, *right;
 	    PRUNING_OP op;
 
-	    left = pr->pe.eval_term.et.et_comp.lhs;
-	    right = pr->pe.eval_term.et.et_comp.rhs;
-	    op = partition_rel_op_to_pruning_op (pr->pe.eval_term.et.et_comp.rel_op);
+	    left = pr->pe.m_eval_term.et.et_comp.lhs;
+	    right = pr->pe.m_eval_term.et.et_comp.rhs;
+	    op = partition_rel_op_to_pruning_op (pr->pe.m_eval_term.et.et_comp.rel_op);
 
 	    status = MATCH_NOT_FOUND;
 	    if (partition_do_regu_variables_match (pinfo, left, part_expr))
@@ -1923,11 +1930,11 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	    REGU_VARIABLE *regu, *list;
 	    PRUNING_OP op;
 
-	    regu = pr->pe.eval_term.et.et_alsm.elem;
-	    list = pr->pe.eval_term.et.et_alsm.elemset;
-	    op = partition_rel_op_to_pruning_op (pr->pe.eval_term.et.et_alsm.rel_op);
+	    regu = pr->pe.m_eval_term.et.et_alsm.elem;
+	    list = pr->pe.m_eval_term.et.et_alsm.elemset;
+	    op = partition_rel_op_to_pruning_op (pr->pe.m_eval_term.et.et_alsm.rel_op);
 	    /* adjust rel_op based on the QL_FLAG of the alsm eval node */
-	    if (pr->pe.eval_term.et.et_alsm.eq_flag == F_SOME)
+	    if (pr->pe.m_eval_term.et.et_alsm.eq_flag == F_SOME)
 	      {
 		if (op == PO_EQ)
 		  {
@@ -2197,6 +2204,7 @@ partition_find_root_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, O
   error = heap_get_class_supers (thread_p, class_oid, &super_classes, &super_count);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       if (super_classes != NULL)
 	{
 	  free_and_init (super_classes);
@@ -2266,6 +2274,7 @@ partition_load_pruning_context (THREAD_ENTRY * thread_p, const OID * class_oid, 
       error = partition_find_root_class_oid (thread_p, class_oid, &pinfo->root_oid);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto error_return;
 	}
     }
@@ -2281,6 +2290,7 @@ reload_from_cache:
       error = partition_load_partition_predicate (pinfo, master);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  goto error_return;
 	}
       if (pruning_type == DB_PARTITION_CLASS)
@@ -2293,13 +2303,15 @@ reload_from_cache:
   if (pinfo->error_code != NO_ERROR)
     {
       error = pinfo->error_code;
+      ASSERT_ERROR ();
       goto error_return;
     }
 
   error = heap_get_class_partitions (pinfo->thread_p, &pinfo->root_oid, &pinfo->partitions, &pinfo->count);
   if (error != NO_ERROR)
     {
-      return error;
+      ASSERT_ERROR ();
+      goto error_return;
     }
 
   if (pinfo->partitions == NULL)
@@ -2312,6 +2324,7 @@ reload_from_cache:
   error = partition_load_partition_predicate (pinfo, master);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto error_return;
     }
 
@@ -2438,17 +2451,22 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * mast
   error = db_set_get (master->values, 2, &val);
   if (error != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      return error;
     }
 
   assert (DB_VALUE_TYPE (&val) == DB_TYPE_CHAR);
-  expr_stream = db_get_string (&val);
+  // use const_cast since of a limitation of or_unpack_* functions which do not accept const
+  expr_stream = CONST_CAST (char *, db_get_string (&val));
   stream_len = db_get_string_size (&val);
 
   /* unpack partition expression */
-  error =
-    stx_map_stream_to_func_pred (pinfo->thread_p, &pinfo->partition_pred, expr_stream, stream_len,
-				 &pinfo->fp_cache_context);
+  error = stx_map_stream_to_func_pred (pinfo->thread_p, &pinfo->partition_pred, expr_stream, stream_len,
+				       &pinfo->fp_cache_context);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
   pr_clear_value (&val);
 
   return error;
@@ -2470,9 +2488,7 @@ partition_free_partition_predicate (PRUNING_CONTEXT * pinfo)
 
   if (pinfo->fp_cache_context != NULL)
     {
-      stx_free_additional_buff (pinfo->thread_p, pinfo->fp_cache_context);
-      stx_free_xasl_unpack_info (pinfo->fp_cache_context);
-      db_private_free_and_init (pinfo->thread_p, pinfo->fp_cache_context);
+      free_xasl_unpack_info (pinfo->thread_p, pinfo->fp_cache_context);
     }
 }
 
@@ -2650,7 +2666,7 @@ partition_get_position_in_key (PRUNING_CONTEXT * pinfo, BTID * btid)
   if (pinfo->partition_pred->func_regu->type != TYPE_ATTR_ID)
     {
       /* In the case of index keys, we will only apply pruning if the partition expression is actually an attribute.
-       * This is because we will not have expressions in the index key, only attributes (except for function and filter 
+       * This is because we will not have expressions in the index key, only attributes (except for function and filter
        * indexes which are not handled yet) */
       pinfo->attr_position = -1;
       return NO_ERROR;
@@ -2662,6 +2678,7 @@ partition_get_position_in_key (PRUNING_CONTEXT * pinfo, BTID * btid)
     heap_get_indexinfo_of_btid (pinfo->thread_p, &pinfo->root_oid, btid, NULL, &key_count, &keys, NULL, NULL, NULL);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return error;
     }
 
@@ -2709,6 +2726,7 @@ partition_prune_heap_scan (PRUNING_CONTEXT * pinfo)
       status = partition_match_pred_expr (pinfo, pinfo->spec->where_pred, &pruned);
       if (pinfo->error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return pinfo->error_code;
 	}
     }
@@ -2716,12 +2734,20 @@ partition_prune_heap_scan (PRUNING_CONTEXT * pinfo)
   if (status != MATCH_NOT_FOUND)
     {
       error = pruningset_to_spec_list (pinfo, &pruned);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
   else
     {
       /* consider all partitions */
       pruningset_set_all (&pruned);
       error = pruningset_to_spec_list (pinfo, &pruned);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
 
   return error;
@@ -2787,11 +2813,19 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
 	{
 	  pruningset_set_all (&pruned);
 	  error = pruningset_to_spec_list (pinfo, &pruned);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	    }
 	}
     }
   else
     {
       error = pruningset_to_spec_list (pinfo, &pruned);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
 
   return error;
@@ -2804,7 +2838,7 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
  * access_spec (in) : access spec to prune
  */
 int
-partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE * spec)
+partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node * spec)
 {
   int error = NO_ERROR;
   PRUNING_CONTEXT pinfo;
@@ -2837,6 +2871,7 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
   error = partition_load_pruning_context (thread_p, &ACCESS_SPEC_CLS_OID (spec), spec->pruning_type, &pinfo);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       return error;
     }
 
@@ -2854,6 +2889,10 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
       || spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
     {
       error = partition_prune_heap_scan (&pinfo);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
   else
     {
@@ -2879,15 +2918,24 @@ partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE 
 	  error = partition_get_position_in_key (&pinfo, btid);
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      partition_clear_pruning_context (&pinfo);
 	      return error;
 	    }
 	}
       error = partition_prune_index_scan (&pinfo);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
     }
 
   partition_clear_pruning_context (&pinfo);
-  spec->pruned = true;
+
+  if (error == NO_ERROR)
+    {
+      spec->pruned = true;
+    }
 
   return error;
 }
@@ -2936,7 +2984,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   repr_id = or_rep_id (recdes);
   or_set_rep_id (recdes, pinfo->root_repr_id);
 
-  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, NULL, &pinfo->attr_info);
+  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, &pinfo->attr_info);
 
   or_set_rep_id (recdes, repr_id);
   if (error != NO_ERROR)
@@ -3000,7 +3048,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
     {
       /* Update representation id of the record to that of the pruned partition. For any other operation than pruning,
        * the new representation id should be obtained by constructing a new HEAP_ATTRIBUTE_INFO structure for the new
-       * class, copying values from this record to that structure and then transforming it to disk. Since we're working 
+       * class, copying values from this record to that structure and then transforming it to disk. Since we're working
        * with partitioned tables, we can guarantee that, except for the actual representation id bits, the new record
        * will be exactly the same. Because of this, we can take a shortcut here and only update the bits from the
        * representation id */
@@ -3188,7 +3236,7 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES *
       else
 	{
 	  /* UPDATE operation is always performed on an instance of a partition (since the top class holds no data).
-	   * Even if pruning_type is DB_PARTITIONED_CLASS, class_oid will still hold the OID of the partition. Find the 
+	   * Even if pruning_type is DB_PARTITIONED_CLASS, class_oid will still hold the OID of the partition. Find the
 	   * OID of the root class before loading pruning context. The function which loads the pruning context will
 	   * get confused if we tell it that class_oid holds the partitioned class. */
 	  (void) partition_init_pruning_context (pcontext);
@@ -3588,7 +3636,7 @@ cleanup:
  * helper (in/out)   : aggregate helper
  */
 int
-partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, ACCESS_SPEC_TYPE * spec, int pruned_count,
+partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, access_spec_node * spec, int pruned_count,
 				 BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper)
 {
   int error = NO_ERROR, i = 0;

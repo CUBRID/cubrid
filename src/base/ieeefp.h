@@ -1,3 +1,20 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
 #ifndef __CLASSPATH_IEEEFP_H__
 #define __CLASSPATH_IEEEFP_H__
 
@@ -27,7 +44,7 @@
 
 #if defined(__arm__) || defined(__thumb__)
 /* ARM traditionally used big-endian words; and within those words the
-   byte ordering was big or little endian depending upon the target.  
+   byte ordering was big or little endian depending upon the target.
    Modern floating-point formats are naturally ordered; in this case
    __VFP_FP__ will be defined, even if soft-float.  */
 #ifdef __VFP_FP__

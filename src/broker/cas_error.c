@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -52,6 +51,8 @@
 
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
+
+#define CUBRID_CAS_ERR_TRACE        "CUBRID_CAS_ERR_TRACE"
 
 static bool server_aborted = false;
 
@@ -120,12 +121,10 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
     }
 #endif /* CAS_FOR_MYSQL */
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-#ifndef LIBCAS_FOR_JSP
   if ((net_buf == NULL) && (err_info.err_number == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED))
     {
       set_server_aborted (true);
     }
-#endif
 
   switch (err_info.err_number)
     {
@@ -134,10 +133,8 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
     case ER_OBJ_NO_CONNECT:
     case ER_BO_CONNECT_FAILED:
       /* case -581: *//* ER_DB_NO_MODIFICATIONS */
-#ifndef LIBCAS_FOR_JSP
       as_info->reset_flag = TRUE;
       cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
-#endif
       break;
     }
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
@@ -184,8 +181,26 @@ error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg,
   err_info.err_string[ERR_FILE_LENGTH - 1] = 0;
   err_info.err_line = line;
 
-  if ((err_indicator == CAS_ERROR_INDICATOR) && (err_msg == NULL))
-    return err_indicator;
+  if (err_indicator == CAS_ERROR_INDICATOR)
+    {
+      const char *envvar_caserr_trace = NULL;
+      envvar_caserr_trace = getenv (CUBRID_CAS_ERR_TRACE);
+      if (err_msg == NULL)
+	{
+	  if (envvar_caserr_trace != NULL && strcasecmp (envvar_caserr_trace, "on") == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SQL_ERROR_LOG_TRACE, 1, err_number);
+	    }
+	  return err_indicator;
+	}
+      else
+	{
+	  if (envvar_caserr_trace != NULL && strcasecmp (envvar_caserr_trace, "on") == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SQL_ERROR_LOG_MSG_TRACE, 2, err_number, err_msg);
+	    }
+	}
+    }
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
   if (err_msg)

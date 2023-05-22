@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -40,13 +41,17 @@ $set 1 MSGCAT_CSQL_SET_CSQL
   -c, --command=ARG            CSQLコマンド\n\
   -l, --line-output            一つのラインでバリューを表示\n\
   -r, --read-only              リードオンリーモード\n\
-  -t, --plain-output           display results in a script-friendly format (only works with -c and -i)\n\
-  -N, --skip-column-names      do not display column names in results (only works with -c and -i)\n\
+  -t, --plain-output           スクリプトに適した形式で結果を表示します（-cおよび-iでのみ機能します）\n\
+  -q, --query-output           クエリに適した形式で結果を表示します（-cおよび-iでのみ機能します）\n\
+  -d, --loaddb-output          loaddbに適した形式で結果を表示します（-cおよび-iでのみ機能します）\n\
+  -N, --skip-column-names      結果に列名を表示しません（-cおよび-iでのみ機能します）\n\
       --string-width           ストリングタイプの格コラムが表示される長さを制限する。\n\
       --no-auto-commit         自動コミットしない\n\
       --no-pager               ページ単位で表示しない\n\
       --no-single-line         シングルラインで実行しない\n\
       --no-trigger-action      トリガーアクションを無効にする\n\
+      --delimiter=ARG          列間の区切り文字（-qでのみ機能）\n\
+      --enclosure=ARG          結果文字列のエンクロージャ（-qでのみ機能）\n\
 \n\
 追加情報は「http://www.cubrid.org」で得られます。\n
 41 %1$s: 正しくない環境バリアブル「%2$s_MODE」 \n%3$s、または%4$sしかできません。\n
@@ -87,6 +92,7 @@ $ These 3 should be blank
 81 sysadm>
 82 %1$d transactions %2$s.
 83 %1$d transaction %2$s.
+84 指定された引数が少なすぎます。
 
 145 <ヘルプ: クラススキーマ>
 146 なし
@@ -107,6 +113,7 @@ $ These 3 should be blank
 194 コマンドオプションが正しくありません。
 196 正義されていないエラー発生。
 197 出力が再指定された場合、「;edit」コマンドは使えません。
+198 フォーマットに失敗しました。
 
 203 <%1$s> 
 204 <上位クラス> 
@@ -148,7 +155,7 @@ $ csql help messages
    ;EXit                        - 終了。\n\
 \n\
    ;CLear                       - コマンドバッファーの内容を消す。\n\
-   ;EDIT                        - コマンドバッファーを編集。\n\
+   ;EDIT   [format/fmt]         - コマンドバッファを使用して[フォーマッタの後に]システムエディタを呼び出します。\n\
    ;LISt                        - コマンドバッファーの内容を出力。\n\
 \n\
    ;RUn                         - コマンドバッファーを実行。\n\
@@ -157,12 +164,15 @@ $ csql help messages
    ;COMmit                      - 進行中のトランザクションをコミット。\n\
    ;ROllback                    - 進行中のトランザクションをロールバック。\n\
    ;AUtocommit [ON|OFF]         - 自動コミットモードを設定。／解除。\n\
-   ;REStart                     - データベースリスタート。\n\
+   ;REStart                     - CSQL セッションで現在のデータベースに再接続します。\n\
+   ;CHeckpoint                  - チェックポイントを実行します (--sysadm を指定した CSQL のみ)。\n\
+   ;Killtran                    - トランザクションステータス情報を確認するか、特定のトランザクションを終了します (--sysadm を指定した CSQL のみ)。\n\
 \n\
-   ;SHELL_Cmd    [shell-cmd]    - 既存に設定したシェルを設定／表示する。\n\
-   ;EDITOR_Cmd   [editor-cmd]   - 既存に設定したエディターを設定／表示する。\n\
-   ;PRINT_Cmd    [print-cmd]    - 既存に設定したプリントを設定／表示する。\n\
-   ;PAger_cmd    [pager-cmd]    - 既存に設定したページャーを設定／表示する。\n\
+   ;SHELL_Cmd     [shell-cmd]   - 既存に設定したシェルを設定／表示する。\n\
+   ;EDITOR_Cmd    [editor-cmd]  - 既存に設定したエディターを設定／表示する。\n\
+   ;PRINT_Cmd     [print-cmd]   - 既存に設定したプリントを設定／表示する。\n\
+   ;PAger_cmd     [pager-cmd]   - 既存に設定したページャーを設定／表示する。\n\
+   ;FOrmatter_cmd [formatter-cmd] - 既存に設定したフォーマッタを設定/表示する。\n\
 \n\
    ;DATE                        - 地域の日付、時間を出力。\n\
    ;DATAbase                    - アクセスしているデータベース名を出力。\n\
@@ -180,6 +190,13 @@ $ csql help messages
    ;HISTORYList                 - 実行したクエリリスト表示。\n\
    ;HISTORYRead <history_num>   - ヒストリー番号のクエリをコマンドバッファーにセーブする。\n\
    ;TRAce [ON/OFF] [text/json]  - enable/disable sql auto trace.\n\
+   ;SIngleline [ON|OFF]         - 単線モードの有効化/無効化.\n\
+   ;CONnect username [dbname | dbname@hostname]\n\
+                                - ユーザー名として現在のデータベースまたは他のデータベースに接続します。\n\
+   ;.Hist [ON/OFF]              - CSQL で統計情報の収集を開始/停止します (DBA のみ利用可能)。\n\
+   ;.Clear_hist                 - バッファ内の CSQL 統計情報をクリアします。\n\
+   ;.Dump_hist                  - CSQL 統計情報を CSQL で表示します。\n\
+   ;.X_hist                     - 統計データが初期化された CSQL で CSQL 統計情報を表示します。\n\
    ;HElp                        - ヘルプメッセージ出力。\n\n
 
 232 <制約事項> 

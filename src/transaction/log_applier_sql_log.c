@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -31,6 +30,7 @@
 #include <unistd.h>
 #include "log_applier_sql_log.h"
 #include "system_parameter.h"
+#include "object_primitive.h"
 #include "object_template.h"
 #include "object_print.h"
 #include "error_manager.h"
@@ -39,9 +39,9 @@
 #include "class_object.h"
 #include "environment_variable.h"
 #include "set_object.h"
-#include "cci_applier.h"
 #include "schema_manager.h"
 #include "dbtype.h"
+#include "file_io.h"
 
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
@@ -64,6 +64,7 @@ SL_INFO sl_Info;
 
 static FILE *log_fp;
 static FILE *catalog_fp;
+static int sql_log_max_cnt = 0;
 static char sql_log_base_path[PATH_MAX];
 static char sql_catalog_path[PATH_MAX];
 
@@ -79,9 +80,10 @@ static DB_VALUE *sl_find_att_value (const char *att_name, OBJ_TEMPASSIGN ** assi
 
 static FILE *sl_open_next_file (FILE * old_fp);
 static FILE *sl_log_open (void);
+static int sl_remove_oldest_file (void);
 static int sl_read_catalog (void);
 static int sl_write_catalog (void);
-static int create_dir (const char *new_dir);
+static int sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size);
 
 static char *
 trim_single_quote (char *str, size_t len)
@@ -138,43 +140,49 @@ sl_write_catalog (void)
 static int
 sl_read_catalog (void)
 {
-  FILE *catalog_fp;
+  FILE *read_catalog_fp;
   char info[LINE_MAX];
 
-  catalog_fp = fopen (sql_catalog_path, "r");
+  read_catalog_fp = fopen (sql_catalog_path, "r");
 
-  if (catalog_fp == NULL)
+  if (read_catalog_fp == NULL)
     {
       return sl_write_catalog ();
     }
 
-  if (fgets (info, LINE_MAX, catalog_fp) == NULL)
+  if (fgets (info, LINE_MAX, read_catalog_fp) == NULL)
     {
+      if (read_catalog_fp != NULL)
+	{
+	  fclose (read_catalog_fp);
+	}
       return ER_FAILED;
     }
 
   if (sscanf (info, CATALOG_FORMAT, &sl_Info.curr_file_id, &sl_Info.last_inserted_sql_id) != 2)
     {
+      fclose (read_catalog_fp);
       return ER_FAILED;
     }
 
+  fclose (read_catalog_fp);
   return NO_ERROR;
 }
 
 int
 sl_init (const char *db_name, const char *repl_log_path)
 {
-  char tmp_log_path[PATH_MAX];
-  char basename_buf[PATH_MAX];
+  char sql_log_path[PATH_MAX];
+
+  if (sl_create_sql_log_dir (repl_log_path, sql_log_path, sizeof (sql_log_path)) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  snprintf (sql_log_base_path, PATH_MAX, "%s/%s.sql.log", sql_log_path, basename ((char *) repl_log_path));
+  snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", dirname (sql_log_path), db_name);
 
   memset (&sl_Info, 0, sizeof (sl_Info));
-
-  snprintf (tmp_log_path, PATH_MAX, "%s/sql_log/", repl_log_path);
-  create_dir (tmp_log_path);
-
-  strcpy (basename_buf, repl_log_path);
-  snprintf (sql_log_base_path, PATH_MAX, "%s/sql_log/%s.sql.log", repl_log_path, basename (basename_buf));
-  snprintf (sql_catalog_path, PATH_MAX, "%s/%s_applylogdb.sql.info", repl_log_path, db_name);
 
   sl_Info.curr_file_id = 0;
   sl_Info.last_inserted_sql_id = 0;
@@ -195,6 +203,8 @@ sl_init (const char *db_name, const char *repl_log_path)
     {
       return ER_FAILED;
     }
+
+  sql_log_max_cnt = prm_get_integer_value (PRM_ID_HA_SQL_LOG_MAX_COUNT);
 
   return NO_ERROR;
 }
@@ -400,7 +410,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 
       string_buffer serial_name_strbuf;
 
-      sl_print_att_value (serial_name_strbuf, "name", inst_tp->assignments, inst_tp->nassigns);
+      sl_print_att_value (serial_name_strbuf, SERIAL_ATTR_UNIQUE_NAME, inst_tp->assignments, inst_tp->nassigns);
       char *serial_name = trim_single_quote ((char *) serial_name_strbuf.get_buffer (), serial_name_strbuf.len ());
 
       string_buffer alter_strbuf;
@@ -436,7 +446,7 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
 }
 
 int
-sl_write_statement_sql (char *class_name, char *db_user, int item_type, char *stmt_text, char *ha_sys_prm)
+sl_write_statement_sql (char *class_name, char *db_user, int item_type, const char *stmt_text, char *ha_sys_prm)
 {
   int error = NO_ERROR;
   char default_ha_prm[LINE_MAX];
@@ -541,6 +551,14 @@ sl_write_sql (string_buffer & query, string_buffer * select)
   if (ftell (log_fp) >= SL_LOG_FILE_MAX_SIZE)
     {
       log_fp = sl_open_next_file (log_fp);
+
+      if (sl_Info.curr_file_id >= sql_log_max_cnt)
+	{
+	  if (sl_remove_oldest_file () != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
     }
 
   return NO_ERROR;
@@ -552,7 +570,11 @@ sl_log_open (void)
   char cur_sql_log_path[PATH_MAX];
   FILE *fp;
 
-  snprintf (cur_sql_log_path, PATH_MAX, "%s.%d", sql_log_base_path, sl_Info.curr_file_id);
+  if (snprintf (cur_sql_log_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id) < 0)
+    {
+      assert (false);
+      return NULL;
+    }
 
   fp = fopen (cur_sql_log_path, "r+");
   if (fp != NULL)
@@ -585,7 +607,11 @@ sl_open_next_file (FILE * old_fp)
   sl_Info.curr_file_id++;
   sl_Info.last_inserted_sql_id = 0;
 
-  snprintf (new_file_path, PATH_MAX, "%s.%d", sql_log_base_path, sl_Info.curr_file_id);
+  if (snprintf (new_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, sl_Info.curr_file_id) < 0)
+    {
+      assert (false);
+      return NULL;
+    }
 
   fclose (old_fp);
   new_fp = fopen (new_file_path, "w");
@@ -599,44 +625,114 @@ sl_open_next_file (FILE * old_fp)
   return new_fp;
 }
 
+/*
+ * sl_remove_oldest_file() - remove oldest sql log file
+ *   return: error code
+ *
+ * Note:
+ *   This function is related to the ha_sql_log_max_count system parameter.
+ *   This system parameter can be set from 2 to 5 and only that number of sql log files are kept.
+ */
 static int
-create_dir (const char *new_dir)
+sl_remove_oldest_file (void)
 {
-  char *p, path[PATH_MAX];
+  int oldest_file_id;
+  char oldest_file_path[PATH_MAX];
 
-  if (new_dir == NULL)
+  oldest_file_id = sl_Info.curr_file_id - sql_log_max_cnt;
+
+  snprintf (oldest_file_path, PATH_MAX - 1, "%s.%d", sql_log_base_path, oldest_file_id);
+
+  unlink (oldest_file_path);
+
+  return NO_ERROR;
+}
+
+/*
+ * sl_create_sql_log_dir() - verify and create the SQL log path
+ *   return: NO_ERROR or ER_FAILED
+ *     repl_log_path(in): log volume path for apply (default path)
+ *     path_buf(out): SQL log path buffer
+ *     path_buf_size(in): buffer size
+ *
+ * Note:
+ *   This function is related to the ha_sql_log_path system parameter. The SQL log path can be changed by setting this.
+ */
+static int
+sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_size)
+{
+  const char *log_path = NULL, *path_base_name = "sql_log";
+  char *p = NULL;
+  char tmp_log_path[PATH_MAX], er_msg[PATH_MAX];
+
+  assert (repl_log_path != NULL && path_buf != NULL && path_buf_size >= PATH_MAX);
+
+  log_path = prm_get_string_value (PRM_ID_HA_SQL_LOG_PATH);
+  if (log_path != NULL && *log_path != '\0')
     {
+      if (!IS_ABS_PATH (log_path))
+	{
+	  snprintf (tmp_log_path, sizeof (tmp_log_path), "%s%s%s", repl_log_path, FILEIO_PATH_SEPARATOR (repl_log_path),
+		    log_path);
+
+	  log_path = tmp_log_path;
+	}
+    }
+  else
+    {
+      log_path = repl_log_path;
+    }
+
+  if (strlen (log_path) + 1 + strlen (path_base_name) >= path_buf_size)
+    {
+      snprintf (er_msg, sizeof (er_msg), "Too long the SQL log path \'%s\'", path_buf);
+
+      er_stack_push ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
+      er_stack_pop ();
+
       return ER_FAILED;
     }
 
-  strcpy (path, new_dir);
+  snprintf (path_buf, path_buf_size, "%s%s%s", log_path, FILEIO_PATH_SEPARATOR (log_path), path_base_name);
 
-  p = path;
-  if (path[0] == '/')
+  p = path_buf;
+  if (*p == PATH_SEPARATOR)
     {
-      p = path + 1;
+      p++;
     }
 
   while (p != NULL)
     {
-      p = strchr (p, '/');
+      p = strchr (p, PATH_SEPARATOR);
       if (p != NULL)
 	{
 	  *p = '\0';
 	}
 
-      if (access (path, F_OK) < 0)
+      if (strcmp (basename (path_buf), ".") && strcmp (basename (path_buf), ".."))
 	{
-	  if (mkdir (path, 0777) < 0)
+	  if (access (path_buf, F_OK) < 0)
 	    {
-	      return ER_FAILED;
+	      if (mkdir (path_buf, 0777) < 0)
+		{
+		  snprintf (er_msg, sizeof (er_msg), "Failed to create SQL log directory \'%s\'", path_buf);
+
+		  er_stack_push ();
+		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
+		  er_stack_pop ();
+
+		  return ER_FAILED;
+		}
 	    }
 	}
+
       if (p != NULL)
 	{
-	  *p = '/';
+	  *p = PATH_SEPARATOR;
 	  p++;
 	}
     }
+
   return NO_ERROR;
 }

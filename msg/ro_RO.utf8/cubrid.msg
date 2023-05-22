@@ -1,20 +1,21 @@
 
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
-$
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
-$   the Free Software Foundation; either version 2 of the License, or
-$   (at your option) any later version.
-$
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
-$
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
-$  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+$  Copyright 2008 Search Solution Corporation
+$  Copyright 2016 CUBRID Corporation
+$ 
+$   Licensed under the Apache License, Version 2.0 (the "License");
+$   you may not use this file except in compliance with the License.
+$   You may obtain a copy of the License at
+$ 
+$       http://www.apache.org/licenses/LICENSE-2.0
+$ 
+$   Unless required by applicable law or agreed to in writing, software
+$   distributed under the License is distributed on an "AS IS" BASIS,
+$   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+$   See the License for the specific language governing permissions and
+$   limitations under the License.
+$ 
+$ 
 $
 
 $
@@ -25,7 +26,7 @@ $
 
 $set 1 MSGCAT_SET_GENERAL
 1 \n%1$s\n\n
-2 Copyright (C) 2008 Search Solution Corporation. Toate drepturile rezervate.\n
+2 Copyright (C) 2008 Search Solution Corporation.\nCopyright (C) 2016 CUBRID Corporation.\n
 3 Informaţii despre Copyright\n
 5 Valoarea `%1$s' a argumentului nu este întreagă
 6 Valoarea `%1$s' a argumentului nu este float
@@ -184,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Baza de date "%1$s" nu este cunoscută sau fişierul "databases.txt" nu poate fi accesat.
 117 Calea absolută la baza de date este prea lungă. Lungimea combinată a căii "%1$s" plus numele "%2$s" este %3$d; lungimea combinată trebuie să fie mai mică decât %4$d.
 118 Nu s-a putut localiza directorul de lucru curent.
-119 Nu s-a putut găsi numele local de gazdă.
+119 Nu se poate găsi ("%1$s") în /etc/hosts. Vă rugăm să verificați permisiunile fișierului sau dacă există numele gazdei.
 120 Numărul maxim de volume (%1$d) a fost depăşit.
 121 Tentativă de ştergere "%1$s" a unui volum permanent al bazei de date.
 122 Nu se poate accesa catalogul de mesaje de sistem.
@@ -415,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Nu s-a putut crea un pipe către serverul principal (master).
 348 Trebuie specificat un serviciu sau un identificator de port.
 349 Serviciu de TCP necunoscut: %1$s.
-350 Eroare la preluarea adresei pe baza numelui pentru "%1$s". Numele de gazdă nu a fost găsit.
+350 Nu se poate găsi ("%1$s") în /etc/hosts. Vă rugăm să verificați permisiunile fișierului sau dacă există numele gazdei.
 351 Nu s-a putut crea un socket TCP.
 352 tcp_open: nu se poate obţine un port TCP rezervat.
 353 Nu s-a putut stabili conexiunea către serverul principal (master) pe maşina "%1$s".
@@ -903,7 +904,7 @@ $ LOADDB
 834 Există disconcordanţe între şirul de caractere sursă "%1$s" şi şirul de formatare "%2$s" date în to_number().
 835 Element de statistică necunoscut.
 836 Latch-ul pe pagina(%1$d|%2$d) a expirat.
-837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale etc) nu poate fi şters.
+837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale/server/synonym etc) nu poate fi şters.
 838 Nu se pot deschide simultan mai mult de %1$d indecşi.
 839 "%1$s": Parametru de sistem necunoscut sau valoare invalidă.
 840 Parametrul de sistem "%1$s" nu poate fi schimbat.
@@ -987,7 +988,7 @@ $ LOADDB
 918 Clasa '%1$s' referenţiată de cheia externă nu există.
 919 Clasa '%1$s' referenţiată de cheia externă nu conţine o cheie primară.
 920 Cheia externă '%1$s' nu include membrul cheii primare '%2$s'.
-921 Domeniul membrului cheie straină '%1$s' este diferit de cel al membrului cheie primară '%2$s'.
+921 Domeniul membrului cheie straină '%1$s' este diferit de cel al membrului cheie primară '%2$s'. (%3$s: %4$s vs. %5$s)
 922 Constrângerea de cheie primară '%1$s' este invalidă datorită valorii '%2$s'.
 923 Cheia primară '%1$s' referenţiată de o cheie externă '%2$s' nu trebuie ştearsă.
 924 Operaţiile de actualizare/ştergere (update/delete) sunt restricţionate de cheia externă '%1$s'.
@@ -1051,7 +1052,7 @@ $ LOADDB
 982 Comandă de întrerupere trimisă către tranzacţia %1$d.
 983 Instanţele unei clase OID reutilizabile nu pot fi referenţiate. Această operaţie nu este permisă pentru instanţe nereferenţiabile.
 984 Nu se poate seta %3$s la "%6$s" în secţiunea "[%5$s]" când este setat la "%4$s" în secţiunea "[%2$s]" a fişierului de configurare "%1$s".
-985 Numele de gazdă din stringul de conexiune la baza de date trebuie specificat atunci când opţiunea de gazde multiple este setată în "databases.txt".
+985 Numele de gazdă din stringul de conexiune la baza de date trebuie specificat atunci când opţiunea de gazde multiple este setată în "databases.txt". ex) csql demodb@localhost
 986 Modulul CUBRID Heartbeat a pornit.
 987 Modulul CUBRID Heartbeat a fost oprit.
 988 Eveniment la nod: %1$s.
@@ -1194,7 +1195,7 @@ $ LOADDB
 1125 Crearea unui fişier de chei de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
 1126 Crearea unei pagini noi de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
 1127 Ştergerea unei pagini goale de overflow. INDEX %1$s%2$s ON CLASS %3$s%4$s. cheie: %5$s%6$s.
-1128 Restaurarea logului a început. Numărul de înregistrări din log ce trebuie aplicate: %1$lld. Pagina de log: %2$lld ~ %3$lld.
+1128 Restaurarea logului a început.
 1129 Restaurarea logului s-a finalizat.
 1130 Tranzacţia a fost abandonată deoarece numărul de lock-uri asociate tranzacţiei depăşeşte %1$d.
 1131 Eroare internă: Pagina %1$d din volumul "%2$s" ar putea fi coruptă.\n%3$s
@@ -1267,22 +1268,22 @@ $ LOADDB
 1198 Trebuie furnizat un obiect de tipul json.
 1199 Json-ul furnizat a fost invalidat de catre schema json (Calea catre schema invalidă: %1$s, Cuvantul cheie: %2$s, Calea catre json-ul invalid furnizat: %3$s)
 1200 Cale de JSON invalida
-1201 Numele unei valori dintr-un JSON Object nu poate fi NULL.
-1202 Calea "%1$s" nu exista in %2$s
-1203 Tipul JSON-ului de la calea %1$s este invalid. Expected %2$s, dar am gasit %3$s.
+1201 NULL nu poate fi folosit pentru numele unei chei dintr-un JSON de tip Obiect.
+1202 Calea "%1$s" nu exista in %2$s.
+1203 Tipul JSON-ului de la calea %1$s este invalid. Se așteaptă %2$s, dar s-a găsit %3$s.
 1204 Cheia "%1$s" din json este duplicata
-1205 Reserved error for JSON.
-1206 Reserved error for JSON.
-1207 Reserved error for JSON.
-1208 Reserved error for JSON.
+1205 Tipul %1$s este invalid. Se așteaptă un tip compatibil cu un document JSON (STRING sau JSON).
+1206 Calea JSON "%1$s" nu adresează un element al unui JSON de tip ARRAY.
+1207 Cale de JSON invalida. Indexul este mai mare decât valoarea permisă de parametrul de sistem "json_max_array_idx".
+1208 Argumentul "one/all" este invalid. Argumentul nu poate avea altă valoare în afară de "one" sau "all".
 1209 Reserved error for JSON.
 1210 Reserved error for JSON.
 1211 Reserved error for JSON.
 1212 Reserved error for JSON.
 1213 Reserved error for JSON.
 1214 Reserved error for JSON.
-1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
-1216 Invalid object id %1$d when trying to unpack.
+1215 Nu mai există suficiente date de citit din stream-ul %1$s de la poziţia %2$lld, dimensiunea %3$zu.
+1216 Id-ul despachetat: %1$d, nu este valid.
 1217 Reserved error for stream/replication.
 1218 Reserved error for stream/replication.
 1219 Reserved error for stream/replication.
@@ -1303,11 +1304,149 @@ $ LOADDB
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
 1236 Double Write Buffer este dezactivat.
-1237 Cannot change status on %1$s because %2$s is a %3$s.
-1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s".
+1237 Nu se poate modifica status-ul pentru %1$s deoarece %2$s este "%3$s".
+1238 Lipsește valoarea pentru coloana '%1$s' din JSON_TABLE.
+1239 Valoarea din JSON "%1$s" de la calea "%2$s" nu se poate converti la domeniul "%4$s" aferent coloanei "%3$s" din JSON_TABLE.
+1240 Indecsii claselor care fac parte dintr-o ierarhie de moștenire nu se pot încărca online.
+1241 Arborele XASL trebuie recompilat.
+1242 Nu se pot crea partiţii într-o clasă care face parte dintr-o ierarhie de moștenire.
+1243 Încărcarea indexului a fost oprită din cauza unei erori.
+1244 Încărcarea atributelor de tip "shared" nu este suportată in modul client-server.
+1245 Încărcarea atributelor de tip "class" nu este suportată in modul client-server.
+1246 Nu se poate obține adresa și numele canonic pentru ("%1$s") în /etc/hosts. Vă rugăm să verificați permisiunea fișierului sau dacă există numele gazdei.
+1247 Momentul specificat (%1$s) trebuie să îl succeadă pe cel al copiei de rezervă specificate(%2$s).
+1248 Fișier cheie nevalid: %1$s
+1249 Nu se poate găsi cheia (index: %1$d).
+1250 Cheia master setată în baza de date și ceea ce este dat nu se potrivesc. Indicele cheie setat în baza de date: %1$d
+1251 Eroare la criptarea TDE.
+1252 Eroare la decriptarea TDE.
+1253 Modulul TDE nu este încărcat.
+1254 Nu se poate crea o cheie.
+1255 Nu se poate încărca modulul TDE. Nu puteți utiliza funcția TDE.\n\
+Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta include cheia corectă.
+1256 Nu se poate copia fișierul cheie (_keys). Nu puteți utiliza caracteristica TDE pe baza de date copiată.
+1257 Nu se poate copia fișierul cheii de rezervă (_keys). Nu puteți utiliza caracteristica TDE pe baza de date restaurată pe baza acestui volum de rezervă.
+1258 Nu se poate găsi setul de chei în baza de date de la%1$s. Fișierul cheie din volumul de rezervă va fi utilizat.
+1259 Redenumiți fișierul cheie din „%1$s” în „%2$s”.
+1260 Copiați fișierul cheie „%1$s” în „%2$s”.
+1261 Prima cheie (indexul cheii: %1$d, ora creată: %2$s) din fișierul cheie restaurat a fost setată.
+1262 Fișierul cheie este plin.
+1263 Nu criptează TDE pagina jurnalului (pageid: %1$lld). Nu va mai fi încercat să criptați această pagină.
+1264 Error reserved for scalability development.
+1265 Error reserved for scalability development.
+1266 Error reserved for scalability development.
+1267 Error reserved for scalability development.
+1268 Error reserved for scalability development.
+1269 Error reserved for scalability development.
+1270 Error reserved for scalability development.
+1271 Error reserved for scalability development.
+1272 Error reserved for scalability development.
+1273 Error reserved for scalability development.
+1274 Error reserved for scalability development.
+1275 Error reserved for scalability development.
+1276 Error reserved for scalability development.
+1277 Error reserved for scalability development.
+1278 Error reserved for scalability development.
+1279 Error reserved for scalability development.
+1280 Error reserved for scalability development.
+1281 Error reserved for scalability development.
+1282 Error reserved for scalability development.
+1283 Error reserved for scalability development.
+1284 Nu se poate tăia tabelul din cauza cheii principale menționate în %1$s. Încercați din nou cu opțiunea CASCADE.
+1285 Nu se poate trunchia în cascadă deoarece acțiunea ON DELETE a cheii externe (%1$s) nu este setată la CASCADE.
 
-1240 Ultima eroare
+1286 Nu se poate găsi jurnalul lsa la momentul extragerii. (timp de introducere: %1$s).
+1287 Timpul expirat încercarea de a extrage informațiile de jurnal. (timp scurs: %1$d sec, expirare extragere: %2$d sec)
+1288 Omiteți producerea informațiilor de jurnal pentru înregistrarea de jurnal neacceptată intern.
+1289 Omiteți producerea informațiilor de jurnal pentru tranzacție nevalidă. (trid: %1$d)
+1290 Lsa de jurnal nevalid (%1$lld|%2$d) pentru a extrage informațiile de jurnal.
+1291 Nu se poate conecta la server pentru extragerea informațiilor de jurnal. Încercați din nou cu setarea parametrului „supplemental_log”.
+1292 Nu se poate găsi jurnalul lsa la momentul respectiv (%1$s). Lsa jurnal este ajustată la timp (%2$s).
+1293 Nu se poate obține pagina de jurnal în timp ce se produc informații de jurnal. Log lsa pentru a genera informații de jurnal indică NULL.
+1294 Informațiile de jurnal au fost generate. (tip: „%1$s”).
+1295 Omiteți producerea informațiilor de jurnal pentru un tabel nevalid. (class OID : %1$d|%2$d|%3$d)
+
+1296 Recuperarea logului: Faza de analiză este pornită.
+1297 Recuperarea jurnalului: Faza redo este pornită. Jurnal Pagini la Redo: %1$lld, înregistrări jurnal la redo: %2$lld.
+1298 Recuperarea jurnalului: Faza de anulare este pornită. Jurnal Pagini pentru a anula: %1$lld, tranzacții pentru a anula: %2$d.
+1299 Recuperarea jurnalului: %1$S este terminat.
+1300 Recuperarea jurnalului: %1$S este terminată.
+1301 Recuperare jurnal: %1$s progres: (%2$lld/%3$lld), %4$.2f procent, timp scurs: %5$.2f (s), timp rămas estimat: %6$.2f (s).
+
+1302 dblink - %1$s
+1303 dblink - invalid number of columns specified.
+1304 dblink - catalog _db_server class not found.
+1305 dblink - server "%1$s" not found.
+1306 dblink - server "%1$s" already exists.
+1307 dblink - Cannot update server object.
+1308 dblink - not supported type %1$s.
+1309 dblink - invalid bind param.
+1310 dblink - password length exceeds max size.
+1311 dblink - encrypted password length is incorrect.
+1312 dblink - the checksum of the encrypted password does not match.
+1313 dblink - invalid cipher string format.
+1314 dblink - Failed to decryption password. error=%1$d".
+1315 dblink - Failed to encryption password. error=%1$d".
+1316 dblink - Multiple "%1$s" Server found.
+1317 dblink - Not allowed "%1$s" Server.
+
+1318 [%1$5.5s][%2$d] %3$s
+1319 Parameter binding error.
+1320 Invalid ODBC handle.
+1321 Type conversion error.
+1322 not supported type %1$s(%2$d).
+1323 Invalid Statement handle.
+1324 Invalid db connection handle.
+1325 Link server connection url do not exist.
+1326 Invalid numeric value.
+1327 Invalid precision value of "%1$s" column.
+
+1328 Invalid Descriptor handle.
+1329 Not supported dbms.
+1330 Unable to allocate an environment handle.
+1331 A null column binder was referenced.
+
+1332 Volumul de jurnal activ (%1$s) este prea corect pentru a fi recreat. Dacă eliminați jurnalul activ, ar putea cauza o problemă neașteptată și ireversibilă.
+
+1333 Timp nevalid (%1$s) pentru a începe flashback. Este necesar să fie setat timpul între (%2$s) și (%3$s).
+1334 Nu se poate găsi clasa de flashback (%1$s).
+1335 Prea multe tranzacții pentru flashback. Mai puțin de %1$d tranzacții pot fi flashback.
+1336 Nu se poate suporta flashback pentru această clasă (nume : %1$s , OID : %2$d|%3$d|%4$d). Schema de clasă a fost modificată.
+1337 Înregistrarea jurnalului nu există (lsa : %1$lld|%2$d). Volumul jurnalului de arhivă a fost șters.
+1338 Flashback rulează deja. Flashback nu poate fi rulat de mai mult de un utilizator în același timp.
+
+1339 Tipul de argument neacceptat al procedurii stocate: %1$s
+1340 Tipul de returnare neacceptat al procedurii stocate: %1$s
+
+1341 Invalid arguments to authorization internal function.
+1342 AUTO_INCREMENT does not allow change of owner.
+1343 RENAME does not allow change of owner.
+1344 DBA, members of DBA group, and owner can perform CREATE SERIAL.
+1345 DBA, members of DBA group, and owner can perform CREATE TRIGGER.
+
+1346 Public synonym "%1$s" already exists.
+1347 Public synonym "%1$s" does not exist.
+1348 Synonym "%1$s" already exists.
+1349 Synonym "%1$s" does not exist.
+1350 Invalid synonym value.
+
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Invalid number of columns specified.
+
+1353 Internal CAS error : %1$d 
+1354 Internal CAS error : %1$d, %2$s
+
+1355 %1$s "%2$s" este format nevalid la rândul %3$d al fișierului "%4$s".
+1356 Numele de gazdă "%1$s" este prea lung, ar trebui să fie mai mic sau egal cu 256 la linia %2$d a fișierului "%3$s".
+1357 Numele de gazdă "%1$s" există deja, un nume de gazdă nu poate fi duplicat cu alte adrese IP la linia %2$d a fișierului "%3$s".
+1358 Ambele, adresa IP și numele de gazdă, trebuie să fie scrise complet la linia %1$d a fișierului "%2$s".
+1359 Nu se poate căuta "%1$s" în cubrid_hosts.conf.
+1360 A apărut o eroare la utilizarea gazdei definite de utilizator.
+
+1361 Fișierul "%1$s" nu a fost găsit.
+
+1362 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1463,7 +1602,16 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 utilizare invalidă a sessiontimezone sessiontimezone\n
 126 Lungimea maximă a comentariilor class/vclass este %1$d bytes.
 127 Lungimea maximă a comentariilor este %1$d bytes.
-128 Invalid number of arguments for JSON_OBJECTAGG
+128 Număr invalid de argumente pentru JSON_OBJECTAGG
+129 Valoarea argumentului PARALLEL trebuie sa fie între %1$d and %2$d.
+130 dblink - Server name cannot contain periods.
+131 Utilizare invalidă a ALTER SYNONYM.\n  ALTER [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> {FOR [<schema_name>.]<target_name> [COMMENT 'comment_string'] | COMMENT 'comment_string'}
+132 Utilizare invalidă a CREATE SYNONYM.\n  CREATE [OR REPLACE] [PRIVATE] SYNONYM [<schema_name>.]<synonym_name> FOR [<schema_name>.]<target_name> [COMMENT 'comment_string']
+133 Utilizare invalidă a DROP SYNONYM.\n  DROP [PRIVATE] SYNONYM [IF EXISTS] [<schema_name>.]<synonym_name>
+134 Utilizare invalidă a RENAME SYNONYM.\n  RENAME [PRIVATE] SYNONYM [<schema_name>.]<old_synonym_name> {AS|TO} [<schema_name>.]<new_synonym_name>
+135 Nu au fost specificate opțiuni pentru ALTER SYNONYM.
+136 Maximum length of a server dbname is %1$d bytes.
+137 Maximum length of a server user is %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
@@ -1766,6 +1914,22 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 CTE-ul recursiv '%1$s' trebuie referenţiat direct în interogarea sa recursivă.
 299 Eroare în CTE '%1$s': Partea nerecursivă și partea recursivă trebuie conectate cu UNION ALL.
 300 Nu este permisă o subinterogare în clauza DEFAULT.
+301 Nu s-au gasit semnături pentru funcția %1$s()
+302 Tip argument incompatibil %1$s, tipul aşteptat: %2$s.
+303 %1$d număr invalid de argumente.
+304 Nu s-a găsit semnătură compatibilă pentru funcția %1$s()
+305 Semnătura %1$s nu este compatibilă cu argumentele funcției.
+306 dblink - Informațiile necesare lipsesc.
+307 dblink - not supported type %1$s.
+308 DBA, members of DBA group, and owner can perform CREATE TABLE/VIEW.
+309 Invalid synonym name "%1$s".\n  The system class/vclass name cannot be a synonym name.
+310 DBA, members of DBA group, and owner can perform %1$s.
+311 Public synonym "%1$s" already exists.
+312 Public synonym "%1$s" does not exist.
+313 Synonym "%1$s" already exists.
+314 Synonym "%1$s" does not exist.
+315 Rename cannot change owner.
+316 Rename cannot be changed to the same name.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.
@@ -1848,6 +2012,8 @@ $set 9 MSGCAT_SET_PARSER_RUNTIME
 79 Nivel de izolare invalid; schema: %1$s, instanţe: %2$s.
 80 Nivelul de izolare MVCC trebuie să fie 'read committed', 'repeatable read' sau'serializable'.
 81 '%1$s' este un obiect 'auto_increment', care nu poate fi modificat ca serial.
+82 JSON invalid: '%1$s'.
+83 Vclass %1$s is not updatable because the vclass has some reuse_oid table. Please check it.
 
 $set 11 MSGCAT_SET_AUTHORIZATION
 1 *** cache invalid ***

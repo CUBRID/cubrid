@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -21,14 +20,22 @@
 
 #define API_ACTIVE_CHECKS
 
-#include "system_parameter.h"
-#include "db.h"
+#include "db.h"			// must be before dbtype_function.h for bool definition
 #include "dbtype_function.h"
+
+#include "db_set.h"
 #include "error_manager.h"
 #include "elo.h"
-#include "set_object.h"
-#include "language_support.h"
 #include "intl_support.h"
+#include "language_support.h"
 #include "memory_alloc.h"
-#include "object_primitive.h"
+#include "oid.h"
+#include "set_object.h"
+#include "system_parameter.h"
+
+// hidden functions (suppress -Wmissing-prototypes and -Wimplicit-function-declaration)
+int db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collation_id, const char *str,
+		     const int size);
+DB_TYPE setobj_type (struct setobj *set);
+
 #include "dbtype_function.i"

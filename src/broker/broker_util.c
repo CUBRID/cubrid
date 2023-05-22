@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -60,6 +59,7 @@
 #include "broker_filename.h"
 #include "environment_variable.h"
 #include "porting.h"
+#include "util_func.h"
 
 char db_err_log_file[BROKER_PATH_MAX];
 
@@ -265,7 +265,7 @@ ut_kill_as_process (int pid, char *broker_name, int as_index, int shard_flag)
     {
       char tmp[BROKER_PATH_MAX];
 
-      /* 
+      /*
        * shard_cas does not have unix-domain socket and pid lock file.
        * so, we need not delete socket and lock file.
        */
@@ -431,12 +431,7 @@ ut_time_string (char *buf, struct timeval *time_val)
 
   if (time_val == NULL)
     {
-      struct timeb tb;
-
-      /* current time */
-      (void) ftime (&tb);
-      sec = tb.time;
-      millisec = tb.millitm;
+      util_get_second_and_ms_since_epoch (&sec, &millisec);
     }
   else
     {
@@ -550,7 +545,11 @@ ut_get_broker_port_name (char *port_name, char *broker_name, int len)
 
   get_cubrid_file (FID_SOCK_DIR, dir_name, BROKER_PATH_MAX);
 
-  snprintf (port_name, len, "%s%s.B", dir_name, broker_name);
+  if (snprintf (port_name, len, "%s%s.B", dir_name, broker_name) < 0)
+    {
+      assert (false);
+      port_name[0] = '\0';
+    }
 }
 
 void
@@ -560,7 +559,11 @@ ut_get_proxy_port_name (char *port_name, char *broker_name, int proxy_id, int le
 
   get_cubrid_file (FID_SOCK_DIR, dir_name, BROKER_PATH_MAX);
 
-  snprintf (port_name, len, "%s%s.P%d", dir_name, broker_name, proxy_id + 1);
+  if (snprintf (port_name, len, "%s%s.P%d", dir_name, broker_name, proxy_id + 1) < 0)
+    {
+      assert (false);
+      port_name[0] = '\0';
+    }
 }
 
 void
@@ -570,7 +573,11 @@ ut_get_as_port_name (char *port_name, char *broker_name, int as_id, int len)
 
   get_cubrid_file (FID_SOCK_DIR, dir_name, BROKER_PATH_MAX);
 
-  snprintf (port_name, len, "%s%s.%d", dir_name, broker_name, as_id + 1);
+  if (snprintf (port_name, len, "%s%s.%d", dir_name, broker_name, as_id + 1) < 0)
+    {
+      assert (false);
+      port_name[0] = '\0';
+    }
 }
 
 double
@@ -698,5 +705,9 @@ ut_get_as_pid_name (char *pid_name, char *br_name, int as_index, int len)
 
   get_cubrid_file (FID_AS_PID_DIR, dir_name, BROKER_PATH_MAX);
 
-  snprintf (pid_name, len, "%s%s_%d.pid", dir_name, br_name, as_index + 1);
+  if (snprintf (pid_name, len, "%s%s_%d.pid", dir_name, br_name, as_index + 1) < 0)
+    {
+      assert (false);
+      pid_name[0] = '\0';
+    }
 }

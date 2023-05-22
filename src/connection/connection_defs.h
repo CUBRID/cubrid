@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -51,6 +50,10 @@
 #include <pthread.h>
 #endif /* !WINDOWS && SERVER_MODE */
 
+#if defined (__cplusplus)
+#include <atomic>
+#endif // C++
+
 #define NUM_MASTER_CHANNEL 1
 
 /*
@@ -66,10 +69,8 @@ enum css_command_type
   SERVER_REQUEST = 3,		/* let new server attach */
   UNUSED_REQUEST = 4,		/* unused request - leave it for compatibility */
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
-  SERVER_REQUEST_CONNECT_NEW_SLAVE = 6,	/* slave server wants to connect to master server */
   MAX_REQUEST
 };
-typedef enum css_command_type CSS_COMMAND_TYPE;
 
 /*
  * These are the responses from the master to a server
@@ -149,9 +150,7 @@ enum css_server_request
   SERVER_REGISTER_HA_PROCESS = 10,
   SERVER_CHANGE_HA_MODE = 11,
   SERVER_DEREGISTER_HA_PROCESS = 12,
-  SERVER_GET_EOF = 13,
-  SERVER_RECEIVE_MASTER_HOSTNAME = 14,
-  SERVER_CONNECT_NEW_SLAVE = 15
+  SERVER_GET_EOF = 13
 };
 typedef enum css_server_request CSS_SERVER_REQUEST;
 
@@ -368,6 +367,7 @@ typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 #define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
 #define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))
 
+#define NET_HEADER_FLAG_METHOD_MODE         0x4000
 #define NET_HEADER_FLAG_INVALIDATE_SNAPSHOT 0x8000
 
 /*
@@ -408,6 +408,7 @@ struct css_queue_entry
   int transaction_id;
   int invalidate_snapshot;
   int db_error;
+  bool in_method;
 
 #if !defined(SERVER_MODE)
   char lock;
@@ -431,7 +432,9 @@ struct css_conn_entry
   int db_error;
   bool in_transaction;		/* this client is in-transaction or out-of- */
   bool reset_on_commit;		/* set reset_on_commit when commit/abort */
+  bool in_method;		/* this connection is for method callback */
 
+  bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
@@ -474,9 +477,18 @@ struct css_conn_entry
   void set_tran_index (int tran_index);
   int get_tran_index (void);
 
+  // request count manipulation
+  void add_pending_request ();
+  void start_request ();
+  bool has_pending_request () const;
+  void init_pending_request ();
+
 private:
   // note - I want to protect this.
   int transaction_id;
+  // *INDENT-OFF*
+  std::atomic<size_t> pending_request_count;
+  // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;
 #endif				// not c++ = c
@@ -505,7 +517,7 @@ struct last_access_status
 {
   char db_user[DB_MAX_USER_LENGTH];
   time_t time;
-  char host[MAXHOSTNAMELEN];
+  char host[CUB_MAXHOSTNAMELEN];
   char program_name[32];
   LAST_ACCESS_STATUS *next;
 };

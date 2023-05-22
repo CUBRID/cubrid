@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -36,6 +35,7 @@
 #include "porting.h"
 #include "dbi.h"
 #include "parser.h"
+#include "jansson.h"
 #include "memory_alloc.h"
 
 #if defined(SERVER_MODE)
@@ -196,7 +196,7 @@ static void pt_free_node_blocks (const PARSER_CONTEXT * parser);
 static PARSER_STRING_BLOCK *parser_create_string_block (const PARSER_CONTEXT * parser, const int length);
 static void pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * string_to_free);
 static PARSER_STRING_BLOCK *pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string);
-static char *pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const char *new_tail,
+static char *pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 				   const int wrap_with_single_quote);
 static PARSER_VARCHAR *pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
 					    const char *new_tail, const int new_tail_length);
@@ -588,7 +588,7 @@ pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
  * The given old_string is OVERWRITTEN.
  */
 static char *
-pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const char *new_tail,
+pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 		      const int wrap_with_single_quote)
 {
   PARSER_STRING_BLOCK *string;
@@ -603,7 +603,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const cha
       new_tail_length += 2;	/* for opening/closing "'" */
     }
 
-  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy 
+  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
@@ -688,7 +688,7 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
   /* here, you know you have two non-NULL pointers */
   string = pt_find_string_block (parser, (char *) old_string);
 
-  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy 
+  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
@@ -831,6 +831,28 @@ pt_unregister_parser (const PARSER_CONTEXT * parser)
 #endif /* SERVER_MODE */
 }
 
+void
+parser_free_node_resources (PT_NODE * node)
+{
+  /* before we free this node, see if we need to clear a db_value */
+  if (node->node_type == PT_VALUE && node->info.value.db_value_is_in_workspace)
+    {
+      db_value_clear (&node->info.value.db_value);
+    }
+  if (node->node_type == PT_INSERT_VALUE && node->info.insert_value.is_evaluated)
+    {
+      db_value_clear (&node->info.insert_value.value);
+    }
+  if (node->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_JSON_TABLE_COLUMN_INFO *col = &node->info.json_table_column_info;
+      db_value_clear (col->on_empty.m_default_value);
+      col->on_empty.m_default_value = NULL;
+      db_value_clear (col->on_error.m_default_value);
+      col->on_error.m_default_value = NULL;
+      // db_values on_empty.m_default_value & on_error.m_default_value are allocated using area_alloc
+    }
+}
 
 /*
  * parser_free_node () - Return this node to this parser's node memory pool
@@ -894,16 +916,8 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
       return;
     }
 
-  /* before we free this node, see if we need to clear a db_value */
-  if (node->node_type == PT_VALUE && node->info.value.db_value_is_in_workspace)
-    {
-      db_value_clear (&node->info.value.db_value);
-    }
-  if (node->node_type == PT_INSERT_VALUE && node->info.insert_value.is_evaluated)
-    {
-      db_value_clear (&node->info.insert_value.value);
-    }
-  /* 
+  parser_free_node_resources (node);
+  /*
    * Always set the node type to maximum.  This may
    * keep us from doing bad things to the free list if we try to free
    * this structure more than once.  We shouldn't be doing that (i.e.,
@@ -958,15 +972,18 @@ parser_alloc (const PARSER_CONTEXT * parser, const int length)
  * (for a null character). The two strings are logically concatenated
  * and copied into the result string. The physical operation is typically
  * more efficient, and conservative of memory
+ *
+ * Note :
+ * pt_append_string won't modify old_string but it will return it to caller if new_tail is NULL.
  */
 char *
-pt_append_string (const PARSER_CONTEXT * parser, char *old_string, const char *new_tail)
+pt_append_string (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail)
 {
   char *s;
 
   if (new_tail == NULL)
     {
-      s = old_string;
+      s = CONST_CAST (char *, old_string);	// it is up to caller
     }
   else if (old_string == NULL)
     {
@@ -1197,16 +1214,16 @@ parser_create_parser (void)
 
   /* initialization */
   parser->query_id = NULL_QUERY_ID;
-  parser->is_in_and_list = 0;
-  parser->is_holdable = 0;
-  parser->is_xasl_pinned_reference = 0;
-  parser->recompile_xasl_pinned = 0;
+  parser->flag.is_in_and_list = 0;
+  parser->flag.is_holdable = 0;
+  parser->flag.is_xasl_pinned_reference = 0;
+  parser->flag.recompile_xasl_pinned = 0;
   parser->auto_param_count = 0;
-  parser->return_generated_keys = 0;
-  parser->is_system_generated_stmt = 0;
-  parser->has_internal_error = 0;
+  parser->flag.return_generated_keys = 0;
+  parser->flag.is_system_generated_stmt = 0;
+  parser->flag.has_internal_error = 0;
   parser->max_print_len = 0;
-  parser->is_auto_commit = 0;
+  parser->flag.is_auto_commit = 0;
 
   return parser;
 }
@@ -1432,16 +1449,4 @@ pt_is_json_doc_type (PT_TYPE_ENUM type)
   DB_TYPE converted_type = pt_type_enum_to_db (type);
 
   return db_is_json_doc_type (converted_type);
-}
-
-bool
-pt_is_json_object_name (PT_TYPE_ENUM type)
-{
-  return (PT_IS_STRING_TYPE (type) || type == PT_TYPE_MAYBE);
-}
-
-bool
-pt_is_json_path (PT_TYPE_ENUM type)
-{
-  return (PT_IS_STRING_TYPE (type) || type == PT_TYPE_MAYBE || type == PT_TYPE_NULL);
 }

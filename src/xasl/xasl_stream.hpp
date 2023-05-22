@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -24,80 +23,41 @@
 #ifndef _XASL_STREAM_HPP_
 #define _XASL_STREAM_HPP_
 
+#include "json_table_def.h"
 #include "thread_compat.hpp"
-#include "xasl.h"
+#include "xasl_unpack_info.hpp"
+
+#include <cstddef>
 
 // forward def
 struct db_value;
-struct regu_variable_node;
+class regu_variable_node;
 
-const std::size_t MAX_PTR_BLOCKS = 256;
-const std::size_t OFFSETS_PER_BLOCK = 4096;
-const std::size_t START_PTR_PER_BLOCK = 15;
+namespace cubxasl
+{
+  namespace json_table
+  {
+    struct column;
+    struct node;
+    struct spec_node;
+  } // namespace json_table
+} // namespace cubxasl
+
+const size_t OFFSETS_PER_BLOCK = 4096;
+const size_t START_PTR_PER_BLOCK = 15;
 /*
  * the linear byte stream for store the given XASL tree is allocated
  * and expanded dynamically on demand by the following amount of bytes
  */
-const std::size_t STREAM_EXPANSION_UNIT = OFFSETS_PER_BLOCK * sizeof (int);
+const size_t STREAM_EXPANSION_UNIT = OFFSETS_PER_BLOCK * sizeof (int);
 
 const int XASL_STREAM_ALIGN_UNIT = sizeof (double);
 const int XASL_STREAM_ALIGN_MASK = XASL_STREAM_ALIGN_UNIT - 1;
 
-/* structure of a visited pointer constant */
-typedef struct visited_ptr STX_VISITED_PTR;
-struct visited_ptr
-{
-  const void *ptr;		/* a pointer constant */
-  void *str;			/* where the struct pointed by 'ptr' is stored */
-};
-
-/* structure for additional memory during filtered predicate unpacking */
-typedef struct unpack_extra_buf UNPACK_EXTRA_BUF;
-struct unpack_extra_buf
-{
-  char *buff;
-  UNPACK_EXTRA_BUF *next;
-};
-
-/* structure to hold information needed during packing */
-typedef struct xasl_unpack_info XASL_UNPACK_INFO;
-struct xasl_unpack_info
-{
-  char *packed_xasl;		/* ptr to packed xasl tree */
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *thrd;		/* used for private allocation */
-#endif				/* SERVER_MODE */
-
-  /* blocks of visited pointer constants */
-  STX_VISITED_PTR *ptr_blocks[MAX_PTR_BLOCKS];
-
-  char *alloc_buf;		/* alloced buf */
-
-  int packed_size;		/* packed xasl tree size */
-
-  /* low-water-mark of visited pointers */
-  int ptr_lwm[MAX_PTR_BLOCKS];
-
-  /* max number of visited pointers */
-  int ptr_max[MAX_PTR_BLOCKS];
-
-  int alloc_size;		/* alloced buf size */
-
-  /* list of additional buffers allocated during xasl unpacking */
-  UNPACK_EXTRA_BUF *additional_buffers;
-  /* 1 if additional buffers should be tracked */
-  int track_allocated_bufers;
-
-  bool use_xasl_clone;		/* true, if uses xasl clone */
-};
-
 inline int xasl_stream_make_align (int x);
-inline int xasl_stream_get_ptr_block (const void *ptr);
 
 int stx_get_xasl_errcode (THREAD_ENTRY *thread_p);
 void stx_set_xasl_errcode (THREAD_ENTRY *thread_p, int errcode);
-XASL_UNPACK_INFO *stx_get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);
-void stx_set_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p, XASL_UNPACK_INFO *ptr);
 int stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_stream_size);
 
 int stx_mark_struct_visited (THREAD_ENTRY *thread_p, const void *ptr, void *str);
@@ -114,7 +74,7 @@ char *stx_build (THREAD_ENTRY *thread_p, char *ptr, db_value &val);
 char *stx_build (THREAD_ENTRY *thread_p, char *ptr, regu_variable_node &reguvar);
 
 // dependencies not ported
-char *stx_build_db_value (THREAD_ENTRY *thread_p, char *tmp, DB_VALUE *ptr);
+char *stx_build_db_value (THREAD_ENTRY *thread_p, char *tmp, db_value *ptr);
 char *stx_build_string (THREAD_ENTRY *thread_p, char *tmp, char *ptr);
 
 // restore string; return restored string, updates stream pointer
@@ -139,16 +99,16 @@ void stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target);
 //////////////////////////////////////////////////////////////////////////
 // Template and inline implementation
 //////////////////////////////////////////////////////////////////////////
-int
+
+#include "object_representation.h"
+#include "system.h"
+
+#include <cassert>
+
+inline int
 xasl_stream_make_align (int x)
 {
   return (((x) & ~XASL_STREAM_ALIGN_MASK) + (((x) & XASL_STREAM_ALIGN_MASK) ? XASL_STREAM_ALIGN_UNIT : 0));
-}
-
-int
-xasl_stream_get_ptr_block (const void *ptr)
-{
-  return static_cast<int> ((((UINTPTR) ptr) / sizeof (UINTPTR)) % MAX_PTR_BLOCKS);
 }
 
 // restore from stream buffer
@@ -171,7 +131,7 @@ stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target)
     }
   else
     {
-      char *bufptr = &stx_get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
+      char *bufptr = &get_xasl_unpack_info_ptr (thread_p)->packed_xasl[offset];
       target = (T *) stx_get_struct_visited_ptr (thread_p, bufptr);
       if (target != NULL)
 	{

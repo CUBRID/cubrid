@@ -1,0 +1,183 @@
+#
+# Cubrid DBMS administration console bash autocompletion script
+# Usage:
+#   - copy to /etc/bash_completion_d/ and it should be picked up by bash
+#
+# Capabilities/Limitations:
+#   - service and administrator utilities are hardcoded and, thus, may become outdated
+#   - service utilities 'server' and 'heartbeat' have limited support for listing databases from the
+#     $CUBRID_DATABASES/databases.txt file
+#   - administrator utilities' options are extracted by parsing that utility's usage/help output so,
+#     in this regard they should function maintenance-free when changes happen
+#
+# Caveats:
+#   - it seems that Cubrid console supports multiple languages; if that is the case, it should be
+#     trivial to adapt this script
+
+declare -a database_names_arr
+
+_cubrid_extract_database_names() {
+  if [[ ! -z ${CUBRID_DATABASES+y} && -f $CUBRID_DATABASES/databases.txt ]]; then
+    database_names_arr=$(
+      for opt_db_name in `cat $CUBRID_DATABASES/databases.txt | egrep "^[^#].+$" |
+          awk 'BEGIN { FS = " " } { print $1; }'`;
+      do
+        echo ${opt_db_name};
+      done )
+  fi
+}
+
+_cubrid_bash_completion() 
+{
+  local curr prev opts_utilities_all
+  COMPREPLY=()
+  curr="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  local opt_service="service"
+  local opt_server="server"
+  local opt_broker="broker"
+  local opt_manager="manager"
+  local opt_heartbeat="heartbeat"
+  local opt_hb="hb" # alias for heartbeat
+  local opt_javasp="javasp"
+  local opts_utilities_srv="--help ${opt_service} ${opt_server} ${opt_broker} ${opt_manager} \
+      ${opt_heartbeat} ${opt_hb} ${opt_javasp}"
+  local opts_utilities_adm="addvoldb alterdbhost backupdb checkdb compactdb copydb createdb \
+      deletedb diagdb installdb tranlist killtran loaddb lockdb optimizedb plandump renamedb \
+      restoredb restoreslave spacedb unloaddb paramdump statdump changemode applyinfo genlocale \
+      dumplocale synccolldb gen_tz dump_tz vacuumdb checksumdb tde"
+  local opts_utilities_all="${opts_utilities_srv} ${opts_utilities_adm}"
+
+  local opts_serv_start_stop_restart_status="start stop restart status"
+  local opts_serv_start_stop_restart_status_acl="start stop restart status acl"
+  local opts_serv_broker="start stop restart info status on off reset acl getid test"
+  local opts_serv_manager="start stop status"
+  local opts_serv_heartbeat="start stop copylogdb applylogdb replication status reload"
+    
+  # list existing databases from $CUBRID_DATABASES/databases.txt (if env variable existing)
+  #
+  if [[ ${COMP_CWORD} -ge 3 ]]; then
+    local anteprev="${COMP_WORDS[COMP_CWORD-2]}"
+    if [[ ( "_${anteprev}_" = "_${opt_server}_" && ${prev} =~ ^(start|stop|restart|acl)$ )
+      || ( "_${anteprev}_" =~ ^_(hb|heartbeat)_$ && ${prev} =~ ^(start|stop|copylogdb|applylogdb)$ )
+      || ( "_${anteprev}_" =~ ^_(javasp)_$ && ${prev} =~ ^(start|stop|restart|status)$ ) ]]; then
+      # execute only if the environment is correct
+      if [[ ! -z ${CUBRID_DATABASES+y} && -f $CUBRID_DATABASES/databases.txt ]]; then
+        local opts_database_names=$(
+          for opt_db_name in `cat $CUBRID_DATABASES/databases.txt |
+            egrep "^[^#].+$" | awk 'BEGIN { FS = " " } { print $1; }'`;
+          do
+            echo ${opt_db_name};
+          done)
+
+        COMPREPLY=( $(compgen -W "${opts_database_names[*]}" -- ${curr}) )
+      fi
+    fi
+  fi
+
+  # regular options, some hard-coded, most extracted by executing cubrid command line utility as to
+  # obtain a usage/help output and parsing the output
+  #
+  if [[ ${COMP_CWORD} -ge 2 ]]; then
+    local opts_utility=${COMP_WORDS[1]}
+    # at index 1 either a service or an administrative command is expected
+    case "_${opts_utility}_" in
+      # service utilities (no more than one command is allowed)
+      #
+      _${opt_javasp}_)
+        ;&
+      _${opt_service}_)
+        if [[ ${COMP_CWORD} -eq 2 ]]; then
+          COMPREPLY=( $(compgen -W "${opts_serv_start_stop_restart_status}" -- ${curr}) )
+        fi
+        return 0;
+        ;;
+      _${opt_server}_)
+        if [[ ${COMP_CWORD} -eq 2 ]]; then
+          COMPREPLY=( $(compgen -W "${opts_serv_start_stop_restart_status_acl}" -- ${curr}) )
+        fi
+        return 0;
+        ;;
+      _${opt_broker}_)
+        if [[ ${COMP_CWORD} -eq 2 ]]; then
+          COMPREPLY=( $(compgen -W "${opts_serv_broker}" -- ${curr}) )
+        fi
+        return 0;
+        ;;
+      _${opt_manager}_)
+        if [[ ${COMP_CWORD} -eq 2 ]]; then
+          COMPREPLY=( $(compgen -W "${opts_serv_manager}" -- ${curr}) )
+        fi
+        return 0;
+        ;;
+      _${opt_heartbeat}_)
+        ;& # fallthrough
+      _${opt_hb}_)
+        if [[ ${COMP_CWORD} -eq 2 ]]; then
+          COMPREPLY=( $(compgen -W "${opts_serv_heartbeat}" -- ${curr}) )
+        fi
+        return 0;
+        ;;
+      #_${opt_javasp})
+      #    if [[ ${COMP_CWORD} -eq 2 ]]; then
+      #        COMPREPLY=( $(compgen -W "${opts_serv_start_stop_restart_status}" -- ${curr}) )
+      #    fi
+      #    return 0;
+      #    ;;
+
+      #for all other - ie: administratoe utilities - execute "cubrid <utility>" and parse
+      #output for "^--.+$" to extract all the options
+      #
+      *)
+        # NOTE: the for loop is needed to properly construct an array out of the stringified
+        # output of the piped command
+        local opts_from_utility=$(
+          for opt in `cubrid ${opts_utility} 2>&1 |
+            awk 'BEGIN { FS = " " } { for(i=1; i<=NF; ++i) print $i; }'| egrep "^--.+$"`;
+          do
+            echo ${opt};
+          done)
+        declare -a opts_from_utility_ex
+        # strip value from "--<key>=<value>" options but leave the '=' as to suggest that
+        # the option expects a value
+        local re="(--[a-zA-Z0-9-]+=).+"
+        for opt in $opts_from_utility; do
+          if [[ $opt =~ $re ]]; then
+            opts_from_utility_ex+=(${BASH_REMATCH[1]})
+          else
+            opts_from_utility_ex+=($opt)
+          fi
+        done;
+
+        #only extract these names if needed
+        _cubrid_extract_database_names
+
+        if [[ ${opts_utility} =~ ^(addvoldb|alterdbhost|backupdb|checkdb|compactdb|copydb\
+            |deletedb|diagdb|tranlist|killtran|loaddb|lockdb|optimizedb|plandump|renamedb\
+            |restoredb|restoreslave|spacedb|unloaddb|paramdump|statdump|changemode|applyinfo\
+            |synccolldb|vacuumdb|checksumdb|tde)$ ]]; then
+          for database_name in ${database_names_arr}; do
+            #echo database_name=${database_name}
+            opts_from_utility_ex+=($database_name)
+          done
+        fi
+
+        COMPREPLY=( $(compgen -W "${opts_from_utility_ex[*]}" -- ${curr}) )
+        return 0
+        ;;
+    esac
+
+    return 0;
+  else
+    case "__${prev}__" in
+      __cubrid__)
+        COMPREPLY=( $(compgen -W "${opts_utilities_all}" -- ${curr}) )
+        return 0
+        ;;
+    esac
+  fi
+}
+
+complete -F _cubrid_bash_completion cubrid
+

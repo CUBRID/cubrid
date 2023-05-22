@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -34,9 +33,11 @@
 
 #include "object_domain.h"
 #include "work_space.h"
-#include "object_primitive.h"
 #include "storage_common.h"
 #include "statistics.h"
+
+// forward definitions
+struct pr_type;
 
 /*
  *    This macro should be used whenever comparisons need to be made
@@ -111,6 +112,11 @@
         (((c) == SM_CONSTRAINT_UNIQUE          || \
 	  (c) == SM_CONSTRAINT_PRIMARY_KEY     || \
 	  (c) == SM_CONSTRAINT_REVERSE_UNIQUE)    \
+          ? true : false )
+
+#define SM_IS_CONSTRAINT_NOT_NULL_FAMILY(c) \
+        (((c) == SM_CONSTRAINT_NOT_NULL        || \
+	  (c) == SM_CONSTRAINT_PRIMARY_KEY)	  \
           ? true : false )
 
 #define SM_IS_CONSTRAINT_INDEX_FAMILY(c) \
@@ -302,6 +308,7 @@ typedef enum
   SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
+  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16	/* reserved flag for supplemental log. */
 } SM_CLASS_FLAG;
 
 /*
@@ -439,7 +446,7 @@ struct sm_attribute
 {
   SM_COMPONENT header;		/* next, name, header */
 
-  PR_TYPE *type;		/* basic type */
+  struct pr_type *type;		/* basic type */
   TP_DOMAIN *domain;		/* allowable types */
 
   MOP class_mop;		/* origin class */
@@ -512,13 +519,13 @@ typedef enum
   SM_NORMAL_INDEX = 1,
   SM_INVISIBLE_INDEX = 2,
   SM_ONLINE_INDEX_BUILDING_IN_PROGRESS = 3,
-  SM_ONLINE_INDEX_BUILDING_DONE = 4,
 
-  SM_RESERVED_INDEX_STATUS1 = 5,
-  SM_RESERVED_INDEX_STATUS2 = 6,
-  SM_RESERVED_INDEX_STATUS3 = 7,
-  SM_RESERVED_INDEX_STATUS4 = 8,
-  SM_RESERVED_INDEX_STATUS5 = 9,
+  SM_RESERVED_INDEX_STATUS1 = 4,
+  SM_RESERVED_INDEX_STATUS2 = 5,
+  SM_RESERVED_INDEX_STATUS3 = 6,
+  SM_RESERVED_INDEX_STATUS4 = 7,
+  SM_RESERVED_INDEX_STATUS5 = 8,
+  SM_RESERVED_INDEX_STATUS6 = 9,
   SM_LAST_INDEX_STATUS = 10
 } SM_INDEX_STATUS;
 
@@ -554,7 +561,7 @@ struct sm_method_argument
 {
   struct sm_method_argument *next;
 
-  PR_TYPE *type;		/* basic type */
+  struct pr_type *type;		/* basic type */
   TP_DOMAIN *domain;		/* full domain */
   int index;			/* argument index (one based) */
 };
@@ -761,7 +768,9 @@ struct sm_class
   unsigned int flags;
   unsigned int virtual_cache_local_schema_id;
   unsigned int virtual_cache_global_schema_id;
-  int virtual_cache_snapshot_version;
+  unsigned int virtual_cache_snapshot_version;
+
+  int tde_algorithm;
 
   unsigned methods_loaded:1;	/* set when dynamic linking was performed */
   unsigned post_load_cleanup:1;	/* set if post load cleanup has occurred */
@@ -770,6 +779,7 @@ struct sm_class
   unsigned has_active_triggers:1;	/* set if trigger processing is required */
   unsigned dont_decache_constraints_or_flush:1;	/* prevent decaching class constraint and flushing. */
   unsigned recache_constraints:1;	/* class constraints need recache. */
+  unsigned load_index_from_heap:1;	/* load index from its heap if there are records. If false, create a new empty regardless of the heap when allocating an index. e.g. TRUNCATE */
 };
 
 
@@ -940,11 +950,8 @@ extern int classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ **
 extern void classobj_free_prop (DB_SEQ * properties);
 extern int classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 extern int classobj_drop_prop (DB_SEQ * properties, const char *name);
-extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
-			       SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
-			       const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
-			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
-			       SM_INDEX_STATUS index_status, bool attr_name_instead_of_id);
+extern int classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID * id,
+			       SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, bool attr_name_instead_of_id);
 extern int classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name, const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
 
@@ -981,8 +988,10 @@ extern SM_CLASS_CONSTRAINT *classobj_find_class_index (SM_CLASS * class_, const 
 extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_name (SM_CLASS_CONSTRAINT * cons_list, const char *name);
 extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
 							       DB_CONSTRAINT_TYPE new_cons, const char **att_names,
-							       const int *asc_desc);
-extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, CLASS_STATS * stats);
+							       const int *asc_desc,
+							       const SM_PREDICATE_INFO * filter_predicate,
+							       const SM_FUNCTION_INFO * func_index_info);
+extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_oid);
 extern void classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CLASS_CONSTRAINT * node);
 
 extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints,
@@ -991,7 +1000,7 @@ extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CO
 extern bool classobj_class_has_indexes (SM_CLASS * class_);
 
 /* Attribute */
-extern SM_ATTRIBUTE *classobj_make_attribute (const char *name, PR_TYPE * type, SM_NAME_SPACE name_space);
+extern SM_ATTRIBUTE *classobj_make_attribute (const char *name, struct pr_type *type, SM_NAME_SPACE name_space);
 extern SM_ATTRIBUTE *classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias);
 extern int classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class, int ordered, SM_ATTRIBUTE ** copy_ptr);
 

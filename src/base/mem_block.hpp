@@ -1,23 +1,33 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
  */
 
 /*
- * mem_block.hpp - Memory Management Functionality
+ * mem_block.hpp - Memory Block Functionality
+ *
+ *  Memory Block is defined as a contiguous memory buffer.
+ *
+ *  Glossary:
+ *
+ *    block - the pair of memory pointer and size.
+ *    stack block - a block on stack memory
+ *    heap block - a block on heap memory; does not have its own structure (a simple block can be used).
+ *    extensible block - a block that can be extended when required
+ *    extensible stack block - a block that starts as a stack block and can be extended to a heap block.
  */
 
 #ifndef _MEM_BLOCK_HPP_
@@ -26,8 +36,15 @@
 #include <memory.h>
 #include <functional>
 
-namespace mem
+#include <cassert>
+#include <cinttypes>
+
+namespace cubmem
 {
+  const size_t DEFAULT_ALIGNMENT = 8;
+  template <typename T>
+  inline T *ptr_align (T *ptr);
+
   /*
    * Memory Block
    * - groups together memory address and its size
@@ -37,158 +54,402 @@ namespace mem
    */
   struct block
   {
+    public:
       size_t dim;
-      char  *ptr;
+      char *ptr;
 
-      block ()
-	: dim {0}
-	, ptr {NULL}
-      {
-      }
+      inline block ();
+      inline block (size_t dim, void *ptr);
+      inline block (block &&b);             //move ctor
 
-      block (block &&b)             //move ctor
-	: dim {b.dim}
-	, ptr {b.ptr}
-      {
-	b.dim = 0;
-	b.ptr = NULL;
-      }
+      inline block &operator= (block &&b);  //move assign
 
-      block &operator= (block &&b)  //move assign
-      {
-	if (this != &b)
-	  {
-	    dim = b.dim;
-	    ptr = b.ptr;
-	    b.dim = 0;
-	    b.ptr = NULL;
-	  }
-	return *this;
-      }
+      inline bool is_valid () const;
 
-      block (size_t dim, void *ptr)
-	: dim {dim}
-	, ptr { (char *) ptr}
-      {
-      }
-
-      virtual ~block ()
-      {
-	dim = 0;
-	ptr = NULL;
-      }
-
-      bool is_valid ()
-      {
-	return (dim != 0 && ptr != NULL);
-      }
-
-      char *move_ptr ()                                    //NOT RECOMMENDED! use move semantics: std::move()
-      {
-	char *p = ptr;
-
-	dim = 0;
-	ptr = NULL;
-
-	return p;
-      }
+      inline char *move_ptr ();                                    //NOT RECOMMENDED! use move semantics: std::move()
 
     private:
       block (const block &) = delete;
       block &operator= (const block &) = delete;
   };
 
-  inline void default_realloc (block &b, size_t len)
+  // stack_block - 8-byte aligned stack block of size S
+  //
+  template <size_t S>
+  class stack_block
   {
-    size_t dim = b.dim ? b.dim : 1;
+    public:
+      static const size_t SIZE = S;
 
-    // calc next power of 2 >= b.dim
-    for (; dim < b.dim + len; dim *= 2)
-      ;
+      stack_block (void) = default;
+      inline char *get_ptr (void);
+      inline const char *get_read_ptr () const;
 
-    block x{dim, new char[dim]};
-    memcpy (x.ptr, b.ptr, b.dim);
+    private:
+      union
+      {
+	char m_buf[SIZE];
+	std::int64_t dummy;
+      };
+  };
 
-    delete [] b.ptr;
-
-    b = std::move (x);
-  }
-
-  inline void default_dealloc (block &b)
+  // block_allocator - allocation, deallocation and reallocation of memory blocks. it preserves the contents of the
+  //                   block on reallocation
+  //
+  struct block_allocator
   {
-    delete [] b.ptr;
-    b = {};
-  }
+    public:
+      using alloc_func = std::function<void (block &b, size_t size)>;
+      using dealloc_func = std::function<void (block &b)>;
 
-  /* Memory Block - Extendable
-   * - able to extend/reallocate to accomodate additional bytes
+      alloc_func m_alloc_f;   // allocator/reallocator
+      dealloc_func m_dealloc_f;              // deallocator
+
+      block_allocator () = delete;
+      block_allocator (const alloc_func &alloc_f, const dealloc_func &dealloc_f);
+
+      block_allocator &operator= (const block_allocator &other);
+  };
+  extern const block_allocator STANDARD_BLOCK_ALLOCATOR;
+  extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
+  extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;
+
+  // single_block_allocator - maintains and allocates a single memory block
+  //
+  // it is designed as a memory cache that can be reused for multiple purposes in multiple places. must be used with
+  // care because it doesn't guarantee exclusive access to memory
+  //
+  // use get_block_allocator to pass the cached memory block to structures like extensible_buffer
+  //
+  class single_block_allocator
+  {
+    public:
+      single_block_allocator (const block_allocator &base_alloc);
+      ~single_block_allocator ();
+
+      const block_allocator &get_block_allocator () const;   // a block allocator that always outputs m_block
+      const block &get_block () const;
+
+      char *get_ptr () const;
+      size_t get_size () const;
+
+      void reserve (size_t size);
+
+    private:
+
+      void allocate (block &b, size_t size);  // the output b will be always equal to m_block
+      void deallocate (block &b);
+
+      const block_allocator &m_base_allocator;    // allocator for m_block
+
+      block m_block;                              // the single block
+      block_allocator m_allocator;                // allocator that always outputs m_block
+  };
+
+  /* Memory Block - Extensible
+   * - able to extend/reallocate to accommodate additional bytes
    * - owns the memory by default and it will free the memory in destructor unless it is moved:
    *    {
-   *        mem::block_ext block{some_realloc, some_dealloc};//some_realloc/dealloc = functions, functors or lambdas
+   *        cubmem::block_ext block{some_realloc, some_dealloc};//some_realloc/dealloc = functions, functors or lambdas
    *        //...
    *        //move it or it will be deallocated; simple copy => compiler error because it is not designed to be copied
-   *        mem::block b = std::move(block);
+   *        cubmem::block b = std::move(block);
    *    }
    */
-  struct block_ext: public block
+  struct extensible_block
   {
-      block_ext ()                                         //default ctor
-      //: block_ext {default_realloc, default_dealloc} //doesn't work on gcc 4.4.7
-	: block {}
-	, m_extend {default_realloc}
-	, m_dealloc {default_dealloc}
-      {
-      }
+    public:
+      inline extensible_block ();                                          //default ctor
+      inline extensible_block (extensible_block &&b);                              //move ctor
+      inline extensible_block (const block_allocator &alloc);     //general ctor
+      inline ~extensible_block ();                                         //dtor
 
-      block_ext (block_ext &&b)                           //move ctor
-	: block {std::move (b)}
-	, m_extend {b.m_extend}
-	, m_dealloc {b.m_dealloc}
+      inline extensible_block &operator= (extensible_block &&b);                   //move assignment
+
+      inline void extend_by (size_t additional_bytes);
+      inline void extend_to (size_t total_bytes);
+      inline void freemem ();
+
+      inline char *get_ptr ();
+      inline const char *get_read_ptr () const;
+
+      inline std::size_t get_size () const;
+
+      inline char *release_ptr ();
+
+    private:
+      block m_block;
+      const block_allocator *m_allocator;
+
+      extensible_block (const extensible_block &) = delete;             //copy ctor
+      extensible_block &operator= (const extensible_block &) = delete;  //copy assignment
+  };
+
+  // extensible_stack_block - extensible memory block that start with as a stack_block
+  //
+  template <size_t S>
+  class extensible_stack_block
+  {
+    public:
+      extensible_stack_block ();
+      extensible_stack_block (const block_allocator &alloc);
+
+      inline void extend_by (size_t additional_bytes);
+      inline void extend_to (size_t total_bytes);
+
+      inline char *get_ptr ();
+      inline const char *get_read_ptr () const;
+
+    private:
+      stack_block<S> m_stack;
+      extensible_block m_ext_block;
+      bool m_use_stack;
+  };
+} // namespace cubmem
+
+//////////////////////////////////////////////////////////////////////////
+// inline/template implementation
+//////////////////////////////////////////////////////////////////////////
+
+namespace cubmem
+{
+  //
+  // alignment
+  //
+  template <typename T>
+  T *
+  ptr_align (T *ptr)
+  {
+    std::uintptr_t pt = (std::uintptr_t) ptr;
+    pt = (pt + DEFAULT_ALIGNMENT - 1) & (DEFAULT_ALIGNMENT - 1);
+    return (T *) pt;
+  }
+
+  //
+  // block
+  //
+  block::block ()
+    : dim { 0 }
+    , ptr { NULL }
+  {
+  }
+
+  block::block (block &&b)
+    : dim {b.dim}
+    , ptr {b.ptr}
+  {
+    b.dim = 0;
+    b.ptr = NULL;
+  }
+
+  block::block (size_t dim, void *ptr)
+    : dim {dim}
+    , ptr { (char *) ptr}
+  {
+  }
+
+  block &
+  block::operator= (block &&b)   //move assign
+  {
+    if (this != &b)
       {
+	dim = b.dim;
+	ptr = b.ptr;
 	b.dim = 0;
 	b.ptr = NULL;
       }
+    return *this;
+  }
 
-      block_ext &operator= (block_ext &&b)                //move assignment
+  bool
+  block::is_valid () const
+  {
+    return (dim != 0 && ptr != NULL);
+  }
+
+  char *
+  block::move_ptr ()
+  {
+    char *p = ptr;
+
+    dim = 0;
+    ptr = NULL;
+
+    return p;
+  }
+
+  //
+  // stack_block
+  //
+  template <size_t S>
+  char *
+  stack_block<S>::get_ptr (void)
+  {
+    return &m_buf[0];
+  }
+
+  template <size_t S>
+  const char *
+  stack_block<S>::get_read_ptr (void) const
+  {
+    return &m_buf[0];
+  }
+
+  //
+  // extensible_block
+  //
+  extensible_block::extensible_block ()
+    : extensible_block { STANDARD_BLOCK_ALLOCATOR }
+  {
+  }
+
+  extensible_block::extensible_block (extensible_block &&b)
+    : extensible_block { *b.m_allocator }
+  {
+    m_block = std::move (b.m_block);
+  }
+
+  extensible_block::extensible_block (const block_allocator &alloc)
+    : m_block {}
+    , m_allocator (&alloc)
+  {
+  }
+
+  extensible_block &
+  extensible_block::operator= (extensible_block &&b)
+  {
+    if (this != &b)
       {
-	if (this != &b)
-	  {
-	    m_dealloc (*this);
-	    dim = b.dim;
-	    ptr = b.ptr;
-	    m_extend = b.m_extend;
-	    m_dealloc = b.m_dealloc;
-	    b.dim = 0;
-	    b.ptr = NULL;
-	  }
-
-	return *this;
+	this->~extensible_block ();
+	m_allocator = b.m_allocator;
+	m_block.dim = b.m_block.dim;
+	m_block.ptr = b.m_block.ptr;
+	b.m_block.dim = 0;
+	b.m_block.ptr = NULL;
       }
+    return *this;
+  }
 
-      block_ext (std::function<void (block &b, size_t n)> extend, std::function<void (block &b)> dealloc) //general ctor
-	: block {}
-	, m_extend {extend}
-	, m_dealloc {dealloc}
-      {}
+  extensible_block::~extensible_block ()
+  {
+    m_allocator->m_dealloc_f (m_block);
+  }
 
-      ~block_ext ()                                        //dtor
+  void
+  extensible_block::extend_by (size_t additional_bytes)
+  {
+    m_allocator->m_alloc_f (m_block, m_block.dim + additional_bytes);
+  }
+
+  void
+  extensible_block::extend_to (size_t total_bytes)
+  {
+    if (total_bytes <= m_block.dim)
       {
-	m_dealloc (*this);
+	return;
       }
+    extend_by (total_bytes - m_block.dim);
+  }
 
-      void extend (size_t additional_bytes)
+  void
+  extensible_block::freemem ()
+  {
+    m_allocator->m_dealloc_f (m_block);
+  }
+
+  char *
+  extensible_block::get_ptr ()
+  {
+    return m_block.ptr;
+  }
+
+  const char *
+  extensible_block::get_read_ptr () const
+  {
+    return m_block.ptr;
+  }
+
+  std::size_t
+  extensible_block::get_size () const
+  {
+    return m_block.dim;
+  }
+
+  char *
+  extensible_block::release_ptr ()
+  {
+    char *ret_ptr = m_block.ptr;
+    m_block.ptr = NULL;
+    m_block.dim = 0;
+    return ret_ptr;
+  }
+
+  //
+  // extensible_stack_block
+  //
+  template <size_t S>
+  extensible_stack_block<S>::extensible_stack_block ()
+    : m_stack ()
+    , m_ext_block ()
+    , m_use_stack (true)
+  {
+  }
+
+  template <size_t S>
+  extensible_stack_block<S>::extensible_stack_block (const block_allocator &alloc)
+    : m_stack ()
+    , m_ext_block (alloc)
+    , m_use_stack (true)
+  {
+  }
+
+  template <size_t S>
+  void
+  extensible_stack_block<S>::extend_by (size_t additional_bytes)
+  {
+    if (m_use_stack)
       {
-	m_extend (*this, additional_bytes);
+	m_ext_block.extend_to (m_stack.SIZE + additional_bytes);
+	// copy data from m_stack to m_ext_block at first extension
+	memcpy (m_ext_block.get_ptr (), m_stack.get_ptr (), m_stack.SIZE);
       }
+    else
+      {
+	m_ext_block.extend_by (additional_bytes);
+      }
+    m_use_stack = false;
+  }
 
-    private:
-      std::function<void (block &b, size_t n)> m_extend;  //extend memory block to fit at least additional n bytes
-      std::function<void (block &b)> m_dealloc;           //deallocate memory block
+  template <size_t S>
+  void
+  extensible_stack_block<S>::extend_to (size_t total_bytes)
+  {
+    if (total_bytes <= m_stack.SIZE)
+      {
+	return;
+      }
+    m_ext_block.extend_to (total_bytes);
+    if (m_use_stack)
+      {
+	// copy data from m_stack to m_ext_block at first extension
+	memcpy (m_ext_block.get_ptr (), m_stack.get_ptr (), m_stack.SIZE);
+	m_use_stack = false;
+      }
+  }
 
-      block_ext (const block_ext &) = delete;             //copy ctor
-      block_ext &operator= (const block_ext &) = delete;  //copy assignment
-  };
+  template <size_t S>
+  char *
+  extensible_stack_block<S>::get_ptr ()
+  {
+    return m_use_stack ? m_stack.get_ptr () : m_ext_block.get_ptr ();
+  }
 
-} // namespace mem
+  template <size_t S>
+  const char *
+  extensible_stack_block<S>::get_read_ptr () const
+  {
+    return m_use_stack ? m_stack.get_read_ptr () : m_ext_block.get_read_ptr ();
+  }
+} // namespace cubmem
 
 #endif // _MEM_BLOCK_HPP_

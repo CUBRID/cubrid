@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -37,6 +36,7 @@
 #include "parser_message.h"
 #include "execute_statement.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "object_template.h"
 #include "work_space.h"
 #include "virtual_object.h"
@@ -45,9 +45,9 @@
 #include "parser_support.h"
 #include "view_transform.h"
 #include "network_interface_cl.h"
-#include "xasl_support.h"
 #include "transform.h"
 #include "dbtype.h"
+#include "optimizer.h"		/* qo_need_skip_execution () */
 
 /* associates labels with DB_VALUES */
 static MHT_TABLE *pt_Label_table = NULL;
@@ -179,7 +179,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in, DB_VALUE * d
 
   if (!(error < 0))
     {
-      /* 
+      /*
        * the  above select resulted in a list file put on subquery->etc
        * open it and add the elements to the set.
        */
@@ -225,10 +225,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in, DB_VALUE * d
 	}
     }
 
-  if (list_id)
-    {
-      regu_free_listid (list_id);
-    }
+  cursor_free_self_list_id (list_id);
 
   pt_end_query (parser, query_id_self);
 
@@ -445,7 +442,7 @@ pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE
       if (cursor_next_tuple (&cursor_id) != DB_CURSOR_SUCCESS
 	  || cursor_get_tuple_value_list (&cursor_id, cnt, vals) != NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * This isn't really an error condition, especially when we are in an
 	   * esql context.  Just say that we didn't succeed, which should be
 	   * enough to keep upper levels from trying to do anything with the
@@ -542,7 +539,7 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
   else
     {
       /* Sigh, the old key value was allocated too and needs to be freed or reused. We don't currently have a way to
-       * get the current key pointer in the table. mht_put has the undocumented behavior that if the key already exists 
+       * get the current key pointer in the table. mht_put has the undocumented behavior that if the key already exists
        * in the table, it will continue to use the old key and ignore the one passed in. We rely on this here by
        * passing in the label string which we don't own. If this mht_put behavior changes, then the only safe way will
        * be to add a new mht_ function that allows us to get a pointer to the key so we can free it. */
@@ -1180,12 +1177,12 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		case PT_RTRIM:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd2, 1, (char *) " ", 1, opd1_cs, opd1_coll);
+		      db_make_varnchar (&opd2, 1, " ", 1, opd1_cs, opd1_coll);
 		      type2 = PT_TYPE_VARNCHAR;
 		    }
 		  else
 		    {
-		      db_make_varchar (&opd2, 1, (char *) " ", 1, opd1_cs, opd1_coll);
+		      db_make_varchar (&opd2, 1, " ", 1, opd1_cs, opd1_coll);
 		      type2 = PT_TYPE_VARCHAR;
 		    }
 		  break;
@@ -1214,12 +1211,12 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		case PT_TRANSLATE:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd3, 1, (char *) "", 0, opd1_cs, opd1_coll);
+		      db_make_varnchar (&opd3, 1, "", 0, opd1_cs, opd1_coll);
 		      type3 = PT_TYPE_VARNCHAR;
 		    }
 		  else
 		    {
-		      db_make_varchar (&opd3, 1, (char *) "", 0, opd1_cs, opd1_coll);
+		      db_make_varchar (&opd3, 1, "", 0, opd1_cs, opd1_coll);
 		      type3 = PT_TYPE_VARCHAR;
 		    }
 		  break;
@@ -1227,12 +1224,12 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		case PT_RPAD:
 		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
 		    {
-		      db_make_varnchar (&opd3, 1, (char *) " ", 1, opd1_cs, opd1_coll);
+		      db_make_varnchar (&opd3, 1, " ", 1, opd1_cs, opd1_coll);
 		      type2 = PT_TYPE_VARNCHAR;
 		    }
 		  else
 		    {
-		      db_make_varchar (&opd3, 1, (char *) " ", 1, opd1_cs, opd1_coll);
+		      db_make_varchar (&opd3, 1, " ", 1, opd1_cs, opd1_coll);
 		      type2 = PT_TYPE_VARCHAR;
 		    }
 		  break;
@@ -1308,7 +1305,7 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		}
 	    }
 
-	  regu_free_listid ((QFILE_LIST_ID *) temp->etc);
+	  cursor_free_self_list_id (temp->etc);
 	  pt_end_query (parser, query_id_self);
 	}
       else
@@ -1359,7 +1356,17 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
       break;
 
     case PT_METHOD_CALL:
-      error = do_call_method (parser, tree);
+      if (qo_need_skip_execution ())
+	{
+	  // It is for the get_query_info.
+	  // Do not call method by constant folding
+	  db_make_null (db_values);
+	  error = NO_ERROR;
+	}
+      else
+	{
+	  error = do_call_method (parser, tree);
+	}
       if (error >= NO_ERROR)
 	{
 	  if ((val = (DB_VALUE *) (tree->etc)) != NULL)
@@ -1472,9 +1479,11 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	  return;
 
 	default:
-	  /* fall through: error! */
+	  PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+		      pt_short_print (parser, tree));
 	  break;
 	}
+      break;
 
     default:
       PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,

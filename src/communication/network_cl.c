@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -35,6 +34,8 @@
 #include <sys/resource.h>
 #endif /* !WINDDOWS */
 
+#include <vector>
+
 #include "network.h"
 #include "network_interface_cl.h"
 #include "chartype.h"
@@ -46,8 +47,8 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "boot_cl.h"
-#include "xasl_support.h"
-#include "query_method.h"
+#include "query_method.hpp"
+#include "method_def.hpp"
 #include "release_string.h"
 #include "log_comm.h"
 #include "file_io.h"
@@ -56,6 +57,10 @@
 #include "client_support.h"
 #include "perf_monitor.h"
 #include "log_writer.h"
+#include "object_representation.h"
+
+#include "packer.hpp"
+#include "network_histogram.hpp"
 
 /*
  * To check for errors from the comm system. Note that if we get any error
@@ -77,33 +82,12 @@
     (reply) = NULL; \
   } while (0)
 
-/*
- * Add instrumentation to the client side to get histogram of network
- * requests
- */
-
-struct net_request_buffer
-{
-  const char *name;
-  int request_count;
-  int total_size_sent;
-  int total_size_received;
-  int elapsed_time;
-};
-static struct net_request_buffer net_Req_buffer[NET_SERVER_REQUEST_END];
-
-static int net_Histo_setup = 0;
-static int net_Histo_setup_mnt = 0;
-static int net_Histo_call_count = 0;
-static INT64 net_Histo_last_call_time = 0;
-static INT64 net_Histo_total_server_time = 0;
-
 #if defined(CS_MODE)
 unsigned short method_request_id;
 #endif /* CS_MODE */
 
 /* Contains the name of the current sever host machine.  */
-static char net_Server_host[MAXHOSTNAMELEN + 1] = "";
+static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = "";
 
 /* Contains the name of the current server name. */
 static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = "";
@@ -119,12 +103,6 @@ static int compare_size_and_buffer (int *replysize, int size, char **replybuf, c
 static int net_client_request_internal (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 					char *databuf, int datasize, char *replydata, int replydatasize);
 static int set_server_error (int error);
-
-static void net_histo_setup_names (void);
-static void net_histo_add_entry (int request, int data_sent);
-static void net_histo_request_finished (int request, int data_received);
-
-static const char *get_capability_string (int cap, int cap_type);
 
 /*
  * Shouldn't know about db_Connect_status at this level, must set this
@@ -173,7 +151,7 @@ set_server_error (int error)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 1, "");
 	  return server_error;
 	}
-      /* no break; fall through */
+      /* FALLTHRU */
     default:
       server_error = ER_NET_SERVER_CRASHED;
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, server_error, 0);
@@ -246,34 +224,6 @@ client_capabilities (void)
 }
 
 /*
- * get_capability_string - for the purpose of error logging,
- *                         it translate cap into a word
- *
- * return:
- */
-static const char *
-get_capability_string (int cap, int cap_type)
-{
-  switch (cap_type)
-    {
-    case NET_CAP_INTERRUPT_ENABLED:
-      if (cap & NET_CAP_INTERRUPT_ENABLED)
-	{
-	  return "enabled";
-	}
-      return "disabled";
-    case NET_CAP_UPDATE_DISABLED:
-      if (cap & NET_CAP_UPDATE_DISABLED)
-	{
-	  return "read only";
-	}
-      return "read/write";
-    default:
-      return "-";
-    }
-}
-
-/*
  * check_server_capabilities -
  *
  * return:
@@ -321,7 +271,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
 	}
     }
 
-  /* 
+  /*
    * check HA replication delay
    * if client_cap is on, it checks the server delay status
    * else, it ignores the delay status.
@@ -339,7 +289,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
     {
       if (rel_compare < 0 && ((server_cap & NET_CAP_BACKWARD_COMPATIBLE) || (client_cap & NET_CAP_FORWARD_COMPATIBLE)))
 	{
-	  /* 
+	  /*
 	   * The client is older than the server but the server has a backward
 	   * compatible capability or the client has a forward compatible
 	   * capability.
@@ -348,7 +298,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
 	}
       if (rel_compare > 0 && ((server_cap & NET_CAP_FORWARD_COMPATIBLE) || (client_cap & NET_CAP_BACKWARD_COMPATIBLE)))
 	{
-	  /* 
+	  /*
 	   * The client is newer than the server but the server has a forward
 	   * compatible capability or the client has a backward compatible
 	   * capability.
@@ -452,422 +402,6 @@ compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf, c
 }
 
 /*
- * net_histo_setup_names -
- *
- * return:
- *
- * Note:
- */
-static void
-net_histo_setup_names (void)
-{
-  unsigned int i;
-
-  for (i = 0; i < DIM (net_Req_buffer); i++)
-    {
-      net_Req_buffer[i].name = "";
-      net_Req_buffer[i].request_count = 0;
-      net_Req_buffer[i].total_size_sent = 0;
-      net_Req_buffer[i].total_size_received = 0;
-      net_Req_buffer[i].elapsed_time = 0;
-    }
-
-  net_Req_buffer[NET_SERVER_BO_INIT_SERVER].name = "NET_SERVER_BO_INIT_SERVER";
-  net_Req_buffer[NET_SERVER_BO_REGISTER_CLIENT].name = "NET_SERVER_BO_REGISTER_CLIENT";
-  net_Req_buffer[NET_SERVER_BO_UNREGISTER_CLIENT].name = "NET_SERVER_BO_UNREGISTER_CLIENT";
-  net_Req_buffer[NET_SERVER_BO_BACKUP].name = "NET_SERVER_BO_BACKUP";
-  net_Req_buffer[NET_SERVER_BO_ADD_VOLEXT].name = "NET_SERVER_BO_ADD_VOLEXT";
-  net_Req_buffer[NET_SERVER_BO_CHECK_DBCONSISTENCY].name = "NET_SERVER_BO_CHECK_DBCONSISTENCY";
-  net_Req_buffer[NET_SERVER_BO_FIND_NPERM_VOLS].name = "NET_SERVER_BO_FIND_NPERM_VOLS";
-  net_Req_buffer[NET_SERVER_BO_FIND_NTEMP_VOLS].name = "NET_SERVER_BO_FIND_NTEMP_VOLS";
-  net_Req_buffer[NET_SERVER_BO_FIND_LAST_PERM].name = "NET_SERVER_BO_FIND_LAST_PERM";
-  net_Req_buffer[NET_SERVER_BO_FIND_LAST_TEMP].name = "NET_SERVER_BO_FIND_LAST_TEMP";
-  net_Req_buffer[NET_SERVER_BO_CHANGE_HA_MODE].name = "NET_SERVER_BO_CHANGE_HA_MODE";
-  net_Req_buffer[NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE].name = "NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE";
-  net_Req_buffer[NET_SERVER_BO_COMPACT_DB].name = "NET_SERVER_BO_COMPACT_DB";
-  net_Req_buffer[NET_SERVER_BO_HEAP_COMPACT].name = "NET_SERVER_BO_HEAP_COMPACT";
-  net_Req_buffer[NET_SERVER_BO_COMPACT_DB_START].name = "NET_SERVER_BO_COMPACT_DB_START";
-  net_Req_buffer[NET_SERVER_BO_COMPACT_DB_STOP].name = "NET_SERVER_BO_COMPACT_DB_STOP";
-  net_Req_buffer[NET_SERVER_BO_GET_LOCALES_INFO].name = "NET_SERVER_BO_GET_LOCALES_INFO";
-
-  net_Req_buffer[NET_SERVER_TM_SERVER_COMMIT].name = "NET_SERVER_TM_SERVER_COMMIT";
-  net_Req_buffer[NET_SERVER_TM_SERVER_ABORT].name = "NET_SERVER_TM_SERVER_ABORT";
-  net_Req_buffer[NET_SERVER_TM_SERVER_START_TOPOP].name = "NET_SERVER_TM_SERVER_START_TOPOP";
-  net_Req_buffer[NET_SERVER_TM_SERVER_END_TOPOP].name = "NET_SERVER_TM_SERVER_END_TOPOP";
-  net_Req_buffer[NET_SERVER_TM_SERVER_SAVEPOINT].name = "NET_SERVER_TM_SERVER_SAVEPOINT";
-  net_Req_buffer[NET_SERVER_TM_SERVER_PARTIAL_ABORT].name = "NET_SERVER_TM_SERVER_PARTIAL_ABORT";
-  net_Req_buffer[NET_SERVER_TM_SERVER_HAS_UPDATED].name = "NET_SERVER_TM_SERVER_HAS_UPDATED";
-  net_Req_buffer[NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED].name = "NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED";
-  net_Req_buffer[NET_SERVER_TM_ISBLOCKED].name = "NET_SERVER_TM_ISBLOCKED";
-  net_Req_buffer[NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS].name = "NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS";
-  net_Req_buffer[NET_SERVER_TM_SERVER_GET_GTRINFO].name = "NET_SERVER_TM_SERVER_GET_GTRINFO";
-  net_Req_buffer[NET_SERVER_TM_SERVER_SET_GTRINFO].name = "NET_SERVER_TM_SERVER_SET_GTRINFO";
-  net_Req_buffer[NET_SERVER_TM_SERVER_2PC_START].name = "NET_SERVER_TM_SERVER_2PC_START";
-  net_Req_buffer[NET_SERVER_TM_SERVER_2PC_PREPARE].name = "NET_SERVER_TM_SERVER_2PC_PREPARE";
-  net_Req_buffer[NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED].name = "NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED";
-  net_Req_buffer[NET_SERVER_TM_SERVER_2PC_ATTACH_GT].name = "NET_SERVER_TM_SERVER_2PC_ATTACH_GT";
-  net_Req_buffer[NET_SERVER_TM_SERVER_2PC_PREPARE_GT].name = "NET_SERVER_TM_SERVER_2PC_PREPARE_GT";
-  net_Req_buffer[NET_SERVER_TM_LOCAL_TRANSACTION_ID].name = "NET_SERVER_TM_LOCAL_TRANSACTION_ID";
-  net_Req_buffer[NET_SERVER_LOG_CHECKPOINT].name = "NET_SERVER_LOG_CHECKPOINT";
-
-  net_Req_buffer[NET_SERVER_LC_FETCH].name = "NET_SERVER_LC_FETCH";
-  net_Req_buffer[NET_SERVER_LC_FETCHALL].name = "NET_SERVER_LC_FETCHALL";
-  net_Req_buffer[NET_SERVER_LC_FETCH_LOCKSET].name = "NET_SERVER_LC_FETCH_LOCKSET";
-  net_Req_buffer[NET_SERVER_LC_FETCH_ALLREFS_LOCKSET].name = "NET_SERVER_LC_FETCH_ALLREFS_LOCKSET";
-  net_Req_buffer[NET_SERVER_LC_GET_CLASS].name = "NET_SERVER_LC_GET_CLASS";
-  net_Req_buffer[NET_SERVER_LC_FIND_CLASSOID].name = "NET_SERVER_LC_FIND_CLASSOID";
-  net_Req_buffer[NET_SERVER_LC_DOESEXIST].name = "NET_SERVER_LC_DOESEXIST";
-  net_Req_buffer[NET_SERVER_LC_FORCE].name = "NET_SERVER_LC_FORCE";
-  net_Req_buffer[NET_SERVER_LC_RESERVE_CLASSNAME].name = "NET_SERVER_LC_RESERVE_CLASSNAME";
-  net_Req_buffer[NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID].name = "NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID";
-  net_Req_buffer[NET_SERVER_LC_DELETE_CLASSNAME].name = "NET_SERVER_LC_DELETE_CLASSNAME";
-  net_Req_buffer[NET_SERVER_LC_RENAME_CLASSNAME].name = "NET_SERVER_LC_RENAME_CLASSNAME";
-  net_Req_buffer[NET_SERVER_LC_ASSIGN_OID].name = "NET_SERVER_LC_ASSIGN_OID";
-  net_Req_buffer[NET_SERVER_LC_NOTIFY_ISOLATION_INCONS].name = "NET_SERVER_LC_NOTIFY_ISOLATION_INCONS";
-  net_Req_buffer[NET_SERVER_LC_FIND_LOCKHINT_CLASSOIDS].name = "NET_SERVER_LC_FIND_LOCKHINT_CLASSOIDS";
-  net_Req_buffer[NET_SERVER_LC_FETCH_LOCKHINT_CLASSES].name = "NET_SERVER_LC_FETCH_LOCKHINT_CLASSES";
-  net_Req_buffer[NET_SERVER_LC_ASSIGN_OID_BATCH].name = "NET_SERVER_LC_ASSIGN_OID_BATCH";
-  net_Req_buffer[NET_SERVER_LC_CHECK_FK_VALIDITY].name = "NET_SERVER_LC_CHECK_FK_VALIDITY";
-  net_Req_buffer[NET_SERVER_LC_REM_CLASS_FROM_INDEX].name = "NET_SERVER_LC_REM_CLASS_FROM_INDEX";
-  net_Req_buffer[NET_SERVER_LC_DEMOTE_CLASS_LOCK].name = "NET_SERVER_LC_DEMOTE_CLASS_LOCK";
-
-  net_Req_buffer[NET_SERVER_HEAP_CREATE].name = "NET_SERVER_HEAP_CREATE";
-  net_Req_buffer[NET_SERVER_HEAP_DESTROY].name = "NET_SERVER_HEAP_DESTROY";
-  net_Req_buffer[NET_SERVER_HEAP_DESTROY_WHEN_NEW].name = "NET_SERVER_HEAP_DESTROY_WHEN_NEW";
-  net_Req_buffer[NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES].name = "NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES";
-  net_Req_buffer[NET_SERVER_HEAP_HAS_INSTANCE].name = "NET_SERVER_HEAP_HAS_INSTANCE";
-  net_Req_buffer[NET_SERVER_HEAP_RECLAIM_ADDRESSES].name = "NET_SERVER_HEAP_RECLAIM_ADDRESSES";
-
-  net_Req_buffer[NET_SERVER_LOG_RESET_WAIT_MSECS].name = "NET_SERVER_LOG_RESET_WAIT_MSECS";
-  net_Req_buffer[NET_SERVER_LOG_RESET_ISOLATION].name = "NET_SERVER_LOG_RESET_ISOLATION";
-  net_Req_buffer[NET_SERVER_LOG_SET_INTERRUPT].name = "NET_SERVER_LOG_SET_INTERRUPT";
-  net_Req_buffer[NET_SERVER_LOG_DUMP_STAT].name = "NET_SERVER_LOG_DUMP_STAT";
-  net_Req_buffer[NET_SERVER_LOG_GETPACK_TRANTB].name = "NET_SERVER_LOG_GETPACK_TRANTB";
-  net_Req_buffer[NET_SERVER_LOG_DUMP_TRANTB].name = "NET_SERVER_LOG_DUMP_TRANTB";
-  net_Req_buffer[NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION].name =
-    "NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION";
-
-  net_Req_buffer[NET_SERVER_LOG_FIND_LOB_LOCATOR].name = "NET_SERVER_LOG_FIND_LOB_LOCATOR";
-  net_Req_buffer[NET_SERVER_LOG_ADD_LOB_LOCATOR].name = "NET_SERVER_LOG_ADD_LOB_LOCATOR";
-  net_Req_buffer[NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR].name = "NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR";
-  net_Req_buffer[NET_SERVER_LOG_DROP_LOB_LOCATOR].name = "NET_SERVER_LOG_DROP_LOB_LOCATOR";
-
-  net_Req_buffer[NET_SERVER_LK_DUMP].name = "NET_SERVER_LK_DUMP";
-
-  net_Req_buffer[NET_SERVER_BTREE_ADDINDEX].name = "NET_SERVER_BTREE_ADDINDEX";
-  net_Req_buffer[NET_SERVER_BTREE_DELINDEX].name = "NET_SERVER_BTREE_DELINDEX";
-  net_Req_buffer[NET_SERVER_BTREE_LOADINDEX].name = "NET_SERVER_BTREE_LOADINDEX";
-  net_Req_buffer[NET_SERVER_BTREE_FIND_UNIQUE].name = "NET_SERVER_BTREE_FIND_UNIQUE";
-  net_Req_buffer[NET_SERVER_BTREE_CLASS_UNIQUE_TEST].name = "NET_SERVER_BTREE_CLASS_UNIQUE_TEST";
-  net_Req_buffer[NET_SERVER_BTREE_GET_STATISTICS].name = "NET_SERVER_BTREE_GET_STATISTICS";
-  net_Req_buffer[NET_SERVER_BTREE_GET_KEY_TYPE].name = "NET_SERVER_BTREE_GET_KEY_TYPE";
-
-  net_Req_buffer[NET_SERVER_DISK_TOTALPGS].name = "NET_SERVER_DISK_TOTALPGS";
-  net_Req_buffer[NET_SERVER_DISK_FREEPGS].name = "NET_SERVER_DISK_FREEPGS";
-  net_Req_buffer[NET_SERVER_DISK_REMARKS].name = "NET_SERVER_DISK_REMARKS";
-  net_Req_buffer[NET_SERVER_DISK_VLABEL].name = "NET_SERVER_DISK_VLABEL";
-
-  net_Req_buffer[NET_SERVER_QST_GET_STATISTICS].name = "NET_SERVER_QST_GET_STATISTICS";
-  net_Req_buffer[NET_SERVER_QST_UPDATE_STATISTICS].name = "NET_SERVER_QST_UPDATE_STATISTICS";
-  net_Req_buffer[NET_SERVER_QST_UPDATE_ALL_STATISTICS].name = "NET_SERVER_QST_UPDATE_ALL_STATISTICS";
-
-  net_Req_buffer[NET_SERVER_QM_QUERY_PREPARE].name = "NET_SERVER_QM_QUERY_PREPARE";
-  net_Req_buffer[NET_SERVER_QM_QUERY_EXECUTE].name = "NET_SERVER_QM_QUERY_EXECUTE";
-  net_Req_buffer[NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE].name = "NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE";
-  net_Req_buffer[NET_SERVER_QM_QUERY_END].name = "NET_SERVER_QM_QUERY_END";
-  net_Req_buffer[NET_SERVER_QM_QUERY_DROP_ALL_PLANS].name = "NET_SERVER_QM_QUERY_DROP_ALL_PLANS";
-  net_Req_buffer[NET_SERVER_QM_QUERY_DUMP_PLANS].name = "NET_SERVER_QM_QUERY_DUMP_PLANS";
-  net_Req_buffer[NET_SERVER_QM_QUERY_DUMP_CACHE].name = "NET_SERVER_QM_QUERY_DUMP_CACHE";
-
-  net_Req_buffer[NET_SERVER_LS_GET_LIST_FILE_PAGE].name = "NET_SERVER_LS_GET_LIST_FILE_PAGE";
-
-  net_Req_buffer[NET_SERVER_MNT_SERVER_START_STATS].name = "NET_SERVER_MNT_SERVER_START_STATS";
-  net_Req_buffer[NET_SERVER_MNT_SERVER_STOP_STATS].name = "NET_SERVER_MNT_SERVER_STOP_STATS";
-  net_Req_buffer[NET_SERVER_MNT_SERVER_COPY_STATS].name = "NET_SERVER_MNT_SERVER_COPY_STATS";
-
-  net_Req_buffer[NET_SERVER_CT_CHECK_REP_DIR].name = "NET_SERVER_CT_CHECK_REP_DIR";
-
-  net_Req_buffer[NET_SERVER_CSS_KILL_TRANSACTION].name = "NET_SERVER_CSS_KILL_TRANSACTION";
-  net_Req_buffer[NET_SERVER_CSS_DUMP_CS_STAT].name = "NET_SERVER_CSS_DUMP_CS_STAT";
-
-  net_Req_buffer[NET_SERVER_QPROC_GET_SYS_TIMESTAMP].name = "NET_SERVER_QPROC_GET_SYS_TIMESTAMP";
-  net_Req_buffer[NET_SERVER_QPROC_GET_CURRENT_VALUE].name = "NET_SERVER_QPROC_GET_CURRENT_VALUE";
-  net_Req_buffer[NET_SERVER_QPROC_GET_NEXT_VALUE].name = "NET_SERVER_QPROC_GET_NEXT_VALUE";
-  net_Req_buffer[NET_SERVER_QPROC_GET_SERVER_INFO].name = "NET_SERVER_QPROC_GET_SERVER_INFO";
-  net_Req_buffer[NET_SERVER_SERIAL_DECACHE].name = "NET_SERVER_SERIAL_DECACHE";
-
-  net_Req_buffer[NET_SERVER_PRM_SET_PARAMETERS].name = "NET_SERVER_PRM_SET_PARAMETERS";
-  net_Req_buffer[NET_SERVER_PRM_GET_PARAMETERS].name = "NET_SERVER_PRM_GET_PARAMETERS";
-  net_Req_buffer[NET_SERVER_PRM_GET_PARAMETERS].name = "NET_SERVER_PRM_GET_FORCE_PARAMETERS";
-  net_Req_buffer[NET_SERVER_PRM_DUMP_PARAMETERS].name = "NET_SERVER_PRM_DUMP_PARAMETERS";
-
-  net_Req_buffer[NET_SERVER_JSP_GET_SERVER_PORT].name = "NET_SERVER_JSP_GET_SERVER_PORT";
-
-  net_Req_buffer[NET_SERVER_REPL_INFO].name = "NET_SERVER_REPL_INFO";
-  net_Req_buffer[NET_SERVER_REPL_LOG_GET_APPEND_LSA].name = "NET_SERVER_REPL_LOG_GET_APPEND_LSA";
-
-  net_Req_buffer[NET_SERVER_LOGWR_GET_LOG_PAGES].name = "NET_SERVER_LOGWR_GET_LOG_PAGES";
-
-  net_Req_buffer[NET_SERVER_ES_CREATE_FILE].name = "NET_SERVER_ES_CREATE_FILE";
-  net_Req_buffer[NET_SERVER_ES_WRITE_FILE].name = "NET_SERVER_ES_WRITE_FILE";
-  net_Req_buffer[NET_SERVER_ES_READ_FILE].name = "NET_SERVER_ES_READ_FILE";
-  net_Req_buffer[NET_SERVER_ES_DELETE_FILE].name = "NET_SERVER_ES_DELETE_FILE";
-  net_Req_buffer[NET_SERVER_ES_COPY_FILE].name = "NET_SERVER_ES_COPY_FILE";
-  net_Req_buffer[NET_SERVER_ES_RENAME_FILE].name = "NET_SERVER_ES_RENAME_FILE";
-  net_Req_buffer[NET_SERVER_ES_GET_FILE_SIZE].name = "NET_SERVER_ES_GET_FILE_SIZE";
-
-  net_Req_buffer[NET_SERVER_SHUTDOWN].name = "NET_SERVER_SHUTDOWN";
-
-  net_Req_buffer[NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN].name = "NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN";
-
-  net_Req_buffer[NET_SERVER_SES_CHECK_SESSION].name = "NET_SERVER_SES_CHECK_SESSION";
-  net_Req_buffer[NET_SERVER_SES_END_SESSION].name = "NET_SERVER_END_SESSION";
-  net_Req_buffer[NET_SERVER_SES_SET_ROW_COUNT].name = "NET_SERVER_SES_SET_ROW_COUNT";
-  net_Req_buffer[NET_SERVER_SES_GET_ROW_COUNT].name = "NET_SERVER_GET_ROW_COUNT";
-  net_Req_buffer[NET_SERVER_SES_GET_LAST_INSERT_ID].name = "NET_SERVER_SES_GET_LAST_INSERT_ID";
-  net_Req_buffer[NET_SERVER_SES_RESET_CUR_INSERT_ID].name = "NET_SERVER_SES_RESET_CUR_INSERT_ID";
-  net_Req_buffer[NET_SERVER_SES_CREATE_PREPARED_STATEMENT].name = "NET_SERVER_SES_CREATE_PREPARED_STATEMENT";
-  net_Req_buffer[NET_SERVER_SES_GET_PREPARED_STATEMENT].name = "NET_SERVER_SES_GET_PREPARED_STATEMENT";
-  net_Req_buffer[NET_SERVER_SES_DELETE_PREPARED_STATEMENT].name = "NET_SERVER_SES_DELETE_PREPARED_STATEMENT";
-  net_Req_buffer[NET_SERVER_SES_SET_SESSION_VARIABLES].name = "NET_SERVER_SES_SET_SESSION_VARIABLES";
-  net_Req_buffer[NET_SERVER_SES_GET_SESSION_VARIABLE].name = "NET_SERVER_SES_GET_SESSION_VARIABLE";
-  net_Req_buffer[NET_SERVER_SES_DROP_SESSION_VARIABLES].name = "NET_SERVER_SES_DROP_SESSION_VARIABLES";
-  net_Req_buffer[NET_SERVER_BTREE_FIND_MULTI_UNIQUES].name = "NET_SERVER_FIND_MULTI_UNIQUES";
-  net_Req_buffer[NET_SERVER_VACUUM].name = "NET_SERVER_VACUUM";
-  net_Req_buffer[NET_SERVER_GET_MVCC_SNAPSHOT].name = "NET_SERVER_GET_MVCC_SNAPSHOT";
-  net_Req_buffer[NET_SERVER_LOCK_RR].name = "NET_SERVER_LOCK_RR";
-  net_Req_buffer[NET_SERVER_TZ_GET_CHECKSUM].name = "NET_SERVER_TZ_GET_CHECKSUM";
-  net_Req_buffer[NET_SERVER_SPACEDB].name = "NET_SERVER_SPACEDB";
-}
-
-/*
- * net_histo_clear -
- *
- * return:
- *
- * NOTE:
- */
-void
-net_histo_clear (void)
-{
-  unsigned int i;
-
-  if (net_Histo_setup_mnt)
-    {
-      perfmon_reset_stats ();
-    }
-
-  net_Histo_call_count = 0;
-  net_Histo_last_call_time = 0;
-  net_Histo_total_server_time = 0;
-  for (i = 0; i < DIM (net_Req_buffer); i++)
-    {
-      net_Req_buffer[i].request_count = 0;
-      net_Req_buffer[i].total_size_sent = 0;
-      net_Req_buffer[i].total_size_received = 0;
-      net_Req_buffer[i].elapsed_time = 0;
-    }
-}
-
-/*
- * net_histo_print -
- *
- * return:
- *
- * Note:
- */
-int
-net_histo_print (FILE * stream)
-{
-  unsigned int i;
-  int found = 0, total_requests = 0, total_size_sent = 0;
-  int total_size_received = 0;
-  float server_time, total_server_time = 0;
-  float avg_response_time, avg_client_time;
-  int err = NO_ERROR;
-
-  if (stream == NULL)
-    {
-      stream = stdout;
-    }
-
-  fprintf (stream, "\nHistogram of client requests:\n");
-  fprintf (stream, "%-31s %6s  %10s %10s , %10s \n", "Name", "Rcount", "Sent size", "Recv size", "Server time");
-  for (i = 0; i < DIM (net_Req_buffer); i++)
-    {
-      if (net_Req_buffer[i].request_count)
-	{
-	  found = 1;
-	  server_time = ((float) net_Req_buffer[i].elapsed_time / 1000000 / (float) (net_Req_buffer[i].request_count));
-	  fprintf (stream, "%-29s %6d X %10d+%10d b, %10.6f s\n", net_Req_buffer[i].name,
-		   net_Req_buffer[i].request_count, net_Req_buffer[i].total_size_sent,
-		   net_Req_buffer[i].total_size_received, server_time);
-	  total_requests += net_Req_buffer[i].request_count;
-	  total_size_sent += net_Req_buffer[i].total_size_sent;
-	  total_size_received += net_Req_buffer[i].total_size_received;
-	  total_server_time += (server_time * net_Req_buffer[i].request_count);
-	}
-    }
-  if (!found)
-    {
-      fprintf (stream, " No server requests made\n");
-    }
-  else
-    {
-      fprintf (stream, "-------------------------------------------------------------" "--------------\n");
-      fprintf (stream, "Totals:                       %6d X %10d+%10d b  " "%10.6f s\n", total_requests,
-	       total_size_sent, total_size_received, total_server_time);
-      avg_response_time = total_server_time / total_requests;
-      avg_client_time = 0.0;
-      fprintf (stream,
-	       "\n Average server response time = %6.6f secs \n"
-	       " Average time between client requests = %6.6f secs \n", avg_response_time, avg_client_time);
-    }
-  if (net_Histo_setup_mnt)
-    {
-      err = perfmon_print_stats (stream);
-    }
-  return err;
-}
-
-/*
- * net_histo_print_global_stats -
- *
- * return:
- *
- * Note:
- */
-int
-net_histo_print_global_stats (FILE * stream, bool cumulative, const char *substr)
-{
-  int err = NO_ERROR;
-
-  if (net_Histo_setup_mnt)
-    {
-      err = perfmon_print_global_stats (stream, cumulative, substr);
-    }
-  return err;
-}
-
-/*
- * net_histo_start -
- *
- * return: NO_ERROR or ER_FAILED
- *
- * Note:
- */
-int
-net_histo_start (bool for_all_trans)
-{
-  if (net_Histo_setup == 0)
-    {
-      net_histo_clear ();
-      net_histo_setup_names ();
-      net_Histo_setup = 1;
-    }
-
-  if (net_Histo_setup_mnt == 0)
-    {
-      if (perfmon_start_stats (for_all_trans) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      net_Histo_setup_mnt = 1;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * net_histo_stop -
- *
- * return: NO_ERROR or ER_FAILED
- *
- * Note:
- */
-int
-net_histo_stop (void)
-{
-  int err = NO_ERROR;
-
-  if (net_Histo_setup_mnt == 1)
-    {
-      err = perfmon_stop_stats ();
-      net_Histo_setup_mnt = 0;
-    }
-
-  if (net_Histo_setup == 1)
-    {
-      net_Histo_setup = 0;
-    }
-
-  return err;
-}
-
-/*
- * net_histo_add_entry -
- *
- * return:
- *
- *   request(in):
- *   data_sent(in):
- *
- * Note:
- */
-static void
-net_histo_add_entry (int request, int data_sent)
-{
-#if !defined(WINDOWS)
-  struct timeval tp;
-#endif /* WINDOWS */
-
-  if (request <= NET_SERVER_REQUEST_START || request >= NET_SERVER_REQUEST_END)
-    {
-      return;
-    }
-
-  net_Req_buffer[request].request_count++;
-  net_Req_buffer[request].total_size_sent += data_sent;
-#if !defined(WINDOWS)
-  if (gettimeofday (&tp, NULL) == 0)
-    {
-      net_Histo_last_call_time = tp.tv_sec * 1000000LL + tp.tv_usec;
-    }
-#endif /* !WINDOWS */
-  net_Histo_call_count++;
-}
-
-/*
- * net_histo_request_finished -
- *
- * return:
- *
- *   request(in):
- *   data_received(in):
- *
- * Note:
- */
-static void
-net_histo_request_finished (int request, int data_received)
-{
-#if !defined(WINDOWS)
-  struct timeval tp;
-  INT64 current_time;
-#endif /* !WINDOWS */
-
-  net_Req_buffer[request].total_size_received += data_received;
-
-#if !defined(WINDOWS)
-  if (gettimeofday (&tp, NULL) == 0)
-    {
-      current_time = tp.tv_sec * 1000000LL + tp.tv_usec;
-      net_Histo_total_server_time = current_time - net_Histo_last_call_time;
-      net_Req_buffer[request].elapsed_time += net_Histo_total_server_time;
-    }
-#endif /* !WINDOWS */
-}
-
-/*
  * net_client_request_no_reply -
  *
  * return:
@@ -885,7 +419,7 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
 
   error = NO_ERROR;
 
-  assert (request == NET_SERVER_LOG_SET_INTERRUPT);
+  assert (request == NET_SERVER_LOG_SET_INTERRUPT || request == NET_SERVER_LD_INTERRUPT);
 
   if (net_Server_name[0] == '\0')
     {
@@ -895,12 +429,10 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
       return error;
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_add_entry (request, argsize);
+      histo_add_request (request, argsize);
     }
-#endif /* HISTO */
 
   rc = css_send_req_to_server_no_reply (net_Server_host, request, argbuf, argsize);
   if (rc == 0)
@@ -921,6 +453,17 @@ char *
 net_client_get_server_host (void)
 {
   return net_Server_host;
+}
+
+/*
+ * net_client_get_server_name () - the name of the current sever
+ *
+ * return: string
+ */
+char *
+net_client_get_server_name (void)
+{
+  return net_Server_name;
 }
 
 /*
@@ -961,12 +504,10 @@ net_client_request_internal (int request, char *argbuf, int argsize, char *reply
       return error;
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_add_entry (request, argsize + datasize);
+      histo_add_request (request, argsize + datasize);
     }
-#endif /* HISTO */
 
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
   if (rc == 0)
@@ -1006,12 +547,12 @@ net_client_request_internal (int request, char *argbuf, int argsize, char *reply
 	    }
 	}
     }
-#if defined(HISTO)
-  if (net_Histo_setup)
+
+  if (histo_is_collecting ())
     {
-      net_histo_request_finished (request, replysize + replydatasize);
+      histo_finish_request (request, replysize + replydatasize);
     }
-#endif /* HISTO */
+
   return error;
 }
 
@@ -1084,7 +625,7 @@ net_client_request_send_large_data (int request, char *argbuf, int argsize, char
 #if defined(HISTO)
   if (net_Histo_setup)
     {
-      net_histo_add_entry (request, argsize + datasize);
+      histo_add_request (request, argsize + datasize);
     }
 #endif /* HISTO */
 
@@ -1131,7 +672,7 @@ net_client_request_send_large_data (int request, char *argbuf, int argsize, char
 #if defined(HISTO)
   if (net_Histo_setup)
     {
-      net_histo_request_finished (request, replysize + replydatasize);
+      histo_finish_request (request, replysize + replydatasize);
     }
 #endif /* HISTO */
   return error;
@@ -1180,7 +721,7 @@ net_client_request_recv_large_data (int request, char *argbuf, int argsize, char
 #if defined(HISTO)
       if (net_Histo_setup)
 	{
-	  net_histo_add_entry (request, argsize + datasize);
+	  histo_add_request (request, argsize + datasize);
 	}
 #endif /* HISTO */
       rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
@@ -1239,7 +780,7 @@ net_client_request_recv_large_data (int request, char *argbuf, int argsize, char
 #if defined(HISTO)
       if (net_Histo_setup)
 	{
-	  net_histo_request_finished (request, replysize + *replydatasize_ptr);
+	  histo_finish_request (request, replysize + *replydatasize_ptr);
 	}
 #endif /* HISTO */
     }
@@ -1289,12 +830,12 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
       error = -1;
       return error;
     }
-#if defined(HISTO)
-  if (net_Histo_setup)
+
+  if (histo_is_collecting ())
     {
-      net_histo_add_entry (request, argsize + datasize);
+      histo_add_request (request, argsize + datasize);
     }
-#endif /* HISTO */
+
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
   if (rc == 0)
     {
@@ -1345,12 +886,12 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
 	}
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_request_finished (request, replysize + *replydatasize_ptr);
+      int recevied = replysize + (replydatasize_ptr ? *replydatasize_ptr : 0);
+      histo_finish_request (request, recevied);
     }
-#endif /* HISTO */
+
   return error;
 }
 
@@ -1396,12 +937,12 @@ net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *rep
     }
   else
     {
-#if defined(HISTO)
-      if (net_Histo_setup)
+
+      if (histo_is_collecting ())
 	{
-	  net_histo_add_entry (request, argsize + datasize);
+	  histo_add_request (request, argsize + datasize);
 	}
-#endif /* HISTO */
+
       rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
       if (rc == 0)
 	{
@@ -1438,12 +979,13 @@ net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *rep
 	    }
 	  *replydatasize_ptr = size;
 	}
-#if defined(HISTO)
-      if (net_Histo_setup)
+
+      if (histo_is_collecting ())
 	{
-	  net_histo_request_finished (request, replysize + *replydatasize_ptr);
+	  int recevied = replysize + (replydatasize_ptr ? *replydatasize_ptr : 0);
+	  histo_finish_request (request, recevied);
 	}
-#endif /* HISTO */
+
     }
   return error;
 }
@@ -1492,12 +1034,12 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
     }
   else
     {
-#if defined(HISTO)
-      if (net_Histo_setup)
+
+      if (histo_is_collecting ())
 	{
-	  net_histo_add_entry (request, argsize + datasize1 + datasize2);
+	  histo_add_request (request, argsize + datasize1 + datasize2);
 	}
-#endif /* HISTO */
+
       rid = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
 					   datasize2, NULL, 0);
       if (rid == 0)
@@ -1555,12 +1097,11 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
 		}
 	    }
 	}
-#if defined(HISTO)
-      if (net_Histo_setup)
+
+      if (histo_is_collecting ())
 	{
-	  net_histo_request_finished (request, replysize1 + replysize2);
+	  histo_finish_request (request, replysize1 + replysize2);
 	}
-#endif /* HISTO */
     }
   return rc;
 }
@@ -1629,12 +1170,11 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
     }
   else
     {
-#if defined(HISTO)
-      if (net_Histo_setup)
+      if (histo_is_collecting ())
 	{
-	  net_histo_add_entry (request, argsize + datasize1 + datasize2);
+	  histo_add_request (request, argsize + datasize1 + datasize2);
 	}
-#endif /* HISTO */
+
       rc = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
 					  datasize2, replybuf, replysize);
       if (rc == 0)
@@ -1810,8 +1350,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	      {
 		char *methoddata;
 		int methoddata_size;
-		QFILE_LIST_ID *method_call_list_id = (QFILE_LIST_ID *) 0;
-		METHOD_SIG_LIST *method_call_sig_list = (METHOD_SIG_LIST *) 0;
 
 		er_clear ();
 		error = NO_ERROR;
@@ -1841,18 +1379,14 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			  }
 #endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
-			ptr = or_unpack_unbound_listid (methoddata, (void **) &method_call_list_id);
-			method_call_list_id->last_pgptr = NULL;
-			ptr = or_unpack_method_sig_list (ptr, (void **) &method_call_sig_list);
 
-			COMPARE_AND_FREE_BUFFER (methoddata, reply);
-			free_and_init (methoddata);
+			if (error == NO_ERROR)
+			  {
+			    COMPARE_AND_FREE_BUFFER (methoddata, reply);
+			    error = method_dispatch (rc, methoddata, methoddata_size);
+			    free_and_init (methoddata);
+			  }
 
-			error =
-			  method_invoke_for_server (rc, net_Server_host, net_Server_name, method_call_list_id,
-						    method_call_sig_list);
-			regu_free_listid (method_call_list_id);
-			regu_free_method_sig_list (method_call_sig_list);
 			if (error != NO_ERROR)
 			  {
 			    assert (er_errid () != NO_ERROR);
@@ -1862,10 +1396,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				error = ER_NET_SERVER_DATA_RECEIVE;
 				er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			      }
-			  }
-			else
-			  {
-			    error = NO_ERROR;
 			  }
 #if defined(CS_MODE)
 			if (need_to_reset == true)
@@ -1879,20 +1409,24 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		else
 		  {
 		    error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
-
 		    net_consume_expected_packets (rc, 1);
 		  }
 
 		if (error != NO_ERROR)
 		  {
 		    return_error_to_server (net_Server_host, rc);
-		    method_send_error_to_server (rc, net_Server_host, net_Server_name);
+#if defined(CS_MODE)
+		    // NOTE: To avoid error -495, method_error should be called after return_error_to_server()
+		    method_error (rc, error);
+#endif
 		  }
+
+		/* expecting another reply */
 		css_queue_receive_data_buffer (rc, replybuf, replysize);
 	      }
 	      break;
 
-	      /* 
+	      /*
 	       * A code of END_CALLBACK is followed immediately by an
 	       * integer returning status from the remote call.  The second
 	       * integer represents the return value and must be returned
@@ -1947,7 +1481,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    else
 		      {
 			ptr = or_unpack_string_nocopy (reply, &prompt);
-			/* 
+			/*
 			 * the following data are used depending on prompt type
 			 * but will always be in the input stream
 			 */
@@ -1993,7 +1527,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				      }
 				    break;
 
-				    /* 
+				    /*
 				     * simply boolean (y, yes, 1, n, no, 0)
 				     * validation
 				     */
@@ -2180,14 +1714,205 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	}
       while (server_request != END_CALLBACK && server_request != QUERY_END);
 
-#if defined(HISTO)
-      if (net_Histo_setup)
+      if (histo_is_collecting ())
 	{
-	  net_histo_request_finished (request,
-				      replysize + *replydatasize_listid + *replydatasize_page + *replaydatasize_plan);
+	  int recevied = replysize
+	    + (replydatasize_listid ? *replydatasize_listid : 0)
+	    + (replydatasize_page ? *replydatasize_page : 0) + (replydatasize_plan ? *replydatasize_plan : 0);
+	  histo_finish_request (request, recevied);
 	}
-#endif /* HISTO */
+
     }
+  return error;
+}
+
+int
+net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+				    char **replydata_ptr, int *replydatasize_ptr)
+{
+  unsigned int rc;
+  int error;
+  QUERY_SERVER_REQUEST server_request;
+  int server_request_num;
+  char *reply = NULL, *ptr = NULL, *replydata = NULL;
+  int size, replydata_size = 0;
+
+  error = NO_ERROR;
+  *replydata_ptr = NULL;
+  *replydatasize_ptr = 0;
+
+  if (net_Server_name[0] == '\0')
+    {
+      error = ER_NET_SERVER_CRASHED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+  else
+    {
+      if (histo_is_collecting ())
+	{
+	  histo_add_request (request, argsize);
+	}
+
+      rc = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, NULL, 0, NULL, 0,
+					  replybuf, replysize);
+      if (rc == 0)
+	{
+	  return set_server_error (css_Errno);
+	}
+    }
+
+  do
+    {
+      error = css_receive_data_from_server (rc, &reply, &size);
+      if (error != NO_ERROR || reply == NULL)
+	{
+	  COMPARE_AND_FREE_BUFFER (replybuf, reply);
+	  return set_server_error (error);
+	}
+
+      ptr = or_unpack_int (reply, &server_request_num);
+      server_request = (QUERY_SERVER_REQUEST) server_request_num;
+      switch (server_request)
+	{
+	case METHOD_CALL:
+	  {
+	    char *methoddata;
+	    int methoddata_size;
+
+	    er_clear ();
+	    error = NO_ERROR;
+
+	    /* here we assume that the first integer in the reply is the length of the following data block */
+	    or_unpack_int (ptr, &methoddata_size);
+	    COMPARE_AND_FREE_BUFFER (replybuf, reply);
+
+	    methoddata = (char *) malloc (methoddata_size);
+	    if (methoddata != NULL)
+	      {
+		css_queue_receive_data_buffer (rc, methoddata, methoddata_size);
+		error = css_receive_data_from_server (rc, &reply, &size);
+		if (error != NO_ERROR)
+		  {
+		    COMPARE_AND_FREE_BUFFER (methoddata, reply);
+		    free_and_init (methoddata);
+		    return set_server_error (error);
+		  }
+		else
+		  {
+#if defined(CS_MODE)
+		    bool need_to_reset = false;
+		    if (method_request_id == 0)
+		      {
+			method_request_id = CSS_RID_FROM_EID (rc);
+			need_to_reset = true;
+		      }
+#endif /* CS_MODE */
+		    error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
+
+		    if (error == NO_ERROR)
+		      {
+			COMPARE_AND_FREE_BUFFER (methoddata, reply);
+			error = method_dispatch (rc, methoddata, methoddata_size);
+			free_and_init (methoddata);
+		      }
+
+		    if (error != NO_ERROR)
+		      {
+			assert (er_errid () != NO_ERROR);
+			error = er_errid ();
+			if (error == NO_ERROR)
+			  {
+			    error = ER_NET_SERVER_DATA_RECEIVE;
+			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+			  }
+		      }
+#if defined(CS_MODE)
+		    if (need_to_reset == true)
+		      {
+			method_request_id = 0;
+			need_to_reset = false;
+		      }
+#endif /* CS_MODE */
+		  }
+	      }
+	    else
+	      {
+		error = net_set_alloc_err_if_not_set (error, ARG_FILE_LINE);
+		net_consume_expected_packets (rc, 1);
+	      }
+
+	    if (error != NO_ERROR)
+	      {
+		return_error_to_server (net_Server_host, rc);
+#if defined(CS_MODE)
+		// NOTE: To avoid error -495, method_error should be called after return_error_to_server()
+		method_error (rc, error);
+#endif
+	      }
+
+	    /* expecting another reply */
+	    css_queue_receive_data_buffer (rc, replybuf, replysize);
+	  }
+	  break;
+	case END_CALLBACK:	/* get result */
+	  {
+	    ptr = or_unpack_int (ptr, &replydata_size);
+	    COMPARE_AND_FREE_BUFFER (replybuf, reply);
+
+	    if (replydata_size < 0)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_CRASHED, 0);
+		return ER_NET_SERVER_CRASHED;
+	      }
+	    else if (replydata_size > 0)
+	      {
+		replydata = (char *) malloc (replydata_size);
+		if (replydata == NULL)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) replydata_size);
+		    return ER_OUT_OF_VIRTUAL_MEMORY;
+		  }
+
+		css_queue_receive_data_buffer (rc, replydata, replydata_size);
+		error = css_receive_data_from_server (rc, &reply, &size);
+		if (error != NO_ERROR)
+		  {
+		    COMPARE_AND_FREE_BUFFER (replydata, reply);
+		    free_and_init (replydata);
+		    return set_server_error (error);
+		  }
+		else
+		  {
+		    error = COMPARE_SIZE_AND_BUFFER (&replydata_size, size, &replydata, reply);
+		  }
+		*replydata_ptr = replydata;
+		*replydatasize_ptr = replydata_size;
+	      }
+	    else
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+		return ER_NET_SERVER_DATA_RECEIVE;
+	      }
+	    ptr = or_unpack_int (ptr, &error);
+	  }
+	  break;
+
+	default:
+	  error = ER_NET_SERVER_DATA_RECEIVE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  server_request = END_CALLBACK;
+	  break;
+	}
+    }
+  while (server_request != END_CALLBACK);
+
+  if (histo_is_collecting ())
+    {
+      int recevied = replysize + (replydatasize_ptr ? *replydatasize_ptr : 0);
+      histo_finish_request (request, recevied);
+    }
+
   return error;
 }
 
@@ -2218,6 +1943,11 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize,
     }
   else
     {
+      if (histo_is_collecting ())
+	{
+	  histo_add_request (request, argsize);
+	}
+
       if (ctx_ptr->rc == -1)
 	{
 	  /* HEADER PAGE REQUEST */
@@ -2301,6 +2031,12 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize,
 	  break;
 	}
     }
+
+  if (histo_is_collecting ())
+    {
+      histo_finish_request (request, replysize);
+    }
+
   return error;
 }
 
@@ -2338,12 +2074,11 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
     }
   else
     {
-#if defined (HISTO)
-      if (net_Histo_setup)
+      if (histo_is_collecting ())
 	{
-	  net_histo_add_entry (request, argsize + datasize1 + datasize2);
+	  histo_add_request (request, argsize + datasize1 + datasize2);
 	}
-#endif /* HISTO */
+
       if (ctx_ptr->rc == -1)
 	{
 	  /* It sends a new request */
@@ -2452,12 +2187,13 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 	    }
 	}
       while (do_read /* server_request != END_CALLBACK */ );
-#if defined(HISTO)
-      if (net_Histo_setup)
+
+      if (histo_is_collecting ())
 	{
-	  net_histo_request_finished (request, replysize + *replydatasize_ptr1 + *replydatasize_ptr2);
+	  int recevied = replysize
+	    + (replydatasize_ptr1 ? *replydatasize_ptr1 : 0) + (replydatasize_ptr2 ? *replydatasize_ptr2 : 0);
+	  histo_finish_request (request, recevied);
 	}
-#endif /* HISTO */
     }
   return error;
 }
@@ -2507,7 +2243,7 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length
 
   if (logwr_Gl.logpg_area_size < length)
     {
-      /* 
+      /*
        * It means log_buffer_size/log_page_size are different between master
        * and slave.
        * In this case, we have to disconnect from server and try to reconnect.
@@ -2586,12 +2322,10 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       return ER_FAILED;
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_add_entry (request, argsize);
+      histo_add_request (request, argsize);
     }
-#endif /* HISTO */
 
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, NULL, 0, replybuf, replysize);
   if (rc == 0)
@@ -2599,7 +2333,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       return set_server_error (css_Errno);
     }
 
-  /* 
+  /*
    * Receive replybuf
    */
 
@@ -2612,7 +2346,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 
   error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -2721,12 +2455,10 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       net_consume_expected_packets (rc, num_packets);
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_request_finished (request, replysize + content_size + packed_desc_size);
+      histo_finish_request (request, replysize + content_size + packed_desc_size);
     }
-#endif /* HISTO */
 
   return error;
 }
@@ -2773,12 +2505,10 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       return ER_FAILED;
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_add_entry (request, argsize + datasize);
+      histo_add_request (request, argsize + datasize);
     }
-#endif /* HISTO */
 
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
   if (rc == 0)
@@ -2788,7 +2518,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 
   *eid = rc;
 
-  /* 
+  /*
    * Receive replybuf
    */
 
@@ -2803,7 +2533,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
     }
 
-  /* 
+  /*
    * Receive recvbuffer
    * Here we assume that the first integer in the reply is the length
    * of the following data block
@@ -2862,7 +2592,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 	}
     }
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -2957,12 +2687,10 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       net_consume_expected_packets (rc, num_packets);
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_request_finished (request, replysize + recvbuffer_size + content_size + packed_desc_size);
+      histo_finish_request (request, replysize + recvbuffer_size + content_size + packed_desc_size);
     }
-#endif /* HISTO */
 
   return error;
 }
@@ -3010,12 +2738,10 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
       return ER_FAILED;
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_add_entry (request, argsize + datasize);
+      histo_add_request (request, argsize + datasize1 + datasize2);
     }
-#endif /* HISTO */
 
   rid =
     css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2, datasize2,
@@ -3125,12 +2851,10 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
       net_consume_expected_packets (rid, num_packets);
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_request_finished (request, replysize + recvbuffer_size + content_size + packed_desc_size);
+      histo_finish_request (request, replysize + content_size + packed_desc_size);
     }
-#endif /* HISTO */
 
   return error;
 }
@@ -3171,14 +2895,12 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
       return ER_FAILED;
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_add_entry (request, 0);
+      histo_add_request (request, 0);
     }
-#endif /* HISTO */
 
-  /* 
+  /*
    * Receive replybuf
    */
 
@@ -3194,7 +2916,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
       error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
     }
 
-  /* 
+  /*
    * Receive recvbuffer
    * Here we assume that the first integer in the reply is the length
    * of the following data block
@@ -3251,7 +2973,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 	}
     }
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -3345,12 +3067,10 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
       net_consume_expected_packets (rc, num_packets);
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_request_finished (request, replysize + recvbuffer_size + content_size + packed_desc_size);
+      histo_finish_request (request, replysize + recvbuffer_size + content_size + packed_desc_size);
     }
-#endif /* HISTO */
 
   return error;
 }
@@ -3399,12 +3119,10 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       return ER_FAILED;
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_add_entry (request, argsize + datasize);
+      histo_add_request (request, argsize + datasize);
     }
-#endif /* HISTO */
 
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
   if (rc == 0)
@@ -3412,7 +3130,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       return set_server_error (css_Errno);
     }
 
-  /* 
+  /*
    * Receive replybuf
    */
   error = css_receive_data_from_server (rc, &reply, &size);
@@ -3426,7 +3144,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
     }
 
-  /* 
+  /*
    * Receive recvbuffer
    * Here we assume that the first integer in the reply is the length
    * of the following data block
@@ -3465,7 +3183,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
 	}
     }
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -3542,12 +3260,11 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       net_consume_expected_packets (rc, num_packets);
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_request_finished (request, replysize + *recvbuffer_size + content_size + packed_desc_size);
+      int recevied = replysize + (recvbuffer_size ? *recvbuffer_size : 0) + content_size + packed_desc_size;
+      histo_finish_request (request, recevied);
     }
-#endif /* HISTO */
 
   return error;
 }
@@ -3623,12 +3340,10 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
       return error;
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_add_entry (request, send_argsize + datasize);
+      histo_add_request (request, send_argsize + datasize);
     }
-#endif /* HISTO */
 
   rc = css_send_req_to_server (net_Server_host, request, send_argbuffer, send_argsize, databuf, datasize, recv_replybuf,
 			       recv_replybuf_size);
@@ -3658,12 +3373,10 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
       memcpy (replybuf, recv_replybuf + OR_INT_SIZE, recv_replybuf_size - OR_INT_SIZE);
     }
 
-#if defined(HISTO)
-  if (net_Histo_setup)
+  if (histo_is_collecting ())
     {
-      net_histo_request_finished (request, recv_replybuf_size + file_size);
+      histo_finish_request (request, recv_replybuf_size + file_size);
     }
-#endif /* HISTO */
 
   while (file_size > 0)
     {
@@ -3769,9 +3482,9 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
   const char *client_release;
   char *server_release, *server_host, *server_handshake, *ptr;
   int error = NO_ERROR;
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + MAXHOSTNAMELEN) a_request;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 2) + CUB_MAXHOSTNAMELEN) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
-  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + MAXHOSTNAMELEN) a_reply;
+  OR_ALIGNED_BUF (REL_MAX_RELEASE_LENGTH + (OR_INT_SIZE * 3) + CUB_MAXHOSTNAMELEN) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply), *reply_ptr;
   int reply_size = OR_ALIGNED_BUF_SIZE (a_reply);
   int eid, request_size, server_capabilities, server_bit_platform;
@@ -3850,7 +3563,7 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
       return error;
     }
 
-  /* 
+  /*
    * 1. get the result of compatibility check.
    * 2. check if the both capabilities of client and server are compatible.
    * 3. check if the server has a capability to make it compatible.
@@ -3907,7 +3620,7 @@ net_client_init (const char *dbname, const char *hostname)
 {
   int error = NO_ERROR;
 
-  /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate 
+  /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate
    * is always called before this */
   error = css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname);
   if (error != NO_ERROR)
@@ -3919,7 +3632,7 @@ net_client_init (const char *dbname, const char *hostname)
    * things to the system console */
 
   /* set our host/server names for further css communication */
-  if (hostname != NULL && strlen (hostname) <= MAXHOSTNAMELEN)
+  if (hostname != NULL && strlen (hostname) <= CUB_MAXHOSTNAMELEN)
     {
       strcpy (net_Server_host, hostname);
       if (dbname != NULL && strlen (dbname) <= DB_MAX_IDENTIFIER_LENGTH)

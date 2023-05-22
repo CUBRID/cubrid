@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -21,7 +20,7 @@
 /*
  * log_compress.h - log compression functions
  *
- * Note: Using lzo2 library
+ * Note: Using lz4 library
  */
 
 #ifndef _LOG_COMPRESS_H_
@@ -29,8 +28,7 @@
 
 #ident "$Id$"
 
-#include "lzo/lzoconf.h"
-#include "lzo/lzo1x.h"
+#include "lz4.h"
 
 #define MAKE_ZIP_LEN(length)                                                  \
          ((length) | 0x80000000)
@@ -41,9 +39,9 @@
 #define ZIP_CHECK(length)                                                     \
          (((length) & 0x80000000) ? true : false)
 
-/* plus lzo overhead to log_zip data size */
+/* plus lz4 overhead to log_zip data size */
 #define LOG_ZIP_BUF_SIZE(length) \
-        ((length) + ((length) / 16) + 64 + 3 + sizeof(LOG_ZIP_SIZE_T))
+        (LZ4_compressBound(length) + sizeof(LOG_ZIP_SIZE_T))
 
 #define LOG_ZIP_SIZE_T int
 
@@ -56,11 +54,10 @@ struct log_zip
 {
   LOG_ZIP_SIZE_T data_length;	/* length of stored (compressed/uncompressed)log_zip data */
   LOG_ZIP_SIZE_T buf_size;	/* size of log_zip data buffer */
-  lzo_bytep log_data;		/* compressed/uncompressed log_zip data (used as data buffer) */
-  lzo_bytep wrkmem;		/* wokring memory for lzo function */
+  char *log_data;		/* compressed/uncompressed log_zip data (used as data buffer) */
 };
 
-extern LOG_ZIP *log_zip_alloc (LOG_ZIP_SIZE_T size, bool is_zip);
+extern LOG_ZIP *log_zip_alloc (LOG_ZIP_SIZE_T size);
 extern void log_zip_free (LOG_ZIP * log_zip);
 
 extern bool log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data);

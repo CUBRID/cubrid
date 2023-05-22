@@ -1,19 +1,18 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- *  GNU General Public License for more details.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
  */
 
@@ -277,7 +276,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
   if (f == NULL)
     {
       err_status = ER_LOC_GEN;
-      snprintf (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", file_path);
+      snprintf_dots_truncate (err_msg, sizeof (err_msg) - 1, "Cannot open file %s", file_path);
       LOG_LOCALE_ERROR (err_msg, ER_LOC_GEN, true);
       goto exit;
     }
@@ -514,7 +513,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 	  continue;
 	}
 
-      /* 
+      /*
        * 3400;<CJK Ideograph Extension A, First> 4DB5;<CJK Ideograph Extension A, Last> 4E00;<CJK Ideograph, First>
        * 9FA5;<CJK Ideograph, Last> */
 
@@ -3162,7 +3161,7 @@ add_uca_contr_or_exp (LOCALE_COLLATION * lc, UCA_STORAGE * storage, const unsign
 static int
 read_cp_from_tag (unsigned char *buffer, CP_BUF_TYPE type, UCA_CP * cp)
 {
-  int temp_cp;
+  int temp_cp = 0;
   int result = 0;
   int err_status = NO_ERROR;
   char *chr_ptr;
@@ -3394,7 +3393,7 @@ create_opt_ce_w_exp (LOCALE_COLLATION * lc)
       UCA_COLL_KEY curr_key;
       UCA_COLL_KEY next_key;
       unsigned int curr_pos = coll_key_list[i];
-      unsigned int next_pos;
+      unsigned int next_pos = 0;
       int j;
 
       if (INTL_IS_NEXT_CONTR (curr_pos))
