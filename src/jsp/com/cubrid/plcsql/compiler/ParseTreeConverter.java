@@ -1817,15 +1817,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return new StmtRollback(ctx);
     }
 
-    private static final Set<String> dbmsOutputProc = new TreeSet<>(
-        Arrays.asList("DISABLE", "ENABLE", "GET_LINE", "NEW_LINE", "PUT_LINE", "PUT")
-    );
+    private static final Set<String> dbmsOutputProc =
+            new TreeSet<>(
+                    Arrays.asList("DISABLE", "ENABLE", "GET_LINE", "NEW_LINE", "PUT_LINE", "PUT"));
+
     @Override
     public AstNode visitProcedure_call(Procedure_callContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.routine_name());
         if (ctx.DBMS_OUTPUT() != null && dbmsOutputProc.contains(name)) {
-            // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease migration from Oracle.
+            // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
+            // migration from Oracle.
             // NOTE: users cannot define a procedure of this name because of '$'
             name = "DBMS_OUTPUT$" + name;
         }
