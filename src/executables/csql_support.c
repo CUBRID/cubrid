@@ -1169,7 +1169,7 @@ csql_walk_statement (const char *str)
 	    case CSQL_SUBSTATE_EXPECTING_IS_OR_AS:
 	      if (match_word_ci ("is", &p) || match_word_ci ("as", &p))
 		{
-		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  substate = CSQL_SUBSTATE_PL_LANG_SPEC;
 		  continue;
 		}
 	      else
