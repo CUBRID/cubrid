@@ -2973,9 +2973,9 @@ create_stmt
 		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
                   expecting_pl_lang_spec = 1;
 		}
-	  identifier '(' opt_sp_param_list  ')'		/* 5, 6, 7, 8 */
-	  is_or_as pl_language_spec		        /* 9, 10 */
-	  opt_comment_spec				/* 11 */
+	  identifier opt_sp_param_list		        /* 5, 6 */
+	  is_or_as pl_language_spec		        /* 7, 8 */
+	  opt_comment_spec				/* 9 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace PROCEDURE~);
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2984,10 +2984,10 @@ create_stmt
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_PROCEDURE;
-			    node->info.sp.param_list = $7;
+			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
-			    node->info.sp.body = $10;
-			    node->info.sp.comment = $11;
+			    node->info.sp.body = $8;
+			    node->info.sp.comment = $9;
 			  }
 
 			$$ = node;
@@ -3003,10 +3003,10 @@ create_stmt
 			push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION);
                         expecting_pl_lang_spec = 1;
 		}
-	  identifier '('  opt_sp_param_list  ')'	/* 5, 6, 7, 8 */
-	  RETURN opt_of_data_type_cursor		/* 9, 10 */
-	  is_or_as pl_language_spec		        /* 11, 12 */
-	  opt_comment_spec				/* 13 */
+	  identifier opt_sp_param_list	                /* 5, 6 */
+	  RETURN opt_of_data_type_cursor		/* 7, 8 */
+	  is_or_as pl_language_spec		        /* 9, 10 */
+	  opt_comment_spec				/* 11 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace FUNCTION~);
 			PT_NODE *node = parser_pop_hint_node ();
@@ -3015,10 +3015,10 @@ create_stmt
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
-			    node->info.sp.param_list = $7;
-			    node->info.sp.ret_type = $10;
-			    node->info.sp.body = $12;
-			    node->info.sp.comment = $13;
+			    node->info.sp.param_list = $6;
+			    node->info.sp.ret_type = $8;
+			    node->info.sp.body = $10;
+			    node->info.sp.comment = $11;
 			  }
 
 			$$ = node;
@@ -12540,10 +12540,16 @@ opt_sp_param_list
 			$$ = NULL;
 
 		DBG_PRINT}}
-	| sp_param_list
-		{{ DBG_TRACE_GRAMMAR(opt_sp_param_list, | sp_param_list);
+        | '(' ')'
+		{{ DBG_TRACE_GRAMMAR(opt_sp_param_list, | '(' ')' );
 
-			$$ = $1;
+			$$ = NULL;  // same as the empty case
+
+		DBG_PRINT}}
+	| '(' sp_param_list ')'
+		{{ DBG_TRACE_GRAMMAR(opt_sp_param_list, | '(' sp_param_list ')' );
+
+			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
