@@ -24,7 +24,7 @@ begin
     for r in (SELECT code, name FROM test_tcl_tbl WHERE code > 2) loop
         i := r.code;
         n := r.name;
-        PUT_LINE(i);
-        PUT_LINE('code = ' || i || ' name = ' || n);
+        DBMS_OUTPUT.PUT_LINE(i);
+        DBMS_OUTPUT.PUT_LINE('code = ' || i || ' name = ' || n);
     end loop;
 end;
