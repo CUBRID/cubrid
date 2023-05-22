@@ -127,15 +127,49 @@ public class SymbolStack {
             }
 
             // add procedures
-            DeclProc dp =
-                    new DeclProc(
+            DeclProc dp;
+
+            dp = new DeclProc(
                             null,
-                            "$PUT_LINE",
+                            "DBMS_OUTPUT$DISABLE",
+                            new NodeList<DeclParam>());
+            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$DISABLE", dp);
+
+            dp = new DeclProc(
+                            null,
+                            "DBMS_OUTPUT$ENABLE",
                             new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)),
+                                    .addNode(new DeclParamIn(null, "size", TypeSpecSimple.INT)));
+            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
+
+            dp = new DeclProc(
                             null,
-                            null);
-            putDeclTo(predefinedSymbols, "$PUT_LINE", dp);
+                            "DBMS_OUTPUT$GET_LINE",
+                            new NodeList<DeclParam>()
+                                    .addNode(new DeclParamOut(null, "line", TypeSpecSimple.STRING))
+                                    .addNode(new DeclParamOut(null, "status", TypeSpecSimple.INT)));
+            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
+
+            dp = new DeclProc(
+                            null,
+                            "DBMS_OUTPUT$NEW_LINE",
+                            new NodeList<DeclParam>());
+            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$NEW_LINE", dp);
+
+            dp = new DeclProc(
+                            null,
+                            "DBMS_OUTPUT$PUT_LINE",
+                            new NodeList<DeclParam>()
+                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
+
+            dp = new DeclProc(
+                            null,
+                            "DBMS_OUTPUT$PUT",
+                            new NodeList<DeclParam>()
+                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
+
 
             // add constants TODO implement SQLERRM and SQLCODE properly
             DeclConst dc =

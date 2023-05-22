@@ -44,6 +44,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -1816,15 +1817,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return new StmtRollback(ctx);
     }
 
+    private static final Set<String> dbmsOutputProc = new TreeSet<>(
+        Arrays.asList("DISABLE", "ENABLE", "GET_LINE", "NEW_LINE", "PUT_LINE", "PUT")
+    );
     @Override
     public AstNode visitProcedure_call(Procedure_callContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.routine_name());
-        if (ctx.DBMS_OUTPUT() != null && "PUT_LINE".equals(name)) {
-            // special treatment of 'put_line' procedure to ease migration from Oracle
-            // DBMS_OUTPUT is not an actual package but just a syntactic "ornament".
-            // NOTE: users cannot define a procedure of this name because of the prepended '$'
-            name = "$PUT_LINE";
+        if (ctx.DBMS_OUTPUT() != null && dbmsOutputProc.contains(name)) {
+            // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease migration from Oracle.
+            // NOTE: users cannot define a procedure of this name because of '$'
+            name = "DBMS_OUTPUT$" + name;
         }
 
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
@@ -1845,7 +1848,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s044
                         "the number of arguments to procedure "
-                                + name
+                                + Misc.detachPkgName(name)
                                 + " does not match the number of its formal parameters");
             }
 
@@ -1862,7 +1865,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                 "argument "
                                         + (i + 1)
                                         + " to the procedure "
-                                        + name
+                                        + Misc.detachPkgName(name)
                                         + " must be assignable to because it is to an OUT parameter");
                     }
                 }

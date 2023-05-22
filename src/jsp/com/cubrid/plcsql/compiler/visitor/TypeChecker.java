@@ -1078,7 +1078,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         Misc.getLineColumnOf(arg.ctx), // s214
                         String.format(
                                 "argument %d to the call of %s has an incompatible type",
-                                i + 1, decl.name));
+                                i + 1, Misc.detachPkgName(decl.name)));
             } else {
                 arg.setCoercion(c);
             }
