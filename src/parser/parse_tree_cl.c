@@ -539,7 +539,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
 
 		  name_coll = PT_GET_COLLATION_MODIFIER (name);
 
-		  if (name_coll == -1 && name->data_type != NULL)
+		  if (!PT_HAS_COLLATION_MODIFIER (name) && name->data_type != NULL)
 		    {
 		      name_coll = name->data_type->info.data_type.collation_id;
 		    }
@@ -15823,7 +15823,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
 	  || (p->info.value.is_collate_allowed == false)
 	  || (prt_coll_id == LANG_SYS_COLLATION && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
-	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && PT_GET_COLLATION_MODIFIER (p) == -1))
+	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && !PT_HAS_COLLATION_MODIFIER (p)))
 	{
 	  prt_coll_id = -1;
 	}

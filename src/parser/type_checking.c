@@ -9259,7 +9259,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       goto error;
     }
 
-  if (expr != NULL && PT_GET_COLLATION_MODIFIER (expr) != -1)
+  if (expr != NULL && PT_HAS_COLLATION_MODIFIER (expr))
     {
       if (!PT_HAS_COLLATION (arg1_type) && !PT_HAS_COLLATION (arg2_type) && !PT_HAS_COLLATION (arg3_type)
 	  && !PT_HAS_COLLATION (node->type_enum) && (expr->info.expr.op != PT_CAST || arg1_type != PT_TYPE_MAYBE))
@@ -21917,7 +21917,7 @@ pt_get_collation_info (const PT_NODE * node, PT_COLL_INFER * coll_infer)
 	}
     }
 
-  if (has_collation && PT_GET_COLLATION_MODIFIER (node) != -1)
+  if (has_collation && PT_HAS_COLLATION_MODIFIER (node))
     {
       LANG_COLLATION *lc = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
 
@@ -22186,7 +22186,7 @@ pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NOD
       return NO_COLLATION;
     }
 
-  if (has_collation && PT_GET_COLLATION_MODIFIER (node) != -1)
+  if (has_collation && PT_HAS_COLLATION_MODIFIER (node))
     {
       LANG_COLLATION *lc = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
 
@@ -23394,7 +23394,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 
   expr_coll_modifier = PT_GET_COLLATION_MODIFIER (expr);
 
-  if (expr_coll_modifier != -1)
+  if (PT_HAS_COLLATION_MODIFIER (expr))
     {
       LANG_COLLATION *lc = lang_get_collation (expr_coll_modifier);
 
@@ -23406,7 +23406,7 @@ pt_check_expr_collation (PARSER_CONTEXT * parser, PT_NODE ** node)
 
   if (!pt_is_op_w_collation (op) || (op == PT_PLUS && prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT) == false))
     {
-      if (expr_coll_modifier != -1)
+      if (PT_HAS_COLLATION_MODIFIER (expr))
 	{
 	  if (!(op == PT_EVALUATE_VARIABLE || pt_is_comp_op (op)) && !PT_HAS_COLLATION (expr->type_enum))
 	    {
