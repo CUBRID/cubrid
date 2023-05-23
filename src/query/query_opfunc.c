@@ -2307,11 +2307,14 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
 
   if (domain_p != NULL)
     {
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-      if (dom_status != DOMAIN_COMPATIBLE)
+      if (db_value_scale (result_p) < domain_p->scale)
 	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
-	  assert_release (error != NO_ERROR);
+	  dom_status = tp_value_coerce (result_p, result_p, domain_p);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
+	      assert_release (error != NO_ERROR);
+	    }
 	}
     }
 

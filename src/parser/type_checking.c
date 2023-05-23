@@ -4838,7 +4838,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	  break;
 
 	default:
-	  precision = DB_MAX_NUMERIC_PRECISION;
+	  precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE;
 	  break;
 	}
@@ -16478,11 +16478,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		      return 0;
 		    }
 
-		  dom_status = tp_value_coerce (result, result, domain);
-		  if (dom_status != DOMAIN_COMPATIBLE)
+		  if (db_value_scale (result) < domain->scale)
 		    {
-		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
-		      return 0;
+		      dom_status = tp_value_coerce (result, result, domain);
+		      if (dom_status != DOMAIN_COMPATIBLE)
+			{
+			  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
+			  return 0;
+			}
 		    }
 
 		  return 1;

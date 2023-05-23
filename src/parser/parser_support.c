@@ -4455,7 +4455,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	}
 
       sum->data_type->type_enum = PT_TYPE_NUMERIC;
-      sum->data_type->info.data_type.precision = 38;
+      sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
       sum->data_type->info.data_type.dec_precision = 0;
 
       sum->info.expr.arg1 = parser_copy_tree (parser, limit);

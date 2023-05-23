@@ -577,7 +577,7 @@ extern "C"
 #define DB_DEFAULT_NUMERIC_SCALE 0
 
 /* This constant defines the default scale of result of numeric division operation */
-#define DB_DEFAULT_NUMERIC_DIVISION_SCALE 15
+#define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
 /* These constants define the size of buffers within a DB_VALUE. */
 #define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))
