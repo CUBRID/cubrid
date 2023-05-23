@@ -212,7 +212,7 @@ void setup_tran_server_params_on_ha_mode ()
 {
   assert (!HA_DISABLED ());
 
-  char *page_hosts_new_value;
+  char *page_hosts_new_value = NULL;
   constexpr size_t MAX_BUFSIZE = 4096;
 
   char ha_node_list[MAX_BUFSIZE];
@@ -220,7 +220,12 @@ void setup_tran_server_params_on_ha_mode ()
 
   int port_id = prm_get_master_port_id ();
 
-  page_hosts_new_value = (char *) malloc (MAX_BUFSIZE); // free is called by sysprm_final()
+  page_hosts_new_value = (char *) calloc (MAX_BUFSIZE, sizeof (char)); // free is called by sysprm_final()
+  if (page_hosts_new_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, MAX_BUFSIZE);
+      return;
+    }
 
   strncpy_bufsize (ha_node_list, prm_get_string_value (PRM_ID_HA_NODE_LIST));
 
