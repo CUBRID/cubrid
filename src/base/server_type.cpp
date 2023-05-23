@@ -38,6 +38,7 @@ passive_tran_server *pts_Gl = nullptr;
 SERVER_TYPE get_server_type_from_config (server_type_config parameter_value);
 transaction_server_type get_transaction_server_type_from_config (transaction_server_type_config parameter_value);
 void setup_tran_server_params_on_single_node_config ();
+void setup_tran_server_params_on_ha_mode ();
 
 static SERVER_TYPE g_server_type = SERVER_TYPE_UNKNOWN;
 static transaction_server_type g_transaction_server_type = transaction_server_type::ACTIVE;
@@ -127,10 +128,16 @@ int init_server_type (const char *db_name)
       g_server_type = get_server_type_from_config (server_type_from_config);
     }
 
-  if (g_server_type == SERVER_TYPE_TRANSACTION && server_type_from_config == server_type_config::SINGLE_NODE)
+  // if ha_mode, then set page_server_hosts, remote_storage, and transaction_server_type
+  if (g_server_type == SERVER_TYPE_TRANSACTION && !HA_DISABLED ())
+    {
+      setup_tran_server_params_on_ha_mode ();
+    }
+  else if (g_server_type == SERVER_TYPE_TRANSACTION && server_type_from_config == server_type_config::SINGLE_NODE)
     {
       setup_tran_server_params_on_single_node_config ();
     }
+
 #if !defined(NDEBUG)
   g_server_type_initialized = true;
 #endif
@@ -199,6 +206,46 @@ void setup_tran_server_params_on_single_node_config ()
   sprintf (page_hosts_new_value, "localhost:%d", prm_get_master_port_id ());
   prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);
   prm_set_bool_value (PRM_ID_REMOTE_STORAGE, true);
+}
+
+void setup_tran_server_params_on_ha_mode ()
+{
+  assert (!HA_DISABLED ());
+
+  char *page_hosts_new_value;
+  constexpr size_t MAX_BUFSIZE = 4096;
+
+  char ha_node_list[MAX_BUFSIZE];
+  char *str, *savep;
+
+  int port_id = prm_get_master_port_id ();
+
+  page_hosts_new_value = (char *) malloc (MAX_BUFSIZE); // free is called by sysprm_final()
+
+  strncpy_bufsize (ha_node_list, prm_get_string_value (PRM_ID_HA_NODE_LIST));
+
+  str = strtok_r (ha_node_list, "@", &savep); // dbname@host1:host2:...
+  str = strtok_r (NULL, ",:", &savep);
+  while (str)
+    {
+      char tmp[MAX_BUFSIZE] = {0};
+      sprintf (tmp, "%s:%d,", str, port_id);
+      strcat (page_hosts_new_value, tmp);
+      str = strtok_r (NULL, " ,:", &savep);
+    }
+
+  page_hosts_new_value[strlen (page_hosts_new_value) - 1] = '\0';
+
+  prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);
+  prm_set_bool_value (PRM_ID_REMOTE_STORAGE, true);
+
+  /* TODO:
+   * *transaction_server_type* has to be determined.
+   * To determine the transaction_server_type, we need to know the node's state,
+   * and to know the node's state, we need to query the cub_master for the node's state.
+   * Therefore, in order to determine the transaction_server_type,
+   * communication with the cub_master must precede the init_server_type() step.
+   */
 }
 
 void finalize_server_type ()
