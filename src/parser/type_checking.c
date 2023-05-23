@@ -262,7 +262,6 @@ static PT_NODE *pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * e
 static PT_TYPE_ENUM pt_get_common_datetime_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM common_type,
 						 PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type, PT_NODE * arg1,
 						 PT_NODE * arg2);
-<<<<<<< HEAD
 static int pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type);
 static PT_NODE *pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr);
 static bool pt_is_op_with_forced_common_type (PT_OP_TYPE op);
@@ -270,11 +269,6 @@ static bool pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VA
 					   TP_DOMAIN * domain);
 static bool pt_is_range_or_comp (PT_OP_TYPE op);
 static bool pt_is_op_w_collation (const PT_OP_TYPE op);
-=======
-static PT_NODE *pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr);
-static bool pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * arg3,
-					   TP_DOMAIN * domain);
->>>>>>> edebcd7ac (move type evaluation code related to PT_FUNCTION to type_eval_func.cpp)
 static COLLATION_RESULT pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NODE * node,
 								   PT_COLL_INFER * coll_infer);
 static COLLATION_RESULT pt_get_collation_of_collection (PARSER_CONTEXT * parser, const PT_NODE * node,
