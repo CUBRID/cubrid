@@ -135,7 +135,7 @@ class tran_server
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
 	std::shared_mutex m_conn_mtx;
-	std::future<void> m_disconn_fut; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
+	std::future<void> m_disconn_future; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
     };
 
   protected:

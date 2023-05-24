@@ -431,11 +431,11 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
 
-  if (m_disconn_fut.valid ())
+  if (m_disconn_future.valid ())
     {
       // Ensure there is only one connecction for each node, or multiple internal threads will access the connection_handler.
       er_log_debug (ARG_FILE_LINE, "set_connection(): waiting until the previous conn is closed.");
-      m_disconn_fut.get ();
+      m_disconn_future.get ();
     }
 
   auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
@@ -451,9 +451,9 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
 tran_server::connection_handler::~connection_handler ()
 {
-  if (m_disconn_fut.valid ())
+  if (m_disconn_future.valid ())
     {
-      m_disconn_fut.get ();
+      m_disconn_future.get ();
     }
 }
 
@@ -475,8 +475,8 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
-  assert (!m_disconn_fut.valid ());
-  m_disconn_fut = std::async (std::launch::async, [this]
+  assert (!m_disconn_future.valid ());
+  m_disconn_future = std::async (std::launch::async, [this]
   {
     m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
     auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
