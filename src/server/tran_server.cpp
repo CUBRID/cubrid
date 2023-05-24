@@ -518,10 +518,6 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
     }
 
   const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
-  // NOTE: enhance error handling when:
-  //  - more than one page server will be handled
-  //  - fail-over will be implemented
-
   if (error_code != NO_ERRORS)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
