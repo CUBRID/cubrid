@@ -162,7 +162,7 @@ dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
     {
       if (level == DEDUPLICATE_KEY_LEVEL_MAX)
 	{
-	  db_make_int (value, (int) (OID_2_BIGINT (rec_oid) % SHRT_MAX));
+	  db_make_int (value, (int) (OID_2_BIGINT (rec_oid) % INT_MAX));
 	}
       else
 	{
