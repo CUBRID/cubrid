@@ -476,7 +476,7 @@ tran_server::connection_handler::get_request_handlers ()
 }
 
 void
-tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
+tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &&)
 {
   assert (!m_disconn_future.valid ());
   m_disconn_future = std::async (std::launch::async, [this]

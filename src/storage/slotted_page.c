@@ -1267,7 +1267,7 @@ spage_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
   ASSERT_ALIGN ((char *) page_p + page_header_p->offset_to_free_area, page_header_p->alignment);
 
   // zero-out the remaining free space
-  memset ((void *) page_p + page_header_p->offset_to_free_area, 0, page_header_p->cont_free);
+  memset (page_p + page_header_p->offset_to_free_area, 0, page_header_p->cont_free);
 
   spage_verify_header (page_p);
 
@@ -2432,7 +2432,7 @@ spage_update_record_in_place (PAGE_PTR page_p, SPAGE_HEADER * page_header_p, SPA
   // zero-out the remaining free space
   if (slot_p->record_length < old_record_length)
     {
-      memset ((void *) page_p + slot_p->offset_to_record + slot_p->record_length, 0,
+      memset (page_p + slot_p->offset_to_record + slot_p->record_length, 0,
 	      (old_record_length - slot_p->record_length));
     }
 

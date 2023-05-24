@@ -162,9 +162,9 @@ active_tran_server::connection_handler::get_request_handlers ()
 }
 
 void
-active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip)
+active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::sequenced_payload &&a_sp)
 {
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
   log_lsa saved_lsa;
 
   assert (sizeof (log_lsa) == message.size ());

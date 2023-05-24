@@ -213,8 +213,8 @@ passive_tran_server::create_connection_handler (tran_server &ts) const
 }
 
 void
-passive_tran_server::connection_handler::receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip)
+passive_tran_server::connection_handler::receive_log_prior_list (page_server_conn_t::sequenced_payload &&a_sp)
 {
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }

@@ -8471,7 +8471,6 @@ pgbuf_request_data_page_from_page_server (THREAD_ENTRY & thread_r, const VPID * 
 }
 
 // *INDENT-OFF*
-void
 /*
  * pgbuf_respond_data_fetch_page_request - Page Server responds to a request for a heap page
  *
@@ -8483,6 +8482,7 @@ void
  *    - a system parameter
  *    - if the compression algorighm was not able to compress the data, the page is sent uncompressed
  */
+void
 pgbuf_respond_data_fetch_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out)
 {
   assert (is_page_server ());

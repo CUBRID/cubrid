@@ -52,7 +52,7 @@ namespace cubcomm
       // request_sync_client_server.
       class sequenced_payload;
 
-      using incoming_request_handler_t = std::function<void (sequenced_payload &)>;
+      using incoming_request_handler_t = std::function<void (sequenced_payload &&)>;
 
     public:
       request_sync_client_server (cubcomm::channel &&a_channel,
@@ -87,7 +87,7 @@ namespace cubcomm
       using request_queue_autosend_t = cubcomm::request_queue_autosend<request_sync_send_queue_t>;
 
       void unpack_and_handle (cubpacking::unpacker &deserializator, const incoming_request_handler_t &handler);
-      void handle_response (sequenced_payload &seq_payload);
+      void handle_response (sequenced_payload &&seq_payload);
       void register_handler (T_INCOMING_MSG_ID msgid, const incoming_request_handler_t &handler);
 
     private:
@@ -114,7 +114,7 @@ namespace cubcomm
       sequenced_payload (const sequenced_payload &other) = delete;
       ~sequenced_payload () = default;
 
-      sequenced_payload &operator= (sequenced_payload &&other);
+      sequenced_payload &operator= (sequenced_payload &&other) = delete;
       sequenced_payload &operator= (const sequenced_payload &) = delete;
 
       void push_payload (T_PAYLOAD &&a_payload);
@@ -298,7 +298,7 @@ namespace cubcomm
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
   void
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::handle_response (
-	  sequenced_payload &seq_payload)
+	  sequenced_payload &&seq_payload)
   {
     m_response_broker.register_response (seq_payload.get_response_sequence_number (),
 					 std::move (seq_payload.pull_payload ()));
@@ -312,7 +312,7 @@ namespace cubcomm
     sequenced_payload ip;
 
     ip.unpack (deserializator);
-    handler (ip);
+    handler (std::move (ip));
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -343,21 +343,7 @@ namespace cubcomm
     , m_user_payload (std::move (other.m_user_payload))
   {
     other.m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
-  }
-
-  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
-  typename request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload &
-  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::operator= (
-	  sequenced_payload &&other)
-  {
-    if (this != &other)
-      {
-	m_rsn = std::move (other.m_rsn);
-	m_user_payload = std::move (other.m_user_payload);
-
-	other.m_rsn = NO_RESPONSE_SEQUENCE_NUMBER;
-      }
-    return *this;
+    assert (other.m_user_payload.empty ());
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
