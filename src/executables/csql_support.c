@@ -1282,7 +1282,7 @@ csql_walk_statement (const char *str)
 		}
 	      else
 		{
-                  goto substate_transition;	// use goto to repeat a substate transition without increasing p
+		  goto substate_transition;	// use goto to repeat a substate transition without increasing p
 		}
 
 	      break;
@@ -1291,21 +1291,21 @@ csql_walk_statement (const char *str)
 	      assert (false);	// unreachable
 	    }
 
-          if (is_identifier_letter (*p))
-            {
+	  if (is_identifier_letter (*p))
+	    {
 	      if (!is_last_stmt_valid)
 		{
 		  is_last_stmt_valid = true;
 		}
 
-              // once an identifier letter is found, advance p while the next letter is also an identifir letter
-              // in other words, consume the whole identifier
-              while (p + 1 < str + str_length && is_identifier_letter (*(p + 1)))
-                {
-                  p++;
-                }
-              continue;
-            }
+	      // once an identifier letter is found, advance p while the next letter is also an identifir letter
+	      // in other words, consume the whole identifier
+	      while (p + 1 < str + str_length && is_identifier_letter (*(p + 1)))
+		{
+		  p++;
+		}
+	      continue;
+	    }
 
 	  switch (*p)
 	    {
