@@ -62,6 +62,7 @@ DATE:                         D A T E ;
 DATETIME:                     D A T E T I M E ;
 DATETIMELTZ:                  D A T E T I M E L T Z ;
 DATETIMETZ:                   D A T E T I M E T Z ;
+DBMS_OUTPUT:                  D B M S '_' O U T P U T ;
 DEC:                          D E C ;
 DECIMAL:                      D E C I M A L ;
 DECLARE:                      D E C L A R E ;

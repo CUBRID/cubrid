@@ -133,9 +133,39 @@ public class SpLib {
     public static Integer SQLCODE = null;
     public static Date SYSDATE = null;
 
-    public static void PUT_LINE(String s) {
+    // --------------------------------------------------------
+    // DBMS_OUTPUT procedures
+
+    public static void DBMS_OUTPUT$DISABLE() {
+        DBMS_OUTPUT.disable();
+    }
+
+    public static void DBMS_OUTPUT$ENABLE(Integer size) {
+        if (size == null) {
+            throw new VALUE_ERROR();
+        }
+        DBMS_OUTPUT.enable(size);
+    }
+
+    public static void DBMS_OUTPUT$GET_LINE(String[] line, Integer[] status) {
+        int[] iArr = new int[0];
+        DBMS_OUTPUT.getLine(line, iArr);
+        status[0] = iArr[0];
+    }
+
+    public static void DBMS_OUTPUT$NEW_LINE() {
+        DBMS_OUTPUT.newLine();
+    }
+
+    public static void DBMS_OUTPUT$PUT_LINE(String s) {
         DBMS_OUTPUT.putLine(s);
     }
+
+    public static void DBMS_OUTPUT$PUT(String s) {
+        DBMS_OUTPUT.put(s);
+    }
+
+    // --------------------------------------------------------
 
     public static class Query {
         public final String query;

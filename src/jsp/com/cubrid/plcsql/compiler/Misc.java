@@ -42,6 +42,11 @@ public class Misc {
         PROC,
     }
 
+    public static String detachPkgName(String routineName) {
+        int idx = routineName.indexOf('$');
+        return idx >= 0 ? routineName.substring(idx + 1) : routineName;
+    }
+
     public static int[] getLineColumnOf(ParserRuleContext ctx) {
         if (ctx == null) {
             return UNKNOWN_LINE_COLUMN;

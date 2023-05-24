@@ -22,6 +22,6 @@ begin
 
     for r in (SELECT phone FROM a_tbl) loop
         p := r.phone;
-        PUT_LINE(p);
+        DBMS_OUTPUT.PUT_LINE(p);
     end loop;
 end;
