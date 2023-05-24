@@ -433,11 +433,11 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
   if (m_disconn_fut.valid ())
     {
-      // 이전 연결이 있어서 끝나길 기다리는 중이라는 메시지 로깅
-      m_disconn_fut.get ();  // discon 이 끝날때까지 기다림
+      // Ensure there is only one connecction for each node, or multiple internal threads will access the connection_handler.
+      er_log_debug (ARG_FILE_LINE, "set_connection(): waiting until the previous conn is closed.");
+      m_disconn_fut.get ();
     }
-  //set connection 이 multi-thread면 안된다.
-  // <--- 여기서 누가 끼어둘 수 있나?
+
   auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
 
   assert (m_conn == nullptr);
@@ -475,17 +475,14 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &a_ip)
 {
-  auto ulock = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-  m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
-
   assert (!m_disconn_fut.valid ());
   m_disconn_fut = std::async (std::launch::async, [this]
   {
+    m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
     auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
-    const std::string channel_id = get_channel_id ();
     send_disconnect_request ();
     m_conn.reset (nullptr);
-    er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s.", channel_id.c_str());
+    er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s.", get_channel_id ().c_str());
   });
 }
 
@@ -536,7 +533,7 @@ tran_server::connection_handler::send_disconnect_request ()
 {
   const int payload = static_cast<int> (m_ts.m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
-  push_request (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (std::string (msg)));
+  m_conn->push (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (msg));
   // After sending SEND_DISCONNECT_MSG, the page server may release all resources releated to this connection.
 }
 
