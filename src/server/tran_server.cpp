@@ -366,6 +366,16 @@ tran_server::connect_to_page_server (connection_handler &conn_handler, const cub
   return NO_ERROR;
 }
 
+void
+tran_server::disconnect_all_page_servers ()
+{
+  assert_is_tran_server ();
+  // We assumes that no threads are waiting for response at this moment so that m_conn->stop_response_broker() is not needed.
+  m_page_server_conn_vec.clear ();
+
+  er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
+}
+
 int
 tran_server::reset_main_connection ()
 {
@@ -405,16 +415,6 @@ tran_server::is_page_server_connected () const
   assert_is_tran_server ();
 
   return !m_page_server_conn_vec.empty ();
-}
-
-void
-tran_server::disconnect_all_page_servers ()
-{
-  assert_is_tran_server ();
-  // We assumes that no threads are waiting for response at this moment so that m_conn->stop_response_broker() is not needed.
-  m_page_server_conn_vec.clear ();
-
-  er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
 }
 
 bool
