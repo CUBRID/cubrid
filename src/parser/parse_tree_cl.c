@@ -6346,14 +6346,6 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 #endif
 
-  if (p->info.index.comment != NULL)
-    {
-      comment = pt_print_bytes (parser, p->info.index.comment);
-      b = pt_append_nulstring (parser, b, " comment ");
-      b = pt_append_varchar (parser, b, comment);
-      b = pt_append_nulstring (parser, b, " ");
-    }
-
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
     {
       b = pt_append_nulstring (parser, b, " INVISIBLE ");
@@ -6361,6 +6353,14 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   else if (p->info.index.index_status == SM_NORMAL_INDEX)
     {
       b = pt_append_nulstring (parser, b, " VISIBLE ");
+    }
+
+  if (p->info.index.comment != NULL)
+    {
+      comment = pt_print_bytes (parser, p->info.index.comment);
+      b = pt_append_nulstring (parser, b, " comment ");
+      b = pt_append_varchar (parser, b, comment);
+      b = pt_append_nulstring (parser, b, " ");
     }
 
   if (p->info.index.code == PT_REBUILD_INDEX)
@@ -7318,13 +7318,6 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r4);
     }
 
-  if (p->info.index.comment != NULL)
-    {
-      comment = pt_print_bytes (parser, p->info.index.comment);
-      b = pt_append_nulstring (parser, b, " comment ");
-      b = pt_append_varchar (parser, b, comment);
-    }
-
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
     {
       b = pt_append_nulstring (parser, b, " INVISIBLE ");
@@ -7332,6 +7325,13 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       b = pt_append_nulstring (parser, b, " WITH ONLINE ");
+    }
+
+  if (p->info.index.comment != NULL)
+    {
+      comment = pt_print_bytes (parser, p->info.index.comment);
+      b = pt_append_nulstring (parser, b, " comment ");
+      b = pt_append_varchar (parser, b, comment);
     }
 
   parser->custom_print = saved_cp;
@@ -9172,7 +9172,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
 
-      if (p->info.spec.remote_server_name)
+      if (p->info.spec.remote_server_name && !(parser->custom_print & PT_PRINT_SUPPRESS_SERVER_NAME))
 	{
 	  q = pt_append_nulstring (parser, q, "@");
 	  if (p->info.spec.remote_server_name->next)
@@ -9202,7 +9202,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.spec.entity_name);
       q = pt_append_varchar (parser, q, r1);
 
-      if (p->info.spec.remote_server_name)
+      if (p->info.spec.remote_server_name && !(parser->custom_print & PT_PRINT_SUPPRESS_SERVER_NAME))
 	{
 	  q = pt_append_nulstring (parser, q, "@");
 	  if (p->info.spec.remote_server_name->next)
@@ -10117,50 +10117,68 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_CURRENT_VALUE:
-      q = pt_append_nulstring (parser, q, "serial_current_value(");
-
-      /* Only the column name is printed. */
-      if (p->info.expr.arg1->node_type == PT_DOT_)
+      if (parser->custom_print & PT_PRINT_SUPPRESS_SERIAL_CONV)
 	{
-	  dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
-	  while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
-	    {
-	      dot_node_ptr = dot_node_ptr->info.expr.arg2;
-	    }
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ".currval");
 	}
       else
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	}
+	  q = pt_append_nulstring (parser, q, "serial_current_value(");
 
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
+	  /* Only the column name is printed. */
+	  if (p->info.expr.arg1->node_type == PT_DOT_)
+	    {
+	      dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
+	      while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
+		{
+		  dot_node_ptr = dot_node_ptr->info.expr.arg2;
+		}
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	    }
+	  else
+	    {
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	    }
+
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       break;
 
     case PT_NEXT_VALUE:
-      q = pt_append_nulstring (parser, q, "serial_next_value(");
-
-      /* Only the column name is printed. */
-      if (p->info.expr.arg1->node_type == PT_DOT_)
+      if (parser->custom_print & PT_PRINT_SUPPRESS_SERIAL_CONV)
 	{
-	  dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
-	  while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
-	    {
-	      dot_node_ptr = dot_node_ptr->info.expr.arg2;
-	    }
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ".nextval");
 	}
       else
 	{
-	  r1 = pt_print_bytes (parser, p->info.expr.arg1);
-	}
+	  q = pt_append_nulstring (parser, q, "serial_next_value(");
 
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ", ");
-      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, ")");
+	  /* Only the column name is printed. */
+	  if (p->info.expr.arg1->node_type == PT_DOT_)
+	    {
+	      dot_node_ptr = p->info.expr.arg1->info.expr.arg2;
+	      while (dot_node_ptr && dot_node_ptr->node_type == PT_DOT_)
+		{
+		  dot_node_ptr = dot_node_ptr->info.expr.arg2;
+		}
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1->info.expr.arg2);
+	    }
+	  else
+	    {
+	      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+	    }
+
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ", ");
+	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
+	  q = pt_append_varchar (parser, q, r2);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
       break;
 
     case PT_TO_NUMBER:
@@ -18739,7 +18757,7 @@ pt_print_dblink_table_dml (PARSER_CONTEXT * parser, PT_NODE * p)
   /* For Query-cache:
    * Separate comments have been added 
    * for cases where there is no change in the query but information on the server has changed. */
-  q = pt_append_nulstring (parser, q, "\n /* DBLINK(");
+  q = pt_append_nulstring (parser, q, " /* DBLINK(");
 
   if (pt->url && pt->user && pt->pwd)
     {
