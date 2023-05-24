@@ -7318,6 +7318,19 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r4);
     }
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  if (p->info.index.unique == false)
+    {
+      char buf[64] = { 0x00, };
+      dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.dedup_key_mode, p->info.index.dedup_key_level);
+      if (buf[0])
+	{
+	  b = pt_append_nulstring (parser, b, " ");
+	  b = pt_append_nulstring (parser, b, buf);
+	}
+    }
+#endif
+
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
     {
       b = pt_append_nulstring (parser, b, " INVISIBLE ");

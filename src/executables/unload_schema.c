@@ -3332,6 +3332,9 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   const int *prefix_length;
   int k, n_attrs = 0;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
+#endif
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
@@ -3433,6 +3436,27 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	      n_attrs++;
 	    }
 	}
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      reserved_col_buf[0] = '\0';
+      if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
+	{
+	  k = dk_sm_deduplicate_key_position (n_attrs, atts, constraint->func_index_info);
+
+	  if ((k != -1) && IS_DEDUPLICATE_KEY_ATTR_ID (atts[k]->id))
+	    {
+	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_MODE_SET,
+					     GET_DEDUPLICATE_KEY_ATTR_LEVEL (atts[k]->id));
+	      n_attrs--;	/* Hidden column should not be displayed. */
+	    }
+	  else
+	    {
+	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_MODE_NONE,
+					     DEDUPLICATE_KEY_LEVEL_NONE);
+	    }
+	}
+#endif
+
       k = 0;
       for (att = atts; k < n_attrs; att++)
 	{
@@ -3483,6 +3507,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	    }
 	  k++;
 	}
+
       if (constraint->filter_predicate)
 	{
 	  if (constraint->filter_predicate->pred_string)
@@ -3490,6 +3515,12 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	      output_ctx (") where %s", constraint->filter_predicate->pred_string);
 	    }
 	}
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if (reserved_col_buf[0])
+	{
+	  output_ctx (") %s", reserved_col_buf);
+	}
+#endif
       else
 	{
 	  output_ctx (")");
@@ -4153,6 +4184,9 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   char *class_name = NULL;
   MOP ref_clsop;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
+#endif
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
@@ -4172,6 +4206,15 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    {
 	      if (db_attribute_class (*att) != cl->op)
 		{
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+		  att_name = db_attribute_name (*att);
+		  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_name))
+		    {
+		      assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type));
+		      assert (att[1] == NULL);
+		      break;
+		    }
+#endif
 		  has_inherited_atts = true;
 		  break;
 		}
@@ -4190,13 +4233,30 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  output_ctx ("ALTER CLASS %s%s%s%s ADD", output_owner, PRINT_IDENTIFIER (class_name));
 	  output_ctx (" CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  reserved_col_buf[0] = '\0';
+#endif
 	  for (att = atts; *att != NULL; att++)
 	    {
 	      att_name = db_attribute_name (*att);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_name))
+		{
+		  int level;
+		  int mode = DEDUPLICATE_KEY_MODE_SET;
+
+		  assert (att[1] == NULL);
+
+		  GET_DEDUPLICATE_KEY_ATTR_MODE_LEVEL_FROM_NAME (att_name, level);
+		  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), mode, level);
+		  break;
+		}
+#endif
 	      if (att != atts)
 		{
 		  output_ctx (", ");
 		}
+
 	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (att_name));
 	    }
 	  output_ctx (")");
@@ -4204,6 +4264,14 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
 	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (reserved_col_buf[0] == '\0')
+	    {
+	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_MODE_NONE,
+					     DEDUPLICATE_KEY_LEVEL_NONE);
+	    }
+	  output_ctx (" %s", reserved_col_buf);
+#endif
 	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
 			    sizeof (output_owner));
 

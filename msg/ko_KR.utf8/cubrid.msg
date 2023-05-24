@@ -1612,6 +1612,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 ALTER SYNONYM에 대해 지정된 옵션이 없습니다.
 136 Server의 DBNAME 최대 길이는 %1$d 바이트입니다.
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
+138 Invalid level. 유효값은 %1$d부터 %2$d까지 입니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다

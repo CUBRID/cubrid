@@ -46,6 +46,7 @@
 
 #include "porting.h"
 #include "chartype.h"
+#include "deduplicate_key.h"
 #include "misc_string.h"
 #include "error_manager.h"
 #include "storage_common.h"
@@ -728,6 +729,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
 
+#define PRM_NAME_USE_DEDUPLICATE_KEY_MODE_OID_TEST  "use_deduplicate_key_mode_oid_test"
+#define PRM_NAME_DEDUPLICATE_KEY_MODE      "deduplicate_key_mode"
+#define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1203,6 +1208,24 @@ static unsigned int prm_compat_mode_flag = 0;
 bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+bool PRM_USE_DEDUPLICATE_KEY_MODE_OID = false;
+static bool prm_use_deduplicate_key_mode_oid_default = false;
+static unsigned int prm_use_deduplicate_key_mode_oid_flag = 0;
+
+int PRM_DEDUPLICATE_KEY_MODE = DEDUPLICATE_KEY_MODE_OFF;
+static int prm_deduplicate_key_mode_default = DEDUPLICATE_KEY_MODE_OFF;
+static unsigned int prm_deduplicate_key_mode_flag = 0;
+static int prm_deduplicate_key_mode_lower = DEDUPLICATE_KEY_MODE_OFF;
+static int prm_deduplicate_key_mode_upper = DEDUPLICATE_KEY_MODE_ON;
+
+int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_NONE;
+static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_NONE;
+static unsigned int prm_deduplicate_key_level_flag = 0;
+static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_MIN;
+static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_MAX;
+#endif
 
 int PRM_DEFAULT_WEEK_FORMAT = 0;
 static int prm_week_format_default = 0;
@@ -6265,7 +6288,44 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_sql_log_max_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  {PRM_ID_USE_DEDUPLICATE_KEY_MODE_OID_TEST,
+   PRM_NAME_USE_DEDUPLICATE_KEY_MODE_OID_TEST,
+   (PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_use_deduplicate_key_mode_oid_flag,
+   (void *) &prm_use_deduplicate_key_mode_oid_default,
+   (void *) &PRM_USE_DEDUPLICATE_KEY_MODE_OID,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEDUPLICATE_KEY_MODE,
+   PRM_NAME_DEDUPLICATE_KEY_MODE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   &prm_deduplicate_key_mode_flag,
+   (void *) &prm_deduplicate_key_mode_default,
+   (void *) &PRM_DEDUPLICATE_KEY_MODE,
+   (void *) &prm_deduplicate_key_mode_upper,
+   (void *) &prm_deduplicate_key_mode_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEDUPLICATE_KEY_LEVEL,
+   PRM_NAME_DEDUPLICATE_KEY_LEVEL,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_INTEGER,
+   &prm_deduplicate_key_level_flag,
+   (void *) &prm_deduplicate_key_level_default,
+   (void *) &PRM_DEDUPLICATE_KEY_MOD_LEVEL,
+   (void *) &prm_deduplicate_key_level_upper,
+   (void *) &prm_deduplicate_key_level_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+#endif
 };
 
 static int num_session_parameters = 0;
