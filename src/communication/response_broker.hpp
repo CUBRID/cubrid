@@ -57,7 +57,7 @@ namespace cubcomm
       response_broker &operator = (const response_broker &) = delete;
       response_broker &operator = (response_broker &&) = delete;
 
-      T_ERROR register_request (response_sequence_number a_rsn);
+      void register_request (response_sequence_number a_rsn);
       void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
       void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
 
@@ -77,7 +77,7 @@ namespace cubcomm
 	  bucket &operator = (const bucket &) = delete;
 	  bucket &operator = (bucket &&) = delete;
 
-	  T_ERROR register_request (response_sequence_number a_rsn);
+	  void register_request (response_sequence_number a_rsn);
 	  void register_response (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
 	  void register_error (response_sequence_number a_rsn, T_ERROR &&a_error);
 
@@ -137,10 +137,10 @@ namespace cubcomm
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
-  T_ERROR
+  void
   response_broker<T_PAYLOAD, T_ERROR>::register_request (response_sequence_number a_rsn)
   {
-    return get_bucket (a_rsn).register_request (a_rsn);
+    get_bucket (a_rsn).register_request (a_rsn);
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
@@ -194,22 +194,17 @@ namespace cubcomm
   }
 
   template <typename T_PAYLOAD, typename T_ERROR>
-  T_ERROR
+  void
   response_broker<T_PAYLOAD, T_ERROR>::bucket::register_request (response_sequence_number a_rsn)
   {
     {
       std::lock_guard<std::mutex> lk_guard (m_mutex);
 
-      if (m_terminate)
-	{
-	  return m_error;
-	}
+      assert (!m_terminate);
       assert (m_response_payloads.find (a_rsn) == m_response_payloads.cend ());
 
       payload_or_error_type &ent = m_response_payloads[a_rsn];
       ent.m_response_or_error_present = false;
-
-      return m_no_error;
     }
     // don't notify anything because there is no-one interested in this (the request has not even been flown out yet)
   }

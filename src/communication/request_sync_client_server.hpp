@@ -254,7 +254,6 @@ namespace cubcomm
   {
     // Get a unique sequence number of response and group with the payload
     const response_sequence_number rsn = m_rsn_generator.get_unique_number ();
-    css_error_code error_code { NO_ERRORS };
 
     send_queue_error_handler error_handler_ftor = [&rsn, this] (
 		css_error_code error_code, bool &abort_further_processing)
@@ -268,11 +267,7 @@ namespace cubcomm
     // a trace of a request in 'this';
     // otherwise, the only, at runtime, indication is that a thread waits for a condition variable
     // add an upfront entry in the broker such that all roundtrip requests are accounted for
-    error_code = m_response_broker.register_request (rsn);
-    if (error_code != NO_ERRORS)
-      {
-	return error_code;
-      }
+    m_response_broker.register_request (rsn);
 
     // Send the request
     m_queue->push (a_outgoing_message_id, { rsn, std::move (a_request_payload) }, std::move (error_handler_ftor));
@@ -280,6 +275,7 @@ namespace cubcomm
     // The following broker response getter is the blocking part.
 
     // check whether actual answer or error
+    css_error_code error_code { NO_ERRORS };
     std::tie (a_response_payload, error_code) = m_response_broker.get_response (rsn);
     if (error_code != NO_ERRORS)
       {
