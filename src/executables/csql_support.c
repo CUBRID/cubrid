@@ -1248,17 +1248,6 @@ csql_walk_statement (const char *str)
 		}
 	      else
 		{
-		  if (is_identifier_letter (*p))
-		    {
-		      // once an identifier letter is found, advance p while the next letter is also an identifir letter
-		      // in other words, consume the whole identifier
-		      while (p + 1 < str + str_length && is_identifier_letter (*(p + 1)))
-			{
-			  p++;
-			}
-		      continue;
-		    }
-
 		  // keep the substate CSQL_SUBSTATE_PLCSQL_TEXT
 		  // break and proceed to the second switch
 		}
@@ -1293,8 +1282,7 @@ csql_walk_statement (const char *str)
 		}
 	      else
 		{
-		  // keep the substate CSQL_SUBSTATE_PLCSQL_TEXT
-		  // break and proceed to the second switch
+                  goto substate_transition;	// use goto to repeat a substate transition without increasing p
 		}
 
 	      break;
@@ -1302,6 +1290,22 @@ csql_walk_statement (const char *str)
 	    default:
 	      assert (false);	// unreachable
 	    }
+
+          if (is_identifier_letter (*p))
+            {
+	      if (!is_last_stmt_valid)
+		{
+		  is_last_stmt_valid = true;
+		}
+
+              // once an identifier letter is found, advance p while the next letter is also an identifir letter
+              // in other words, consume the whole identifier
+              while (p + 1 < str + str_length && is_identifier_letter (*(p + 1)))
+                {
+                  p++;
+                }
+              continue;
+            }
 
 	  switch (*p)
 	    {
