@@ -2019,7 +2019,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     }
 
   trim_scale = numeric_get_trailing_zeros_scale (temp_quo, scale);
-  if (trim_scale > 0)
+  if (trim_scale > 0)		/* DB_DEFAULT_NUMERIC_DIVISION_SCALE */
     {
       numeric_coerce_num_to_num (temp_quo, prec, scale, prec - trim_scale, scale - trim_scale, trim_quo);
       db_make_numeric (answer, trim_quo, prec - trim_scale, scale - trim_scale);
@@ -3986,7 +3986,7 @@ numeric_get_trailing_zeros_scale (DB_C_NUMERIC num, const int scale)
 	}
     }
 
-  return 0;
+  return scale;
 }
 
 /*

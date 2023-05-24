@@ -2307,14 +2307,11 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
 
   if (domain_p != NULL)
     {
-      if (db_value_scale (result_p) < domain_p->scale)
+      dom_status = tp_value_coerce (result_p, result_p, domain_p);
+      if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  dom_status = tp_value_coerce (result_p, result_p, domain_p);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
-	      assert_release (error != NO_ERROR);
-	    }
+	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
+	  assert_release (error != NO_ERROR);
 	}
     }
 
@@ -5888,7 +5885,17 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       return error;
     }
 
-  return qdata_coerce_result_to_domain (result_p, domain_p);
+  if (type1 == DB_TYPE_NUMERIC && domain_p != NULL)
+    {
+      if (db_value_scale (result_p) < domain_p->scale)
+	{
+	  return qdata_coerce_result_to_domain (result_p, domain_p);
+	}
+    }
+  else
+    {
+      return qdata_coerce_result_to_domain (result_p, domain_p);
+    }
 }
 
 /*
