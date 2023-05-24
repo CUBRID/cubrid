@@ -1175,21 +1175,15 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		case PT_TRIM:
 		case PT_LTRIM:
 		case PT_RTRIM:
-		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-		    {
-		      db_make_varnchar (&opd2, 1, " ", 1, opd1_cs, opd1_coll);
-		      type2 = PT_TYPE_VARNCHAR;
-		    }
-		  else
-		    {
-		      db_make_varchar (&opd2, 1, " ", 1, opd1_cs, opd1_coll);
-		      type2 = PT_TYPE_VARCHAR;
-		    }
+		  db_make_varchar (&opd2, 1, " ", 1, opd1_cs, opd1_coll);
+		  type2 = PT_TYPE_VARCHAR;
 		  break;
+
 		case PT_FROM_UNIXTIME:
 		  db_make_null (&opd2);
 		  opd2_set_null = true;
 		  break;
+
 		default:
 		  db_make_null (&opd2);
 		  break;
@@ -1209,30 +1203,16 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		{
 		case PT_REPLACE:
 		case PT_TRANSLATE:
-		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-		    {
-		      db_make_varnchar (&opd3, 1, "", 0, opd1_cs, opd1_coll);
-		      type3 = PT_TYPE_VARNCHAR;
-		    }
-		  else
-		    {
-		      db_make_varchar (&opd3, 1, "", 0, opd1_cs, opd1_coll);
-		      type3 = PT_TYPE_VARCHAR;
-		    }
+		  db_make_varchar (&opd3, 1, "", 0, opd1_cs, opd1_coll);
+		  type3 = PT_TYPE_VARCHAR;
 		  break;
+
 		case PT_LPAD:
 		case PT_RPAD:
-		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-		    {
-		      db_make_varnchar (&opd3, 1, " ", 1, opd1_cs, opd1_coll);
-		      type2 = PT_TYPE_VARNCHAR;
-		    }
-		  else
-		    {
-		      db_make_varchar (&opd3, 1, " ", 1, opd1_cs, opd1_coll);
-		      type2 = PT_TYPE_VARCHAR;
-		    }
+		  db_make_varchar (&opd3, 1, " ", 1, opd1_cs, opd1_coll);
+		  type2 = PT_TYPE_VARCHAR;
 		  break;
+
 		default:
 		  db_make_null (&opd3);
 		  break;

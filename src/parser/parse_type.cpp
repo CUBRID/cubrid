@@ -32,7 +32,6 @@ const char *pt_generic_type_to_string (pt_generic_type_enum type)
     "GENERIC ANY STRING TYPE",
     "GENERIC VARIABLE STRING TYPE",
     "GENERIC ANY CHAR TYPE",
-    "GENERIC ANY NCHAR TYPE",
     "GENERIC ANY BIT TYPE",
     "GENERIC DISCRETE NUMBER TYPE",
     "GENERIC ANY NUMBER TYPE",
