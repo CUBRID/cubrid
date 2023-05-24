@@ -382,9 +382,6 @@ tran_server::reset_main_connection ()
   auto &conn_vec = m_page_server_conn_vec;
   auto ulock = std::unique_lock<std::shared_mutex> { m_main_conn_mtx };
 
-  // In the future, the main conn could be changed even when the previous one is alive, e.g. what has higher priority is newly connected. But, for now, it is not allowed.
-  assert (m_main_conn == nullptr || !m_main_conn->is_connected ());
-
   /* the priority to select the main connection is the order in the container */
   auto main_conn_cand = std::find_if (conn_vec.cbegin (), conn_vec.cend (),
 				      [] (const auto &conn)
@@ -398,10 +395,16 @@ tran_server::reset_main_connection ()
       return ER_CONN_NO_PAGE_SERVER_AVAILABLE;
     }
 
-  m_main_conn = main_conn_cand->get ();
-
-  er_log_debug (ARG_FILE_LINE, "The main connection is set to %s.\n",
-		m_main_conn->get_channel_id ().c_str ());
+  if (m_main_conn == main_conn_cand->get ())
+    {
+      er_log_debug (ARG_FILE_LINE, "The main connection has been already reset.\n");
+    }
+  else
+    {
+      m_main_conn = main_conn_cand->get ();
+      er_log_debug (ARG_FILE_LINE, "The main connection is set to %s.\n",
+		    m_main_conn->get_channel_id ().c_str ());
+    }
 
   return NO_ERROR;
 }
