@@ -1364,7 +1364,7 @@ typedef struct _ha_config
 #define UNLOAD_SPLIT_SCHEMA_FILES_S             11920
 #define UNLOAD_SPLIT_SCHEMA_FILES_L             "split-schema-files"
 #define UNLOAD_AS_DBA_S                         11921
-#define UNLOAD_AS_DBA_L                         "same-as-dba"
+#define UNLOAD_AS_DBA_L                         "as-dba"
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
@@ -1437,6 +1437,8 @@ typedef struct _ha_config
 #define CSQL_QUERY_COLUMN_ENCLOSURE_L		"enclosure"
 #define CSQL_LOADDB_OUTPUT_S			'd'
 #define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
+#define CSQL_SYSADM_REBUILD_CATALOG_S           12020
+#define CSQL_SYSADM_REBUILD_CATALOG_L           "sysadm-rebuild-catalog"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

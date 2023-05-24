@@ -230,6 +230,8 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 /* for opt_over_analytic_partition_by */
 static bool is_analytic_function = false;
 
+static bool is_in_create_trigger = false;
+
 #define PT_EMPTY INT_MAX
 
 
@@ -785,6 +787,7 @@ int g_original_buffer_len;
 %type <node> event_target
 %type <node> trigger_condition
 %type <node> trigger_action
+%type <node> trigger_action_in
 %type <node> trigger_spec_list
 %type <node> trace_spec
 %type <node> depth_spec
@@ -2718,9 +2721,10 @@ create_stmt
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
           opt_deduplicate_key_mode                      /* 13 */
-	  opt_comment_spec				/* 14 */
-	  opt_with_online				/* 15 */
-	  opt_invisible					/* 16 */
+	  opt_with_online				/* 14 */
+	  opt_invisible					/* 15 */
+          opt_comment_spec				/* 16 */
+
 		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2847,17 +2851,15 @@ create_stmt
                        
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
-
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
                             pt_get_deduplicate_key_mode_level($13,  &node->info.index.dedup_key_mode, &node->info.index.dedup_key_level);
 #endif                            
+			    node->info.index.comment = $16;
 
-			    node->info.index.comment = $14;
-
-                            int with_online_ret = $15;  // 0 for normal, 1 for online no parallel,
+                            int with_online_ret = $14;  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
-                            bool is_invisible = $16;
+                            bool is_invisible = $15;
 
                             if (is_online && is_invisible)
                               {
@@ -5544,6 +5546,11 @@ class_name_with_server_name
                 PT_NAME_INFO_CLEAR_FLAG($1, PT_NAME_INFO_USER_SPECIFIED);
                 SET_CONTAINER_2 (ctn, $1, $3);
                 $$ = ctn;
+		if (is_in_create_trigger)
+		  {
+		    PT_ERROR(this_parser, $1, "triggers on remote tables not supported yet");
+		    PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos);
+		  }
                 DBG_PRINT}}
         ;
 
@@ -10476,8 +10483,8 @@ attr_index_def
 	  index_column_name_list    /* 3 */
 	  opt_where_clause          /* 4 */
           opt_deduplicate_key_mode  /* 5 */
-	  opt_comment_spec          /* 6 */
-	  opt_invisible             /* 7 */
+	  opt_invisible             /* 6 */
+          opt_comment_spec          /* 7 */
 		{{ DBG_TRACE_GRAMMAR(attr_index_def, : index_or_key identifier index_column_name_list opt_where_clause opt_comment_spec opt_invisible);
 			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser,
@@ -10492,7 +10499,7 @@ attr_index_def
 			  }
 			node->info.index.indexed_class = NULL;
 			node->info.index.where = $4;
-			node->info.index.comment = $6;
+			node->info.index.comment = $7;
 			node->info.index.index_status = SM_NORMAL_INDEX;
 
 			prefix_col_count = parser_count_prefix_columns (col, &arg_count);
@@ -10535,7 +10542,7 @@ attr_index_def
 #endif                            
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
-			if ($7)
+			if ($6)
 			  {
 			       node->info.index.index_status = SM_INVISIBLE_INDEX;
 			  }
@@ -11979,7 +11986,7 @@ trigger_condition
 		DBG_PRINT}}
 	;
 
-trigger_action
+trigger_action_in
 	: REJECT_
 		{{ DBG_TRACE_GRAMMAR(trigger_action, : REJECT_);
 
@@ -12113,6 +12120,17 @@ trigger_action
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	;
+
+trigger_action
+	:
+	  { is_in_create_trigger = true; }
+	  trigger_action_in
+	    {{
+		is_in_create_trigger = false;
+		$$ = $2;
+		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+	     DBG_PRINT}}
 	;
 
 trigger_spec_list
