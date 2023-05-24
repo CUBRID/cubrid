@@ -92,7 +92,6 @@ extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Testing Routines */
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);
-extern int numeric_get_trailing_zeros_scale (DB_C_NUMERIC num, const int scale);
 
 extern int numeric_db_value_is_positive (const DB_VALUE * arg);
 #endif /* _NUMERIC_OPFUNC_H_ */

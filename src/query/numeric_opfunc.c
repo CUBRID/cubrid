@@ -1880,9 +1880,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   unsigned char dbv2_copy[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   unsigned char temp_quo[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   unsigned char temp_rem[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
-  unsigned char trim_quo[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
   int scale, scaleup = 0;
-  int trim_scale = 0;
   int ret = NO_ERROR;
   TP_DOMAIN *domain;
   DB_C_NUMERIC divisor_p;
@@ -1937,21 +1935,27 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       prec = DB_MAX_NUMERIC_PRECISION;
     }
 
-  if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE))
+  if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE) && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
     {
-      if (prec < DB_MAX_NUMERIC_PRECISION)
+      int new_scale, new_prec;
+      int scale_delta;
+      scale_delta = DB_DEFAULT_NUMERIC_DIVISION_SCALE - scale;
+      new_scale = scale + scale_delta;
+      new_prec = prec + scale_delta;
+      if (new_prec > DB_MAX_NUMERIC_PRECISION)
 	{
-	  int scale_delta = DB_MAX_NUMERIC_PRECISION - prec;
-
-	  prec += scale_delta;
-	  scale += scale_delta;
-
-	  ret = numeric_scale_dec_long (long_dbv1_copy, scale_delta, true);
-	  if (ret != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
+	  new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
+	  new_prec = DB_MAX_NUMERIC_PRECISION;
 	}
+
+      ret = numeric_scale_dec_long (long_dbv1_copy, new_scale - scale, true);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      scale = new_scale;
+      prec = new_prec;
     }
 
   if (numeric_is_longnum_value (long_dbv1_copy))
@@ -2018,16 +2022,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	}
     }
 
-  trim_scale = numeric_get_trailing_zeros_scale (temp_quo, scale);
-  if (trim_scale > 0)		/* DB_DEFAULT_NUMERIC_DIVISION_SCALE */
-    {
-      numeric_coerce_num_to_num (temp_quo, prec, scale, prec - trim_scale, scale - trim_scale, trim_quo);
-      db_make_numeric (answer, trim_quo, prec - trim_scale, scale - trim_scale);
-    }
-  else
-    {
-      db_make_numeric (answer, temp_quo, prec, scale);
-    }
+  db_make_numeric (answer, temp_quo, prec, scale);
 
   return ret;
 
@@ -3950,43 +3945,6 @@ numeric_db_value_is_zero (const DB_VALUE * arg)
     {
       return (numeric_is_zero (db_get_numeric (arg)));
     }
-}
-
-/*
- * numeric_get_trailing_zeros_scale () -
- *   return: bool
- *   num(in)    : DB_C_NUMERIC
- *   scale(in)  : integer value of the scale
- *
- * Note: This routine gets the size of the scale corresponding to trailing zeros.
- *       This function returns:
- *           The size of the scale corresponding to the trailing zeros if there is a trailing zero and
- *           input scale otherwise.
- *
- */
-int
-numeric_get_trailing_zeros_scale (DB_C_NUMERIC num, const int scale)
-{
-  int i, len = 0;
-  char dec_str[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
-
-  if (numeric_is_zero (num))
-    {
-      return 0;
-    }
-
-  numeric_coerce_num_to_dec_str (num, dec_str);
-  len = strlen (dec_str);
-
-  for (i = 0; i < scale; i++)
-    {
-      if (dec_str[len - (i + 1)] != '0')
-	{
-	  return i;
-	}
-    }
-
-  return scale;
 }
 
 /*

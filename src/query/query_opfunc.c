@@ -5885,17 +5885,7 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       return error;
     }
 
-  if (type1 == DB_TYPE_NUMERIC && domain_p != NULL)
-    {
-      if (db_value_scale (result_p) < domain_p->scale)
-	{
-	  return qdata_coerce_result_to_domain (result_p, domain_p);
-	}
-    }
-  else
-    {
-      return qdata_coerce_result_to_domain (result_p, domain_p);
-    }
+  return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
 /*
