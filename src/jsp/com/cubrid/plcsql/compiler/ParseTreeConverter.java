@@ -1999,9 +1999,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     "OTHERS may not be combined with another exception using OR");
         }
 
+        exHandlerDepth++;
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
+        exHandlerDepth--;
 
-        return new ExHandler(ctx, exceptions, stmts);
+        return new ExHandler(ctx, exceptions, stmts, exHandlerDepth + 1);
     }
 
     public String getImportString() {
@@ -2113,6 +2115,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     private final Map<ParserRuleContext, SqlSemantics> staticSqls;
     private final Set<String> imports = new TreeSet<>();
+
+    private int exHandlerDepth;
 
     private boolean autonomousTransaction = false;
     private boolean connectionRequired = false;

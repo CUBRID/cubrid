@@ -44,12 +44,14 @@ public class ExHandler extends AstNode {
 
     public final List<ExName> exNames;
     public final NodeList<Stmt> stmts;
+    public final int depth;
 
-    public ExHandler(ParserRuleContext ctx, List<ExName> exNames, NodeList<Stmt> stmts) {
+    public ExHandler(ParserRuleContext ctx, List<ExName> exNames, NodeList<Stmt> stmts, int depth) {
         super(ctx);
 
         this.exNames = exNames;
         this.stmts = stmts;
+        this.depth = depth;
     }
 
     @Override
@@ -75,6 +77,7 @@ public class ExHandler extends AstNode {
         }
 
         return tmpl.replace("%'EXCEPTIONS'%", sbuf.toString())
+                .replace("%'DEPTH'%", Integer.toString(depth))
                 .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
 
@@ -83,5 +86,5 @@ public class ExHandler extends AstNode {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines(" catch (%'EXCEPTIONS'% e) {", "  %'STATEMENTS'%", "}");
+            Misc.combineLines(" catch (%'EXCEPTIONS'% e%'DEPTH'%) {", "  %'STATEMENTS'%", "}");
 }
