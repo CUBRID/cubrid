@@ -483,12 +483,13 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
   {
     m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
     auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
+    const std::string channel_id = get_channel_id ();
     if (with_disc_msg)
       {
 	send_disconnect_request ();
       }
     m_conn.reset (nullptr);
-    er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s.", get_channel_id ().c_str());
+    er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s.", channel_id);
   });
 
 }
