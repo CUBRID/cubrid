@@ -416,13 +416,10 @@ bool
 tran_server::is_page_server_connected () const
 {
   assert_is_tran_server ();
-  const auto conn_alive = std::find_if (m_page_server_conn_vec.cbegin (), m_page_server_conn_vec.cend (),
-					[] (const auto &conn)
+  return std::any_of (m_page_server_conn_vec.cbegin (), m_page_server_conn_vec.cend (),	[] (const auto &conn)
   {
     return conn->is_connected ();
   });
-
-  return conn_alive != m_page_server_conn_vec.cend();
 }
 
 bool
