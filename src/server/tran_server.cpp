@@ -383,8 +383,8 @@ tran_server::reset_main_connection ()
   auto ulock = std::unique_lock<std::shared_mutex> { m_main_conn_mtx };
 
   /* the priority to select the main connection is the order in the container */
-  auto main_conn_cand = std::find_if (conn_vec.cbegin (), conn_vec.cend (),
-				      [] (const auto &conn)
+  const auto main_conn_cand = std::find_if (conn_vec.cbegin (), conn_vec.cend (),
+			      [] (const auto &conn)
   {
     return conn->is_connected ();
   });
@@ -413,8 +413,13 @@ bool
 tran_server::is_page_server_connected () const
 {
   assert_is_tran_server ();
+  const auto conn_alive = std::find_if (m_page_server_conn_vec.cbegin (), m_page_server_conn_vec.cend (),
+					[] (const auto &conn)
+  {
+    return conn->is_connected ();
+  });
 
-  return !m_page_server_conn_vec.empty ();
+  return conn_alive != m_page_server_conn_vec.cend();
 }
 
 bool
