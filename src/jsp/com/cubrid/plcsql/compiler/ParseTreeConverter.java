@@ -872,6 +872,16 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return visitExpression(ctx.expression());
     }
 
+    @Override
+    public Expr visitSqlcode_exp(Sqlcode_expContext ctx) {
+        return new ExprSqlCode(ctx, exHandlerDepth);
+    }
+
+    @Override
+    public Expr visitSqlerrm_exp(Sqlerrm_expContext ctx) {
+        return new ExprSqlErrm(ctx, exHandlerDepth);
+    }
+
     /* TODO: restore later
     @Override
     public Expr visitList_exp(List_expContext ctx) {
