@@ -370,7 +370,11 @@ void
 tran_server::disconnect_all_page_servers ()
 {
   assert_is_tran_server ();
-  // We assumes that no threads are waiting for response at this moment so that m_conn->stop_response_broker() is not needed.
+  for (auto &conn : m_page_server_conn_vec)
+    {
+      constexpr bool with_disconnect_msg = true;
+      conn->disconnect_async (with_disconnect_msg);
+    }
   m_page_server_conn_vec.clear ();
 
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
@@ -465,6 +469,30 @@ tran_server::connection_handler::~connection_handler ()
     }
 }
 
+void
+tran_server::connection_handler::disconnect_async (bool with_disc_msg)
+{
+  auto lockg = std::lock_guard <std::mutex> { m_disconn_mtx };
+
+  if (m_disconn_future.valid ())
+    {
+      return; // already done by other
+    }
+
+  m_disconn_future = std::async (std::launch::async, [this, &with_disc_msg]
+  {
+    m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
+    auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
+    if (with_disc_msg)
+      {
+	send_disconnect_request ();
+      }
+    m_conn.reset (nullptr);
+    er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s.", get_channel_id ().c_str());
+  });
+
+}
+
 tran_server::connection_handler::request_handlers_map_t
 tran_server::connection_handler::get_request_handlers ()
 {
@@ -483,15 +511,8 @@ tran_server::connection_handler::get_request_handlers ()
 void
 tran_server::connection_handler::receive_disconnect_request (page_server_conn_t::sequenced_payload &&)
 {
-  assert (!m_disconn_future.valid ());
-  m_disconn_future = std::async (std::launch::async, [this]
-  {
-    m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
-    auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
-    send_disconnect_request ();
-    m_conn.reset (nullptr);
-    er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s.", get_channel_id ().c_str());
-  });
+  constexpr bool with_disconnect_msg = true;
+  disconnect_async (with_disconnect_msg);
 }
 
 int

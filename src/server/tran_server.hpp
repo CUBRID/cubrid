@@ -107,6 +107,7 @@ class tran_server
 	virtual ~connection_handler ();
 
 	void set_connection (cubcomm::channel &&chn);
+	void disconnect_async (bool with_disc_msg);
 
 	int push_request (tran_to_page_request reqid, std::string &&payload);
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
@@ -135,6 +136,7 @@ class tran_server
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
 	std::shared_mutex m_conn_mtx;
+	std::mutex m_disconn_mtx;
 	std::future<void> m_disconn_future; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
     };
 
