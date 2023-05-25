@@ -89,7 +89,6 @@ class tran_server
     virtual void stop_outgoing_page_server_messages () = 0;
 
   protected:
-
     class connection_handler
     {
       public:
