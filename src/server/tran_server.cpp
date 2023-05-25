@@ -485,7 +485,7 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 	send_disconnect_request ();
       }
     m_conn.reset (nullptr);
-    er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s.", channel_id.c_str ());
+    er_log_debug (ARG_FILE_LINE, "Transaction server is disconnected from the page server with channel id: %s.\n", channel_id.c_str ());
   });
 
 }
