@@ -127,9 +127,9 @@ public class Unit extends AstNode {
                         routine.retType == null ? "void" : routine.retType.toJavaCode())
                 .replace("%'METHOD-NAME'%", routine.name)
                 .replace("      %'PARAMETERS'%", Misc.indentLines(strParams, 3))
-                .replace("    %'GET-CONNECTION'%", Misc.indentLines(strGetConn, 2))
-                .replace("    %'DECL-CLASS'%", Misc.indentLines(strDecls, 2))
-                .replace("    %'BODY'%", Misc.indentLines(routine.body.toJavaCode(), 2));
+                .replace("      %'GET-CONNECTION'%", Misc.indentLines(strGetConn, 3))
+                .replace("      %'DECL-CLASS'%", Misc.indentLines(strDecls, 3))
+                .replace("      %'BODY'%", Misc.indentLines(routine.body.toJavaCode(), 3));
     }
 
     public String getClassName() {
@@ -158,12 +158,12 @@ public class Unit extends AstNode {
                     "    ) throws Exception {",
                     "",
                     "    try {",
-                    "    Long[] sql_rowcount = new Long[] { -1L };",
-                    "    %'GET-CONNECTION'%",
+                    "      Long[] sql_rowcount = new Long[] { -1L };",
+                    "      %'GET-CONNECTION'%",
                     "",
-                    "    %'DECL-CLASS'%",
+                    "      %'DECL-CLASS'%",
                     "",
-                    "    %'BODY'%",
+                    "      %'BODY'%",
                     "    } catch (OutOfMemoryError e) {",
                     "      Server.log(e);",
                     "      throw new STORAGE_ERROR();",

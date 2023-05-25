@@ -647,7 +647,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitStmtBlock(StmtBlock node) {
-        visitNodeList(node.decls);
+        if (node.decls != null) {
+            visitNodeList(node.decls);
+        }
         visitBody(node.body);
         return null;
     }
