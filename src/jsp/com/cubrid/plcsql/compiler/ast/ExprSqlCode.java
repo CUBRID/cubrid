@@ -30,61 +30,32 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExHandler extends AstNode {
+public class ExprSqlCode extends Expr {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExHandler(this);
+        return visitor.visitExprSqlCode(this);
     }
 
-    public final List<ExName> exNames;
-    public final NodeList<Stmt> stmts;
-    public final int depth;
+    public final int exHandlerDepth;
 
-    public ExHandler(ParserRuleContext ctx, List<ExName> exNames, NodeList<Stmt> stmts, int depth) {
+    public ExprSqlCode(ParserRuleContext ctx, int exHandlerDepth) {
         super(ctx);
-
-        this.exNames = exNames;
-        this.stmts = stmts;
-        this.depth = depth;
+        this.exHandlerDepth = exHandlerDepth;
     }
 
     @Override
-    public String toJavaCode() {
+    public String exprToJavaCode() {
 
-        boolean first = true;
-        StringBuffer sbuf = new StringBuffer();
-        for (ExName ex : exNames) {
-
-            if (first) {
-                first = false;
-            } else {
-                sbuf.append(" | ");
-            }
-
-            if ("OTHERS".equals(ex.name)) {
-                sbuf.append("Throwable");
-            } else if (ex.prefixDeclBlock) {
-                sbuf.append("Decl_of_" + ex.decl.scope().block + "." + ex.name);
-            } else {
-                sbuf.append(ex.name);
-            }
+        if (exHandlerDepth > 0) {
+            return String.format("e%d.code", exHandlerDepth);
+        } else {
+            assert exHandlerDepth == 0;
+            return "0"; // SQLCODEs that do not belong to an exception handler evaluates to zero (rf
+            // Oracle Spec.)
         }
-
-        return tmpl.replace("%'EXCEPTIONS'%", sbuf.toString())
-                .replace("%'DEPTH'%", Integer.toString(depth))
-                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines(" catch (%'EXCEPTIONS'% e%'DEPTH'%) {", "  %'STATEMENTS'%", "}");
 }

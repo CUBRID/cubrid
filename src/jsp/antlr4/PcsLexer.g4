@@ -125,6 +125,8 @@ SETNEQ:                       S E T N E Q;
 SHORT:                        S H O R T ;
 SMALLINT:                     S M A L L I N T ;
 SQL:                          S Q L ;
+SQLCODE:                      S Q L C O D E ;
+SQLERRM:                      S Q L E R R M ;
 STRING:                       S T R I N G ;
 SUBSET:                       S U B S E T ;
 SUBSETEQ:                     S U B S E T E Q;

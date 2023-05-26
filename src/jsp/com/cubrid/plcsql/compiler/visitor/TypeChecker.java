@@ -624,6 +624,16 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     }
 
     @Override
+    public TypeSpec visitExprSqlCode(ExprSqlCode node) {
+        return TypeSpecSimple.INT;
+    }
+
+    @Override
+    public TypeSpec visitExprSqlErrm(ExprSqlErrm node) {
+        return TypeSpecSimple.STRING;
+    }
+
+    @Override
     public TypeSpec visitStmtAssign(StmtAssign node) {
         TypeSpec valType = visit(node.val);
         TypeSpec varType = ((DeclIdTyped) node.var.decl).typeSpec();
@@ -647,7 +657,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitStmtBlock(StmtBlock node) {
-        visitNodeList(node.decls);
+        if (node.decls != null) {
+            visitNodeList(node.decls);
+        }
         visitBody(node.body);
         return null;
     }

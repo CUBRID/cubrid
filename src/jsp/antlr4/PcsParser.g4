@@ -343,8 +343,10 @@ atom
     | case_expression                           # case_exp
     | SQL PERCENT_ROWCOUNT                      # sql_rowcount_exp  // this must go before the cursor_attr_exp line
     | cursor_exp ( PERCENT_ISOPEN | PERCENT_FOUND | PERCENT_NOTFOUND | PERCENT_ROWCOUNT )   # cursor_attr_exp
-    | LPAREN expression RPAREN                        # paren_exp
-    //| '{' expressions '}'                       # list_exp    TODO: restore later
+    | LPAREN expression RPAREN                  # paren_exp
+    | SQLCODE                                   # sqlcode_exp
+    | SQLERRM                                   # sqlerrm_exp
+    //| '{' expressions '}'                     # list_exp    TODO: restore later
     ;
 
 function_call
