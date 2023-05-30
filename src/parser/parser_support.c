@@ -167,7 +167,7 @@ static PT_NODE *pt_resolve_showstmt_args_named (PARSER_CONTEXT * parser, const S
 						int arg_info_count, PT_NODE * args);
 
 static bool pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, SERVER_NAME_LIST * snl);
-static void pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text,
+static void pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 					 int local_upd, int remote_upd, SERVER_NAME_LIST * snl);
 #define NULL_ATTRID -1
 
@@ -10968,39 +10968,207 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
+static char *
+skip_comment (char *ps)
+{
+  while (*ps)
+    {
+      if (ps[0] == '*' && ps[1] == '/')
+	{
+	  ps += 2;
+	  break;
+	}
+      ps++;
+    }
+  return ps;
+}
+#endif
+
+#if defined (ENABLE_UNUSED_FUNCTION)
+char *
+read_id (char *ps, char end_char)
+{
+  while (*ps != end_char)
+    {
+      ps++;
+    }
+
+  return ((*ps == end_char) ? (ps + 1) : ps);
+
+}
+#endif
+
+#if defined (ENABLE_UNUSED_FUNCTION)
+static char *
+read_string (char *ps, char end_char, bool no_escape)
+{
+  if (no_escape)
+    {
+      while (*ps)
+	{
+	  if (ps[0] == end_char)
+	    {
+	      if (ps[1] != end_char)
+		{
+		  return ps + 1;
+		}
+	      ps++;
+	    }
+	  ps++;
+	}
+    }
+  else
+    {
+      while (*ps)
+	{
+	  if (ps[0] == end_char)
+	    {
+	      if (ps[1] != end_char)
+		{
+		  return ps + 1;
+		}
+	      ps++;
+	    }
+
+	  else if (ps[0] == '\\')
+	    {
+	      switch (ps[1])
+		{
+		case '\'':
+		case '"':
+		case 'n':
+		case 'r':
+		case 't':
+		case '\\':
+		case '%':
+		case '_':
+		  ps++;
+		  break;
+
+		default:
+		  break;
+		}
+	    }
+	  ps++;
+	}
+    }
+
+  return ps;
+}
+#endif
+
+#if defined (ENABLE_UNUSED_FUNCTION)
+static char *
+find_circle_at_char (bool ansi_quotes, bool no_escape, char *ps)
+{
+  while (*ps)
+    {
+      switch (*ps)
+	{
+	case '@':
+	  {
+	    return ps;
+	  }
+	  break;
+
+	case '[':
+	  ps = read_id (ps + 1, ']');
+	  break;
+
+	case '`':
+	  ps = read_id (ps + 1, '`');
+	  break;
+
+	case '"':
+	  ps = (ansi_quotes ? read_id (ps + 1, '"') : read_string (ps + 1, '"', no_escape));
+	  break;
+
+	case '\'':
+	  ps = read_string (ps + 1, '\'', no_escape);
+	  break;
+
+	case '/':
+	case '-':
+	  if (ps[0] == ps[1])
+	    {
+	      ps += 2;
+	      while (*ps)
+		{
+		  ps++;
+		  if (ps[-1] == '\n')
+		    {
+		      break;
+		    }
+		}
+	    }
+	  else if (ps[0] == '/' && ps[1] == '*')
+	    {
+	      ps = skip_comment (ps + 2);
+	    }
+	  break;
+
+	default:
+	  ps++;
+	  break;
+	}
+    }
+
+  return NULL;
+}
+#endif
+
+#if defined (ENABLE_UNUSED_FUNCTION)
 static PARSER_VARCHAR *
 pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
   PARSER_VARCHAR *pvc = NULL;
   char *ps, *pt, *t;
+  int adjust_pos = 1;
+  bool ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
+  bool no_escape = prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES);
 
   ps = sql_user_text;
   if (snl->server_node_cnt > 0)
     {
       int i, idx;
       int zidx[2] = { 0, 1 };
-
       if (snl->server_node_cnt == 2 && snl->len[0] < snl->len[1])
 	{
 	  zidx[0] = 1;
 	  zidx[1] = 0;
 	}
-
-      while (ps)
+      assert (ps != NULL);
+      while (*ps)
 	{
-	  t = strchr ((char *) ps, '@');
+	  t = find_circle_at_char (ansi_quotes, no_escape, ps);
 	  if (!t)
 	    {
 	      break;
 	    }
+
 	  pvc = pt_append_bytes (parser, pvc, ps, (t - ps));
+	  while (char_isspace (t[1]))
+	    {
+	      t++;
+	    }
+
+	  if (t[1] == '[' || t[1] == '`' || (ansi_quotes && t[1] == '"'))
+	    {
+	      adjust_pos = 2;
+	      t++;
+	    }
+	  else
+	    {
+	      adjust_pos = 1;
+	    }
 
 	  for (i = 0; i < snl->server_node_cnt; i++)
 	    {
 	      idx = zidx[i];
 	      if (strncasecmp (t + 1, snl->server_full_name[idx], snl->len[idx]) == 0)
 		{
-		  char ch = t[snl->len[idx] + 1];
+		  char ch = t[snl->len[idx] + adjust_pos];
 		  if (char_isspace (ch) || ch == ',' || ch == ';' || ch == '(' || ch == ')')
 		    {
 		      break;
@@ -11009,28 +11177,29 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_
 	    }
 
 	  assert (i < snl->server_node_cnt);
-	  ps = t + snl->len[idx] + 1;
+	  ps = t + snl->len[idx] + adjust_pos;
 	}
     }
 
   pvc = pt_append_nulstring (parser, pvc, ps);
-
   pt = (char *) pvc->bytes;
   t = pt + (pvc->length - 1);
+
   while (t > pt)
     {
       if (*t != ' ' && *t != '\t' && *t != '\n' && *t != '\a')
 	{
 	  break;
 	}
-
       t--;
     }
+
   t[1] = '\0';
   pvc->length = (int) (t - pt) + 1;
 
   return pvc;
 }
+#endif
 
 static int
 pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
@@ -11216,7 +11385,7 @@ error_return:
 }
 
 static PT_NODE *
-pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *has_synonym, int *continue_walk)
+pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy, int *continue_walk)
 {
   char *class_name;
   char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -11262,7 +11431,6 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *has_sy
 	      spec->info.spec.range_var = parser_new_node (parser, PT_NAME);
 	      spec->info.spec.range_var->info.name.original = pt_append_string (parser, NULL, synonym_name);
 	    }
-	  *(bool *) has_synonym = true;
 	}
     }
   else
@@ -11280,16 +11448,15 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *has_sy
 }
 
 static void
-pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
   PT_NODE *target, *source;
   bool remote_target = false;
-  bool has_synonym = false;
 
   target = node->info.merge.into;
   source = node->info.merge.using_clause;
 
-  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
@@ -11315,23 +11482,16 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sq
 	}
     }
 
-  if (has_synonym)
-    {
-      sql_user_text = parser_print_tree (parser, node);
-    }
-
-  pt_convert_dblink_dml_query (parser, node, sql_user_text, (int) (remote_target == false),
-			       (int) (remote_target == true), snl);
+  pt_convert_dblink_dml_query (parser, node, (int) (remote_target == false), (int) (remote_target == true), snl);
 }
 
 static void
-pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
   PT_NODE *insert, *spec;
   int remote_ins = 0;
-  bool has_synonym = false;
 
-  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
@@ -11343,27 +11503,18 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
       remote_ins = 1;
     }
 
-  if (has_synonym)
-    {
-      /* node need alias for insert */
-      parser_free_node (parser, node->info.insert.spec->info.spec.range_var);
-      node->info.insert.spec->info.spec.range_var = NULL;
-      sql_user_text = parser_print_tree (parser, node);
-    }
-
-  pt_convert_dblink_dml_query (parser, node, sql_user_text, (remote_ins == 0), remote_ins, snl);
+  pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
 
   return;
 }
 
 static void
-pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
   PT_NODE *target, *spec;
   int remote_del = 0, local_del = 0;
-  bool has_synonym = false;
 
-  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
@@ -11419,18 +11570,13 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
       target = target->next;
     }
 
-  if (has_synonym)
-    {
-      sql_user_text = parser_print_tree (parser, node);
-    }
-
-  pt_convert_dblink_dml_query (parser, node, sql_user_text, local_del, remote_del, snl);
+  pt_convert_dblink_dml_query (parser, node, local_del, remote_del, snl);
 
   return;
 }
 
 static void
-pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text, SERVER_NAME_LIST * snl)
+pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
   int idx, local_upd = 0, assigns_count = 0;
   int error, remote_upd = 0, upd_cls_cnt, vals_cnt, multi_assign_cnt;
@@ -11439,9 +11585,8 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls = NULL;
   DB_VALUE *dbvals = NULL;
-  bool has_synonym = false;
 
-  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
@@ -11494,12 +11639,7 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, char *s
       free (cls_info);
     }
 
-  if (has_synonym)
-    {
-      sql_user_text = parser_print_tree (parser, node);
-    }
-
-  pt_convert_dblink_dml_query (parser, node, sql_user_text, local_upd, remote_upd, snl);
+  pt_convert_dblink_dml_query (parser, node, local_upd, remote_upd, snl);
 
   return;
 }
@@ -11559,7 +11699,7 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 static void
-pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_user_text,
+pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
 {
   int i;
@@ -11669,12 +11809,16 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node, char *sql_
   val->type_enum = PT_TYPE_CHAR;
   val->info.value.string_type = ' ';
 
-  assert (sql_user_text && sql_user_text[0]);
-  if (sql_user_text)
-    {
-      val->info.value.data_value.str = pt_make_remote_query (parser, sql_user_text, snl);
-      PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
-    }
+  /*
+     It should be set custom print flag for excluding
+     server name from table-name@server-name for pure remote SQL.
+     It also should set flag not to convert to serial_next_value
+     or serial_current_value for ORACLE or other DBMS.
+   */
+  parser->custom_print |= PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV;
+  val->info.value.data_value.str = pt_print_bytes (parser, node);
+  PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
+  parser->custom_print &= ~(PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV);
 
   if (into_spec)
     {
@@ -11739,9 +11883,8 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
 
   PT_QUERY_INFO *query = &query_stmt->info.query;
   PT_NODE *from_tbl = query_stmt->info.query.q.select.from;
-  bool has_synonym = false;
 
-  parser_walk_tree (parser, query_stmt, pt_convert_dblink_synonym, &has_synonym, NULL, NULL);
+  parser_walk_tree (parser, query_stmt, pt_convert_dblink_synonym, NULL, NULL, NULL);
 
   while (from_tbl)
     {
@@ -11792,19 +11935,19 @@ pt_convert_dml (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
   switch (node->node_type)
     {
     case PT_INSERT:
-      pt_convert_dblink_insert_query (parser, node, node->sql_user_text, snl);
+      pt_convert_dblink_insert_query (parser, node, snl);
       break;
 
     case PT_DELETE:
-      pt_convert_dblink_delete_query (parser, node, node->sql_user_text, snl);
+      pt_convert_dblink_delete_query (parser, node, snl);
       break;
 
     case PT_UPDATE:
-      pt_convert_dblink_update_query (parser, node, node->sql_user_text, snl);
+      pt_convert_dblink_update_query (parser, node, snl);
       break;
 
     case PT_MERGE:
-      pt_convert_dblink_merge_query (parser, node, node->sql_user_text, snl);
+      pt_convert_dblink_merge_query (parser, node, snl);
       break;
 
     default:
