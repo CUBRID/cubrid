@@ -12119,6 +12119,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       switch (common_type)
 	{
 	case PT_TYPE_CHAR:
+	  /* see the CBRD-24828 and CBRD-24734 for setting precision to DB_DEFAULT_PRECISION */
 	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_CHAR_PRECISION)
 					  ? DB_DEFAULT_PRECISION : dt->info.data_type.precision);
 	  break;
