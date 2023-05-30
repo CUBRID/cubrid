@@ -40,7 +40,7 @@
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
 // The higher the level, the more severe the deduplicate.
-#define CALC_MOD_VALUE_FROM_LEVEL(lv)   (1 << (lv))
+#define CALC_MOD_VALUE_FROM_LEVEL(lv)   (((unsigned int)1) << (lv))
 
 static char dk_reserved_deduplicate_key_attr_name[COUNT_OF_DEDUPLICATE_KEY_LEVEL][DEDUPLICATE_KEY_ATTR_NAME_LEN];
 
@@ -166,7 +166,7 @@ dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
 	}
       else
 	{
-	  int mod_val = CALC_MOD_VALUE_FROM_LEVEL (level);
+	  unsigned int mod_val = CALC_MOD_VALUE_FROM_LEVEL (level);
 	  if (mod_val > SHRT_MAX)
 	    {
 	      db_make_int (value, (int) (OID_PSEUDO_KEY (rec_oid) % mod_val));
@@ -187,7 +187,7 @@ dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
     }
   else
     {
-      int mod_val = CALC_MOD_VALUE_FROM_LEVEL (level);
+      unsigned int mod_val = CALC_MOD_VALUE_FROM_LEVEL (level);
       if (mod_val > SHRT_MAX)
 	{
 	  db_make_int (value, (int) (rec_oid->pageid % mod_val));
