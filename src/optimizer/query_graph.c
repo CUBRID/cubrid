@@ -5098,7 +5098,14 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		{
 		  cum_statsp->keys = bstatsp->keys;
 		  cum_statsp->key_type = bstatsp->key_type;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+		  /* When selecting plan, only the key parts defined by the user except for the deduplicate key parts are processed.
+		   * In particular, it has an impact because it compares pkeys_size when choosing a covering index.
+		   */
+		  cum_statsp->pkeys_size = (bstatsp->dedup_idx >= 0) ? bstatsp->dedup_idx : bstatsp->pkeys_size;
+#else
 		  cum_statsp->pkeys_size = bstatsp->pkeys_size;
+#endif
 		  /* alloc pkeys[] within the current optimizer environment */
 		  if (cum_statsp->pkeys)
 		    {
@@ -5318,7 +5325,14 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      cum_statsp->height = bt_statsp->height;
 	      cum_statsp->keys = bt_statsp->keys;
 	      cum_statsp->key_type = bt_statsp->key_type;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      /* When selecting plan, only the key parts defined by the user except for the deduplicate key parts are processed.
+	       * In particular, it has an impact because it compares pkeys_size when choosing a covering index.
+	       */
+	      cum_statsp->pkeys_size = (bt_statsp->dedup_idx >= 0) ? bt_statsp->dedup_idx : bt_statsp->pkeys_size;
+#else
 	      cum_statsp->pkeys_size = bt_statsp->pkeys_size;
+#endif
 	      /* alloc pkeys[] within the current optimizer environment */
 	      if (cum_statsp->pkeys != NULL)
 		{
@@ -5357,7 +5371,14 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	{
 	  cum_statsp->keys = bt_statsp->keys;
 	  cum_statsp->key_type = bt_statsp->key_type;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  /* When selecting plan, only the key parts defined by the user except for the deduplicate key parts are processed.
+	   * In particular, it has an impact because it compares pkeys_size when choosing a covering index.
+	   */
+	  cum_statsp->pkeys_size = (bt_statsp->dedup_idx >= 0) ? bt_statsp->dedup_idx : bt_statsp->pkeys_size;
+#else
 	  cum_statsp->pkeys_size = bt_statsp->pkeys_size;
+#endif
 	  /* alloc pkeys[] within the current optimizer environment */
 	  if (cum_statsp->pkeys)
 	    {
@@ -5569,7 +5590,14 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		  cum_statsp->height = bt_statsp->height;
 		  cum_statsp->keys = bt_statsp->keys;
 		  cum_statsp->key_type = bt_statsp->key_type;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+		  /* When selecting plan, only the key parts defined by the user except for the deduplicate key parts are processed.
+		   * In particular, it has an impact because it compares pkeys_size when choosing a covering index.
+		   */
+		  cum_statsp->pkeys_size = (bt_statsp->dedup_idx >= 0) ? bt_statsp->dedup_idx : bt_statsp->pkeys_size;
+#else
 		  cum_statsp->pkeys_size = bt_statsp->pkeys_size;
+#endif
 		  /* alloc pkeys[] within the current optimizer environment */
 		  if (cum_statsp->pkeys)
 		    {
@@ -5607,7 +5635,14 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    {
 	      cum_statsp->keys = bt_statsp->keys;
 	      cum_statsp->key_type = bt_statsp->key_type;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      /* When selecting plan, only the key parts defined by the user except for the deduplicate key parts are processed.
+	       * In particular, it has an impact because it compares pkeys_size when choosing a covering index.
+	       */
+	      cum_statsp->pkeys_size = (bt_statsp->dedup_idx >= 0) ? bt_statsp->dedup_idx : bt_statsp->pkeys_size;
+#else
 	      cum_statsp->pkeys_size = bt_statsp->pkeys_size;
+#endif
 	      /* alloc pkeys[] within the current optimizer environment */
 	      if (cum_statsp->pkeys)
 		{
