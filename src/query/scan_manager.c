@@ -7732,8 +7732,8 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 	{
 	  if (scan_id->scan_stats.agg_index_name)
 	    {
-	      json_object_set_new (scan, "alg_index", json_string (scan_id->scan_stats.agg_index_name));
-	      json_object_set_new (scan_stats, "agl", scan);
+	      json_object_set_new (scan, "alg", json_string (scan_id->scan_stats.agg_index_name));
+	      json_object_set_new (scan_stats, "noscan", scan);
 	    }
 	  else
 	    {
@@ -7824,7 +7824,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     case S_HEAP_SCAN:
       if (scan_id->scan_stats.agg_index_name)
 	{
-	  fprintf (fp, "(");	/* aggregate optimization is not a scan */
+	  fprintf (fp, "(noscan");	/* aggregate optimization is not a scan */
 	}
       else
 	{
@@ -7880,13 +7880,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
     }
 
-  /* need space for the followed "time ... " except for aggregate optimization */
-  if (scan_id->scan_stats.agg_index_name == NULL)
-    {
-      fprintf (fp, " ");
-    }
-
-  fprintf (fp, "time: %d, fetch: %llu, ioread: %llu", TO_MSEC (scan_id->scan_stats.elapsed_scan),
+  fprintf (fp, " time: %d, fetch: %llu, ioread: %llu", TO_MSEC (scan_id->scan_stats.elapsed_scan),
 	   (unsigned long long int) scan_id->scan_stats.num_fetches,
 	   (unsigned long long int) scan_id->scan_stats.num_ioreads);
 
@@ -7898,7 +7892,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
       if (scan_id->scan_stats.agg_index_name)
 	{
-	  fprintf (fp, ", agl=%s", scan_id->scan_stats.agg_index_name);
+	  fprintf (fp, ", agl: %s", scan_id->scan_stats.agg_index_name);
 	}
       fprintf (fp, ")");
       break;
