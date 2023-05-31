@@ -1011,16 +1011,6 @@ pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv)
   if (val)
     {
       hv = pt_bind_type_from_dbval (parser, hv, val);
-      /*
-         TODO:
-         the host variable's precision should be -1,
-         however, it looks not cleared from node allocation
-         for example, in case of reusing the node from JAVA SP session
-       */
-      if (hv->data_type)
-	{
-	  hv->data_type->info.data_type.precision = -1;
-	}
     }
   /* else : There isn't a host var yet.  This happens if someone does a db_compile_statement before doing
    * db_push_values, as might happen in a dynamic esql PREPARE statement where the host vars might not be supplied
@@ -5053,7 +5043,19 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 
   if (dblink_table->sel_list == NULL)
     {
-      return ER_FAILED;
+      PT_NODE *id_node = parser_new_node (parser, PT_NAME);
+      if (id_node == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      id_node->info.name.original = "c";
+      if ((dblink_table->cols = pt_mk_attr_def_node (parser, id_node, NULL)) == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      return NO_ERROR;
     }
 
   PT_NODE *attr_def_node = NULL;
@@ -11526,11 +11528,6 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.having);
 	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.group_by);
 	      pt_get_cols_for_dblink (parser, &lkcol, query->order_by);
-	      PARSER_VARCHAR *q = 0;
-	      for (PT_NODE * col = lkcol.col_list; col; col = col->next)
-		{
-		  q = pt_print_bytes (parser, col);
-		}
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
 	      lkcol.col_list = NULL;

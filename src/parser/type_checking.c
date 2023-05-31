@@ -12119,8 +12119,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       switch (common_type)
 	{
 	case PT_TYPE_CHAR:
+	  /* this setting refers to db_value_domain_init function
+	     and see also CBRD-24828 and CBRD-24734 for setting precision to DB_DEFAULT_PRECISION
+	   */
 	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_CHAR_PRECISION)
-					  ? DB_MAX_CHAR_PRECISION : dt->info.data_type.precision);
+					  ? DB_DEFAULT_PRECISION : dt->info.data_type.precision);
 	  break;
 
 	case PT_TYPE_VARCHAR:
@@ -12130,7 +12133,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 
 	case PT_TYPE_NCHAR:
 	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_NCHAR_PRECISION)
-					  ? DB_MAX_NCHAR_PRECISION : dt->info.data_type.precision);
+					  ? DB_DEFAULT_PRECISION : dt->info.data_type.precision);
 	  break;
 
 	case PT_TYPE_VARNCHAR:
