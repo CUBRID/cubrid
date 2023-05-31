@@ -484,6 +484,10 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
       {
 	send_disconnect_request ();
       }
+
+    // This has to be done explicitly before m_conn.reset () to avoid a request handler or an error handler access nullptr of m_conn.
+    m_conn->stop_incoming_communication_thread ();
+    m_conn->stop_outgoing_communication_thread ();
     m_conn.reset (nullptr);
     er_log_debug (ARG_FILE_LINE, "Transaction server has been disconnected from the page server with channel id: %s.\n", channel_id.c_str ());
   });
