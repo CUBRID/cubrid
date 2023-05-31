@@ -144,7 +144,7 @@ tran_server::push_request (tran_to_page_request reqid, std::string &&payload)
   auto slock = std::shared_lock<std::shared_mutex> { m_main_conn_mtx };
   while (true)
     {
-      err_code = m_main_conn->push_request (reqid, std::move (payload));
+      err_code = m_main_conn->push_request (reqid, std::string (payload));
       if (err_code != NO_ERROR && !m_main_conn->is_connected ())
 	{
 	  // error and the connection is dead.
@@ -170,7 +170,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
   auto slock = std::shared_lock<std::shared_mutex> { m_main_conn_mtx };
   while (true)
     {
-      err_code = m_main_conn->send_receive (reqid, std::move (payload_in), payload_out);
+      err_code = m_main_conn->send_receive (reqid, std::string (payload_in), payload_out);
       if (err_code != NO_ERROR && !m_main_conn->is_connected ())
 	{
 	  // error and the connection is dead.
