@@ -1802,6 +1802,12 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
+      /* aggregate optimize related should be free */
+      if (p->s_id.scan_stats.agg_index_name != NULL)
+	{
+	  free (p->s_id.scan_stats.agg_index_name);
+	}
+
       memset (&p->s_id.scan_stats, 0, sizeof (SCAN_STATS));
 
       if (p->parts != NULL)
