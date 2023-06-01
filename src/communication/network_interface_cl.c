@@ -10745,14 +10745,55 @@ loaddb_update_stats ()
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  OID oid;
+  int oids_count;
+  MOP classop;
 
-  int req_error =
-    net_client_request (NET_SERVER_LD_UPDATE_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
+  /* get class oid */
+  int req_error = net_client_request2 (NET_SERVER_LD_UPDATE_STATS, NULL, 0, reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  if (req_error != NO_ERROR)
     {
-      or_unpack_int (reply, &rc);
+      return req_error;
+    }
+
+  char *ptr = or_unpack_int (reply, &data_reply_size);
+
+  ptr = or_unpack_int (ptr, &rc);
+  if (rc != NO_ERROR || data_reply_size == 0)
+    {
+      rc = ER_FAILED;
+      goto cleanup;
+    }
+
+  /* unpack number of returned OIDs */
+  ptr = or_unpack_int (data_reply, &oids_count);
+  if (oids_count == 0)
+    {
+      rc = ER_FAILED;
+      goto cleanup;
+
+    }
+
+  for (int i = 0; i < oids_count; i++)
+    {
+      ptr = or_unpack_oid (ptr, &oid);
+      classop = ws_mop_if_exists (&oid);
+      assert (classop != NULL);
+      if (classop != NULL)
+	{
+	  stats_update_statistics (classop, 0);
+	}
+    }
+
+cleanup:
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
     }
 
   return rc;

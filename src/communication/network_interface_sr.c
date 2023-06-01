@@ -10368,28 +10368,60 @@ sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 void
 sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer = NULL;
+  char *buffer = NULL, *ptr = NULL;
   int buffer_size = 0;
-
+  int oid_cnt = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
   load_session *session = NULL;
   int error_code = session_get_load_session (thread_p, session);
-  if (error_code == NO_ERROR)
-    {
-      assert (session != NULL);
+  std::vector < const cubload::class_entry * >class_entries;
 
-      session->update_class_statistics (*thread_p);
+  /* check disable_statistics */
+  if (session->get_args ().disable_statistics || session->get_args ().syntax_check)
+    {
+      error_code = NO_ERROR;
+      goto end;
     }
 
-  if (er_errid () != NO_ERROR || er_has_error ())
+  session->get_class_registry ().get_all_class_entries (class_entries);	/* m_class_registry 가져오는 부분 확인 필요. */
+  /* append_log_msg (LOADDB_MSG_UPDATING_STATISTICS);  client로 옮겨야함 */
+
+  oid_cnt = class_entries.size ();
+
+  /* start packing result */
+  if (oid_cnt > 0)
     {
-      return_error_to_client (thread_p, rid);
+      /* buffer_size is (int:number of OIDs) + size of packed OIDs */
+      buffer_size = OR_INT_SIZE + (oid_cnt * sizeof (OID));
+      buffer = (char *) db_private_alloc (thread_p, buffer_size);
+      if (buffer == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+      ptr = or_pack_int (buffer, oid_cnt);
+    for (const cubload::class_entry * class_entry:class_entries)
+	{
+	  if (!class_entry->is_ignored ())
+	    {
+	      OID *class_oid = const_cast < OID * >(&class_entry->get_class_oid ());
+	      ptr = or_pack_oid (ptr, class_oid);
+	    }
+	}
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
+end:
+  char *ptr2 = or_pack_int (reply, buffer_size);
+  ptr2 = or_pack_int (ptr2, error_code);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
+				     buffer_size);
 
-  or_pack_int (reply, error_code);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (buffer != NULL)
+    {
+      db_private_free_and_init (thread_p, buffer);
+    }
 }
 
 void

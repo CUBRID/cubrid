@@ -522,7 +522,7 @@ namespace cubload
 	if (!class_entry->is_ignored ())
 	  {
 	    OID *class_oid = const_cast<OID *> (&class_entry->get_class_oid ());
-	    xstats_update_statistics (&thread_ref, class_oid, STATS_WITH_SAMPLING, NULL/* 확인 필요 */);
+	    xstats_update_statistics (&thread_ref, class_oid, STATS_WITH_SAMPLING, NULL);
 	    append_log_msg (LOADDB_MSG_UPDATED_CLASS_STATS, class_entry->get_class_name ());
 	  }
       }

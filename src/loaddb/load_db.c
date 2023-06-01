@@ -1234,6 +1234,7 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
     {
       // Update class statistics
       error_code = loaddb_update_stats ();
+
       if (error_code != NO_ERROR)
 	{
 	  print_er_msg ();
