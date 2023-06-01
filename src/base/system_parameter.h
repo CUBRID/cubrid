@@ -477,7 +477,7 @@ enum param_id
 #endif
   PRM_ID_DEDUPLICATE_MIN_KEYS,
   PRM_ID_DEDUPLICATE_FK_LEVEL,
-  PRM_ID_DEDUPLICATE_KEY_LEVEL,  
+  PRM_ID_DEDUPLICATE_KEY_LEVEL,
 #endif
   PRM_ID_ORACLE_STYLE_DIVIDE,
   /* change PRM_LAST_ID when adding new system parameters */
