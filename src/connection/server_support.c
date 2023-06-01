@@ -1375,7 +1375,9 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 #if !defined(WINDOWS)
       if (!HA_DISABLED ())
 	{
-	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
+	  status =
+	    hb_register_to_master (css_Master_conn,
+				   is_transaction_server ()? HB_PTYPE_TRAN_SERVER : HB_PTYPE_PAGE_SERVER);
 	  if (status != NO_ERROR)
 	    {
 	      fprintf (stderr, "failed to heartbeat register.\n");
@@ -1797,6 +1799,9 @@ css_pack_message_to_master (const char *server_name)
   char pid_string[16];
   std::string message;
 
+  SERVER_TYPE type = get_server_type ();
+  assert (type == SERVER_TYPE_TRANSACTION || type == SERVER_TYPE_PAGE);
+
   assert (server_name != NULL);
 
   env_name = envvar_root ();
@@ -1821,18 +1826,19 @@ css_pack_message_to_master (const char *server_name)
     + strlen (pid_string) + 1;
   /* in order to prepend '#' or server type */
   message_size++;
+  if (!HA_DISABLED())
+    {
+      message_size++;
+    }
 
   message.reserve (message_size);
 
-  if (!HA_DISABLED ())
+  message.append (1, '0' + ((char) type));
+
+  if (!HA_DISABLED())
     {
+      /* cub_master checks if the server is in ha_mode or not using '#dbname' (IS_MASTER_CONN_NAME_HA_SERVER ()) */
       message.append (1, '#');
-    }
-  else
-    {
-      SERVER_TYPE type = get_server_type ();
-      assert (type == SERVER_TYPE_TRANSACTION || type == SERVER_TYPE_PAGE);
-      message.append (1, '0' + ((char) type));
     }
 
   message.append (server_name);

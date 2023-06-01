@@ -536,6 +536,11 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 	    case SERVER_TYPE_PAGE:
 	      sprintf (search_pattern, "Page-Server %s (", server);
 	      pid = search_server_pid (server_info, search_pattern);
+	      if (pid == 0)
+		{
+		  sprintf (search_pattern, "HA-Page-Server %s (", server);
+		  pid = search_server_pid (server_info, search_pattern);
+		}
 	      break;
 
 	    case SERVER_TYPE_TRANSACTION:
@@ -548,7 +553,7 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 
 	      if (pid == 0)
 		{
-		  sprintf (search_pattern, "HA-Server %s (", server);
+		  sprintf (search_pattern, "HA-Tran-Server %s (", server);
 		  pid = search_server_pid (server_info, search_pattern);
 		}
 	      break;

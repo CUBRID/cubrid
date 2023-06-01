@@ -127,7 +127,14 @@ int init_server_type (const char *db_name)
       g_server_type = get_server_type_from_config (server_type_from_config);
     }
 
-  if (g_server_type == SERVER_TYPE_TRANSACTION && server_type_from_config == server_type_config::SINGLE_NODE)
+  if (g_server_type == SERVER_TYPE_TRANSACTION && !HA_DISABLED ())
+    {
+      /* TODO: Temporary implementation.
+       * This part will be addressed in LETS-721, and the system parameters will be automatically set.
+       */
+      setup_tran_server_params_on_single_node_config ();
+    }
+  else if (g_server_type == SERVER_TYPE_TRANSACTION && server_type_from_config == server_type_config::SINGLE_NODE)
     {
       setup_tran_server_params_on_single_node_config ();
     }

@@ -919,6 +919,8 @@ typedef struct _ha_config
 
 #define CHECK_SERVER              "Server"
 #define CHECK_HA_SERVER           "HA-Server"
+#define CHECK_HA_PAGE_SERVER      "HA-Page-Server"
+#define CHECK_HA_TRAN_SERVER      "HA-Tran-Server"
 #define CHECK_PAGE_SERVER         "Page-Server"
 #define CHECK_TRANSACTION_SERVER  "Transaction-Server"
 
