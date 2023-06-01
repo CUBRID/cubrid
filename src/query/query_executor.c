@@ -23878,13 +23878,15 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		  return (error == NO_ERROR ? ER_FAILED : error);
 		}
 
-	      spec->s_id.scan_stats.agg_index_name = NULL;
-	      error = heap_get_indexinfo_of_btid (thread_p, &ACCESS_SPEC_CLS_OID (spec), &agg_ptr->btid,
-						  NULL, NULL, NULL, NULL, &spec->s_id.scan_stats.agg_index_name, NULL);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
+	    }
+
+	  /* agg_index_name is set to show it in the trace information */
+	  spec->s_id.scan_stats.agg_index_name = NULL;
+	  error = heap_get_indexinfo_of_btid (thread_p, &ACCESS_SPEC_CLS_OID (spec), &agg_ptr->btid,
+					      NULL, NULL, NULL, NULL, &spec->s_id.scan_stats.agg_index_name, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
 	    }
 	}
     }
