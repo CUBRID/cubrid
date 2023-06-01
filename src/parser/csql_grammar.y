@@ -21638,18 +21638,13 @@ index_with_item_list
           }
         ;        
 
-opt_equal
-        : /* empty */
-        | '='
-        ;
-
 online_parallel
 	: ONLINE
 	   {{ DBG_TRACE_GRAMMAR(online_parallel, : ONLINE);
                $$ = 1;  // thread count is 0
            DBG_PRINT}}
-	| ONLINE PARALLEL opt_equal unsigned_integer
-	   {{ DBG_TRACE_GRAMMAR(opt_ononline_parallelline, |  ONLINE PARALLEL opt_equal unsigned_integer);
+	| ONLINE PARALLEL opt_equalsign unsigned_integer
+	   {{ DBG_TRACE_GRAMMAR(online_parallel, |  ONLINE PARALLEL opt_equalsign unsigned_integer);
                const int MIN_COUNT = 1;
                const int MAX_COUNT = 16;
                int thread_count = $4->info.value.data_value.i;
