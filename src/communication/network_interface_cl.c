@@ -10782,7 +10782,7 @@ loaddb_update_stats ()
   for (int i = 0; i < oids_count; i++)
     {
       ptr = or_unpack_oid (ptr, &oid);
-      classop = ws_mop_if_exists (&oid);
+      classop = ws_mop (&oid, NULL);
       assert (classop != NULL);
       if (classop != NULL)
 	{
