@@ -9729,7 +9729,7 @@ foreign_key_constraint
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
                             node->info.constraint.un.foreign_key.deduplicate_level = 
-                                  (($7 == true) ? DEDUPLICATE_KEY_LEVEL_OFF : prm_get_integer_value (PRM_ID_DEDUPLICATE_FK_LEVEL));
+                                  (($7 == true) ? DEDUPLICATE_KEY_LEVEL_OFF : DEDUPLICATE_OPTION_AUTO);
 #endif
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
@@ -10904,7 +10904,7 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.referenced_class = $4;
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)                                                        
-                            constraint->info.constraint.un.foreign_key.deduplicate_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_FK_LEVEL);
+                            constraint->info.constraint.un.foreign_key.deduplicate_level = DEDUPLICATE_OPTION_AUTO;
 #endif  
 
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
@@ -21585,8 +21585,8 @@ opt_index_with_clause_no_online
             container_3 ctn;
             memset(&ctn, 0x00, sizeof(ctn));       
             ctn.c1 = 0; // not online
-            ctn.c2 = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
-            ctn.c3 = prm_get_integer_value (PRM_ID_DEDUPLICATE_MIN_KEYS);
+            ctn.c2 = DEDUPLICATE_OPTION_AUTO; // key_level
+            ctn.c3 = DEDUPLICATE_OPTION_AUTO; // min_keys
             $$ = ctn; }
         | WITH deduplicate_key_mod_level
            { DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH deduplicate_key_mod_level );
@@ -21602,8 +21602,8 @@ opt_index_with_clause
             container_3 ctn;
             memset(&ctn, 0x00, sizeof(ctn));
             ctn.c1 = 0; // not online
-            ctn.c2 = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
-            ctn.c3 = prm_get_integer_value (PRM_ID_DEDUPLICATE_MIN_KEYS);
+            ctn.c2 = DEDUPLICATE_OPTION_AUTO; // key_level
+            ctn.c3 = DEDUPLICATE_OPTION_AUTO; // min_keys
             $$ = ctn; }
         | WITH index_with_item_list
           {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
@@ -21614,8 +21614,8 @@ opt_index_with_clause
 index_with_item_list  
         : online_parallel
           { DBG_TRACE_GRAMMAR(index_with_item_list, : online_parallel );
-                container_3 ctn;                
-		SET_CONTAINER_3(ctn, $1, prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL), prm_get_integer_value (PRM_ID_DEDUPLICATE_MIN_KEYS));
+                container_3 ctn;
+                SET_CONTAINER_3(ctn, $1, DEDUPLICATE_OPTION_AUTO, DEDUPLICATE_OPTION_AUTO);
 		$$ = ctn;
           }
         | online_parallel ',' deduplicate_key_mod_level

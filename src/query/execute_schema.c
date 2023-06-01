@@ -2792,8 +2792,20 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
       if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
 	{
+	  if (idx_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+	    {
+	      PT_INDEX_INFO *t_info = (PT_INDEX_INFO *) idx_info;
+	      t_info->deduplicate_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+	    }
+
 	  if ((idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF) && (idx_info->prefix_length == NULL))
 	    {
+	      if (idx_info->deduplicate_min_keys == DEDUPLICATE_OPTION_AUTO)
+		{
+		  PT_INDEX_INFO *t_info = (PT_INDEX_INFO *) idx_info;
+		  t_info->deduplicate_min_keys = prm_get_integer_value (PRM_ID_DEDUPLICATE_MIN_KEYS);
+		}
+
 	      if (idx_info->deduplicate_min_keys == DEDUPLICATE_MIN_KEYS_UNUSE)
 		{
 		  has_deduplicate_key_col = true;
@@ -7535,6 +7547,11 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
     }
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  if (fk_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+    {
+      fk_info->deduplicate_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_FK_LEVEL);
+    }
+
   if (fk_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
     {
       SM_CLASS *class_ = NULL;

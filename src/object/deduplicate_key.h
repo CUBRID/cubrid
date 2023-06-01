@@ -44,6 +44,7 @@
 #define DEDUPLICATE_MIN_KEYS_MAX       (INT_MAX)
 #define DEDUPLICATE_MIN_KEYS_DFLT      (2)
 
+#define DEDUPLICATE_OPTION_AUTO        (-1)
 
 /* ******************************************************** */
 #if !defined(SUPPORT_DEDUPLICATE_KEY_MODE)

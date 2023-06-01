@@ -7322,7 +7322,11 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.index.unique == false)
     {
       char buf[64] = { 0x00, };
-      if (p->info.index.deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
+      if (p->info.index.deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+	{
+	  /* Do not print level */ ;
+	}
+      else if (p->info.index.deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
 	{
 	  dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.deduplicate_level);
 	}
