@@ -122,6 +122,10 @@ x86
 /win/install/CUBRID_Release_x64/
 /win/cubridtray/Debug/
 
+## Windows 3rdparty
+/win/3rdparty/Install/
+/win/3rdparty/Download/
+
 ## MISC
 *.swp
 *.bak
