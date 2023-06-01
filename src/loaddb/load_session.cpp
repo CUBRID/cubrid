@@ -504,6 +504,7 @@ namespace cubload
     while (!atomic_val.compare_exchange_strong (curr_max, new_max));
   }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
   void
   session::update_class_statistics (cubthread::entry &thread_ref)
   {
@@ -527,6 +528,7 @@ namespace cubload
 	  }
       }
   }
+#endif
 
   class_registry &
   session::get_class_registry ()
