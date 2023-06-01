@@ -8577,6 +8577,7 @@ qo_term_clear (QO_ENV * env, int idx)
   QO_TERM_JOIN_TYPE (term) = NO_JOIN;
   QO_TERM_MULTI_COL_SEGS (term) = NULL;
   QO_TERM_MULTI_COL_CNT (term) = 0;
+  QO_TERM_PRED_ORDER (term) = 0;
 
   bitset_init (&(QO_TERM_NODES (term)), env);
   bitset_init (&(QO_TERM_SEGS (term)), env);

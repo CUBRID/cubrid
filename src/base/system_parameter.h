@@ -477,13 +477,11 @@ enum param_id
 #endif
   PRM_ID_DEDUPLICATE_MIN_KEYS,
   PRM_ID_DEDUPLICATE_FK_LEVEL,
-  PRM_ID_DEDUPLICATE_KEY_LEVEL,
-  /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_DEDUPLICATE_KEY_LEVEL
-#else
-  /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HA_SQL_LOG_MAX_COUNT
+  PRM_ID_DEDUPLICATE_KEY_LEVEL,  
 #endif
+  PRM_ID_ORACLE_STYLE_DIVIDE,
+  /* change PRM_LAST_ID when adding new system parameters */
+  PRM_LAST_ID = PRM_ID_ORACLE_STYLE_DIVIDE
 };
 typedef enum param_id PARAM_ID;
 
