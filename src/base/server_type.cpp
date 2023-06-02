@@ -38,7 +38,7 @@ passive_tran_server *pts_Gl = nullptr;
 SERVER_TYPE get_server_type_from_config (server_type_config parameter_value);
 transaction_server_type get_transaction_server_type_from_config (transaction_server_type_config parameter_value);
 void setup_tran_server_params_on_single_node_config ();
-void setup_tran_server_params_on_ha_mode ();
+int setup_tran_server_params_on_ha_mode ();
 
 static SERVER_TYPE g_server_type = SERVER_TYPE_UNKNOWN;
 static transaction_server_type g_transaction_server_type = transaction_server_type::ACTIVE;
@@ -131,7 +131,7 @@ int init_server_type (const char *db_name)
   // if ha_mode, then set page_server_hosts, remote_storage, and transaction_server_type
   if (g_server_type == SERVER_TYPE_TRANSACTION && !HA_DISABLED ())
     {
-      setup_tran_server_params_on_ha_mode ();
+      er_code = setup_tran_server_params_on_ha_mode ();
     }
   else if (g_server_type == SERVER_TYPE_TRANSACTION && server_type_from_config == server_type_config::SINGLE_NODE)
     {
@@ -208,12 +208,13 @@ void setup_tran_server_params_on_single_node_config ()
   prm_set_bool_value (PRM_ID_REMOTE_STORAGE, true);
 }
 
-void setup_tran_server_params_on_ha_mode ()
+int setup_tran_server_params_on_ha_mode ()
 {
   assert (!HA_DISABLED ());
 
   char *page_hosts_new_value = NULL;
   constexpr size_t MAX_BUFSIZE = 4096;
+  int new_value_size = 0;
 
   char ha_node_list[MAX_BUFSIZE];
   char *str, *savep;
@@ -224,21 +225,42 @@ void setup_tran_server_params_on_ha_mode ()
   if (page_hosts_new_value == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, MAX_BUFSIZE);
-      return;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  new_value_size = MAX_BUFSIZE;
 
   strncpy_bufsize (ha_node_list, prm_get_string_value (PRM_ID_HA_NODE_LIST));
 
   str = strtok_r (ha_node_list, "@", &savep); // dbname@host1:host2:...
-  str = strtok_r (NULL, ",:", &savep);
+  str = strtok_r (NULL, " ,:", &savep);
   while (str)
     {
       char tmp[MAX_BUFSIZE] = {0};
       sprintf (tmp, "%s:%d,", str, port_id);
+
+      if (strlen (tmp) + strlen (page_hosts_new_value) > new_value_size)
+	{
+	  /* Block the overflow */
+	  char *tmp = (char *) realloc (page_hosts_new_value, new_value_size + MAX_BUFSIZE);
+	  if (tmp == NULL)
+	    {
+	      free_and_init (page_hosts_new_value);
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_value_size + MAX_BUFSIZE);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
+	  memset (tmp + new_value_size, 0, MAX_BUFSIZE);
+
+	  page_hosts_new_value = tmp;
+	  new_value_size += MAX_BUFSIZE;
+	}
+
       strcat (page_hosts_new_value, tmp);
       str = strtok_r (NULL, " ,:", &savep);
     }
 
+  /* Remove the comma at the end of the page_hosts_new_value, (eg : "host1:port,host2:port,host3:port,") */
   page_hosts_new_value[strlen (page_hosts_new_value) - 1] = '\0';
 
   prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);
