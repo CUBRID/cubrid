@@ -21,8 +21,8 @@
  * deduplicate_key.h - Definition for management of duplicate key indexes
  */
 
-#ifndef _DECOMPRESS_INDEX_H_
-#define _DECOMPRESS_INDEX_H_
+#ifndef _DEDUPLICATE_KEY_H_
+#define _DEDUPLICATE_KEY_H_
 
 #ident "$Id$"
 
@@ -33,19 +33,18 @@
 
 #include "dbtype_def.h"
 
-#define DEDUPLICATE_KEY_MODE_OFF     (0)
-#define DEDUPLICATE_KEY_MODE_ON      (1)
-
-typedef enum
-{
-  DEDUPLICATE_KEY_MODE_NONE = 0,
-  DEDUPLICATE_KEY_MODE_SET
-} EN_COMPRESS_INDEX_MODE;
-
+#define DEDUPLICATE_KEY_LEVEL_OFF      (0)
 #define DEDUPLICATE_KEY_LEVEL_MIN      (1)
 #define DEDUPLICATE_KEY_LEVEL_MAX      (32)
-#define DEDUPLICATE_KEY_LEVEL_NONE     (DEDUPLICATE_KEY_LEVEL_MAX)
+#define DEDUPLICATE_KEY_LEVEL_DFLT     (10)
+#define DEDUPLICATE_FK_LEVEL_DFLT      (DEDUPLICATE_KEY_LEVEL_MAX)
 
+#define DEDUPLICATE_MIN_KEYS_UNUSE     (0)
+#define DEDUPLICATE_MIN_KEYS_MIN       (1)
+#define DEDUPLICATE_MIN_KEYS_MAX       (INT_MAX)
+#define DEDUPLICATE_MIN_KEYS_DFLT      (2)
+
+#define DEDUPLICATE_OPTION_AUTO        (-1)
 
 /* ******************************************************** */
 #if !defined(SUPPORT_DEDUPLICATE_KEY_MODE)
@@ -74,7 +73,7 @@ typedef enum
 #define MK_DEDUPLICATE_KEY_ATTR_ID(level)      (((int)DEDUPLICATE_KEY_ATTR_ID_BASE) - (level))
 #define GET_DEDUPLICATE_KEY_ATTR_LEVEL(attid)  (((int)DEDUPLICATE_KEY_ATTR_ID_BASE) - (attid))
 
-#define GET_DEDUPLICATE_KEY_ATTR_MODE_LEVEL_FROM_NAME(name, level)  do {                             \
+#define GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME(name, level)  do {                             \
         char chx;                                                                                    \
         if(sscanf ((name) + DEDUPLICATE_KEY_ATTR_NAME_PREFIX_LEN, "%02d%c", &(level), &chx) != 1)    \
           {  assert(false); }                                                                        \
@@ -105,7 +104,7 @@ extern SM_ATTRIBUTE *dk_find_sm_deduplicate_key_attribute (int att_id, const cha
 extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
 					  int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames,
 					  bool is_reverse);
-extern char *dk_print_deduplicate_key_info (char *buf, int buf_size, int dedup_key_mode, int dedup_key_level);
+extern char *dk_print_deduplicate_key_info (char *buf, int buf_size, int deduplicate_level);
 extern int dk_sm_deduplicate_key_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index);
 #endif
 
@@ -118,4 +117,4 @@ extern void dk_deduplicate_key_attribute_finalized ();
 /* ******************************************************** */
 
 
-#endif /* _DECOMPRESS_INDEX_H_ */
+#endif /* _DEDUPLICATE_KEY_H_ */

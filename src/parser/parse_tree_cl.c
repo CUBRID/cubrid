@@ -6592,7 +6592,8 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->data_type)
 	{
 	  /* only show non-default parameter */
-	  if (p->data_type->info.data_type.precision != 15 || p->data_type->info.data_type.dec_precision != 0)
+	  if (p->data_type->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION
+	      || p->data_type->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE)
 	    {
 	      sprintf (s, "(%d,%d)", p->data_type->info.data_type.precision,
 		       p->data_type->info.data_type.dec_precision);
@@ -7322,15 +7323,41 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.index.unique == false)
     {
       char buf[64] = { 0x00, };
-      dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.dedup_key_mode, p->info.index.dedup_key_level);
+      if (p->info.index.deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+	{
+	  /* Do not print level */ ;
+	}
+      else if (p->info.index.deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
+	{
+	  dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.deduplicate_level);
+	}
       if (buf[0])
 	{
-	  b = pt_append_nulstring (parser, b, " ");
+	  b = pt_append_nulstring (parser, b, " WITH ");
 	  b = pt_append_nulstring (parser, b, buf);
+	  if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	    {
+	      b = pt_append_nulstring (parser, b, ", ONLINE ");
+	    }
+	}
+      else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
 	}
     }
-#endif
+  else
+    {
+      if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
+	}
+    }
 
+  if (p->info.index.index_status == SM_INVISIBLE_INDEX)
+    {
+      b = pt_append_nulstring (parser, b, " INVISIBLE ");
+    }
+#else // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
     {
       b = pt_append_nulstring (parser, b, " INVISIBLE ");
@@ -7339,6 +7366,7 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, " WITH ONLINE ");
     }
+#endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
   if (p->info.index.comment != NULL)
     {
@@ -8365,7 +8393,8 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_TYPE_NUMERIC:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-      if (p->info.data_type.precision != 15 || p->info.data_type.dec_precision != 0)
+      if (p->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION
+	  || p->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE)
 	{
 	  sprintf (buf, "(%d,%d)", p->info.data_type.precision, p->info.data_type.dec_precision);
 	  q = pt_append_nulstring (parser, q, buf);

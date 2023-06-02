@@ -8917,9 +8917,16 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 
   if (cpc->dis_key_cnt > 0)
     {
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
+#endif
       cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
       cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->deduplicate_dis_key_cnt);
+#else
       cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
+#endif
     }
   if (cpc->leaf_pg_cnt > 0)
     {
@@ -9092,6 +9099,10 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   fprintf (fp, "Deduplicate Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
 #endif
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  fprintf (fp, "Average Value Count Per Deduplicate Key: %d\n", cpc.avg_val_per_dedup_key);
+#endif
+
   fprintf (fp, "Total Page Count: %d\n", cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
   fprintf (fp, "Leaf Page Count: %d\n", cpc.leaf_pg_cnt);
   fprintf (fp, "NonLeaf Page Count: %d\n", cpc.nleaf_pg_cnt);
@@ -22361,6 +22372,10 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
 
   // {"Avg_num_value_per_key", "int"}
   db_make_int (out_values[idx++], cpc.avg_val_per_key);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  // {"Avg_num_value_per_deduplicate_key", "int"}
+  db_make_int (out_values[idx++], cpc.avg_val_per_dedup_key);
+#endif
 
   // {"Num_leaf_page", "int"}
   db_make_int (out_values[idx++], cpc.leaf_pg_cnt);
