@@ -244,6 +244,7 @@ namespace cubcomm
   template <typename MsgId>
   request_client<MsgId>::request_client (channel &&chn)
     : m_channel (std::move (chn))
+    , m_send_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
   }
 
@@ -405,6 +406,7 @@ namespace cubcomm
   template <typename ClientMsgId, typename ServerMsgId>
   request_client_server<ClientMsgId, ServerMsgId>::request_client_server (channel &&chn)
     : request_server<ServerMsgId>::request_server (std::move (chn))
+    , m_send_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
   }
 
