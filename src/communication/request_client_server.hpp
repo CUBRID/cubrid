@@ -150,10 +150,9 @@ namespace cubcomm
 
       inline const channel &get_channel () const;		// get underlying channel
 
-    protected:
-      cubmem::extensible_block m_send_extensible_block;
     private:
       channel m_channel;					// requests are sent on this channel
+      cubmem::extensible_block m_send_extensible_block;
   };
 
   // A server that handles request messages. All requests must be preregistered.
@@ -199,7 +198,6 @@ namespace cubcomm
       std::thread m_thread;				// thread that loops and handles requests
       bool m_shutdown = true;				// set to true when thread must stop
       request_handlers_container m_request_handlers;	// request handler map
-
       cubmem::extensible_block m_recv_extensible_block;
   };
 
