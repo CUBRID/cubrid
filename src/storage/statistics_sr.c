@@ -71,7 +71,7 @@ static int stats_compare_datetime (DB_DATETIME * datetime1_p, DB_DATETIME * date
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 #endif
 static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_oid, OID * partitions, int count,
-						bool with_fullscan);
+						bool with_fullscan, CLASS_ATTR_NDV * class_attr_ndv);
 
 /*
  * xstats_update_statistics () -  Updates the statistics for the objects
@@ -202,7 +202,8 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
       /* Update statistics for all partitions and the partitioned class */
       assert (partitions != NULL);
       catalog_free_class_info_and_init (cls_info_p);
-      error_code = stats_update_partitioned_statistics (thread_p, class_id_p, partitions, count, with_fullscan);
+      error_code =
+	stats_update_partitioned_statistics (thread_p, class_id_p, partitions, count, with_fullscan, class_attr_ndv);
       db_private_free (thread_p, partitions);
       if (error_code != NO_ERROR)
 	{
@@ -1238,7 +1239,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
  */
 static int
 stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, OID * partitions, int partitions_count,
-				     bool with_fullscan)
+				     bool with_fullscan, CLASS_ATTR_NDV * class_attr_ndv)
 {
   int i, j, k, btree_iter, m;
   int error = NO_ERROR;
@@ -1249,7 +1250,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
   DISK_ATTR *disk_attr_p = NULL, *subcls_attr_p = NULL;
   BTREE_STATS *btree_stats_p = NULL;
   int n_btrees = 0;
-  PARTITION_STATS_ACUMULATOR *mean = NULL, *stddev = NULL;
+  PARTITION_STATS_ACUMULATOR *sum = NULL;
   OR_CLASSREP *cls_rep = NULL;
   OR_CLASSREP *subcls_rep = NULL;
   int cls_idx_cache = 0, subcls_idx_cache = 0;
@@ -1264,7 +1265,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 
   for (i = 0; i < partitions_count; i++)
     {
-      error = xstats_update_statistics (thread_p, &partitions[i], with_fullscan, NULL);
+      error = xstats_update_statistics (thread_p, &partitions[i], with_fullscan, class_attr_ndv);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -1329,73 +1330,55 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	}
     }
 
-  if (n_btrees == 0)
+  if (n_btrees != 0)
     {
-      /* We're not really interested in this */
-      error = NO_ERROR;
-      goto cleanup;
-    }
-
-  mean = (PARTITION_STATS_ACUMULATOR *) db_private_alloc (thread_p, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
-  if (mean == NULL)
-    {
-      error = ER_FAILED;
-      goto cleanup;
-    }
-
-  stddev = (PARTITION_STATS_ACUMULATOR *) db_private_alloc (thread_p, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
-  if (stddev == NULL)
-    {
-      error = ER_FAILED;
-      goto cleanup;
-    }
-
-  memset (mean, 0, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
-  memset (stddev, 0, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
-
-  /* initialize pkeys */
-  btree_iter = 0;
-  for (i = 0; i < disk_repr_p->n_fixed + disk_repr_p->n_variable; i++)
-    {
-      if (i < disk_repr_p->n_fixed)
+      sum = (PARTITION_STATS_ACUMULATOR *) db_private_alloc (thread_p, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
+      if (sum == NULL)
 	{
-	  disk_attr_p = disk_repr_p->fixed + i;
-	}
-      else
-	{
-	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
+	  error = ER_FAILED;
+	  goto cleanup;
 	}
 
-      for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+      memset (sum, 0, n_btrees * sizeof (PARTITION_STATS_ACUMULATOR));
+
+      /* initialize pkeys */
+      btree_iter = 0;
+      for (i = 0; i < disk_repr_p->n_fixed + disk_repr_p->n_variable; i++)
 	{
-	  mean[btree_iter].pkeys_size = btree_stats_p->pkeys_size;
-	  mean[btree_iter].pkeys =
-	    (double *) db_private_alloc (thread_p, mean[btree_iter].pkeys_size * sizeof (double));
-	  if (mean[btree_iter].pkeys == NULL)
+	  if (i < disk_repr_p->n_fixed)
 	    {
-	      error = ER_FAILED;
-	      goto cleanup;
+	      disk_attr_p = disk_repr_p->fixed + i;
 	    }
-	  memset (mean[btree_iter].pkeys, 0, mean[btree_iter].pkeys_size * sizeof (double));
-
-	  stddev[btree_iter].pkeys_size = btree_stats_p->pkeys_size;
-	  stddev[btree_iter].pkeys =
-	    (double *) db_private_alloc (thread_p, mean[btree_iter].pkeys_size * sizeof (double));
-	  if (stddev[btree_iter].pkeys == NULL)
+	  else
 	    {
-	      error = ER_FAILED;
-	      goto cleanup;
+	      disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
 	    }
-	  memset (stddev[btree_iter].pkeys, 0, mean[btree_iter].pkeys_size * sizeof (double));
-	  btree_iter++;
+
+	  for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
+	    {
+	      sum[btree_iter].pkeys_size = btree_stats_p->pkeys_size;
+	      sum[btree_iter].pkeys =
+		(double *) db_private_alloc (thread_p, sum[btree_iter].pkeys_size * sizeof (double));
+	      if (sum[btree_iter].pkeys == NULL)
+		{
+		  error = ER_FAILED;
+		  goto cleanup;
+		}
+	      memset (sum[btree_iter].pkeys, 0, sum[btree_iter].pkeys_size * sizeof (double));
+	      btree_iter++;
+	    }
 	}
+
+
     }
 
-  /* Compute class statistics: For each btree compute the mean, standard deviation and coefficient of variation. The
-   * global statistics for each btree will be the mean * (1 + cv). We do this so that the optimizer will pick the tree
-   * with the lowest dispersion. Since partitions and partitioned class have the same indexes but not stored in the
-   * same order, we will use class representations to match inherited indexes from partitions to the indexes in the
-   * partitioned class class. */
+  /*
+   * The statistics of the main table is generated as the sum of the statistics of each sub-partition.
+   * Only the index height is averaged. In the case of Number of Distinct Values, the value may vary depending on
+   * whether data is duplicated. In here it is calculated as a sum under the assumption that it is evenly distributed.
+   * Because sum of NDV is the maximum value, it may differ from the NDV of the column.
+   * When calculating the selectivity of the predicate in OPTIMIZER, the NDV value of btree is used as the maximum value.
+   */
   cls_rep = heap_classrepr_get (thread_p, class_id_p, NULL, NULL_REPRID, &cls_idx_cache);
   if (cls_rep == NULL)
     {
@@ -1506,18 +1489,18 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 		  goto cleanup;
 		}
 
-	      mean[btree_iter].leafs += subcls_stats->leafs;
+	      sum[btree_iter].leafs += subcls_stats->leafs;
 
-	      mean[btree_iter].pages += subcls_stats->pages;
+	      sum[btree_iter].pages += subcls_stats->pages;
 
-	      mean[btree_iter].height += subcls_stats->height;
+	      sum[btree_iter].height += subcls_stats->height;
 
-	      mean[btree_iter].keys += subcls_stats->keys;
+	      sum[btree_iter].keys += subcls_stats->keys;
 
 	      assert (subcls_stats->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	      for (m = 0; m < subcls_stats->pkeys_size; m++)
 		{
-		  mean[btree_iter].pkeys[m] += subcls_stats->pkeys[m];
+		  sum[btree_iter].pkeys[m] += subcls_stats->pkeys[m];
 		}
 
 	      btree_iter++;
@@ -1525,150 +1508,13 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	}
     }
 
-  /* compute actual mean */
+  /* recalculate the height of the btree to the average */
   for (btree_iter = 0; btree_iter < n_btrees; btree_iter++)
     {
-      mean[btree_iter].leafs /= partitions_count;
-
-      mean[btree_iter].pages /= partitions_count;
-
-      mean[btree_iter].height /= partitions_count;
-
-      mean[btree_iter].keys /= partitions_count;
-
-      assert (mean[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
-      for (m = 0; m < mean[btree_iter].pkeys_size; m++)
-	{
-	  mean[btree_iter].pkeys[m] /= partitions_count;
-	}
+      sum[btree_iter].height = sum[btree_iter].height / partitions_count;
     }
 
-  for (i = 0; i < partitions_count; i++)
-    {
-      OID part_dir_oid;
-
-      /* clean subclass loaded in previous iteration */
-      if (subcls_disk_rep != NULL)
-	{
-	  catalog_free_representation_and_init (subcls_disk_rep);
-	}
-      if (subcls_rep != NULL)
-	{
-	  heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
-	}
-
-      if (catalog_get_dir_oid_from_cache (thread_p, &partitions[i], &part_dir_oid) != NO_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  goto cleanup;
-	}
-
-      part_catalog_access_info.class_oid = &partitions[i];
-      part_catalog_access_info.dir_oid = &part_dir_oid;
-      if (catalog_start_access_with_dir_oid (thread_p, &part_catalog_access_info, S_LOCK) != NO_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  goto cleanup;
-	}
-
-      /* get disk repr for subclass */
-      error = catalog_get_last_representation_id (thread_p, &partitions[i], &subcls_repr_id);
-      if (error != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      subcls_disk_rep = catalog_get_representation (thread_p, &partitions[i], subcls_repr_id,
-						    &part_catalog_access_info);
-      if (subcls_disk_rep == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  goto cleanup;
-	}
-      (void) catalog_end_access_with_dir_oid (thread_p, &part_catalog_access_info, NO_ERROR);
-
-      subcls_rep = heap_classrepr_get (thread_p, &partitions[i], NULL, NULL_REPRID, &subcls_idx_cache);
-      if (subcls_rep == NULL)
-	{
-	  error = ER_FAILED;
-	  goto cleanup;
-	}
-
-      /* add partition information to the accumulators */
-      btree_iter = 0;
-      for (j = 0; j < subcls_disk_rep->n_fixed + subcls_disk_rep->n_variable; j++)
-	{
-	  if (j < subcls_disk_rep->n_fixed)
-	    {
-	      subcls_attr_p = subcls_disk_rep->fixed + j;
-	      disk_attr_p = disk_repr_p->fixed + j;
-	    }
-	  else
-	    {
-	      subcls_attr_p = subcls_disk_rep->variable + (j - subcls_disk_rep->n_fixed);
-	      disk_attr_p = disk_repr_p->variable + (j - disk_repr_p->n_fixed);
-	    }
-
-	  /* check for partitions schema changes are not yet finished */
-	  if (subcls_attr_p->id != disk_attr_p->id || subcls_attr_p->n_btstats != disk_attr_p->n_btstats)
-	    {
-	      assert (false);	/* is impossible */
-	      error = NO_ERROR;
-	      goto cleanup;
-	    }
-
-	  assert_release (subcls_attr_p->id == disk_attr_p->id);
-	  assert_release (subcls_attr_p->n_btstats == disk_attr_p->n_btstats);
-
-	  for (k = 0, btree_stats_p = disk_attr_p->bt_stats; k < disk_attr_p->n_btstats; k++, btree_stats_p++)
-	    {
-	      const BTREE_STATS *subcls_stats;
-
-	      subcls_stats = stats_find_inherited_index_stats (cls_rep, subcls_rep, subcls_attr_p,
-							       &btree_stats_p->btid);
-	      if (subcls_stats == NULL)
-		{
-		  error = ER_FAILED;
-		  goto cleanup;
-		}
-
-	      stddev[btree_iter].leafs += SQUARE (btree_stats_p->leafs - mean[btree_iter].leafs);
-
-	      stddev[btree_iter].pages += SQUARE (subcls_stats->pages - mean[btree_iter].pages);
-
-	      stddev[btree_iter].height += SQUARE (subcls_stats->height - mean[btree_iter].height);
-
-	      stddev[btree_iter].keys += SQUARE (subcls_stats->keys - mean[btree_iter].keys);
-
-	      assert (subcls_stats->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-	      for (m = 0; m < subcls_stats->pkeys_size; m++)
-		{
-		  stddev[btree_iter].pkeys[m] += SQUARE (subcls_stats->pkeys[m] - mean[btree_iter].pkeys[m]);
-		}
-
-	      btree_iter++;
-	    }
-	}
-    }
-
-  for (btree_iter = 0; btree_iter < n_btrees; btree_iter++)
-    {
-      stddev[btree_iter].leafs = sqrt (stddev[btree_iter].leafs / partitions_count);
-
-      stddev[btree_iter].pages = sqrt (stddev[btree_iter].pages / partitions_count);
-
-      stddev[btree_iter].height = sqrt (stddev[btree_iter].height / partitions_count);
-
-      stddev[btree_iter].keys = sqrt (stddev[btree_iter].keys / partitions_count);
-
-      assert (mean[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
-      for (m = 0; m < mean[btree_iter].pkeys_size; m++)
-	{
-	  stddev[btree_iter].pkeys[m] = sqrt (stddev[btree_iter].pkeys[m] / partitions_count);
-	}
-    }
-
-  /* compute new statistics */
+  /* put new statistics */
   btree_iter = 0;
   for (i = 0; i < disk_repr_p->n_fixed + disk_repr_p->n_variable; i++)
     {
@@ -1681,36 +1527,29 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
 	}
 
+      /* put ndv of columns */
+      for (int k = 0; k < class_attr_ndv->attr_cnt; k++)
+	{
+	  if (disk_attr_p->id == class_attr_ndv->attr_ndv[k].id)
+	    {
+	      disk_attr_p->ndv = class_attr_ndv->attr_ndv[k].ndv;
+	      break;
+	    }
+	}
+      /* put btree stats */
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
-	  if (mean[btree_iter].leafs != 0)
-	    {
-	      btree_stats_p->leafs =
-		(int) (mean[btree_iter].leafs * (1 + stddev[btree_iter].leafs / mean[btree_iter].leafs));
-	    }
-	  if (mean[btree_iter].pages != 0)
-	    {
-	      btree_stats_p->pages =
-		(int) (mean[btree_iter].pages * (1 + stddev[btree_iter].pages / mean[btree_iter].pages));
-	    }
-	  if (mean[btree_iter].height != 0)
-	    {
-	      btree_stats_p->height =
-		(int) (mean[btree_iter].height * (1 + stddev[btree_iter].height / mean[btree_iter].height));
-	    }
-	  if (mean[btree_iter].keys != 0)
-	    {
-	      btree_stats_p->keys =
-		(int) (mean[btree_iter].keys * (1 + stddev[btree_iter].keys / mean[btree_iter].keys));
-	    }
+	  btree_stats_p->leafs = sum[btree_iter].leafs;
+	  btree_stats_p->pages = sum[btree_iter].pages;
+	  btree_stats_p->height = sum[btree_iter].height;	/* average height */
+	  btree_stats_p->keys = sum[btree_iter].keys;
 
-	  assert (mean[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
-	  for (m = 0; m < mean[btree_iter].pkeys_size; m++)
+	  assert (sum[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
+	  for (m = 0; m < sum[btree_iter].pkeys_size; m++)
 	    {
-	      if (mean[btree_iter].pkeys[m] != 0)
+	      if (sum[btree_iter].pkeys[m] != 0)
 		{
-		  btree_stats_p->pkeys[m] =
-		    (int) (mean[btree_iter].pkeys[m] * (1 + stddev[btree_iter].pkeys[m] / mean[btree_iter].pkeys[m]));
+		  btree_stats_p->pkeys[m] = sum[btree_iter].pkeys[m];
 		}
 	    }
 	  btree_iter++;
@@ -1748,27 +1587,16 @@ cleanup:
     {
       heap_classrepr_free_and_init (subcls_rep, &subcls_idx_cache);
     }
-  if (mean != NULL)
+  if (sum != NULL)
     {
       for (i = 0; i < n_btrees; i++)
 	{
-	  if (mean[i].pkeys != NULL)
+	  if (sum[i].pkeys != NULL)
 	    {
-	      db_private_free_and_init (thread_p, mean[i].pkeys);
+	      db_private_free_and_init (thread_p, sum[i].pkeys);
 	    }
 	}
-      db_private_free_and_init (thread_p, mean);
-    }
-  if (stddev != NULL)
-    {
-      for (i = 0; i < n_btrees; i++)
-	{
-	  if (stddev[i].pkeys != NULL)
-	    {
-	      db_private_free (thread_p, stddev[i].pkeys);
-	    }
-	}
-      db_private_free (thread_p, stddev);
+      db_private_free_and_init (thread_p, sum);
     }
   if (subcls_info)
     {
