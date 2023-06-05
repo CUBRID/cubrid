@@ -192,7 +192,7 @@ namespace cubcomm
 	css_error_code err_code = NO_ERRORS;
 	{
 	  std::lock_guard<std::mutex> lockg (m_send_mutex);
-	  err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
+	  err_code = m_client.send (queue_front.m_id, std::move (queue_front.m_payload));
 	}
 	if (err_code != NO_ERRORS)
 	  {
