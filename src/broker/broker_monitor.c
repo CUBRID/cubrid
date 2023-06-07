@@ -2192,7 +2192,7 @@ initscr ()
   for (major_version = TINFO_HIGH_VERSION; major_version >= TINFO_LOW_VERSION; major_version--)
     {
       sprintf (tinfo_so, "libtinfo.so.%d", major_version);
-      if ((dl_handle = dlopen (tinfo_so, RTLD_LAZY)) != NULL)
+      if ((dl_handle = dlopen (tinfo_so, RTLD_LAZY | RTLD_GLOBAL)) != NULL)
 	{
 	  break;
 	}
