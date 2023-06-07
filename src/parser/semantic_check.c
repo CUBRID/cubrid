@@ -13728,25 +13728,31 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
       break;
 
     case PT_EXPR:
-      if (p->info.expr.op == PT_TO_CHAR)
+      if (p->info.expr.op == q->info.expr.op)
 	{
 	  if (pt_check_path_eq (parser, p->info.expr.arg1, q->info.expr.arg1))
 	    {
 	      return 1;
 	    }
 
-	  if (pt_str_compare
-	      ((char *) PT_VALUE_GET_BYTES (p->info.expr.arg2), (char *) PT_VALUE_GET_BYTES (q->info.expr.arg2),
-	       CASE_INSENSITIVE))
+	  if (pt_check_path_eq (parser, p->info.expr.arg2, q->info.expr.arg2))
+	    {
+	      return 1;
+	    }
+
+	  if (pt_check_path_eq (parser, p->info.expr.arg3, q->info.expr.arg3))
 	    {
 	      return 1;
 	    }
 	}
-      else
-	{
-	  PT_ERRORmf (parser, p, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_NAN_PATH,
-		      pt_short_print (parser, p));
-	}
+
+      break;
+
+    case PT_VALUE:
+	if (pt_str_compare ((char *) pt_get_varchar_bytes (pt_print_bytes (parser, p)), (char *) pt_get_varchar_bytes (pt_print_bytes (parser, q)), CASE_INSENSITIVE))
+	  {
+	    return 1;
+	  }
 
       break;
 

@@ -1304,25 +1304,6 @@ qo_is_cast_attr (PT_NODE * expr)
 }
 
 /*
- * qo_is_to_char_attr () -
- *   return:
- *   expr(in):
- */
-static int
-qo_is_to_char_attr (PT_NODE * expr)
-{
-  PT_NODE *arg1;
-
-  /* check for CAST-expr */
-  if (!expr || expr->node_type != PT_EXPR || expr->info.expr.op != PT_TO_CHAR || !(arg1 = expr->info.expr.arg1))
-    {
-      return 0;
-    }
-
-  return pt_is_attr (arg1);
-}
-
-/*
  * qo_is_reduceable_const () -
  *   return:
  *   expr(in):
@@ -2417,7 +2398,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	  /* add sargable attribute to attr_list */
 	  if (arg1 && arg2 && pt_converse_op (op_type) != 0)
 	    {
-	      if (pt_is_attr (arg1) || qo_is_to_char_attr (arg1))
+	      if (pt_is_attr (arg1) || (op_type != PT_EQ && pt_is_function_index_expr (parser, arg1, false)))
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
@@ -2441,7 +2422,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		    }
 		}
 
-	      if (pt_is_attr (arg2) || qo_is_to_char_attr (arg2))
+	      if (pt_is_attr (arg2) || (op_type != PT_EQ && pt_is_function_index_expr (parser, arg2, false)))
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
@@ -2630,10 +2611,10 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	    }
 	  /* sargable term, where 'op_type' is one of '=', '<' '<=', '>', or '>=' */
 	  else if (arg1 && arg2 && (op_type = pt_converse_op (op_type)) != 0
-		   && (pt_is_attr (arg2) || qo_is_to_char_attr (arg2)))
+		   && (pt_is_attr (arg2) || (op_type != PT_EQ && pt_is_function_index_expr (parser, arg2, false))))
 	    {
 
-	      if (pt_is_attr (arg1) || qo_is_to_char_attr (arg1))
+	      if (pt_is_attr (arg1) || (op_type != PT_EQ && pt_is_function_index_expr (parser, arg1, false)))
 		{
 		  /* term in the form of 'attr op attr' */
 
@@ -2922,7 +2903,7 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
 
       if (node->info.expr.op == op_type1 || node->info.expr.op == op_type2)
 	{
-	  if (find_const && (pt_is_attr (arg_prior) || qo_is_to_char_attr (arg_prior))
+	  if (find_const && (pt_is_attr (arg_prior) || pt_is_function_index_expr (parser, arg_prior, false))
 	      && (pt_check_path_eq (parser, arg_prior_start, arg_prior) == 0))
 	    {
 	      /* skip out unary minus expr */
@@ -2975,7 +2956,7 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   for (node = *wherep; node; node = node->next)
     {
       if (node->node_type != PT_EXPR
-	  || (!(pt_is_attr (node->info.expr.arg1) || qo_is_to_char_attr (node->info.expr.arg1))
+	  || (!(pt_is_attr (node->info.expr.arg1) || pt_is_function_index_expr (parser, node->info.expr.arg1, false))
 	      && (!PT_IS_EXPR_WITH_PRIOR_ARG (node) || !pt_is_attr (node->info.expr.arg1->info.expr.arg1)))
 	  || node->or_next != NULL)
 	{
@@ -6144,7 +6125,8 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 	  else
 	    {
-	      is_attr = pt_is_attr (arg1_prior);
+	      is_attr = (pt_is_attr (arg1_prior)
+			 || (dnf_node->info.expr.op != PT_EQ && pt_is_function_index_expr (parser, arg1_prior, false)));
 	    }
 
 	  if (!is_attr && !pt_is_instnum (arg1_prior))
