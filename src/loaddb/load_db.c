@@ -1235,7 +1235,8 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
       // Update class statistics
       if (args->verbose)
 	{
-	  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UPDATING_STATISTICS));
+	  print_log_msg (1,
+			 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UPDATING_STATISTICS));
 	}
       error_code = loaddb_update_stats (args->verbose);
       if (error_code != NO_ERROR)

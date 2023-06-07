@@ -10799,7 +10799,9 @@ loaddb_update_stats (bool verbose)
 	      const char *class_name_p = db_get_class_name (classop);
 	      if (class_name_p != NULL)
 		{
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLASS_TITLE),class_name_p);
+		  fprintf (stdout,
+			   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLASS_TITLE),
+			   class_name_p);
 		  fflush (stdout);
 		}
 	    }
