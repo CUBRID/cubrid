@@ -13749,10 +13749,12 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
       break;
 
     case PT_VALUE:
-	if (pt_str_compare ((char *) pt_get_varchar_bytes (pt_print_bytes (parser, p)), (char *) pt_get_varchar_bytes (pt_print_bytes (parser, q)), CASE_INSENSITIVE))
-	  {
-	    return 1;
-	  }
+      if (pt_str_compare
+	  ((char *) pt_get_varchar_bytes (pt_print_bytes (parser, p)),
+	   (char *) pt_get_varchar_bytes (pt_print_bytes (parser, q)), CASE_INSENSITIVE))
+	{
+	  return 1;
+	}
 
       break;
 
