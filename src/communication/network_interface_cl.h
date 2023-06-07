@@ -438,7 +438,7 @@ extern int loaddb_load_batch (const cubload::batch &batch, bool use_temp_batch, 
 extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
-extern int loaddb_update_stats ();
+extern int loaddb_update_stats (bool verbose);
 
 extern int method_invoke_fold_constants (const method_sig_list & sig_list,
 					 std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result);

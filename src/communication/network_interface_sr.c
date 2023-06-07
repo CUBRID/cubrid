@@ -10384,8 +10384,7 @@ sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       goto end;
     }
 
-  session->get_class_registry ().get_all_class_entries (class_entries);	/* m_class_registry 가져오는 부분 확인 필요. */
-  /* append_log_msg (LOADDB_MSG_UPDATING_STATISTICS);  client로 옮겨야함 */
+  session->get_class_registry ().get_all_class_entries (class_entries);
 
   oid_cnt = class_entries.size ();
 

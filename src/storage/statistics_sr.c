@@ -679,7 +679,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
       OR_PUT_INT (buf_p, disk_attr_p->n_btstats);
       buf_p += OR_INT_SIZE;
 
-      OR_PUT_INT64 (buf_p, &disk_attr_p->ndv);	/* 박세훈 */
+      OR_PUT_INT64 (buf_p, &disk_attr_p->ndv);
       buf_p += OR_INT64_SIZE;
 
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)

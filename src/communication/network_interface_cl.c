@@ -74,6 +74,8 @@
 #include "lob_locator.hpp"
 #include "crypt_opfunc.h"
 #include "method_error.hpp"
+#include "message_catalog.h"
+#include "utility.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -5656,7 +5658,8 @@ stats_update_statistics (MOP classop, int with_fullscan)
   if (request == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
     }
 
   ptr = or_pack_int (request, class_attr_ndv.attr_cnt);
@@ -5678,6 +5681,7 @@ stats_update_statistics (MOP classop, int with_fullscan)
       or_unpack_errcode (reply, &error);
     }
 
+end:
   if (class_attr_ndv.attr_ndv != NULL)
     {
       free_and_init (class_attr_ndv.attr_ndv);
@@ -5922,6 +5926,10 @@ end:
     {
       db_query_end (query_result);
       query_result = NULL;
+    }
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      free_and_init (class_attr_ndv.attr_ndv);
     }
 
   return (error == DB_CURSOR_END) ? NO_ERROR : error;
@@ -10741,7 +10749,7 @@ loaddb_interrupt ()
 }
 
 int
-loaddb_update_stats ()
+loaddb_update_stats (bool verbose)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -10786,6 +10794,15 @@ loaddb_update_stats ()
       assert (classop != NULL);
       if (classop != NULL)
 	{
+	  if (verbose)
+	    {
+	      const char *class_name_p = db_get_class_name (classop);
+	      if (class_name_p != NULL)
+		{
+		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLASS_TITLE),class_name_p);
+		  fflush (stdout);
+		}
+	    }
 	  stats_update_statistics (classop, 0);
 	}
     }
