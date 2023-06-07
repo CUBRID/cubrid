@@ -4820,15 +4820,27 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       break;
 
     case PT_TYPE_NUMERIC:
-      if (PT_IS_DISCRETE_NUMBER_TYPE (node->type_enum))
+      switch (node->type_enum)
 	{
-	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	case PT_TYPE_SMALLINT:
+	  precision = DB_SMALLINT_PRECISION;
 	  scale = 0;
-	}
-      else
-	{
+	  break;
+
+	case PT_TYPE_INTEGER:
+	  precision = DB_INTEGER_PRECISION;
+	  scale = 0;
+	  break;
+
+	case PT_TYPE_BIGINT:
+	  precision = DB_BIGINT_PRECISION;
+	  scale = 0;
+	  break;
+
+	default:
 	  precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE;
+	  break;
 	}
       break;
 
@@ -11299,6 +11311,8 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 {
   PT_TYPE_ENUM result_type;
 
+  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
+
   if (pt_is_op_hv_late_bind (op) && (t1 == PT_TYPE_MAYBE || t2 == PT_TYPE_MAYBE))
     {
       result_type = PT_TYPE_MAYBE;
@@ -11310,6 +11324,12 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 
   switch (op)
     {
+    case PT_DIVIDE:
+      if (oracle_style_divide && PT_IS_DISCRETE_NUMBER_TYPE (t1) && PT_IS_DISCRETE_NUMBER_TYPE (t2))
+	{
+	  result_type = PT_TYPE_NUMERIC;
+	}
+      break;
     case PT_MINUS:
     case PT_TIMES:
       if (result_type == PT_TYPE_SEQUENCE)
