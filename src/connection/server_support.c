@@ -1824,10 +1824,13 @@ css_pack_message_to_master (const char *server_name)
   size_t message_size =
     strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1
     + strlen (pid_string) + 1;
-  /* in order to prepend '#' or server type */
+
+  /* in order to prepend a server type (1 byte char)*/
   message_size++;
+
   if (!HA_DISABLED())
     {
+      /* In order to prepend a '#' before server name to inform cub_master that this is a HA-server */
       message_size++;
     }
 
@@ -1837,7 +1840,7 @@ css_pack_message_to_master (const char *server_name)
 
   if (!HA_DISABLED())
     {
-      /* cub_master checks if the server is in ha_mode or not using '#dbname' (IS_MASTER_CONN_NAME_HA_SERVER ()) */
+      /* cub_master checks if the server is in ha_mode or not, using '#dbname' (IS_MASTER_CONN_NAME_HA_SERVER ()) */
       message.append (1, '#');
     }
 

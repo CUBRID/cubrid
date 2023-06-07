@@ -416,7 +416,6 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 		}
 	      else
 		{
-		  /* SERVER_TYPE_PAGE */
 		  required_size += strlen (HA_PAGE_SERVER_FORMAT_STRING);
 		}
 	      break;
