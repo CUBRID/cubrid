@@ -1968,7 +1968,7 @@ process_servers_start_within_node (char *server_name, int command_type, bool ha_
   status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
 
   if (status == NO_ERROR
-      && !is_server_running (ha_mode ? CHECK_HA_TRAN_SERVER : CHECK_TRANSACTION_SERVER, server_name, pid))
+      && !is_server_running (ha_mode ? CHECK_HA_TRANSACTION_SERVER : CHECK_TRANSACTION_SERVER, server_name, pid))
     {
       status = ER_GENERIC_ERROR;
     }
