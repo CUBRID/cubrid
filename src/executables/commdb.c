@@ -538,7 +538,7 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 	      pid = search_server_pid (server_info, search_pattern);
 	      if (pid == 0)
 		{
-		  sprintf (search_pattern, "HA-Page-Server %s (", server);
+		  sprintf (search_pattern, "HA-Page-server %s (", server);
 		  pid = search_server_pid (server_info, search_pattern);
 		}
 	      break;
@@ -553,7 +553,7 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 
 	      if (pid == 0)
 		{
-		  sprintf (search_pattern, "HA-Tran-Server %s (", server);
+		  sprintf (search_pattern, "HA-Transaction-server %s (", server);
 		  pid = search_server_pid (server_info, search_pattern);
 		}
 	      break;
