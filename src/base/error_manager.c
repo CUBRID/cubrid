@@ -3241,6 +3241,69 @@ er_set_ignore_uninit (bool ignore)
 }
 #endif
 
+#if !defined(NDEBUG)
+/*
+ * er_log_to_buffer - write formatted output to supplied buffer; a convenience wrapper for
+ *      v-printf intended to be used to output complex/multi-line debug messages to the
+ *      debug log; the function takes care to not overwrite the supplied buffer
+ *
+ *   return:
+ *    - pointer to the advanced position in the supplied buffer - ready for a subsequent call
+ *    - null if supplied buffer space is exhausted
+ *
+ *   buf(in)          : support buffer; writes starting at the position supplied as argument
+ *   buf_len(in/out)  : buffer length; the function outputs the remaining buffer length after
+ *   fmt(in)          : formatted message
+ *   ...(in)          : arguments for formatted message
+ *
+ *   Usage example:
+ *    - where needed (global/local scope or as member of a class) declare:
+ *          ```
+ *          constexpr int buf_total_len = 1 << 16;
+ *          char buf[buf_total_len];
+ *          char *buf_ptr = buf;
+ *          int buf_len = buf_total_len;
+ *          ```
+ *    - where needed, call to output to buffer
+ *          ```
+ *          buf_ptr = er_log_to_buffer (buf_ptr, buf_len, "... ...\n", ... ...);
+ *          ```
+ *    - when all said&done, log the assembled message:
+ *          ```
+ *          er_log_debug (ARG_FILE_LINE, buf);
+ *          ```
+ */
+char *
+er_log_to_buffer (char *buf, int *buf_len, const char *fmt, ...)
+{
+  va_list ap;
+
+  if (buf == nullptr || buf_len == nullptr)
+    {
+      assert (false);
+      return nullptr;
+    }
+  if (*buf_len <= 0)		// this check because with 0 buf_len, vsnprintf still calculates the would-be-written length
+    {
+      assert (*buf_len == 0);
+      assert (false);
+      return nullptr;
+    }
+
+  va_start (ap, fmt);
+  const int written = vsnprintf (buf, (size_t) * buf_len, fmt, ap);
+  va_end (ap);
+
+  *buf_len -= written;
+  if (*buf_len <= 0)
+    {
+      assert (*buf_len == 0);
+      return nullptr;
+    }
+  return buf + written;
+}
+#endif /* !NDEBUG */
+
 /* *INDENT-OFF* */
 namespace cuberr
 {

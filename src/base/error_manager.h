@@ -321,6 +321,10 @@ extern "C"
   extern void er_set_ignore_uninit (bool ignore);
 #endif
 
+#if !defined(NDEBUG)
+  extern char *er_log_to_buffer (char *buf, int *buf_len, const char *fmt, ...);
+#endif
+
 #ifdef __cplusplus
 }
 #endif
