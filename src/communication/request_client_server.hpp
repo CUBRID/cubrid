@@ -29,6 +29,8 @@
 #include <memory>
 #include <thread>
 
+#define NEW_NETW_PROTO 1
+
 namespace cubcomm
 {
   // This header implements request handling over network. Each request has an identifier and for each identifier there
@@ -155,6 +157,14 @@ namespace cubcomm
       cubmem::extensible_block m_send_extensible_block;
   };
 
+  class request_server_constants
+  {
+    public:
+      // arbitrary size
+      // TODO: robust solution needed (change css_ implementation to perfom repeated reads in case of larger bufffer)
+      static constexpr size_t RECV_BUFFER_MAX_SIZE = (IO_MAX_PAGE_SIZE * 128);
+  };
+
   // A server that handles request messages. All requests must be preregistered.
   template <typename MsgId>
   class request_server
@@ -267,6 +277,9 @@ namespace cubcomm
     : m_channel (std::move (chn))
     , m_recv_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
+#if (NEW_NETW_PROTO)
+    m_recv_extensible_block.extend_to (request_server_constants::RECV_BUFFER_MAX_SIZE);
+#endif
   }
 
   template <typename MsgId>
@@ -344,11 +357,14 @@ namespace cubcomm
   template <typename MsgId>
   css_error_code request_server<MsgId>::receive_request_buffer (size_t &message_size)
   {
+#if (!NEW_NETW_PROTO)
     size_t expected_size = 0;
     size_t size_ilen = sizeof (expected_size);
+#endif
 
     message_size = 0;
 
+#if (!NEW_NETW_PROTO)
     // NOTE: no ntohl here; integer value received as a stream of bytes
     css_error_code err = m_channel.recv (reinterpret_cast <char *> (&expected_size), size_ilen);
     if (err != NO_ERRORS)
@@ -369,6 +385,16 @@ namespace cubcomm
 	return err;
       }
     assert (receive_size == expected_size);
+#else
+    size_t receive_size = m_recv_extensible_block.get_size ();
+    css_error_code err = m_channel.recv (m_recv_extensible_block.get_ptr (), receive_size);
+    if (err != NO_ERRORS)
+      {
+	er_log_recv_fail (m_channel, err);
+	return err;
+      }
+    assert (receive_size < m_recv_extensible_block.get_size ());
+#endif
 
     message_size = receive_size;
 
@@ -430,9 +456,11 @@ namespace cubcomm
     // internally, will re-alloc until the block size gets big enough that will not neet to re-alloc anymore
     packer.set_buffer_and_pack_all (send_ext_block, static_cast<int> (msgid), std::forward<PackableArgs> (args)...);
     const size_t packer_current_size = packer.get_current_size ();
+    assert_release ((packer_current_size + sizeof (int)) <= request_server_constants::RECV_BUFFER_MAX_SIZE);
 
     er_log_send_request (chn, static_cast<int> (msgid), packer_current_size);
 
+#if (!NEW_NETW_PROTO)
     // NOTE: no htonl here; integer value sent as a stream of bytes
     const css_error_code css_size_err = chn.send (
 	reinterpret_cast<const char *> (&packer_current_size), sizeof (packer_current_size));
@@ -443,6 +471,9 @@ namespace cubcomm
       }
 
     const css_error_code css_err = chn.send (send_ext_block.get_ptr (), packer.get_current_size ());
+#else
+    const css_error_code css_err = chn.send (send_ext_block.get_ptr (), packer_current_size);
+#endif
     if (css_err != NO_ERRORS)
       {
 	er_log_send_fail (chn, css_err);

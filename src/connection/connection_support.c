@@ -536,6 +536,9 @@ css_read_remaining_bytes (SOCKET fd, int len)
   /* TODO: return error or length */
 }
 
+//#define CUBRID_DEBUG
+//#define DEBUG_NET_RECV
+
 /*
  * css_net_recv() - reading a "packet" from the socket.
  *   return: 0 if success, or error code
@@ -560,39 +563,74 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
   time_unit = timeout > 5000 ? 5000 : timeout;
   elapsed = time_unit;
 
+#ifdef DEBUG_NET_RECV
+  constexpr int buf_total_len = 1 << 16;
+  char buf[buf_total_len];
+  char *buf_ptr = buf;
+  int buf_len = buf_total_len;
+#endif
+
   /* read data length */
+#ifdef DEBUG_NET_RECV
+  buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "css_net_recv\n");
+#endif
   while (true)
     {
       nbytes = css_readn (fd, (char *) &templen, sizeof (int), time_unit);
+#ifdef DEBUG_NET_RECV
+      buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  readn_1 = %d \n", nbytes);
+#endif
       if (nbytes < 0)
 	{
 	  if (errno == ETIMEDOUT && timeout > elapsed)
 	    {
+#ifdef DEBUG_NET_RECV
+	      buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  ETIMEDOUT\n");
+#endif
 #if defined (CS_MODE) && !defined (WINDOWS)
 	      if (CHECK_SERVER_IS_ALIVE ())
 		{
 		  if (css_peer_alive (fd, time_unit) == false)
 		    {
+#ifdef DEBUG_NET_RECV
+		      buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  ERROR_WHEN_READING_SIZE 1\n");
+		      er_log_debug (ARG_FILE_LINE, buf);
+#endif
 		      return ERROR_WHEN_READING_SIZE;
 		    }
 		  if (css_check_server_alive_fn != NULL)
 		    {
 		      if (css_check_server_alive_fn (NULL, NULL) == false)
 			{
+#ifdef DEBUG_NET_RECV
+			  buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  ERROR_WHEN_READING_SIZE 2\n");
+			  er_log_debug (ARG_FILE_LINE, buf);
+#endif
 			  return ERROR_WHEN_READING_SIZE;
 			}
 		    }
 		}
 #endif /* CS_MODE && !WINDOWS */
 	      elapsed += time_unit;
+#ifdef DEBUG_NET_RECV
+	      buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  elapsed = %d\n", elapsed);
+#endif
 	      continue;
 	    }
+#ifdef DEBUG_NET_RECV
+	  buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  ERROR_WHEN_READING_SIZE 3\n");
+	  er_log_debug (ARG_FILE_LINE, buf);
+#endif
 	  return ERROR_WHEN_READING_SIZE;
 	}
       if (nbytes != sizeof (int))
 	{
 #ifdef CUBRID_DEBUG
 	  er_log_debug (ARG_FILE_LINE, "css_net_recv: returning ERROR_WHEN_READING_SIZE bytes %d \n", nbytes);
+#endif
+#ifdef DEBUG_NET_RECV
+	  buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  ERROR_WHEN_READING_SIZE 4\n");
+	  er_log_debug (ARG_FILE_LINE, buf);
 #endif
 	  return ERROR_WHEN_READING_SIZE;
 	}
@@ -602,22 +640,41 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 	}
     }
 
+#ifdef DEBUG_NET_RECV
+  buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  before ntohl templen = %d (%x)\n", templen, templen);
+#endif
   templen = ntohl (templen);
+#ifdef DEBUG_NET_RECV
+  buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  after ntohl templen = %d\n", templen);
+#endif
   if (templen > *maxlen)
     {
+#ifdef DEBUG_NET_RECV
+      buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  templen = %d > maxlen = %d\n", templen, *maxlen);
+#endif
       length_to_read = *maxlen;
     }
   else
     {
+#ifdef DEBUG_NET_RECV
+      buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  templen = %d <= maxlen = %d\n", templen, *maxlen);
+#endif
       length_to_read = templen;
     }
 
   /* read data */
   nbytes = css_readn (fd, buffer, length_to_read, timeout);
+#ifdef DEBUG_NET_RECV
+  buf_ptr = er_log_to_buffer (buf_ptr, &buf_len, "  readn_2 = %d\n", nbytes);
+#endif
   if (nbytes < length_to_read)
     {
 #ifdef CUBRID_DEBUG
       er_log_debug (ARG_FILE_LINE, "css_net_recv: returning ERROR_ON_READ bytes %d\n", nbytes);
+#endif
+#ifdef DEBUG_NET_RECV
+      //assert (false);
+      er_log_debug (ARG_FILE_LINE, buf);
 #endif
       return ERROR_ON_READ;
     }
@@ -629,7 +686,15 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 
   if (nbytes && (templen > nbytes))
     {
+#ifdef DEBUG_NET_RECV
+      buf_ptr = er_log_to_buffer (buf_ptr, &buf_len,
+				  "  RECORD_TRUNCATED nbytes = %d, templen = %d, (templen - nbytes) = %d\n",
+				  nbytes, templen, (templen - nbytes));
+#endif
       css_read_remaining_bytes (fd, templen - nbytes);
+#ifdef DEBUG_NET_RECV
+      er_log_debug (ARG_FILE_LINE, buf);
+#endif
       return RECORD_TRUNCATED;
     }
 
@@ -638,12 +703,20 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
 #ifdef CUBRID_DEBUG
       er_log_debug (ARG_FILE_LINE, "css_net_recv: returning READ_LENGTH_MISMATCH bytes %d\n", nbytes);
 #endif
+#ifdef DEBUG_NET_RECV
+      //assert (false);
+#endif
       return READ_LENGTH_MISMATCH;
     }
 
   *maxlen = nbytes;
+#ifdef DEBUG_NET_RECV
+  er_log_debug (ARG_FILE_LINE, buf);
+#endif
   return NO_ERRORS;
 }
+
+//#undef CUBRID_DEBUG
 
 #if defined(WINDOWS)
 /* We implement css_vector_send on Winsock platforms by copying the pieces into

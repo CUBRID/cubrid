@@ -95,15 +95,15 @@ namespace cubcomm
 
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
-    int copy_of_maxlen_in_recvlen_out = (int) maxlen_in_recvlen_out;
+    int actual_recv_maxlen = (int) maxlen_in_recvlen_out;
     int rc = NO_ERRORS;
 
     assert (m_type != NO_TYPE);
 
-    rc = css_net_recv (m_socket, buffer, &copy_of_maxlen_in_recvlen_out, m_max_timeout_in_ms);
+    rc = css_net_recv (m_socket, buffer, &actual_recv_maxlen, m_max_timeout_in_ms);
     er_log_chn_debug ("[%s] Receive buffer of size = %d, max_size = %zu, result = %d", get_channel_id ().c_str (),
-		      copy_of_maxlen_in_recvlen_out, maxlen_in_recvlen_out, rc);
-    maxlen_in_recvlen_out = copy_of_maxlen_in_recvlen_out;
+		      actual_recv_maxlen, maxlen_in_recvlen_out, rc);
+    maxlen_in_recvlen_out = actual_recv_maxlen;
     return (css_error_code) rc;
   }
 
