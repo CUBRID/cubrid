@@ -11311,6 +11311,8 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 {
   PT_TYPE_ENUM result_type;
 
+  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
+
   if (pt_is_op_hv_late_bind (op) && (t1 == PT_TYPE_MAYBE || t2 == PT_TYPE_MAYBE))
     {
       result_type = PT_TYPE_MAYBE;
@@ -11322,6 +11324,12 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 
   switch (op)
     {
+    case PT_DIVIDE:
+      if (oracle_style_divide && PT_IS_DISCRETE_NUMBER_TYPE (t1) && PT_IS_DISCRETE_NUMBER_TYPE (t2))
+	{
+	  result_type = PT_TYPE_NUMERIC;
+	}
+      break;
     case PT_MINUS:
     case PT_TIMES:
       if (result_type == PT_TYPE_SEQUENCE)
