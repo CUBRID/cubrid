@@ -66,8 +66,8 @@
 
 #define SERVER_FORMAT_STRING " %s-Server %s (rel %s, pid %d)\n"
 #define HA_SERVER_FORMAT_STRING " HA-Server %s (rel %s, pid %d)\n"
-#define HA_PAGE_SERVER_FORMAT_STRING " HA-Page-Server %s (rel %s, pid %d)\n"
-#define HA_TRAN_SERVER_FORMAT_STRING " HA-Tran-Server %s (rel %s, pid %d)\n"
+#define HA_PAGE_SERVER_FORMAT_STRING " HA-Page-server %s (rel %s, pid %d)\n"
+#define HA_TRAN_SERVER_FORMAT_STRING " HA-Transaction-server %s (rel %s, pid %d)\n"
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
 
