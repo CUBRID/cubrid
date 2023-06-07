@@ -4003,39 +4003,6 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * sqst_update_all_statistics -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE:
- */
-void
-sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int error, with_fullscan;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_unpack_int (request, &with_fullscan);
-
-  error = xstats_update_all_statistics (thread_p, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
-  if (error != NO_ERROR)
-    {
-      (void) return_error_to_client (thread_p, rid);
-    }
-
-  (void) or_pack_errcode (reply, error);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-#endif
-
 /*
  * sbtree_add_index -
  *
