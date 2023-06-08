@@ -303,15 +303,12 @@ load_hosts_file ()
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "IP address", token, line_num,
 			  USER_HOSTS_FILE);
 
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
+		  continue;
 		}
 	      else
 		{
 		  strncpy (ipaddr, token, IPADDR_LEN);
 		  ipaddr[IPADDR_LEN - 1] = '\0';
-
 		  hostent_flag = INSERT_HOSTNAME;
 		}
 	    }
@@ -331,9 +328,7 @@ load_hosts_file ()
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
 			  USER_HOSTS_FILE);
 
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
+		  continue;
 		}
 	      else
 		{
@@ -387,15 +382,6 @@ load_hosts_file ()
 		}
 
 	    }
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE, 2, line_num,
-		  USER_HOSTS_FILE);
-
-	  user_host_Map.clear ();
-	  fclose (fp);
-	  goto load_fail_phase;
 	}
     }
   fclose (fp);
