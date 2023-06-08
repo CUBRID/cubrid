@@ -5044,7 +5044,9 @@ tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_sta
 	}
     }
 
-  if (!is_hex)
+  /* See CBRD-24780.
+   * For backwards compatibility, casting from empty string to bigint is allowed. */
+  if (!is_hex && *strp != '\0')
     {
       /* check whether is scientific format */
       p = strp;

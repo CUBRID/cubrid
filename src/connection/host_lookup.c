@@ -233,10 +233,7 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
 
 return_phase:
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_ERROR, 0);
-  fprintf (stdout, "%s\n", er_msg ());
-  fflush (stdout);
-  exit (0);
+  return NULL;
 }
 
 /*
