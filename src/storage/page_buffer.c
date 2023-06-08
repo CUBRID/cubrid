@@ -3616,7 +3616,8 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
       /* flush condition check */
       if (!pgbuf_bcb_is_dirty (bufptr)
-	  || (!LSA_ISNULL (&bufptr->oldest_unflush_lsa) && LSA_GT (&bufptr->oldest_unflush_lsa, flush_upto_lsa)))
+	  || (!LSA_ISNULL (&bufptr->oldest_unflush_lsa) && LSA_GT (&bufptr->oldest_unflush_lsa, flush_upto_lsa))
+	  || pgbuf_is_temporary_volume (bufptr->vpid.volid))
 	{
 	  PGBUF_BCB_UNLOCK (bufptr);
 	  continue;

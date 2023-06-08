@@ -1271,9 +1271,9 @@ extract_db_exec_stat (FILE * fp, const char *dbname, T_CM_ERROR * err_buf)
   while (fgets (linebuf, sizeof (linebuf), fp))
     {
       unsigned int *member_ptr;
-      unsigned int prop_val;
+      uint64_t prop_val;
       memset (prop_name, 0, sizeof (prop_name));
-      sscanf (linebuf, "%99s%*s%u", prop_name, &prop_val);
+      sscanf (linebuf, "%99s%*s%llu", prop_name, &prop_val);
       member_ptr = get_statdump_member_ptr (stat, prop_name);
       if (!member_ptr)
 	continue;

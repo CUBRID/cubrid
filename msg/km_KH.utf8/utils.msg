@@ -482,7 +482,7 @@ valid options:\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    estimated NUMBER of instances; default: 5000\n\
   -v, --verbose                  enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT    insertion COUNT for periodic commit; default: no commit during loading\n\
+  -c, --periodic-commit=COUNT    insertion COUNT for periodic commit; default: 10240\n\
       --no-oid                   don't use OID\n\
       --no-statistics            do not update the statistics while loading\n\
   -s, --schema-file=FILE[:LINE]  create schema from LINE with FILE\n\
