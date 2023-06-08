@@ -2398,14 +2398,44 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	  /* add sargable attribute to attr_list */
 	  if (arg1 && arg2 && pt_converse_op (op_type) != 0)
 	    {
-	      if (pt_is_attr (arg1) || (op_type != PT_EQ && pt_is_function_index_expr (parser, arg1, false)))
+	      if (pt_is_attr (arg1) || pt_is_function_index_expr (parser, arg1, false))
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_name_equal (parser, attr, arg1))
+		      PT_NODE *tmp_attr = attr;
+		      CAST_POINTER_TO_NODE (tmp_attr);
+
+		      char *attr_str = NULL;
+
+		      if (tmp_attr->node_type != arg1->node_type)
 			{
-			  attr->line_number++;	/* increase attribute count */
-			  break;
+			  continue;
+			}
+
+		      if (tmp_attr->node_type == PT_NAME)
+			{
+			  if (pt_name_equal (parser, tmp_attr, arg1))
+			    {
+			      attr->line_number++;	/* increase attribute count */
+			      break;
+			    }
+			}
+		      else if (tmp_attr->node_type == PT_EXPR)
+			{
+			  unsigned int save_custom;
+
+			  save_custom = parser->custom_print;	/* save */
+			  parser->custom_print |= PT_CONVERT_RANGE;
+
+			  attr_str = parser_print_tree (parser, tmp_attr);
+
+			  parser->custom_print = save_custom;	/* restore */
+
+			  if (pt_str_compare (attr_str, parser_print_tree (parser, arg1), CASE_INSENSITIVE) == 0)
+			    {
+			      attr->line_number++;	/* increase attribute count */
+			      break;
+			    }
 			}
 		    }
 
@@ -2422,14 +2452,44 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		    }
 		}
 
-	      if (pt_is_attr (arg2) || (op_type != PT_EQ && pt_is_function_index_expr (parser, arg2, false)))
+	      if (pt_is_attr (arg2) || pt_is_function_index_expr (parser, arg2, false))
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_name_equal (parser, attr, arg2))
+		      PT_NODE *tmp_attr = attr;
+		      CAST_POINTER_TO_NODE (tmp_attr);
+
+		      char *attr_str = NULL;
+
+		      if (tmp_attr->node_type != arg2->node_type)
 			{
-			  attr->line_number++;	/* increase attribute count */
-			  break;
+			  continue;
+			}
+
+		      if (tmp_attr->node_type == PT_NAME)
+			{
+			  if (pt_name_equal (parser, tmp_attr, arg2))
+			    {
+			      attr->line_number++;	/* increase attribute count */
+			      break;
+			    }
+			}
+		      else if (tmp_attr->node_type == PT_EXPR)
+			{
+			  unsigned int save_custom;
+
+			  save_custom = parser->custom_print;	/* save */
+			  parser->custom_print |= PT_CONVERT_RANGE;
+
+			  attr_str = parser_print_tree (parser, tmp_attr);
+
+			  parser->custom_print = save_custom;	/* restore */
+
+			  if (pt_str_compare (attr_str, parser_print_tree (parser, arg2), CASE_INSENSITIVE) == 0)
+			    {
+			      attr->line_number++;	/* increase attribute count */
+			      break;
+			    }
 			}
 		    }
 
@@ -2611,23 +2671,76 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	    }
 	  /* sargable term, where 'op_type' is one of '=', '<' '<=', '>', or '>=' */
 	  else if (arg1 && arg2 && (op_type = pt_converse_op (op_type)) != 0
-		   && (pt_is_attr (arg2) || (op_type != PT_EQ && pt_is_function_index_expr (parser, arg2, false))))
+		   && (pt_is_attr (arg2) || pt_is_function_index_expr (parser, arg2, false)))
 	    {
 
-	      if (pt_is_attr (arg1) || (op_type != PT_EQ && pt_is_function_index_expr (parser, arg1, false)))
+	      if (pt_is_attr (arg1) || pt_is_function_index_expr (parser, arg1, false))
 		{
 		  /* term in the form of 'attr op attr' */
 
 		  arg1_cnt = arg2_cnt = 0;	/* init */
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_name_equal (parser, attr, arg1))
+		      PT_NODE *tmp_attr = attr;
+		      CAST_POINTER_TO_NODE (tmp_attr);
+
+		      char *attr_str = NULL;
+
+		      if (tmp_attr->node_type == arg1->node_type)
 			{
-			  arg1_cnt = attr->line_number;
+			  if (tmp_attr->node_type == PT_NAME)
+			    {
+			      if (pt_name_equal (parser, tmp_attr, arg1))
+				{
+				  arg1_cnt = attr->line_number;
+				}
+			    }
+			  else if (tmp_attr->node_type == PT_EXPR)
+			    {
+			      unsigned int save_custom;
+
+			      save_custom = parser->custom_print;	/* save */
+			      parser->custom_print |= PT_CONVERT_RANGE;
+
+			      attr_str = parser_print_tree (parser, tmp_attr);
+
+			      parser->custom_print = save_custom;	/* restore */
+
+			      if (pt_str_compare (attr_str, parser_print_tree (parser, arg1), CASE_INSENSITIVE) == 0)
+				{
+				  arg1_cnt = attr->line_number;
+				}
+			    }
 			}
-		      else if (pt_name_equal (parser, attr, arg2))
+
+		      if (tmp_attr->node_type == arg2->node_type)
 			{
-			  arg2_cnt = attr->line_number;
+			  if (tmp_attr->node_type == PT_NAME)
+			    {
+			      if (pt_name_equal (parser, tmp_attr, arg2))
+				{
+				  arg2_cnt = attr->line_number;
+				}
+			    }
+			  else if (tmp_attr->node_type == PT_EXPR)
+			    {
+			      if (attr_str == NULL)
+				{
+				  unsigned int save_custom;
+
+				  save_custom = parser->custom_print;	/* save */
+				  parser->custom_print |= PT_CONVERT_RANGE;
+
+				  attr_str = parser_print_tree (parser, tmp_attr);
+
+				  parser->custom_print = save_custom;	/* restore */
+				}
+
+			      if (pt_str_compare (attr_str, parser_print_tree (parser, arg2), CASE_INSENSITIVE) == 0)
+				{
+				  arg2_cnt = attr->line_number;
+				}
+			    }
 			}
 
 		      if (arg1_cnt && arg2_cnt)
@@ -5381,7 +5494,8 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       /* if node had prior check that sibling also contains prior and vice-versa */
 
-      if (!pt_is_attr (sibling_prior) && !pt_is_instnum (sibling_prior))
+      if (!(pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
+	  && !pt_is_instnum (sibling_prior))
 	{
 	  /* LHS is not an attribute */
 	  prev = prev->or_next;
@@ -5389,7 +5503,8 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       if ((node_prior->node_type != sibling_prior->node_type)
-	  || (pt_is_attr (node_prior) && pt_is_attr (sibling_prior)
+	  || ((pt_is_attr (node_prior) || pt_is_function_index_expr (parser, node_prior, false))
+	      && (pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
 	      && pt_check_path_eq (parser, node_prior, sibling_prior)))
 	{
 	  /* pt_check_path_eq() return non-zero if two are different */
@@ -6125,8 +6240,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 	  else
 	    {
-	      is_attr = (pt_is_attr (arg1_prior)
-			 || (dnf_node->info.expr.op != PT_EQ && pt_is_function_index_expr (parser, arg1_prior, false)));
+	      is_attr = (pt_is_attr (arg1_prior) || pt_is_function_index_expr (parser, arg1_prior, false));
 	    }
 
 	  if (!is_attr && !pt_is_instnum (arg1_prior))
