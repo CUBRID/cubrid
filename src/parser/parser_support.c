@@ -600,6 +600,121 @@ pt_name_equal (PARSER_CONTEXT * parser, const PT_NODE * name1, const PT_NODE * n
 }
 
 /*
+ * pt_expr_equal () - Tests expr nodes for equality
+ *   return: true on equal
+ *   parser(in):
+ *   name1(in):
+ *   name2(in):
+ *
+ * Note :
+ * Assumes semantic processing has resolved expr information
+ */
+bool
+pt_expr_equal (PARSER_CONTEXT * parser, const PT_NODE * expr1, const PT_NODE * expr2)
+{
+  if (expr1 == NULL && expr2 == NULL)
+    {
+      return true;
+    }
+
+  if (expr1 == NULL || expr2 == NULL)
+    {
+      return false;
+    }
+
+  CAST_POINTER_TO_NODE (expr1);
+  CAST_POINTER_TO_NODE (expr2);
+
+  if (expr1 == expr2)
+    {
+      return true;
+    }
+
+  if (expr1->node_type != expr2->node_type)
+    {
+      return false;
+    }
+
+  switch (expr1->node_type)
+    {
+    case PT_NAME:
+      {
+	if (!pt_name_equal (parser, expr1, expr2))
+	  {
+	    return false;
+	  }
+      }				/* PT_NAME */
+      break;
+
+    case PT_DOT_:
+      {
+	if (!pt_expr_equal (parser, expr1->info.dot.arg1, expr2->info.dot.arg1))
+	  {
+	    return false;
+	  }
+
+	if (!pt_expr_equal (parser, expr1->info.dot.arg2, expr2->info.dot.arg2))
+	  {
+	    return false;
+	  }
+      }				/* PT_DOT_ */
+      break;
+
+    case PT_EXPR:
+      {
+	if (!pt_expr_equal (parser, expr1->info.expr.arg1, expr2->info.expr.arg1))
+	  {
+	    return false;
+	  }
+
+	if (!pt_expr_equal (parser, expr1->info.expr.arg2, expr2->info.expr.arg2))
+	  {
+	    return false;
+	  }
+
+	if (!pt_expr_equal (parser, expr1->info.expr.arg3, expr2->info.expr.arg3))
+	  {
+	    return false;
+	  }
+      }				/* PT_EXPR */
+      break;
+
+    case PT_VALUE:
+      {
+	if (pt_str_compare
+	    ((char *) pt_get_varchar_bytes (pt_print_bytes (parser, expr1)),
+	     (char *) pt_get_varchar_bytes (pt_print_bytes (parser, expr2)), CASE_INSENSITIVE))
+	  {
+	    return false;
+	  }
+      }				/* PT_VALUE */
+      break;
+
+    default:
+      {
+	char *expr1_str = NULL;
+	char *expr2_str = NULL;
+	unsigned int save_custom;
+
+	save_custom = parser->custom_print;	/* save */
+	parser->custom_print |= PT_CONVERT_RANGE;
+
+	expr1_str = parser_print_tree (parser, expr1);
+	expr1_str = parser_print_tree (parser, expr2);
+
+	parser->custom_print = save_custom;	/* restore */
+
+	if (pt_str_compare (expr1_str, expr1_str, CASE_INSENSITIVE))
+	  {
+	    return false;
+	  }
+      }				/* default */
+    }				/* switch (expr1->node_type) */
+
+  return true;
+}
+
+/*
  * pt_find_name () - Looks for a name on a list
  *   return:
  *   parser(in):

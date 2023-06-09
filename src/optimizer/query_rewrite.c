@@ -2402,40 +2402,10 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      PT_NODE *tmp_attr = attr;
-		      CAST_POINTER_TO_NODE (tmp_attr);
-
-		      char *attr_str = NULL;
-
-		      if (tmp_attr->node_type != arg1->node_type)
+		      if (pt_expr_equal (parser, attr, arg1))
 			{
-			  continue;
-			}
-
-		      if (tmp_attr->node_type == PT_NAME)
-			{
-			  if (pt_name_equal (parser, tmp_attr, arg1))
-			    {
-			      attr->line_number++;	/* increase attribute count */
-			      break;
-			    }
-			}
-		      else if (tmp_attr->node_type == PT_EXPR)
-			{
-			  unsigned int save_custom;
-
-			  save_custom = parser->custom_print;	/* save */
-			  parser->custom_print |= PT_CONVERT_RANGE;
-
-			  attr_str = parser_print_tree (parser, tmp_attr);
-
-			  parser->custom_print = save_custom;	/* restore */
-
-			  if (pt_str_compare (attr_str, parser_print_tree (parser, arg1), CASE_INSENSITIVE) == 0)
-			    {
-			      attr->line_number++;	/* increase attribute count */
-			      break;
-			    }
+			  attr->line_number++;	/* increase attribute count */
+			  break;
 			}
 		    }
 
@@ -2456,40 +2426,10 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      PT_NODE *tmp_attr = attr;
-		      CAST_POINTER_TO_NODE (tmp_attr);
-
-		      char *attr_str = NULL;
-
-		      if (tmp_attr->node_type != arg2->node_type)
+		      if (pt_expr_equal (parser, attr, arg2))
 			{
-			  continue;
-			}
-
-		      if (tmp_attr->node_type == PT_NAME)
-			{
-			  if (pt_name_equal (parser, tmp_attr, arg2))
-			    {
-			      attr->line_number++;	/* increase attribute count */
-			      break;
-			    }
-			}
-		      else if (tmp_attr->node_type == PT_EXPR)
-			{
-			  unsigned int save_custom;
-
-			  save_custom = parser->custom_print;	/* save */
-			  parser->custom_print |= PT_CONVERT_RANGE;
-
-			  attr_str = parser_print_tree (parser, tmp_attr);
-
-			  parser->custom_print = save_custom;	/* restore */
-
-			  if (pt_str_compare (attr_str, parser_print_tree (parser, arg2), CASE_INSENSITIVE) == 0)
-			    {
-			      attr->line_number++;	/* increase attribute count */
-			      break;
-			    }
+			  attr->line_number++;	/* increase attribute count */
+			  break;
 			}
 		    }
 
@@ -2681,66 +2621,13 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		  arg1_cnt = arg2_cnt = 0;	/* init */
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      PT_NODE *tmp_attr = attr;
-		      CAST_POINTER_TO_NODE (tmp_attr);
-
-		      char *attr_str = NULL;
-
-		      if (tmp_attr->node_type == arg1->node_type)
+		      if (pt_expr_equal (parser, attr, arg1))
 			{
-			  if (tmp_attr->node_type == PT_NAME)
-			    {
-			      if (pt_name_equal (parser, tmp_attr, arg1))
-				{
-				  arg1_cnt = attr->line_number;
-				}
-			    }
-			  else if (tmp_attr->node_type == PT_EXPR)
-			    {
-			      unsigned int save_custom;
-
-			      save_custom = parser->custom_print;	/* save */
-			      parser->custom_print |= PT_CONVERT_RANGE;
-
-			      attr_str = parser_print_tree (parser, tmp_attr);
-
-			      parser->custom_print = save_custom;	/* restore */
-
-			      if (pt_str_compare (attr_str, parser_print_tree (parser, arg1), CASE_INSENSITIVE) == 0)
-				{
-				  arg1_cnt = attr->line_number;
-				}
-			    }
+			  arg1_cnt = attr->line_number;
 			}
-
-		      if (tmp_attr->node_type == arg2->node_type)
+		      else if (pt_expr_equal (parser, attr, arg2))
 			{
-			  if (tmp_attr->node_type == PT_NAME)
-			    {
-			      if (pt_name_equal (parser, tmp_attr, arg2))
-				{
-				  arg2_cnt = attr->line_number;
-				}
-			    }
-			  else if (tmp_attr->node_type == PT_EXPR)
-			    {
-			      if (attr_str == NULL)
-				{
-				  unsigned int save_custom;
-
-				  save_custom = parser->custom_print;	/* save */
-				  parser->custom_print |= PT_CONVERT_RANGE;
-
-				  attr_str = parser_print_tree (parser, tmp_attr);
-
-				  parser->custom_print = save_custom;	/* restore */
-				}
-
-			      if (pt_str_compare (attr_str, parser_print_tree (parser, arg2), CASE_INSENSITIVE) == 0)
-				{
-				  arg2_cnt = attr->line_number;
-				}
-			    }
+			  arg2_cnt = attr->line_number;
 			}
 
 		      if (arg1_cnt && arg2_cnt)
@@ -6720,7 +6607,8 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
       arg1_prior = pt_get_first_arg_ignore_prior (node);
 
-      if (!pt_is_attr (arg1_prior) && !pt_is_instnum (arg1_prior))
+      if (!(pt_is_attr (arg1_prior) || pt_is_function_index_expr (parser, arg1_prior, false))
+	  && !pt_is_instnum (arg1_prior))
 	{
 	  /* LHS is not an attribute */
 
@@ -6802,7 +6690,8 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 	  /* if node had prior check that sibling also contains prior and vice-versa */
 
-	  if (!pt_is_attr (sibling_prior) && !pt_is_instnum (sibling_prior))
+	  if (!(pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
+	      && !pt_is_instnum (sibling_prior))
 	    {
 	      /* LHS is not an attribute */
 	      sibling_prev = sibling_prev->next;
@@ -6816,7 +6705,8 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 
 	  if ((arg1_prior->node_type != sibling_prior->node_type)
-	      || (pt_is_attr (arg1_prior) && pt_is_attr (sibling_prior)
+	      || ((pt_is_attr (arg1_prior) || pt_is_function_index_expr (parser, arg1_prior, false))
+		  && (pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
 		  && pt_check_path_eq (parser, arg1_prior, sibling_prior)))
 	    {
 	      /* pt_check_path_eq() return non-zero if two are different */
