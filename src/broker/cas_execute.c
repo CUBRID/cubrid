@@ -8380,12 +8380,61 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
       STRING_APPEND (sql_p, avail_size, "AND class_type = 'VCLASS' ");
     }
 
+  if (schema_name[0] == '\0')
+    {
+      strncpy (schema_name, database_user, DB_MAX_SCHEMA_LENGTH);
+    }
+
   if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
     {
       if (class_name_only)
 	{
-	  STRING_APPEND (sql_p, avail_size, "AND class_name LIKE '%s' ESCAPE '%s' ", class_name_only,
-			 get_backslash_escape_string ());
+	  STRING_APPEND (sql_p, avail_size, "AND ");
+          // *INDENT-OFF*
+          STRING_APPEND (sql_p, avail_size,
+	    "(CASE WHEN "
+	        "(SELECT "
+	            "count (*) "
+	        "FROM "
+	            "db_synonym "
+	        "WHERE "
+	            "synonym_name LIKE '%s' ESCAPE '%s' "
+                    "AND synonym_owner_name = UPPER ('%s')) > 0 "
+	    "THEN "
+	        "((class_name IN ("
+	        "SELECT "
+                    "s.target_name "
+                "FROM "
+                    "db_synonym s "
+                "WHERE "
+                    "s.synonym_name LIKE '%s' ESCAPE '%s' "
+                    "AND s.synonym_owner_name = UPPER ('%s'))) "
+                    "AND (owner_name in ("
+                    "SELECT "
+                        "s.target_owner_name "
+                    "FROM "
+                        "db_synonym s "
+                    "WHERE "
+                        "s.synonym_name LIKE '%s' ESCAPE '%s' "
+                         "AND s.synonym_owner_name = UPPER ('%s'))) "
+                         "OR (class_name LIKE '%s' ESCAPE '%s' AND owner_name = UPPER ('%s')) )"
+            "ELSE "
+                "(class_name LIKE '%s' ESCAPE '%s' AND owner_name = UPPER ('%s')) "
+            "END) = 1"
+	  , class_name_only, get_backslash_escape_string (), 
+	  schema_name,
+	  class_name_only, get_backslash_escape_string (), schema_name,
+	  class_name_only, get_backslash_escape_string (), schema_name,
+	  class_name_only, get_backslash_escape_string (), schema_name,
+	  class_name_only, get_backslash_escape_string (), schema_name);
+          // *INDENT-ON*
+	}
+      else
+	{
+	  if (*schema_name)
+	    {
+	      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
+	    }
 	}
     }
   else
@@ -8394,12 +8443,42 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
 	{
 	  class_name_only = CONST_CAST (char *, "");
 	}
-      STRING_APPEND (sql_p, avail_size, "AND class_name = '%s' ", class_name_only);
-    }
 
-  if (*schema_name)
-    {
-      STRING_APPEND (sql_p, avail_size, "AND owner_name = UPPER ('%s') ", schema_name);
+      STRING_APPEND (sql_p, avail_size, "AND ");
+      // *INDENT-OFF*
+      STRING_APPEND (sql_p, avail_size,
+      "(CASE WHEN "
+          "(SELECT "
+              "count (*) "
+          "FROM "
+              "db_synonym "
+          "WHERE "
+              "synonym_name = '%s' AND synonym_owner_name = UPPER ('%s')) > 0 "
+      "THEN "
+          "(class_name IN ("
+          "SELECT "
+              "target_name "
+          "FROM "
+              "db_synonym "
+          "WHERE "
+              "synonym_name = '%s' AND synonym_owner_name = UPPER ('%s')) "
+	      "AND owner_name IN ("
+              "SELECT "
+                  "target_owner_name "
+              "FROM "
+                  "db_synonym "
+              "WHERE "
+                  "synonym_name = '%s' AND synonym_owner_name = UPPER ('%s')) "
+                  "OR (class_name = '%s' AND owner_name = UPPER ('%s')) ) "
+      "ELSE "
+	  "(class_name = '%s' AND owner_name = UPPER ('%s')) "
+      "END) = 1"
+      , class_name_only, schema_name, 
+      class_name_only, schema_name, 
+      class_name_only, schema_name, 
+      class_name_only, schema_name, 
+      class_name_only, schema_name);
+      // *INDENT-ON*      
     }
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
