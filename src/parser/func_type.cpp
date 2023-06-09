@@ -1483,7 +1483,7 @@ static PT_NODE *pt_check_function_collation (PARSER_CONTEXT *parser, PT_NODE *no
 static int pt_character_length_for_node (PT_NODE *node, const PT_TYPE_ENUM coerce_type);
 
 /*
- * pt_eval_function_type () -
+ * pt_eval_function_type_aggregate () -
  *   return: returns a node of the same type.
  *   parser(in): parser global context info for reentrancy
  *   node(in): a parse tree node of type PT_FUNCTION denoting an
