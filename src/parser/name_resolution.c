@@ -1011,16 +1011,6 @@ pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv)
   if (val)
     {
       hv = pt_bind_type_from_dbval (parser, hv, val);
-      /*
-         TODO:
-         the host variable's precision should be -1,
-         however, it looks not cleared from node allocation
-         for example, in case of reusing the node from JAVA SP session
-       */
-      if (hv->data_type)
-	{
-	  hv->data_type->info.data_type.precision = -1;
-	}
     }
   /* else : There isn't a host var yet.  This happens if someone does a db_compile_statement before doing
    * db_push_values, as might happen in a dynamic esql PREPARE statement where the host vars might not be supplied
@@ -5053,7 +5043,19 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 
   if (dblink_table->sel_list == NULL)
     {
-      return ER_FAILED;
+      PT_NODE *id_node = parser_new_node (parser, PT_NAME);
+      if (id_node == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      id_node->info.name.original = "c";
+      if ((dblink_table->cols = pt_mk_attr_def_node (parser, id_node, NULL)) == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      return NO_ERROR;
     }
 
   PT_NODE *attr_def_node = NULL;
@@ -7741,10 +7743,10 @@ exit_on_error:
 
 
 static void
-pt_write_semantic_warning (PARSER_CONTEXT * parser, PT_NODE * name, int line_no, int er_set_no, int msg_no)
+pt_write_semantic_warning (PARSER_CONTEXT * parser, PT_NODE * name, int line_no, int msg_no)
 {
   char *buf = NULL;
-  char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, er_set_no, msg_no);
+  char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC, msg_no);
 
   if (name->info.name.meta_class != PT_INDEX_NAME)
     {
@@ -7781,10 +7783,11 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
   SM_CLASS_CONSTRAINT *cons;
   int found = 0;
   int errid;
+  int err_msg_no, err_line_no;
 
   assert (index != NULL);
 
-  *is_ignore = true;
+  *is_ignore = false;
   if (index->info.name.original == NULL)
     {
       if (index->etc != (void *) PT_IDX_HINT_CLASS_NONE)
@@ -7813,7 +7816,6 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	  if (spec->node_type != PT_SPEC)
 	    {
 	      PT_INTERNAL_ERROR (parser, "resolution");
-	      *is_ignore = false;
 	      return NULL;
 	    }
 
@@ -7836,7 +7838,6 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 		      PT_INTERNAL_ERROR (parser, "resolution");
 		    }
 
-		  *is_ignore = false;
 		  return NULL;
 		}
 	      if (index->info.name.original != NULL)
@@ -7845,9 +7846,9 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 		  if (cons == NULL || (cons->index_status != SM_NORMAL_INDEX))
 		    {
 		      /* error; the index is not for the specified class or unusable index */
-		      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
-						 MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
-		      return NULL;
+		      err_line_no = __LINE__;
+		      err_msg_no = MSGCAT_SEMANTIC_USING_INDEX_ERR_1;
+		      goto null_return;
 		    }
 		}
 
@@ -7859,9 +7860,9 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	}
 
       /* the specified class in "class.index" does not exist in spec list */
-      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
-				 MSGCAT_SEMANTIC_USING_INDEX_ERR_2);
-      return NULL;
+      err_line_no = __LINE__;
+      err_msg_no = MSGCAT_SEMANTIC_USING_INDEX_ERR_2;
+      goto null_return;
     }
 
   /* case (index->info.name.resolved == NULL) */
@@ -7873,7 +7874,6 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
       if (spec->node_type != PT_SPEC)
 	{
 	  PT_INTERNAL_ERROR (parser, "resolution");
-	  *is_ignore = false;
 	  return NULL;
 	}
 
@@ -7899,7 +7899,6 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 		  PT_INTERNAL_ERROR (parser, "resolution");
 		}
 
-	      *is_ignore = false;
 	      return NULL;
 	    }
 	  cons = classobj_find_class_index (class_, index->info.name.original);
@@ -7915,23 +7914,36 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 	}
     }
 
+  if (found == 1)
+    {
+      return index;
+    }
+
   if (found == 0)
     {
       /* error; can not find the class of the index */
-      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
-				 MSGCAT_SEMANTIC_USING_INDEX_ERR_1);
-      return NULL;
+      err_line_no = __LINE__;
+      err_msg_no = MSGCAT_SEMANTIC_USING_INDEX_ERR_1;
     }
-  else if (found > 1)
+  else				/* if(found > 1) */
     {
       index->info.name.resolved = NULL;
       /* we found more than one classes which have index of the same name */
-      pt_write_semantic_warning (parser, index, __LINE__, MSGCAT_SET_PARSER_SEMANTIC,
-				 MSGCAT_SEMANTIC_USING_INDEX_ERR_3);
-      return NULL;
+      err_line_no = __LINE__;
+      err_msg_no = MSGCAT_SEMANTIC_USING_INDEX_ERR_3;
     }
 
-  return index;
+null_return:
+  if (PT_SPEC_SPECIAL_INDEX_SCAN (from))
+    {
+      PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, err_msg_no, pt_short_print (parser, index));
+    }
+  else
+    {
+      *is_ignore = true;
+      pt_write_semantic_warning (parser, index, err_line_no, err_msg_no);
+    }
+  return NULL;
 }
 
 /*
@@ -11526,11 +11538,6 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.having);
 	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.group_by);
 	      pt_get_cols_for_dblink (parser, &lkcol, query->order_by);
-	      PARSER_VARCHAR *q = 0;
-	      for (PT_NODE * col = lkcol.col_list; col; col = col->next)
-		{
-		  q = pt_print_bytes (parser, col);
-		}
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
 	      lkcol.col_list = NULL;
