@@ -214,8 +214,6 @@ void setup_tran_server_params_on_single_node_config ()
 
 int setup_tran_server_params_on_ha_mode ()
 {
-  assert (!HA_DISABLED ());
-
   char *page_server_host_list = NULL;
   constexpr size_t MAX_BUFSIZE = 4096;
   int list_size = 0;
@@ -242,7 +240,7 @@ int setup_tran_server_params_on_ha_mode ()
       char page_server_host[MAX_BUFSIZE] = {0};
       sprintf (page_server_host, "%s:%d,", str, port_id);
 
-      if (strlen (page_server_host) + strlen (page_server_host_list) > list_size)
+      if (strlen (page_server_host) + strlen (page_server_host_list) >= list_size)
 	{
 	  /* Block the overflow */
 	  char *tmp = (char *) realloc (page_server_host_list, list_size + MAX_BUFSIZE);
@@ -253,8 +251,6 @@ int setup_tran_server_params_on_ha_mode ()
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, list_size + MAX_BUFSIZE);
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
-
-	  memset (tmp + list_size, 0, MAX_BUFSIZE);
 
 	  page_server_host_list = tmp;
 	  list_size += MAX_BUFSIZE;
