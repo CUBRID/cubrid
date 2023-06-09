@@ -1821,16 +1821,15 @@ css_pack_message_to_master (const char *server_name)
     */
 
   sprintf (pid_string, "%d", getpid ());
-  size_t message_size =
-    strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1
-    + strlen (pid_string) + 1;
 
-  /* in order to prepend a server type (1 byte char)*/
-  message_size++;
+  /* | server_type (1 byte) | '#' if HA-mode enabled (1 byte) | server_name | release string | env_name | pid | */
+  size_t message_size =
+    1 + strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1
+    + strlen (pid_string) + 1;
 
   if (!HA_DISABLED())
     {
-      /* In order to prepend a '#' before server name to inform cub_master that this is a HA-server */
+      /* '#' before server name */
       message_size++;
     }
 
