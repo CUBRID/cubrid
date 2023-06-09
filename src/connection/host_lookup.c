@@ -376,9 +376,7 @@ load_hosts_file ()
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 3, hostname, line_num,
 			  USER_HOSTS_FILE);
 
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
+		  continue;
 		}
 
 	    }
