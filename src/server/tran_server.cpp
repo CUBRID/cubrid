@@ -375,7 +375,11 @@ tran_server::disconnect_all_page_servers ()
       constexpr bool with_disconnect_msg = true;
       conn->disconnect_async (with_disconnect_msg);
     }
-  m_page_server_conn_vec.clear ();
+
+  for (auto &conn : m_page_server_conn_vec)
+    {
+      conn->wait_async_disconnection ();
+    }
 
   er_log_debug (ARG_FILE_LINE, "Transaction server disconnected from all page servers.");
 }
@@ -459,10 +463,8 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
 tran_server::connection_handler::~connection_handler ()
 {
-  if (m_disconn_future.valid ())
-    {
-      m_disconn_future.get ();
-    }
+  /* Make sure all aync disconnection has been done and if's been confirmed.  */
+  assert (!m_disconn_future.valid ());
 }
 
 void
@@ -475,6 +477,7 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
       return; // already done by other
     }
 
+  // 잠깐.. 이떄 누가 이미 get 해갔으면, valid()는 false 인데 m_conn은 나간거 아냐?
   m_disconn_future = std::async (std::launch::async, [this, &with_disc_msg]
   {
     m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
@@ -491,7 +494,15 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
     m_conn.reset (nullptr);
     er_log_debug (ARG_FILE_LINE, "Transaction server has been disconnected from the page server with channel id: %s.\n", channel_id.c_str ());
   });
+}
 
+void
+tran_server::connection_handler::wait_async_disconnection ()
+{
+  if (m_disconn_future.valid ())
+    {
+      m_disconn_future.get ();
+    }
 }
 
 tran_server::connection_handler::request_handlers_map_t

@@ -107,6 +107,7 @@ class tran_server
 
 	void set_connection (cubcomm::channel &&chn);
 	void disconnect_async (bool with_disc_msg);
+	void wait_async_disconnection ();
 
 	int push_request (tran_to_page_request reqid, std::string &&payload);
 	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
