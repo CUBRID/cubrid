@@ -3688,7 +3688,18 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
     {
       if (proc->type != HB_PTYPE_TRAN_SERVER)
 	{
-	  // TODO: Temporary fix for CI test failure, this can be replaced when all the states for TS are defined.
+	  /* TODO :
+	   * This section needed to be modified at the point when the states of TS is defined
+	   * and the resource job is defined according to newHA - failover.
+	   * It has been temporarily modified only to resolve the CI test failure, which is because the
+	   * Transaction Server can not execute the write transaction.
+	   * The Transaction Server state need to be changed to HB_PSTATE_REGISTERED_AND_ACTIVE by this job in order to
+	   * execute the write transaction, which internally changes the db_Disable_modification to false
+           * in css_change_ha_server_state () -> logtb_enable_update ().
+	   * When the TS state is defined and this job is re-defined for newHA,
+           * these modified parts will also be addressed.
+	   */
+
 	  continue;
 	}
 
