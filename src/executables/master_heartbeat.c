@@ -3695,9 +3695,9 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 	   * Transaction Server can not execute the write transaction.
 	   * The Transaction Server state need to be changed to HB_PSTATE_REGISTERED_AND_ACTIVE by this job in order to
 	   * execute the write transaction, which internally changes the db_Disable_modification to false
-           * in css_change_ha_server_state () -> logtb_enable_update ().
+	   * in css_change_ha_server_state () -> logtb_enable_update ().
 	   * When the TS state is defined and this job is re-defined for newHA,
-           * these modified parts will also be addressed.
+	   * these modified parts will also be addressed.
 	   */
 
 	  continue;
