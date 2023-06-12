@@ -534,30 +534,21 @@ process_server_info_pid (CSS_CONN_ENTRY * conn, const char *server, int server_t
 	  switch (search_server_type)
 	    {
 	    case SERVER_TYPE_PAGE:
-	      // Page servers are printed in two ways:
-	      //   - as "Page-Server" if HA is disabled
-	      //   - as "HA-Page-server" if HA is enabled
-	      // Search by both patterns.
 	      sprintf (search_pattern, "Page-Server %s (", server);
 	      pid = search_server_pid (server_info, search_pattern);
-	      if (pid == 0)
-		{
-		  sprintf (search_pattern, "HA-Page-server %s (", server);
-		  pid = search_server_pid (server_info, search_pattern);
-		}
 	      break;
 
 	    case SERVER_TYPE_TRANSACTION:
 	      // Transaction servers are printed in two ways:
 	      //    - as "Transaction-Server" if HA is disabled
-	      //    - as "HA-Transaction-server" if HA is enabled
+	      //    - as "HA-Server" if HA is enabled
 	      // Search by both patterns.
 	      sprintf (search_pattern, "Transaction-Server %s (", server);
 	      pid = search_server_pid (server_info, search_pattern);
 
 	      if (pid == 0)
 		{
-		  sprintf (search_pattern, "HA-Transaction-server %s (", server);
+		  sprintf (search_pattern, "HA-Server %s (", server);
 		  pid = search_server_pid (server_info, search_pattern);
 		}
 	      break;
