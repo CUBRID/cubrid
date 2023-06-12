@@ -22,31 +22,77 @@
 #include "async_disconnect_handler.hpp"
 
 #include <thread>
+#include <random>
+#include <chrono>
+#include <atomic>
 
+/* A connection_hander mock to simualte the destruction dealy and count instances */
 class connection_handler_mock
 {
   public:
+    connection_handler_mock (std::atomic<int> &instance_counter, int delay_usec)
+      : m_instance_counter { instance_counter }
+      , m_delay_usec { delay_usec }
+    {
+      m_instance_counter++;
+    }
+
     ~connection_handler_mock ()
     {
-      std::this_thread::sleep_for (std::chrono::microseconds (1));
+      std::this_thread::sleep_for (std::chrono::microseconds (m_delay_usec));
+      m_instance_counter--;
     }
+
+  private:
+    std::atomic<int> &m_instance_counter;
+    int m_delay_usec; // simulate the delay doing cleaning connection jobs.
 };
 
 TEST_CASE ("Test one connection", "")
 {
   // Do a small test on a single connection
   async_disconnect_handler<connection_handler_mock> disconn_handler;
+  std::atomic<int> instance_counter = 0;
+
+  constexpr int delay_usec = 100;
   std::unique_ptr<connection_handler_mock> conn_handler;
+
+  conn_handler.reset (new connection_handler_mock (instance_counter, delay_usec));
+
+  REQUIRE (instance_counter == 1);
 
   disconn_handler.disconnect (std::move (conn_handler));
   disconn_handler.terminate ();
+
+  REQUIRE (instance_counter == 0);
 }
 
-TEST_CASE ("Test multiple connections running concurrently", "")
+TEST_CASE ("Test multiple connections disconnecting concurrently", "")
 {
   async_disconnect_handler<connection_handler_mock> disconn_handler;
-  std::unique_ptr<connection_handler_mock> conn_handler;
+  std::atomic<int> instance_counter = 0;
 
-  disconn_handler.disconnect (std::move (conn_handler));
+  std::random_device rd;
+  std::mt19937 gen (rd ());
+  std::uniform_int_distribution<int> dis (10, 20000); // [10, 20000] usec
+
+  constexpr int cnt_conn =
+	  50; // time consumed for disconnecting all = cnt_conn * dis[] = 10*50 ~ 20000*50 = 0.5ms ~ 1000ms
+  std::array<std::unique_ptr<connection_handler_mock>, cnt_conn> conn_vec;
+
+  for (int i=0; i < cnt_conn; i++)
+    {
+      conn_vec[i].reset (new connection_handler_mock (instance_counter, dis (gen)));
+    }
+
+  REQUIRE (instance_counter == cnt_conn);
+
+  for (int i=0; i < cnt_conn; i++)
+    {
+      disconn_handler.disconnect (std::move (conn_vec[i]));
+    }
+
   disconn_handler.terminate ();
+
+  REQUIRE (instance_counter == 0);  // exepects no connection left
 }
