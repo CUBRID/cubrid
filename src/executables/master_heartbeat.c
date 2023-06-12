@@ -3686,8 +3686,9 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
   rv = pthread_mutex_lock (&hb_Resource->lock);
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
-      if (proc->type != HB_PTYPE_SERVER)
+      if (proc->type != HB_PTYPE_TRAN_SERVER)
 	{
+	  // TODO: Temporary fix for CI test failure, this can be replaced when all the states for TS are defined.
 	  continue;
 	}
 
