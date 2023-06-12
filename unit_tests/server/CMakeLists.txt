@@ -80,7 +80,6 @@ target_compile_definitions(test_async_disconnect_handler PRIVATE
 target_include_directories(test_async_disconnect_handler PRIVATE
   ${TEST_INCLUDES}
   )
-#target_link_libraries(test_async_disconnect_handler_main fake_thread_utils)
 add_dependencies(test_async_disconnect_handler
   ${CATCH2_TARGET}
   )
