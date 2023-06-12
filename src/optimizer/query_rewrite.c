@@ -112,6 +112,7 @@ typedef struct qo_reduce_reference_info
   PT_NODE *exclude_pk_spec_point_list;
   PT_NODE *exclude_fk_spec_point_list;
   PT_NODE *reduce_pred_point_list;
+  PT_NODE *added_by_parser_pred_point_list;
   PT_NODE *append_not_null_pred_list;
 } QO_REDUCE_REFERENCE_INFO;
 
@@ -3759,6 +3760,7 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
   MOP curr_pk_mop = NULL;
   SM_CLASS_CONSTRAINT *curr_pk_cons = NULL;
   PT_NODE *reduce_pred_point_list = NULL;
+  PT_NODE *added_by_parser_pred_point_list = NULL;
   PT_NODE *curr_pred_point = NULL;
   PT_NODE *curr_pred = NULL, *next_pred = NULL;
   SPEC_CNT_INFO info = { NULL, 0, 0, NULL };
@@ -3769,10 +3771,17 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
 
   reduce_reference_info->pk_mop == NULL;
   reduce_reference_info->pk_cons == NULL;
+
   if (reduce_reference_info->reduce_pred_point_list != NULL)
     {
       parser_free_tree (parser, reduce_reference_info->reduce_pred_point_list);
       reduce_reference_info->reduce_pred_point_list = NULL;
+    }
+
+  if (reduce_reference_info->added_by_parser_pred_point_list != NULL)
+    {
+      parser_free_tree (parser, reduce_reference_info->added_by_parser_pred_point_list);
+      reduce_reference_info->added_by_parser_pred_point_list = NULL;
     }
 
   curr_pk_spec = reduce_reference_info->pk_spec;
@@ -3846,10 +3855,24 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
 
       if (info.my_spec_cnt >= 1)
 	{
-	  if (curr_pred->or_next == NULL && PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_EQ
-	      && pt_is_attr (PT_EXPR_ARG1 (curr_pred)) && pt_is_attr (PT_EXPR_ARG2 (curr_pred)))
+	  if (curr_pred->or_next == NULL && PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_EQ)
 	    {
-	      reduce_pred_point_list = parser_append_node (pt_point (parser, curr_pred), reduce_pred_point_list);
+	      if (pt_is_attr (PT_EXPR_ARG1 (curr_pred)) && pt_is_attr (PT_EXPR_ARG2 (curr_pred)))
+		{
+		  reduce_pred_point_list = parser_append_node (pt_point (parser, curr_pred), reduce_pred_point_list);
+		  continue;
+		}
+
+	      if (PT_EXPR_ARG1 (curr_pred)->flag.is_added_by_parser
+		  || PT_EXPR_ARG2 (curr_pred)->flag.is_added_by_parser)
+		{
+		  added_by_parser_pred_point_list =
+		    parser_append_node (pt_point (parser, curr_pred), added_by_parser_pred_point_list);
+		  continue;
+		}
+
+	      /* Non-join predicates exist. */
+	      goto exit_on_fail_with_exclude;
 	    }
 	  else
 	    {
@@ -3940,12 +3963,16 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
   reduce_reference_info->pk_mop = curr_pk_mop;
   reduce_reference_info->pk_cons = curr_pk_cons;
   reduce_reference_info->reduce_pred_point_list = reduce_pred_point_list;
+  reduce_reference_info->added_by_parser_pred_point_list = added_by_parser_pred_point_list;
 
   return true;
 
 exit_on_fail_with_cleanup:
   parser_free_tree (parser, reduce_pred_point_list);
   reduce_pred_point_list = NULL;
+
+  parser_free_tree (parser, added_by_parser_pred_point_list);
+  added_by_parser_pred_point_list = NULL;
 
   goto exit_on_fail;
 
@@ -4313,6 +4340,7 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
   PT_NODE *curr_pred_point = NULL, *prev_pred_point = NULL, *next_pred_point = NULL;
   PT_NODE *curr_pred = NULL, *prev_pred = NULL, *next_pred = NULL, *parent_pred = NULL;
   PT_NODE *curr_append_pred = NULL, *prev_append_pred = NULL, *next_append_pred = NULL;
+  PT_NODE *curr_pred_arg = NULL, *curr_append_pred_arg = NULL;
 
   assert (parser != NULL && query != NULL);
   assert (reduce_reference_info->reduce_pred_point_list != NULL);
@@ -4321,6 +4349,8 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
   curr_pred = query->info.query.q.select.where;
   while (curr_pred != NULL)
     {
+      next_pred = curr_pred->next;
+
       for (parent_pred = NULL, prev_pred_point = NULL, curr_pred_point = reduce_reference_info->reduce_pred_point_list;
 	   curr_pred_point != NULL; prev_pred_point = curr_pred_point, curr_pred_point = curr_pred_point->next)
 	{
@@ -4334,42 +4364,93 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	    }
 	}
 
-      next_pred = curr_pred->next;
-
-      if (curr_pred_point == NULL)
+      if (curr_pred_point != NULL)
 	{
-	  /* not found */
-	  prev_pred = curr_pred;
+	  /* found */
+	  if (prev_pred != NULL)
+	    {
+	      prev_pred->next = next_pred;
+	    }
+	  else
+	    {
+	      query->info.query.q.select.where = next_pred;
+	    }
+	  parser_free_node (parser, curr_pred);
 	  curr_pred = next_pred;
-	  continue;
+
+	  next_pred_point = curr_pred_point->next;
+
+	  if (prev_pred_point != NULL)
+	    {
+	      prev_pred_point->next = next_pred_point;
+	    }
+	  else
+	    {
+	      reduce_reference_info->reduce_pred_point_list = next_pred_point;
+	    }
+	  parser_free_node (parser, curr_pred_point);
+	  curr_pred_point = next_pred_point;
 	}
 
-      if (prev_pred != NULL)
-	{
-	  prev_pred->next = next_pred;
-	}
-      else
-	{
-	  query->info.query.q.select.where = next_pred;
-	}
-      parser_free_node (parser, curr_pred);
+      prev_pred = curr_pred;
       curr_pred = next_pred;
-
-      next_pred_point = curr_pred_point->next;
-
-      if (prev_pred_point != NULL)
-	{
-	  prev_pred_point->next = next_pred_point;
-	}
-      else
-	{
-	  reduce_reference_info->reduce_pred_point_list = next_pred_point;
-	}
-      parser_free_node (parser, curr_pred_point);
-      curr_pred_point = next_pred_point;
     }
 
   assert (reduce_reference_info->reduce_pred_point_list == NULL);
+
+  prev_pred = NULL;
+  curr_pred = query->info.query.q.select.where;
+  while (curr_pred != NULL)
+    {
+      next_pred = curr_pred->next;
+
+      for (parent_pred = NULL, prev_pred_point = NULL, curr_pred_point =
+	   reduce_reference_info->added_by_parser_pred_point_list; curr_pred_point != NULL;
+	   prev_pred_point = curr_pred_point, curr_pred_point = curr_pred_point->next)
+	{
+	  parent_pred = curr_pred_point;
+	  CAST_POINTER_TO_NODE (parent_pred);
+
+	  if (curr_pred == parent_pred)
+	    {
+	      /* found */
+	      break;
+	    }
+	}
+
+      if (curr_pred_point != NULL)
+	{
+	  /* found */
+	  if (prev_pred != NULL)
+	    {
+	      prev_pred->next = next_pred;
+	    }
+	  else
+	    {
+	      query->info.query.q.select.where = next_pred;
+	    }
+	  parser_free_node (parser, curr_pred);
+	  curr_pred = next_pred;
+
+	  next_pred_point = curr_pred_point->next;
+
+	  if (prev_pred_point != NULL)
+	    {
+	      prev_pred_point->next = next_pred_point;
+	    }
+	  else
+	    {
+	      reduce_reference_info->added_by_parser_pred_point_list = next_pred_point;
+	    }
+	  parser_free_node (parser, curr_pred_point);
+	  curr_pred_point = next_pred_point;
+	}
+
+      prev_pred = curr_pred;
+      curr_pred = next_pred;
+    }
+
+  assert (reduce_reference_info->added_by_parser_pred_point_list == NULL);
 
   prev_append_pred = NULL;
   curr_append_pred = reduce_reference_info->append_not_null_pred_list;
@@ -4379,13 +4460,53 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
       assert (PT_EXPR_OP (curr_append_pred) == PT_IS_NOT_NULL);
       assert (PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_append_pred)));
 
+      next_append_pred = curr_append_pred->next;
+
+      for (curr_pred = next_append_pred; curr_pred != NULL; curr_pred = curr_pred->next)
+	{
+	  curr_pred_arg = PT_EXPR_ARG1 (curr_pred);
+	  curr_append_pred_arg = PT_EXPR_ARG1 (curr_append_pred);
+
+	  if (intl_identifier_casecmp (PT_NAME_ORIGINAL (curr_pred_arg), PT_NAME_ORIGINAL (curr_append_pred_arg)) == 0)
+	    {
+	      /* found */
+	      break;
+	    }
+	}
+
+      if (curr_pred != NULL)
+	{
+	  /* found */
+	  if (prev_append_pred != NULL)
+	    {
+	      prev_append_pred->next = next_append_pred;
+	    }
+	  else
+	    {
+	      reduce_reference_info->append_not_null_pred_list = next_append_pred;
+	    }
+	  parser_free_node (parser, curr_append_pred);
+	  curr_append_pred = next_append_pred;
+	  continue;
+	}
+
+      prev_append_pred = curr_append_pred;
+      curr_append_pred = next_append_pred;
+    }
+
+  prev_append_pred = NULL;
+  curr_append_pred = reduce_reference_info->append_not_null_pred_list;
+  while (curr_append_pred != NULL)
+    {
+      next_append_pred = curr_append_pred->next;
+
       for (curr_pred = query->info.query.q.select.where; curr_pred != NULL; curr_pred = curr_pred->next)
 	{
 	  if (PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_IS_NOT_NULL
 	      && PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_pred)))
 	    {
-	      PT_NODE *curr_pred_arg = PT_EXPR_ARG1 (curr_pred);
-	      PT_NODE *curr_append_pred_arg = PT_EXPR_ARG1 (curr_append_pred);
+	      curr_pred_arg = PT_EXPR_ARG1 (curr_pred);
+	      curr_append_pred_arg = PT_EXPR_ARG1 (curr_append_pred);
 
 	      if (intl_identifier_casecmp (PT_NAME_ORIGINAL (curr_pred_arg),
 					   PT_NAME_ORIGINAL (curr_append_pred_arg)) == 0)
@@ -4396,25 +4517,23 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	    }
 	}
 
-      next_append_pred = curr_append_pred->next;
-
-      if (curr_pred == NULL)
+      if (curr_pred != NULL)
 	{
-	  /* not found */
-	  prev_append_pred = curr_append_pred;
+	  /* found */
+	  if (prev_append_pred != NULL)
+	    {
+	      prev_append_pred->next = next_append_pred;
+	    }
+	  else
+	    {
+	      reduce_reference_info->append_not_null_pred_list = next_append_pred;
+	    }
+	  parser_free_node (parser, curr_append_pred);
 	  curr_append_pred = next_append_pred;
 	  continue;
 	}
 
-      if (prev_append_pred != NULL)
-	{
-	  prev_append_pred->next = next_append_pred;
-	}
-      else
-	{
-	  reduce_reference_info->append_not_null_pred_list = next_append_pred;
-	}
-      parser_free_node (parser, curr_append_pred);
+      prev_append_pred = curr_append_pred;
       curr_append_pred = next_append_pred;
     }
 

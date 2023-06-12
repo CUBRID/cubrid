@@ -702,6 +702,7 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
       /* replace 'tree_or_name' node with 'lambda_arg->tree' */
       next = tree_or_name->next;
       result = parser_copy_tree_list (parser, lambda_arg->tree);
+      result->flag.is_added_by_parser = 1;
       parser_free_node (parser, tree_or_name);
       for (temp = result; temp->next; temp = temp->next)
 	{
