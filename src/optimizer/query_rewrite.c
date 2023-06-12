@@ -4105,6 +4105,8 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
   PT_NODE *curr_pk_spec = NULL, *curr_fk_spec = NULL;
   MOP curr_pk_mop = NULL;
   SM_CLASS_CONSTRAINT *curr_pk_cons = NULL, *curr_fk_cons = NULL;
+  int cons_attr_cnt = 0;
+  unsigned int cons_attr_flag = 0;
   PT_NODE *reduce_pred_point_list = NULL;
   PT_NODE *append_not_null_pred_list = NULL;
   PT_NODE *curr_pred_point = NULL;
@@ -4137,7 +4139,7 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
    *        create table super_parent (c1 int primary key);
    *        create table parent under super_parent (c2 int);
    *        create table child (c1 int);
-   *        alter table child add constraint foreign key (c1)  references parent (c1);
+   *        alter table child add constraint foreign key (c1) references parent (c1);
    *
    *        -- irreducible
    *        select c.* from child c, super_parent s where c.c1 = s.c1;
@@ -4156,6 +4158,33 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
     {
       goto exit_on_fail;
     }
+
+  /* We need to check if all the attributes of the constraint are used in predicated.
+   *
+   *   e.g. drop table if exists child, parent;
+   *        create table parent (c1 int, c2 int, primary key (c1, c2));
+   *        create table child (c1 int, c2 int);
+   *        alter table child add constraint foreign key (c1, c2) references parent (c1, c2);
+   *
+   *        -- irreducible
+   *        select c.* from child c, parent p where c.c1 = p.c1;
+   *        select c.* from child c, parent p where c.c2 = p.c2;
+   *        select c.* from child c, parent p where c.c1 = p.c1 and c.c1 = p.c1;
+   *        select c.* from child c, parent p where c.c1 = p.c1 and c.c1 = p.c2;
+   *
+   *        -- reducible
+   *        select c.* from child c, parent p where c.c1 = p.c1 and c.c2 = p.c2;
+   */
+  for (i = 0; curr_pk_cons->attributes[i] != NULL && curr_fk_cons->attributes[i] != NULL; i++);
+  assert (curr_pk_cons->attributes[i] == NULL);
+  assert (curr_fk_cons->attributes[i] == NULL);
+
+  /* Set the bits of cons_attr_flag to 1 as many as the number of attributes in the constraint.
+   * And if an attribute of the constraint is used in a predicate, it sets the bit of that index to 0.
+   * After checking the predicates, if cons_attr_flag is 0, we know that all the attributes of the constraint
+   * are used in the predicate. */
+  cons_attr_cnt = i;
+  cons_attr_flag = (1 << i) - 1;
 
   for (curr_pred_point = reduce_pred_point_list; curr_pred_point != NULL; curr_pred_point = curr_pred_point->next)
     {
@@ -4222,8 +4251,12 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
 		      PT_NODE *fk_not_null_pred =
 			parser_make_expression (parser, PT_IS_NOT_NULL, copy_fk_pred_attr, NULL, NULL);
 		      append_not_null_pred_list = parser_append_node (fk_not_null_pred, append_not_null_pred_list);
-		      break;	/* curr_pred_point->next */
 		    }
+
+		  /* If an attribute of the constraint is used in a predicate, it sets the bit of that index to 0. */
+		  cons_attr_flag &= ~(1 << i);
+
+		  break;	/* curr_pred_point->next */
 		}
 	      else
 		{
@@ -4244,6 +4277,12 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
     }
 
   assert (curr_pred_point == NULL);
+
+  /* If cons_attr_flag is non-zero, then all the attributes of the constraint are not used in the predicate. */
+  if (cons_attr_flag != 0)
+    {
+      goto exit_on_fail_with_cleanup;
+    }
 
   reduce_reference_info->append_not_null_pred_list = append_not_null_pred_list;
 
