@@ -4783,6 +4783,7 @@ extract_class (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -4848,6 +4849,7 @@ extract_vclass (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -4911,6 +4913,7 @@ extract_pk (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -4974,6 +4977,7 @@ extract_fk (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -5035,6 +5039,7 @@ extract_grant (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
