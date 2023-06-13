@@ -463,8 +463,7 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
 tran_server::connection_handler::~connection_handler ()
 {
-  /* Make sure all aync disconnection has been done and if's been confirmed.  */
-  assert (!m_disconn_future.valid ());
+  wait_async_disconnection (); // join the async disconneciton jobs if exists
 }
 
 void
@@ -477,7 +476,7 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
       return; // already done by other
     }
 
-  // 잠깐.. 이떄 누가 이미 get 해갔으면, valid()는 false 인데 m_conn은 나간거 아냐?
+  // 잠깐.. 이때 누가 이미 get 해갔으면, valid()는 false 인데 m_conn은 나간거 아냐?
   m_disconn_future = std::async (std::launch::async, [this, &with_disc_msg]
   {
     m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
