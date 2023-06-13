@@ -2539,8 +2539,8 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		}
 	      else if (op_type != 0 && arg2_arg1
 		       &&
-		       ((pt_is_attr (arg2->info.expr.arg1)
-			 || pt_is_function_index_expr (parser, arg2->info.expr.arg1, false))
+		       ((pt_is_attr (arg2_arg1)
+			 || pt_is_function_index_expr (parser, arg2_arg1, false))
 			|| (pt_is_expr_node (arg2_arg1) && arg2_arg1->info.expr.op == PT_UNARY_MINUS))
 		       && pt_is_const (arg1))
 		{
@@ -5395,10 +5395,15 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  continue;
 	}
 
-      if ((node_prior->node_type != sibling_prior->node_type)
-	  || ((pt_is_attr (node_prior) || pt_is_function_index_expr (parser, node_prior, false))
-	      && (pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
-	      && pt_check_path_eq (parser, node_prior, sibling_prior)))
+      if (node_prior->node_type != sibling_prior->node_type)
+	{
+	  prev = prev->or_next;
+	  continue;
+	}
+
+      if (!(pt_is_attr (node_prior) || pt_is_function_index_expr (parser, node_prior, false))
+	  || !(pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
+	  || pt_check_path_eq (parser, node_prior, sibling_prior))
 	{
 	  /* pt_check_path_eq() return non-zero if two are different */
 	  prev = prev->or_next;
@@ -6710,10 +6715,15 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      continue;
 	    }
 
-	  if ((arg1_prior->node_type != sibling_prior->node_type)
-	      || ((pt_is_attr (arg1_prior) || pt_is_function_index_expr (parser, arg1_prior, false))
-		  && (pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
-		  && pt_check_path_eq (parser, arg1_prior, sibling_prior)))
+	  if (arg1_prior->node_type != sibling_prior->node_type)
+	    {
+	      sibling_prev = sibling_prev->next;
+	      continue;
+	    }
+
+	  /* Omit the checks for `pt_is_attr`, `pt_is_function_index_expr`, and `!pt_is_instnum`.
+	   * I think it has already been checked above. */
+	  if (pt_check_path_eq (parser, arg1_prior, sibling_prior))
 	    {
 	      /* pt_check_path_eq() return non-zero if two are different */
 	      sibling_prev = sibling_prev->next;

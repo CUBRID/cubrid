@@ -662,6 +662,11 @@ pt_expr_equal (PARSER_CONTEXT * parser, const PT_NODE * expr1, const PT_NODE * e
 
     case PT_EXPR:
       {
+	if (expr1->info.expr.op != expr2->info.expr.op)
+	  {
+	    return false;
+	  }
+
 	if (!pt_expr_equal (parser, expr1->info.expr.arg1, expr2->info.expr.arg1))
 	  {
 	    return false;
