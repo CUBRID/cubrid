@@ -21,10 +21,12 @@
 
 #include "async_disconnect_handler.hpp"
 
-#include <thread>
-#include <random>
-#include <chrono>
+#include <array>
 #include <atomic>
+#include <chrono>
+#include <memory>
+#include <random>
+#include <thread>
 
 /* A connection_hander mock to simualte the destruction dealy and count instances */
 class connection_handler_mock
@@ -78,18 +80,18 @@ TEST_CASE ("Test multiple connections disconnecting concurrently", "")
 
   constexpr int cnt_conn =
 	  50; // time consumed for disconnecting all = cnt_conn * dis[] = 10*50 ~ 20000*50 = 0.5ms ~ 1000ms
-  std::array<std::unique_ptr<connection_handler_mock>, cnt_conn> conn_vec;
+  std::array<std::unique_ptr<connection_handler_mock>, cnt_conn> conn_arr;
 
   for (int i=0; i < cnt_conn; i++)
     {
-      conn_vec[i].reset (new connection_handler_mock (instance_counter, dis (gen)));
+      conn_arr[i].reset (new connection_handler_mock (instance_counter, dis (gen)));
     }
 
   REQUIRE (instance_counter == cnt_conn);
 
   for (int i=0; i < cnt_conn; i++)
     {
-      disconn_handler.disconnect (std::move (conn_vec[i]));
+      disconn_handler.disconnect (std::move (conn_arr[i]));
     }
 
   disconn_handler.terminate ();
