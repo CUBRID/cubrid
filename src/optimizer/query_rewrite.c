@@ -4228,7 +4228,6 @@ qo_check_foreign_key_referencing_primary_key_in_child_spec (PARSER_CONTEXT * par
    *        select c.* from child c, parent p where c.c1 = p.c1;
    *        select c.* from child c, parent p where c.c2 = p.c2;
    *        select c.* from child c, parent p where c.c1 = p.c1 and c.c1 = p.c1;
-   *        select c.* from child c, parent p where c.c1 = p.c1 and c.c1 = p.c2;
    *
    *        -- reducible
    *        select c.* from child c, parent p where c.c1 = p.c1 and c.c2 = p.c2;
