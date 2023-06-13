@@ -4509,7 +4509,7 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 
       next_append_pred = curr_append_pred->next;
 
-      if (curr_pred_point == NULL)
+      if (curr_pred == NULL)
 	{
 	  /* not found */
 	  prev_append_pred = curr_append_pred;
@@ -4553,7 +4553,7 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 
       next_append_pred = curr_append_pred->next;
 
-      if (curr_pred_point == NULL)
+      if (curr_pred == NULL)
 	{
 	  /* not found */
 	  prev_append_pred = curr_append_pred;
