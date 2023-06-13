@@ -3873,7 +3873,24 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
 		  continue;
 		}
 
-	      if (PT_EXPR_ARG1 (curr_pred)->flag.is_lambda_node || PT_EXPR_ARG2 (curr_pred)->flag.is_lambda_node)
+	      /* This is to ignore the predicate of the parent added by the pt_lambda_node function.
+	       * 
+	       *   e.g. drop table if exists child, parent;
+	       *        reate table parent (c1 int, c2 int, primary key (c1, c2));
+	       *        create table child (c1 int, c2 int);
+	       *        alter table child add constraint foreign key (c1, c2) references parent (c1, c2);
+	       *
+	       *        select c.* from child c, parent p where c.c1 = p.c1 and c.c2 = p.c2 and c.c1 = 1;
+	       * 
+	       *        -- rewritten query
+	       *        select c.* from child c, parent p where c.c1 = p.c1 and c.c2 = p.c2 and c.c1 = 1 and p.c1 = 1;
+	       *
+	       * In the rewritten query, 'p.c1 = 1' is a reference to the parent, so it cannot be reduced. 
+	       * Since 'p.c1 = 1' is a predicate added by the pt_lambda_node function, it is ignored in the reference
+	       * to the parent.
+	       */
+	      if (PT_EXPR_ARG1 (curr_pred)->flag.is_added_by_lambda
+		  || PT_EXPR_ARG2 (curr_pred)->flag.is_added_by_lambda)
 		{
 		  lamda_pred_point_list = parser_append_node (pt_point (parser, curr_pred), lamda_pred_point_list);
 		  continue;
