@@ -112,7 +112,7 @@ typedef struct qo_reduce_reference_info
   PT_NODE *exclude_pk_spec_point_list;
   PT_NODE *exclude_fk_spec_point_list;
   PT_NODE *reduce_pred_point_list;
-  PT_NODE *added_by_parser_pred_point_list;
+  PT_NODE *lamda_pred_point_list;
   PT_NODE *append_not_null_pred_list;
 } QO_REDUCE_REFERENCE_INFO;
 
@@ -3633,8 +3633,10 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 	  if (curr_fk_spec == NULL)
 	    {
 	      /* not found */
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 	      er_log_debug (ARG_FILE_LINE, "%s: next parent. (spec: %s)\n", __func__,
 			    pt_print_alias (parser, curr_fk_spec));
+#endif
 	      continue;		/* curr_pk_spec->next */
 	    }
 
@@ -3657,8 +3659,10 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 	  /* reset location */
 	  qo_reset_spec_location (parser, next_pk_spec, query);
 
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 	  er_log_debug (ARG_FILE_LINE, "%s: reduce parent. (spec: %s)\n", __func__,
 			pt_print_alias (parser, curr_pk_spec));
+#endif
 	  parser_free_node (parser, curr_pk_spec);
 	  curr_pk_spec = next_pk_spec;
 
@@ -3666,14 +3670,18 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
 
 	  if (curr_pk_spec == NULL)
 	    {
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 	      er_log_debug (ARG_FILE_LINE, "%s: repeat.\n", __func__);
+#endif
 	      break;
 	    }
 	}
     }
   while (has_reduce);
 
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   er_log_debug (ARG_FILE_LINE, "%s: end.\n", __func__);
+#endif
 
 exit_on_fail_with_cleanup:
   if (reduce_reference_info.exclude_pk_spec_point_list != NULL)
@@ -3760,7 +3768,7 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
   MOP curr_pk_mop = NULL;
   SM_CLASS_CONSTRAINT *curr_pk_cons = NULL;
   PT_NODE *reduce_pred_point_list = NULL;
-  PT_NODE *added_by_parser_pred_point_list = NULL;
+  PT_NODE *lamda_pred_point_list = NULL;
   PT_NODE *curr_pred_point = NULL;
   PT_NODE *curr_pred = NULL, *next_pred = NULL;
   SPEC_CNT_INFO info = { NULL, 0, 0, NULL };
@@ -3778,16 +3786,18 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
       reduce_reference_info->reduce_pred_point_list = NULL;
     }
 
-  if (reduce_reference_info->added_by_parser_pred_point_list != NULL)
+  if (reduce_reference_info->lamda_pred_point_list != NULL)
     {
-      parser_free_tree (parser, reduce_reference_info->added_by_parser_pred_point_list);
-      reduce_reference_info->added_by_parser_pred_point_list = NULL;
+      parser_free_tree (parser, reduce_reference_info->lamda_pred_point_list);
+      reduce_reference_info->lamda_pred_point_list = NULL;
     }
 
   curr_pk_spec = reduce_reference_info->pk_spec;
   assert (PT_NODE_IS_SPEC (curr_pk_spec));
 
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   er_log_debug (ARG_FILE_LINE, "%s: check parent. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
+#endif
 
   /* PT_ALL is not supported. */
   if (PT_SPEC_IS_ALL (curr_pk_spec))
@@ -3863,11 +3873,9 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
 		  continue;
 		}
 
-	      if (PT_EXPR_ARG1 (curr_pred)->flag.is_added_by_parser
-		  || PT_EXPR_ARG2 (curr_pred)->flag.is_added_by_parser)
+	      if (PT_EXPR_ARG1 (curr_pred)->flag.is_lambda_node || PT_EXPR_ARG2 (curr_pred)->flag.is_lambda_node)
 		{
-		  added_by_parser_pred_point_list =
-		    parser_append_node (pt_point (parser, curr_pred), added_by_parser_pred_point_list);
+		  lamda_pred_point_list = parser_append_node (pt_point (parser, curr_pred), lamda_pred_point_list);
 		  continue;
 		}
 
@@ -3963,27 +3971,29 @@ qo_check_primary_key_referenced_by_foreign_key_in_parent_spec (PARSER_CONTEXT * 
   reduce_reference_info->pk_mop = curr_pk_mop;
   reduce_reference_info->pk_cons = curr_pk_cons;
   reduce_reference_info->reduce_pred_point_list = reduce_pred_point_list;
-  reduce_reference_info->added_by_parser_pred_point_list = added_by_parser_pred_point_list;
+  reduce_reference_info->lamda_pred_point_list = lamda_pred_point_list;
 
   return true;
+
+exit_on_fail_with_exclude:
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
+  er_log_debug (ARG_FILE_LINE, "%s: exclude. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
+#endif
+  reduce_reference_info->exclude_pk_spec_point_list =
+    parser_append_node (pt_point (parser, curr_pk_spec), reduce_reference_info->exclude_pk_spec_point_list);
+  /* fallthrough */
 
 exit_on_fail_with_cleanup:
   parser_free_tree (parser, reduce_pred_point_list);
   reduce_pred_point_list = NULL;
 
-  parser_free_tree (parser, added_by_parser_pred_point_list);
-  added_by_parser_pred_point_list = NULL;
-
-  goto exit_on_fail;
-
-exit_on_fail_with_exclude:
-  er_log_debug (ARG_FILE_LINE, "%s: exclude. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
-  reduce_reference_info->exclude_pk_spec_point_list =
-    parser_append_node (pt_point (parser, curr_pk_spec), reduce_reference_info->exclude_pk_spec_point_list);
-  /* fallthrough */
+  parser_free_tree (parser, lamda_pred_point_list);
+  lamda_pred_point_list = NULL;
 
 exit_on_fail:
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   er_log_debug (ARG_FILE_LINE, "%s: irreducible. (spec: %s)\n", __func__, pt_print_alias (parser, curr_pk_spec));
+#endif
   return false;
 }
 
@@ -4031,7 +4041,9 @@ qo_check_foreign_keys_referencing_primary_key_in_child_spec (PARSER_CONTEXT * pa
   curr_fk_spec = reduce_reference_info->fk_spec;
   assert (PT_NODE_IS_SPEC (curr_fk_spec));
 
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   er_log_debug (ARG_FILE_LINE, "%s: check child. (spec: %s)\n", __func__, pt_print_alias (parser, curr_fk_spec));
+#endif
 
   /* PT_ALL is not supported. */
   if (PT_SPEC_IS_ALL (curr_fk_spec))
@@ -4108,7 +4120,9 @@ exit_on_fail_with_exclude:
     parser_append_node (pt_point (parser, curr_fk_spec), reduce_reference_info->exclude_fk_spec_point_list);
 
 exit_on_fail:
+#if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
   er_log_debug (ARG_FILE_LINE, "%s: next child. (spec: %s)\n", __func__, pt_print_alias (parser, curr_fk_spec));
+#endif
   return false;
 }
 
@@ -4349,8 +4363,6 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
   curr_pred = query->info.query.q.select.where;
   while (curr_pred != NULL)
     {
-      next_pred = curr_pred->next;
-
       for (parent_pred = NULL, prev_pred_point = NULL, curr_pred_point = reduce_reference_info->reduce_pred_point_list;
 	   curr_pred_point != NULL; prev_pred_point = curr_pred_point, curr_pred_point = curr_pred_point->next)
 	{
@@ -4364,36 +4376,40 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	    }
 	}
 
-      if (curr_pred_point != NULL)
+      next_pred = curr_pred->next;
+
+      if (curr_pred_point == NULL)
 	{
-	  /* found */
-	  if (prev_pred != NULL)
-	    {
-	      prev_pred->next = next_pred;
-	    }
-	  else
-	    {
-	      query->info.query.q.select.where = next_pred;
-	    }
-	  parser_free_node (parser, curr_pred);
+	  /* not found */
+	  prev_pred = curr_pred;
 	  curr_pred = next_pred;
-
-	  next_pred_point = curr_pred_point->next;
-
-	  if (prev_pred_point != NULL)
-	    {
-	      prev_pred_point->next = next_pred_point;
-	    }
-	  else
-	    {
-	      reduce_reference_info->reduce_pred_point_list = next_pred_point;
-	    }
-	  parser_free_node (parser, curr_pred_point);
-	  curr_pred_point = next_pred_point;
+	  continue;
 	}
 
-      prev_pred = curr_pred;
+      /* found */
+      if (prev_pred != NULL)
+	{
+	  prev_pred->next = next_pred;
+	}
+      else
+	{
+	  query->info.query.q.select.where = next_pred;
+	}
+      parser_free_node (parser, curr_pred);
       curr_pred = next_pred;
+
+      next_pred_point = curr_pred_point->next;
+
+      if (prev_pred_point != NULL)
+	{
+	  prev_pred_point->next = next_pred_point;
+	}
+      else
+	{
+	  reduce_reference_info->reduce_pred_point_list = next_pred_point;
+	}
+      parser_free_node (parser, curr_pred_point);
+      curr_pred_point = next_pred_point;
     }
 
   assert (reduce_reference_info->reduce_pred_point_list == NULL);
@@ -4402,10 +4418,8 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
   curr_pred = query->info.query.q.select.where;
   while (curr_pred != NULL)
     {
-      next_pred = curr_pred->next;
-
       for (parent_pred = NULL, prev_pred_point = NULL, curr_pred_point =
-	   reduce_reference_info->added_by_parser_pred_point_list; curr_pred_point != NULL;
+	   reduce_reference_info->lamda_pred_point_list; curr_pred_point != NULL;
 	   prev_pred_point = curr_pred_point, curr_pred_point = curr_pred_point->next)
 	{
 	  parent_pred = curr_pred_point;
@@ -4418,39 +4432,43 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	    }
 	}
 
-      if (curr_pred_point != NULL)
+      next_pred = curr_pred->next;
+
+      if (curr_pred_point == NULL)
 	{
-	  /* found */
-	  if (prev_pred != NULL)
-	    {
-	      prev_pred->next = next_pred;
-	    }
-	  else
-	    {
-	      query->info.query.q.select.where = next_pred;
-	    }
-	  parser_free_node (parser, curr_pred);
+	  /* not found */
+	  prev_pred = curr_pred;
 	  curr_pred = next_pred;
-
-	  next_pred_point = curr_pred_point->next;
-
-	  if (prev_pred_point != NULL)
-	    {
-	      prev_pred_point->next = next_pred_point;
-	    }
-	  else
-	    {
-	      reduce_reference_info->added_by_parser_pred_point_list = next_pred_point;
-	    }
-	  parser_free_node (parser, curr_pred_point);
-	  curr_pred_point = next_pred_point;
+	  continue;
 	}
 
-      prev_pred = curr_pred;
+      /* found */
+      if (prev_pred != NULL)
+	{
+	  prev_pred->next = next_pred;
+	}
+      else
+	{
+	  query->info.query.q.select.where = next_pred;
+	}
+      parser_free_node (parser, curr_pred);
       curr_pred = next_pred;
+
+      next_pred_point = curr_pred_point->next;
+
+      if (prev_pred_point != NULL)
+	{
+	  prev_pred_point->next = next_pred_point;
+	}
+      else
+	{
+	  reduce_reference_info->lamda_pred_point_list = next_pred_point;
+	}
+      parser_free_node (parser, curr_pred_point);
+      curr_pred_point = next_pred_point;
     }
 
-  assert (reduce_reference_info->added_by_parser_pred_point_list == NULL);
+  assert (reduce_reference_info->lamda_pred_point_list == NULL);
 
   prev_append_pred = NULL;
   curr_append_pred = reduce_reference_info->append_not_null_pred_list;
@@ -4459,8 +4477,6 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
       assert (PT_NODE_IS_EXPR (curr_append_pred));
       assert (PT_EXPR_OP (curr_append_pred) == PT_IS_NOT_NULL);
       assert (PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_append_pred)));
-
-      next_append_pred = curr_append_pred->next;
 
       for (curr_pred = next_append_pred; curr_pred != NULL; curr_pred = curr_pred->next)
 	{
@@ -4474,23 +4490,26 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	    }
 	}
 
-      if (curr_pred != NULL)
+      next_append_pred = curr_append_pred->next;
+
+      if (curr_pred_point == NULL)
 	{
-	  /* found */
-	  if (prev_append_pred != NULL)
-	    {
-	      prev_append_pred->next = next_append_pred;
-	    }
-	  else
-	    {
-	      reduce_reference_info->append_not_null_pred_list = next_append_pred;
-	    }
-	  parser_free_node (parser, curr_append_pred);
+	  /* not found */
+	  prev_append_pred = curr_append_pred;
 	  curr_append_pred = next_append_pred;
 	  continue;
 	}
 
-      prev_append_pred = curr_append_pred;
+      /* found */
+      if (prev_append_pred != NULL)
+	{
+	  prev_append_pred->next = next_append_pred;
+	}
+      else
+	{
+	  reduce_reference_info->append_not_null_pred_list = next_append_pred;
+	}
+      parser_free_node (parser, curr_append_pred);
       curr_append_pred = next_append_pred;
     }
 
@@ -4498,8 +4517,6 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
   curr_append_pred = reduce_reference_info->append_not_null_pred_list;
   while (curr_append_pred != NULL)
     {
-      next_append_pred = curr_append_pred->next;
-
       for (curr_pred = query->info.query.q.select.where; curr_pred != NULL; curr_pred = curr_pred->next)
 	{
 	  if (PT_NODE_IS_EXPR (curr_pred) && PT_EXPR_OP (curr_pred) == PT_IS_NOT_NULL
@@ -4517,23 +4534,26 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	    }
 	}
 
-      if (curr_pred != NULL)
+      next_append_pred = curr_append_pred->next;
+
+      if (curr_pred_point == NULL)
 	{
-	  /* found */
-	  if (prev_append_pred != NULL)
-	    {
-	      prev_append_pred->next = next_append_pred;
-	    }
-	  else
-	    {
-	      reduce_reference_info->append_not_null_pred_list = next_append_pred;
-	    }
-	  parser_free_node (parser, curr_append_pred);
+	  /* not found */
+	  prev_append_pred = curr_append_pred;
 	  curr_append_pred = next_append_pred;
 	  continue;
 	}
 
-      prev_append_pred = curr_append_pred;
+      /* found */
+      if (prev_append_pred != NULL)
+	{
+	  prev_append_pred->next = next_append_pred;
+	}
+      else
+	{
+	  reduce_reference_info->append_not_null_pred_list = next_append_pred;
+	}
+      parser_free_node (parser, curr_append_pred);
       curr_append_pred = next_append_pred;
     }
 
