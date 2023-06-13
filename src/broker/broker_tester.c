@@ -840,6 +840,16 @@ main (int argc, char *argv[])
 	    br_tester_info.db_name);
   conn_handle = cci_connect_with_url_ex (conn_url, br_tester_info.db_user, br_tester_info.db_passwd, &err_buf);
 
+  if (br_tester_info.output_file_name != NULL)
+    {
+      out_file_fp = fopen (br_tester_info.output_file_name, "w");
+      if (out_file_fp == NULL)
+	{
+	  fprintf (stderr, "cannot open output file %s\n", br_tester_info.input_file_name);
+	  goto end;
+	}
+    }
+
   print_conn_result (broker_name, conn_handle);
 
   if (conn_handle < 0)
@@ -856,15 +866,6 @@ main (int argc, char *argv[])
       goto end;
     }
 
-  if (br_tester_info.output_file_name != NULL)
-    {
-      out_file_fp = fopen (br_tester_info.output_file_name, "w");
-      if (out_file_fp == NULL)
-	{
-	  fprintf (stderr, "cannot open output file %s\n", br_tester_info.input_file_name);
-	  goto end;
-	}
-    }
 
   print_shard_result ();
 

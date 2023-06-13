@@ -1802,6 +1802,12 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
+      /* aggregate optimize related should be free */
+      if (p->s_id.scan_stats.agg_index_name != NULL)
+	{
+	  free (p->s_id.scan_stats.agg_index_name);
+	}
+
       memset (&p->s_id.scan_stats, 0, sizeof (SCAN_STATS));
 
       if (p->parts != NULL)
@@ -7860,7 +7866,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!is_scan_needed)
 	    {
-	      xasl->spec_list->s_id.scan_stats.agg_optimized_scan = true;
 	      return S_SUCCESS;
 	    }
 
@@ -23871,6 +23876,18 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		{
 		  error = er_errid ();
 		  return (error == NO_ERROR ? ER_FAILED : error);
+		}
+
+	    }
+
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      /* agg_index_name is set to show it in the trace information */
+	      error = heap_get_indexinfo_of_btid (thread_p, &ACCESS_SPEC_CLS_OID (spec), &agg_ptr->btid,
+						  NULL, NULL, NULL, NULL, &spec->s_id.scan_stats.agg_index_name, NULL);
+	      if (error != NO_ERROR)
+		{
+		  return error;
 		}
 	    }
 	}

@@ -5763,6 +5763,8 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
 
+  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
+
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL) || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
       return NO_ERROR;
@@ -5792,6 +5794,15 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       /* cast number to DOUBLE */
       cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
       cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    }
+  else if (oracle_style_divide)
+    {
+      if (TP_IS_DISCRETE_NUMBER_TYPE (type1) && TP_IS_DISCRETE_NUMBER_TYPE (type2))
+	{
+	  /* cast number to NUMERIC */
+	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	}
     }
 
   if (cast_dom2 != NULL)

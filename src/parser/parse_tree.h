@@ -926,7 +926,11 @@ enum pt_custom_print
   /* Both PT_PRINT_NO_SPECIFIED_USER_NAME and PT_PRINT_NO_CURRENT_USER_NAME can be set.
    * Check PT_PRINT_NO_SPECIFIED_USER_NAME before PT_PRINT_NO_CURRENT_USER_NAME to set implicit priority. */
   PT_PRINT_NO_SPECIFIED_USER_NAME = (0x1 << 23),
-  PT_PRINT_NO_CURRENT_USER_NAME = (0x1 << 24)
+  PT_PRINT_NO_CURRENT_USER_NAME = (0x1 << 24),
+  /* the '@' sign has to be suppressed during printing remote-table speicification for pure remote query */
+  PT_PRINT_SUPPRESS_SERVER_NAME = (0x1 << 25),
+  /* suppress next_value to serial_next_value(...) or current_value to serial_current_value(...) */
+  PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
