@@ -101,6 +101,7 @@ static std::unordered_map <std::string, int> user_host_Map;
 
 static struct hostent *hostent_alloc (char *ipaddr, char *hostname);
 static bool ip_format_check (char *ip_addr);
+static bool hostname_format_check (char *hostname, int str_len);
 static int load_hosts_file ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type);
 
@@ -182,13 +183,12 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
       if (hosts_conf_file_Load == LOAD_INIT)
 	{
 	  hosts_conf_file_Load = load_hosts_file ();
-	  if (hosts_conf_file_Load == LOAD_FAIL)
-	    {
-	      pthread_mutex_unlock (&load_hosts_file_lock);
-	      goto return_phase;
-	    }
 	}
       pthread_mutex_unlock (&load_hosts_file_lock);
+    }
+  if (hosts_conf_file_Load == LOAD_FAIL)
+    {
+      goto return_phase;
     }
 
   addr_trans = (struct sockaddr_in *) saddr;
@@ -258,6 +258,7 @@ load_hosts_file ()
   int cache_idx = 0, temp_idx;
   /*line muber of cubrid_hosts.conf file */
   int line_num = 0;
+  int str_len = 0;
 
   char addr_trans_ch_buf[IPADDR_LEN];
   struct in_addr addr_trans;
@@ -273,7 +274,7 @@ load_hosts_file ()
   if (fp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_NOT_FOUND, 1, host_conf_file_full_path);
-      goto load_fail_phase;
+      goto load_end_phase;
     }
 
   while (fgets (file_line, LINE_BUF_SIZE, fp) != NULL)
@@ -314,16 +315,19 @@ load_hosts_file ()
 	    }
 	  else
 	    {
-	      if (strlen (token) > HOSTNAME_LEN - 1)
+	      str_len = strlen (temp_token);
+	      if (str_len > HOSTNAME_LEN - 1)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_TOO_LONG, 3, token, line_num,
-			  USER_HOSTS_FILE);
-
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
+		  continue;
 		}
 	      else if (ip_format_check (temp_token) == true)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
+			  USER_HOSTS_FILE);
+
+		  continue;
+		}
+	      else if (hostname_format_check (temp_token, str_len) == false)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
 			  USER_HOSTS_FILE);
@@ -341,7 +345,8 @@ load_hosts_file ()
       if (hostname[0] && ipaddr[0])
 	{
 	  /*not duplicated hostname, IP address or not duplicated hostname and duplicated IP address */
-	  if ((user_host_Map.find (hostname) == user_host_Map.end ()))
+	  if ((user_host_Map.find (hostname) == user_host_Map.end ())
+	      && (user_host_Map.find (ipaddr) == user_host_Map.end ()))
 	    {
 	      user_host_Map[hostname] = cache_idx;
 	      user_host_Map[ipaddr] = cache_idx;
@@ -349,8 +354,9 @@ load_hosts_file ()
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
+		  /*to return the 'LOAD_FAIL' */
+		  cache_idx = 0;
+		  goto load_end_phase;
 		}
 
 	      cache_idx++;
@@ -358,37 +364,16 @@ load_hosts_file ()
 	  /*duplicated hostname */
 	  else
 	    {
-	      /*duplicated hostname but different ip address */
-
-	      temp_idx = user_host_Map.find (hostname)->second;
-	      memcpy (&addr_trans.s_addr, hostent_Cache[temp_idx]->h_addr_list[0], sizeof (addr_trans.s_addr));
-
-	      if (inet_ntop (AF_INET, &addr_trans.s_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
-		}
-
-	      if (strcmp (addr_trans_ch_buf, ipaddr))
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 3, hostname, line_num,
-			  USER_HOSTS_FILE);
-
-		  continue;
-		}
-
+	      continue;
 	    }
 	}
     }
-  fclose (fp);
 
-  return LOAD_SUCCESS;
+load_end_phase:
+  if (fp != NULL)
+    fclose (fp);
 
-load_fail_phase:
-
-  return LOAD_FAIL;
+  return cache_idx > 0 ? LOAD_SUCCESS : LOAD_FAIL;
 }
 
 /*
@@ -445,6 +430,46 @@ err_phase:
   ret = false;
   return ret;
 }
+
+/*
+ * hostname_format_check () - Check the host name is valid format.
+ *
+ * return   : true if host name is valid format, false otherwise
+ */
+static bool
+hostname_format_check (char *hostname, int str_len)
+{
+
+  int char_num = 0;
+
+  if (!((hostname[0] >= 'A' && hostname[0] <= 'Z') ^ (hostname[0] >= 'a' && hostname[0] <= 'z')))
+    {
+      return false;
+    }
+
+
+  if (!((hostname[str_len - 1] >= 'A' && hostname[str_len - 1] <= 'Z') ^
+	(hostname[str_len - 1] >= 'a' && hostname[str_len - 1] <= 'z') ^
+	(hostname[str_len - 1] >= '0' && hostname[str_len - 1] <= '9')))
+    {
+      return false;
+    }
+
+  for (char_num = 1; char_num < str_len - 1; char_num++)
+    {
+      if (!((hostname[char_num] >= 'A' && hostname[char_num] <= 'Z') ^
+	    (hostname[char_num] >= 'a' && hostname[char_num] <= 'z') ^
+	    (hostname[char_num] >= '0' && hostname[char_num] <= '9') ^
+	    (hostname[char_num] == '-') ^ (hostname[char_num] == '.')))
+	{
+	  return false;
+	}
+    }
+  return true;
+
+}
+
+
 
 /*
  * gethostbyname_uhost () - Do same job with gethostbyname (), using by the 'user' defined 'cubrid_hosts.conf' file or glibc.
