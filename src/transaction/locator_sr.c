@@ -4302,13 +4302,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    {
 	      bool lob_exist = false;
 
-#if !defined (SERVER_MODE)
-	      /* In not SERVER mode, btree_physical_delete() is called. Access to the deallocated page must be prevented. 
-	       * In locator_add_or_remove_index_internal(), you can see that it operates differently according to the "use_mvcc" variable.
-	       * If not SERVER_MODE, "use_mvcc" is always false in that function. And in those conditions, problems arise.
-	       */
-	      bt_scan.is_key_partially_processed = false;
-#endif
 	      error_code =
 		btree_prepare_bts (thread_p, &bt_scan, &fkref->self_btid, &isid, &key_val_range, NULL, &fkref->self_oid,
 				   NULL, NULL, false, NULL);
@@ -4317,6 +4310,14 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  assert (er_errid () != NO_ERROR);
 		  goto error2;
 		}
+
+#if !defined (SERVER_MODE)
+	      /* In not SERVER mode, btree_physical_delete() is called. Access to the deallocated page must be prevented. 
+	       * In locator_add_or_remove_index_internal(), you can see that it operates differently according to the "use_mvcc" variable.
+	       * If not SERVER_MODE, "use_mvcc" is always false in that function. And in those conditions, problems arise.
+	       */
+	      bt_scan.is_key_partially_processed = false;
+#endif
 	      error_code = btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids);
 	      if (error_code != NO_ERROR)
 		{
@@ -4654,13 +4655,6 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 	  do
 	    {
-#if !defined (SERVER_MODE)
-	      /* In not SERVER mode, btree_physical_delete() is called. Access to the deallocated page must be prevented. 
-	       * In locator_add_or_remove_index_internal(), you can see that it operates differently according to the "use_mvcc" variable.
-	       * If not SERVER_MODE, "use_mvcc" is always false in that function. And in those conditions, problems arise.
-	       */
-	      bt_scan.is_key_partially_processed = false;
-#endif
 	      error_code =
 		btree_prepare_bts (thread_p, &bt_scan, &fkref->self_btid, &isid, &key_val_range, NULL, &fkref->self_oid,
 				   NULL, NULL, false, NULL);
@@ -4669,6 +4663,14 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  assert (er_errid () != NO_ERROR);
 		  goto error2;
 		}
+
+#if !defined (SERVER_MODE)
+	      /* In not SERVER mode, btree_physical_delete() is called. Access to the deallocated page must be prevented. 
+	       * In locator_add_or_remove_index_internal(), you can see that it operates differently according to the "use_mvcc" variable.
+	       * If not SERVER_MODE, "use_mvcc" is always false in that function. And in those conditions, problems arise.
+	       */
+	      bt_scan.is_key_partially_processed = false;
+#endif
 	      error_code = btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids);
 	      if (error_code != NO_ERROR)
 		{
