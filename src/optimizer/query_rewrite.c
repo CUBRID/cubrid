@@ -4494,6 +4494,8 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
       assert (PT_EXPR_OP (curr_append_pred) == PT_IS_NOT_NULL);
       assert (PT_NODE_IS_NAME (PT_EXPR_ARG1 (curr_append_pred)));
 
+      next_append_pred = curr_append_pred->next;
+
       for (curr_pred = next_append_pred; curr_pred != NULL; curr_pred = curr_pred->next)
 	{
 	  curr_pred_arg = PT_EXPR_ARG1 (curr_pred);
@@ -4505,8 +4507,6 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	      break;
 	    }
 	}
-
-      next_append_pred = curr_append_pred->next;
 
       if (curr_pred == NULL)
 	{
