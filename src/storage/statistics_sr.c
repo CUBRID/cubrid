@@ -1425,7 +1425,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
   /* recalculate the height of the btree to the average */
   for (btree_iter = 0; btree_iter < n_btrees; btree_iter++)
     {
-      sum[btree_iter].height = sum[btree_iter].height / partitions_count;
+      sum[btree_iter].height = ceil (sum[btree_iter].height / partitions_count);
     }
 
   /* put new statistics */
