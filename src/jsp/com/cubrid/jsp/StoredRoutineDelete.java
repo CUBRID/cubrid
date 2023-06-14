@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.classloader.ClassLoaderManager;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,8 +39,6 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
-
-import com.cubrid.jsp.classloader.ClassLoaderManager;
 
 public class StoredRoutineDelete extends SimpleFileVisitor<Path> {
     private static final Path baseDir = ClassLoaderManager.getDynamicPath();
@@ -69,7 +68,8 @@ public class StoredRoutineDelete extends SimpleFileVisitor<Path> {
                 // name = name.substring(prefix.length());
                 String[] splitByDollar = name.split("$");
                 String rootClassName = splitByDollar[0];
-                rootClassName = rootClassName.substring(0, rootClassName.indexOf('.')); // remove extension
+                rootClassName =
+                        rootClassName.substring(0, rootClassName.indexOf('.')); // remove extension
                 if (pattern.equalsIgnoreCase(rootClassName)) {
                     files.add(file);
                 }

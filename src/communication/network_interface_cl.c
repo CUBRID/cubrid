@@ -10960,15 +10960,15 @@ plcsql_drop (const std::string name, int type)
 
   OR_ALIGNED_BUF (1 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  
-  int req_error = net_client_request (NET_SERVER_PLCSQL_DROP, eb.get_ptr () /* request */,
-						      (int) packer.get_current_size () /* request_size */,
-						      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  int req_error = net_client_request (NET_SERVER_PLCSQL_DROP, eb.get_ptr () /* request */ ,
+				      (int) packer.get_current_size () /* request_size */ ,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (req_error != NO_ERROR)
     {
       goto error;
     }
-  
+
   or_unpack_int (reply, &rc);
 
 error:

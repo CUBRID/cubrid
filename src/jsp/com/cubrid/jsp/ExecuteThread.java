@@ -468,7 +468,7 @@ public class ExecuteThread extends Thread {
         writeBuffer(resultBuffer);
     }
 
-    public void sendData (ByteBuffer buffer) throws IOException {
+    public void sendData(ByteBuffer buffer) throws IOException {
         resultBuffer.clear(); /* prepare to put */
         packer.setBuffer(resultBuffer);
         packer.packPrimitiveBytes(buffer);
