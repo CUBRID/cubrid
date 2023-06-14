@@ -3686,8 +3686,23 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
   rv = pthread_mutex_lock (&hb_Resource->lock);
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
-      if (proc->type != HB_PTYPE_SERVER)
+      if (proc->type != HB_PTYPE_TRAN_SERVER)
 	{
+	  /* TODO :
+	   * It has been temporarily modified only to resolve the CI test failure, which is because the
+	   * Transaction Server can not execute the write transaction.
+	   * During failover, the Transaction Server state need to be changed to HB_PSTATE_REGISTERED_AND_ACTIVE
+	   * by this job in order to execute the write transaction, which internally changes the "db_Disable_modification" to false
+	   * (in css_change_ha_server_state () -> logtb_enable_update ()).
+	   *
+	   * This job will be re-defined when TS states are re-defined, and failover mechanism is re-designed.
+	   * 1. All the resource jobs check if process type is HB_PTYPE_TRAN_SERVER instead of HB_PTYPE_SERVER.
+	   * 2. hb_Resource is re-defined to have only two processes, HB_PTYPE_PAGE_SERVER and HB_PTYPE_TRAN_SERVER.
+	   * 3. This job check the state of HB_PTYPE_TRAN_SERVER if it is the one that defined for TS such as (HB_PSTATE_IN_TRANSITION), 
+	   *    or this job can be removed if TS state is not change by cub_master, but changed by the TS itself
+	   *    when it meets the condition then informs to cub_master.
+	   */
+
 	  continue;
 	}
 
