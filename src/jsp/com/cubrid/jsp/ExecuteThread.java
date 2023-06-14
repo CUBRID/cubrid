@@ -156,6 +156,12 @@ public class ExecuteThread extends Thread {
                             break;
                         }
 
+                    case RequestCode.DROP:
+                        {
+                            processDrop();
+                            break;
+                        }
+
                         /* the following request codes are for javasp utility */
                     case RequestCode.UTIL_PING:
                         {
@@ -313,6 +319,22 @@ public class ExecuteThread extends Thread {
         sendResult(result, procedure);
     }
 
+    private void processDrop() throws Exception {
+        unpacker.setBuffer(ctx.getInboundQueue().take());
+        int cnt = -1;
+        try {
+            String name = unpacker.unpackCString();
+            int type = unpacker.unpackInt();
+
+            StoredRoutineDelete routineDelete = new StoredRoutineDelete(name, type);
+            cnt = routineDelete.delete();
+        } finally {
+            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(8));
+            packer.packInt(cnt);
+            Context.getCurrentExecuteThread().sendData(packer.getBuffer());
+        }
+    }
+
     private void processCompile() throws Exception {
         unpacker.setBuffer(ctx.getInboundQueue().take());
         boolean verbose = unpacker.unpackBool();
@@ -440,6 +462,15 @@ public class ExecuteThread extends Thread {
 
         packer.packInt(RequestCode.INTERNAL_JDBC);
         packer.align(DataUtilities.MAX_ALIGNMENT);
+        packer.packPrimitiveBytes(buffer);
+
+        resultBuffer = packer.getBuffer();
+        writeBuffer(resultBuffer);
+    }
+
+    public void sendData (ByteBuffer buffer) throws IOException {
+        resultBuffer.clear(); /* prepare to put */
+        packer.setBuffer(resultBuffer);
         packer.packPrimitiveBytes(buffer);
 
         resultBuffer = packer.getBuffer();

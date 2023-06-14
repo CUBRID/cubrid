@@ -107,7 +107,7 @@ static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, 
 					      PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
-				     PT_NODE * param_list, const char *java_method, const char *comment);
+				     PT_NODE * param_list, const char *java_method, const char *comment, int lang);
 static int drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type);
 
 static int jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, method_sig_list & sig_list);
@@ -667,7 +667,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   comment = (char *) PT_NODE_SP_COMMENT (statement);
 
-  err = jsp_add_stored_procedure (name, type, ret_type, param_list, decl, comment);
+  err = jsp_add_stored_procedure (name, type, ret_type, param_list, decl, comment, lang);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -1014,7 +1014,7 @@ jsp_check_stored_procedure_name (const char *str)
 
 static int
 jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM return_type,
-			  PT_NODE * param_list, const char *java_method, const char *comment)
+			  PT_NODE * param_list, const char *java_method, const char *comment, int lang)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -1149,7 +1149,7 @@ jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TY
       goto error;
     }
 
-  db_make_int (&value, SP_LANG_JAVA);
+  db_make_int (&value, lang);
   err = dbt_put_internal (obt_p, SP_ATTR_LANG, &value);
   if (err != NO_ERROR)
     {
@@ -1235,7 +1235,7 @@ static int
 drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
 {
   MOP sp_mop, arg_mop, owner;
-  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, temp;
+  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, temp, sp_lang;
   SP_TYPE_ENUM real_type;
   DB_SET *arg_set_p;
   int save, i, arg_cnt;
@@ -1306,6 +1306,22 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
       arg_mop = db_get_object (&temp);
       err = obj_delete (arg_mop);
       pr_clear_value (&temp);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  err = db_get (sp_mop, SP_ATTR_LANG, &sp_lang);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (db_get_int (&sp_lang) == SP_LANG_PLCSQL)
+    {
+      // drop .java or .class first
+      err = plcsql_command (std::string (name), real_type);
       if (err != NO_ERROR)
 	{
 	  goto error;

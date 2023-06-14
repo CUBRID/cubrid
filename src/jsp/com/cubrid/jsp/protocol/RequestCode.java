@@ -12,6 +12,7 @@ public class RequestCode {
     public static final int PREPARE_ARGS = 0x40;
 
     public static final int COMPILE = 0x80;
+    public static final int DROP = 0x81;
 
     public static final int REQUEST_SQL_SEMANTICS = 0xA0;
     public static final int REQUEST_GLOBAL_SEMANTICS = 0xA1;

@@ -39,6 +39,8 @@ namespace cubmethod
   int invoke_compile (cubthread::entry &thread, runtime_context &ctx, const std::string &program,
 		      const bool &verbose,
 		      cubmem::extensible_block &blk);
+
+  int drop_routine (cubthread::entry &thread, runtime_context &ctx, const std::string &name, int type);
 #endif
 }
 

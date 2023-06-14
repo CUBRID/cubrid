@@ -11163,3 +11163,29 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 				     ext_blk.get_ptr (), (int) ext_blk.get_size ());
 }
+
+void
+splcsql_command (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  std::string name;
+  int type;
+  unpacker.unpack_all (name, type);
+
+  cubmethod::runtime_context * ctx = NULL;
+  session_get_method_runtime_context (thread_p, ctx);
+
+  int error = ER_FAILED;
+  if (ctx)
+    {
+      error = cubmethod::drop_routine (*thread_p, *ctx, name, type);
+    }
+
+  // Error code and is_ignored.
+  OR_ALIGNED_BUF (1 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}

@@ -454,5 +454,6 @@ extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num
 EXPORT_IMPORT extern int plcsql_transfer_file (const std::string & input_file, const bool & verbose,
 					       PLCSQL_COMPILE_INFO & compile_info);
 
+extern int plcsql_command (const std::string name, int type);
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

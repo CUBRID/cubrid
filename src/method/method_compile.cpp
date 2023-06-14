@@ -131,5 +131,50 @@ exit:
       return error;
     }
   }
+
+  int
+  drop_routine (cubthread::entry &thread_ref, runtime_context &ctx, const std::string &name, int type)
+  {
+    int error = NO_ERROR;
+    connection *conn = ctx.get_connection_pool().claim();
+    SESSION_ID s_id = thread_ref.conn_entry->session_id;
+    header header (s_id, SP_CODE_DROP, ctx.get_and_increment_request_id ());
+    SOCKET socket = conn->get_socket ();
+
+    {
+      error = mcon_send_data_to_java (socket, header, name, type);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      int cnt;
+      cubmem::block response_blk;
+      error = cubmethod::mcon_read_data_from_java (socket, response_blk);
+      if (error != NO_ERROR || response_blk.dim == 0)
+	{
+	  error = ER_FAILED;
+	  goto exit;
+	}
+
+      packing_unpacker unpacker (response_blk);
+      unpacker.unpack_int (cnt);
+
+      // free phase
+      if (response_blk.dim > 0)
+	{
+	  free (response_blk.ptr);
+	}
+
+      if (cnt < 0)
+	{
+	  error = ER_FAILED;
+	}
+    }
+
+exit:
+    ctx.get_connection_pool().retire (conn, true);
+    return error;
+  }
 #endif
 }

@@ -10946,3 +10946,41 @@ error:
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
+
+int
+plcsql_command (const std::string name, int type)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+  char *ptr = NULL;
+
+  packer.set_buffer_and_pack_all (eb, name, type);
+
+  OR_ALIGNED_BUF (1 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  
+  int req_error = net_client_request (NET_SERVER_PLCSQL_COMMAND, eb.get_ptr () /* request */,
+						      (int) packer.get_current_size () /* request_size */,
+						      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (req_error != NO_ERROR)
+    {
+      goto error;
+    }
+  
+  or_unpack_int (reply, &rc);
+
+error:
+  // TODO error handling
+  if (req_error != NO_ERROR)
+    {
+      // TODO: er_set (...): set proper error
+      rc = req_error;
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
