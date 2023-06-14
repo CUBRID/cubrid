@@ -3698,7 +3698,7 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
 	   * This job will be re-defined when TS states are re-defined, and failover mechanism is re-designed.
 	   * 1. All the resource jobs check if process type is HB_PTYPE_TRAN_SERVER instead of HB_PTYPE_SERVER.
 	   * 2. hb_Resource is re-defined to have only two processes, HB_PTYPE_PAGE_SERVER and HB_PTYPE_TRAN_SERVER.
-	   * 3. This job check the state of HB_PTYPE_TRAN_SERVER to the one that defined for TS,
+	   * 3. This job check the state of HB_PTYPE_TRAN_SERVER if it is the one that defined for TS such as (HB_PSTATE_IN_TRANSITION), 
 	   *    or this job can be removed if TS state is not change by cub_master, but changed by the TS itself
 	   *    when it meets the condition then informs to cub_master.
 	   */
