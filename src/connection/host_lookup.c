@@ -371,7 +371,9 @@ load_hosts_file ()
 
 load_end_phase:
   if (fp != NULL)
-    fclose (fp);
+    {
+      fclose (fp);
+    }
 
   return cache_idx > 0 ? LOAD_SUCCESS : LOAD_FAIL;
 }
