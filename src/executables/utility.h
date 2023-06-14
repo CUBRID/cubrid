@@ -919,10 +919,6 @@ typedef struct _ha_config
 
 #define CHECK_SERVER              "Server"
 #define CHECK_HA_SERVER           "HA-Server"
-/* TODO by Joohok
- * if there is no need to distinguish between HA-server and nonHA-Server,
- * remove CHECK_HA_PAGE_SERVER and CHECK_HA_TRANSACTION_SERVER
- */
 #define CHECK_HA_PAGE_SERVER      "HA-Page-server"
 #define CHECK_HA_TRANSACTION_SERVER      "HA-Transaction-server"
 #define CHECK_PAGE_SERVER         "Page-Server"

@@ -66,10 +66,6 @@
 
 #define SERVER_FORMAT_STRING " %s-Server %s (rel %s, pid %d)\n"
 #define HA_SERVER_FORMAT_STRING " HA-Server %s (rel %s, pid %d)\n"
-/* TODO by Joohok
- * if there is no need to distinguish between HA-server and nonHA-Server,
- * remove CHECK_HA_PAGE_SERVER and CHECK_HA_TRANSACTION_SERVER
- */
 #define HA_PAGE_SERVER_FORMAT_STRING " HA-Page-server %s (rel %s, pid %d)\n"
 #define HA_TRAN_SERVER_FORMAT_STRING " HA-Transaction-server %s (rel %s, pid %d)\n"
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
