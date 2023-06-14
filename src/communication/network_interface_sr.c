@@ -11165,7 +11165,7 @@ splcsql_transfer_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 }
 
 void
-splcsql_command (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+splcsql_drop (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   packing_unpacker unpacker (request, (size_t) reqlen);
 

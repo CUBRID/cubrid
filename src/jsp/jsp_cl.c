@@ -1321,7 +1321,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
   if (db_get_int (&sp_lang) == SP_LANG_PLCSQL)
     {
       // drop .java or .class first
-      err = plcsql_command (std::string (name), real_type);
+      err = plcsql_drop (std::string (name), real_type);
       if (err != NO_ERROR)
 	{
 	  goto error;

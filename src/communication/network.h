@@ -272,7 +272,7 @@ enum net_server_request
 
   /* plcsql */
   NET_SERVER_PLCSQL_TRANSFER_FILE,
-  NET_SERVER_PLCSQL_COMMAND,
+  NET_SERVER_PLCSQL_DROP,
 
   /*
    * This is the last entry. It is also used for the end of an
