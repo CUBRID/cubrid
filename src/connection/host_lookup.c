@@ -456,7 +456,7 @@ is_valid_hostname (char *hostname, int str_len)
 
   for (char_num = 1; char_num < str_len - 1; char_num++)
     {
-      if (!(isalnum (hostname[char_num]) ^ (hostname[char_num] == '-') ^ (hostname[char_num] == '.')))
+      if (!(isalnum (hostname[char_num]) || (hostname[char_num] == '-') || (hostname[char_num] == '.')))
 	{
 	  return false;
 	}
