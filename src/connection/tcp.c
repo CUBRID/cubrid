@@ -100,6 +100,8 @@ static const int css_Maximum_server_count = 1000;
 }
 #endif /* !WINDOWS */
 
+#define HOSTS_FILE prm_get_bool_value (PRM_ID_USE_USER_HOSTS) ? CUBRID_HOSTS : ETC_HOSTS
+
 static void css_sockopt (SOCKET sd);
 static int css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * slen);
 static int css_fd_error (SOCKET fd);
@@ -134,7 +136,7 @@ css_gethostname (char *name, size_t namelen)
   int gai_error = getaddrinfo_uhost (hostname, NULL, &hints, &result);
   if (gai_error != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 1, hostname);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GAI_ERROR, 1, hostname, HOSTS_FILE);
       return ER_GAI_ERROR;
     }
 
@@ -249,7 +251,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host, HOSTS_FILE);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -260,7 +262,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host, HOSTS_FILE);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -270,7 +272,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 
       if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host, HOSTS_FILE);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
@@ -285,7 +287,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host, HOSTS_FILE);
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hp->h_addr, hp->h_length);
@@ -337,7 +339,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host, HOSTS_FILE);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
@@ -348,7 +350,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host, HOSTS_FILE);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
@@ -358,7 +360,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 
       if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host, HOSTS_FILE);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
@@ -374,7 +376,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host, HOSTS_FILE);
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hp->h_addr, hp->h_length);

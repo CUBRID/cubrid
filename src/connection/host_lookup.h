@@ -29,7 +29,9 @@ extern int getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *ho
 			      char *serv, size_t servlen, int flags);
 extern int getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct addrinfo **res);
 
-//extern int gethostbyname_r_uhost (const char *hostname, struct hostent *out_hp);
+#define ETC_HOSTS "/etc/hosts"
+#define CUBRID_HOSTS "$CUBRID/conf/cubrid_hosts.conf"
+
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
 extern int

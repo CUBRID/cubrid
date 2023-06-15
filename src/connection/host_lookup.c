@@ -44,6 +44,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
+#include "host_lookup.h"
 
 #define LINE_BUF_SIZE                (512)
 #define HOSTNAME_LEN                 (256)
@@ -53,7 +54,6 @@
 #define IPv4_ADDR_LEN                (4)
 #define NUM_IPADDR_DOT               (3)
 #define MAX_NUM_IPADDR_PER_HOST      (1)
-#define USER_HOSTS_FILE              "cubrid_hosts.conf"
 
 #define NUM_DIGIT(VAL)              (size_t)(log10 (VAL) + 1)
 #define FREE_MEM(PTR)           \
@@ -268,7 +268,7 @@ load_hosts_file ()
 
   memset (file_line, 0, LINE_BUF_SIZE + 1);
 
-  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, USER_HOSTS_FILE);
+  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, "cubrid_hosts.conf");
 
   fp = fopen (hosts_conf_dir, "r");
   if (fp == NULL)
@@ -302,7 +302,7 @@ load_hosts_file ()
 	      if (is_valid_ip (temp_token) == false)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "IP address", token, line_num,
-			  USER_HOSTS_FILE);
+			  CUBRID_HOSTS);
 
 		  continue;
 		}
@@ -323,14 +323,14 @@ load_hosts_file ()
 	      else if (is_valid_ip (temp_token) == true)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
-			  USER_HOSTS_FILE);
+			  CUBRID_HOSTS);
 
 		  continue;
 		}
 	      else if (is_valid_hostname (temp_token, str_len) == false)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
-			  USER_HOSTS_FILE);
+			  CUBRID_HOSTS);
 
 		  continue;
 		}
