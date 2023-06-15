@@ -1545,7 +1545,8 @@ check_server (const char *type, const char *server_name)
       if (strcmp (type, CHECK_SERVER) == 0)
 	{
 	  if (strcmp (token, CHECK_PAGE_SERVER) != 0 && strcmp (token, CHECK_TRANSACTION_SERVER) != 0
-	      && strcmp (token, CHECK_HA_SERVER) != 0)
+	      && strcmp (token, CHECK_HA_SERVER) != 0 && strcmp (token, CHECK_HA_PAGE_SERVER) != 0
+	      && strcmp (token, CHECK_HA_TRANSACTION_SERVER) != 0)
 	    {
 	      continue;
 	    }
