@@ -273,6 +273,8 @@ int setup_tran_server_params_on_ha_mode ()
    * Therefore, in order to determine the transaction_server_type,
    * communication with the cub_master must precede the init_server_type() step.
    */
+
+  return NO_ERROR;
 }
 
 void finalize_server_type ()
