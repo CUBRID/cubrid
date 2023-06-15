@@ -100,8 +100,8 @@ static std::unordered_map <std::string, int> user_host_Map;
 // *INDENT-ON*
 
 static struct hostent *hostent_alloc (char *ipaddr, char *hostname);
-static bool ip_format_check (char *ip_addr);
-static bool hostname_format_check (char *hostname, int str_len);
+static bool is_valid_ip (char *ip_addr);
+static bool is_valid_hostname (char *hostname, int str_len);
 static int load_hosts_file ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type);
 
@@ -299,7 +299,7 @@ load_hosts_file ()
 	  strcpy (temp_token, token);
 	  if (hostent_flag == INSERT_IPADDR)
 	    {
-	      if (ip_format_check (temp_token) == false)
+	      if (is_valid_ip (temp_token) == false)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "IP address", token, line_num,
 			  USER_HOSTS_FILE);
@@ -320,14 +320,14 @@ load_hosts_file ()
 		{
 		  continue;
 		}
-	      else if (ip_format_check (temp_token) == true)
+	      else if (is_valid_ip (temp_token) == true)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
 			  USER_HOSTS_FILE);
 
 		  continue;
 		}
-	      else if (hostname_format_check (temp_token, str_len) == false)
+	      else if (is_valid_hostname (temp_token, str_len) == false)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
 			  USER_HOSTS_FILE);
@@ -379,12 +379,12 @@ load_end_phase:
 }
 
 /*
- * ip_format_check () - Check the ipv4 IP address format.
+ * is_valid_ip () - Check the ipv4 IP address format.
  * 
  * return   : true if IP address is valid format, false otherwise
  */
 static bool
-ip_format_check (char *ip_addr)
+is_valid_ip (char *ip_addr)
 {
 
   int dec_val;
@@ -434,44 +434,36 @@ err_phase:
 }
 
 /*
- * hostname_format_check () - Check the host name is valid format.
+ * is_valid_hostname () - Check the host name is valid format.
  *
  * return   : true if host name is valid format, false otherwise
  */
 static bool
-hostname_format_check (char *hostname, int str_len)
+is_valid_hostname (char *hostname, int str_len)
 {
 
   int char_num = 0;
 
-  if (!((hostname[0] >= 'A' && hostname[0] <= 'Z') ^ (hostname[0] >= 'a' && hostname[0] <= 'z')))
+  if (!isalpha (hostname[0]))
     {
       return false;
     }
 
-
-  if (!((hostname[str_len - 1] >= 'A' && hostname[str_len - 1] <= 'Z') ^
-	(hostname[str_len - 1] >= 'a' && hostname[str_len - 1] <= 'z') ^
-	(hostname[str_len - 1] >= '0' && hostname[str_len - 1] <= '9')))
+  if (!isalnum (hostname[str_len - 1]))
     {
       return false;
     }
 
   for (char_num = 1; char_num < str_len - 1; char_num++)
     {
-      if (!((hostname[char_num] >= 'A' && hostname[char_num] <= 'Z') ^
-	    (hostname[char_num] >= 'a' && hostname[char_num] <= 'z') ^
-	    (hostname[char_num] >= '0' && hostname[char_num] <= '9') ^
-	    (hostname[char_num] == '-') ^ (hostname[char_num] == '.')))
+      if (!(isalnum (hostname[char_num]) ^ (hostname[char_num] == '-') ^ (hostname[char_num] == '.')))
 	{
 	  return false;
 	}
     }
+
   return true;
-
 }
-
-
 
 /*
  * gethostbyname_uhost () - Do same job with gethostbyname (), using by the 'user' defined 'cubrid_hosts.conf' file or glibc.
