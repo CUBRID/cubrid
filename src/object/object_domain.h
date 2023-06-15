@@ -287,6 +287,10 @@ typedef enum tp_match
   (((typeid) == DB_TYPE_FLOAT) || ((typeid) == DB_TYPE_DOUBLE) \
    || ((typeid) == DB_TYPE_NUMERIC) || ((typeid) == DB_TYPE_MONETARY))
 
+#define TP_IS_DISCRETE_NUMBER_TYPE(typeid) \
+  (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_SMALLINT) \
+   || ((typeid) == DB_TYPE_BIGINT))
+
 /*
  * Precision for non-parameterized predefined types
  *
