@@ -227,7 +227,7 @@ namespace cubcomm
   // Helper function that packs MsgId & PackableArgs and sends them on chn
   template <typename MsgId, typename ... PackableArgs>
   css_error_code send_client_request (channel &chn, cubmem::extensible_block &send_ext_block,
-				      MsgId msgid, PackableArgs &&... args);
+				      MsgId msgid, const PackableArgs &... args);
 
   // Err logging functions
   void er_log_send_request (const channel &chn, int msgid, size_t size);
