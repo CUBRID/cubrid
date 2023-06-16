@@ -152,6 +152,7 @@ namespace cubcomm
 
     private:
       channel m_channel;					// requests are sent on this channel
+      cubmem::extensible_block m_send_extensible_block;
   };
 
   // A server that handles request messages. All requests must be preregistered.
@@ -186,9 +187,9 @@ namespace cubcomm
       void loop_handle_requests ();	    // the thread loop to receive and handle requests
       bool has_request_on_channel ();
       // get request buffer and its size from channel
-      css_error_code receive_request_buffer (std::unique_ptr<char[]> &message_buffer, size_t &message_size);
+      css_error_code receive_request_buffer (size_t &message_size);
       // get request from buffer and call its handler
-      void handle_request (std::unique_ptr<char[]> &message_buffer, size_t message_size);
+      void handle_request (size_t message_size);
 
     protected:
       channel m_channel;	  // request are received on this channel
@@ -197,6 +198,7 @@ namespace cubcomm
       std::thread m_thread;				// thread that loops and handles requests
       bool m_shutdown = true;				// set to true when thread must stop
       request_handlers_container m_request_handlers;	// request handler map
+      cubmem::extensible_block m_recv_extensible_block;
   };
 
   // Both a client and a server using same channel. Client messages and server messages can have different specializations
@@ -217,11 +219,15 @@ namespace cubcomm
 
       template <typename ... PackableArgs>
       css_error_code send (ClientMsgId msgid, const PackableArgs &... args);
+
+    private:
+      cubmem::extensible_block m_send_extensible_block;
   };
 
   // Helper function that packs MsgId & PackableArgs and sends them on chn
   template <typename MsgId, typename ... PackableArgs>
-  css_error_code send_client_request (channel &chn, MsgId msgid, const PackableArgs &... args);
+  css_error_code send_client_request (channel &chn, cubmem::extensible_block &send_ext_block,
+				      MsgId msgid, const PackableArgs &... args);
 
   // Err logging functions
   void er_log_send_request (const channel &chn, int msgid, size_t size);
@@ -238,6 +244,7 @@ namespace cubcomm
   template <typename MsgId>
   request_client<MsgId>::request_client (channel &&chn)
     : m_channel (std::move (chn))
+    , m_send_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
   }
 
@@ -245,7 +252,7 @@ namespace cubcomm
   template <typename ... PackableArgs>
   css_error_code request_client<MsgId>::send (MsgId msgid, const PackableArgs &... args)
   {
-    return send_client_request (m_channel, msgid, args...);
+    return send_client_request (m_channel, m_send_extensible_block, msgid, args...);
   }
 
   template <typename MsgId>
@@ -258,6 +265,7 @@ namespace cubcomm
   template <typename MsgId>
   request_server<MsgId>::request_server (channel &&chn)
     : m_channel (std::move (chn))
+    , m_recv_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
   }
 
@@ -307,19 +315,18 @@ namespace cubcomm
   template <typename MsgId>
   void request_server<MsgId>::loop_handle_requests ()
   {
-    std::unique_ptr<char[]> message_buffer;
-    size_t message_size;
+    size_t message_size = 0;
     while (!m_shutdown)
       {
 	if (!has_request_on_channel ())
 	  {
 	    continue;
 	  }
-	if (receive_request_buffer (message_buffer, message_size) != NO_ERRORS)
+	if (receive_request_buffer (message_size) != NO_ERRORS)
 	  {
 	    break;
 	  }
-	handle_request (message_buffer, message_size);
+	handle_request (message_size);
       }
     er_log_thread_finished (this, &m_thread, m_thread.get_id ());
   }
@@ -335,11 +342,13 @@ namespace cubcomm
   }
 
   template <typename MsgId>
-  css_error_code request_server<MsgId>::receive_request_buffer (std::unique_ptr<char[]> &message_buffer,
-      size_t &message_size)
+  css_error_code request_server<MsgId>::receive_request_buffer (size_t &message_size)
   {
     size_t expected_size = 0;
     size_t size_ilen = sizeof (expected_size);
+
+    message_size = 0;
+
     // NOTE: no ntohl here; integer value received as a stream of bytes
     css_error_code err = m_channel.recv (reinterpret_cast <char *> (&expected_size), size_ilen);
     if (err != NO_ERRORS)
@@ -349,10 +358,11 @@ namespace cubcomm
       }
     assert (size_ilen == sizeof (expected_size));
 
-    message_buffer.reset (new char [expected_size]);
+    // will re-alloc until the block size gets big enough that will not neet to re-alloc anymore
+    m_recv_extensible_block.extend_to (expected_size);
 
     size_t receive_size = expected_size;
-    err = m_channel.recv (message_buffer.get (), receive_size);
+    err = m_channel.recv (m_recv_extensible_block.get_ptr (), receive_size);
     if (err != NO_ERRORS)
       {
 	er_log_recv_fail (m_channel, err);
@@ -366,11 +376,11 @@ namespace cubcomm
   }
 
   template <typename MsgId>
-  void request_server<MsgId>::handle_request (std::unique_ptr<char[]> &message_buffer, size_t message_size)
+  void request_server<MsgId>::handle_request (size_t message_size)
   {
     assert (message_size >= OR_INT_SIZE);
 
-    cubpacking::unpacker upk (message_buffer.get (), message_size);
+    cubpacking::unpacker upk (m_recv_extensible_block.get_read_ptr (), message_size);
     MsgId msgid;
     upk.unpack_from_int (msgid);
     auto req_handle_it = m_request_handlers.find (msgid);
@@ -399,6 +409,7 @@ namespace cubcomm
   template <typename ClientMsgId, typename ServerMsgId>
   request_client_server<ClientMsgId, ServerMsgId>::request_client_server (channel &&chn)
     : request_server<ServerMsgId>::request_server (std::move (chn))
+    , m_send_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
   }
 
@@ -407,15 +418,17 @@ namespace cubcomm
   css_error_code request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid,
       const PackableArgs &... args)
   {
-    return send_client_request (this->request_server<ServerMsgId>::m_channel, msgid, args...);
+    return send_client_request (this->request_server<ServerMsgId>::m_channel,
+				m_send_extensible_block, msgid, args...);
   }
 
   template <typename MsgId, typename ... PackableArgs>
-  css_error_code send_client_request (channel &chn, MsgId msgid, const PackableArgs &... args)
+  css_error_code send_client_request (channel &chn, cubmem::extensible_block &send_ext_block,
+				      MsgId msgid, const PackableArgs &... args)
   {
     packing_packer packer;
-    cubmem::extensible_block eb;
-    packer.set_buffer_and_pack_all (eb, static_cast<int> (msgid), args...);
+    // internally, will re-alloc until the block size gets big enough that will not neet to re-alloc anymore
+    packer.set_buffer_and_pack_all (send_ext_block, static_cast<int> (msgid), args...);
     const size_t packer_current_size = packer.get_current_size ();
 
     er_log_send_request (chn, static_cast<int> (msgid), packer_current_size);
@@ -429,7 +442,7 @@ namespace cubcomm
 	return css_size_err;
       }
 
-    const css_error_code css_err = chn.send (eb.get_ptr (), packer.get_current_size ());
+    const css_error_code css_err = chn.send (send_ext_block.get_ptr (), packer.get_current_size ());
     if (css_err != NO_ERRORS)
       {
 	er_log_send_fail (chn, css_err);

@@ -109,9 +109,10 @@ namespace cubcomm
 
   css_error_code channel::send (const char *buffer, std::size_t length)
   {
-    int templen, vector_length = 2;
+    int templen = 0;
+    constexpr int vector_length = 2;
     int total_len = 0, rc = NO_ERRORS;
-    struct iovec iov[2];
+    struct iovec iov[vector_length];
 
     assert (m_type != NO_TYPE);
 
