@@ -70,6 +70,9 @@ namespace cubcomm
 
       /* receive/send functions that use the created m_socket */
       css_error_code recv (char *buffer, std::size_t &maxlen_in_recvlen_out);
+      css_error_code recv_allow_truncated (char *buffer, std::size_t &maxlen_in_recvlen_out,
+					   std::size_t &remaining_len);
+      css_error_code recv_remainder (char *buffer, std::size_t &maxlen_in_recvlen_out);
       css_error_code send (const std::string &message);
       css_error_code send (const char *buffer, std::size_t length);
 

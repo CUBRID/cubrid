@@ -51,10 +51,14 @@ static void send_request_id_as_message (ReqCl &reqcl, ReqId rid);
 template <typename RSSQ, typename ReqId>
 static void push_request_id_as_message (RSSQ &rssq, ReqId rid);
 
+static void assemble_extra_large_payload (std::size_t &len, std::string &mess);
+
 // Server request handler function for unpacking a ReqId and requiring to find ExpectedVal
 template <typename ReqId, ReqId ExpectedVal>
-static void
-mock_check_expected_id (cubpacking::unpacker &upk);
+static void mock_check_expected_id (cubpacking::unpacker &upk);
+
+template <typename ReqId, ReqId ExpectedVal>
+static void mock_check_expected_id_and_extra_payload (cubpacking::unpacker &upk);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Stuff for one client and one server test case
@@ -74,6 +78,7 @@ using test_handler_register_function = std::function<void (test_request_server &
 static void mock_socket_between_client_and_server (const test_request_client &cl, const test_request_server &sr,
     mock_socket_direction &sockdir);
 static void handler_register_mock_check_expected_id (test_request_server &req_sr);
+static void handler_register_mock_check_expected_id_and_extra_payload (test_request_server &req_sr);
 
 // Environment for testing a client and server
 class test_client_and_server_env
@@ -283,13 +288,17 @@ class test_two_request_sync_client_server_env
 
 TEST_CASE ("A client and a server", "")
 {
+  // affirmative answers for debug parameters used in the context of this test
+  // must be set for each test case
+  prm_set_bool_value (PRM_ID_ER_LOG_COMM_REQUEST, true);
+
   // Test how the requests sent by the request_client are handled by the request_server. The main thread of test case
   // act as the client and it sends the requests. The internal request_server thread handles the requests.
   //
   // Verify that:
   //    - the requests get handled on the server by the expected type of handler.
   //    - the number of requests sent is same as the number of requests handled.
-  test_handler_register_function hreg_fun = handler_register_mock_check_expected_id;
+  test_handler_register_function hreg_fun = handler_register_mock_check_expected_id_and_extra_payload;
   test_client_and_server_env env (hreg_fun);
 
   env.get_server ().start_thread ();
@@ -310,6 +319,10 @@ TEST_CASE ("A client and a server", "")
 
 TEST_CASE ("Two client-server communicate with each-other", "")
 {
+  // affirmative answers for debug parameters used in the context of this test
+  // must be set for each test case
+  prm_set_bool_value (PRM_ID_ER_LOG_COMM_REQUEST, true);
+
   // Test how two request_client_server instances interact with each-other. The main thread of the test case acts as
   // the client for both request_client_server and sends them requests. The requests are handled by the internal
   // threads of each request_client_server.
@@ -352,6 +365,10 @@ TEST_CASE ("Two client-server communicate with each-other", "")
 
 TEST_CASE ("Verify request_sync_send_queue with request_client", "")
 {
+  // affirmative answers for debug parameters used in the context of this test
+  // must be set for each test case
+  prm_set_bool_value (PRM_ID_ER_LOG_COMM_REQUEST, true);
+
   // Test how requests are handled by request_sync_send_queue. Multiple threads may push requests, and multiple
   // threads may send the queued requests.
   //
@@ -474,6 +491,10 @@ TEST_CASE ("Verify request_sync_send_queue with request_client", "")
 
 TEST_CASE ("Test in-order request_queue_autosend", "")
 {
+  // affirmative answers for debug parameters used in the context of this test
+  // must be set for each test case
+  prm_set_bool_value (PRM_ID_ER_LOG_COMM_REQUEST, true);
+
   // Test the way requests are handled using a request_queue_autosend. All pushed requests are automatically send by
   // the request_queue_autosend. The requests are sent in the same order that they are pushed.
   //
@@ -523,6 +544,10 @@ TEST_CASE ("Test in-order request_queue_autosend", "")
 
 TEST_CASE ("Test out-of-order request_queue_autosend", "")
 {
+  // affirmative answers for debug parameters used in the context of this test
+  // must be set for each test case
+  prm_set_bool_value (PRM_ID_ER_LOG_COMM_REQUEST, true);
+
   // Test the way requests are handled using a request_queue_autosend intermingled with forced "send all".
   // All pushed requests are automatically send by either the request_queue_autosend or by explicit sends invoked
   // from separate threads. The requests are sent deterministically but out of order.
@@ -597,8 +622,12 @@ TEST_CASE ("Test out-of-order request_queue_autosend", "")
   REQUIRE (((total_op_count - 1) * total_op_count / 2) == global_out_of_order_processed_op_count[/*reqids::_*/1]);
 }
 
-TEST_CASE ("Two request_sync_client_server communicate with each other", "[dbg]")
+TEST_CASE ("Two request_sync_client_server communicate with each other", "")
 {
+  // affirmative answers for debug parameters used in the context of this test
+  // must be set for each test case
+  prm_set_bool_value (PRM_ID_ER_LOG_COMM_REQUEST, true);
+
   test_two_request_sync_client_server_env env;
 
   constexpr int MESSAGE_COUNT = 4200;
@@ -844,6 +873,23 @@ mock_check_expected_id (cubpacking::unpacker &upk)
   ++global_handled_request_count;
 }
 
+template <typename T, T Val>
+static void
+mock_check_expected_id_and_extra_payload (cubpacking::unpacker &upk)
+{
+  T readval;
+  upk.unpack_from_int (readval);
+  REQUIRE (readval == Val);
+
+  std::string extra_payload;
+  // internally, unpack string does a check on whether string or large string
+  upk.unpack_string (extra_payload);
+  const size_t extra_payload_size = extra_payload.size ();
+  REQUIRE (extra_payload.size () == 100000);
+
+  ++global_handled_request_count;
+}
+
 template <typename T, T Val, typename Payload>
 static void
 mock_check_expected_id_sync (Payload &a_sp)
@@ -857,7 +903,11 @@ template <typename ReqCl, typename ReqId>
 static void
 send_request_id_as_message (ReqCl &reqcl, ReqId rid)
 {
-  const css_error_code err_code = reqcl.send (rid, static_cast<int> (rid));
+  std::size_t extra_large_payload_size = 0;
+  std::string extra_large_payload;
+  assemble_extra_large_payload (extra_large_payload_size, extra_large_payload);
+
+  const css_error_code err_code = reqcl.send (rid, static_cast<int> (rid), extra_large_payload);
   REQUIRE (err_code == NO_ERRORS);
   ++global_sent_request_count;
 }
@@ -868,6 +918,20 @@ push_request_id_as_message (RSSQ &rssq, ReqId rid)
 {
   rssq.push (rid, static_cast<int> (rid), nullptr);
   ++global_sent_request_count;
+}
+
+static void
+assemble_extra_large_payload (std::size_t &payload_len, std::string &payload)
+{
+  constexpr std::size_t extra_payload_size = 100000;
+
+  payload.reserve (extra_payload_size);
+  for (int i = 0; i < (extra_payload_size / 100); ++i)
+    {
+      payload.append ("1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890");
+    }
+  payload_len = payload.size ();
+  REQUIRE (payload_len == extra_payload_size);
 }
 
 template <typename ReqId, ReqId ExpectedVal>
@@ -967,6 +1031,21 @@ handler_register_mock_check_expected_id (test_request_server &req_sr)
 }
 
 void
+handler_register_mock_check_expected_id_and_extra_payload (test_request_server &req_sr)
+{
+  cubcomm::request_server<reqids>::server_request_handler reqh0 = [] (cubpacking::unpacker &upk)
+  {
+    mock_check_expected_id_and_extra_payload<reqids, reqids::_0> (upk);
+  };
+  cubcomm::request_server<reqids>::server_request_handler reqh1 = [] (cubpacking::unpacker &upk)
+  {
+    mock_check_expected_id_and_extra_payload<reqids, reqids::_1> (upk);
+  };
+  req_sr.register_request_handler (reqids::_0, reqh0);
+  req_sr.register_request_handler (reqids::_1, reqh1);
+}
+
+void
 mock_socket_between_client_and_server (const test_request_client &cl, const test_request_server &sr,
 				       mock_socket_direction &sockdir)
 {
@@ -981,9 +1060,6 @@ test_client_and_server_env::test_client_and_server_env (test_handler_register_fu
   handler_register (m_server);
   mock_socket_between_client_and_server (m_client, m_server, m_sockdir);
   init_globals ();
-
-  // affirmative answers for debug parameters used in the context of this test
-  prm_set_bool_value (PRM_ID_ER_LOG_COMM_REQUEST, true);
 }
 
 test_client_and_server_env::~test_client_and_server_env ()
@@ -1006,7 +1082,8 @@ test_client_and_server_env::get_server ()
 void
 test_client_and_server_env::wait_for_all_messages ()
 {
-  m_sockdir.wait_until_message_count (global_sent_request_count * 2);  // each request sends two messages
+  // each request sends one message
+  m_sockdir.wait_until_message_count (global_sent_request_count * 1);
   m_sockdir.wait_for_all_messages ();
 }
 
@@ -1016,15 +1093,15 @@ register_request_handlers_request_client_server_one (test_request_client_server_
   // handles reqids_2_to_1
   test_request_client_server_type_one::server_request_handler reqh0 = [] (cubpacking::unpacker &upk)
   {
-    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_0> (upk);
+    mock_check_expected_id_and_extra_payload<reqids_2_to_1, reqids_2_to_1::_0> (upk);
   };
   test_request_client_server_type_one::server_request_handler reqh1 = [] (cubpacking::unpacker &upk)
   {
-    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_1> (upk);
+    mock_check_expected_id_and_extra_payload<reqids_2_to_1, reqids_2_to_1::_1> (upk);
   };
   test_request_client_server_type_one::server_request_handler reqh2 = [] (cubpacking::unpacker &upk)
   {
-    mock_check_expected_id<reqids_2_to_1, reqids_2_to_1::_2> (upk);
+    mock_check_expected_id_and_extra_payload<reqids_2_to_1, reqids_2_to_1::_2> (upk);
   };
   req_cl_sr.register_request_handler (reqids_2_to_1::_0, reqh0);
   req_cl_sr.register_request_handler (reqids_2_to_1::_1, reqh1);
@@ -1037,11 +1114,11 @@ register_request_handlers_request_client_server_two (test_request_client_server_
   // handles reqids_1_to_2
   test_request_client_server_type_two::server_request_handler reqh0 = [] (cubpacking::unpacker &upk)
   {
-    mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_0> (upk);
+    mock_check_expected_id_and_extra_payload<reqids_1_to_2, reqids_1_to_2::_0> (upk);
   };
   test_request_client_server_type_two::server_request_handler reqh1 = [] (cubpacking::unpacker &upk)
   {
-    mock_check_expected_id<reqids_1_to_2, reqids_1_to_2::_1> (upk);
+    mock_check_expected_id_and_extra_payload<reqids_1_to_2, reqids_1_to_2::_1> (upk);
   };
   req_cl_sr.register_request_handler (reqids_1_to_2::_0, reqh0);
   req_cl_sr.register_request_handler (reqids_1_to_2::_1, reqh1);
@@ -1150,8 +1227,9 @@ test_two_request_sync_client_server_env::get_scs_two ()
 
 void test_two_request_sync_client_server_env::wait_for_all_messages ()
 {
-  m_sockdir_1_to_2.wait_until_message_count (m_total_1_to_2_message_count * 2);
-  m_sockdir_2_to_1.wait_until_message_count (m_total_2_to_1_message_count * 2);
+  // each request sends one message
+  m_sockdir_1_to_2.wait_until_message_count (m_total_1_to_2_message_count * 1);
+  m_sockdir_2_to_1.wait_until_message_count (m_total_2_to_1_message_count * 1);
 
   m_sockdir_1_to_2.wait_for_all_messages ();
   m_sockdir_2_to_1.wait_for_all_messages ();

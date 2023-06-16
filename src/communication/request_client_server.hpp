@@ -157,14 +157,6 @@ namespace cubcomm
       cubmem::extensible_block m_send_extensible_block;
   };
 
-  class request_server_constants
-  {
-    public:
-      // arbitrary size
-      // TODO: robust solution needed (change css_ implementation to perfom repeated reads in case of larger bufffer)
-      static constexpr size_t RECV_BUFFER_MAX_SIZE = (IO_MAX_PAGE_SIZE * 128);
-  };
-
   // A server that handles request messages. All requests must be preregistered.
   template <typename MsgId>
   class request_server
@@ -278,7 +270,8 @@ namespace cubcomm
     , m_recv_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
 #if (NEW_NETW_PROTO)
-    m_recv_extensible_block.extend_to (request_server_constants::RECV_BUFFER_MAX_SIZE);
+    // arbitrary initial size; will be grown upon need
+    m_recv_extensible_block.extend_to (IO_MAX_PAGE_SIZE * 4);
 #endif
   }
 
@@ -385,18 +378,50 @@ namespace cubcomm
 	return err;
       }
     assert (receive_size == expected_size);
+
+    message_size = receive_size;
 #else
-    size_t receive_size = m_recv_extensible_block.get_size ();
-    css_error_code err = m_channel.recv (m_recv_extensible_block.get_ptr (), receive_size);
-    if (err != NO_ERRORS)
+    size_t recv_size = m_recv_extensible_block.get_size ();
+    size_t rem_size = 0;
+    const css_error_code err = m_channel.recv_allow_truncated (m_recv_extensible_block.get_ptr (), recv_size,
+			       rem_size);
+    if (err == RECORD_TRUNCATED)
+      {
+	// there is more data to retrieve
+	// extend the block and supply the new pointer
+
+	assert (recv_size == m_recv_extensible_block.get_size ());
+	assert (rem_size > 0);
+
+	// TODO: maybe it should be extended to a multiple of page size?
+	m_recv_extensible_block.extend_by (rem_size);
+
+	char *const advanced_ptr = m_recv_extensible_block.get_ptr () + recv_size;
+	size_t recv_rem_size = rem_size;
+	const css_error_code err_rem = m_channel.recv_remainder (advanced_ptr, recv_rem_size);
+	if (err_rem != NO_ERRORS)
+	  {
+	    er_log_recv_fail (m_channel, err_rem);
+	    return err_rem;
+	  }
+
+	assert (rem_size == recv_rem_size);
+
+	message_size += recv_rem_size;
+      }
+    else if (err != NO_ERRORS)
       {
 	er_log_recv_fail (m_channel, err);
 	return err;
       }
-    assert (receive_size < m_recv_extensible_block.get_size ());
-#endif
+    else
+      {
+	assert (rem_size == 0);
+	assert (recv_size <= m_recv_extensible_block.get_size ());
+      }
 
-    message_size = receive_size;
+    message_size += recv_size;
+#endif
 
     return NO_ERRORS;
   }
@@ -456,7 +481,6 @@ namespace cubcomm
     // internally, will re-alloc until the block size gets big enough that will not neet to re-alloc anymore
     packer.set_buffer_and_pack_all (send_ext_block, static_cast<int> (msgid), std::forward<PackableArgs> (args)...);
     const size_t packer_current_size = packer.get_current_size ();
-    assert_release ((packer_current_size + sizeof (int)) <= request_server_constants::RECV_BUFFER_MAX_SIZE);
 
     er_log_send_request (chn, static_cast<int> (msgid), packer_current_size);
 

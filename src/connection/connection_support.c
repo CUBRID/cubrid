@@ -716,6 +716,136 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
   return NO_ERRORS;
 }
 
+css_error_code
+css_net_recv_allow_truncated (SOCKET fd, char *buffer, int *maxlen, int *remlen, int timeout)
+{
+  int templen;
+
+  *remlen = 0;
+
+  const int time_unit = (timeout < 0 || timeout > 5000) ? 5000 : timeout;
+  int elapsed = time_unit;
+
+  /* read data length */
+  while (true)
+    {
+      const int nbytes_read_len = css_readn (fd, (char *) &templen, sizeof (int), time_unit);
+      if (nbytes_read_len < 0)
+	{
+	  if (errno == ETIMEDOUT && timeout > elapsed)
+	    {
+#if defined (CS_MODE) && !defined (WINDOWS)
+	      if (CHECK_SERVER_IS_ALIVE ())
+		{
+		  if (css_peer_alive (fd, time_unit) == false)
+		    {
+		      return ERROR_WHEN_READING_SIZE;
+		    }
+		  if (css_check_server_alive_fn != NULL)
+		    {
+		      if (css_check_server_alive_fn (NULL, NULL) == false)
+			{
+			  return ERROR_WHEN_READING_SIZE;
+			}
+		    }
+		}
+#endif /* CS_MODE && !WINDOWS */
+	      elapsed += time_unit;
+	      continue;
+	    }
+	  return ERROR_WHEN_READING_SIZE;
+	}
+      if (nbytes_read_len != sizeof (int))
+	{
+#ifdef CUBRID_DEBUG
+	  er_log_debug (ARG_FILE_LINE, "css_net_recv: returning ERROR_WHEN_READING_SIZE bytes %d \n", nbytes_read_len);
+#endif
+	  return ERROR_WHEN_READING_SIZE;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  templen = ntohl (templen);
+  int length_to_read = 0;
+  if (templen > *maxlen)
+    {
+      length_to_read = *maxlen;
+    }
+  else
+    {
+      length_to_read = templen;
+    }
+
+  /* read data */
+  const int nbytes_read_data = css_readn (fd, buffer, length_to_read, timeout);
+  if (nbytes_read_data < length_to_read)
+    {
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE, "css_net_recv_allow_truncated: returning ERROR_ON_READ bytes %d\n",
+		    nbytes_read_data);
+#endif
+      return ERROR_ON_READ;
+    }
+
+  /*
+   * This is possible if the data buffer provided by the client is smaller
+   * than the number of bytes sent by the server
+   */
+
+  if ((nbytes_read_data > 0) && (templen > nbytes_read_data))
+    {
+      // report re
+      *remlen = templen - nbytes_read_data;
+      return RECORD_TRUNCATED;
+    }
+
+  if (nbytes_read_data != templen)
+    {
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE, "css_net_recv: returning READ_LENGTH_MISMATCH bytes %d\n", nbytes_read_data);
+#endif
+      return READ_LENGTH_MISMATCH;
+    }
+
+  *maxlen = nbytes_read_data;
+  return NO_ERRORS;
+}
+
+css_error_code
+css_net_recv_remainder (SOCKET fd, char *buffer, int *maxlen, int timeout)
+{
+  const int time_unit = (timeout < 0 || timeout > 5000) ? 5000 : timeout;
+  int elapsed = time_unit;
+
+  /* read remainder data */
+  const int nbytes_read_data = css_readn (fd, buffer, *maxlen, timeout);
+  if (nbytes_read_data < *maxlen)
+    {
+      // expecting to be able to read exactly as expected
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE, "css_net_recv_remainder: ERROR_ON_READ bytes %d\n", nbytes_read_data);
+#endif
+      return ERROR_ON_READ;
+    }
+
+  if (nbytes_read_data != *maxlen)
+    {
+      // this should never occur
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE, "css_net_recv_remainder: READ_LENGTH_MISMATCH bytes %d\n", nbytes_read_data);
+#endif
+      assert (false);
+      return READ_LENGTH_MISMATCH;
+    }
+
+  *maxlen = nbytes_read_data;
+
+  return NO_ERRORS;
+}
+
 //#undef CUBRID_DEBUG
 
 #if defined(WINDOWS)
