@@ -241,10 +241,10 @@ namespace cubcomm
   {
     assert (m_conn != nullptr && m_conn->is_thread_started ());
 
-    sequenced_payload ip (NO_RESPONSE_SEQUENCE_NUMBER, std::move (a_payload));
-
     // NOTE: if needed, errors can be handled
-    m_queue->push (a_outgoing_message_id, std::move (ip), nullptr);
+    m_queue->push (a_outgoing_message_id,
+                   sequenced_payload { NO_RESPONSE_SEQUENCE_NUMBER, std::move (a_payload) },
+                   nullptr);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -362,6 +362,7 @@ namespace cubcomm
   T_PAYLOAD
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::pull_payload ()
   {
+    // TODO: move returning is an anti-pattern of move-semantics and should be fixed
     return std::move (m_user_payload);
   }
 
