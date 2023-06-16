@@ -6676,10 +6676,12 @@ file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *tota
   int count = 0, part_pages = 0;
   OID *partitions = NULL;
   CLS_INFO *cls_info_p = NULL;
+  int error = NO_ERROR;
 
   if (partition_get_partition_oids (thread_p, cls_oid, &partitions, &count) != NO_ERROR)
     {
-      return ER_FAILED;
+      error = ER_FAILED;
+      goto end;
     }
 
   if (count > 0)
@@ -6690,11 +6692,13 @@ file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *tota
 	  cls_info_p = catalog_get_class_info (thread_p, &partitions[i], NULL);
 	  if (cls_info_p == NULL)
 	    {
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto end;
 	    }
 	  if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), &part_pages) != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto end;
 	    }
 	  *total_pages += part_pages;
 	  catalog_free_class_info_and_init (cls_info_p);
@@ -6705,14 +6709,23 @@ file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *tota
       cls_info_p = catalog_get_class_info (thread_p, cls_oid, NULL);
       if (cls_info_p == NULL)
 	{
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
       if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), total_pages) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
       catalog_free_class_info_and_init (cls_info_p);
     }
+
+end:
+  if (partitions != NULL)
+    {
+      db_private_free (thread_p, partitions);
+    }
+  catalog_free_class_info_and_init (cls_info_p);
 
   return NO_ERROR;
 }
