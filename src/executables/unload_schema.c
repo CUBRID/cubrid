@@ -4934,6 +4934,7 @@ extract_vclass_query_spec (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -5384,7 +5385,7 @@ create_schema_info (extract_context & ctxt)
   char order_str[PATH_MAX * 2] = { '\0' };
   const char *loading_order[] =
     { "_schema_user", "_schema_class", "_schema_vclass", "_schema_synonym", "_schema_vclass_query_spec",
-"_schema_serial", "_schema_procedure", "_schema_server",
+    "_schema_serial", "_schema_procedure", "_schema_server",
     "_schema_pk", "_schema_fk", "_schema_grant",
   };
 
