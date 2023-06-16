@@ -186,13 +186,27 @@ ldr_validate_object_file (const char *argv0, load_args * args)
       return ER_FAILED;
     }
 
-  if (args->cs_mode && (args->load_only == true
-			|| args->index_file.empty () == false
-			|| args->schema_file.empty () == false
-			|| args->schema_file_list.empty () == false || args->trigger_file.empty () == false))
+  if (args->cs_mode)
     {
-      fprintf (stderr, "In loaddb CS mode (-C, --CS-mode), only object loading is possible.\n");
-      return ER_FAILED;
+      if (sysprm_load_and_init (args->volume.c_str (), NULL, SYSPRM_IGNORE_INTL_PARAMS) == NO_ERROR)
+	{
+	  if (prm_get_integer_value (PRM_ID_HA_MODE))
+	    {
+	      if ((args->load_only == true
+		   || args->index_file.empty () == false
+		   || args->schema_file.empty () == false
+		   || args->schema_file_list.empty () == false || args->trigger_file.empty () == false))
+		{
+		  PRINT_AND_LOG_ERR_MSG ("In loaddb CS (-C, --CS-mode) in HA mode, only OBJECT loading is possible.\n");
+		  return ER_FAILED;
+		}
+	    }
+	}
+      else
+	{
+	  PRINT_AND_LOG_ERR_MSG ("loaddb: Cannot load system parameters.\n");
+	  return ER_FAILED;
+	}
     }
 
   if (args->schema_file.empty () == false && args->schema_file_list.empty () == false)

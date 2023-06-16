@@ -3494,10 +3494,10 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	{
 	  output_ctx (")");
 	}
-      if (constraint->comment != NULL && constraint->comment[0] != '\0')
+
+      if (constraint->index_status == SM_INVISIBLE_INDEX)
 	{
-	  output_ctx (" ");
-	  help_print_describe_comment (output_ctx, constraint->comment);
+	  output_ctx (" INVISIBLE ");
 	}
 
       /* Safeguard. */
@@ -3508,6 +3508,13 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	{
 	  output_ctx (" WITH ONLINE");
 	}
+
+      if (constraint->comment != NULL && constraint->comment[0] != '\0')
+	{
+	  output_ctx (" ");
+	  help_print_describe_comment (output_ctx, constraint->comment);
+	}
+
       output_ctx (";\n");
     }
 }
@@ -4776,6 +4783,7 @@ extract_class (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -4841,6 +4849,7 @@ extract_vclass (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -4904,6 +4913,7 @@ extract_pk (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -4967,6 +4977,7 @@ extract_fk (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
@@ -5028,6 +5039,7 @@ extract_grant (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      return ER_FAILED;
 	    }
 	}
     }
