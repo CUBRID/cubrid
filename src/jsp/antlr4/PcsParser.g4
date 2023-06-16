@@ -346,7 +346,6 @@ atom
     | LPAREN expression RPAREN                  # paren_exp
     | SQLCODE                                   # sqlcode_exp
     | SQLERRM                                   # sqlerrm_exp
-    //| '{' expressions '}'                     # list_exp    TODO: restore later
     ;
 
 function_call
@@ -361,14 +360,6 @@ relational_operator
     | '>='
     | '<'
     | '>'
-    /* TODO: restore later
-    | SETEQ
-    | SETNEQ
-    | SUPERSET
-    | SUBSET
-    | SUPERSETEQ
-    | SUBSETEQ
-     */
     ;
 
 in_elements
@@ -529,15 +520,6 @@ simple_type
     | TIME
     | TIMESTAMP
     | DATETIME
-    /* TODO: restore the following four lines
-    | TIMESTAMPLTZ
-    | TIMESTAMPTZ
-    | DATETIMELTZ
-    | DATETIMETZ
-    | SET
-    | MULTISET
-    | LIST | SEQUENCE
-     */
     | SYS_REFCURSOR
     ;
 
@@ -546,12 +528,6 @@ literal
     | TIME quoted_string            # time_exp
     | TIMESTAMP quoted_string       # timestamp_exp
     | DATETIME quoted_string        # datetime_exp
-    /* TODO: restore the following four lines
-    | TIMESTAMPTZ quoted_string     # timestamptz_exp
-    | TIMESTAMPLTZ quoted_string    # timestampltz_exp
-    | DATETIMETZ quoted_string      # datetimetz_exp
-    | DATETIMELTZ quoted_string     # datetimeltz_exp
-     */
     | numeric                       # num_exp
     | quoted_string                 # str_exp
     | NULL_                         # null_exp
