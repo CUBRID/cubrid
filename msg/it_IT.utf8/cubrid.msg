@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Database "%1$s" è sconosciuto, o la "databases.txt" file non è accessibile.
 117 Percorso assoluto per il database è troppo lungo. La lunghezza cumulata del path "%1$s" più il "%2$s" nome è %3$d, la lunghezza combinata deve essere inferiore a %4$d.
 118 Impossibile localizzare directory di lavoro corrente.
-119 Impossibile trovare ("%1$s") in /etc/hosts. Controlla i permessi del file o se c'è il nome host.
+119 Impossibile trovare ("%1$s") in "%2$s". Controlla i permessi del file o se c'è il nome host.
 120 Il numero massimo di volumi (%1$d) è stato superato.
 121 Cercando di rimuovere un volume "%1$s" permanente dal database.
 122 Impossibile accedere al catalogo di messaggi di sistema.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Impossibile stabilire una pipe per il server master.
 348 è necessario specificare un servizio o un identificatore di porta.
 349 Servizio sconosciuto per TCP: %1$s.
-350 Impossibile trovare ("%1$s") in /etc/hosts. Controlla i permessi del file o se c'è il nome host.
+350 Impossibile trovare ("%1$s") in "%2$s". Controlla i permessi del file o se c'è il nome host.
 351 Impossibile creare un socket TCP.
 352 tcp_open: non è possibile ottenere una porta TCP riservata.
 353 Impossibile stabilire una connessione al server master sul host "%1$s".
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Il caricamento dell'indice è stato interrotto dopo un errore.
 1244 Aggiornamento degli attributi shared dai file oggetto non è supportato in modalità CS.
 1245 Aggiornamento degli attributi di classe dai file oggetto non è supportato in modalità CS.
-1246 Impossibile ottenere l'indirizzo e il nome canonico per ("%1$s") in /etc/hosts. Verifica l'autorizzazione del file o se è presente il nome host.
+1246 Impossibile ottenere l'indirizzo e il nome canonico per ("%1$s") in "%2$s". Verifica l'autorizzazione del file o se è presente il nome host.
 1247 Il tempo (%1$s) deve essere specificato dopo il tempo (%2$s) del backup specificato.
 1248 File chiave non valido: %1$s
 1249 Impossibile trovare la chiave (indice: %1$d).
@@ -1442,11 +1442,10 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 1357 Il nome host "%1$s" esiste già, non è possibile duplicare un nome host con altri indirizzi IP alla riga %2$d del file "%3$s".
 1358 Sia l'indirizzo IP che il nome host devono essere scritti completamente alla riga %1$d del file "%2$s".
 1359 Impossibile cercare "%1$s" in cubrid_hosts.conf.
-1360 Si è verificato un errore durante l'utilizzo dell'host definito dall'utente.
 
-1361 Il file "%1$s" non è stato trovato.
+1360 Il file "%1$s" non è stato trovato.
 
-1362 Ultimo errore
+1361 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):
