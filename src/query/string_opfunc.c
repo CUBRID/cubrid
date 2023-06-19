@@ -9315,9 +9315,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	  *result_type = DB_TYPE_VARCHAR;
 	}
 
-      //intl_char_size ((unsigned char *) s1, s1_logical_length, codeset, &s1_size);
-      //intl_char_size ((unsigned char *) s2, s2_logical_length, codeset, &s2_size);
-
       if (s1_size == 0)
 	{
 	  s1_size = s1_logical_length;
@@ -9361,7 +9358,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	      *data_status = DATA_STATUS_TRUNCATED;
 	    }
 	}
-      //intl_char_size ((unsigned char *) s1, copy_length, codeset, &copy_size);
 
       pad1_length = MIN (s1_logical_length, *result_length) - copy_length;
       length_left = *result_length - copy_length - pad1_length;
@@ -9381,7 +9377,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	      *data_status = DATA_STATUS_TRUNCATED;
 	    }
 	}
-      //intl_char_size ((unsigned char *) s2, cat_length, codeset, &cat_size);
 
       pad2_length = length_left - cat_length;
 
@@ -9395,7 +9390,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
       (void) qstr_pad_string ((unsigned char *) &cat_ptr[cat_size], pad2_length, codeset);
     }
 
-  //intl_char_size (*result, *result_length, codeset, result_size);
 
   return error_status;
 
