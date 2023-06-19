@@ -2360,8 +2360,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	      arg1 = arg1->info.expr.arg1;
 	    }
 
-	  if (op_type == PT_BETWEEN && arg1_arg1
-	      && (pt_is_attr (arg1) || pt_is_function_index_expr (parser, arg1, false)))
+	  if (op_type == PT_BETWEEN && arg1_arg1 && (pt_is_attr (arg1) || pt_is_function_index_expression (arg1)))
 	    {
 	      /* term in the form of '-attr between opd1 and opd2' convert to '-attr >= opd1 and -attr <= opd2' */
 
@@ -2399,7 +2398,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	  /* add sargable attribute to attr_list */
 	  if (arg1 && arg2 && pt_converse_op (op_type) != 0)
 	    {
-	      if (pt_is_attr (arg1) || pt_is_function_index_expr (parser, arg1, false))
+	      if (pt_is_attr (arg1) || pt_is_function_index_expression (arg1))
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
@@ -2423,7 +2422,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		    }
 		}
 
-	      if (pt_is_attr (arg2) || pt_is_function_index_expr (parser, arg2, false))
+	      if (pt_is_attr (arg2) || pt_is_function_index_expression (arg2))
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
@@ -2512,7 +2511,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		    }
 		}
 	      else if (op_type != 0 && arg1_arg1
-		       && ((pt_is_attr (arg1_arg1) || pt_is_function_index_expr (parser, arg1_arg1, false))
+		       && ((pt_is_attr (arg1_arg1) || pt_is_function_index_expression (arg1_arg1))
 			   || (pt_is_expr_node (arg1_arg1) && arg1_arg1->info.expr.op == PT_UNARY_MINUS))
 		       && pt_is_const (arg2))
 		{
@@ -2538,10 +2537,8 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		    }
 		}
 	      else if (op_type != 0 && arg2_arg1
-		       &&
-		       ((pt_is_attr (arg2_arg1)
-			 || pt_is_function_index_expr (parser, arg2_arg1, false))
-			|| (pt_is_expr_node (arg2_arg1) && arg2_arg1->info.expr.op == PT_UNARY_MINUS))
+		       && ((pt_is_attr (arg2_arg1) || pt_is_function_index_expression (arg2_arg1))
+			   || (pt_is_expr_node (arg2_arg1) && arg2_arg1->info.expr.op == PT_UNARY_MINUS))
 		       && pt_is_const (arg1))
 		{
 		  /* arg2 was with prior, make the modifications in prior and move the prior to
@@ -2614,10 +2611,9 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	    }
 	  /* sargable term, where 'op_type' is one of '=', '<' '<=', '>', or '>=' */
 	  else if (arg1 && arg2 && (op_type = pt_converse_op (op_type)) != 0
-		   && (pt_is_attr (arg2) || pt_is_function_index_expr (parser, arg2, false)))
+		   && (pt_is_attr (arg2) || pt_is_function_index_expression (arg2)))
 	    {
-
-	      if (pt_is_attr (arg1) || pt_is_function_index_expr (parser, arg1, false))
+	      if (pt_is_attr (arg1) || pt_is_function_index_expression (arg1))
 		{
 		  /* term in the form of 'attr op attr' */
 
@@ -2880,7 +2876,7 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
       arg2 = arg2->info.expr.arg1;
     }
   find_const = pt_is_const_expr_node (arg2);
-  find_attr = (pt_is_attr (start->info.expr.arg2) || pt_is_function_index_expr (parser, arg_prior, false));
+  find_attr = (pt_is_attr (start->info.expr.arg2) || pt_is_function_index_expression (start->info.expr.arg2));
 
   arg_prior_start = start->info.expr.arg1;	/* original value */
   if (arg_prior_start->info.expr.op == PT_PRIOR)
@@ -2906,7 +2902,7 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
 
       if (node->info.expr.op == op_type1 || node->info.expr.op == op_type2)
 	{
-	  if (find_const && (pt_is_attr (arg_prior) || pt_is_function_index_expr (parser, arg_prior, false))
+	  if (find_const && (pt_is_attr (arg_prior) || pt_is_function_index_expression (arg_prior))
 	      && (pt_check_path_eq (parser, arg_prior_start, arg_prior) == 0))
 	    {
 	      /* skip out unary minus expr */
@@ -2921,8 +2917,8 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
 		  break;
 		}
 	    }
-	  if (find_attr && (pt_is_attr (arg_prior) || pt_is_function_index_expr (parser, arg_prior, false))
-	      && (pt_is_attr (node->info.expr.arg2) || pt_is_function_index_expr (parser, arg_prior, false))
+	  if (find_attr && (pt_is_attr (arg_prior) || pt_is_function_index_expression (arg_prior))
+	      && (pt_is_attr (node->info.expr.arg2) || pt_is_function_index_expression (node->info.expr.arg2))
 	      && (pt_check_path_eq (parser, arg_prior_start, node->info.expr.arg1) == 0)
 	      && (pt_check_class_eq (parser, start->info.expr.arg2, node->info.expr.arg2) == 0))
 	    {
@@ -2951,7 +2947,7 @@ qo_search_comp_pair_term (PARSER_CONTEXT * parser, PT_NODE * start)
 static void
 qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 {
-  PT_NODE *node, *pair, *lower, *upper, *prev, *next, *arg2;
+  PT_NODE *node, *pair, *lower, *upper, *prev, *next, *arg1, *arg2;
   int location;
   DB_VALUE *lower_val, *upper_val;
   DB_VALUE_COMPARE_RESULT cmp;
@@ -2959,14 +2955,17 @@ qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   /* traverse CNF list */
   for (node = *wherep; node; node = node->next)
     {
-      if (node->node_type != PT_EXPR
-	  || (!(pt_is_attr (node->info.expr.arg1) || pt_is_function_index_expr (parser, node->info.expr.arg1, false))
-	      && (!PT_IS_EXPR_WITH_PRIOR_ARG (node)
-		  || !(pt_is_attr (node->info.expr.arg1->info.expr.arg1)
-		       || pt_is_function_index_expr (parser, node->info.expr.arg1->info.expr.arg1, false))))
-	  || node->or_next != NULL)
+      if (node->node_type != PT_EXPR || node->or_next != NULL)
 	{
-	  /* neither expression node, LHS is attribute, nor one predicate term */
+	  /* neither expression node nor one predicate term */
+	  continue;
+	}
+
+      arg1 = pt_get_first_arg_ignore_prior (node);
+
+      if (!pt_is_attr (arg1) && !pt_is_function_index_expression (arg1))
+	{
+	  /* LHS is not an attribute */
 	  continue;
 	}
 
@@ -5387,7 +5386,7 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       /* if node had prior check that sibling also contains prior and vice-versa */
 
-      if (!(pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
+      if (!pt_is_attr (sibling_prior) && !pt_is_function_index_expression (sibling_prior)
 	  && !pt_is_instnum (sibling_prior))
 	{
 	  /* LHS is not an attribute */
@@ -5401,11 +5400,18 @@ qo_convert_to_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  continue;
 	}
 
-      if (!(pt_is_attr (node_prior) || pt_is_function_index_expr (parser, node_prior, false))
-	  || !(pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
-	  || pt_check_path_eq (parser, node_prior, sibling_prior))
+      if ((pt_is_attr (node_prior) || pt_is_function_index_expression (node_prior))
+	  && (pt_is_attr (sibling_prior) || pt_is_function_index_expression (sibling_prior))
+	  && pt_check_path_eq (parser, node_prior, sibling_prior))
 	{
 	  /* pt_check_path_eq() return non-zero if two are different */
+	  prev = prev->or_next;
+	  continue;
+	}
+
+      if ((pt_is_instnum (node_prior) && !pt_is_instnum (sibling_prior))
+	  || (!pt_is_instnum (node_prior) && pt_is_instnum (sibling_prior)))
+	{
 	  prev = prev->or_next;
 	  continue;
 	}
@@ -6120,7 +6126,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      func_arg = arg1_prior->info.function.arg_list;
 	      for ( /* none */ ; func_arg; func_arg = func_arg->next)
 		{
-		  if (!(pt_is_attr (func_arg) || pt_is_function_index_expression (func_arg)) && !pt_is_const (func_arg))
+		  if (!pt_is_attr (func_arg) && !pt_is_function_index_expression (func_arg) && !pt_is_const (func_arg))
 		    {
 		      is_attr = false;
 		      break;
@@ -6138,7 +6144,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 	  else
 	    {
-	      is_attr = (pt_is_attr (arg1_prior) || pt_is_function_index_expr (parser, arg1_prior, false));
+	      is_attr = (pt_is_attr (arg1_prior) || pt_is_function_index_expression (arg1_prior));
 	    }
 
 	  if (!is_attr && !pt_is_instnum (arg1_prior))
@@ -6618,13 +6624,10 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
       arg1_prior = pt_get_first_arg_ignore_prior (node);
 
-      if (!(pt_is_attr (arg1_prior) || pt_is_function_index_expr (parser, arg1_prior, false))
-	  && !pt_is_instnum (arg1_prior))
+      if (!pt_is_attr (arg1_prior) && !pt_is_function_index_expression (arg1_prior) && !pt_is_instnum (arg1_prior))
 	{
 	  /* LHS is not an attribute */
-
 	  node_prev = node_prev ? node_prev->next : *wherep;
-
 	  continue;
 	}
 
@@ -6701,7 +6704,7 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 	  /* if node had prior check that sibling also contains prior and vice-versa */
 
-	  if (!(pt_is_attr (sibling_prior) || pt_is_function_index_expr (parser, sibling_prior, false))
+	  if (!pt_is_attr (sibling_prior) && !pt_is_function_index_expression (sibling_prior)
 	      && !pt_is_instnum (sibling_prior))
 	    {
 	      /* LHS is not an attribute */
@@ -6721,11 +6724,18 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      continue;
 	    }
 
-	  /* Omit the checks for `pt_is_attr`, `pt_is_function_index_expr`, and `!pt_is_instnum`.
-	   * I think it has already been checked above. */
-	  if (pt_check_path_eq (parser, arg1_prior, sibling_prior))
+	  if ((pt_is_attr (arg1_prior) || pt_is_function_index_expression (arg1_prior))
+	      && (pt_is_attr (sibling_prior) || pt_is_function_index_expression (sibling_prior))
+	      && pt_check_path_eq (parser, arg1_prior, sibling_prior))
 	    {
 	      /* pt_check_path_eq() return non-zero if two are different */
+	      sibling_prev = sibling_prev->next;
+	      continue;
+	    }
+
+	  if ((pt_is_instnum (arg1_prior) && !pt_is_instnum (sibling_prior))
+	      || (!pt_is_instnum (arg1_prior) && pt_is_instnum (sibling_prior)))
+	    {
 	      sibling_prev = sibling_prev->next;
 	      continue;
 	    }
