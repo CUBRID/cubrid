@@ -108,6 +108,9 @@ namespace cubcomm
     : public cubpacking::packable_object
   {
     public:
+      using payload_t = T_PAYLOAD;
+
+    public:
       sequenced_payload () = default;
       sequenced_payload (response_sequence_number a_rsn, T_PAYLOAD &&a_payload);
       sequenced_payload (sequenced_payload &&other);
@@ -362,7 +365,6 @@ namespace cubcomm
   T_PAYLOAD
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::sequenced_payload::pull_payload ()
   {
-    // TODO: move returning is an anti-pattern of move-semantics and should be fixed
     return std::move (m_user_payload);
   }
 
