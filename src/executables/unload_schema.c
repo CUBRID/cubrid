@@ -29,7 +29,9 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
-#if !defined (WINDOWS)
+#if defined (WINDOWS)
+#include <io.h>
+#else
 #include <unistd.h>
 #endif
 #include <sys/types.h>
@@ -4532,14 +4534,25 @@ extract_user (extract_context & ctxt)
 
   /* error is row count if not negative. */
   err = au_export_users (ctxt, output_ctx);
-  if (err >= NO_ERROR)
-    {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
-    }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no user to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
@@ -4553,6 +4566,7 @@ extract_serial (extract_context & ctxt)
   FILE *output_file = NULL;
   char output_filename[PATH_MAX * 2] = { '\0' };
   char output_schema_info[PATH_MAX * 2] = { '\0' };
+  int err = NO_ERROR;
 
   if (required_class_only == true)
     {
@@ -4583,7 +4597,8 @@ extract_serial (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  if (export_serial (ctxt, output_ctx) != NO_ERROR)
+  err = export_serial (ctxt, output_ctx);
+  if (err != NO_ERROR)
     {
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
@@ -4592,11 +4607,24 @@ extract_serial (extract_context & ctxt)
 	}
     }
 
-  output_ctx ("\n");
-  output_ctx ("COMMIT WORK;\n");
+  fflush (output_file);
 
-  if (output_file != NULL)
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no serial to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
@@ -4610,6 +4638,7 @@ extract_synonym (extract_context & ctxt)
   FILE *output_file = NULL;
   char output_filename[PATH_MAX * 2] = { '\0' };
   char output_schema_info[PATH_MAX * 2] = { '\0' };
+  int err = NO_ERROR;
 
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, SYNONYM_SUFFIX, output_filename,
@@ -4644,11 +4673,24 @@ extract_synonym (extract_context & ctxt)
 	}
     }
 
-  output_ctx ("\n");
-  output_ctx ("COMMIT WORK;\n");
+  fflush (output_file);
 
-  if (output_file != NULL)
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no synonym to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
@@ -4689,14 +4731,24 @@ extract_procedure (extract_context & ctxt)
   file_print_output output_ctx (output_file);
 
   err = emit_stored_procedure (ctxt, output_ctx);
-  if (err == NO_ERROR)
-    {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
-    }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no procedure to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
       fclose (output_file);
       output_file = NULL;
     }
@@ -4737,14 +4789,24 @@ extract_server (extract_context & ctxt)
   file_print_output output_ctx (output_file);
 
   err = export_server (ctxt, output_ctx);
-  if (err == NO_ERROR)
-    {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
-    }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no server to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
       fclose (output_file);
       output_file = NULL;
     }
@@ -4793,6 +4855,7 @@ extract_class (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
 	      return ER_FAILED;
 	    }
 	}
@@ -4802,24 +4865,35 @@ extract_class (extract_context & ctxt)
   if (er_errid () == ER_FAILED)
     {
       err = ER_FAILED;
-      goto err_class;
+      goto end_class;
     }
 
   emit_class_query_spec (ctxt, output_ctx, EXTRACT_CLASS);
-  if (er_errid () == NO_ERROR)
+  if (er_errid () == ER_FAILED)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      err = ER_FAILED;
+      goto end_class;
+    }
+
+end_class:
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      /* file is empty (database has no query spec to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
     }
   else
     {
-      err = ER_FAILED;
-      goto err_class;
-    }
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
 
-err_class:
-  if (output_file != NULL)
-    {
       fclose (output_file);
       output_file = NULL;
     }
@@ -4868,24 +4942,33 @@ extract_vclass (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
 	      return ER_FAILED;
 	    }
 	}
     }
 
   emit_schema (ctxt, output_ctx, EXTRACT_VCLASS);
-  if (er_errid () == NO_ERROR)
+  err = (er_errid () == NO_ERROR) ? ER_FAILED : NO_ERROR;
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      /* file is empty (database has no vclass to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
     }
   else
     {
-      err = ER_FAILED;
-    }
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
 
-  if (output_file != NULL)
-    {
       fclose (output_file);
       output_file = NULL;
     }
@@ -4934,24 +5017,33 @@ extract_vclass_query_spec (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
 	      return ER_FAILED;
 	    }
 	}
     }
 
   emit_class_query_spec (ctxt, output_ctx, EXTRACT_VCLASS);
-  if (er_errid () == NO_ERROR)
+  err = (er_errid () == NO_ERROR) ? NO_ERROR : ER_FAILED;
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      /* file is empty (database has no query spec to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
     }
   else
     {
-      err = ER_FAILED;
-    }
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
 
-  if (output_file != NULL)
-    {
       fclose (output_file);
       output_file = NULL;
     }
@@ -4998,24 +5090,32 @@ extract_pk (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
 	      return ER_FAILED;
 	    }
 	}
     }
 
   emit_primary_key (ctxt, output_ctx, ctxt.classes);
-  if (er_errid () == NO_ERROR)
+  err = (er_errid () == NO_ERROR) ? NO_ERROR : ER_FAILED;
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
+      /* file is empty (database has no pk to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
     }
   else
     {
-      err = ER_FAILED;
-    }
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
 
-  if (output_file != NULL)
-    {
       fclose (output_file);
       output_file = NULL;
     }
@@ -5062,20 +5162,32 @@ extract_fk (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
 	      return ER_FAILED;
 	    }
 	}
     }
 
   err = emit_foreign_key (ctxt, output_ctx, ctxt.classes);
-  if (err == NO_ERROR)
-    {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
-    }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no fk to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
@@ -5124,20 +5236,32 @@ extract_grant (extract_context & ctxt)
 	    {
 	      fclose (output_file);
 	      output_file = NULL;
+	      remove (output_filename);
 	      return ER_FAILED;
 	    }
 	}
     }
 
   err = emit_grant (ctxt, output_ctx, ctxt.classes);
-  if (err == NO_ERROR)
-    {
-      output_ctx ("\n");
-      output_ctx ("COMMIT WORK;\n");
-    }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
     {
+      /* file is empty (database has no grant to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+
       fclose (output_file);
       output_file = NULL;
     }
@@ -5425,13 +5549,24 @@ create_schema_info (extract_context & ctxt)
 	{
 	  if (strcmp (order_str, ctxt.schema_file_list[j].c_str ()) == 0)
 	    {
-	      output_ctx ("%s\n", ctxt.schema_file_list[j].c_str ());
-	      break;
+	      if (access (ctxt.schema_file_list[j].c_str (), F_OK) != -1)
+		{
+		  output_ctx ("%s\n", ctxt.schema_file_list[j].c_str ());
+		  break;
+		}
 	    }
 	}
     }
 
-  if (output_file != NULL)
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
     {
       fclose (output_file);
       output_file = NULL;
