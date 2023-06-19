@@ -1012,6 +1012,13 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
 					? 1 : DB_IS_NULL (value));
   value->domain.char_info.collation_id = collation_id;
   value->need_clear = false;
+  /*
+  * Implemented it in a way that fills in the length value
+  * during the operation of obtaining the length later, to avoid 
+  * the significant overhead of intl_char_length for each db_make_db_char, 
+  * if we directly calculate and insert the length value.
+  */
+  value->data.ch.medium.length = -1;
 
   return NO_ERROR;
 }
@@ -1651,7 +1658,7 @@ db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR st
     {
       error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, char_str_byte_size);
     }
-
+  value->data.ch.medium.length = -1;
   return error;
 }
 
