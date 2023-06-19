@@ -1013,11 +1013,11 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->domain.char_info.collation_id = collation_id;
   value->need_clear = false;
   /*
-  * Implemented it in a way that fills in the length value
-  * during the operation of obtaining the length later, to avoid 
-  * the significant overhead of intl_char_length for each db_make_db_char, 
-  * if we directly calculate and insert the length value.
-  */
+   * Implemented it in a way that fills in the length value
+   * during the operation of obtaining the length later, to avoid 
+   * the significant overhead of intl_char_length for each db_make_db_char, 
+   * if we directly calculate and insert the length value.
+   */
   value->data.ch.medium.length = -1;
 
   return NO_ERROR;
