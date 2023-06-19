@@ -1010,6 +1010,7 @@ extern "C"
       const char *buf;
       int compressed_size;
       char *compressed_buf;
+      int length;
     } medium;
     struct
     {

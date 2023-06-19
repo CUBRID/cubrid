@@ -2181,7 +2181,9 @@ pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
 		   * destination domain.  No need to do it twice.
 		   * Make sure the COPY flag is set in the setval call.
 		   */
+      int length = src->data.ch.medium.length;
 		  type->setval (dest, src, true);
+      dest->data.ch.medium.length = length;
 		}
 	      else
 		{
