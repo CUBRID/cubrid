@@ -1658,7 +1658,7 @@ db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR st
     {
       error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, char_str_byte_size);
     }
-  value->data.ch.medium.length = -1;
+
   return error;
 }
 
