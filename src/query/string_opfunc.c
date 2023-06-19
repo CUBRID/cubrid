@@ -196,9 +196,10 @@ static int qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_T
 			int s2_length, int s2_precision, DB_TYPE s2_type, INTL_CODESET codeset, int *result_length,
 			int *result_size, DB_DATA_STATUS * data_status);
 #endif
-static int qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size, int s1_precision, DB_TYPE s1_type, const unsigned char *s2,
-		  int s2_length, int s2_size, int s2_precision, DB_TYPE s2_type, INTL_CODESET codeset, unsigned char **result,
-		  int *result_length, int *result_size, DB_TYPE * result_type, DB_DATA_STATUS * data_status);
+static int qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size, int s1_precision, DB_TYPE s1_type,
+			     const unsigned char *s2, int s2_length, int s2_size, int s2_precision, DB_TYPE s2_type,
+			     INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
+			     DB_TYPE * result_type, DB_DATA_STATUS * data_status);
 static int qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type,
 				 const unsigned char *s2, int s2_length, int s2_precision, DB_TYPE s2_type,
 				 unsigned char **result, int *result_length, int *result_size, DB_TYPE * result_type,
@@ -1210,12 +1211,12 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 		  string2 = &temp;
 		}
 	    }
-    ///////////////////ilhan
-    error_status = qstr_concatenate(DB_GET_UCHAR (string1), (int) db_get_string_length ((DB_VALUE *)string1),
-             (int) db_get_string_size (string1),
+
+	  error_status = qstr_concatenate (DB_GET_UCHAR (string1), (int) db_get_string_length ((DB_VALUE *) string1),
+					   (int) db_get_string_size (string1),
 					   (int) QSTR_VALUE_PRECISION (string1), DB_VALUE_DOMAIN_TYPE (string1),
-					   DB_GET_UCHAR (string2), (int) db_get_string_length ((DB_VALUE *)string2),
-             (int) db_get_string_size(string2),
+					   DB_GET_UCHAR (string2), (int) db_get_string_length ((DB_VALUE *) string2),
+					   (int) db_get_string_size (string2),
 					   (int) QSTR_VALUE_PRECISION (string2), DB_VALUE_DOMAIN_TYPE (string2),
 					   codeset, &r, &r_length, &r_size, &r_type, data_status);
 
@@ -1242,7 +1243,7 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 
 	      qstr_make_typed_string (r_type, result, result_domain_length, (char *) r, r_size, codeset, common_coll);
 	      r[r_size] = 0;
-        result->data.ch.medium.length = r_length;
+	      result->data.ch.medium.length = r_length;
 	      result->need_clear = true;
 	    }
 	}
@@ -8074,20 +8075,21 @@ db_get_string_length (const DB_VALUE * value)
       break;
     }
 #endif
-  
+
   str = value->data.ch.medium.buf;
   length = size = value->data.ch.medium.size;
   codeset = (INTL_CODESET) value->data.ch.medium.codeset;
-  DB_VALUE* p = (DB_VALUE*) value;
+  DB_VALUE *p = (DB_VALUE *) value;
 
-  if(p->data.ch.medium.length!=-1){
-    return p->data.ch.medium.length;
-  }
+  if (p->data.ch.medium.length != -1)
+    {
+      return p->data.ch.medium.length;
+    }
   if (value->domain.general_info.type != DB_TYPE_BIT && value->domain.general_info.type != DB_TYPE_VARBIT)
     {
       intl_char_count ((unsigned char *) str, size, codeset, &length);
     }
-  p->data.ch.medium.length=length;
+  p->data.ch.medium.length = length;
   return length;
 }
 
@@ -9131,15 +9133,17 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
 }
 #endif
 /*
- * qstr_concatenate () - ilhan
+ * qstr_concatenate ()
  *
  * Arguments:
  *             s1: (IN)  First string pointer.
  *      s1_length: (IN)  Character length of <s1>.
+ *        s1_size: (IN)  Byte size of <s1>.
  *   s1_precision: (IN)  Max character length of <s1>.
  *        s1_type: (IN)  Domain type of <s1>.
  *             s2: (IN)  Second string pointer.
  *      s2_length: (IN)  Character length of <s2>.
+ *        s2_size: (IN)  Byte size of <s2>.
  *   s2_precision: (IN)  Max character length of <s2>.
  *        s2_type: (IN)  Domain type of <s2>.
  *        codeset: (IN)  international codeset.
@@ -9155,9 +9159,10 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
  */
 
 static int
-qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_precision, DB_TYPE s1_type, const unsigned char *s2,
-		  int s2_length, int s2_size_, int s2_precision, DB_TYPE s2_type, INTL_CODESET codeset, unsigned char **result,
-		  int *result_length, int *result_size, DB_TYPE * result_type, DB_DATA_STATUS * data_status)
+qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_precision, DB_TYPE s1_type,
+		  const unsigned char *s2, int s2_length, int s2_size_, int s2_precision, DB_TYPE s2_type,
+		  INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
+		  DB_TYPE * result_type, DB_DATA_STATUS * data_status)
 {
   int copy_length, copy_size;
   int pad1_length, pad2_length;
@@ -9169,8 +9174,8 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 
   *data_status = DATA_STATUS_OK;
 
-  s1_size=s1_size_;
-  s2_size=s2_size_;
+  s1_size = s1_size_;
+  s2_size = s2_size_;
 
   /*
    *  Categorize the source string into fixed and variable
@@ -9344,10 +9349,12 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
        *  copied contained anything but pad characters, then raise
        *  a truncation exception.
        */
-      copy_length = s1_length; copy_size = s1_size;
+      copy_length = s1_length;
+      copy_size = s1_size;
       if (copy_length > *result_length)
 	{
-	  copy_length = *result_length; copy_size = *result_size;
+	  copy_length = *result_length;
+	  copy_size = *result_size;
 
 	  if (varchar_truncated ((unsigned char *) s1, s1_type, s1_length, copy_length, codeset))
 	    {
@@ -9362,10 +9369,12 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
       /*
        *  Processess string2 as we did for string1.
        */
-      cat_length = s2_length; cat_size = s2_size;
+      cat_length = s2_length;
+      cat_size = s2_size;
       if (cat_length > (*result_length - copy_length))
 	{
-	  cat_length = *result_length - copy_length; cat_size = *result_size - copy_size;
+	  cat_length = *result_length - copy_length;
+	  cat_size = *result_size - copy_size;
 
 	  if (varchar_truncated ((unsigned char *) s2, s2_type, s2_length, cat_length, codeset))
 	    {
