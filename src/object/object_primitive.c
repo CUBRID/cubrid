@@ -11315,7 +11315,6 @@ static void
 mr_initval_char (DB_VALUE * value, int precision, int scale)
 {
   DB_DOMAIN_INIT_CHAR (value, precision);
-  value->data.ch.medium.length = -1;
 }
 
 static int
@@ -12176,7 +12175,6 @@ static void
 mr_initval_nchar (DB_VALUE * value, int precision, int scale)
 {
   db_value_domain_init (value, DB_TYPE_NCHAR, precision, scale);
-  value->data.ch.medium.length = -1;
 }
 
 static int
@@ -13076,7 +13074,6 @@ mr_initval_varnchar (DB_VALUE * value, int precision, int scale)
 {
   db_make_varnchar (value, precision, NULL, 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
   value->need_clear = false;
-  value->data.ch.medium.length = -1;
 }
 
 static int
