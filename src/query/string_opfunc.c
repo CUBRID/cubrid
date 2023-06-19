@@ -8027,7 +8027,7 @@ qstr_bit_to_hex_coerce (char *buffer, int buffer_size, const char *src, int src_
 }
 
 /*
- * db_get_string_length ilhan
+ * db_get_string_length -
  *
  * Arguments:
  *        value: Value  container
@@ -9133,7 +9133,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
 }
 #endif
 /*
- * qstr_concatenate ()
+ * qstr_concatenate () -
  *
  * Arguments:
  *             s1: (IN)  First string pointer.
@@ -9224,9 +9224,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	  *result_length = QSTR_MAX_PRECISION (s1_type);
 	  *data_status = DATA_STATUS_TRUNCATED;
 	}
-
-      //intl_char_size ((unsigned char *) s1, s1_logical_length, codeset, &s1_size);
-      //intl_char_size ((unsigned char *) s2, s2_logical_length, codeset, &s2_size);
 
       if (s1_size == 0)
 	{
