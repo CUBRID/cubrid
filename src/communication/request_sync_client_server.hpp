@@ -243,8 +243,8 @@ namespace cubcomm
 
     // NOTE: if needed, errors can be handled
     m_queue->push (a_outgoing_message_id,
-                   sequenced_payload { NO_RESPONSE_SEQUENCE_NUMBER, std::move (a_payload) },
-                   nullptr);
+		   sequenced_payload { NO_RESPONSE_SEQUENCE_NUMBER, std::move (a_payload) },
+		   nullptr);
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
