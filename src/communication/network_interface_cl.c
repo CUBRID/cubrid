@@ -5741,7 +5741,9 @@ stats_update_all_statistics (int with_fullscan)
   char *reply;
   char *ptr;
   CLASS_ATTR_NDV class_attr_ndv;
-  const char *query = "SELECT class_name FROM db_class";
+  const char *query = "select c.unique_name from _db_class as c where c.class_type = 0 and [partition] is null "
+    "union "
+    "select c.unique_name from _db_class as c, TABLE(c.partition) as g(x) where c.class_type = 0 and x.pname is null;";
   DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE class_name_val;
