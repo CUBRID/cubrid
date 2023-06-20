@@ -446,7 +446,7 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
   assert (m_state == state::OPEN);
 
-  /* TODO: During CONNECTING, some initalizing jobs will be done such as the catch-up process of the PS */
+  /* TODO: While CONNECTING, some initalizing jobs will be done such as the catch-up process of the PS */
   m_state = state::CONNECTING;
 
   auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
@@ -464,7 +464,7 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
 tran_server::connection_handler::~connection_handler ()
 {
-  wait_async_disconnection (); // join the async disconneciton jobs if exists
+  wait_async_disconnection (); // join the async disconneciton job if exists
 }
 
 void
@@ -558,7 +558,7 @@ tran_server::connection_handler::push_request (tran_to_page_request reqid, std::
 
   // state::CONNECTED guarantees that the internal m_node is not nullptr.
   auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-  assert (m_conn != nullptr);
+  assert (m_conn != nullptr); // because m_conn is set with both m_state_mtx and m_conn_mtx locked.
   slock_state.unlock ();
 
   push_request_internal (reqid, std::move (payload));
@@ -595,7 +595,7 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
 
   // state::CONNECTED guarantees that the internal m_node is not nullptr.
   auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-  assert (m_conn != nullptr);
+  assert (m_conn != nullptr); // because m_conn is set with both m_state_mtx and m_conn_mtx locked.
   slock_state.unlock (); // to allow stop_response_broker() when disconnecting
 
   return send_receive_internal (reqid, std::move (payload_in), payload_out);

@@ -134,7 +134,7 @@ class tran_server
 
       private:
 	/*
-	 * The internal state of connection_handler. A connection_handler must be one of those states.
+	 * The internal state of connection_handler. A connection_handler must be in one of those states.
 	 * And it's transitioned sequentially: OPEN -> CONNECTING -> CONNECTED -> DISCONNECTED -> OPEN
 	 *
 	 * The allow operations for each state are:
@@ -148,7 +148,7 @@ class tran_server
 	 * | DISCONNECTING | X            | O           | X            | △          | X          |
 	 * +---------------+--------------+-------------+--------------+------------+------------+
 	 *
-	 * m_state and m_conn is coupled and mutexes for them are locked carefully to provide above operations.
+	 * m_state and m_conn is coupled and mutexes for them are managed carefully to provide above rules.
 	 */
 	enum class state
 	{
