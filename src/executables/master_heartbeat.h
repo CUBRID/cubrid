@@ -207,6 +207,8 @@ struct hb_node_entry
   HB_NODE_STATE_TYPE state;
   short score;
   short heartbeat_gap;
+  bool has_transaction_server;
+  bool has_page_server;
 
   struct timeval last_recv_hbtime;	/* last received heartbeat time */
 };
