@@ -66,13 +66,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         return null;
     }
 
-    /* TODO: restore
-    @Override
-    public TypeSpec visitTypeSpecNumeric(TypeSpecNumeric node) {
-        return null; // nothing to do
-    }
-     */
-
     @Override
     public TypeSpec visitTypeSpecPercent(TypeSpecPercent node) {
         assert node.resolvedType != null;
@@ -530,14 +523,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         return TypeSpecSimple.BOOLEAN;
     }
-
-    /* TODO: restore later
-    @Override
-    public TypeSpec visitExprList(ExprList node) {
-        visitNodeList(node.elems);
-        return TypeSpecSimple.LIST;
-    }
-     */
 
     @Override
     public TypeSpec visitExprLocalFuncCall(ExprLocalFuncCall node) {

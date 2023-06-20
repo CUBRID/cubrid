@@ -86,5 +86,7 @@ public class ExHandler extends AstNode {
     // --------------------------------------------------
 
     private static final String tmpl =
-            Misc.combineLines(" catch (%'EXCEPTIONS'% e%'DEPTH'%) {", "  %'STATEMENTS'%", "}");
+            Misc.combineLines(
+                "catch (%'EXCEPTIONS'% e%'DEPTH'%) {",
+                "  %'STATEMENTS'%", "}");
 }

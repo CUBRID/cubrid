@@ -174,8 +174,6 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitExName(ExName node);
 
-    // public abstract R visitTypeSpecNumeric(TypeSpecNumeric node); // TODO: restore
-
     public abstract R visitTypeSpecPercent(TypeSpecPercent node);
 
     public abstract R visitTypeSpecSimple(TypeSpecSimple node);

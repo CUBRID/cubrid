@@ -90,9 +90,9 @@ public class Misc {
         return peelId(s.toUpperCase());
     }
 
-    public static void printIndent(PrintStream out, int indents) {
+    public static void printIndent(PrintStream out, int indentLevel) {
 
-        for (int i = 0; i < indents; i++) {
+        for (int i = 0; i < indentLevel; i++) {
             out.print(INDENT);
         }
     }
@@ -101,20 +101,21 @@ public class Misc {
         return String.join("\n", lines);
     }
 
-    public static String indentLines(String lines, int indents) {
-        return indentLines(lines, indents, false);
+    public static String indentLines(String lines, int indentLevel) {
+        return indentLines(lines, indentLevel, false);
     }
 
-    public static String indentLines(String lines, int indents, boolean skipFirstLine) {
+    public static String indentLines(String lines, int indentLevel, boolean skipFirstLine) {
 
         assert lines != null;
-        assert indents >= 0;
+        assert indentLevel >= 0;
 
-        if (indents == 0) {
+        if (indentLevel == 0) {
             return lines;
         }
 
         String[] split = lines.split("\n");
+        String indent = getIndent(indentLevel);
         for (int i = 0; i < split.length; i++) {
 
             if (skipFirstLine && i == 0) {
@@ -122,7 +123,7 @@ public class Misc {
             }
 
             if (split[i].length() > 0) {
-                split[i] = getIndents(indents) + split[i];
+                split[i] = indent + split[i];
             }
         }
 
@@ -154,6 +155,15 @@ public class Misc {
         return id;
     }
 
+    public static String getIndent(int indentLevel) {
+        StringBuffer sbuf = new StringBuffer();
+        for (int i = 0; i < indentLevel; i++) {
+            sbuf.append(INDENT);
+        }
+
+        return sbuf.toString();
+    }
+
     // ----------------------------------------------
     // Private
     // ----------------------------------------------
@@ -161,13 +171,4 @@ public class Misc {
     private static final String INDENT = "  "; // two spaces
 
     private static final int[] UNKNOWN_LINE_COLUMN = new int[] {0, 0};
-
-    private static String getIndents(int indents) {
-        StringBuffer sbuf = new StringBuffer();
-        for (int i = 0; i < indents; i++) {
-            sbuf.append(INDENT);
-        }
-
-        return sbuf.toString();
-    }
 }
