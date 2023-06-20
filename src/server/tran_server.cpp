@@ -443,12 +443,11 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
 
-  if (m_disconn_future.valid ())
-    {
-      // Ensure there is only one connecction for each node, or multiple internal threads will access the connection_handler.
-      er_log_debug (ARG_FILE_LINE, "set_connection(): waiting until the previous conn is closed.");
-      m_disconn_future.get ();
-    }
+  auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
+  assert (m_state == state::OPEN);
+
+  /* TODO: During CONNECTING, some initalizing jobs will be done such as the catch-up process of the PS */
+  m_state = state::CONNECTING;
 
   auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
 
@@ -459,6 +458,8 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
   assert (m_conn != nullptr);
   m_conn->start ();
+
+  m_state = state::CONNECTED;
 }
 
 tran_server::connection_handler::~connection_handler ()
@@ -469,16 +470,22 @@ tran_server::connection_handler::~connection_handler ()
 void
 tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 {
-  auto lockg = std::lock_guard <std::mutex> { m_disconn_mtx };
+  auto lockg = std::lock_guard <std::shared_mutex> { m_state_mtx };
 
-  if (m_disconn_future.valid ())
+  assert (m_state != state::CONNECTING);
+
+  if (m_state != state::CONNECTED)
     {
-      return; // already done by other
+      return; // already disconnected by other
     }
 
-  // 잠깐.. 이때 누가 이미 get 해갔으면, valid()는 false 인데 m_conn은 나간거 아냐?
+  m_state = state::DISCONNECTING;
+
   m_disconn_future = std::async (std::launch::async, [this, &with_disc_msg]
   {
+    auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
+    assert (m_state == state::DISCONNECTING);
+
     m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
     auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
     const std::string channel_id = get_channel_id ();
@@ -492,6 +499,8 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
     m_conn->stop_outgoing_communication_thread ();
     m_conn.reset (nullptr);
     er_log_debug (ARG_FILE_LINE, "Transaction server has been disconnected from the page server with channel id: %s.\n", channel_id.c_str ());
+
+    m_state = state::OPEN;
   });
 }
 
@@ -502,6 +511,9 @@ tran_server::connection_handler::wait_async_disconnection ()
     {
       m_disconn_future.get ();
     }
+
+  auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
+  assert (m_state == state::OPEN);
 }
 
 tran_server::connection_handler::request_handlers_map_t
@@ -526,34 +538,39 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
   disconnect_async (with_disconnect_msg);
 }
 
+void
+tran_server::connection_handler::push_request_internal (tran_to_page_request reqid, std::string &&payload)
+{
+  // make sure the m_conn is not nullptr;
+  m_conn->push (reqid, std::move (payload));
+}
+
 int
 tran_server::connection_handler::push_request (tran_to_page_request reqid, std::string &&payload)
 {
-  auto slock = std::shared_lock<std::shared_mutex> { m_conn_mtx };
+  auto slock_state = std::shared_lock<std::shared_mutex> { m_state_mtx };
 
-  if (!is_connected ())
+  if (m_state != state::CONNECTED)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
       return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
     }
 
-  m_conn->push (reqid, std::move (payload));
+  // state::CONNECTED guarantees that the internal m_node is not nullptr.
+  auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
+  assert (m_conn != nullptr);
+  slock_state.unlock ();
+
+  push_request_internal (reqid, std::move (payload));
 
   return NO_ERROR;
 }
 
 int
-tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
+tran_server::connection_handler::send_receive_internal (tran_to_page_request reqid, std::string &&payload_in,
     std::string &payload_out)
 {
-  auto slock = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-
-  if (!is_connected ())
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
-      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
-    }
-
+  // make sure the m_conn is not nullptr;
   const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
   if (error_code != NO_ERRORS)
     {
@@ -564,26 +581,46 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
   return NO_ERROR;
 }
 
+int
+tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
+    std::string &payload_out)
+{
+  auto slock_state = std::shared_lock<std::shared_mutex> { m_state_mtx };
+
+  if (m_state != state::CONNECTED)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
+  // state::CONNECTED guarantees that the internal m_node is not nullptr.
+  auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
+  assert (m_conn != nullptr);
+  slock_state.unlock (); // to allow stop_response_broker() when disconnecting
+
+  return send_receive_internal (reqid, std::move (payload_in), payload_out);
+}
+
 void
 tran_server::connection_handler::send_disconnect_request ()
 {
   const int payload = static_cast<int> (m_ts.m_conn_type);
   std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
-  m_conn->push (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (msg));
+  push_request_internal (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (msg));
   // After sending SEND_DISCONNECT_MSG, the page server may release all resources releated to this connection.
 }
 
 const std::string
 tran_server::connection_handler::get_channel_id () const
 {
-  assert (is_connected ());
+  // Make sure that m_conn is not nullptr
   return m_conn->get_underlying_channel_id ();
 }
 
 bool
 tran_server::connection_handler::is_connected () const
 {
-  return m_conn != nullptr;
+  return m_state == state::CONNECTED;
 }
 
 void

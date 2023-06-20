@@ -92,9 +92,18 @@ class tran_server
     class connection_handler
     {
       public:
+	enum class state
+	{
+	  OPEN,
+	  CONNECTING,
+	  CONNECTED,
+	  DISCONNECTING
+	};
+
 	using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
 	using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
 
+      public:
 	connection_handler () = delete;
 
 	connection_handler (const connection_handler &) = delete;
@@ -120,9 +129,13 @@ class tran_server
       protected:
 	connection_handler (tran_server &ts)
 	  : m_ts { ts }
+	  , m_state { state::OPEN }
 	{ }
 
 	virtual request_handlers_map_t get_request_handlers ();
+
+	void push_request_internal (tran_to_page_request reqid, std::string &&payload);
+	int send_receive_internal (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
 
       protected:
 	tran_server &m_ts;
@@ -136,7 +149,10 @@ class tran_server
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
 	std::shared_mutex m_conn_mtx;
-	std::mutex m_disconn_mtx;
+
+	state m_state;
+	std::shared_mutex m_state_mtx;
+
 	std::future<void> m_disconn_future; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
     };
 
