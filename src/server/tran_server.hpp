@@ -92,14 +92,6 @@ class tran_server
     class connection_handler
     {
       public:
-	enum class state
-	{
-	  OPEN,
-	  CONNECTING,
-	  CONNECTED,
-	  DISCONNECTING
-	};
-
 	using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
 	using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
 
@@ -139,6 +131,32 @@ class tran_server
 
       protected:
 	tran_server &m_ts;
+
+      private:
+	/*
+	 * The internal state of connection_handler. A connection_handler must be one of those states.
+	 * And it's transitioned sequentially: OPEN -> CONNECTING -> CONNECTED -> DISCONNECTED -> OPEN
+	 *
+	 * The allow operations for each state are:
+	 * +---------------+--------------+-------------+--------------+------------+------------+
+	 * |     state     | accept a new | request     | request      | m_conn     | main       |
+	 * |               | connection   | from inside | from outside | != nullptr | connection |
+	 * +---------------+--------------+-------------+--------------+------------+------------+
+	 * | OPEN          | O            | X           | X            | X          | X          |
+	 * | CONNECTING    | X            | O           | X            | △          | X          |
+	 * | CONNECTED     | X            | O           | O            | O          | O          |
+	 * | DISCONNECTING | X            | O           | X            | △          | X          |
+	 * +---------------+--------------+-------------+--------------+------------+------------+
+	 *
+	 * m_state and m_conn is coupled and mutexes for them are locked carefully to provide above operations.
+	 */
+	enum class state
+	{
+	  OPEN,
+	  CONNECTING,
+	  CONNECTED,
+	  DISCONNECTING
+	};
 
       private:
 	// Request handlers for requests in common
