@@ -26,6 +26,7 @@
 #include "log_impl.h"
 #include "page_server.hpp"
 #include "system_parameter.h"
+#include "tcp.h"
 
 #include <string>
 
@@ -39,6 +40,7 @@ SERVER_TYPE get_server_type_from_config (server_type_config parameter_value);
 transaction_server_type get_transaction_server_type_from_config (transaction_server_type_config parameter_value);
 void setup_tran_server_params_on_single_node_config ();
 int setup_tran_server_params_on_ha_mode ();
+bool is_localhost (const char *hostname);
 
 static SERVER_TYPE g_server_type = SERVER_TYPE_UNKNOWN;
 static transaction_server_type g_transaction_server_type = transaction_server_type::ACTIVE;
@@ -223,6 +225,8 @@ int setup_tran_server_params_on_ha_mode ()
 
   int port_id = prm_get_master_port_id ();
 
+  const char *localhost_str = "localhost";
+
   page_server_host_list = (char *) calloc (MAX_BUFSIZE, sizeof (char)); // free is called by sysprm_final()
   if (page_server_host_list == NULL)
     {
@@ -238,7 +242,15 @@ int setup_tran_server_params_on_ha_mode ()
   while (str)
     {
       char page_server_host[MAX_BUFSIZE] = {0};
-      sprintf (page_server_host, "%s:%d,", str, port_id);
+
+      if (is_localhost (str))
+	{
+	  sprintf (page_server_host, "%s:%d,", localhost_str, port_id);
+	}
+      else
+	{
+	  sprintf (page_server_host, "%s:%d,", str, port_id);
+	}
 
       if (strlen (page_server_host) + strlen (page_server_host_list) >= list_size)
 	{
@@ -275,6 +287,26 @@ int setup_tran_server_params_on_ha_mode ()
    */
 
   return NO_ERROR;
+}
+
+bool is_localhost (const char *hostname)
+{
+  assert (hostname != NULL);
+  char local_hostname[CUB_MAXHOSTNAMELEN];
+
+  if (GETHOSTNAME (local_hostname, CUB_MAXHOSTNAMELEN) != 0)
+    {
+      return false;
+    }
+
+  if (strcmp (hostname, local_hostname) == 0)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
+    }
 }
 
 void finalize_server_type ()
