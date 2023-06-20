@@ -273,7 +273,7 @@ static int parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg);
 static int process_service (int command_type, bool process_window_service);
 static int process_server (int command_type, int argc, char **argv, bool show_usage, bool check_ha_mode,
 			   bool process_window_service);
-static int process_server_start_single_node (char *server_name, int command_type);
+static int process_servers_start_within_node (char *server_name, int command_type, bool ha_mode);
 static int process_broker (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_gateway (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
@@ -1545,7 +1545,8 @@ check_server (const char *type, const char *server_name)
       if (strcmp (type, CHECK_SERVER) == 0)
 	{
 	  if (strcmp (token, CHECK_PAGE_SERVER) != 0 && strcmp (token, CHECK_TRANSACTION_SERVER) != 0
-	      && strcmp (token, CHECK_HA_SERVER) != 0)
+	      && strcmp (token, CHECK_HA_SERVER) != 0 && strcmp (token, CHECK_HA_PAGE_SERVER) != 0
+	      && strcmp (token, CHECK_HA_TRANSACTION_SERVER) != 0)
 	    {
 	      continue;
 	    }
@@ -1770,10 +1771,13 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		{
 		  int pid;
 
-		  if (server_type_config::SINGLE_NODE ==
+		  if (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF
+		      || server_type_config::SINGLE_NODE ==
 		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
 		    {
-		      status = process_server_start_single_node (token, command_type);
+		      status =
+			process_servers_start_within_node (token, command_type,
+							   (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF));
 		    }
 		  else
 		    {
@@ -1931,11 +1935,18 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 }
 
 /*
- * process_server_start_single_node - start both a page and a transaction server,
- *                                    the page server must be started before transaction server
+ * process_servers_start_within_node -
+ *     Start both a page and a transaction server, the page server must be started before transaction server
+ *
+ * return:
+ *     NO_ERROR : success
+ *
+ *     server_name (in): server name
+ *     command_type (in): command type
+ *     ha_mode (in): true if HA mode
  */
 static int
-process_server_start_single_node (char *server_name, int command_type)
+process_servers_start_within_node (char *server_name, int command_type, bool ha_mode)
 {
   int status = NO_ERROR;
   int pid = 0;
@@ -1943,7 +1954,7 @@ process_server_start_single_node (char *server_name, int command_type)
   const char *args_page[] = { UTIL_CUBRID_NAME, "-t", "page", server_name, NULL };
   status = proc_execute (UTIL_CUBRID_NAME, args_page, false, false, false, &pid);
 
-  if (status == NO_ERROR && !is_server_running (CHECK_PAGE_SERVER, server_name, pid))
+  if (status == NO_ERROR && !is_server_running (ha_mode ? CHECK_HA_PAGE_SERVER : CHECK_PAGE_SERVER, server_name, pid))
     {
       status = ER_GENERIC_ERROR;
     }
@@ -1957,7 +1968,8 @@ process_server_start_single_node (char *server_name, int command_type)
   const char *args_transaction[] = { UTIL_CUBRID_NAME, "-t", "transaction", server_name, NULL };
   status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
 
-  if (status == NO_ERROR && !is_server_running (CHECK_TRANSACTION_SERVER, server_name, pid))
+  if (status == NO_ERROR
+      && !is_server_running (ha_mode ? CHECK_HA_TRANSACTION_SERVER : CHECK_TRANSACTION_SERVER, server_name, pid))
     {
       status = ER_GENERIC_ERROR;
     }
