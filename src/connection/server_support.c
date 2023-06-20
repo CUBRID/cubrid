@@ -1290,9 +1290,10 @@ css_start_shutdown_server ()
 }
 
 int
-css_ha_register (const char *server_name)
+css_register_ha_server (const char *server_name)
 {
   assert (server_name != NULL);
+  assert (!HA_DISABLED ());
 
   CSS_CONN_ENTRY *conn;
   std::string message_to_master = css_pack_message_to_master (server_name);
