@@ -15360,7 +15360,6 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 {
   key_val_range inf_key_val_range;
   PAGE_PTR root_page = NULL;
-  VPID root_vpid;
   int error_code = NO_ERROR;
   DB_MIDXKEY *midxkey = NULL;
   DB_VALUE *swap_key = NULL;
@@ -15394,8 +15393,6 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 
   if (!bts->is_btid_int_valid)
     {
-      root_vpid.pageid = btid->root_pageid;
-      root_vpid.volid = btid->vfid.volid;
       root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, NULL, &bts->btid_int);
       if (root_page == NULL)
 	{
