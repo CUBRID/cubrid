@@ -31,6 +31,7 @@ extern int getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints,
 
 #define ETC_HOSTS "/etc/hosts"
 #define CUBRID_HOSTS "$CUBRID/conf/cubrid_hosts.conf"
+#define HOSTS_FILE prm_get_bool_value (PRM_ID_USE_USER_HOSTS) ? CUBRID_HOSTS : ETC_HOSTS
 
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
