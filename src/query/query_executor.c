@@ -1805,12 +1805,17 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
       /* aggregate optimize related should be free */
       if (p->s_id.scan_stats.agl)
 	{
-	  SCAN_AGL *agl;
+	  SCAN_AGL *next, *agl = p->s_id.scan_stats.agl;;
 
-	  for (agl = p->s_id.scan_stats.agl; agl; agl = agl->next)
+	  while (agl)
 	    {
+	      /* save before free */
+	      next = agl->next;
+
 	      free (agl->agg_index_name);
 	      free (agl);
+
+	      agl = next;
 	    }
 	}
 
