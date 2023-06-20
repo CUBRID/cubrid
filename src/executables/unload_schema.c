@@ -1207,7 +1207,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
   /*
    * Schema
    */
-  if (!required_class_only && ctxt.do_auth)
+  if (required_class_only == false && ctxt.do_auth)
     {
       if (au_export_users (ctxt, schema_output_ctx) < NO_ERROR)
 	{
@@ -1215,7 +1215,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
-  if (!required_class_only && export_serial (ctxt, schema_output_ctx) < NO_ERROR)
+  if (required_class_only == false && export_serial (ctxt, schema_output_ctx) < NO_ERROR)
     {
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
@@ -1224,14 +1224,12 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
-
-
-  if (emit_stored_procedure (ctxt, schema_output_ctx) != NO_ERROR)
+  if (required_class_only == false && emit_stored_procedure (ctxt, schema_output_ctx) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (export_server (ctxt, schema_output_ctx) < NO_ERROR)
+  if (required_class_only == false && export_server (ctxt, schema_output_ctx) < NO_ERROR)
     {
       err_count++;
     }
@@ -1259,7 +1257,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
    * Since a synonym is like an alias, it can be created even if the target does not exist.
    * So, unload the synonym before class/vclass.
    */
-  if (export_synonym (ctxt, schema_output_ctx) < NO_ERROR)
+  if (required_class_only == false && export_synonym (ctxt, schema_output_ctx) < NO_ERROR)
     {
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
@@ -4504,11 +4502,6 @@ extract_user (extract_context & ctxt)
   char output_filename[PATH_MAX * 2] = { '\0' };
   char output_schema_info[PATH_MAX * 2] = { '\0' };
 
-  if (required_class_only == true && ctxt.do_auth)
-    {
-      return NO_ERROR;
-    }
-
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, USER_SUFFIX, output_filename,
        sizeof (output_filename)) != 0)
@@ -4533,7 +4526,10 @@ extract_user (extract_context & ctxt)
   file_print_output output_ctx (output_file);
 
   /* error is row count if not negative. */
-  err = au_export_users (ctxt, output_ctx);
+  if (required_class_only == false && ctxt.do_auth)
+    {
+      err = au_export_users (ctxt, output_ctx);
+    }
 
   fflush (output_file);
 
@@ -4568,11 +4564,6 @@ extract_serial (extract_context & ctxt)
   char output_schema_info[PATH_MAX * 2] = { '\0' };
   int err = NO_ERROR;
 
-  if (required_class_only == true)
-    {
-      return NO_ERROR;
-    }
-
   if (create_filename
       (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, SERIAL_SUFFIX, output_filename,
        sizeof (output_filename)) != 0)
@@ -4597,13 +4588,16 @@ extract_serial (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  err = export_serial (ctxt, output_ctx);
-  if (err != NO_ERROR)
+  if (required_class_only == false)
     {
-      fprintf (stderr, "%s", db_error_string (3));
-      if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+      err = export_serial (ctxt, output_ctx);
+      if (err != NO_ERROR)
 	{
-	  fprintf (stderr, " Check the value of db_serial object.\n");
+	  fprintf (stderr, "%s", db_error_string (3));
+	  if (db_error_code () == ER_INVALID_SERIAL_VALUE)
+	    {
+	      fprintf (stderr, " Check the value of db_serial object.\n");
+	    }
 	}
     }
 
@@ -4629,7 +4623,7 @@ extract_serial (extract_context & ctxt)
       output_file = NULL;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 static int
@@ -4664,12 +4658,16 @@ extract_synonym (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  if (export_synonym (ctxt, output_ctx) != NO_ERROR)
+  if (required_class_only == false)
     {
-      fprintf (stderr, "%s", db_error_string (3));
-      if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
+      err = export_synonym (ctxt, output_ctx);
+      if (err != NO_ERROR)
 	{
-	  fprintf (stderr, " Check the value of _db_synonym object.\n");
+	  fprintf (stderr, "%s", db_error_string (3));
+	  if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
+	    {
+	      fprintf (stderr, " Check the value of _db_synonym object.\n");
+	    }
 	}
     }
 
@@ -4695,7 +4693,7 @@ extract_synonym (extract_context & ctxt)
       output_file = NULL;
     }
 
-  return NO_ERROR;
+  return err;
 }
 
 static int
@@ -4730,7 +4728,10 @@ extract_procedure (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  err = emit_stored_procedure (ctxt, output_ctx);
+  if (required_class_only == false)
+    {
+      err = emit_stored_procedure (ctxt, output_ctx);
+    }
 
   fflush (output_file);
 
@@ -4788,7 +4789,10 @@ extract_server (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  err = export_server (ctxt, output_ctx);
+  if (required_class_only == false)
+    {
+      err = export_server (ctxt, output_ctx);
+    }
 
   fflush (output_file);
 
