@@ -2263,6 +2263,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  if (!HA_DISABLED ())
+    {
+      // This must be called after init_server_type () because cub_master have to know which type of server it is.
+      css_ha_register (db_name);
+    }
+#endif /* SERVER_MODE */
+
   /*
    * Compose the full name of the database and find location of logs
    */

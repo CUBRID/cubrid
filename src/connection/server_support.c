@@ -1289,6 +1289,31 @@ css_start_shutdown_server ()
   css_Server_shutdown_inited = true;
 }
 
+void
+css_ha_register (const char *server_name)
+{
+  CSS_CONN_ENTRY *conn;
+  std::string message_to_master = css_pack_message_to_master (server_name);
+  conn =
+    css_connect_to_master_server (prm_get_integer_value (PRM_ID_TCP_PORT_ID), message_to_master.c_str (),
+				  message_to_master.size ());
+  if (conn != NULL)
+    {
+      int status =
+	hb_register_to_master (conn,
+			       get_server_type () ==
+			       SERVER_TYPE_TRANSACTION ? HB_PTYPE_TRAN_SERVER : HB_PTYPE_PAGE_SERVER);
+      css_Master_conn = conn;
+
+      if (status != NO_ERROR)
+	{
+	  fprintf (stderr, "failed_to_hearbeat register");
+	  css_close_connection_to_master ();
+	}
+    }
+
+}
+
 /*
  * css_init() -
  *   return:
@@ -1361,7 +1386,16 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 
   css_Server_connection_socket = INVALID_SOCKET;
 
-  conn = css_connect_to_master_server (port_id, message_to_master.c_str (), (int) message_to_master.size ());
+  if (!HA_DISABLED ())
+    {
+      // css_Master_conn is already set by css_ha_register ()
+      conn = css_Master_conn;
+    }
+  else
+    {
+      conn = css_connect_to_master_server (port_id, message_to_master.c_str (), (int) message_to_master.size ());
+    }
+
   if (conn != NULL)
     {
       /* insert conn into active conn list */
@@ -1371,19 +1405,6 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
       css_Master_port_id = port_id;
       css_Pipe_to_master = conn->fd;
       css_Master_conn = conn;
-
-#if !defined(WINDOWS)
-      if (!HA_DISABLED ())
-	{
-	  status =
-	    hb_register_to_master (css_Master_conn,
-				   is_transaction_server ()? HB_PTYPE_TRAN_SERVER : HB_PTYPE_PAGE_SERVER);
-	  if (status != NO_ERROR)
-	    {
-	      fprintf (stderr, "failed to heartbeat register.\n");
-	    }
-	}
-#endif
 
       if (status == NO_ERROR)
 	{
