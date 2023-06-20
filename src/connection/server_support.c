@@ -1289,29 +1289,41 @@ css_start_shutdown_server ()
   css_Server_shutdown_inited = true;
 }
 
-void
+int
 css_ha_register (const char *server_name)
 {
+  assert (server_name != NULL);
+
   CSS_CONN_ENTRY *conn;
   std::string message_to_master = css_pack_message_to_master (server_name);
+
   conn =
     css_connect_to_master_server (prm_get_integer_value (PRM_ID_TCP_PORT_ID), message_to_master.c_str (),
 				  message_to_master.size ());
   if (conn != NULL)
     {
-      int status =
-	hb_register_to_master (conn,
-			       get_server_type () ==
-			       SERVER_TYPE_TRANSACTION ? HB_PTYPE_TRAN_SERVER : HB_PTYPE_PAGE_SERVER);
-      css_Master_conn = conn;
+      int status = hb_register_to_master (conn,
+					  get_server_type () ==
+					  SERVER_TYPE_TRANSACTION ? HB_PTYPE_TRAN_SERVER : HB_PTYPE_PAGE_SERVER);
 
       if (status != NO_ERROR)
 	{
 	  fprintf (stderr, "failed_to_hearbeat register");
 	  css_close_connection_to_master ();
+
+	  return status;
+	}
+      else
+	{
+	  css_Master_conn = conn;
+	  return NO_ERROR;
 	}
     }
-
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      return ERR_CSS_ERROR_DURING_SERVER_CONNECT;
+    }
 }
 
 /*

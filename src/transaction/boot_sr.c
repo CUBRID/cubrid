@@ -2267,7 +2267,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (!HA_DISABLED ())
     {
       // This must be called after init_server_type () because cub_master have to know which type of server it is.
-      css_ha_register (db_name);
+      error_code = css_ha_register (db_name);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 #endif /* SERVER_MODE */
 
