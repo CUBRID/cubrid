@@ -1297,6 +1297,7 @@ css_ha_register (const char *server_name)
   CSS_CONN_ENTRY *conn;
   std::string message_to_master = css_pack_message_to_master (server_name);
 
+  // connection is established before server recovery, only when ha_mode is turned on.
   conn =
     css_connect_to_master_server (prm_get_integer_value (PRM_ID_TCP_PORT_ID), message_to_master.c_str (),
 				  message_to_master.size ());
@@ -1308,13 +1309,14 @@ css_ha_register (const char *server_name)
 
       if (status != NO_ERROR)
 	{
-	  fprintf (stderr, "failed_to_hearbeat register");
+	  fprintf (stderr, "failed to hearbeat register to master \n");
 	  css_close_connection_to_master ();
 
 	  return status;
 	}
       else
 	{
+	  // established connection will be re-used in css_init () after server recovery.
 	  css_Master_conn = conn;
 	  return NO_ERROR;
 	}
