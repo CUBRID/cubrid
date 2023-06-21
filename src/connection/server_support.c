@@ -103,7 +103,7 @@ static struct timeval css_Shutdown_timeout = { 0, 0 };
 
 static char *css_Master_server_name = NULL;	/* database identifier */
 static int css_Master_port_id;
-static CSS_CONN_ENTRY *css_Master_conn;
+static CSS_CONN_ENTRY *css_Master_conn = NULL;
 static IP_INFO *css_Server_accessible_ip_info;
 static char *ip_list_file_name = NULL;
 static char ip_file_real_path[PATH_MAX];
@@ -1297,6 +1297,10 @@ css_register_ha_server (const char *server_name)
 
   CSS_CONN_ENTRY *conn;
   std::string message_to_master = css_pack_message_to_master (server_name);
+  if (message_to_master.empty ())
+    {
+      return ER_FAILED;
+    }
 
   // connection is established before server recovery, only when ha_mode is turned on.
   conn =
@@ -1310,7 +1314,7 @@ css_register_ha_server (const char *server_name)
 
       if (status != NO_ERROR)
 	{
-	  fprintf (stderr, "failed to hearbeat register to master \n");
+	  fprintf (stderr, "failed to hearbeat register to master\n");
 	  css_close_connection_to_master ();
 
 	  return status;
@@ -1403,12 +1407,16 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 
   if (!HA_DISABLED ())
     {
-      // css_Master_conn is already set by css_ha_register ()
+      // css_Master_conn is already set by css_register_ha_server ()
+      assert (css_Master_conn != NULL);
+
       conn = css_Master_conn;
     }
   else
     {
       conn = css_connect_to_master_server (port_id, message_to_master.c_str (), (int) message_to_master.size ());
+
+      css_Master_conn = conn;
     }
 
   if (conn != NULL)
@@ -1419,13 +1427,9 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
       css_Master_server_name = strdup (server_name);
       css_Master_port_id = port_id;
       css_Pipe_to_master = conn->fd;
-      css_Master_conn = conn;
 
-      if (status == NO_ERROR)
-	{
-	  // server message loop
-	  css_setup_server_loop ();
-	}
+      // server message loop
+      css_setup_server_loop ();
     }
   else
     {
