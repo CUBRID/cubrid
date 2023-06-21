@@ -22,6 +22,7 @@
 
 #ifndef _MEMORY_MONITOR_COMMON_H_
 #define _MEMORY_MONITOR_COMMON_H_
+#include "dbtype_def.h"
 
 #include <string>
 #include <cstdint>
@@ -36,19 +37,19 @@ typedef struct memmon_mem_stat
 
 typedef struct memmon_server_info
 {
-  char *name;
+  char name[DB_MAX_IDENTIFIER_LENGTH];
   uint64_t total_mem_usage;
 } MEMMON_SERVER_INFO;
 
 typedef struct memmon_subcomp_info
 {
-  char *name;
+  char name[DB_MAX_IDENTIFIER_LENGTH];
   uint64_t cur_stat;
 } MEMMON_SUBCOMP_INFO;
 
 typedef struct memmon_comp_info
 {
-  char *name;
+  char name[DB_MAX_IDENTIFIER_LENGTH];
   MEMMON_MEM_STAT stat;
   uint32_t num_subcomp;
   MEMMON_SUBCOMP_INFO *subcomp_info;
@@ -57,7 +58,7 @@ typedef struct memmon_comp_info
 typedef struct memmon_module_info
 {
   MEMMON_SERVER_INFO server_info;
-  char *name;
+  char name[DB_MAX_IDENTIFIER_LENGTH];
   MEMMON_MEM_STAT stat;
   uint32_t num_comp;
   MEMMON_COMP_INFO *comp_info;
