@@ -133,6 +133,7 @@ x86
 *.*.orig
 tags
 cscope.out
+cscope.files
 
 ## popular build directories
 Debug/

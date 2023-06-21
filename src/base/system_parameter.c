@@ -730,6 +730,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
+#define PRM_NAME_MEMORY_MONITORING "memory_monitoring"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2385,6 +2387,10 @@ static unsigned int prm_statdump_force_add_int_max_flag = 0;
 bool PRM_ORACLE_STYLE_DIVIDE = false;
 static bool prm_oracle_style_divide_default = false;
 static unsigned int prm_oracle_style_divide_flag = 0;
+
+bool PRM_MEMORY_MONITORING = false;
+static bool prm_memory_monitoring_default = false;
+static unsigned int prm_memory_monitoring_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6279,6 +6285,17 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_oracle_style_divide_flag,
    (void *) &prm_oracle_style_divide_default,
    (void *) &PRM_ORACLE_STYLE_DIVIDE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MEMORY_MONITORING,
+   PRM_NAME_MEMORY_MONITORING,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FORCE_SERVER),
+   PRM_BOOLEAN,
+   &prm_memory_monitoring_flag,
+   (void *) &prm_memory_monitoring_default,
+   (void *) &PRM_MEMORY_MONITORING,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
