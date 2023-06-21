@@ -11449,7 +11449,7 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 
   if (node->node_type == PT_SELECT)
     {
-      *continue_walk = PT_STOP_WALK;
+      ;				//*continue_walk = PT_STOP_WALK;
     }
   else if (node->node_type == PT_DOT_)
     {				// case: tbl.col      
@@ -11484,26 +11484,58 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
+#if 0
 static PT_NODE *
 pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   *continue_walk = PT_CONTINUE_WALK;
   return node;
 }
+#endif
 
 static void
-pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_NODE * node_list)
+pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUERY_INFO * query, PT_NODE * on_cond)
 {
-  if (node_list == NULL)
+  if (query->q.select.list)
     {
-      return;
+      (void) parser_walk_tree (parser, query->q.select.list, pt_get_column_name_pre, plkcol, NULL, NULL);
+      if (plkcol->col_list && plkcol->col_list->type_enum == PT_TYPE_STAR)
+	{
+	  return;
+	}
     }
-  else if (plkcol->col_list && plkcol->col_list->type_enum == PT_TYPE_STAR)
+  if (on_cond)
     {
-      return;
+      (void) parser_walk_tree (parser, on_cond, pt_get_column_name_pre, plkcol, NULL, NULL);
     }
-
-  (void) parser_walk_tree (parser, node_list, pt_get_column_name_pre, plkcol, NULL, NULL);
+  if (query->q.select.where)
+    {
+      (void) parser_walk_tree (parser, query->q.select.where, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.having)
+    {
+      (void) parser_walk_tree (parser, query->q.select.having, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.group_by)
+    {
+      (void) parser_walk_tree (parser, query->q.select.group_by, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.connect_by)
+    {
+      (void) parser_walk_tree (parser, query->q.select.connect_by, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.start_with)
+    {
+      (void) parser_walk_tree (parser, query->q.select.start_with, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.after_cb_filter)
+    {
+      (void) parser_walk_tree (parser, query->q.select.after_cb_filter, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->order_by)
+    {
+      (void) parser_walk_tree (parser, query->order_by, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
 }
 
 static void
@@ -11532,12 +11564,7 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      lkcol.col_list = table->info.dblink_table.sel_list;
 
 	      lkcol.tbl_name_node = spec->info.spec.range_var;
-	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.list);
-	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.where);
-	      pt_get_cols_for_dblink (parser, &lkcol, spec->info.spec.on_cond);
-	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.having);
-	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.group_by);
-	      pt_get_cols_for_dblink (parser, &lkcol, query->order_by);
+	      pt_get_cols_for_dblink (parser, &lkcol, query, spec->info.spec.on_cond);
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
 	      lkcol.col_list = NULL;
