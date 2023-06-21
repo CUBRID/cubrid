@@ -10852,7 +10852,6 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
   PT_NODE *new_name, *new_owner;
 
-  //*continue_walk = PT_STOP_WALK;
   *continue_walk = PT_CONTINUE_WALK;
   assert (continue_walk != NULL);
 
@@ -11889,10 +11888,9 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
 
   parser_walk_tree (parser, query_stmt, pt_convert_dblink_synonym, NULL, NULL, NULL);
 
+  parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
   while (from_tbl)
     {
-      parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
-
       if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
 	{
 	  assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
