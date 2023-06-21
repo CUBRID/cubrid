@@ -8027,7 +8027,7 @@ qstr_bit_to_hex_coerce (char *buffer, int buffer_size, const char *src, int src_
 }
 
 /*
- * db_get_string_length -
+ * db_get_string_length
  *
  * Arguments:
  *        value: Value  container

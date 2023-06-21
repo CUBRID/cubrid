@@ -621,7 +621,6 @@ db_get_char (const DB_VALUE * value, int *length)
 	str = value->data.ch.medium.buf;
 	intl_char_count ((unsigned char *) str, value->data.ch.medium.size,
 			 (INTL_CODESET) value->data.ch.info.codeset, length);
-	((DB_VALUE *) value)->data.ch.medium.length = *length;
       }
       break;
     case LARGE_STRING:

@@ -166,7 +166,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
   value->need_clear = false;
   value->domain.general_info.is_null = 1;
 
-
   switch (type)
     {
     case DB_TYPE_NUMERIC:
