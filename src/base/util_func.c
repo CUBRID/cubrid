@@ -45,6 +45,12 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 
+#if defined (WINDOWS)
+#include "wintcp.h"
+#else
+#include "tcp.h"
+#endif
+
 #define UTIL_LOG_MAX_HEADER_LEN    (40)
 #define UTIL_LOG_MAX_MSG_SIZE       (1024)
 #define UTIL_LOG_BUFFER_SIZE   \
@@ -867,3 +873,64 @@ util_get_second_and_ms_since_epoch (time_t * secs, int *msec)
   assert (*msec < 1000);
 }
 // *INDENT-ON*
+
+/*
+ * util_is_localhost -
+ *
+ * return:
+ *
+ * NOTE:
+ */
+bool
+util_is_localhost (char *host)
+{
+  char localhost[CUB_MAXHOSTNAMELEN];
+  GETHOSTNAME (localhost, CUB_MAXHOSTNAMELEN);
+
+  return are_hostnames_equal (host, localhost);
+}
+
+/**
+ * Compare two host names if are equal, if one of the host names is canonical name and the other is not, then
+ * only host part (e.g. for canonical name "host-1.cubrid.org" host part is "host-1") is used for comparison
+ *
+ * for example following hosts are equal:
+ *  "host-1"            "host-1"
+ *  "host-1"            "host-1.cubrid.org"
+ *  "host-1.cubrid.org" "host-1"
+ *  "host-1.cubrid.org" "host-1.cubrid.org"
+ *
+ * for example following hosts are not equal:
+ *  "host-1"            "host-2"
+ *  "host-1.cubrid.org" "host-2"
+ *  "host-1"            "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-2.cubrid.org"
+ *  "host-1.cubrid.org" "host-1.cubrid.com"
+ *
+ * @param hostname_a first hostname
+ * @param hostname_b second hostname
+ *
+ * @return true if hostname_a is same as hostname_b
+ */
+bool
+are_hostnames_equal (const char *hostname_a, const char *hostname_b)
+{
+  const char *a;
+  const char *b;
+
+  for (a = hostname_a, b = hostname_b; *a && *b && (*a == *b); ++a, ++b)
+    ;
+
+  if (*a == '\0' && *b != '\0')
+    {
+      return *b == '.';
+    }
+  else if (*a != '\0' && *b == '\0')
+    {
+      return *a == '.';
+    }
+  else
+    {
+      return *a == *b;
+    }
+}
