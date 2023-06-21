@@ -1297,10 +1297,6 @@ css_register_ha_server (const char *server_name)
 
   CSS_CONN_ENTRY *conn;
   std::string message_to_master = css_pack_message_to_master (server_name);
-  if (message_to_master.empty ())
-    {
-      return ER_FAILED;
-    }
 
   // connection is established before server recovery, only when ha_mode is turned on.
   conn =
