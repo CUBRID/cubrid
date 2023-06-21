@@ -8780,7 +8780,7 @@ error_return:
  */
 int
 qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** result_dom, DB_VALUE * result,
-					     FUNC_TYPE function)
+					     FUNC_CODE function)
 {
   DB_TYPE type;
   double d_result = 0;
@@ -8897,7 +8897,7 @@ end:
  */
 int
 qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, double row_num_d, double f_row_num_d,
-				     double c_row_num_d, tp_domain ** result_dom, DB_VALUE * result, FUNC_TYPE function)
+				     double c_row_num_d, tp_domain ** result_dom, DB_VALUE * result, FUNC_CODE function)
 {
   DB_DATE date;
   DB_DATETIME datetime;
@@ -9201,7 +9201,7 @@ end:
 int
 qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id, tp_domain * domain,
 					 int pos, double row_num_d, double f_row_num_d, double c_row_num_d,
-					 DB_VALUE * result, tp_domain ** result_dom, FUNC_TYPE function)
+					 DB_VALUE * result, tp_domain ** result_dom, FUNC_CODE function)
 {
   int error = NO_ERROR;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };

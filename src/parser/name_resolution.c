@@ -123,7 +123,7 @@ static PT_NODE *pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_
 static void pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv);
 static void pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec);
 static void pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg);
-static FUNC_TYPE pt_find_function_type (const char *name);
+static FUNC_CODE pt_find_function_type (const char *name);
 static PT_NODE *pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_Oracle_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -1299,7 +1299,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
  *   return: function_type, or generic if not found
  *   name(in):
  */
-static FUNC_TYPE
+static FUNC_CODE
 pt_find_function_type (const char *name)
 {
   if (name)
@@ -1535,7 +1535,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	      }
 	    else
 	      {
-		node->info.function.function_type = (FUNC_TYPE) 0;
+		node->info.function.function_type = (FUNC_CODE) 0;
 	      }
 
 	    /* now we need to type the innards of the set ... */
