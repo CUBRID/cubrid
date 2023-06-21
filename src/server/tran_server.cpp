@@ -446,7 +446,6 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
   assert (m_state == state::OPEN);
 
-  /* TODO: While CONNECTING, some initalizing jobs will be done such as the catch-up process of the PS */
   m_state = state::CONNECTING;
 
   auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
@@ -457,7 +456,12 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
 
   assert (m_conn != nullptr);
+
+  ulock.unlock ();
+
   m_conn->start ();
+
+  /* TODO: While CONNECTING, some initalizing jobs will be done such as the catch-up process of the PS */
 
   m_state = state::CONNECTED;
 }
