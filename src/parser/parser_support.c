@@ -4455,7 +4455,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	}
 
       sum->data_type->type_enum = PT_TYPE_NUMERIC;
-      sum->data_type->info.data_type.precision = 38;
+      sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
       sum->data_type->info.data_type.dec_precision = 0;
 
       sum->info.expr.arg1 = parser_copy_tree (parser, limit);
@@ -6748,6 +6748,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 				  PT_NODE * args)
 {
   int i;
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *arg, *id_string;
   PT_NODE *prev = NULL, *head = NULL;
 
@@ -6776,8 +6777,10 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 	      goto error;
 	    }
 
+	  intl_identifier_lower (arg->info.name.original, lower_table_name);
+
 	  /* replace identifier node with string value node */
-	  id_string = pt_make_string_value (parser, arg->info.name.original);
+	  id_string = pt_make_string_value (parser, lower_table_name);
 	  if (id_string == NULL)
 	    {
 	      goto error;
