@@ -9212,6 +9212,11 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
   if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
     {
       /*
+       * The only time we enter inside this if statement is 
+       * when we are using the iso88591 codeset and a data type like char(100). 
+       * This is because the size is not fixed in all other cases.
+       */
+      /*
        *  The result will be a chararacter string of length =
        *  string1_precision + string2_precision.  If the result
        *  length is greater than the maximum allowed for a fixed
