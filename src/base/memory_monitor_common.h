@@ -24,7 +24,6 @@
 #define _MEMORY_MONITOR_COMMON_H_
 #include "dbtype_def.h"
 
-#include <string>
 #include <cstdint>
 
 typedef struct memmon_mem_stat
