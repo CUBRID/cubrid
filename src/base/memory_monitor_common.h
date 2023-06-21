@@ -17,7 +17,7 @@
  */
 
 /*
- * memory_monitor_common.hpp - common structures for cubrid memory monitoring module
+ * memory_monitor_common.hpp - common structures for memory monitoring module
  */
 
 #ifndef _MEMORY_MONITOR_COMMON_H_
