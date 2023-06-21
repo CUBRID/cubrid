@@ -538,6 +538,33 @@ tran_server::connection_handler::is_disconnecting () const
   return m_is_disconnecting.load ();
 }
 
+tran_server::ps_connector::ps_connector (tran_server &ts)
+  : m_ts { ts }
+{
+  m_thread = std::thread (&tran_server::ps_connector::connect_loop, std::ref (*this));
+}
+
+tran_server::ps_connector::~ps_connector ()
+{
+}
+
+void
+tran_server::ps_connector::start ()
+{
+}
+
+void
+tran_server::ps_connector::terminate ()
+{
+}
+
+void
+tran_server::ps_connector::connect_loop ()
+{
+}
+
+
+
 void
 assert_is_tran_server ()
 {

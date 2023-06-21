@@ -148,6 +148,33 @@ class tran_server
     std::condition_variable_any m_main_conn_cv;
 
   private:
+    class ps_connector
+    {
+      public:
+	ps_connector (tran_server &ts);
+
+	ps_connector (const ps_connector &) = delete;
+	ps_connector (ps_connector &&) = delete;
+
+	~ps_connector ();
+
+	ps_connector &operator = (const ps_connector &) = delete;
+	ps_connector &operator = (ps_connector &&) = delete;
+
+	void start ();
+	void terminate ();
+
+      private:
+	void connect_loop ();
+
+      private:
+	tran_server &m_ts;
+	bool m_terminate;
+	std::mutex m_mtx;
+	std::thread m_thread;
+    };
+
+  private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
     int connect_to_page_server (const cubcomm::node &node, const char *db_name);
