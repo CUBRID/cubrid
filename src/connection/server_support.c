@@ -102,7 +102,7 @@ static bool css_Server_shutdown_inited = false;
 static struct timeval css_Shutdown_timeout = { 0, 0 };
 
 static char *css_Master_server_name = NULL;	/* database identifier */
-static int css_Master_port_id;
+static int css_Master_port_id = -1;
 static CSS_CONN_ENTRY *css_Master_conn = NULL;
 static IP_INFO *css_Server_accessible_ip_info;
 static char *ip_list_file_name = NULL;
@@ -1409,6 +1409,9 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 
   if (!HA_DISABLED ())
     {
+      // These global variables are set in css_register_ha_server ()
+      assert (css_Master_port_id != -1);
+      assert (css_Pipe_to_master != INVALID_SOCKET);
       assert (css_Master_conn != NULL);
     }
   else
