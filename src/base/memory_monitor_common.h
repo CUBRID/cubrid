@@ -60,7 +60,7 @@ typedef struct memmon_module_info
   char *name;
   MEMMON_MEM_STAT stat;
   uint32_t num_comp;
-  MEMMON_COMP_INFO **comp_info;
+  MEMMON_COMP_INFO *comp_info;
 } MEMMON_MODULE_INFO;
 
 typedef struct memmon_tran_stat
