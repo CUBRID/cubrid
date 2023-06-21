@@ -473,7 +473,8 @@ enum param_id
   PRM_ID_HA_SQL_LOG_MAX_COUNT,
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_ID_ORACLE_STYLE_DIVIDE,
-  PRM_LAST_ID = PRM_ID_ORACLE_STYLE_DIVIDE
+	PRM_ID_MEMORY_MONITORING,
+  PRM_LAST_ID = PRM_ID_MEMORY_MONITORING
 };
 typedef enum param_id PARAM_ID;
 
