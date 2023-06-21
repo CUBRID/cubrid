@@ -1,6 +1,6 @@
 /*
  * Copyright 2008 Search Solution Corporation
- * Copyright 2016 CUBRID Corporation
+ * Copyright 2023 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,21 +17,14 @@
  */
 
 /*
- * memory_monitor.hpp - cubrid memory monitoring module
+ * memory_monitor_common.hpp - common structures for cubrid memory monitoring module
  */
 
 #ifndef _MEMORY_MONITOR_COMMON_H_
 #define _MEMORY_MONITOR_COMMON_H_
 
-
-#include "perf_def.hpp"
-#include "thread_compat.hpp"
-
 #include <string>
-#include <type_traits>
 #include <cstdint>
-
-#include <cassert>
 
 typedef struct memmon_mem_stat
 {
