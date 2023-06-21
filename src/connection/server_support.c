@@ -1304,9 +1304,9 @@ css_register_ha_server (const char *server_name)
 				  message_to_master.size ());
   if (conn != NULL)
     {
-      int status = hb_register_to_master (conn,
-					  get_server_type () ==
-					  SERVER_TYPE_TRANSACTION ? HB_PTYPE_TRAN_SERVER : HB_PTYPE_PAGE_SERVER);
+      const int status = hb_register_to_master (conn,
+						get_server_type () ==
+						SERVER_TYPE_TRANSACTION ? HB_PTYPE_TRAN_SERVER : HB_PTYPE_PAGE_SERVER);
 
       if (status != NO_ERROR)
 	{
@@ -1318,7 +1318,13 @@ css_register_ha_server (const char *server_name)
       else
 	{
 	  // established connection will be re-used in css_init () after server recovery.
+	  css_insert_into_active_conn_list (conn);
+
+	  css_Master_server_name = strdup (server_name);
+	  css_Master_port_id = prm_get_integer_value (PRM_ID_TCP_PORT_ID);
+	  css_Pipe_to_master = conn->fd;
 	  css_Master_conn = conn;
+
 	  return NO_ERROR;
 	}
     }
@@ -1403,35 +1409,33 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 
   if (!HA_DISABLED ())
     {
-      // css_Master_conn is already set by css_register_ha_server ()
       assert (css_Master_conn != NULL);
-
-      conn = css_Master_conn;
     }
   else
     {
       conn = css_connect_to_master_server (port_id, message_to_master.c_str (), (int) message_to_master.size ());
 
-      css_Master_conn = conn;
+      if (conn != NULL)
+	{
+	  /* insert conn into active conn list */
+	  css_insert_into_active_conn_list (conn);
+
+	  css_Master_server_name = strdup (server_name);
+	  css_Master_port_id = port_id;
+	  css_Pipe_to_master = conn->fd;
+	  css_Master_conn = conn;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  status = ERR_CSS_ERROR_DURING_SERVER_CONNECT;
+
+	  goto shutdown;
+	}
     }
 
-  if (conn != NULL)
-    {
-      /* insert conn into active conn list */
-      css_insert_into_active_conn_list (conn);
-
-      css_Master_server_name = strdup (server_name);
-      css_Master_port_id = port_id;
-      css_Pipe_to_master = conn->fd;
-
-      // server message loop
-      css_setup_server_loop ();
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-      status = ERR_CSS_ERROR_DURING_SERVER_CONNECT;
-    }
+  // server message loop
+  css_setup_server_loop ();
 
 shutdown:
   /*
