@@ -643,6 +643,8 @@ struct json_t;
   (((p)->node_type == PT_FUNCTION) ? ((p)->info.function.coll_modifier - 1) :\
   (((p)->node_type == PT_DOT_) ? ((p)->info.dot.coll_modifier - 1) : (-1))))))
 
+#define PT_HAS_COLLATION_MODIFIER(p) (PT_GET_COLLATION_MODIFIER((p)) != -1)
+
 #define PT_SET_NODE_COLL_MODIFIER(p, coll)                  \
     do {                                                    \
       assert ((p) != NULL);				    \

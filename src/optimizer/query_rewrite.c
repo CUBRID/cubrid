@@ -1228,7 +1228,7 @@ qo_collect_name_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 
 	  name_coll = PT_GET_COLLATION_MODIFIER (info->c_name);
 
-	  if (name_coll == -1 && info->c_name->data_type != NULL)
+	  if (!PT_HAS_COLLATION_MODIFIER (info->c_name) && info->c_name->data_type != NULL)
 	    {
 	      name_coll = info->c_name->data_type->info.data_type.collation_id;
 	    }
