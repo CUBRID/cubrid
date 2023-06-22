@@ -2263,7 +2263,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-#if defined(SERVER_MODE)
+#if defined (SERVER_MODE) && !defined (WINDOWS)
   if (!HA_DISABLED ())
     {
       /* This must be called before server recovery (log_initialize_passive_tran_server (), or log_initialize ())
@@ -2285,7 +2285,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	  goto error;
 	}
     }
-#endif /* SERVER_MODE */
+#endif /* SERVER_MODE && !WINDOWS */
 
   /*
    * Compose the full name of the database and find location of logs
