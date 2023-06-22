@@ -515,9 +515,10 @@ tran_server::connection_handler::wait_async_disconnection ()
     {
       m_disconn_future.get ();
     }
-
-  auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
+#if !defined (NDEBUG)
+  auto slock = std::shared_lock<std::shared_mutex> { m_state_mtx };
   assert (m_state == state::OPEN);
+#endif /* !NDEBUG */
 }
 
 tran_server::connection_handler::request_handlers_map_t
