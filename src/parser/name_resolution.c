@@ -11536,6 +11536,10 @@ pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUE
     {
       (void) parser_walk_tree (parser, query->order_by, pt_get_column_name_pre, plkcol, NULL, NULL);
     }
+  if (query->orderby_for)
+    {
+      (void) parser_walk_tree (parser, query->orderby_for, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
 }
 
 static void
