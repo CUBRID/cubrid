@@ -485,7 +485,7 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 
   m_state = state::DISCONNECTING;
 
-  m_disconn_future = std::async (std::launch::async, [this, &with_disc_msg]
+  m_disconn_future = std::async (std::launch::async, [this, with_disc_msg]
   {
     auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
     assert (m_state == state::DISCONNECTING);
