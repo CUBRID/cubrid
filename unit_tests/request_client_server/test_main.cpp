@@ -177,7 +177,7 @@ struct payload_with_op_count : public cubpacking::packable_object
   }
   payload_with_op_count (const payload_with_op_count &) = delete;
   payload_with_op_count (payload_with_op_count &&that)
-    : val { that.val }, op_count { that.op_count }
+    : payload_with_op_count { that.val, that.op_count }
   {
     that.val = 0;
     that.op_count = 0;
@@ -227,7 +227,7 @@ using uq_test_request_sync_client_server_two_t = std::unique_ptr<test_request_sy
 
 // The request_sync_client_server type handler that requires to find ExpectedVal
 template <typename ReqId, ReqId ExpectedVal, typename Payload>
-static void mock_check_expected_id_sync (Payload &a_sp);
+static void mock_check_expected_id_sync (const Payload &a_payload);
 
 class test_two_request_sync_client_server_env
 {
@@ -597,7 +597,7 @@ TEST_CASE ("Test out-of-order request_queue_autosend", "")
   REQUIRE (((total_op_count - 1) * total_op_count / 2) == global_out_of_order_processed_op_count[/*reqids::_*/1]);
 }
 
-TEST_CASE ("Two request_sync_client_server communicate with each other", "[dbg]")
+TEST_CASE ("Two request_sync_client_server communicate with each other", "")
 {
   test_two_request_sync_client_server_env env;
 
@@ -846,9 +846,9 @@ mock_check_expected_id (cubpacking::unpacker &upk)
 
 template <typename T, T Val, typename Payload>
 static void
-mock_check_expected_id_sync (Payload &a_sp)
+mock_check_expected_id_sync (const Payload &a_payload)
 {
-  T readval = static_cast<T> (a_sp.pull_payload ().val);
+  T readval = static_cast<T> (a_payload.val);
   REQUIRE (readval == Val);
   ++global_handled_request_count;
 }
@@ -1193,8 +1193,11 @@ void
 test_two_request_sync_client_server_env::handle_req_and_respond (T_SCS &scs, T_SEQUENCED_PAYLOAD &&sp,
     std::atomic<size_t> &msg_count_inout)
 {
-  payload_with_op_count payload = sp.pull_payload ();
-  mock_check_expected_id_sync<T_MSGID, T_VAL, T_SEQUENCED_PAYLOAD> (sp);
+  using actual_payload_t = typename T_SEQUENCED_PAYLOAD::payload_t;
+
+  actual_payload_t payload = sp.pull_payload ();
+  // only the inner payload is needed by the checker function
+  mock_check_expected_id_sync<T_MSGID, T_VAL, actual_payload_t> (payload);
 
   payload.op_count++;
   sp.push_payload (std::move (payload));
@@ -1259,12 +1262,16 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
   test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_1 =
 	  [] (test_request_sync_client_server_one_t::sequenced_payload &&a_sp)
   {
-    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_1> (a_sp);
+    using actual_payload_t = typename test_request_sync_client_server_one_t::sequenced_payload::payload_t;
+
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_1, actual_payload_t> (a_sp.pull_payload ());
   };
   test_request_sync_client_server_one_t::incoming_request_handler_t req_handler_2 =
 	  [] (test_request_sync_client_server_one_t::sequenced_payload &&a_sp)
   {
-    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_2> (a_sp);
+    using actual_payload_t = typename test_request_sync_client_server_one_t::sequenced_payload::payload_t;
+
+    mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_2, actual_payload_t> (a_sp.pull_payload ());
   };
 
   uq_test_request_sync_client_server_one_t scs_one
@@ -1297,7 +1304,9 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
   test_request_sync_client_server_two_t::incoming_request_handler_t req_handler_1 =
 	  [] (test_request_sync_client_server_two_t::sequenced_payload &&a_sp)
   {
-    mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_1> (a_sp);
+    using actual_payload_t = typename test_request_sync_client_server_two_t::sequenced_payload::payload_t;
+
+    mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_1, actual_payload_t> (a_sp.pull_payload ());
   };
 
   uq_test_request_sync_client_server_two_t scs_two

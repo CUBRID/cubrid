@@ -51,3 +51,35 @@ target_link_libraries(test_server_request_responder fake_thread_utils)
 add_dependencies(test_server_request_responder
   ${CATCH2_TARGET}
   )
+
+#
+# async_disconnect_handler
+#
+set (TEST_ASNYC_DISCONNECT_HANDLER_SOURCES
+  test_async_disconnect_handler_main.cpp
+  )
+
+set (TEST_ASNYC_DISCONNECT_HANDLER_HEADERS
+  ${SERVER_DIR}/async_disconnect_handler.hpp
+  )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${TEST_ASNYC_DISCONNECT_HANDLER_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
+add_executable(test_async_disconnect_handler
+  ${TEST_ASNYC_DISCONNECT_HANDLER_SOURCES}
+  ${TEST_ASNYC_DISCONNECT_HANDLER_HEADERS}
+  )
+
+target_compile_definitions(test_async_disconnect_handler PRIVATE
+  ${COMMON_DEFS}
+  SERVER_MODE
+  )
+target_include_directories(test_async_disconnect_handler PRIVATE
+  ${TEST_INCLUDES}
+  )
+add_dependencies(test_async_disconnect_handler
+  ${CATCH2_TARGET}
+  )
