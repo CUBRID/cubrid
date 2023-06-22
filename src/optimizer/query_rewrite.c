@@ -7930,7 +7930,8 @@ qo_do_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 
 	  node_prior = pt_get_first_arg_ignore_prior (dnf_node);
 
-	  if (!pt_is_attr (node_prior) && !pt_is_instnum (node_prior) && !pt_is_orderbynum (node_prior))
+	  if (!pt_is_attr (node_prior) && !pt_is_function_index_expression (node_prior) && !pt_is_instnum (node_prior)
+	      && !pt_is_orderbynum (node_prior))
 	    {
 	      /* neither LHS is an attribute, inst_num, nor orderby_num */
 	      continue;

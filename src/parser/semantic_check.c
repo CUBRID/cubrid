@@ -13761,7 +13761,7 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	{
 	  return 1;
 	}
-      break;
+      break;			/* PT_NAME */
 
       /* EXPR must be X.Y.Z. */
     case PT_DOT_:
@@ -13788,7 +13788,7 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	  return 1;
 	}
 
-      break;
+      break;			/* PT_DOT_ */
 
     case PT_EXPR:
       {
@@ -13875,7 +13875,31 @@ pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
 	{
 	  return 1;
 	}
-      break;
+      break;			/* PT_NAME */
+
+    case PT_EXPR:
+      {
+	if (p->info.expr.op != q->info.expr.op)
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_class_eq (parser, p->info.expr.arg1, q->info.expr.arg1))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_class_eq (parser, p->info.expr.arg2, q->info.expr.arg2))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_class_eq (parser, p->info.expr.arg3, q->info.expr.arg3))
+	  {
+	    return 1;
+	  }
+      }
+      break;			/* PT_EXPR */
 
     default:
       PT_ERRORmf (parser, p, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_NAN_PATH,
