@@ -1059,7 +1059,7 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
   /*
    * Schema
    */
-  if (!required_class_only && ctxt.do_auth)
+  if (required_class_only == false && ctxt.do_auth)
     {
       if (au_export_users (schema_output_ctx) != NO_ERROR)
 	{
@@ -1067,7 +1067,7 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
-  if (!required_class_only && export_serial (schema_output_ctx) < 0)
+  if (required_class_only == false && export_serial (schema_output_ctx) < 0)
     {
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
@@ -1081,7 +1081,7 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
    * Since a synonym is like an alias, it can be created even if the target does not exist.
    * So, unload the synonym before class/vclass.
    */
-  if (export_synonym (schema_output_ctx) < 0)
+  if (required_class_only == false && export_synonym (schema_output_ctx) < 0)
     {
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
@@ -1090,12 +1090,12 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
-  if (emit_stored_procedure (schema_output_ctx) != NO_ERROR)
+  if (required_class_only == false && emit_stored_procedure (schema_output_ctx) != NO_ERROR)
     {
       err_count++;
     }
 
-  if (export_server (schema_output_ctx) < 0)
+  if (required_class_only == false && export_server (schema_output_ctx) < 0)
     {
       err_count++;
     }
