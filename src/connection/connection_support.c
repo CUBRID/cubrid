@@ -716,6 +716,25 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
   return NO_ERRORS;
 }
 
+/*
+ * css_net_recv_allow_truncated - read up to a maximum size from a supplied socket; output specific
+ *      return details if there is more data part of the same packet to be consumed - as specified
+ *      by the underlying (size, data) transfer protocol; a further call to css_net_recv_remainder
+ *      must be able to consume all incoming data
+ *
+ *   return: 0 if success, or error code;
+ *           specific RECORD_TRUNCATED return code is returned if the complete message could not be read into
+ *           supplied buffer; if this is the case, a subsequent call to css_net_recv_remainder must be made
+ *   fd(in): socket descriptor
+ *   buffer(out): buffer for data be read
+ *   maxlen(in/out): in - length of buffer; out - count of bytes that were read
+ *   remlen(out): the number of remaining bytes to be read
+ *   timeout(in): timeout value in milli-second
+ *
+ *  Note: This function superseeds css_net_recv which, if the supplied buffer is too small for the complete
+ *  data to be copied into, the remainder data is just read and thrown away. All application code should be
+ *  adapted to use this function (and the accompanying css_net_recv_remainder).
+ */
 css_error_code
 css_net_recv_allow_truncated (SOCKET fd, char *buffer, int *maxlen, int *remlen, int timeout)
 {
@@ -797,7 +816,7 @@ css_net_recv_allow_truncated (SOCKET fd, char *buffer, int *maxlen, int *remlen,
 
   if ((nbytes_read_data > 0) && (templen > nbytes_read_data))
     {
-      // report re
+      // report remaining length
       *remlen = templen - nbytes_read_data;
       return RECORD_TRUNCATED;
     }
@@ -814,12 +833,23 @@ css_net_recv_allow_truncated (SOCKET fd, char *buffer, int *maxlen, int *remlen,
   return NO_ERRORS;
 }
 
+/*
+ * css_net_recv_remainder - read the remainder number of bytes from the supplied socket; the function
+ *                expects to receive an appropriately sized buffer and to be able to read exactly
+ *                that many bytes; this function must only be called if a previous call to
+ *                css_net_recv_allow_truncated returned the error code RECORD_TRUNCATED
+ *
+ *   return: 0 if success, or error code
+ *   fd(in): socket descriptor
+ *   buffer(out): buffer for data be read
+ *   maxlen(in/out):
+ *          in - length of buffer, must be exactly the same as the number of remaining bytes to be read;
+ *          out - count of bytes that were read; exactly the same value as input
+ *   timeout(in): timeout value in milli-second
+ */
 css_error_code
 css_net_recv_remainder (SOCKET fd, char *buffer, int *maxlen, int timeout)
 {
-  const int time_unit = (timeout < 0 || timeout > 5000) ? 5000 : timeout;
-  int elapsed = time_unit;
-
   /* read remainder data */
   const int nbytes_read_data = css_readn (fd, buffer, *maxlen, timeout);
   if (nbytes_read_data < *maxlen)
@@ -831,7 +861,7 @@ css_net_recv_remainder (SOCKET fd, char *buffer, int *maxlen, int timeout)
       return ERROR_ON_READ;
     }
 
-  if (nbytes_read_data != *maxlen)
+  if (nbytes_read_data > *maxlen)
     {
       // this should never occur
 #ifdef CUBRID_DEBUG
@@ -840,8 +870,6 @@ css_net_recv_remainder (SOCKET fd, char *buffer, int *maxlen, int timeout)
       assert (false);
       return READ_LENGTH_MISMATCH;
     }
-
-  *maxlen = nbytes_read_data;
 
   return NO_ERRORS;
 }
