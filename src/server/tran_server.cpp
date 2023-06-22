@@ -540,30 +540,59 @@ tran_server::connection_handler::is_disconnecting () const
 
 tran_server::ps_connector::ps_connector (tran_server &ts)
   : m_ts { ts }
+  , m_terminate { false }
 {
-  m_thread = std::thread (&tran_server::ps_connector::connect_loop, std::ref (*this));
 }
 
 tran_server::ps_connector::~ps_connector ()
 {
+  assert (m_terminate.load () == true);
 }
 
 void
 tran_server::ps_connector::start ()
 {
+  m_thread = std::thread (&tran_server::ps_connector::connect_loop, std::ref (*this));
 }
 
 void
 tran_server::ps_connector::terminate ()
 {
+  m_terminate.store (true);
+
+  if (m_thread.joinable ())
+    {
+      m_thread.join ();
+    }
+  else
+    {
+      assert (false);
+    }
 }
 
 void
 tran_server::ps_connector::connect_loop ()
 {
+  constexpr std::chrono::seconds one_sec { 1 };
+
+  /* Assume that they stores PS information in the same order */
+  assert (m_ts.m_connection_list.size () == m_ts.m_page_server_conn_vec.size());
+
+  while (true)
+    {
+      for (int i=0; i < m_ts.m_page_server_conn_vec.size (); i++)
+	{
+	  // 흠 state 상태를 체크하고, connect를 수행하기까지의 lock을 잡아야 하지 않나..? 밖에서 어케 잡지
+	  // connect 요청하고 내부에서 에러처리하는 방식으로 해야하나
+	  if (m_ts.m_page_server_conn_vec[i].get_state () ==
+	      tran_server::connection_handler::state::OPEN))
+	    {
+	    }
+
+	}
+      this_thread::sleep_for (one_sec);
+    }
 }
-
-
 
 void
 assert_is_tran_server ()

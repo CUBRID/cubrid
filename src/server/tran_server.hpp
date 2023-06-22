@@ -169,7 +169,7 @@ class tran_server
 
       private:
 	tran_server &m_ts;
-	bool m_terminate;
+	atomic<bool> m_terminate;
 	std::mutex m_mtx;
 	std::thread m_thread;
     };
