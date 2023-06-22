@@ -135,7 +135,6 @@ class tran_server
       private:
 	/*
 	 * The internal state of connection_handler. A connection_handler must be in one of those states.
-	 * And it's transitioned sequentially: IDLE -> CONNECTING -> CONNECTED -> DISCONNECTED -> IDLE
 	 *
 	 *    IDLE ---> CONNECTING ---> CONNECTED ---> DISCONNECTING ---> IDLE
 	 *                   |                     |
