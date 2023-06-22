@@ -137,16 +137,21 @@ class tran_server
 	 * The internal state of connection_handler. A connection_handler must be in one of those states.
 	 * And it's transitioned sequentially: IDLE -> CONNECTING -> CONNECTED -> DISCONNECTED -> IDLE
 	 *
+	 *    IDLE ---> CONNECTING ---> CONNECTED ---> DISCONNECTING ---> IDLE
+	 *                   |                     |
+	 *                   +---------------------+
 	 * The allowed operations for each state are:
-	 * +---------------+--------------+-------------+--------------+------------+------------+
-	 * |     state     | accept a new | request     | request      | m_conn     | main       |
-	 * |               | connection   | from inside | from outside | != nullptr | connection |
-	 * +---------------+--------------+-------------+--------------+------------+------------+
-	 * | IDLE          | O            | X           | X            | X          | X          |
-	 * | CONNECTING    | X            | O           | X            | △          | X          |
-	 * | CONNECTED     | X            | O           | O            | O          | O          |
-	 * | DISCONNECTING | X            | O           | X            | △          | X          |
-	 * +---------------+--------------+-------------+--------------+------------+------------+
+	 * +---------------+--------------+--------------+--------------+------------+-------------+
+	 * |     state     | accept a new | send request | send request | m_conn     | set as main |
+	 * |               | connection   | from inside  | from outside | != nullptr | connection  |
+	 * +---------------+--------------+--------------+--------------+------------+-------------+
+	 * | IDLE          | O            | X            | X            | X          | X           |
+	 * | CONNECTING    | X            | O            | X            | O          | X           |
+	 * | CONNECTED     | X            | O            | O            | O          | O           |
+	 * | DISCONNECTING | X            | O            | X            | △          | X           |
+	 * +---------------+--------------+--------------+--------------+------------+-------------+
+	 *
+	 * O: Allowed, X: not allowed, △: not certain
 	 *
 	 * m_state and m_conn are coupled and mutexes for them are managed carefully to provide above rules.
 	 */

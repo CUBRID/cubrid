@@ -445,17 +445,19 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
   auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
 
-  assert (m_state == state::IDLE);
   assert (m_conn == nullptr);
-
-  m_state = state::CONNECTING;
 
   m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
 					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
 
   assert (m_conn != nullptr);
+
   m_conn->start ();
 
+  assert (m_state == state::IDLE);
+  m_state = state::CONNECTING;
+
+  // TODO initailizing jobs will be triggered such as the catch-up process. state::CONNECTED will be set asynchronously when it's done.
   m_state = state::CONNECTED;
 }
 
@@ -469,13 +471,12 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 {
   auto lockg = std::lock_guard <std::shared_mutex> { m_state_mtx };
 
-  assert (m_state != state::CONNECTING);
-
-  if (m_state != state::CONNECTED)
+  if (m_state == state::IDLE || m_state == state::DISCONNECTING)
     {
       return; // already disconnected by other
     }
 
+  assert (m_state == state::CONNECTING || m_state == state::CONNECTED);
   m_state = state::DISCONNECTING;
 
   m_disconn_future = std::async (std::launch::async, [this, with_disc_msg]
