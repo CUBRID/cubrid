@@ -179,6 +179,21 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 			    get_channel_id ().c_str ());
 }
 
+void
+active_tran_server::connection_handler::send_start_catch_up_request ()
+{
+  packing_packer packer;
+  cubmem::extensible_block ext_blk;
+
+  LOG_LSA lsa;
+  std::string str1 = "str1";
+  std::string str2 = "str2";
+
+  packer.set_buffer_and_pack_all (ext_blk, str1, str2, lsa);
+
+  push_request (tran_to_page_request::SEND_START_CATCH_UP, ext_blk.get_ptr ());
+}
+
 log_lsa
 active_tran_server::connection_handler::get_saved_lsa () const
 {

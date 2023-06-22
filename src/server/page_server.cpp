@@ -90,6 +90,10 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, tran
       tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID,
       std::bind (&page_server::connection_handler::handle_oldest_active_mvccid_request, std::ref (*this), std::placeholders::_1)
     },
+    {
+      tran_to_page_request::SEND_START_CATCH_UP,
+      std::bind (&page_server::connection_handler::receive_start_catch_up, std::ref (*this), std::placeholders::_1)
+    },
     // passive only
     {
       tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH,
@@ -183,6 +187,13 @@ page_server::connection_handler::handle_oldest_active_mvccid_request (tran_serve
   a_sp.push_payload (std::move (response_message));
   m_conn->respond (std::move (a_sp));
 }
+
+
+void
+page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
+{
+}
+
 
 void
 page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
