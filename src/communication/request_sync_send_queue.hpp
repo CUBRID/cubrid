@@ -187,12 +187,13 @@ namespace cubcomm
   {
     while (!q.empty () && !m_abort_further_processing)
       {
-	typename queue_type::const_reference queue_front = q.front ();
+	// non-const reference, to allow move
+	typename queue_type::reference queue_front = q.front ();
 
 	css_error_code err_code = NO_ERRORS;
 	{
 	  std::lock_guard<std::mutex> lockg (m_send_mutex);
-	  err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
+	  err_code = m_client.send (queue_front.m_id, std::move (queue_front.m_payload));
 	}
 	if (err_code != NO_ERRORS)
 	  {
@@ -241,6 +242,8 @@ namespace cubcomm
   void
   request_sync_send_queue<ReqClient, ReqPayload>::send_all (queue_type &backbuffer)
   {
+    // TODO: this function is used only in unit tests; adapt unit tests to remove the need of this function
+
     // Swap requests queue with the backbuffer. If there are any requests in the backbuffer, send them.
     assert (backbuffer.empty ());
 

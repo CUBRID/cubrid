@@ -146,7 +146,7 @@ namespace cubcomm
       request_client &operator = (request_client &&) = delete;
 
       template <typename ... PackableArgs>
-      css_error_code send (MsgId msgid, const PackableArgs &... args);	//  pack args and send request of type msgid
+      css_error_code send (MsgId msgid, PackableArgs &&... args);	//  pack args and send request of type msgid
 
       inline const channel &get_channel () const;		// get underlying channel
 
@@ -218,7 +218,7 @@ namespace cubcomm
       request_client_server &operator= (request_client_server &&) = delete;
 
       template <typename ... PackableArgs>
-      css_error_code send (ClientMsgId msgid, const PackableArgs &... args);
+      css_error_code send (ClientMsgId msgid, PackableArgs &&... args);
 
     private:
       cubmem::extensible_block m_send_extensible_block;
@@ -250,9 +250,9 @@ namespace cubcomm
 
   template <typename MsgId>
   template <typename ... PackableArgs>
-  css_error_code request_client<MsgId>::send (MsgId msgid, const PackableArgs &... args)
+  css_error_code request_client<MsgId>::send (MsgId msgid, PackableArgs &&... args)
   {
-    return send_client_request (m_channel, m_send_extensible_block, msgid, args...);
+    return send_client_request (m_channel, m_send_extensible_block, msgid, std::forward<PackableArgs> (args)...);
   }
 
   template <typename MsgId>
@@ -416,19 +416,19 @@ namespace cubcomm
   template <typename ClientMsgId, typename ServerMsgId>
   template <typename ... PackableArgs>
   css_error_code request_client_server<ClientMsgId, ServerMsgId>::send (ClientMsgId msgid,
-      const PackableArgs &... args)
+      PackableArgs &&... args)
   {
     return send_client_request (this->request_server<ServerMsgId>::m_channel,
-				m_send_extensible_block, msgid, args...);
+				m_send_extensible_block, msgid, std::forward<PackableArgs> (args)...);
   }
 
   template <typename MsgId, typename ... PackableArgs>
   css_error_code send_client_request (channel &chn, cubmem::extensible_block &send_ext_block,
-				      MsgId msgid, const PackableArgs &... args)
+				      MsgId msgid, PackableArgs &&... args)
   {
     packing_packer packer;
     // internally, will re-alloc until the block size gets big enough that will not neet to re-alloc anymore
-    packer.set_buffer_and_pack_all (send_ext_block, static_cast<int> (msgid), args...);
+    packer.set_buffer_and_pack_all (send_ext_block, static_cast<int> (msgid), std::forward<PackableArgs> (args)...);
     const size_t packer_current_size = packer.get_current_size ();
 
     er_log_send_request (chn, static_cast<int> (msgid), packer_current_size);
