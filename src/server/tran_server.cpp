@@ -445,7 +445,7 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
   auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
 
-  assert (m_state == state::OPEN);
+  assert (m_state == state::IDLE);
   assert (m_conn == nullptr);
 
   m_state = state::CONNECTING;
@@ -497,7 +497,7 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 
     auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
     assert (m_state == state::DISCONNECTING);
-    m_state = state::OPEN;
+    m_state = state::IDLE;
   });
 }
 
@@ -510,7 +510,7 @@ tran_server::connection_handler::wait_async_disconnection ()
     }
 #if !defined (NDEBUG)
   auto slock = std::shared_lock<std::shared_mutex> { m_state_mtx };
-  assert (m_state == state::OPEN);
+  assert (m_state == state::IDLE);
 #endif /* !NDEBUG */
 }
 

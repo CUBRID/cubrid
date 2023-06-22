@@ -121,7 +121,7 @@ class tran_server
       protected:
 	connection_handler (tran_server &ts)
 	  : m_ts { ts }
-	  , m_state { state::OPEN }
+	  , m_state { state::IDLE }
 	{ }
 
 	virtual request_handlers_map_t get_request_handlers ();
@@ -135,14 +135,14 @@ class tran_server
       private:
 	/*
 	 * The internal state of connection_handler. A connection_handler must be in one of those states.
-	 * And it's transitioned sequentially: OPEN -> CONNECTING -> CONNECTED -> DISCONNECTED -> OPEN
+	 * And it's transitioned sequentially: IDLE -> CONNECTING -> CONNECTED -> DISCONNECTED -> IDLE
 	 *
 	 * The allowed operations for each state are:
 	 * +---------------+--------------+-------------+--------------+------------+------------+
 	 * |     state     | accept a new | request     | request      | m_conn     | main       |
 	 * |               | connection   | from inside | from outside | != nullptr | connection |
 	 * +---------------+--------------+-------------+--------------+------------+------------+
-	 * | OPEN          | O            | X           | X            | X          | X          |
+	 * | IDLE          | O            | X           | X            | X          | X          |
 	 * | CONNECTING    | X            | O           | X            | △          | X          |
 	 * | CONNECTED     | X            | O           | O            | O          | O          |
 	 * | DISCONNECTING | X            | O           | X            | △          | X          |
@@ -152,7 +152,7 @@ class tran_server
 	 */
 	enum class state
 	{
-	  OPEN,
+	  IDLE,
 	  CONNECTING,
 	  CONNECTED,
 	  DISCONNECTING
