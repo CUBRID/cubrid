@@ -15942,7 +15942,11 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
   /* first the non recursive part from the CTE shall be executed */
   if (non_recursive_part->status == XASL_CLEARED || non_recursive_part->status == XASL_INITIALIZED)
     {
-      if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
+      if (non_recursive_part->cached_list_id)
+	{
+	  qfile_copy_list_id (non_recursive_part->list_id, non_recursive_part->cached_list_id, false);
+	}
+      else if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
 	  GOTO_EXIT_ON_ERROR;

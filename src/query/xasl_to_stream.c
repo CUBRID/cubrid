@@ -3034,6 +3034,26 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->mvcc_reev_extra_cls_cnt);
 
+  ptr = or_pack_int (ptr, xasl->sha1.h[0]);
+  ptr = or_pack_int (ptr, xasl->sha1.h[1]);
+  ptr = or_pack_int (ptr, xasl->sha1.h[2]);
+  ptr = or_pack_int (ptr, xasl->sha1.h[3]);
+  ptr = or_pack_int (ptr, xasl->sha1.h[4]);
+
+  if (xasl->cached_list_id == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_list_id (xasl->cached_list_id);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
   /*
    * NOTE that the composite lock block is strictly a server side block
    * and is not packed.
@@ -5047,8 +5067,8 @@ static char *
 xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id)
 {
   /* is from client to server */
-  assert_release (list_id->type_list.type_cnt == 0);
-  assert_release (list_id->type_list.domp == NULL);
+  //assert_release (list_id->type_list.type_cnt == 0);
+  //assert_release (list_id->type_list.domp == NULL);
 
   return or_pack_listid (ptr, (void *) list_id);
 }
@@ -5865,6 +5885,9 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     {
       size += xts_sizeof_access_spec_type (access_spec);
     }
+
+  size += OR_INT_SIZE * 5;	/* sha1 */
+  size += OR_PTR_SIZE;		/* cached list-id */
 
   switch (xasl->type)
     {

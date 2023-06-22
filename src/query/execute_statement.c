@@ -14334,8 +14334,35 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.dont_prt_long_string = 1;
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
+
+  /* check with query */
+  if (statement->info.query.with)
+    {
+      int error;
+      PARSER_CONTEXT cte_context;
+      PT_NODE *cte_statement =
+	statement->info.query.with->info.with_clause.cte_definition_list->info.cte.non_recursive_part;
+
+      cte_context = *parser;
+
+      error = do_prepare_select (&cte_context, cte_statement);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      cte_statement->sha1 = cte_context.context.sha1;
+
+      error = do_execute_select (&cte_context, cte_statement);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
 			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_USER));
+
   contextp->sql_hash_text = (char *) statement->alias_print;
   err =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),

@@ -2122,6 +2122,26 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   ptr = or_unpack_int (ptr, &xasl->mvcc_reev_extra_cls_cnt);
 
+  ptr = or_unpack_int (ptr, &xasl->sha1.h[0]);
+  ptr = or_unpack_int (ptr, &xasl->sha1.h[1]);
+  ptr = or_unpack_int (ptr, &xasl->sha1.h[2]);
+  ptr = or_unpack_int (ptr, &xasl->sha1.h[3]);
+  ptr = or_unpack_int (ptr, &xasl->sha1.h[4]);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      xasl->cached_list_id = NULL;
+    }
+  else
+    {
+      xasl->cached_list_id = stx_restore_list_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->cached_list_id == NULL)
+	{
+	  goto error;
+	}
+    }
+
 #if defined (ENABLE_COMPOSITE_LOCK)
   /*
    * Note that the composite lock block is strictly a server side block
@@ -2346,10 +2366,10 @@ stx_build_list_id (THREAD_ENTRY * thread_p, char *ptr, QFILE_LIST_ID * listid)
       goto error;
     }
 
-  assert_release (listid->type_list.type_cnt == 0);
-  assert_release (listid->type_list.domp == NULL);
+  //assert_release (listid->type_list.type_cnt == 0);
+  //assert_release (listid->type_list.domp == NULL);
 
-#if 0				/* DEAD CODE - for defense code */
+#if 1				/* DEAD CODE - for defense code */
   if (listid->type_list.type_cnt > 0)
     {
       int count, i;
