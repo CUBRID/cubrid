@@ -790,7 +790,7 @@ css_net_recv_remainder (SOCKET fd, char *buffer, int *maxlen, int timeout)
       return ERROR_ON_READ;
     }
 
-  if (nbytes_read_data != *maxlen)
+  if (nbytes_read_data > *maxlen)
     {
       // this should never occur
 #ifdef CUBRID_DEBUG
