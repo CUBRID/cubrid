@@ -773,7 +773,8 @@ css_net_recv_allow_truncated (SOCKET fd, char *buffer, int *maxlen, int *remlen,
  *   buffer(out): buffer for data be read
  *   maxlen(in/out):
  *          in - length of buffer, must be exactly the same as the number of remaining bytes to be read;
- *          out - count of bytes that were read; exactly the same value as input
+ *          out - count of bytes that were read; normally, exactly the same value as input; in case of
+ *                error, outputs the read number of bytes
  *   timeout(in): timeout value in milli-second
  */
 css_error_code
@@ -783,7 +784,8 @@ css_net_recv_remainder (SOCKET fd, char *buffer, int *maxlen, int timeout)
   const int nbytes_read_data = css_readn (fd, buffer, *maxlen, timeout);
   if (nbytes_read_data < *maxlen)
     {
-      // expecting to be able to read exactly as expected
+      // expecting to be able to read exactly as specified
+      *maxlen = nbytes_read_data;
 #ifdef CUBRID_DEBUG
       er_log_debug (ARG_FILE_LINE, "css_net_recv_remainder: ERROR_ON_READ bytes %d\n", nbytes_read_data);
 #endif
@@ -792,6 +794,7 @@ css_net_recv_remainder (SOCKET fd, char *buffer, int *maxlen, int timeout)
 
   if (nbytes_read_data > *maxlen)
     {
+      *maxlen = nbytes_read_data;
       // this should never occur
 #ifdef CUBRID_DEBUG
       er_log_debug (ARG_FILE_LINE, "css_net_recv_remainder: READ_LENGTH_MISMATCH bytes %d\n", nbytes_read_data);
