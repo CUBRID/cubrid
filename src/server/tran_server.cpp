@@ -444,24 +444,17 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   // Implementation will assert that an error handler is present if needed.
 
   auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
+
   assert (m_state == state::OPEN);
+  assert (m_conn == nullptr);
 
   m_state = state::CONNECTING;
-
-  auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
-
-  assert (m_conn == nullptr);
 
   m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
 					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
 
   assert (m_conn != nullptr);
-
-  ulock.unlock ();
-
   m_conn->start ();
-
-  /* TODO: While CONNECTING, some initalizing jobs will be done such as the catch-up process of the PS */
 
   m_state = state::CONNECTED;
 }
@@ -487,11 +480,9 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 
   m_disconn_future = std::async (std::launch::async, [this, with_disc_msg]
   {
-    auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
-    assert (m_state == state::DISCONNECTING);
-
+    /* m_conn must not be nullptr because m_conn.reset (nullptr) is only done here below. */
     m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
-    auto ulock = std::unique_lock<std::shared_mutex> { m_conn_mtx };
+
     const std::string channel_id = get_channel_id ();
     if (with_disc_msg)
       {
@@ -504,6 +495,8 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
     m_conn.reset (nullptr);
     er_log_debug (ARG_FILE_LINE, "Transaction server has been disconnected from the page server with channel id: %s.\n", channel_id.c_str ());
 
+    auto lockg = std::lock_guard<std::shared_mutex> { m_state_mtx };
+    assert (m_state == state::DISCONNECTING);
     m_state = state::OPEN;
   });
 }
@@ -560,12 +553,7 @@ tran_server::connection_handler::push_request (tran_to_page_request reqid, std::
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
       return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
     }
-
   // state::CONNECTED guarantees that the internal m_node is not nullptr.
-  auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-  assert (m_conn != nullptr); // because m_conn is set with both m_state_mtx and m_conn_mtx locked.
-  slock_state.unlock ();
-
   push_request_internal (reqid, std::move (payload));
 
   return NO_ERROR;
@@ -599,10 +587,6 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
     }
 
   // state::CONNECTED guarantees that the internal m_node is not nullptr.
-  auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-  assert (m_conn != nullptr); // because m_conn is set with both m_state_mtx and m_conn_mtx locked.
-  slock_state.unlock (); // to allow stop_response_broker() when disconnecting
-
   return send_receive_internal (reqid, std::move (payload_in), payload_out);
 }
 
