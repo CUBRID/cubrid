@@ -171,6 +171,7 @@ class tran_server
 
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
+	std::shared_mutex m_conn_mtx;
 
 	state m_state;
 	std::shared_mutex m_state_mtx;
