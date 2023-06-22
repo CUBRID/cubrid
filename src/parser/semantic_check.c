@@ -201,6 +201,7 @@ static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
@@ -9745,6 +9746,65 @@ pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_check_update_stats () - do semantic checks on the UPDATE STATISTICS statement
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *class_name_node;
+  PT_FLAT_SPEC_INFO info;
+
+  assert (node->node_type == PT_UPDATE_STATS);
+
+  if (node->info.update_stats.all_classes != 0)
+    {
+      /* The following UPDATE STATISTICS statements do not need to be checked because class names are not used.
+       *   - UPDATE STATISTICS ON ALL CLASSES     : (PT_NODE *)->info.update_stats.all_classes == 1
+       *   - UPDATE STATISTICS ON CATALOG CLASSES : (PT_NODE *)->info.update_stats.all_classes == -1
+       */
+      return;
+    }
+
+  /* replace entity spec with an equivalent flat list */
+  info.spec_parent = NULL;
+  info.for_update = false;
+  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+
+  for (class_name_node = node->info.update_stats.class_list; class_name_node != NULL;
+       class_name_node = class_name_node->next)
+    {
+      assert (class_name_node->node_type == PT_NAME);
+      assert (class_name_node->info.name.original != NULL);
+
+      const char *class_name = class_name_node->info.name.original;
+
+      /* The use of synonyms is not allowed in the update statistics statement. */
+      if (db_find_synonym (class_name) != NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, class_name);
+	  return;
+	}
+      else
+	{
+	  /* db_find_synonym () == NULL */
+	  ASSERT_ERROR ();
+
+	  if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	    {
+	      er_clear ();
+	    }
+	  else
+	    {
+	      return;
+	    }
+	}
+    }
+}
+
+/*
  * pt_check_single_valued_node () - looks for names outside an aggregate
  *      which are not in group by list. If it finds one, raises an error
  *   return:
@@ -11624,7 +11684,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
     case PT_DROP_USER:
     case PT_RENAME:
     case PT_RENAME_TRIGGER:
+      break;
+
     case PT_UPDATE_STATS:
+      pt_check_update_stats (parser, node);
       break;
 
     case PT_CREATE_SERVER:

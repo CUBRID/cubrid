@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Veritabanı "%1$s" bilinmiyor veya dosya "databases.txt" erişilemiyor.
 117 Veritabanı için mutlak Pathadı çok uzun. Path in birleştirilmiş toplam uzunluğu "%1$s" artı adı "%2$s" is %3$d; Kombine uzunluğundan daha az olması gerekir %4$d.
 118 Geçerli çalışma dizinini bulamadı.
-119 /etc/hosts içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
+119 "%2$s" içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
 120 Yoğunlukların maksimum sayısı (%1$d) değerini aştı.
 121 "%1$s" kaldırmak için çalışılıyor veritabanından kalıcı bir yoğunluk.
 122 Sistem mesajı kataloguna erişilemiyor.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Ana sunucuya bir kanal kurulamadı.
 348 Servis veya port tanımlayıcı da belirtmeniz gerekir.
 349 TCP için bilinmeyen hizmet: %1$s.
-350 /etc/hosts içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
+350 "%2$s" içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
 351 TCP soketi oluşturulamıyor.
 352 tcp_open: Ayrılmış bir TCP bağlantı noktası alınamıyor.
 353 Ana sunucuya bağlantı yapamazsınız "%1$s".
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Bir hatadan sonra INDEX yüklemesi iptal edildi.
 1244 SHARED niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
 1245 CLASS niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
-1246 /etc/hosts içindeki ("%1$s") adresi ve kurallı adı alınamıyor. Lütfen dosyanın iznini veya ana bilgisayar adı olup olmadığını kontrol edin.
+1246 "%2$s" içindeki ("%1$s") adresi ve kurallı adı alınamıyor. Lütfen dosyanın iznini veya ana bilgisayar adı olup olmadığını kontrol edin.
 1247 Belirtilen zaman (%1$s) Belirtilen yedekleme süresi (%2$s) dan sonra olmalıdır.
 1248 Geçersiz Anahtar dosyası: %1$s
 1249 Anahtar bulunamıyor (dizin: %1$d).
@@ -1442,11 +1442,10 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1357 "%1$s" ana bilgisayar adı zaten var, bir ana bilgisayar adı "%3$s" dosyasının %2$d satırındaki diğer IP adresleriyle çoğaltılamaz.
 1358 Hem IP adresi hem de ana bilgisayar adı, "%2$s" dosyasının %1$d satırına tamamen yazılmalıdır.
 1359 cubrid_hosts.conf dosyasında "%1$s" aranamıyor.
-1360 Kullanıcı tanımlı ana bilgisayar kullanılırken bir hata oluştu.
 
-1361 "%1$s" dosyası bulunamadı.
+1360 "%1$s" dosyası bulunamadı.
 
-1362 Son Hata
+1361 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
