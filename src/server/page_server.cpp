@@ -192,6 +192,19 @@ page_server::connection_handler::handle_oldest_active_mvccid_request (tran_serve
 void
 page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
 {
+  auto payload = a_sp.pull_payload ();
+  cubpacking::unpacker unpacker { payload.c_str(), payload.size ()};
+
+  int64_t lsa;
+  long port;
+  std::string str;
+
+  unpacker.unpack_all (lsa, port, str);
+
+  log_lsa lsa1 { lsa };
+
+  er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname: %s, port : %ld, LSA (%lld|%d)\n", str.c_str (), port,
+		LSA_AS_ARGS (&lsa1));
 }
 
 

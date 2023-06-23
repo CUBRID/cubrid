@@ -138,6 +138,8 @@ active_tran_server::connection_handler::connection_handler (tran_server &ts)
   m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
 				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
   log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
+
+  send_start_catch_up_request ();
 }
 
 active_tran_server::connection_handler::~connection_handler ()
@@ -182,14 +184,14 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 void
 active_tran_server::connection_handler::send_start_catch_up_request ()
 {
-  packing_packer packer;
+  cubpacking::packer packer;
   cubmem::extensible_block ext_blk;
 
-  LOG_LSA lsa;
+  log_lsa lsa = { 1, 2 };
+  long port = 3363L;
   std::string str1 = "str1";
-  std::string str2 = "str2";
 
-  packer.set_buffer_and_pack_all (ext_blk, str1, str2, lsa);
+  packer.set_buffer_and_pack_all (ext_blk, static_cast<int64_t> (lsa), port, str1);
 
   push_request (tran_to_page_request::SEND_START_CATCH_UP, ext_blk.get_ptr ());
 }
