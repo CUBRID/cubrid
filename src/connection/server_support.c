@@ -1289,6 +1289,12 @@ css_start_shutdown_server ()
   css_Server_shutdown_inited = true;
 }
 
+#if !defined (WINDOWS)
+/*
+ * css_register_ha_server() - register server to cub_master
+ *  return: error if failed to register
+ *  server_name(in): server name
+ */
 int
 css_register_ha_server (const char *server_name)
 {
@@ -1334,6 +1340,7 @@ css_register_ha_server (const char *server_name)
       return ERR_CSS_ERROR_DURING_SERVER_CONNECT;
     }
 }
+#endif /* !WINDOWS */
 
 /*
  * css_init() -
