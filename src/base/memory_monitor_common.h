@@ -26,13 +26,11 @@
 
 #include <cstdint>
 
-typedef struct memmon_mem_stat
+typedef enum
 {
-  uint64_t init_stat;
-  uint64_t cur_stat;
-  uint64_t peak_stat;
-  uint32_t expand_count;
-} MEMMON_MEM_STAT;
+  HEAP_MODULE = 1,
+  MMM_MODULE_END
+} MMM_MODULES;
 
 typedef struct memmon_server_info
 {
