@@ -126,9 +126,6 @@ class tran_server
 
 	virtual request_handlers_map_t get_request_handlers ();
 
-	void push_request_internal (tran_to_page_request reqid, std::string &&payload);
-	int send_receive_internal (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
-
       protected:
 	tran_server &m_ts;
 

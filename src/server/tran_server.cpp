@@ -492,7 +492,7 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
       {
 	const int payload = static_cast<int> (m_ts.m_conn_type);
 	std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
-	push_request_internal (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (msg));
+	m_conn->push (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (msg));
 	// After sending SEND_DISCONNECT_MSG, the page server may release all resources releated to this connection.
       }
 
@@ -549,13 +549,6 @@ tran_server::connection_handler::receive_disconnect_request (page_server_conn_t:
   disconnect_async (with_disconnect_msg);
 }
 
-void
-tran_server::connection_handler::push_request_internal (tran_to_page_request reqid, std::string &&payload)
-{
-  // make sure the m_conn is not nullptr;
-  m_conn->push (reqid, std::move (payload));
-}
-
 int
 tran_server::connection_handler::push_request (tran_to_page_request reqid, std::string &&payload)
 {
@@ -569,25 +562,9 @@ tran_server::connection_handler::push_request (tran_to_page_request reqid, std::
 
   // state::CONNECTED guarantees that the internal m_node is not nullptr.
   auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-  assert (m_conn != nullptr); // because m_conn is set with both m_state_mtx and m_conn_mtx locked.
   slock_state.unlock ();
 
-  push_request_internal (reqid, std::move (payload));
-
-  return NO_ERROR;
-}
-
-int
-tran_server::connection_handler::send_receive_internal (tran_to_page_request reqid, std::string &&payload_in,
-    std::string &payload_out)
-{
-  // make sure the m_conn is not nullptr;
-  const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
-  if (error_code != NO_ERRORS)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
-      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
-    }
+  m_conn->push (reqid, std::move (payload));
 
   return NO_ERROR;
 }
@@ -606,10 +583,16 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
 
   // state::CONNECTED guarantees that the internal m_node is not nullptr.
   auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-  assert (m_conn != nullptr); // because m_conn is set with both m_state_mtx and m_conn_mtx locked.
   slock_state.unlock (); // to allow disconnect_async ()
 
-  return send_receive_internal (reqid, std::move (payload_in), payload_out);
+  const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
+  if (error_code != NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
+  return NO_ERROR;
 }
 
 const std::string
