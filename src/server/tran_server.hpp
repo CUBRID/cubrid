@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 #include <shared_mutex>
+#include <future>
 
 // forward declaration
 namespace cubpacking
@@ -62,7 +63,8 @@ class tran_server
   public:
     tran_server () = delete;
     tran_server (cubcomm::server_server conn_type)
-      : m_conn_type (conn_type)
+      : m_main_conn { nullptr }
+      , m_conn_type { conn_type }
     {
     }
     tran_server (const tran_server &) = delete;
@@ -93,6 +95,7 @@ class tran_server
 	using page_server_conn_t = cubcomm::request_sync_client_server<tran_to_page_request, page_to_tran_request, std::string>;
 	using request_handlers_map_t = std::map<page_to_tran_request, page_server_conn_t::incoming_request_handler_t>;
 
+      public:
 	connection_handler () = delete;
 
 	connection_handler (const connection_handler &) = delete;
@@ -103,16 +106,23 @@ class tran_server
 
 	virtual ~connection_handler ();
 
-	void push_request (tran_to_page_request reqid, std::string &&payload);
-	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out) const;
+	void set_connection (cubcomm::channel &&chn);
+	void disconnect_async (bool with_disc_msg);
+	void wait_async_disconnection ();
+
+	int push_request (tran_to_page_request reqid, std::string &&payload);
+	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
 
 	const std::string get_channel_id () const;
-	bool is_disconnecting () const;
+	bool is_connected ();
 
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
       protected:
-	connection_handler (cubcomm::channel &&chn, tran_server &ts, request_handlers_map_t &&request_handlers);
+	connection_handler (tran_server &ts)
+	  : m_ts { ts }
+	  , m_state { state::IDLE }
+	{ }
 
 	virtual request_handlers_map_t get_request_handlers ();
 
@@ -120,18 +130,51 @@ class tran_server
 	tran_server &m_ts;
 
       private:
+	/*
+	 * The internal state of connection_handler. A connection_handler must be in one of those states.
+	 *
+	 *    IDLE ---> CONNECTING ---> CONNECTED ---> DISCONNECTING ---> IDLE
+	 *                   |                     |
+	 *                   +---------------------+
+	 * The allowed operations for each state are:
+	 * +---------------+--------------+--------------+--------------+------------+-------------+
+	 * |     state     | accept a new | send request | send request | m_conn     | set as main |
+	 * |               | connection   | from inside  | from outside | != nullptr | connection  |
+	 * +---------------+--------------+--------------+--------------+------------+-------------+
+	 * | IDLE          | O            | X            | X            | X          | X           |
+	 * | CONNECTING    | X            | O            | X            | O          | X           |
+	 * | CONNECTED     | X            | O            | O            | O          | O           |
+	 * | DISCONNECTING | X            | O            | X            | △          | X           |
+	 * +---------------+--------------+--------------+--------------+------------+-------------+
+	 *
+	 * O: Allowed, X: not allowed, △: not certain
+	 *
+	 * m_state and m_conn are coupled and mutexes for them are managed carefully to provide above rules.
+	 */
+	enum class state
+	{
+	  IDLE,
+	  CONNECTING,
+	  CONNECTED,
+	  DISCONNECTING
+	};
+
+      private:
 	// Request handlers for requests in common
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &&a_sp);
 
-	void send_disconnect_request ();
-
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
-	std::atomic<bool> m_is_disconnecting;
+	std::shared_mutex m_conn_mtx;
+
+	state m_state;
+	std::shared_mutex m_state_mtx;
+
+	std::future<void> m_disconn_future; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
     };
 
   protected:
-    virtual connection_handler *create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const = 0;
+    virtual connection_handler *create_connection_handler (tran_server &ts) const = 0;
 
     // Booting functions that require specialization
     virtual bool get_remote_storage_config () = 0;
@@ -144,8 +187,9 @@ class tran_server
      */
     std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
-    std::shared_mutex m_page_server_conn_vec_mtx;
-    std::condition_variable_any m_main_conn_cv;
+
+    connection_handler *m_main_conn;
+    std::shared_mutex m_main_conn_mtx;
 
   private:
     class ps_connector
@@ -177,15 +221,13 @@ class tran_server
   private:
     int init_page_server_hosts (const char *db_name);
     int get_boot_info_from_page_server ();
-    int connect_to_page_server (const cubcomm::node &node, const char *db_name);
-    void disconnect_page_server_async (const connection_handler *conn);
+    int connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node, const char *db_name);
+    int reset_main_connection ();
 
     int parse_server_host (const std::string &host);
     int parse_page_server_hosts_config (std::string &hosts);
 
   private:
-    async_disconnect_handler<connection_handler> m_async_disconnect_handler;
-
     cubcomm::server_server m_conn_type;
 };
 
