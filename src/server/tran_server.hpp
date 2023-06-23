@@ -106,7 +106,7 @@ class tran_server
 
 	virtual ~connection_handler ();
 
-	void set_connection (cubcomm::channel &&chn);
+	int connect (const cubcomm::node &node);
 	void disconnect_async (bool with_disc_msg);
 	void wait_async_disconnection ();
 
@@ -160,6 +160,7 @@ class tran_server
 	};
 
       private:
+	void set_connection (cubcomm::channel &&chn);
 	// Request handlers for requests in common
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &&a_sp);
 
@@ -221,7 +222,6 @@ class tran_server
   private:
     int init_page_server_hosts ();
     int get_boot_info_from_page_server ();
-    int connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node);
     int reset_main_connection ();
 
     int parse_server_host (const std::string &host);

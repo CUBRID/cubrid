@@ -256,7 +256,7 @@ tran_server::init_page_server_hosts ()
     {
       /* create a empty connection_handler specialized for each tran serve type */
       m_page_server_conn_vec.emplace_back (create_connection_handler (*this));
-      exit_code = connect_to_page_server (*m_page_server_conn_vec.back ().get (), node);
+      exit_code = m_page_server_conn_vec.back ()->connect (node);
       if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
@@ -320,7 +320,7 @@ tran_server::get_boot_info_from_page_server ()
 }
 
 int
-tran_server::connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node)
+tran_server::connection_handler::connect (const cubcomm::node &node)
 {
   auto ps_conn_error_lambda = [&node] ()
   {
@@ -330,9 +330,14 @@ tran_server::connect_to_page_server (connection_handler &conn_handler, const cub
 
   assert_is_tran_server ();
 
+  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+  assert (m_state == state::IDLE);
+
+  m_state = state::CONNECTING;
+
   // connect to page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
-  cubcomm::server_channel srv_chn (m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
+  cubcomm::server_channel srv_chn (m_ts.m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
 
   srv_chn.set_channel_name ("TS_PS_comm");
 
@@ -343,7 +348,7 @@ tran_server::connect_to_page_server (connection_handler &conn_handler, const cub
       return ps_conn_error_lambda ();
     }
 
-  if (srv_chn.send_int (static_cast<int> (m_conn_type)) != NO_ERRORS)
+  if (srv_chn.send_int (static_cast<int> (m_ts.m_conn_type)) != NO_ERRORS)
     {
       return ps_conn_error_lambda ();
     }
@@ -353,14 +358,18 @@ tran_server::connect_to_page_server (connection_handler &conn_handler, const cub
     {
       return ps_conn_error_lambda ();
     }
-  if (returned_code != static_cast<int> (m_conn_type))
+  if (returned_code != static_cast<int> (m_ts.m_conn_type))
     {
       return ps_conn_error_lambda ();
     }
 
   // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
   // moved as argument below
-  conn_handler.set_connection (std::move (srv_chn));
+  set_connection (std::move (srv_chn));
+
+  // TODO initailizing jobs will be triggered such as the catch-up process. state::CONNECTED will be set asynchronously when it's done.
+
+  m_state = state::CONNECTED;
 
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
@@ -437,6 +446,7 @@ tran_server::uses_remote_storage () const
 void
 tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 {
+  auto lockg_conn = std::lock_guard<std::shared_mutex> { m_conn_mtx };
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
   // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
@@ -445,25 +455,12 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
 
-  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+  assert (m_conn == nullptr);
+  m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
+					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
+  assert (m_conn != nullptr);
 
-  {
-    auto lockg_conn = std::lock_guard<std::shared_mutex> { m_conn_mtx };
-
-    assert (m_conn == nullptr);
-    m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
-					  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
-    assert (m_conn != nullptr);
-
-    m_conn->start ();
-  }
-
-  assert (m_state == state::IDLE);
-  m_state = state::CONNECTING;
-
-  // TODO initailizing jobs will be triggered such as the catch-up process. state::CONNECTED will be set asynchronously when it's done.
-
-  m_state = state::CONNECTED;
+  m_conn->start ();
 }
 
 tran_server::connection_handler::~connection_handler ()
