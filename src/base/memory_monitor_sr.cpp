@@ -104,7 +104,6 @@ namespace cubperf
   {
     return 0;
 #if 0
-    //타고타고내려가면서 출력
     char temp[512] = { 0, };
     sprintf (temp, "Module Memory Usage Info : %s\n\n", module_name);
     strcat (buffer, temp);
@@ -173,7 +172,6 @@ namespace cubperf
     LOG_TDES **trantable;
     LOG_TDES *tdes = NULL;
     std::vector <std::pair<int, uint64_t>> tran_meminfo;
-    //tdes 배열 불러와서 active한 애들 다 출력
     trantable = xlogtb_get_trantable_nolatch (&num_total_indices);
 
     sprintf (temp, "Transaction Memory Usage Info\n");
@@ -271,9 +269,6 @@ namespace cubperf
     LOG_TDES *tdes;		/* Transaction descriptor */
     TRANID trid = NULL_TRANID;	/* Transaction index */
 
-    //주어진 스탯 네임을 stats_info에서 찾아서 다 넣어줌
-    //stat_name의 인덱스와 stats_info의 인덱스는 동일하게
-    //init_stat에 누적시키는 조건을 정해야 할 것 같다.
     total_mem_usage.fetch_add (size);
 
     if (stats_info[stat_name].component_index != 0)
@@ -309,7 +304,6 @@ namespace cubperf
 	modules[stats_info[stat_name].module]->subcomp_fetch_add (stats_info[stat_name].subcomp_index, size);
       }
 
-    //그 후 쓰레드에 트랜잭션 여부 확인 후 있다면 LOG_TDES 찾아봐서 누적시켜줌
     if (thread_p)
       {
 	tdes = LOG_FIND_TDES (thread_p->tran_index);
@@ -318,9 +312,7 @@ namespace cubperf
 	    tdes->cur_meminfo.fetch_add (size);
 	  }
       }
-    //peak 상황인지 확인 후 peak면 갱신
 
-    //성공시 0, 에러상황 시 음수
     return 0;
   }
 
@@ -330,9 +322,6 @@ namespace cubperf
     TRANID trid = NULL_TRANID;	/* Transaction index */
     //auto module = modules[stats_info[stat_name].module];
 
-    //주어진 스탯 네임을 stats_info에서 찾아서 다 넣어줌
-    //stat_name의 인덱스와 stats_info의 인덱스는 동일하게
-    //init_stat에 누적시키는 조건을 정해야 할 것 같다.
     total_mem_usage.fetch_add (size);
 
     if (stats_info[stat_name].component_index != 0)
@@ -348,7 +337,6 @@ namespace cubperf
     //module->subcomp[stats_info[stat_name].subcomp_index]->cur_stat.fetch_add(size);
     //modules[stats_info[stat_name].module]->subcomp[stats_info[stat_name].subcomp_index]->cur_stat.fetch_add(size);
 
-    //그 후 쓰레드에 트랜잭션 여부 확인 후 있다면 LOG_TDES 찾아봐서 누적시켜줌
     if (thread_p)
       {
 	tdes = LOG_FIND_TDES (thread_p->tran_index);
@@ -357,9 +345,7 @@ namespace cubperf
 	    tdes->cur_meminfo.fetch_add (size);
 	  }
       }
-    //peak 상황인지 확인 후 peak면 갱신
 
-    //성공시 0, 에러상황 시 음수
     return 0;
   }
 
@@ -382,7 +368,6 @@ namespace cubperf
       }
     //modules[stats_info[stat_name].module]->subcomp[stats_info[stat_name].subcomp_index]->cur_stat.fetch_add(size);
 
-    //그 후 쓰레드에 트랜잭션 여부 확인 후 있다면 LOG_TDES 찾아봐서 누적시켜줌
     if (thread_p)
       {
 	tdes = LOG_FIND_TDES (thread_p->tran_index);
@@ -391,9 +376,7 @@ namespace cubperf
 	    tdes->cur_meminfo.fetch_sub (size);
 	  }
       }
-    //peak 상황인지 확인 후 peak면 갱신
 
-    //성공시 0, 에러상황 시 음수
     return 0;
   }
 
