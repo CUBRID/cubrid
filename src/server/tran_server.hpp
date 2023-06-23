@@ -219,9 +219,9 @@ class tran_server
     };
 
   private:
-    int init_page_server_hosts (const char *db_name);
+    int init_page_server_hosts ();
     int get_boot_info_from_page_server ();
-    int connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node, const char *db_name);
+    int connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node);
     int reset_main_connection ();
 
     int parse_server_host (const std::string &host);
@@ -229,6 +229,7 @@ class tran_server
 
   private:
     cubcomm::server_server m_conn_type;
+    std::string m_server_name;
 };
 
 #endif // !_tran_server_HPP_

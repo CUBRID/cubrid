@@ -117,7 +117,9 @@ tran_server::parse_page_server_hosts_config (std::string &hosts)
 int
 tran_server::boot (const char *db_name)
 {
-  int error_code = init_page_server_hosts (db_name);
+  m_server_name = db_name;
+
+  int error_code = init_page_server_hosts ();
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -192,7 +194,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
 }
 
 int
-tran_server::init_page_server_hosts (const char *db_name)
+tran_server::init_page_server_hosts ()
 {
   assert_is_tran_server ();
   assert (m_page_server_conn_vec.empty ());
@@ -254,7 +256,7 @@ tran_server::init_page_server_hosts (const char *db_name)
     {
       /* create a empty connection_handler specialized for each tran serve type */
       m_page_server_conn_vec.emplace_back (create_connection_handler (*this));
-      exit_code = connect_to_page_server (*m_page_server_conn_vec.back ().get (), node, db_name);
+      exit_code = connect_to_page_server (*m_page_server_conn_vec.back ().get (), node);
       if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
@@ -318,7 +320,7 @@ tran_server::get_boot_info_from_page_server ()
 }
 
 int
-tran_server::connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node, const char *db_name)
+tran_server::connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node)
 {
   auto ps_conn_error_lambda = [&node] ()
   {
@@ -330,7 +332,7 @@ tran_server::connect_to_page_server (connection_handler &conn_handler, const cub
 
   // connect to page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
-  cubcomm::server_channel srv_chn (db_name, SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
+  cubcomm::server_channel srv_chn (m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
 
   srv_chn.set_channel_name ("TS_PS_comm");
 
