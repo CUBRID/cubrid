@@ -94,7 +94,7 @@ namespace cubperf
 
       ~MMM_subcomponent()
       {
-	delete m_subcomp_name;
+	delete[] m_subcomp_name;
       }
   };
 
@@ -117,7 +117,7 @@ namespace cubperf
 
       ~MMM_component()
       {
-	delete m_comp_name;
+	delete[] m_comp_name;
       }
   };
 
@@ -151,7 +151,7 @@ namespace cubperf
       {
 	if (m_module_name)
 	  {
-	    delete m_module_name;
+	    delete[] m_module_name;
 	  }
       }
   };
@@ -169,7 +169,7 @@ namespace cubperf
       {
 	if (m_module_name)
 	  {
-	    delete m_module_name;
+	    delete[] m_module_name;
 	  }
       }
   };
@@ -246,7 +246,7 @@ namespace cubperf
 
       ~MMM()
       {
-	delete m_server_name;
+	delete[] m_server_name;
 	delete m_aggregater;
 	for (int i = 0; i < MMM_MODULE_END; i++)
 	  {
