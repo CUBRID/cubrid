@@ -8091,7 +8091,7 @@ db_get_string_length (const DB_VALUE * value)
     }
 
   p->data.ch.medium.length = length;
-  
+
   return length;
 }
 
