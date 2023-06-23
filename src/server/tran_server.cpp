@@ -608,32 +608,70 @@ tran_server::connection_handler::is_connected ()
   return m_state == state::CONNECTED;
 }
 
+bool
+tran_server::connection_handler::is_idle ()
+{
+  auto slock = std::shared_lock<std::shared_mutex> { m_state_mtx };
+  return m_state == state::IDLE;
+}
+
 tran_server::ps_connector::ps_connector (tran_server &ts)
   : m_ts { ts }
+  , m_terminate { false }
 {
-  m_thread = std::thread (&tran_server::ps_connector::connect_loop, std::ref (*this));
 }
 
 tran_server::ps_connector::~ps_connector ()
 {
+  assert (m_terminate.load () == true);
 }
 
 void
 tran_server::ps_connector::start ()
 {
+  m_thread = std::thread (&tran_server::ps_connector::connect_loop, std::ref (*this));
 }
 
 void
 tran_server::ps_connector::terminate ()
 {
+  m_terminate.store (true);
+
+  if (m_thread.joinable ())
+    {
+      m_thread.join ();
+    }
+  else
+    {
+      assert (false);
+    }
 }
 
 void
 tran_server::ps_connector::connect_loop ()
 {
+  constexpr std::chrono::seconds one_sec { 1 };
+
+  /* Assume that they stores PS information in the same order */
+  assert (m_ts.m_connection_list.size () == m_ts.m_page_server_conn_vec.size());
+
+  while (true)
+    {
+      for (int i=0; i < m_ts.m_page_server_conn_vec.size (); i++)
+	{
+	  if (m_ts.m_page_server_conn_vec[i]->is_idle ())
+	    {
+	      m_ts.m_page_server_conn_vec[i]->connect (m_ts.m_connection_list[i]);
+	    }
+
+	  if (m_terminate.load ())
+	    {
+	      break;
+	    }
+	}
+      std::this_thread::sleep_for (one_sec);
+    }
 }
-
-
 
 void
 assert_is_tran_server ()

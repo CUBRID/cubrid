@@ -115,6 +115,7 @@ class tran_server
 
 	const std::string get_channel_id () const;
 	bool is_connected ();
+	bool is_idle ();
 
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
@@ -214,7 +215,7 @@ class tran_server
 
       private:
 	tran_server &m_ts;
-	bool m_terminate;
+	std::atomic<bool> m_terminate;
 	std::mutex m_mtx;
 	std::thread m_thread;
     };
