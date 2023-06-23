@@ -16,7 +16,7 @@
  */
 
 /*
- * memory_monitor.cpp - implementation of memory monitoring manager
+ * memory_monitor_sr.cpp - implementation of memory monitoring manager
  */
 
 #include "perf.hpp"

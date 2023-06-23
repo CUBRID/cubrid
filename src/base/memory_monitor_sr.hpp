@@ -16,7 +16,7 @@
  */
 
 /*
- * memory_monitor.hpp - memory monitoring module header
+ * memory_monitor_sr.hpp - memory monitoring module header
  */
 
 #ifndef _MEMORY_MONITOR_HPP_
