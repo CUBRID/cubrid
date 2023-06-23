@@ -1410,6 +1410,7 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
   if (!HA_DISABLED ())
     {
       // These global variables are set in css_register_ha_server ()
+      assert (css_Master_server_name != NULL);
       assert (css_Master_port_id != -1);
       assert (css_Pipe_to_master != INVALID_SOCKET);
       assert (css_Master_conn != NULL);
