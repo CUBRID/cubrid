@@ -490,7 +490,10 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
     const std::string channel_id = get_channel_id ();
     if (with_disc_msg)
       {
-	send_disconnect_request ();
+	const int payload = static_cast<int> (m_ts.m_conn_type);
+	std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
+	push_request_internal (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (msg));
+	// After sending SEND_DISCONNECT_MSG, the page server may release all resources releated to this connection.
       }
 
     // stop_incoming_communication_thread() has to be done explicitly before m_conn.reset () to avoid a request handler or an error handler accesses nullptr of m_conn.
@@ -607,15 +610,6 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
   slock_state.unlock (); // to allow disconnect_async ()
 
   return send_receive_internal (reqid, std::move (payload_in), payload_out);
-}
-
-void
-tran_server::connection_handler::send_disconnect_request ()
-{
-  const int payload = static_cast<int> (m_ts.m_conn_type);
-  std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
-  push_request_internal (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (msg));
-  // After sending SEND_DISCONNECT_MSG, the page server may release all resources releated to this connection.
 }
 
 const std::string

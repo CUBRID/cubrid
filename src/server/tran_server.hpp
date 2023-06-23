@@ -166,8 +166,6 @@ class tran_server
 	// Request handlers for requests in common
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &&a_sp);
 
-	void send_disconnect_request ();
-
       private:
 	std::unique_ptr<page_server_conn_t> m_conn;
 	std::shared_mutex m_conn_mtx;
