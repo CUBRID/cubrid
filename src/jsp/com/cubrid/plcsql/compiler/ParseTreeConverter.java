@@ -217,7 +217,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         previsitRoutine_definition(ctx.routine_definition());
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
-        return new Unit(ctx, autonomousTransaction, connectionRequired, getImportString(), decl);
+        return new Unit(ctx, autonomousTransaction, connectionRequired, imports, decl);
     }
 
     @Override
@@ -2014,19 +2014,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         exHandlerDepth--;
 
         return new ExHandler(ctx, exceptions, stmts, exHandlerDepth + 1);
-    }
-
-    public String getImportString() {
-        if (imports.size() == 0) {
-            return "\n// no imports";
-        } else {
-            StringBuffer sbuf = new StringBuffer();
-            for (String s : imports) {
-                sbuf.append("\nimport " + s + ";");
-            }
-
-            return sbuf.toString();
-        }
     }
 
     // --------------------------------------------------------

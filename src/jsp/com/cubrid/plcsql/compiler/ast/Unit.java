@@ -35,6 +35,8 @@ import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.sql.*;
 import org.antlr.v4.runtime.ParserRuleContext;
 
+import java.util.Set;
+
 public class Unit extends AstNode {
 
     @Override
@@ -44,14 +46,14 @@ public class Unit extends AstNode {
 
     public final boolean autonomousTransaction;
     public final boolean connectionRequired;
-    public final String importsStr;
+    public final Set<String> imports;
     public final DeclRoutine routine;
 
     public Unit(
             ParserRuleContext ctx,
             boolean autonomousTransaction,
             boolean connectionRequired,
-            String importsStr,
+            Set<String> imports,
             DeclRoutine routine) {
         super(ctx);
 
@@ -59,7 +61,7 @@ public class Unit extends AstNode {
 
         this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
-        this.importsStr = importsStr;
+        this.imports = imports;
         this.routine = routine;
     }
 
@@ -120,7 +122,7 @@ public class Unit extends AstNode {
                         ? "// no parameters"
                         : routine.paramList.toJavaCode(",\n");
 
-        return tmplUnit.replace("%'IMPORTS'%", importsStr)
+        return tmplUnit.replace("%'IMPORTS'%", getImportString())
                 .replace("%'CLASS-NAME'%", getClassName())
                 .replace(
                         "%'RETURN-TYPE'%",
@@ -190,4 +192,17 @@ public class Unit extends AstNode {
                     "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
 
     private String className;
+
+    private String getImportString() {
+        if (imports.size() == 0) {
+            return "\n// no imports";
+        } else {
+            StringBuffer sbuf = new StringBuffer();
+            for (String s : imports) {
+                sbuf.append("\nimport " + s + ";");
+            }
+
+            return sbuf.toString();
+        }
+    }
 }

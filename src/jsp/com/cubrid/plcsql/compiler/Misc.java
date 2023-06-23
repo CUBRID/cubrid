@@ -30,16 +30,25 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.ast.NodeList;
+
 import java.io.PrintStream;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
+
+import java.util.Map;
+import java.util.HashMap;
 
 public class Misc {
 
     public enum RoutineType {
         FUNC,
         PROC,
+    }
+
+    public static boolean isEmpty(NodeList nl) {
+        return (nl == null || nl.nodes.size() == 0);
     }
 
     public static String detachPkgName(String routineName) {
@@ -156,12 +165,16 @@ public class Misc {
     }
 
     public static String getIndent(int indentLevel) {
-        StringBuffer sbuf = new StringBuffer();
-        for (int i = 0; i < indentLevel; i++) {
-            sbuf.append(INDENT);
+        if (indentLevel < 10) {
+            return smallIndents[indentLevel];
+        } else {
+            String ret = bigIndents.get(indentLevel);
+            if (ret == null) {
+                ret = makeIndent(indentLevel);
+                bigIndents.put(indentLevel, ret);
+            }
+            return ret;
         }
-
-        return sbuf.toString();
     }
 
     // ----------------------------------------------
@@ -171,4 +184,20 @@ public class Misc {
     private static final String INDENT = "  "; // two spaces
 
     private static final int[] UNKNOWN_LINE_COLUMN = new int[] {0, 0};
+
+    private static final String[] smallIndents = new String[] {
+        makeIndent(0), makeIndent(1), makeIndent(2), makeIndent(3), makeIndent(4),
+        makeIndent(5), makeIndent(6), makeIndent(7), makeIndent(8), makeIndent(9)
+    };
+    private static final Map<Integer, String> bigIndents = new HashMap<Integer, String>();
+
+    private static String makeIndent(int indentLevel) {
+        StringBuffer sbuf = new StringBuffer();
+        for (int i = 0; i < indentLevel; i++) {
+            sbuf.append(INDENT);
+        }
+
+        return sbuf.toString();
+    }
+
 }
