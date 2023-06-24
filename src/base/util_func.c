@@ -875,14 +875,12 @@ util_get_second_and_ms_since_epoch (time_t * secs, int *msec)
 // *INDENT-ON*
 
 /*
- * util_is_localhost -
+ * util_is_localhost - check if host is localhost
  *
- * return:
- *
- * NOTE:
+ * return: true if host is localhost, false otherwise
  */
 bool
-util_is_localhost (char *host)
+util_is_localhost (const char *host)
 {
   char localhost[CUB_MAXHOSTNAMELEN];
   GETHOSTNAME (localhost, CUB_MAXHOSTNAMELEN);
