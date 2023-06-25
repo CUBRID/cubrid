@@ -302,6 +302,13 @@ struct scan_pos
   QFILE_TUPLE_POSITION ls_tplpos;	/* List file index scan position */
 };				/* Scan position structure */
 
+typedef struct scan_agl SCAN_AGL;
+struct scan_agl
+{
+  char *agg_index_name;
+  SCAN_AGL *next;
+};
+
 typedef struct scan_stats SCAN_STATS;
 struct scan_stats
 {
@@ -323,7 +330,8 @@ struct scan_stats
   bool multi_range_opt;
   bool index_skip_scan;
   bool loose_index_scan;
-  char *agg_index_name;
+  bool noscan;			/* aggregate optimize is not scan */
+  SCAN_AGL *agl;		/* for multiple aggregate optimize */
 
   /* hash list scan */
   struct timeval elapsed_hash_build;
