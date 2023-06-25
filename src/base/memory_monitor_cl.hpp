@@ -23,10 +23,11 @@
 
 #ifndef _MEMORY_MONITOR_CL_HPP_
 #define _MEMORY_MONITOR_CL_HPP_
-#include "dbtype_def.h"
-#include "memory_monitor_common.h"
 
 #include <cstdint>
+
+#include "dbtype_def.h"
+#include "memory_monitor_common.h"
 
 typedef struct memmon_mem_stat
 {
@@ -41,17 +42,4 @@ const char *module_names[] =
   "",				/* dummy */
   "HEAP"
 };
-#if 0
-int get_module_index (const char *name)
-{
-  for (int i = 1; i <= MMM_MODULE_END; i++)
-    {
-      if (!strcmp (module_names[i], name))
-	{
-	  return i;
-	}
-    }
-  return 0;		// error case
-}
-#endif
 #endif // _MEMORY_MONITOR_CL_HPP_

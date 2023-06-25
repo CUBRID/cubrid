@@ -28,7 +28,7 @@
 
 typedef enum
 {
-  HEAP_MODULE = 1,
+  MMM_HEAP_MODULE = 1,
   MMM_MODULE_END
 } MMM_MODULES;
 

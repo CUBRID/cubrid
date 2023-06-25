@@ -20,27 +20,26 @@
  * memory_monitor_sr.cpp - implementation of memory monitoring manager
  */
 
+#include <stdexcept>
+#include <cstring>
+
 #include "perf.hpp"
-
 #include "error_manager.h"
-
 #include "memory_monitor_sr.hpp"
+
 #if defined (SERVER_MODE)
 #include "log_impl.h"
 #endif
 
-#include <stdexcept>
-
-#include <cstring>
 
 #ifdef SERVER_MODE
 namespace cubperf
 {
-  MMM *MMM_global = NULL;
+  memory_monitoring_manager *MMM_global = NULL;
 #if defined(NDEBUG)
   std::atomic<uint64_t> test_meminfo;
 #endif
-  MMM_module::MMM_module (char *name, MMM_comp_info *info)
+  mmm_module::mmm_module (const char *name, mmm_comp_info *info)
   {
     m_module_name = new char[strlen (name) + 1];
     strcpy (m_module_name, name);

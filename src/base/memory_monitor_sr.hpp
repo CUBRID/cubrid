@@ -20,14 +20,16 @@
  * memory_monitor_sr.hpp - memory monitoring module header
  */
 
-#ifndef _MEMORY_MONITOR_HPP_
-#define _MEMORY_MONITOR_HPP_
+#ifndef _MEMORY_MONITOR_SR_HPP_
+#define _MEMORY_MONITOR_SR_HPP_
+
+#if !defined (SERVER_MODE)
+#error Belongs to server module
+#endif /* SERVER_MODE */
 
 #include "perf_def.hpp"
-//#include "thread_compat.hpp"
 #include "memory_monitor_common.h"
 
-//#ifdef __cplusplus
 #include <cstring>
 #include <type_traits>
 #include <cstdint>
@@ -37,31 +39,30 @@
 #include <cassert>
 
 #define MMM_PARSE_MASK 0x0000FFFF
-#define MMM_MAKE_STAT(module_idx) ((module_idx) << 16)
-#define MMM_MODULE_IDX_FROM_STAT(stat) ((stat) >> 16)
-#define MMM_COMP_INFO_IDX_FROM_STAT((stat) & MMM_PARSE_MASK)
+#define MMM_MAKE_MODULE_INIT_STAT_ID(module_idx) ((module_idx) << 16)
+#define MMM_MODULE_IDX_FROM_STAT_ID(stat) ((stat) >> 16)
+#define MMM_COMP_INFO_IDX_FROM_STAT_ID((stat) & MMM_PARSE_MASK)
 
-#ifdef SERVER_MODE
 typedef enum
 {
-  HEAP = MMM_MAKE_STAT (HEAP_MODULE),
+  HEAP = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_HEAP_MODULE),
   HEAP_CLASSREPR,
-  MMM_STAT_END = MMM_MAKE_STAT (MMM_MODULE_END)
-} MMM_STATS;
+  MMM_STAT_END = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_MODULE_END)
+} MMM_STAT_ID;
 
-int memmon_add_stat (THREAD_ENTRY *p_thread, MMM_STATS stat, uint64_t size);
-int memmon_sub_stat (THREAD_ENTRY *p_thread, MMM_STATS stat, uint64_t size);
-int memmon_move_stat (THREAD_ENTRY *p_thread, MMM_STATS before_stat, MMM_STATS after_stat, uint64_t size);
-int memmon_resize_stat (THREAD_ENTRY *p_thread, MMM_STATS stat, uint64_t before_size, uint64_t after_size);
+int memmon_add_stat (THREAD_ENTRY *thread_p, MMM_STATS stat, uint64_t size);
+int memmon_sub_stat (THREAD_ENTRY *thread_p, MMM_STATS stat, uint64_t size);
+int memmon_move_stat (THREAD_ENTRY *thread_p, MMM_STATS src, MMM_STATS dest, uint64_t size);
+int memmon_resize_stat (THREAD_ENTRY *thread_p, MMM_STATS stat, uint64_t old_size, uint64_t new_size);
 
 namespace cubperf
 {
-  class MMM;
-  class MMM_printer;
+  class memory_monitoring_manager;
+  class mmm_aggregater;
 
-  struct MMM_comp_info
+  struct mmm_comp_info
   {
-    int idx;
+    MMM_STAT_ID idx;
     string comp_name;
     string subcomp_name;
   }
@@ -79,10 +80,10 @@ namespace cubperf
     {HEAP, "", ""}
   };
 
-  class MMM_subcomponent
+  class mmm_subcomponent
   {
     public:
-      MMM_subcomponent (const char *name)
+      mmm_subcomponent (const char *name)
       {
 	m_subcomp_name = new char[strlen (name) + 1];
 	strcpy (m_subcomp_name, name);
@@ -92,16 +93,16 @@ namespace cubperf
       char *m_subcomp_name;
       atomic<uint64_t> m_cur_stat;
 
-      ~MMM_subcomponent()
+      ~mmm_subcomponent()
       {
 	delete[] m_subcomp_name;
       }
   };
 
-  class MMM_component
+  class mmm_component
   {
     public:
-      MMM_component (const char *name)
+      mmm_component (const char *name)
       {
 	m_comp_name = new char[strlen (name) + 1];
 	strcpy (m_comp_name, name);
@@ -110,22 +111,22 @@ namespace cubperf
       /* variable */
       char *m_comp_name;
       MMM_MEM_STAT m_stat;
-      std::vector<MMM_subcomponent> m_subcomponent;
+      std::vector<mmm_subcomponent> m_subcomponent;
 
       /* function */
       int add_subcomponent (const char *name);
 
-      ~MMM_component()
+      ~mmm_component()
       {
 	delete[] m_comp_name;
       }
   };
 
-  class MMM_module
+  class mmm_module
   {
     public:
-      MMM_module (const char *name, MMM_comp_info *info);
-      MMM_module() {} /* for dummy */
+      mmm_module (const char *name, mmm_comp_info *info);
+      mmm_module() {} /* for dummy */
 
       /* const */
       /* max index of component or subcomponent is 0x0000FFFF
@@ -136,7 +137,7 @@ namespace cubperf
       /* variable */
       char *m_module_name;
       MMM_MEM_STAT m_stat;
-      vector<MMM_component> m_component;
+      vector<mmm_component> m_component;
       vector<int> m_comp_idx_map;
 
       /* function */
@@ -147,7 +148,7 @@ namespace cubperf
 	return (comp_idx << 16 | subcomp_idx);
       }
 
-      ~MMM_module()
+      ~mmm_module()
       {
 	if (m_module_name)
 	  {
@@ -157,15 +158,15 @@ namespace cubperf
   };
 
   // you have to inheritance "MMM_module" class to your module
-  class MMM_heap_module : public MMM_module
+  class mmm_heap_module : public mmm_module
   {
     public:
-      heap_stats (const char *name) : template_stats (name) {}
+      mmm_heap_module (const char *name, mmm_comp_info *info) : mmm_module (name, info) {}
 
       /* function */
       virtual int aggregate_stats (MEMMON_MODULE_INFO *info);
 
-      ~heap_stats()
+      ~mmm_heap_module()
       {
 	if (m_module_name)
 	  {
@@ -174,10 +175,10 @@ namespace cubperf
       }
   };
 
-  class MMM_aggregater
+  class mmm_aggregater
   {
     public:
-      MMM_aggregater (memory_monitoring_manager *mmm)
+      mmm_aggregater (memory_monitoring_manager *mmm)
       {
 	this->m_memmon_mgr = mmm;
       }
@@ -190,7 +191,7 @@ namespace cubperf
       int get_module_info (MEMMON_MODULE_INFO *info);
       int get_transaction_info (MEMMON_TRAN_INFO *info);
 
-      ~MMM_printer() {}
+      ~mmm_printer() {}
   };
 
   /* you have to add your modules in Memory Monitoring Manager(MMM) class */
@@ -204,15 +205,15 @@ namespace cubperf
 	aggregater = new MMM_aggregater (this);
       }
       /* variable */
-      char *server_name;
+      char *m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;
-      MMM_aggregater *m_aggregater;
+      mmm_aggregater *m_aggregater;
 
       /* Your module class should add in this array with print function */
-      template_stats *m_module[MMM_MODULE_END] =
+      mmm_module *m_module[MMM_MODULE_END] =
       {
-	new template_stats(),				  /* dummy */
-	new heap_stats ("heap", heap_comp_info)
+	new mmm_module(),				  /* dummy */
+	new mmm_heap_module ("heap", heap_comp_info)
       };
 
       /* function */
@@ -244,7 +245,7 @@ namespace cubperf
 	return comp_info_map_val & MMM_PARSE_MASK;
       }
 
-      ~MMM()
+      ~memory_monitoring_manager()
       {
 	delete[] m_server_name;
 	delete m_aggregater;
@@ -254,13 +255,11 @@ namespace cubperf
 	  }
       }
   };
-  extern MMM *MMM_global;
+  extern memory_monitoring_manager *MMM_global;
 #if defined(NDEBUG)
   extern std::atomic<uint64_t> test_meminfo;
 #endif
 } // namespace cubperf
 
-//#endif // __cplusplus
-#endif
-#endif // _MEMORY_MONITOR_HPP_
+#endif // _MEMORY_MONITOR_SR_HPP_
 
