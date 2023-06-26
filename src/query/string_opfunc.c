@@ -8090,8 +8090,6 @@ db_get_string_length (const DB_VALUE * value)
       intl_char_count ((unsigned char *) str, size, codeset, &length);
     }
 
-  p->data.ch.medium.length = length;
-
   return length;
 }
 
