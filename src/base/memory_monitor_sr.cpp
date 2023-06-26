@@ -37,6 +37,11 @@ namespace cubperf
 {
   memory_monitoring_manager *mmm_Gl = NULL;
 
+  int mmm_component::add_subcomponent (const char *name)
+  {
+    return 0;
+  }
+
   mmm_module::mmm_module (const char *name, MMM_COMP_INFO *info)
   {
     m_module_name = new char[strlen (name) + 1];
@@ -91,6 +96,11 @@ namespace cubperf
 
 	cnt++;
       }
+  }
+
+  int mmm_module::add_component (const char *name)
+  {
+    return 0;
   }
 
   int mmm_module::aggregate_stats (MEMMON_MODULE_INFO *info)

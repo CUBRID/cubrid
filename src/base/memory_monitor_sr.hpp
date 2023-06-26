@@ -46,7 +46,7 @@
 typedef enum
 {
   HEAP = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_HEAP_MODULE),
-  HEAP_CLASSREPR,
+  HEAP_ATTRINFO,
   MMM_STAT_LAST = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_MODULE_LAST)
 } MMM_STAT_ID;
 
@@ -196,7 +196,7 @@ namespace cubperf
       mmm_module *m_module[MMM_MODULE_LAST] =
       {
 	new mmm_module(),				  /* dummy */
-	new mmm_heap_module ("heap", heap_comp_info)
+	new mmm_module()
       };
 
       /* function */
