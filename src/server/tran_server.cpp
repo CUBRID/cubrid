@@ -136,6 +136,8 @@ tran_server::boot (const char *db_name)
 	}
     }
 
+  m_ps_connector.start ();
+
   return NO_ERROR;
 }
 
@@ -381,6 +383,9 @@ void
 tran_server::disconnect_all_page_servers ()
 {
   assert_is_tran_server ();
+
+  m_ps_connector.terminate ();
+
   for (auto &conn : m_page_server_conn_vec)
     {
       constexpr bool with_disconnect_msg = true;
@@ -617,59 +622,58 @@ tran_server::connection_handler::is_idle ()
 
 tran_server::ps_connector::ps_connector (tran_server &ts)
   : m_ts { ts }
+  , m_daemon { nullptr }
   , m_terminate { false }
 {
 }
 
 tran_server::ps_connector::~ps_connector ()
 {
-  assert (m_terminate.load () == true);
+  if (m_terminate.load () == false)
+    {
+      terminate ();
+    }
+
+  assert (m_terminate.load() == true);
 }
 
 void
 tran_server::ps_connector::start ()
 {
-  m_thread = std::thread (&tran_server::ps_connector::connect_loop, std::ref (*this));
+  assert (m_terminate.load () == false);
+
+  auto func_exec = std::bind (&tran_server::ps_connector::connect_if_idle, std::ref (*this), std::placeholders::_1);
+  auto entry = new cubthread::entry_callable_task (std::move (func_exec));
+
+  constexpr std::chrono::seconds one_sec { 1 };
+  cubthread::looper loop (one_sec);
+  m_daemon = cubthread::get_manager ()->create_daemon (loop, entry, "tran_server::ps_connector");
 }
 
 void
 tran_server::ps_connector::terminate ()
 {
   m_terminate.store (true);
-
-  if (m_thread.joinable ())
-    {
-      m_thread.join ();
-    }
-  else
-    {
-      assert (false);
-    }
+  cubthread::get_manager ()->destroy_daemon (m_daemon);
 }
 
 void
-tran_server::ps_connector::connect_loop ()
+tran_server::ps_connector::connect_if_idle (cubthread::entry &)
 {
-  constexpr std::chrono::seconds one_sec { 1 };
-
   /* Assume that they stores PS information in the same order */
   assert (m_ts.m_connection_list.size () == m_ts.m_page_server_conn_vec.size());
 
-  while (true)
+  for (int i=0; i < m_ts.m_page_server_conn_vec.size (); i++)
     {
-      for (int i=0; i < m_ts.m_page_server_conn_vec.size (); i++)
+      if (m_ts.m_page_server_conn_vec[i]->is_idle ())
 	{
-	  if (m_ts.m_page_server_conn_vec[i]->is_idle ())
-	    {
-	      m_ts.m_page_server_conn_vec[i]->connect (m_ts.m_connection_list[i]);
-	    }
-
-	  if (m_terminate.load ())
-	    {
-	      break;
-	    }
+	  m_ts.m_page_server_conn_vec[i]->connect (m_ts.m_connection_list[i]);
 	}
-      std::this_thread::sleep_for (one_sec);
+
+      if (m_terminate.load ())
+	{
+	  break;
+	}
     }
 }
 

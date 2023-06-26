@@ -24,7 +24,8 @@
 #include "log_lsa.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
-#include "async_disconnect_handler.hpp"
+#include "thread_manager.hpp"
+#include "thread_looper.hpp"
 
 #include <string>
 #include <vector>
@@ -65,6 +66,7 @@ class tran_server
     tran_server (cubcomm::server_server conn_type)
       : m_main_conn { nullptr }
       , m_conn_type { conn_type }
+      , m_ps_connector { *this }
     {
     }
     tran_server (const tran_server &) = delete;
@@ -211,13 +213,15 @@ class tran_server
 	void terminate ();
 
       private:
-	void connect_loop ();
+	void connect_if_idle (cubthread::entry &);
 
       private:
 	tran_server &m_ts;
+
+	cubthread::daemon *m_daemon;
+
 	std::atomic<bool> m_terminate;
 	std::mutex m_mtx;
-	std::thread m_thread;
     };
 
   private:
@@ -231,6 +235,8 @@ class tran_server
   private:
     cubcomm::server_server m_conn_type;
     std::string m_server_name;
+
+    ps_connector m_ps_connector;
 };
 
 #endif // !_tran_server_HPP_
