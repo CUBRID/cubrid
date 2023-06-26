@@ -384,7 +384,6 @@ void
 stats_ndv_dump (const char *class_name_p, FILE * file_p)
 {
   MOP class_mop;
-  int error = NO_ERROR;
   CLASS_ATTR_NDV class_attr_ndv;
   int i;
 
@@ -395,7 +394,7 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
     }
 
   /* get NDV by query */
-  if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, file_p, 0) != NO_ERROR)
+  if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, file_p, STATS_WITH_SAMPLING) != NO_ERROR)
     {
       goto end;
     }
@@ -467,7 +466,7 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
     }
 
   /* create sampling SQL statement */
-  if (with_fullscan)
+  if (with_fullscan == STATS_WITH_FULLSCAN)
     {
       query = "SELECT %s FROM [%s]";
     }
