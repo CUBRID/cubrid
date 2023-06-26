@@ -665,7 +665,7 @@ tran_server::ps_connector::connect_if_idle (cubthread::entry &)
   /* Assume that they stores PS information in the same order */
   assert (m_ts.m_connection_list.size () == m_ts.m_page_server_conn_vec.size());
 
-  for (int i=0; i < m_ts.m_page_server_conn_vec.size (); i++)
+  for (size_t i = 0; i < m_ts.m_page_server_conn_vec.size (); i++)
     {
       if (m_ts.m_page_server_conn_vec[i]->is_idle ())
 	{
