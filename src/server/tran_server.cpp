@@ -324,8 +324,10 @@ tran_server::get_boot_info_from_page_server ()
 int
 tran_server::connection_handler::connect (const cubcomm::node &node)
 {
-  auto ps_conn_error_lambda = [&node] ()
+  auto ps_conn_error_lambda = [&node, this] ()
   {
+    m_state = state::IDLE;
+
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
     return ER_NET_PAGESERVER_CONNECTION;
   };
