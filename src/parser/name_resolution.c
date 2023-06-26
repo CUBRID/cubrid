@@ -11447,19 +11447,16 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
   PT_NODE *name = NULL;
 
-  if (node->node_type == PT_SELECT)
+  switch (node->node_type)
     {
-      ;				//*continue_walk = PT_STOP_WALK;
-    }
-  else if (node->node_type == PT_DOT_)
-    {				// case: tbl.col      
+    case PT_DOT_:
       check_for_already_exists
 	(parser, plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original);
 
       *continue_walk = PT_LIST_WALK;
-    }
-  else if (node->node_type == PT_NAME)
-    {
+      break;
+
+    case PT_NAME:
       if (node->type_enum == PT_TYPE_STAR)
 	{			// case:  tbl.*
 	  check_for_already_exists (parser, plkcol, node->info.name.original, NULL);
@@ -11468,30 +11465,27 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	{
 	  check_for_already_exists (parser, plkcol, NULL, node->info.name.original);
 	}
-    }
-  else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_STAR)
-    {
-      {
-	name = parser_new_node (parser, PT_NAME);
-	name->type_enum = PT_TYPE_STAR;
-	if (plkcol->col_list)
-	  {
-	    parser_free_node (parser, plkcol->col_list);
-	  }
-	plkcol->col_list = name;
-      }
-    }
-  return node;
-}
+      break;
 
-#if 0
-static PT_NODE *
-pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  *continue_walk = PT_CONTINUE_WALK;
+    case PT_VALUE:
+      if (node->type_enum == PT_TYPE_STAR)
+	{
+	  name = parser_new_node (parser, PT_NAME);
+	  name->type_enum = PT_TYPE_STAR;
+	  if (plkcol->col_list)
+	    {
+	      parser_free_node (parser, plkcol->col_list);
+	    }
+	  plkcol->col_list = name;
+	}
+      break;
+
+    default:
+      break;
+    }
+
   return node;
 }
-#endif
 
 static void
 pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUERY_INFO * query, PT_NODE * on_cond)
