@@ -643,6 +643,8 @@ void
 tran_server::ps_connector::start ()
 {
   assert (m_terminate.load () == false);
+  /* After init_page_server_hosts() */
+  assert (m_ts.m_page_server_conn_vec.empty () == false);
 
   auto func_exec = std::bind (&tran_server::ps_connector::try_connect_to_all_ps, std::ref (*this), std::placeholders::_1);
   auto entry = new cubthread::entry_callable_task (std::move (func_exec));
