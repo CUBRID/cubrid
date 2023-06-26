@@ -631,12 +631,7 @@ tran_server::ps_connector::ps_connector (tran_server &ts)
 
 tran_server::ps_connector::~ps_connector ()
 {
-  if (m_terminate.load () == false)
-    {
-      terminate ();
-    }
-
-  assert (m_terminate.load() == true);
+  terminate ();
 }
 
 void
@@ -657,8 +652,10 @@ tran_server::ps_connector::start ()
 void
 tran_server::ps_connector::terminate ()
 {
-  m_terminate.store (true);
-  cubthread::get_manager ()->destroy_daemon (m_daemon);
+  if (m_terminate.exchange (true) == false)
+    {
+      cubthread::get_manager ()->destroy_daemon (m_daemon);
+    }
 }
 
 void
