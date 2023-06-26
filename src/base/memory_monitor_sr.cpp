@@ -47,7 +47,7 @@ namespace cubperf
     /* register component and subcomponent information
      * add component or subcomponent */
     int cnt = 0;
-    while (info[cnt].idx != MMM_STAT_END)
+    while (info[cnt].idx != MMM_STAT_LAST)
       {
 	bool comp_skip = false;
 	bool subcomp_skip = false;

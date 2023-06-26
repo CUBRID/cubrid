@@ -47,7 +47,7 @@ typedef enum
 {
   HEAP = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_HEAP_MODULE),
   HEAP_CLASSREPR,
-  MMM_STAT_END = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_MODULE_END)
+  MMM_STAT_LAST = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_MODULE_LAST)
 } MMM_STAT_ID;
 
 int memmon_add_stat (THREAD_ENTRY *thread_p, MMM_STATS stat, uint64_t size);
@@ -210,7 +210,7 @@ namespace cubperf
       mmm_aggregater *m_aggregater;
 
       /* Your module class should add in this array with print function */
-      mmm_module *m_module[MMM_MODULE_END] =
+      mmm_module *m_module[MMM_MODULE_LAST] =
       {
 	new mmm_module(),				  /* dummy */
 	new mmm_heap_module ("heap", heap_comp_info)
@@ -225,7 +225,7 @@ namespace cubperf
       int aggregate_tran_info (MEMMON_TRAN_INFO *info, int tran_count);
       int get_module_index (char *name)
       {
-	for (int i = 1; i <= MMM_MODULE_END; i++)
+	for (int i = 1; i <= MMM_MODULE_LAST; i++)
 	  {
 	    if (!strcmp (modules[i]->module_name, name))
 	      {
@@ -249,7 +249,7 @@ namespace cubperf
       {
 	delete[] m_server_name;
 	delete m_aggregater;
-	for (int i = 0; i < MMM_MODULE_END; i++)
+	for (int i = 0; i < MMM_MODULE_LAST; i++)
 	  {
 	    delete m_module[i];
 	  }
