@@ -196,6 +196,10 @@ class tran_server
     std::shared_mutex m_main_conn_mtx;
 
   private:
+    /*
+     * Try to [re]connect to disconected page servers.
+     * TODO This is a temporary feature, which is going to be done by the cluster manager or cub_master. It tries to connect to all page servers periodically, but later on, it is going to connect to PSes that are ready to connect.
+    */
     class ps_connector
     {
       public:

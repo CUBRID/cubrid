@@ -647,8 +647,8 @@ tran_server::ps_connector::start ()
   auto func_exec = std::bind (&tran_server::ps_connector::connect_if_idle, std::ref (*this), std::placeholders::_1);
   auto entry = new cubthread::entry_callable_task (std::move (func_exec));
 
-  constexpr std::chrono::seconds one_sec { 1 };
-  cubthread::looper loop (one_sec);
+  constexpr std::chrono::seconds five_sec { 5 };
+  cubthread::looper loop (five_sec);
   m_daemon = cubthread::get_manager ()->create_daemon (loop, entry, "tran_server::ps_connector");
 }
 
@@ -662,13 +662,18 @@ tran_server::ps_connector::terminate ()
 void
 tran_server::ps_connector::connect_if_idle (cubthread::entry &)
 {
-  /* Assume that they stores PS information in the same order */
+  /* Assume that they stores PS information in the same order.
+   * TODO: combine two vectors */
   assert (m_ts.m_connection_list.size () == m_ts.m_page_server_conn_vec.size());
 
   for (size_t i = 0; i < m_ts.m_page_server_conn_vec.size (); i++)
     {
       if (m_ts.m_page_server_conn_vec[i]->is_idle ())
 	{
+	  /*
+	   * TODO It can be too verbose now since it always complain to fail to connect when a PS has been stopped.
+	   * Later on, this job is going to be tirggered by a cluster manager or cub_mster when a PS is ready to connect.
+	   */
 	  m_ts.m_page_server_conn_vec[i]->connect (m_ts.m_connection_list[i]);
 	}
 
