@@ -35,11 +35,9 @@
 #ifdef SERVER_MODE
 namespace cubperf
 {
-  memory_monitoring_manager *MMM_global = NULL;
-#if defined(NDEBUG)
-  std::atomic<uint64_t> test_meminfo;
-#endif
-  mmm_module::mmm_module (const char *name, mmm_comp_info *info)
+  memory_monitoring_manager *mmm_Gl = NULL;
+
+  mmm_module::mmm_module (const char *name, MMM_COMP_INFO *info)
   {
     m_module_name = new char[strlen (name) + 1];
     strcpy (m_module_name, name);
@@ -57,7 +55,7 @@ namespace cubperf
 	  {
 	    for (i = 0; i < m_component.size(); i++)
 	      {
-		if (!strcmp (info[cnt].comp_name, m_component[i].m_comp_name))
+		if (!strcmp (info[cnt].comp_name.c_str(), m_component[i].m_comp_name))
 		  {
 		    comp_idx = i;
 		    comp_skip = true;
@@ -67,16 +65,16 @@ namespace cubperf
 
 	    if (!comp_skip)
 	      {
-		comp_idx = add_component (info[cnt].comp_name);
+		comp_idx = add_component (info[cnt].comp_name.c_str());
 	      }
 
 	    if (info[cnt].subcomp_name.size())
 	      {
 		for (i = 0; i < m_component[comp_idx].m_subcomponent.size(); i++)
 		  {
-		    if (!strcmp (info[cnt].subcomp_name, m_component[comp_idx].m_subcomponent[i].m_subcomp_name))
+		    if (!strcmp (info[cnt].subcomp_name.c_str(), m_component[comp_idx].m_subcomponent[i].m_subcomp_name))
 		      {
-			subcomp_idx = j;
+			subcomp_idx = i;
 			subcomp_skip = true;
 			break;
 		      }
@@ -84,7 +82,7 @@ namespace cubperf
 
 		if (!subcomp_skip)
 		  {
-		    subcomp_idx = add_subcomponent (info[cnt].subcomp_name);
+		    subcomp_idx = m_component[comp_idx].add_subcomponent (info[cnt].subcomp_name.c_str());
 		  }
 	      }
 	  }
@@ -95,49 +93,48 @@ namespace cubperf
       }
   }
 
-  int MMM_module::aggregate_stats (MEMMON_MODULE_INFO *info)
+  int mmm_module::aggregate_stats (MEMMON_MODULE_INFO *info)
   {
     return 0;
   }
 
-  int MMM_heap_module::aggregate_stats (MEMMON_MODULE_INFO *info)
+  int mmm_heap_module::aggregate_stats (MEMMON_MODULE_INFO *info)
   {
     return 0;
   }
 
-  int MMM_aggregater::get_server_info (MEMMON_SERVER_INFO *info)
+  int mmm_aggregater::get_server_info (MEMMON_SERVER_INFO *info)
   {
     return 0;
   }
 
-  int MMM_aggregater::get_module_info (MEMMON_MODULE_INFO *info, int module_index)
+  int mmm_aggregater::get_module_info (MEMMON_MODULE_INFO *info, int module_index)
   {
     return 0;
   }
 
-  int MMM_aggregater::get_transaction_info (MEMMON_TRAN_INFO *info, int tran_count)
+  int mmm_aggregater::get_transaction_info (MEMMON_TRAN_INFO *info, int tran_count)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::add_stat (THREAD_ENTRY *thread_p, MMM_STATS stat_name, uint64_t size)
+  int memory_monitoring_manager::add_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::sub_stat (THREAD_ENTRY *thread_p, MMM_STATS stat_name, uint64_t size)
+  int memory_monitoring_manager::sub_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::resize_stat (THREAD_ENTRY *thread_p, MMM_STATS stat_name, uint64_t before_size,
-      uint64_t after_size)
+  int memory_monitoring_manager::resize_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t old_size,
+      uint64_t new_size)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::move_stat (THREAD_ENTRY *thread_p, MMM_STATS before_stat_name, MMM_STATS after_stat_name,
-      uint64_t size)
+  int memory_monitoring_manager::move_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID src, MMM_STAT_ID dest,uint64_t size)
   {
     return 0;
   }

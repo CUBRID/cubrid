@@ -32,6 +32,14 @@ typedef enum
   MMM_MODULE_LAST
 } MMM_MODULES;
 
+typedef struct memmon_mem_stat
+{
+  uint64_t init_stat;
+  uint64_t cur_stat;
+  uint64_t peak_stat;
+  uint32_t expand_count;
+} MEMMON_MEM_STAT;
+
 typedef struct memmon_server_info
 {
   char name[DB_MAX_IDENTIFIER_LENGTH];
