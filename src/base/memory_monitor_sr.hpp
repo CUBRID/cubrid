@@ -208,7 +208,7 @@ namespace cubperf
       int aggregate_tran_info (MEMMON_TRAN_INFO *info, int tran_count);
       int get_module_index (char *name)
       {
-	for (int i = 1; i <= MMM_MODULE_LAST; i++)
+	for (int i = 1; i < MMM_MODULE_LAST; i++)
 	  {
 	    if (!strcmp (m_module[i]->m_module_name, name))
 	      {
