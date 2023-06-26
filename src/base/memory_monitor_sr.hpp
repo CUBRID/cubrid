@@ -63,8 +63,8 @@ namespace cubperf
   typedef struct mmm_comp_info
   {
     MMM_STAT_ID idx;
-    std::string comp_name;
-    std::string subcomp_name;
+    const char *comp_name;
+    const char *subcomp_name;
   } MMM_COMP_INFO;
 
   typedef struct mmm_mem_stat
@@ -90,14 +90,22 @@ namespace cubperf
 	strcpy (m_subcomp_name, name);
       }
 
-      /* variable */
-      char *m_subcomp_name;
+      /* public variable */
       std::atomic<uint64_t> m_cur_stat;
 
-      ~mmm_subcomponent()
+      /* function */
+      char *get_name ()
+      {
+	return m_subcomp_name;
+      }
+
+      ~mmm_subcomponent ()
       {
 	delete[] m_subcomp_name;
       }
+    private:
+      /* private variable */
+      char *m_subcomp_name;
   };
 
   class mmm_component
@@ -109,25 +117,31 @@ namespace cubperf
 	strcpy (m_comp_name, name);
       }
 
-      /* variable */
-      char *m_comp_name;
+      /* public variable */
       MMM_MEM_STAT m_stat;
       std::vector<mmm_subcomponent> m_subcomponent;
 
       /* function */
       int add_subcomponent (const char *name);
+      char *get_name ()
+      {
+	return m_comp_name;
+      }
 
-      ~mmm_component()
+      ~mmm_component ()
       {
 	delete[] m_comp_name;
       }
+    private:
+      /* private variable */
+      char *m_comp_name;
   };
 
   class mmm_module
   {
     public:
       mmm_module (const char *name, MMM_COMP_INFO *info);
-      mmm_module() {} /* for dummy */
+      mmm_module () {} /* for dummy */
 
       /* const */
       /* max index of component or subcomponent is 0x0000FFFF
@@ -135,8 +149,7 @@ namespace cubperf
        * we don't have to increase it */
       static constexpr int m_max_idx = 0x0000FFFF;
 
-      /* variable */
-      char *m_module_name;
+      /* public variable */
       MMM_MEM_STAT m_stat;
       std::vector<mmm_component> m_component;
       std::vector<int> m_comp_idx_map;
@@ -144,18 +157,25 @@ namespace cubperf
       /* function */
       virtual int aggregate_stats (MEMMON_MODULE_INFO *info);
       int add_component (const char *name);
+      char *get_name ()
+      {
+	return m_module_name;
+      }
       static inline int MMM_MAKE_STAT_IDX_MAP (int comp_idx, int subcomp_idx)
       {
 	return (comp_idx << 16 | subcomp_idx);
       }
 
-      ~mmm_module()
+      ~mmm_module ()
       {
 	if (m_module_name)
 	  {
 	    delete[] m_module_name;
 	  }
       }
+    private:
+      /* private variable */
+      char *m_module_name;
   };
 
   class mmm_aggregater
@@ -166,15 +186,16 @@ namespace cubperf
 	this->m_memmon_mgr = mmm;
       }
 
-      /*  backlink of memory_monitoring_manager class */
-      memory_monitoring_manager *m_memmon_mgr;
-
       /* function */
       int get_server_info (MEMMON_SERVER_INFO *info);
       int get_module_info (MEMMON_MODULE_INFO *info, int module_index);
       int get_transaction_info (MEMMON_TRAN_INFO *info, int tran_count);
 
-      ~mmm_aggregater() {}
+      ~mmm_aggregater () {}
+    private:
+      /* private variable */
+      /* backlink of memory_monitoring_manager class */
+      memory_monitoring_manager *m_memmon_mgr;
   };
 
   /* you have to add your modules in Memory Monitoring Manager(MMM) class */
@@ -187,16 +208,15 @@ namespace cubperf
 	strcpy (this->m_server_name, name);
 	m_aggregater = new mmm_aggregater (this);
       }
-      /* variable */
-      char *m_server_name;
+      /* public variable */
       std::atomic<uint64_t> m_total_mem_usage;
       mmm_aggregater *m_aggregater;
 
       /* Your module class should add in this array with print function */
       mmm_module *m_module[MMM_MODULE_LAST] =
       {
-	new mmm_module(),				  /* dummy */
-	new mmm_module()
+	new mmm_module (),				  /* dummy for aligning module index (1 ~) */
+	new mmm_module ()						/* XXX: will be exchanged to heap module class */
       };
 
       /* function */
@@ -210,14 +230,17 @@ namespace cubperf
       {
 	for (int i = 1; i < MMM_MODULE_LAST; i++)
 	  {
-	    if (!strcmp (m_module[i]->m_module_name, name))
+	    if (!strcmp (m_module[i]->get_name (), name))
 	      {
 		return i;
 	      }
 	  }
 	return 0;		// error case
       }
-
+      char *get_name ()
+      {
+	return m_server_name;
+      }
       static inline int MMM_COMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val)
       {
 	return (comp_idx_map_val >> 16);
@@ -228,7 +251,7 @@ namespace cubperf
 	return (comp_idx_map_val & MMM_PARSE_MASK);
       }
 
-      ~memory_monitoring_manager()
+      ~memory_monitoring_manager ()
       {
 	delete[] m_server_name;
 	delete m_aggregater;
@@ -237,6 +260,9 @@ namespace cubperf
 	    delete m_module[i];
 	  }
       }
+    private:
+      /* private variable */
+      char *m_server_name;
   };
   extern memory_monitoring_manager *mmm_Gl;
 } /* namespace cubperf */

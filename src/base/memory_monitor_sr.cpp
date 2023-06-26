@@ -35,7 +35,7 @@
 #ifdef SERVER_MODE
 namespace cubperf
 {
-  memory_monitoring_manager *mmm_Gl = NULL;
+  memory_monitoring_manager *mmm_Gl = nullptr;
 
   int mmm_component::add_subcomponent (const char *name)
   {
@@ -56,11 +56,11 @@ namespace cubperf
 	bool subcomp_skip = false;
 	int comp_idx = this->m_max_idx, subcomp_idx = this->m_max_idx;
 	int i;
-	if (info[cnt].comp_name.size())
+	if (info[cnt].comp_name)
 	  {
-	    for (i = 0; i < m_component.size(); i++)
+	    for (i = 0; i < m_component.size (); i++)
 	      {
-		if (!strcmp (info[cnt].comp_name.c_str(), m_component[i].m_comp_name))
+		if (!strcmp (info[cnt].comp_name, m_component[i].get_name ()))
 		  {
 		    comp_idx = i;
 		    comp_skip = true;
@@ -70,14 +70,14 @@ namespace cubperf
 
 	    if (!comp_skip)
 	      {
-		comp_idx = add_component (info[cnt].comp_name.c_str());
+		comp_idx = add_component (info[cnt].comp_name);
 	      }
 
-	    if (info[cnt].subcomp_name.size())
+	    if (info[cnt].subcomp_name)
 	      {
-		for (i = 0; i < m_component[comp_idx].m_subcomponent.size(); i++)
+		for (i = 0; i < m_component[comp_idx].m_subcomponent.size (); i++)
 		  {
-		    if (!strcmp (info[cnt].subcomp_name.c_str(), m_component[comp_idx].m_subcomponent[i].m_subcomp_name))
+		    if (!strcmp (info[cnt].subcomp_name, m_component[comp_idx].m_subcomponent[i].get_name ()))
 		      {
 			subcomp_idx = i;
 			subcomp_skip = true;
@@ -87,7 +87,7 @@ namespace cubperf
 
 		if (!subcomp_skip)
 		  {
-		    subcomp_idx = m_component[comp_idx].add_subcomponent (info[cnt].subcomp_name.c_str());
+		    subcomp_idx = m_component[comp_idx].add_subcomponent (info[cnt].subcomp_name);
 		  }
 	      }
 	  }
