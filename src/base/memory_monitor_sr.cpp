@@ -98,11 +98,6 @@ namespace cubperf
     return 0;
   }
 
-  int mmm_heap_module::aggregate_stats (MEMMON_MODULE_INFO *info)
-  {
-    return 0;
-  }
-
   int mmm_aggregater::get_server_info (MEMMON_SERVER_INFO *info)
   {
     return 0;

@@ -158,24 +158,6 @@ namespace cubperf
       }
   };
 
-  // you have to inheritance "mmm_module" class to your module
-  class mmm_heap_module : public mmm_module
-  {
-    public:
-      mmm_heap_module (const char *name, MMM_COMP_INFO *info) : mmm_module (name, info) {}
-
-      /* function */
-      virtual int aggregate_stats (MEMMON_MODULE_INFO *info);
-
-      ~mmm_heap_module()
-      {
-	if (m_module_name)
-	  {
-	    delete[] m_module_name;
-	  }
-      }
-  };
-
   class mmm_aggregater
   {
     public:
