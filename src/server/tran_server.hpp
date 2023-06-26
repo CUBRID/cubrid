@@ -217,7 +217,7 @@ class tran_server
 	void terminate ();
 
       private:
-	void connect_if_idle (cubthread::entry &);
+	void try_connect_to_all_ps (cubthread::entry &);
 
       private:
 	tran_server &m_ts;

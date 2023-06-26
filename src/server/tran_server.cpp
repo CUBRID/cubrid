@@ -644,7 +644,7 @@ tran_server::ps_connector::start ()
 {
   assert (m_terminate.load () == false);
 
-  auto func_exec = std::bind (&tran_server::ps_connector::connect_if_idle, std::ref (*this), std::placeholders::_1);
+  auto func_exec = std::bind (&tran_server::ps_connector::try_connect_to_all_ps, std::ref (*this), std::placeholders::_1);
   auto entry = new cubthread::entry_callable_task (std::move (func_exec));
 
   constexpr std::chrono::seconds five_sec { 5 };
@@ -660,7 +660,7 @@ tran_server::ps_connector::terminate ()
 }
 
 void
-tran_server::ps_connector::connect_if_idle (cubthread::entry &)
+tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 {
   /* Assume that they stores PS information in the same order.
    * TODO: combine two vectors */
