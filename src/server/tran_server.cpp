@@ -444,7 +444,7 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   {
     // Remove the connection_handler if the internal socket is closed. It's been disconnected abnormally.
     // m_conn can't be nullptr here because all request and error handler are digested befroe reset m_conn
-    if (!m_conn->is_underlying_channel_alive ())
+    if (error_code == CONNECTION_CLOSED)
       {
 	abort_further_processing = true;
 	er_log_debug (ARG_FILE_LINE,
@@ -606,7 +606,7 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
   const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
   if (error_code != NO_ERRORS)
     {
-      if (!m_conn->is_underlying_channel_alive ())
+      if (error_code == CONNECTION_CLOSED)
 	{
 	  er_log_debug (ARG_FILE_LINE,
 			"sned_receive: an abnormal disconnection has been detected. error code: %d, channel id: %s.\n", error_code,
