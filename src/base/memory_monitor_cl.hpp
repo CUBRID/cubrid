@@ -31,7 +31,6 @@
 
 const char *module_names[] =
 {
-  "",				/* dummy for aligning module index (1 ~) */
-  "HEAP"
+  ""				/* dummy for aligning module index (1 ~) */
 };
 #endif // _MEMORY_MONITOR_CL_HPP_

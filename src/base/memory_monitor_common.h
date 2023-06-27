@@ -28,8 +28,7 @@
 
 typedef enum
 {
-  MMM_HEAP_MODULE = 1,
-  MMM_MODULE_LAST
+  MMM_MODULE_LAST = 1;
 } MMM_MODULES;
 
 typedef struct memmon_mem_stat

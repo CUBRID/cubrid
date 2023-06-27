@@ -45,8 +45,6 @@
 
 typedef enum
 {
-  HEAP = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_HEAP_MODULE),
-  HEAP_ATTRINFO,
   MMM_STAT_LAST = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_MODULE_LAST)
 } MMM_STAT_ID;
 
@@ -62,7 +60,7 @@ namespace cubperf
 
   typedef struct mmm_comp_info
   {
-    MMM_STAT_ID idx;
+    MMM_STAT_ID id;
     const char *comp_name;
     const char *subcomp_name;
   } MMM_COMP_INFO;
@@ -74,12 +72,6 @@ namespace cubperf
     std::atomic<uint64_t> peak_stat;
     std::atomic<uint32_t> expand_count;
   } MMM_MEM_STAT;
-
-  MMM_COMP_INFO heap_comp_info[] =
-  {
-    {HEAP, "", ""},
-    {HEAP_ATTRINFO, "ATTRINFO CACHE", ""}
-  };
 
   class mmm_subcomponent
   {
@@ -94,7 +86,7 @@ namespace cubperf
       std::atomic<uint64_t> m_cur_stat;
 
       /* function */
-      char *get_name ()
+      const char *get_name ()
       {
 	return m_subcomp_name;
       }
@@ -119,11 +111,11 @@ namespace cubperf
 
       /* public variable */
       MMM_MEM_STAT m_stat;
-      std::vector<mmm_subcomponent> m_subcomponent;
+      std::vector<mmm_subcomponent *> m_subcomponent;
 
       /* function */
       int add_subcomponent (const char *name);
-      char *get_name ()
+      const char *get_name ()
       {
 	return m_comp_name;
       }
@@ -140,24 +132,24 @@ namespace cubperf
   class mmm_module
   {
     public:
-      mmm_module (const char *name, MMM_COMP_INFO *info);
+      mmm_module (const char *name, const MMM_COMP_INFO *info);
       mmm_module () {} /* for dummy */
 
       /* const */
       /* max index of component or subcomponent is 0x0000FFFF
        * if some stats have max index of component or subcomponent,
        * we don't have to increase it */
-      static constexpr int m_max_idx = 0x0000FFFF;
+      static constexpr int MAX_COMP_IDX = 0x0000FFFF;
 
       /* public variable */
       MMM_MEM_STAT m_stat;
-      std::vector<mmm_component> m_component;
+      std::vector<mmm_component *> m_component;
       std::vector<int> m_comp_idx_map;
 
       /* function */
       virtual int aggregate_stats (MEMMON_MODULE_INFO *info);
       int add_component (const char *name);
-      char *get_name ()
+      const char *get_name ()
       {
 	return m_module_name;
       }
@@ -166,7 +158,7 @@ namespace cubperf
 	return (comp_idx << 16 | subcomp_idx);
       }
 
-      ~mmm_module ()
+      virtual ~mmm_module ()
       {
 	if (m_module_name)
 	  {
@@ -181,9 +173,9 @@ namespace cubperf
   class mmm_aggregater
   {
     public:
-      mmm_aggregater (memory_monitoring_manager *mmm)
+      mmm_aggregater (memory_monitoring_manager &mmm)
       {
-	this->m_memmon_mgr = mmm;
+	m_memmon_mgr = mmm;
       }
 
       /* function */
@@ -195,7 +187,7 @@ namespace cubperf
     private:
       /* private variable */
       /* backlink of memory_monitoring_manager class */
-      memory_monitoring_manager *m_memmon_mgr;
+      memory_monitoring_manager &m_memmon_mgr;
   };
 
   /* you have to add your modules in Memory Monitoring Manager(MMM) class */
@@ -203,20 +195,19 @@ namespace cubperf
   {
     public:
       memory_monitoring_manager (const char *name)
+	: m_aggregater { *this }
       {
 	this->m_server_name = new char[strlen (name) + 1];
 	strcpy (this->m_server_name, name);
-	m_aggregater = new mmm_aggregater (this);
       }
       /* public variable */
       std::atomic<uint64_t> m_total_mem_usage;
-      mmm_aggregater *m_aggregater;
+      mmm_aggregater m_aggregater;
 
       /* Your module class should add in this array with print function */
       mmm_module *m_module[MMM_MODULE_LAST] =
       {
-	new mmm_module (),				  /* dummy for aligning module index (1 ~) */
-	new mmm_module ()						/* XXX: will be exchanged to heap module class */
+	new mmm_module ()				  /* dummy for aligning module index (1 ~) */
       };
 
       /* function */
@@ -226,20 +217,25 @@ namespace cubperf
       int move_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID src, MMM_STAT_ID dest, uint64_t size);
       int aggregate_module_info (MEMMON_MODULE_INFO *info, int module_index);
       int aggregate_tran_info (MEMMON_TRAN_INFO *info, int tran_count);
-      int get_module_index (char *name)
-      {
-	for (int i = 1; i < MMM_MODULE_LAST; i++)
-	  {
-	    if (!strcmp (m_module[i]->get_name (), name))
-	      {
-		return i;
-	      }
-	  }
-	return 0;		// error case
-      }
-      char *get_name ()
+      const char *get_name ()
       {
 	return m_server_name;
+      }
+      static int comp (const void *a, const void *b)
+      {
+	uint64_t x1 = ((std::pair<int, uint64_t> *)a)->second;
+	uint64_t x2 = ((std::pair<int, uint64_t> *)b)->second;
+
+	if (x1 < x2)
+	  {
+	    return 1;
+	  }
+	else if (x1 > x2)
+	  {
+	    return -1;
+	  }
+
+	return 0;
       }
       static inline int MMM_COMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val)
       {

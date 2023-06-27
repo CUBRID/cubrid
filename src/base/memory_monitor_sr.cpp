@@ -42,19 +42,19 @@ namespace cubperf
     return 0;
   }
 
-  mmm_module::mmm_module (const char *name, MMM_COMP_INFO *info)
+  mmm_module::mmm_module (const char *name, const MMM_COMP_INFO *info)
   {
     m_module_name = new char[strlen (name) + 1];
     strcpy (m_module_name, name);
 
     /* register component and subcomponent information
-     * add component or subcomponent */
+     * add component and subcomponent */
     int cnt = 0;
-    while (info[cnt].idx != MMM_STAT_LAST)
+    while (info[cnt].id != MMM_STAT_LAST)
       {
 	bool comp_skip = false;
 	bool subcomp_skip = false;
-	int comp_idx = this->m_max_idx, subcomp_idx = this->m_max_idx;
+	int comp_idx = mmm_module::MAX_COMP_IDX, subcomp_idx = mmm_module::MAX_COMP_IDX;
 	int i;
 	if (info[cnt].comp_name)
 	  {
@@ -139,7 +139,7 @@ namespace cubperf
     return 0;
   }
 
-  int memory_monitoring_manager::move_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID src, MMM_STAT_ID dest,uint64_t size)
+  int memory_monitoring_manager::move_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID src, MMM_STAT_ID dest, uint64_t size)
   {
     return 0;
   }
