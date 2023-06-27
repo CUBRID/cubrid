@@ -40,8 +40,8 @@
 
 #define MMM_PARSE_MASK 0x0000FFFF
 #define MMM_MAKE_MODULE_INIT_STAT_ID(module_idx) ((module_idx) << 16)
-#define MMM_MODULE_IDX_FROM_STAT_ID(stat) ((stat) >> 16)
-#define MMM_COMP_INFO_IDX_FROM_STAT_ID(stat) ((stat) & MMM_PARSE_MASK)
+#define MMM_GET_MODULE_IDX_FROM_STAT_ID(stat) ((stat) >> 16)
+#define MMM_GET_COMP_INFO_IDX_FROM_STAT_ID(stat) ((stat) & MMM_PARSE_MASK)
 
 typedef enum
 {
@@ -91,7 +91,6 @@ namespace cubperf
       }
 
     private:
-      /* private variable */
       char *m_subcomp_name;
       std::atomic<uint64_t> m_cur_stat;
   };
@@ -107,12 +106,8 @@ namespace cubperf
 
       /* function */
       const char *get_name ();
-      void add_init_stat (int size);
-      void sub_init_stat (int size);
-      void add_cur_stat (int size);
-      void sub_cur_stat (int size);
-      void add_peak_stat (int size);
-      void sub_peak_stat (int size);
+      void add_stat (uint64_t size, bool init);
+      void sub_stat (uint64_t size, bool init);
       void add_expand_count ();
       const MMM_MEM_STAT &get_stat();
       const std::vector<mmm_subcomponent *> &get_subcomp_vec ();
@@ -123,7 +118,6 @@ namespace cubperf
 	delete[] m_comp_name;
       }
     private:
-      /* private variable */
       char *m_comp_name;
       MMM_MEM_STAT m_stat;
       std::vector<mmm_subcomponent *> m_subcomponent;
@@ -145,12 +139,8 @@ namespace cubperf
       /* function */
       virtual int aggregate_stats (MEMMON_MODULE_INFO *info);
       const char *get_name ();
-      void add_init_stat (int size);
-      void sub_init_stat (int size);
-      void add_cur_stat (int size);
-      void sub_cur_stat (int size);
-      void add_peak_stat (int size);
-      void sub_peak_stat (int size);
+      void add_stat (uint64_t size, bool init);
+      void sub_stat (uint64_t size, bool init);
       void add_expand_count ();
       const MMM_MEM_STAT &get_stat ();
       int add_component (const char *name);
@@ -171,7 +161,6 @@ namespace cubperf
 	  }
       }
     private:
-      /* private variable */
       char *m_module_name;
       MMM_MEM_STAT m_stat;
       std::vector<mmm_component *> m_component;
@@ -183,11 +172,11 @@ namespace cubperf
   class memory_monitoring_manager
   {
     public:
-      memory_monitoring_manager (const char *name)
+      memory_monitoring_manager (const char *name) : m_aggregater { this }
       {
 	this->m_server_name = new char[strlen (name) + 1];
 	strcpy (this->m_server_name, name);
-	m_aggregater = new mmm_aggregater (this);
+	//m_aggregater = new mmm_aggregater (this);
       }
 
 
@@ -233,6 +222,7 @@ namespace cubperf
 	    delete m_module[i];
 	  }
       }
+
     private:
       class mmm_aggregater
       {
@@ -249,16 +239,14 @@ namespace cubperf
 
 	  ~mmm_aggregater () {}
 	private:
-	  /* private variable */
 	  /* backlink of memory_monitoring_manager class */
 	  memory_monitoring_manager *m_memmon_mgr;
       };
 
     private:
-      /* private variable */
       char *m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;
-      mmm_aggregater *m_aggregater;
+      mmm_aggregater m_aggregater;
 
       /* Your module class should add in this array with print function */
       mmm_module *m_module[MMM_MODULE_LAST] =

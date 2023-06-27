@@ -52,7 +52,7 @@ namespace cubperf
     m_cur_stat.fetch_sub (size);
   }
 
-  const uint64_t mmm_subcomponent::get_cur_stat()
+  const uint64_t mmm_subcomponent::get_cur_stat ()
   {
     return m_cur_stat.load ();
   }
@@ -62,34 +62,14 @@ namespace cubperf
     return m_comp_name;
   }
 
-  void mmm_component::add_init_stat (int size)
+  void mmm_component::add_stat (uint64_t size, bool init)
   {
-    m_stat.init_stat.fetch_add (size);
+    return;
   }
 
-  void mmm_component::sub_init_stat (int size)
+  void mmm_component::sub_stat (uint64_t size, bool init)
   {
-    m_stat.init_stat.fetch_sub (size);
-  }
-
-  void mmm_component::add_cur_stat (int size)
-  {
-    m_stat.cur_stat.fetch_add (size);
-  }
-
-  void mmm_component::sub_cur_stat (int size)
-  {
-    m_stat.cur_stat.fetch_sub (size);
-  }
-
-  void mmm_component::add_peak_stat (int size)
-  {
-    m_stat.peak_stat.fetch_add (size);
-  }
-
-  void mmm_component::sub_peak_stat (int size)
-  {
-    m_stat.peak_stat.fetch_sub (size);
+    return;
   }
 
   void mmm_component::add_expand_count ()
@@ -97,7 +77,7 @@ namespace cubperf
     m_stat.expand_count++;
   }
 
-  const MMM_MEM_STAT &mmm_component::get_stat()
+  const MMM_MEM_STAT &mmm_component::get_stat ()
   {
     return m_stat;
   }
@@ -179,34 +159,22 @@ namespace cubperf
     return m_module_name;
   }
 
-  void mmm_module::add_init_stat (int size)
+  void mmm_module::add_stat (uint64_t size, bool init)
   {
-    m_stat.init_stat.fetch_add (size);
+    /* description of add_stat(size, init). (mmm_component::add_stat(..) works same)
+     * 1) if init == true, add init_stat
+     * 2) then, add cur_stat
+     * 3) compare with peak_stat
+     * 4) if cur_stat(new) > peak_stat, update peak_stat */
+    return;
   }
 
-  void mmm_module::sub_init_stat (int size)
+  void mmm_module::sub_stat (uint64_t size, bool init)
   {
-    m_stat.init_stat.fetch_sub (size);
-  }
-
-  void mmm_module::add_cur_stat (int size)
-  {
-    m_stat.cur_stat.fetch_add (size);
-  }
-
-  void mmm_module::sub_cur_stat (int size)
-  {
-    m_stat.cur_stat.fetch_sub (size);
-  }
-
-  void mmm_module::add_peak_stat (int size)
-  {
-    m_stat.peak_stat.fetch_add (size);
-  }
-
-  void mmm_module::sub_peak_stat (int size)
-  {
-    m_stat.peak_stat.fetch_sub (size);
+    /* description of sub_stat(size, init). (mmm_component::sub_stat(..) works same)
+     * 1) if init == true, sub init_stat
+     * 2) then, sub cur_stat */
+    return;
   }
 
   void mmm_module::add_expand_count ()

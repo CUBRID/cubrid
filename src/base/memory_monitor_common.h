@@ -29,7 +29,7 @@
 typedef enum mmm_modules
 {
   MMM_MODULE_LAST = 1
-} MMM_MODULES;
+} MMM_MODULE_ID;
 
 typedef struct memmon_mem_stat
 {
