@@ -1010,7 +1010,7 @@ extern "C"
       const char *buf;
       int compressed_size;
       char *compressed_buf;
-      int length;		//Only Use for group_concat() now
+      int length;		/* Only Use for group_concat() now */
     } medium;
     struct
     {
