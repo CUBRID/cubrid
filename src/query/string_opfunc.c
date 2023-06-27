@@ -8079,11 +8079,10 @@ db_get_string_length (const DB_VALUE * value)
   str = value->data.ch.medium.buf;
   length = size = value->data.ch.medium.size;
   codeset = (INTL_CODESET) value->data.ch.medium.codeset;
-  DB_VALUE *p = (DB_VALUE *) value;
 
-  if (p->data.ch.medium.length != -1)
+  if (value->data.ch.medium.length != -1)
     {
-      return p->data.ch.medium.length;
+      return value->data.ch.medium.length;
     }
   if (value->domain.general_info.type != DB_TYPE_BIT && value->domain.general_info.type != DB_TYPE_VARBIT)
     {
