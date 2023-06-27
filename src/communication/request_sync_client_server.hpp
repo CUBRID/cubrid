@@ -286,6 +286,14 @@ namespace cubcomm
     std::tie (a_response_payload, error_code) = m_response_broker.get_response (rsn);
     if (error_code != NO_ERRORS)
       {
+	/*
+	 * Set CONNECTION_CLOSED as the error code if the internal socket is closed.
+	 * It lets the outside know that it's disconnected abnormally for some reason.
+	 */
+	if (!m_conn->get_channel ().is_connection_alive ())
+	  {
+	    error_code = CONNECTION_CLOSED;
+	  }
 	// clear payload
 	a_response_payload = T_PAYLOAD ();
       }
