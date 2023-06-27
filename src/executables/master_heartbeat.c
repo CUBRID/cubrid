@@ -296,6 +296,10 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
 	" HA-Process Info (master %d, state %s)\n"
 #define HA_SERVER_PROCESS_FORMAT_STRING  \
 	"   Server %s (pid %d, state %s)\n"
+#define HA_TRAN_SERVER_PROCESS_FORMAT_STRING  \
+	"   Transaction-Server %s (pid %d, state %s)\n"
+#define HA_PAGE_SERVER_PROCESS_FORMAT_STRING  \
+	"   Page-Server %s (pid %d, state %s)\n"
 #define HA_COPYLOG_PROCESS_FORMAT_STRING \
 	"   Copylogdb %s (pid %d, state %s)\n"
 #define HA_APPLYLOG_PROCESS_FORMAT_STRING        \
@@ -5433,7 +5437,7 @@ hb_process_state_string (unsigned char ptype, int pstate)
     case HB_PSTATE_NOT_REGISTERED:
       return HB_PSTATE_NOT_REGISTERED_STR;
     case HB_PSTATE_REGISTERED:
-      if (ptype == HB_PTYPE_SERVER)
+      if (ptype == HB_PTYPE_TRAN_SERVER)
 	{
 	  return HB_PSTATE_REGISTERED_AND_STANDBY_STR;
 	}
@@ -6051,7 +6055,7 @@ hb_get_process_info_string (char **str, bool verbose_yn)
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   buf_size += required_size;
 
-  required_size = strlen (HA_APPLYLOG_PROCESS_FORMAT_STRING);
+  required_size = strlen (HA_TRAN_SERVER_PROCESS_FORMAT_STRING);
   required_size += 256;		/* length of connection name */
   required_size += 10;		/* length of pid */
   required_size += HB_PSTATE_STR_SZ;	/* length of process state */
@@ -6104,6 +6108,16 @@ hb_get_process_info_string (char **str, bool verbose_yn)
 
       switch (proc->type)
 	{
+	case HB_PTYPE_TRAN_SERVER:
+	  p +=
+	    snprintf (p, MAX ((last - p), 0), HA_TRAN_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
+		      hb_process_state_string (proc->type, proc->state));
+	  break;
+	case HB_PTYPE_PAGE_SERVER:
+	  p +=
+	    snprintf (p, MAX ((last - p), 0), HA_PAGE_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
+		      hb_process_state_string (proc->type, proc->state));
+	  break;
 	case HB_PTYPE_SERVER:
 	  p +=
 	    snprintf (p, MAX ((last - p), 0), HA_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
