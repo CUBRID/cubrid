@@ -73,9 +73,8 @@ namespace cubcomm
       void stop_incoming_communication_thread ();
       void stop_outgoing_communication_thread ();
 
-      /* only used by unit tests
-       */
       std::string get_underlying_channel_id () const;
+      bool is_underlying_channel_alive () const;
 
       void push (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload);
       css_error_code send_recv (T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_request_payload,
@@ -235,6 +234,13 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::get_underlying_channel_id () const
   {
     return m_conn->get_channel ().get_channel_id ();
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  bool
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::is_underlying_channel_alive () const
+  {
+    return m_conn->get_channel ().is_connection_alive ();
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
