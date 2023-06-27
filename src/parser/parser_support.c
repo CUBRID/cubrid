@@ -686,9 +686,13 @@ pt_expr_equal (PARSER_CONTEXT * parser, const PT_NODE * expr1, const PT_NODE * e
 
     case PT_VALUE:
       {
-	if (pt_str_compare
-	    ((char *) pt_get_varchar_bytes (pt_print_bytes (parser, expr1)),
-	     (char *) pt_get_varchar_bytes (pt_print_bytes (parser, expr2)), CASE_INSENSITIVE))
+	const char *expr1_str = NULL;
+	const char *expr2_str = NULL;
+
+	expr1_str = (const char *) pt_get_varchar_bytes (pt_print_bytes (parser, expr1));
+	expr2_str = (const char *) pt_get_varchar_bytes (pt_print_bytes (parser, expr2));
+
+	if (pt_str_compare (expr1_str, expr2_str, CASE_INSENSITIVE))
 	  {
 	    return false;
 	  }
@@ -697,8 +701,8 @@ pt_expr_equal (PARSER_CONTEXT * parser, const PT_NODE * expr1, const PT_NODE * e
 
     default:
       {
-	char *expr1_str = NULL;
-	char *expr2_str = NULL;
+	const char *expr1_str = NULL;
+	const char *expr2_str = NULL;
 	unsigned int save_custom;
 
 	save_custom = parser->custom_print;	/* save */
