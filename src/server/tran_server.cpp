@@ -439,9 +439,27 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
   // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
 
-  cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
-  // Transaction server will use message specific error handlers.
-  // Implementation will assert that an error handler is present if needed.
+  cubcomm::send_queue_error_handler default_error_handler = [this]
+      (css_error_code error_code, bool &abort_further_processing)
+  {
+    // Remove the connection_handler if the internal socket is closed. It's been disconnected abnormally.
+    // m_conn can't be nullptr here because all request and error handler are digested befroe reset m_conn
+    if (!m_conn->is_underlying_channel_alive ())
+      {
+	abort_further_processing = true;
+	er_log_debug (ARG_FILE_LINE,
+		      "default_error_handler: an abnormal disconnection has been detected. error code: %d, channel id: %s.\n", error_code,
+		      get_channel_id ().c_str ());
+
+	constexpr auto with_disc_msg = false;
+	disconnect_async (with_disc_msg);
+      }
+    else
+      {
+	er_log_debug (ARG_FILE_LINE, "default_error_handler: error code: %d, channel id: %s.\n", error_code,
+		      get_channel_id ().c_str ());
+      }
+  };
 
   auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
 
@@ -450,7 +468,7 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
     assert (m_conn == nullptr);
     m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
-					  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
+					  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (default_error_handler)));
     assert (m_conn != nullptr);
 
     m_conn->start ();
