@@ -636,8 +636,7 @@ bool
 tran_server::connection_handler::is_connected ()
 {
   auto slock = std::shared_lock<std::shared_mutex> { m_state_mtx };
-  /* state::CONNECTED guarantees that m_conn != nullptr */
-  return m_state == state::CONNECTED && m_conn->is_underlying_channel_alive ();
+  return m_state == state::CONNECTED;
 }
 
 void
