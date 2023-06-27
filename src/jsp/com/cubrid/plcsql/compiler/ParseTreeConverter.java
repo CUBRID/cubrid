@@ -712,8 +712,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             String msg = e.getMessage();
             if (msg.startsWith("undeclared id")) {
 
-                if (fieldName.equals("CURRENT_VALUE") || fieldName.equals("NEXT_VALUE") ||
-                    fieldName.equals("CURRVAL") || fieldName.equals("NEXTVAL")) {
+                if (fieldName.equals("CURRENT_VALUE")
+                        || fieldName.equals("NEXT_VALUE")
+                        || fieldName.equals("CURRVAL")
+                        || fieldName.equals("NEXTVAL")) {
 
                     connectionRequired = true;
                     addToImports("java.sql.*");
@@ -725,7 +727,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                             new ExprSerialVal(
                                     ctx,
                                     recordText,
-                                    (fieldName.equals("CURRENT_VALUE") || fieldName.equals("CURRVAL"))
+                                    (fieldName.equals("CURRENT_VALUE")
+                                                    || fieldName.equals("CURRVAL"))
                                             ? ExprSerialVal.SerialVal.CURR_VAL
                                             : ExprSerialVal.SerialVal.NEXT_VAL);
                     semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
