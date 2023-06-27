@@ -424,7 +424,6 @@ extern "C"
   extern PT_NODE *pt_tuple_value (PARSER_CONTEXT * parser, PT_NODE * name, CURSOR_ID * cursor_p, int index);
   extern PT_NODE *pt_insert_value (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_name_equal (PARSER_CONTEXT * parser, const PT_NODE * name1, const PT_NODE * name2);
-  extern bool pt_expr_equal (PARSER_CONTEXT * parser, const PT_NODE * expr1, const PT_NODE * expr2);
   extern PT_NODE *pt_find_name (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * list);
   extern bool pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern bool pt_is_analytic_function (PARSER_CONTEXT * parser, const PT_NODE * node);

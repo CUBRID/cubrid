@@ -13816,9 +13816,21 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 
     case PT_VALUE:
       {
-	if (pt_str_compare
-	    ((char *) pt_get_varchar_bytes (pt_print_bytes (parser, p)),
-	     (char *) pt_get_varchar_bytes (pt_print_bytes (parser, q)), CASE_INSENSITIVE))
+	const char *p_str = NULL;
+	const char *q_str = NULL;
+	unsigned int save_custom;
+
+	save_custom = parser->custom_print;	/* save */
+	parser->custom_print |= PT_CONVERT_RANGE;
+
+	// p_str = (const char *) pt_get_varchar_bytes (pt_print_bytes (parser, p));
+	// q_str = (const char *) pt_get_varchar_bytes (pt_print_bytes (parser, q));
+	p_str = parser_print_tree (parser, p);
+	q_str = parser_print_tree (parser, q);
+
+	parser->custom_print = save_custom;	/* restore */
+
+	if (pt_str_compare (p_str, q_str, CASE_INSENSITIVE))
 	  {
 	    return 1;
 	  }

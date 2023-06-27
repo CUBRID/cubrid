@@ -2402,7 +2402,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_expr_equal (parser, attr, arg1))
+		      if (pt_check_path_eq (parser, attr, arg1))
 			{
 			  attr->line_number++;	/* increase attribute count */
 			  break;
@@ -2426,7 +2426,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_expr_equal (parser, attr, arg2))
+		      if (pt_check_path_eq (parser, attr, arg2))
 			{
 			  attr->line_number++;	/* increase attribute count */
 			  break;
@@ -2620,11 +2620,11 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		  arg1_cnt = arg2_cnt = 0;	/* init */
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_expr_equal (parser, attr, arg1))
+		      if (pt_check_path_eq (parser, attr, arg1))
 			{
 			  arg1_cnt = attr->line_number;
 			}
-		      else if (pt_expr_equal (parser, attr, arg2))
+		      else if (pt_check_path_eq (parser, attr, arg2))
 			{
 			  arg2_cnt = attr->line_number;
 			}
