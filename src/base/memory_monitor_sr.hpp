@@ -55,9 +55,6 @@ int memmon_resize_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t ol
 
 namespace cubperf
 {
-  class memory_monitoring_manager;
-  class mmm_aggregater;
-
   typedef struct mmm_comp_info
   {
     MMM_STAT_ID id;
@@ -82,22 +79,21 @@ namespace cubperf
 	strcpy (m_subcomp_name, name);
       }
 
-      /* public variable */
-      std::atomic<uint64_t> m_cur_stat;
-
       /* function */
-      const char *get_name ()
-      {
-	return m_subcomp_name;
-      }
+      const char *get_name ();
+      void add_cur_stat (uint64_t size);
+      void sub_cur_stat (uint64_t size);
+      const uint64_t get_cur_stat();
 
       ~mmm_subcomponent ()
       {
 	delete[] m_subcomp_name;
       }
+
     private:
       /* private variable */
       char *m_subcomp_name;
+      std::atomic<uint64_t> m_cur_stat;
   };
 
   class mmm_component
@@ -109,16 +105,18 @@ namespace cubperf
 	strcpy (m_comp_name, name);
       }
 
-      /* public variable */
-      MMM_MEM_STAT m_stat;
-      std::vector<mmm_subcomponent *> m_subcomponent;
-
       /* function */
+      const char *get_name ();
+      void add_init_stat (int size);
+      void sub_init_stat (int size);
+      void add_cur_stat (int size);
+      void sub_cur_stat (int size);
+      void add_peak_stat (int size);
+      void sub_peak_stat (int size);
+      void add_expand_count ();
+      const MMM_MEM_STAT &get_stat();
+      const std::vector<mmm_subcomponent *> &get_subcomp_vec ();
       int add_subcomponent (const char *name);
-      const char *get_name ()
-      {
-	return m_comp_name;
-      }
 
       ~mmm_component ()
       {
@@ -127,32 +125,39 @@ namespace cubperf
     private:
       /* private variable */
       char *m_comp_name;
+      MMM_MEM_STAT m_stat;
+      std::vector<mmm_subcomponent *> m_subcomponent;
   };
 
   class mmm_module
   {
     public:
-      mmm_module (const char *name, const MMM_COMP_INFO *info);
-      mmm_module () {} /* for dummy */
-
       /* const */
       /* max index of component or subcomponent is 0x0000FFFF
        * if some stats have max index of component or subcomponent,
        * we don't have to increase it */
       static constexpr int MAX_COMP_IDX = 0x0000FFFF;
 
-      /* public variable */
-      MMM_MEM_STAT m_stat;
-      std::vector<mmm_component *> m_component;
-      std::vector<int> m_comp_idx_map;
+    public:
+      mmm_module (const char *name, const MMM_COMP_INFO *info);
+      mmm_module () {} /* for dummy */
 
       /* function */
       virtual int aggregate_stats (MEMMON_MODULE_INFO *info);
+      const char *get_name ();
+      void add_init_stat (int size);
+      void sub_init_stat (int size);
+      void add_cur_stat (int size);
+      void sub_cur_stat (int size);
+      void add_peak_stat (int size);
+      void sub_peak_stat (int size);
+      void add_expand_count ();
+      const MMM_MEM_STAT &get_stat ();
       int add_component (const char *name);
-      const char *get_name ()
-      {
-	return m_module_name;
-      }
+      const std::vector<mmm_component *> &get_comp_vec ();
+      const std::vector<int> &get_comp_idx_map ();
+      void add_comp_idx_map (int compound);
+
       static inline int MMM_MAKE_STAT_IDX_MAP (int comp_idx, int subcomp_idx)
       {
 	return (comp_idx << 16 | subcomp_idx);
@@ -168,47 +173,23 @@ namespace cubperf
     private:
       /* private variable */
       char *m_module_name;
+      MMM_MEM_STAT m_stat;
+      std::vector<mmm_component *> m_component;
+      std::vector<int> m_comp_idx_map;
   };
 
-  class mmm_aggregater
-  {
-    public:
-      mmm_aggregater (memory_monitoring_manager &mmm)
-      {
-	m_memmon_mgr = mmm;
-      }
-
-      /* function */
-      int get_server_info (MEMMON_SERVER_INFO *info);
-      int get_module_info (MEMMON_MODULE_INFO *info, int module_index);
-      int get_transaction_info (MEMMON_TRAN_INFO *info, int tran_count);
-
-      ~mmm_aggregater () {}
-    private:
-      /* private variable */
-      /* backlink of memory_monitoring_manager class */
-      memory_monitoring_manager &m_memmon_mgr;
-  };
 
   /* you have to add your modules in Memory Monitoring Manager(MMM) class */
   class memory_monitoring_manager
   {
     public:
       memory_monitoring_manager (const char *name)
-	: m_aggregater { *this }
       {
 	this->m_server_name = new char[strlen (name) + 1];
 	strcpy (this->m_server_name, name);
+	m_aggregater = new mmm_aggregater (this);
       }
-      /* public variable */
-      std::atomic<uint64_t> m_total_mem_usage;
-      mmm_aggregater m_aggregater;
 
-      /* Your module class should add in this array with print function */
-      mmm_module *m_module[MMM_MODULE_LAST] =
-      {
-	new mmm_module ()				  /* dummy for aligning module index (1 ~) */
-      };
 
       /* function */
       int add_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size);
@@ -217,10 +198,7 @@ namespace cubperf
       int move_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID src, MMM_STAT_ID dest, uint64_t size);
       int aggregate_module_info (MEMMON_MODULE_INFO *info, int module_index);
       int aggregate_tran_info (MEMMON_TRAN_INFO *info, int tran_count);
-      const char *get_name ()
-      {
-	return m_server_name;
-      }
+
       static int comp (const void *a, const void *b)
       {
 	uint64_t x1 = ((std::pair<int, uint64_t> *)a)->second;
@@ -250,15 +228,43 @@ namespace cubperf
       ~memory_monitoring_manager ()
       {
 	delete[] m_server_name;
-	delete m_aggregater;
 	for (int i = 0; i < MMM_MODULE_LAST; i++)
 	  {
 	    delete m_module[i];
 	  }
       }
     private:
+      class mmm_aggregater
+      {
+	public:
+	  mmm_aggregater (memory_monitoring_manager *mmm)
+	  {
+	    m_memmon_mgr = mmm;
+	  }
+
+	  /* function */
+	  int get_server_info (MEMMON_SERVER_INFO *info);
+	  int get_module_info (MEMMON_MODULE_INFO *info, int module_index);
+	  int get_transaction_info (MEMMON_TRAN_INFO *info, int tran_count);
+
+	  ~mmm_aggregater () {}
+	private:
+	  /* private variable */
+	  /* backlink of memory_monitoring_manager class */
+	  memory_monitoring_manager *m_memmon_mgr;
+      };
+
+    private:
       /* private variable */
       char *m_server_name;
+      std::atomic<uint64_t> m_total_mem_usage;
+      mmm_aggregater *m_aggregater;
+
+      /* Your module class should add in this array with print function */
+      mmm_module *m_module[MMM_MODULE_LAST] =
+      {
+	new mmm_module ()				  /* dummy for aligning module index (1 ~) */
+      };
   };
   extern memory_monitoring_manager *mmm_Gl;
 } /* namespace cubperf */

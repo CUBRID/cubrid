@@ -37,6 +37,76 @@ namespace cubperf
 {
   memory_monitoring_manager *mmm_Gl = nullptr;
 
+  const char *mmm_subcomponent::get_name ()
+  {
+    return m_subcomp_name;
+  }
+
+  void mmm_subcomponent::add_cur_stat (uint64_t size)
+  {
+    m_cur_stat.fetch_add (size);
+  }
+
+  void mmm_subcomponent::sub_cur_stat (uint64_t size)
+  {
+    m_cur_stat.fetch_sub (size);
+  }
+
+  const uint64_t mmm_subcomponent::get_cur_stat()
+  {
+    return m_cur_stat.load ();
+  }
+
+  const char *mmm_component::get_name ()
+  {
+    return m_comp_name;
+  }
+
+  void mmm_component::add_init_stat (int size)
+  {
+    m_stat.init_stat.fetch_add (size);
+  }
+
+  void mmm_component::sub_init_stat (int size)
+  {
+    m_stat.init_stat.fetch_sub (size);
+  }
+
+  void mmm_component::add_cur_stat (int size)
+  {
+    m_stat.cur_stat.fetch_add (size);
+  }
+
+  void mmm_component::sub_cur_stat (int size)
+  {
+    m_stat.cur_stat.fetch_sub (size);
+  }
+
+  void mmm_component::add_peak_stat (int size)
+  {
+    m_stat.peak_stat.fetch_add (size);
+  }
+
+  void mmm_component::sub_peak_stat (int size)
+  {
+    m_stat.peak_stat.fetch_sub (size);
+  }
+
+  void mmm_component::add_expand_count ()
+  {
+    m_stat.expand_count++;
+  }
+
+  const MMM_MEM_STAT &mmm_component::get_stat()
+  {
+    return m_stat;
+  }
+
+  const std::vector<mmm_subcomponent *> &mmm_component::get_subcomp_vec ()
+  {
+    return m_subcomponent;
+  }
+
   int mmm_component::add_subcomponent (const char *name)
   {
     return 0;
@@ -60,7 +130,7 @@ namespace cubperf
 	  {
 	    for (i = 0; i < m_component.size (); i++)
 	      {
-		if (!strcmp (info[cnt].comp_name, m_component[i].get_name ()))
+		if (!strcmp (info[cnt].comp_name, m_component[i]->get_name ()))
 		  {
 		    comp_idx = i;
 		    comp_skip = true;
@@ -75,9 +145,10 @@ namespace cubperf
 
 	    if (info[cnt].subcomp_name)
 	      {
-		for (i = 0; i < m_component[comp_idx].m_subcomponent.size (); i++)
+		std::vector<mmm_subcomponent *> subcomp_vec = m_component[comp_idx]->get_subcomp_vec();
+		for (i = 0; i < subcomp_vec.size (); i++)
 		  {
-		    if (!strcmp (info[cnt].subcomp_name, m_component[comp_idx].m_subcomponent[i].get_name ()))
+		    if (!strcmp (info[cnt].subcomp_name, subcomp_vec[i]->get_name ()))
 		      {
 			subcomp_idx = i;
 			subcomp_skip = true;
@@ -87,7 +158,7 @@ namespace cubperf
 
 		if (!subcomp_skip)
 		  {
-		    subcomp_idx = m_component[comp_idx].add_subcomponent (info[cnt].subcomp_name);
+		    subcomp_idx = m_component[comp_idx]->add_subcomponent (info[cnt].subcomp_name);
 		  }
 	      }
 	  }
@@ -98,27 +169,87 @@ namespace cubperf
       }
   }
 
-  int mmm_module::add_component (const char *name)
-  {
-    return 0;
-  }
-
   int mmm_module::aggregate_stats (MEMMON_MODULE_INFO *info)
   {
     return 0;
   }
 
-  int mmm_aggregater::get_server_info (MEMMON_SERVER_INFO *info)
+  const char *mmm_module::get_name ()
+  {
+    return m_module_name;
+  }
+
+  void mmm_module::add_init_stat (int size)
+  {
+    m_stat.init_stat.fetch_add (size);
+  }
+
+  void mmm_module::sub_init_stat (int size)
+  {
+    m_stat.init_stat.fetch_sub (size);
+  }
+
+  void mmm_module::add_cur_stat (int size)
+  {
+    m_stat.cur_stat.fetch_add (size);
+  }
+
+  void mmm_module::sub_cur_stat (int size)
+  {
+    m_stat.cur_stat.fetch_sub (size);
+  }
+
+  void mmm_module::add_peak_stat (int size)
+  {
+    m_stat.peak_stat.fetch_add (size);
+  }
+
+  void mmm_module::sub_peak_stat (int size)
+  {
+    m_stat.peak_stat.fetch_sub (size);
+  }
+
+  void mmm_module::add_expand_count ()
+  {
+    m_stat.expand_count++;
+  }
+
+  const MMM_MEM_STAT &mmm_module::get_stat ()
+  {
+    return m_stat;
+  }
+
+  int mmm_module::add_component (const char *name)
   {
     return 0;
   }
 
-  int mmm_aggregater::get_module_info (MEMMON_MODULE_INFO *info, int module_index)
+  const std::vector<mmm_component *> &mmm_module::get_comp_vec ()
+  {
+    return m_component;
+  }
+
+  const std::vector<int> &mmm_module::get_comp_idx_map ()
+  {
+    return m_comp_idx_map;
+  }
+
+  void mmm_module::add_comp_idx_map (int compound)
+  {
+    m_comp_idx_map.push_back (compound);
+  }
+
+  int memory_monitoring_manager::mmm_aggregater::get_server_info (MEMMON_SERVER_INFO *info)
   {
     return 0;
   }
 
-  int mmm_aggregater::get_transaction_info (MEMMON_TRAN_INFO *info, int tran_count)
+  int memory_monitoring_manager::mmm_aggregater::get_module_info (MEMMON_MODULE_INFO *info, int module_index)
+  {
+    return 0;
+  }
+
+  int memory_monitoring_manager::mmm_aggregater::get_transaction_info (MEMMON_TRAN_INFO *info, int tran_count)
   {
     return 0;
   }
