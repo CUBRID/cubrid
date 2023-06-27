@@ -11245,7 +11245,7 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 		  tbl_alias = (char *) spec->info.spec.range_var->info.name.original;
 		}
 
-	      if (strcmp (tbl_name, lhs_name) == 0 || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0)
+	      if ((tbl_name && strcmp (tbl_name, lhs_name) == 0) || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0)
 		  || upd_cls_cnt == 1)
 		{
 		  found = true;
