@@ -3573,7 +3573,7 @@ qo_reduce_joined_tables_referenced_by_foreign_key (PARSER_CONTEXT * parser, PT_N
       return;
     }
 
-  if (query->info.query.q.select.where != NULL && query->info.query.q.select.where->or_next != NULL)
+  if (query->info.query.q.select.where == NULL)
     {
       return;
     }
@@ -4626,7 +4626,7 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 
   prev_pred = NULL;
   curr_pred = query->info.query.q.select.where;
-  while (curr_pred != NULL && reduce_reference_info->join_pred_point_list != NULL)
+  while (curr_pred != NULL)
     {
       for (parent_pred = NULL, prev_pred_point = NULL, curr_pred_point = reduce_reference_info->join_pred_point_list;
 	   curr_pred_point != NULL; prev_pred_point = curr_pred_point, curr_pred_point = curr_pred_point->next)
@@ -4737,7 +4737,7 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 
   prev_append_pred = NULL;
   curr_append_pred = reduce_reference_info->append_not_null_pred_list;
-  while (curr_append_pred != NULL && reduce_reference_info->append_not_null_pred_list != NULL)
+  while (curr_append_pred != NULL)
     {
       assert (PT_NODE_IS_EXPR (curr_append_pred));
       assert (PT_EXPR_OP (curr_append_pred) == PT_IS_NOT_NULL);
@@ -4750,7 +4750,7 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	  curr_pred_arg = PT_EXPR_ARG1 (curr_pred);
 	  curr_append_pred_arg = PT_EXPR_ARG1 (curr_append_pred);
 
-	  if (intl_identifier_casecmp (PT_NAME_ORIGINAL (curr_pred_arg), PT_NAME_ORIGINAL (curr_append_pred_arg)) == 0)
+	  if (pt_name_equal (parser, curr_pred_arg, curr_append_pred_arg))
 	    {
 	      /* found */
 	      break;
@@ -4780,7 +4780,7 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 
   prev_append_pred = NULL;
   curr_append_pred = reduce_reference_info->append_not_null_pred_list;
-  while (curr_append_pred != NULL && reduce_reference_info->append_not_null_pred_list != NULL)
+  while (curr_append_pred != NULL)
     {
       for (curr_pred = query->info.query.q.select.where; curr_pred != NULL; curr_pred = curr_pred->next)
 	{
@@ -4790,8 +4790,7 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 	      curr_pred_arg = PT_EXPR_ARG1 (curr_pred);
 	      curr_append_pred_arg = PT_EXPR_ARG1 (curr_append_pred);
 
-	      if (intl_identifier_casecmp (PT_NAME_ORIGINAL (curr_pred_arg),
-					   PT_NAME_ORIGINAL (curr_append_pred_arg)) == 0)
+	      if (pt_name_equal (parser, curr_pred_arg, curr_append_pred_arg))
 		{
 		  /* found */
 		  break;
