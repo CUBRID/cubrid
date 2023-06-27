@@ -705,11 +705,11 @@ pt_expr_equal (PARSER_CONTEXT * parser, const PT_NODE * expr1, const PT_NODE * e
 	parser->custom_print |= PT_CONVERT_RANGE;
 
 	expr1_str = parser_print_tree (parser, expr1);
-	expr1_str = parser_print_tree (parser, expr2);
+	expr2_str = parser_print_tree (parser, expr2);
 
 	parser->custom_print = save_custom;	/* restore */
 
-	if (pt_str_compare (expr1_str, expr1_str, CASE_INSENSITIVE))
+	if (pt_str_compare (expr1_str, expr2_str, CASE_INSENSITIVE))
 	  {
 	    return false;
 	  }
