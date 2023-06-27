@@ -42,6 +42,8 @@ import java.util.HashMap;
 
 public class Misc {
 
+    public static final String INDENT = "  "; // two spaces
+
     public enum RoutineType {
         FUNC,
         PROC,
@@ -180,8 +182,6 @@ public class Misc {
     // ----------------------------------------------
     // Private
     // ----------------------------------------------
-
-    private static final String INDENT = "  "; // two spaces
 
     private static final int[] UNKNOWN_LINE_COLUMN = new int[] {0, 0};
 

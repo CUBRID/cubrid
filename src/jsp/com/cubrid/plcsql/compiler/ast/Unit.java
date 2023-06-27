@@ -148,6 +148,8 @@ public class Unit extends AstNode {
     // Private
     // ------------------------------------------
 
+    private static final String[] dummyStrArr = new String[0];
+
     private static final String tmplUnit =
             Misc.combineLines(
                     "%'IMPORTS'%",
@@ -192,6 +194,14 @@ public class Unit extends AstNode {
                     "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
 
     private String className;
+
+    private String[] getImportsArray() {
+        if (imports.size() == 0) {
+            return new String[] { "// no imports" };
+        } else {
+            return imports.toArray(dummyStrArr);
+        }
+    }
 
     private String getImportString() {
         if (imports.size() == 0) {
