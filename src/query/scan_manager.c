@@ -7738,7 +7738,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 
 	      for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
 		{
-		  len += strlen (agl->agg_index_name + 2);	/* for ", " */
+		  len += strlen (agl->agg_index_name) + 2;	/* for ", " */
 		}
 
 	      agl_index = (char *) malloc (len);
@@ -7752,7 +7752,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 		{
 		  if (*agl_index)
 		    {
-		      sprintf (agl_index, "%s, %s", agl_index, agl->agg_index_name);
+		      sprintf (agl_index + strlen (agl_index), ", %s", agl->agg_index_name);
 		    }
 		  else
 		    {
