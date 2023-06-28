@@ -230,7 +230,7 @@ extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, i
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
 extern int stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr,
 					     char **stats_buffer);
-extern int stats_update_statistics (OID * classoid, int with_fullscan);
+extern int stats_update_statistics (MOP classop, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk);
@@ -438,7 +438,7 @@ extern int loaddb_load_batch (const cubload::batch &batch, bool use_temp_batch, 
 extern int loaddb_fetch_status (load_status & status);
 extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
-extern int loaddb_update_stats ();
+extern int loaddb_update_stats (bool verbose);
 
 extern int method_invoke_fold_constants (const method_sig_list & sig_list,
 					 std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result);

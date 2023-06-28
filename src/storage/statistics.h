@@ -81,7 +81,7 @@ struct attr_stats
   DB_TYPE type;
   int n_btstats;		/* number of B+tree statistics information */
   BTREE_STATS *bt_stats;	/* pointer to array of BTREE_STATS[n_btstats] */
-  /* INT64 ndv; */
+  INT64 ndv;			/* Number of Distinct Values of column */
 };
 
 /* Statistical Information about the class */
@@ -116,7 +116,8 @@ extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 extern void stats_ndv_dump (const char *classname, FILE * fp);
 extern char *stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv);
-extern int stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p);
+extern int stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p,
+				   int with_fullscan);
 #endif /* !SERVER_MODE */
 
 #endif /* _STATISTICS_H_ */
