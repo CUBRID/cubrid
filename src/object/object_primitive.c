@@ -10335,6 +10335,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	}
 
+      dest->data.ch.medium.length = src->data.ch.medium.length;
       dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
     }
 
@@ -11438,6 +11439,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		  dest->need_clear = true;
 		}
 	    }
+	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
 
@@ -12295,6 +12297,7 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		  dest->need_clear = true;
 		}
 	    }
+	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
   return error;
@@ -13215,6 +13218,7 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 
 	  dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
+	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
 
