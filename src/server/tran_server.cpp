@@ -443,13 +443,11 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
       (css_error_code error_code, bool &abort_further_processing)
   {
     // Remove the connection_handler if the internal socket is closed. It's been disconnected abnormally.
-    // m_conn can't be nullptr here because all request and error handler are digested befroe reset m_conn
     if (error_code == CONNECTION_CLOSED)
       {
 	abort_further_processing = true;
 	er_log_debug (ARG_FILE_LINE,
-		      "default_error_handler: an abnormal disconnection has been detected. error code: %d, channel id: %s.\n", error_code,
-		      get_channel_id ().c_str ());
+		      "default_error_handler: an abnormal disconnection has been detected. channel id: %s.\n", get_channel_id ().c_str ());
 
 	constexpr auto with_disc_msg = false;
 	disconnect_async (with_disc_msg);
