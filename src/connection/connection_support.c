@@ -645,6 +645,167 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
   return NO_ERRORS;
 }
 
+/*
+ * css_net_recv_allow_truncated - read up to a maximum size from a supplied socket; output specific
+ *      return details if there is more data part of the same packet to be consumed - as specified
+ *      by the underlying (size, data) transfer protocol; a further call to css_net_recv_remainder
+ *      must be able to consume all incoming data
+ *
+ *   return: 0 if success, or error code;
+ *           specific RECORD_TRUNCATED return code is returned if the complete message could not be read into
+ *           supplied buffer; if this is the case, a subsequent call to css_net_recv_remainder must be made
+ *   fd(in): socket descriptor
+ *   buffer(out): buffer for data be read
+ *   maxlen(in/out): in - length of buffer; out - count of bytes that were read
+ *   remlen(out): the number of remaining bytes to be read
+ *   timeout(in): timeout value in milli-second
+ *
+ *  Note: This function superseeds css_net_recv which, if the supplied buffer is too small for the complete
+ *  data to be copied into, the remainder data is just read and thrown away. All application code should be
+ *  adapted to use this function (and the accompanying css_net_recv_remainder).
+ */
+css_error_code
+css_net_recv_allow_truncated (SOCKET fd, char *buffer, int *maxlen, int *remlen, int timeout)
+{
+  int templen;
+
+  *remlen = 0;
+
+  const int time_unit = (timeout < 0 || timeout > 5000) ? 5000 : timeout;
+  int elapsed = time_unit;
+
+  /* read data length */
+  while (true)
+    {
+      const int nbytes_read_len = css_readn (fd, (char *) &templen, sizeof (int), time_unit);
+      if (nbytes_read_len < 0)
+	{
+	  if (errno == ETIMEDOUT && timeout > elapsed)
+	    {
+#if defined (CS_MODE) && !defined (WINDOWS)
+	      if (CHECK_SERVER_IS_ALIVE ())
+		{
+		  if (css_peer_alive (fd, time_unit) == false)
+		    {
+		      return ERROR_WHEN_READING_SIZE;
+		    }
+		  if (css_check_server_alive_fn != NULL)
+		    {
+		      if (css_check_server_alive_fn (NULL, NULL) == false)
+			{
+			  return ERROR_WHEN_READING_SIZE;
+			}
+		    }
+		}
+#endif /* CS_MODE && !WINDOWS */
+	      elapsed += time_unit;
+	      continue;
+	    }
+	  return ERROR_WHEN_READING_SIZE;
+	}
+      if (nbytes_read_len != sizeof (int))
+	{
+#ifdef CUBRID_DEBUG
+	  er_log_debug (ARG_FILE_LINE, "css_net_recv: returning ERROR_WHEN_READING_SIZE bytes %d \n", nbytes_read_len);
+#endif
+	  return ERROR_WHEN_READING_SIZE;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  templen = ntohl (templen);
+  int length_to_read = 0;
+  if (templen > *maxlen)
+    {
+      length_to_read = *maxlen;
+    }
+  else
+    {
+      length_to_read = templen;
+    }
+
+  /* read data */
+  const int nbytes_read_data = css_readn (fd, buffer, length_to_read, timeout);
+  if (nbytes_read_data < length_to_read)
+    {
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE, "css_net_recv_allow_truncated: returning ERROR_ON_READ bytes %d\n",
+		    nbytes_read_data);
+#endif
+      return ERROR_ON_READ;
+    }
+
+  /*
+   * This is possible if the data buffer provided by the client is smaller
+   * than the number of bytes sent by the server
+   */
+
+  if ((nbytes_read_data > 0) && (templen > nbytes_read_data))
+    {
+      // report remaining length
+      *remlen = templen - nbytes_read_data;
+      return RECORD_TRUNCATED;
+    }
+
+  if (nbytes_read_data != templen)
+    {
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE, "css_net_recv: returning READ_LENGTH_MISMATCH bytes %d\n", nbytes_read_data);
+#endif
+      return READ_LENGTH_MISMATCH;
+    }
+
+  *maxlen = nbytes_read_data;
+  return NO_ERRORS;
+}
+
+/*
+ * css_net_recv_remainder - read the remainder number of bytes from the supplied socket; the function
+ *                expects to receive an appropriately sized buffer and to be able to read exactly
+ *                that many bytes; this function must only be called if a previous call to
+ *                css_net_recv_allow_truncated returned the error code RECORD_TRUNCATED
+ *
+ *   return: 0 if success, or error code
+ *   fd(in): socket descriptor
+ *   buffer(out): buffer for data be read
+ *   maxlen(in/out):
+ *          in - length of buffer, must be exactly the same as the number of remaining bytes to be read;
+ *          out - count of bytes that were read; normally, exactly the same value as input; in case of
+ *                error, outputs the read number of bytes
+ *   timeout(in): timeout value in milli-second
+ */
+css_error_code
+css_net_recv_remainder (SOCKET fd, char *buffer, int *maxlen, int timeout)
+{
+  /* read remainder data */
+  const int nbytes_read_data = css_readn (fd, buffer, *maxlen, timeout);
+  if (nbytes_read_data < *maxlen)
+    {
+      // expecting to be able to read exactly as specified
+      *maxlen = nbytes_read_data;
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE, "css_net_recv_remainder: ERROR_ON_READ bytes %d\n", nbytes_read_data);
+#endif
+      return ERROR_ON_READ;
+    }
+
+  if (nbytes_read_data > *maxlen)
+    {
+      *maxlen = nbytes_read_data;
+      // this should never occur
+#ifdef CUBRID_DEBUG
+      er_log_debug (ARG_FILE_LINE, "css_net_recv_remainder: READ_LENGTH_MISMATCH bytes %d\n", nbytes_read_data);
+#endif
+      assert (false);
+      return READ_LENGTH_MISMATCH;
+    }
+
+  return NO_ERRORS;
+}
+
 #if defined(WINDOWS)
 /* We implement css_vector_send on Winsock platforms by copying the pieces into
    a temporary buffer before sending. */
