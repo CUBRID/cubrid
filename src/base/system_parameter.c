@@ -735,6 +735,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DEDUPLICATE_MIN_KEYS      "deduplicate_min_keys"
 #define PRM_NAME_DEDUPLICATE_FK_LEVEL      "deduplicate_fk_level"
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
+#define PRM_NAME_DEDUPLICATE_PRINT_LEVEL   "deduplicate_print_level"
 
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
@@ -1239,6 +1240,11 @@ static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_DFLT;
 static unsigned int prm_deduplicate_key_level_flag = 0;
 static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_OFF;
 static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_MAX;
+
+bool PRM_USE_DEDUPLICATE_PRINT_LEVEL = false;
+static bool prm_use_deduplicate_print_level_default = false;
+static unsigned int prm_use_deduplicate_print_level_flag = 0;
+
 #endif
 
 int PRM_DEFAULT_WEEK_FORMAT = 0;
@@ -6354,6 +6360,17 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_DEDUPLICATE_KEY_MOD_LEVEL,
    (void *) &prm_deduplicate_key_level_upper,
    (void *) &prm_deduplicate_key_level_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEDUPLICATE_PRINT_LEVEL,
+   PRM_NAME_DEDUPLICATE_PRINT_LEVEL,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_use_deduplicate_print_level_flag,
+   (void *) &prm_use_deduplicate_print_level_default,
+   (void *) &PRM_USE_DEDUPLICATE_PRINT_LEVEL,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
