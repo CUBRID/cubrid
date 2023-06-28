@@ -609,7 +609,7 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
       if (error_code == CONNECTION_CLOSED)
 	{
 	  er_log_debug (ARG_FILE_LINE,
-			"sned_receive: an abnormal disconnection has been detected. error code: %d, channel id: %s.\n", error_code,
+			"send_receive: an abnormal disconnection has been detected. error code: %d, channel id: %s.\n", error_code,
 			get_channel_id ().c_str ());
 
 	  slock_conn.unlock (); /* disconnect_async requires that m_conn_mtx and m_state_mtx are unlocked */
