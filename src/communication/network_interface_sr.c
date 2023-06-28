@@ -10344,6 +10344,12 @@ sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   int error_code = session_get_load_session (thread_p, session);
   std::vector < const cubload::class_entry * >class_entries;
 
+  if (error_code != NO_ERROR)
+    {
+      goto end;
+    }
+  assert (session != NULL);
+
   /* check disable_statistics */
   if (session->get_args ().disable_statistics || session->get_args ().syntax_check)
     {
