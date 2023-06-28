@@ -269,6 +269,13 @@ log_dump_log_info (const char *logname_info, bool also_stdout, const char *fmt, 
 bool
 log_does_allow_replication (void)
 {
+  return false;
+
+#if 0
+/* TODO - newHA
+ * if copylogdb and applylogdb is re-used for HA, then this commented out code should be enabled.
+ */
+
 #if defined(WINDOWS) || defined(SA_MODE)
   return false;
 
@@ -309,5 +316,6 @@ log_does_allow_replication (void)
 #else /* SERVER_MODE */
 
   return false;
+#endif
 #endif
 }

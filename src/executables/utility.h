@@ -1748,9 +1748,6 @@ extern "C"
 
   extern FILE *fopen_ex (const char *filename, const char *type);
 
-  extern bool util_is_localhost (char *host);
-  extern bool are_hostnames_equal (const char *hostname_a, const char *hostname_b);
-
   extern void util_free_ha_conf (HA_CONF * ha_conf);
   extern int util_make_ha_conf (HA_CONF * ha_conf);
   extern int util_get_ha_mode_for_sa_utils (void);

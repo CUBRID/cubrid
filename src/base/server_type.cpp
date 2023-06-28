@@ -26,6 +26,7 @@
 #include "log_impl.h"
 #include "page_server.hpp"
 #include "system_parameter.h"
+#include "util_func.h"
 
 #include <string>
 
@@ -216,12 +217,14 @@ int setup_tran_server_params_on_ha_mode ()
 {
   char *page_server_host_list = NULL;
   constexpr size_t MAX_BUFSIZE = 4096;
-  int list_size = 0;
+  size_t list_size = 0;
 
   char ha_node_list[MAX_BUFSIZE];
   char *str, *savep;
 
   int port_id = prm_get_master_port_id ();
+
+  constexpr const char *localhost_str = "localhost";
 
   page_server_host_list = (char *) calloc (MAX_BUFSIZE, sizeof (char)); // free is called by sysprm_final()
   if (page_server_host_list == NULL)
@@ -238,7 +241,15 @@ int setup_tran_server_params_on_ha_mode ()
   while (str)
     {
       char page_server_host[MAX_BUFSIZE] = {0};
-      sprintf (page_server_host, "%s:%d,", str, port_id);
+
+      if (util_is_localhost (str))
+	{
+	  sprintf (page_server_host, "%s:%d,", localhost_str, port_id);
+	}
+      else
+	{
+	  sprintf (page_server_host, "%s:%d,", str, port_id);
+	}
 
       if (strlen (page_server_host) + strlen (page_server_host_list) >= list_size)
 	{
