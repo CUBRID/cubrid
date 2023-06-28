@@ -14340,23 +14340,30 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       int error;
       PARSER_CONTEXT cte_context;
-      PT_NODE *cte_statement =
-	statement->info.query.with->info.with_clause.cte_definition_list->info.cte.non_recursive_part;
+      PT_NODE *cte_statement;
 
-      cte_context = *parser;
+      PT_NODE *cte_def_list = statement->info.query.with->info.with_clause.cte_definition_list;
 
-      error = do_prepare_select (&cte_context, cte_statement);
-      if (error != NO_ERROR)
+      while (cte_def_list)
 	{
-	  return error;
-	}
+	  cte_statement = cte_def_list->info.cte.non_recursive_part;
 
-      cte_statement->sha1 = cte_context.context.sha1;
+	  cte_context = *parser;
 
-      error = do_execute_select (&cte_context, cte_statement);
-      if (error != NO_ERROR)
-	{
-	  return error;
+	  error = do_prepare_select (&cte_context, cte_statement);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  cte_statement->sha1 = cte_context.context.sha1;
+
+	  error = do_execute_select (&cte_context, cte_statement);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  cte_def_list = cte_def_list->next;
 	}
     }
 
