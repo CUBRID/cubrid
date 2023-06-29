@@ -5015,6 +5015,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
   cum_statsp->key_type = NULL;
   cum_statsp->pkeys_size = 0;
   cum_statsp->pkeys = NULL;
+  attr_infop->ndv = 0;
 
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
   for (i = 0; i < n; class_info_entryp++, i++)
@@ -5187,6 +5188,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       cum_statsp->key_type = NULL;
       cum_statsp->pkeys_size = 0;
       cum_statsp->pkeys = NULL;
+      attr_infop->ndv = 0;
 
       return attr_infop;
     }
@@ -5200,6 +5202,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   cum_statsp->key_type = NULL;
   cum_statsp->pkeys_size = 0;
   cum_statsp->pkeys = NULL;
+  attr_infop->ndv = 0;
 
   /* set the statistics from the class information(QO_CLASS_INFO_ENTRY) */
   for (i = 0; i < n; class_info_entryp++, i++)
@@ -5243,6 +5246,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	  cum_statsp->is_indexed = false;
 	  continue;
 	}
+
+      /* set Number of Distinct Values */
+      attr_infop->ndv += attr_statsp->ndv;
 
       if (cum_statsp->valid_limits == false)
 	{
@@ -9039,7 +9045,7 @@ qo_term_dump (QO_TERM * term, FILE * f)
     {
       fprintf (f, " (ord %d)", QO_TERM_PRED_ORDER (term));
     }
-  fprintf (f, " (sel %g)", QO_TERM_SELECTIVITY (term));
+  fprintf (f, " (sel %G)", QO_TERM_SELECTIVITY (term));
 
   if (QO_TERM_RANK (term) > 1)
     {

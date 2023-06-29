@@ -94,6 +94,7 @@ struct qo_attr_info
 {
   /* cumulative stats for all attributes under this umbrella */
   QO_ATTR_CUM_STATS cum_stats;
+  INT64 ndv;			/* Number of Distinct Values of column */
 };
 
 struct qo_index_entry
