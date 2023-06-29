@@ -241,16 +241,8 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   assert (npages > 0);
   cls_info_p->ci_tot_pages = MAX (npages, 0);
 
-  estimated_nobjs = heap_estimate_num_objects (thread_p, &(cls_info_p->ci_hfid));
-  if (estimated_nobjs == -1)
-    {
-      /* cannot get estimates from the heap, use old info */
-      assert (cls_info_p->ci_tot_objects >= 0);
-    }
-  else
-    {
-      cls_info_p->ci_tot_objects = estimated_nobjs;
-    }
+  /* use value from "select --+ sampling count(*) ..." */
+  cls_info_p->ci_tot_objects = class_attr_ndv->attr_ndv[class_attr_ndv->attr_cnt].ndv;
 
   /* update the index statistics for each attribute */
 
@@ -376,7 +368,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   DISK_ATTR *disk_attr_p;
   BTREE_STATS *btree_stats_p;
   OID dir_oid;
-  int npages, estimated_nobjs, max_unique_keys;
+  int npages, estimated_nobjs;
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
   char *buf_p, *start_p;
   int key_size;
@@ -496,8 +488,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 
   size += tot_key_info_size;	/* key_type, pkeys[] of BTREE_STATS */
 
-  size += OR_INT_SIZE;		/* max_unique_keys */
-
   start_p = buf_p = (char *) malloc (size);
   if (buf_p == NULL)
     {
@@ -508,7 +498,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   OR_PUT_INT (buf_p, cls_info_p->ci_time_stamp);
   buf_p += OR_INT_SIZE;
 
-  npages = estimated_nobjs = max_unique_keys = -1;
+  npages = estimated_nobjs = -1;
 
   assert (cls_info_p->ci_tot_objects >= 0);
   assert (cls_info_p->ci_tot_pages >= 0);
@@ -598,12 +588,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
-	  /* collect maximum unique keys info */
-	  if (xbtree_get_unique_pk (thread_p, &btree_stats_p->btid))
-	    {
-	      max_unique_keys = MAX (max_unique_keys, btree_stats_p->keys);
-	    }
-
 	  OR_PUT_BTID (buf_p, &btree_stats_p->btid);
 	  buf_p += OR_BTID_ALIGNED_SIZE;
 
@@ -705,9 +689,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	    }
 	}			/* for (j = 0, ...) */
     }
-
-  OR_PUT_INT (buf_p, max_unique_keys);
-  buf_p += OR_INT_SIZE;
 
   catalog_free_representation_and_init (disk_repr_p);
   catalog_free_class_info_and_init (cls_info_p);

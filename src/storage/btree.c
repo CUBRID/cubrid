@@ -14563,7 +14563,6 @@ error:
  *   btid(in):
  *   pg_vpid(in):
  *   stat_info_p(in):
- *   found_p(out):
  *
  * Note: Find the page identifier via the Acceptance/Rejection Sampling leaf page of the B+tree index.
  * Note: Random Sampling from Databases (Chapter 3. Random Sampling from B+ Trees)
@@ -14584,9 +14583,6 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
   int root_level = 0, depth = 0;
 
   assert (stat_info_p != NULL);
-  assert (found_p != NULL);
-
-  *found_p = true;		/* init */
 
   VPID_SET_NULL (pg_vpid);
 
