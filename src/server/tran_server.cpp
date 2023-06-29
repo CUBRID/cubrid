@@ -662,7 +662,7 @@ tran_server::ps_connector::terminate ()
 void
 tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 {
-  /* Assume that they stores PS information in the same order.
+  /* Assume that they store PS information in the same order.
    * TODO: combine two vectors */
   assert (m_ts.m_connection_list.size () == m_ts.m_page_server_conn_vec.size());
 
@@ -672,7 +672,7 @@ tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 	{
 	  /*
 	   * TODO It can be too verbose now since it always complain to fail to connect when a PS has been stopped.
-	   * Later on, this job is going to be tirggered by a cluster manager or cub_mster when a PS is ready to connect.
+	   * Later on, this job is going to be triggered by a cluster manager or cub_master when a PS is ready to connect.
 	   */
 	  m_ts.m_page_server_conn_vec[i]->connect (m_ts.m_connection_list[i]);
 	}
