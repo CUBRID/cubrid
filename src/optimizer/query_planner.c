@@ -9912,7 +9912,7 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
 
   if (info->ndv > 0)
     {
-      return (int) info->ndv; /* need to change type to INT64 */
+      return (int) info->ndv;	/* need to change type to INT64 */
     }
 
   if (info->cum_stats.is_indexed != true)
