@@ -29,8 +29,6 @@
 #include <memory>
 #include <thread>
 
-#define NEW_NETW_PROTO 1
-
 namespace cubcomm
 {
   // This header implements request handling over network. Each request has an identifier and for each identifier there
@@ -269,10 +267,8 @@ namespace cubcomm
     : m_channel (std::move (chn))
     , m_recv_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
-#if (NEW_NETW_PROTO)
     // arbitrary initial size; will be grown upon need
     m_recv_extensible_block.extend_to (IO_MAX_PAGE_SIZE * 4);
-#endif
   }
 
   template <typename MsgId>
@@ -350,37 +346,8 @@ namespace cubcomm
   template <typename MsgId>
   css_error_code request_server<MsgId>::receive_request_buffer (size_t &message_size)
   {
-#if (!NEW_NETW_PROTO)
-    size_t expected_size = 0;
-    size_t size_ilen = sizeof (expected_size);
-#endif
-
     message_size = 0;
 
-#if (!NEW_NETW_PROTO)
-    // NOTE: no ntohl here; integer value received as a stream of bytes
-    css_error_code err = m_channel.recv (reinterpret_cast <char *> (&expected_size), size_ilen);
-    if (err != NO_ERRORS)
-      {
-	er_log_recv_fail (m_channel, err);
-	return err;
-      }
-    assert (size_ilen == sizeof (expected_size));
-
-    // will re-alloc until the block size gets big enough that will not neet to re-alloc anymore
-    m_recv_extensible_block.extend_to (expected_size);
-
-    size_t receive_size = expected_size;
-    err = m_channel.recv (m_recv_extensible_block.get_ptr (), receive_size);
-    if (err != NO_ERRORS)
-      {
-	er_log_recv_fail (m_channel, err);
-	return err;
-      }
-    assert (receive_size == expected_size);
-
-    message_size = receive_size;
-#else
     size_t recv_size = m_recv_extensible_block.get_size ();
     size_t rem_size = 0;
     const css_error_code err = m_channel.recv_allow_truncated (m_recv_extensible_block.get_ptr (), recv_size,
@@ -421,7 +388,6 @@ namespace cubcomm
       }
 
     message_size += recv_size;
-#endif
 
     return NO_ERRORS;
   }
@@ -484,20 +450,7 @@ namespace cubcomm
 
     er_log_send_request (chn, static_cast<int> (msgid), packer_current_size);
 
-#if (!NEW_NETW_PROTO)
-    // NOTE: no htonl here; integer value sent as a stream of bytes
-    const css_error_code css_size_err = chn.send (
-	reinterpret_cast<const char *> (&packer_current_size), sizeof (packer_current_size));
-    if (css_size_err != NO_ERRORS)
-      {
-	er_log_send_fail (chn, css_size_err);
-	return css_size_err;
-      }
-
-    const css_error_code css_err = chn.send (send_ext_block.get_ptr (), packer.get_current_size ());
-#else
     const css_error_code css_err = chn.send (send_ext_block.get_ptr (), packer_current_size);
-#endif
     if (css_err != NO_ERRORS)
       {
 	er_log_send_fail (chn, css_err);
