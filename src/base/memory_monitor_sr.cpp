@@ -27,19 +27,15 @@
 #include "error_manager.h"
 #include "memory_monitor_sr.hpp"
 
-#if defined (SERVER_MODE)
 #include "log_impl.h"
-#endif
 
-
-#ifdef SERVER_MODE
 namespace cubperf
 {
   memory_monitoring_manager *mmm_Gl = nullptr;
 
   const char *mmm_subcomponent::get_name ()
   {
-    return m_subcomp_name;
+    return m_subcomp_name.c_str ();
   }
 
   void mmm_subcomponent::add_cur_stat (uint64_t size)
@@ -52,39 +48,44 @@ namespace cubperf
     m_cur_stat.fetch_sub (size);
   }
 
-  const uint64_t mmm_subcomponent::get_cur_stat ()
-  {
-    return m_cur_stat.load ();
-  }
-
   const char *mmm_component::get_name ()
   {
-    return m_comp_name;
+    return m_comp_name.c_str ();
   }
 
-  void mmm_component::add_stat (uint64_t size, bool init)
+  void mmm_component::add_stat (uint64_t size, int subcomp_idx, bool init, bool expand)
   {
+    /* description of add_stat(..).
+     * 1) if init == true, add init_stat
+     * 2) then, add cur_stat
+     * 3) compare with peak_stat
+     * 4) if cur_stat(new) > peak_stat, update peak_stat
+    	 * 5) if expand == true, expand_count++
+    	 * 6) call subcomponent->add_cur_stat(size) */
     return;
   }
 
-  void mmm_component::sub_stat (uint64_t size, bool init)
+  void mmm_component::sub_stat (uint64_t size, int subcomp_idx, bool init)
   {
+    /* description of sub_stat(size, init).
+     * 1) if init == true, sub init_stat
+     * 2) then, sub cur_stat
+    	 * 3) call component->sub_stat(size, subcomp_idx, init) */
     return;
   }
 
-  void mmm_component::add_expand_count ()
+  int mmm_component::is_subcomp_exist (const char *subcomp_name)
   {
-    m_stat.expand_count++;
-  }
+    for (int i = 0; i < m_subcomponent.size (); i++)
+      {
+	if (!strcmp (subcomp_name, m_subcomponent[i]->get_name()))
+	  {
+	    return i;
+	  }
+      }
 
-  const MMM_MEM_STAT &mmm_component::get_stat ()
-  {
-    return m_stat;
-  }
-
-  const std::vector<mmm_subcomponent *> &mmm_component::get_subcomp_vec ()
-  {
-    return m_subcomponent;
+    /* if not exist, return mmm_module::MAX_COMP_IDX */
+    return mmm_module::MAX_COMP_IDX;
   }
 
   int mmm_component::add_subcomponent (const char *name)
@@ -92,11 +93,9 @@ namespace cubperf
     return 0;
   }
 
-  mmm_module::mmm_module (const char *name, const MMM_COMP_INFO *info)
+  mmm_module::mmm_module (const char *module_name, const MMM_COMP_INFO *info)
+    : m_module_name (module_name)
   {
-    m_module_name = new char[strlen (name) + 1];
-    strcpy (m_module_name, name);
-
     /* register component and subcomponent information
      * add component and subcomponent */
     int cnt = 0;
@@ -125,15 +124,10 @@ namespace cubperf
 
 	    if (info[cnt].subcomp_name)
 	      {
-		std::vector<mmm_subcomponent *> subcomp_vec = m_component[comp_idx]->get_subcomp_vec();
-		for (i = 0; i < subcomp_vec.size (); i++)
+		subcomp_idx = m_component[comp_idx]->is_subcomp_exist (info[cnt].subcomp_name);
+		if (subcomp_idx != mmm_module::MAX_COMP_IDX)
 		  {
-		    if (!strcmp (info[cnt].subcomp_name, subcomp_vec[i]->get_name ()))
-		      {
-			subcomp_idx = i;
-			subcomp_skip = true;
-			break;
-		      }
+		    subcomp_skip = true;
 		  }
 
 		if (!subcomp_skip)
@@ -143,48 +137,36 @@ namespace cubperf
 	      }
 	  }
 
-	m_comp_idx_map.push_back (MMM_MAKE_STAT_IDX_MAP (comp_idx, subcomp_idx));
+	m_comp_idx_map.push_back (MAKE_STAT_IDX_MAP (comp_idx, subcomp_idx));
 
 	cnt++;
       }
   }
 
-  int mmm_module::aggregate_stats (MEMMON_MODULE_INFO *info)
+  int mmm_module::aggregate_stats (const MEMMON_MODULE_INFO &info)
   {
     return 0;
   }
 
-  const char *mmm_module::get_name ()
+  void mmm_module::add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init, bool expand)
   {
-    return m_module_name;
-  }
-
-  void mmm_module::add_stat (uint64_t size, bool init)
-  {
-    /* description of add_stat(size, init). (mmm_component::add_stat(..) works same)
+    /* description of add_stat(..).
      * 1) if init == true, add init_stat
      * 2) then, add cur_stat
      * 3) compare with peak_stat
-     * 4) if cur_stat(new) > peak_stat, update peak_stat */
+     * 4) if cur_stat(new) > peak_stat, update peak_stat
+    	 * 5) if expand == true, expand_count++
+    	 * 6) call component->add_stat(size, subcomp_idx, init, expand) */
     return;
   }
 
-  void mmm_module::sub_stat (uint64_t size, bool init)
+  void mmm_module::sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init)
   {
-    /* description of sub_stat(size, init). (mmm_component::sub_stat(..) works same)
+    /* description of sub_stat(size, init).
      * 1) if init == true, sub init_stat
-     * 2) then, sub cur_stat */
+     * 2) then, sub cur_stat
+    	 * 3) call component->sub_stat(size, subcomp_idx, init) */
     return;
-  }
-
-  void mmm_module::add_expand_count ()
-  {
-    m_stat.expand_count++;
-  }
-
-  const MMM_MEM_STAT &mmm_module::get_stat ()
-  {
-    return m_stat;
   }
 
   int mmm_module::add_component (const char *name)
@@ -192,37 +174,35 @@ namespace cubperf
     return 0;
   }
 
-  const std::vector<mmm_component *> &mmm_module::get_comp_vec ()
+  memory_monitoring_manager::mmm_aggregater::mmm_aggregater (memory_monitoring_manager *mmm)
   {
-    return m_component;
+    m_memmon_mgr = mmm;
   }
 
-  const std::vector<int> &mmm_module::get_comp_idx_map ()
-  {
-    return m_comp_idx_map;
-  }
-
-  void mmm_module::add_comp_idx_map (int compound)
-  {
-    m_comp_idx_map.push_back (compound);
-  }
-
-  int memory_monitoring_manager::mmm_aggregater::get_server_info (MEMMON_SERVER_INFO *info)
+  int memory_monitoring_manager::mmm_aggregater::get_server_info (const MEMMON_SERVER_INFO &info)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::mmm_aggregater::get_module_info (MEMMON_MODULE_INFO *info, int module_index)
+  int memory_monitoring_manager::mmm_aggregater::get_module_info (const MEMMON_MODULE_INFO &info, int module_index)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::mmm_aggregater::get_transaction_info (MEMMON_TRAN_INFO *info, int tran_count)
+  int memory_monitoring_manager::mmm_aggregater::get_transaction_info (const MEMMON_TRAN_INFO &info, int tran_count)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::add_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size)
+  memory_monitoring_manager::~memory_monitoring_manager ()
+  {
+    for (int i = 0; i < MMM_MODULE_LAST; i++)
+      {
+	delete m_module[i];
+      }
+  }
+
+  int memory_monitoring_manager::add_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size, bool expand)
   {
     return 0;
   }
@@ -253,6 +233,3 @@ namespace cubperf
     return 0;
   }
 } // namespace cubperf
-
-#endif /* SERVER_MODE */
-

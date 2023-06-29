@@ -24,7 +24,7 @@
 #define _MEMORY_MONITOR_SR_HPP_
 
 #if !defined (SERVER_MODE)
-#error Belongs to server module
+#error SERVER_MODE macro should be pre-defined(to compile)
 #endif /* SERVER_MODE */
 
 #include <cstring>
@@ -39,15 +39,16 @@
 #include "memory_monitor_common.h"
 
 #define MMM_PARSE_MASK 0x0000FFFF
-#define MMM_MAKE_MODULE_INIT_STAT_ID(module_idx) ((module_idx) << 16)
+#define MMM_MAKE_INIT_STAT_ID_FOR_MODULE(module_idx) ((module_idx) << 16)
 #define MMM_GET_MODULE_IDX_FROM_STAT_ID(stat) ((stat) >> 16)
 #define MMM_GET_COMP_INFO_IDX_FROM_STAT_ID(stat) ((stat) & MMM_PARSE_MASK)
 
 typedef enum
 {
-  MMM_STAT_LAST = MMM_MAKE_MODULE_INIT_STAT_ID (MMM_MODULE_LAST)
+  MMM_STAT_LAST = MMM_MAKE_INIT_STAT_ID_FOR_MODULE (MMM_MODULE_LAST)
 } MMM_STAT_ID;
 
+/* APIs */
 int memmon_add_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size);
 int memmon_sub_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size);
 int memmon_move_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID src, MMM_STAT_ID dest, uint64_t size);
@@ -73,54 +74,50 @@ namespace cubperf
   class mmm_subcomponent
   {
     public:
-      mmm_subcomponent (const char *name)
-      {
-	m_subcomp_name = new char[strlen (name) + 1];
-	strcpy (m_subcomp_name, name);
-      }
+      mmm_subcomponent (const char *subcomp_name)
+	: m_subcomp_name (subcomp_name) {}
+      mmm_subcomponent (const mmm_subcomponent &) = delete;
+      mmm_subcomponent (mmm_subcomponent &) = delete;
+
+      ~mmm_subcomponent () {}
+
+      mmm_subcomponent &operator = (const mmm_subcomponent &) = delete;
+      mmm_subcomponent &operator = (mmm_subcomponent &) = delete;
 
       /* function */
       const char *get_name ();
       void add_cur_stat (uint64_t size);
       void sub_cur_stat (uint64_t size);
-      const uint64_t get_cur_stat();
-
-      ~mmm_subcomponent ()
-      {
-	delete[] m_subcomp_name;
-      }
 
     private:
-      char *m_subcomp_name;
+      std::string m_subcomp_name;
       std::atomic<uint64_t> m_cur_stat;
   };
 
   class mmm_component
   {
     public:
-      mmm_component (const char *name)
-      {
-	m_comp_name = new char[strlen (name) + 1];
-	strcpy (m_comp_name, name);
-      }
+      mmm_component (const char *comp_name)
+	: m_comp_name (comp_name) {}
+      mmm_component (const mmm_component &) = delete;
+      mmm_component (mmm_component &) = delete;
+
+      ~mmm_component () {}
+
+      mmm_component &operator = (const mmm_component &) = delete;
+      mmm_component &operator = (mmm_component &) = delete;
 
       /* function */
       const char *get_name ();
-      void add_stat (uint64_t size, bool init);
-      void sub_stat (uint64_t size, bool init);
-      void add_expand_count ();
-      const MMM_MEM_STAT &get_stat();
-      const std::vector<mmm_subcomponent *> &get_subcomp_vec ();
+      void add_stat (uint64_t size, int subcomp_idx, bool init, bool expand);
+      void sub_stat (uint64_t size, int subcomp_idx, bool init);
+      int is_subcomp_exist (const char *subcomp_name);
       int add_subcomponent (const char *name);
 
-      ~mmm_component ()
-      {
-	delete[] m_comp_name;
-      }
     private:
-      char *m_comp_name;
+      std::string m_comp_name;
       MMM_MEM_STAT m_stat;
-      std::vector<mmm_subcomponent *> m_subcomponent;
+      std::vector<std::unique_ptr<mmm_subcomponent>> m_subcomponent;
   };
 
   class mmm_module
@@ -133,127 +130,103 @@ namespace cubperf
       static constexpr int MAX_COMP_IDX = 0x0000FFFF;
 
     public:
-      mmm_module (const char *name, const MMM_COMP_INFO *info);
+      mmm_module (const char *module_name, const MMM_COMP_INFO *info);
       mmm_module () {} /* for dummy */
+      mmm_module (const mmm_module &) = delete;
+      mmm_module (mmm_module &) = delete;
+
+      virtual ~mmm_module () {}
+
+      mmm_module &operator = (const mmm_module &) = delete;
+      mmm_module &operator = (mmm_module &) = delete;
 
       /* function */
-      virtual int aggregate_stats (MEMMON_MODULE_INFO *info);
-      const char *get_name ();
-      void add_stat (uint64_t size, bool init);
-      void sub_stat (uint64_t size, bool init);
-      void add_expand_count ();
-      const MMM_MEM_STAT &get_stat ();
+      virtual int aggregate_stats (const MEMMON_MODULE_INFO &info);
+      void add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init, bool expand);
+      void sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init);
       int add_component (const char *name);
-      const std::vector<mmm_component *> &get_comp_vec ();
-      const std::vector<int> &get_comp_idx_map ();
-      void add_comp_idx_map (int compound);
+      inline int MAKE_STAT_IDX_MAP (int comp_idx, int subcomp_idx);
 
-      static inline int MMM_MAKE_STAT_IDX_MAP (int comp_idx, int subcomp_idx)
-      {
-	return (comp_idx << 16 | subcomp_idx);
-      }
-
-      virtual ~mmm_module ()
-      {
-	if (m_module_name)
-	  {
-	    delete[] m_module_name;
-	  }
-      }
     private:
-      char *m_module_name;
+      std::string m_module_name;
       MMM_MEM_STAT m_stat;
-      std::vector<mmm_component *> m_component;
+      std::vector<std::unique_ptr<mmm_component>> m_component;
       std::vector<int> m_comp_idx_map;
   };
 
 
-  /* you have to add your modules in Memory Monitoring Manager(MMM) class */
   class memory_monitoring_manager
   {
     public:
-      memory_monitoring_manager (const char *name) : m_aggregater { this }
-      {
-	this->m_server_name = new char[strlen (name) + 1];
-	strcpy (this->m_server_name, name);
-	//m_aggregater = new mmm_aggregater (this);
-      }
+      memory_monitoring_manager (const char *server_name)
+	: m_aggregater (this), m_server_name (server_name) {}
+      memory_monitoring_manager (const memory_monitoring_manager &) = delete;
+      memory_monitoring_manager (memory_monitoring_manager &) = delete;
 
+      ~memory_monitoring_manager ();
+
+      memory_monitoring_manager &operator = (const memory_monitoring_manager &) = delete;
+      memory_monitoring_manager &operator = (memory_monitoring_manager &) = delete;
 
       /* function */
-      int add_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size);
+      int add_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size, bool expand);
       int sub_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size);
       int resize_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t old_size, uint64_t new_size);
       int move_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID src, MMM_STAT_ID dest, uint64_t size);
       int aggregate_module_info (MEMMON_MODULE_INFO *info, int module_index);
       int aggregate_tran_info (MEMMON_TRAN_INFO *info, int tran_count);
-
-      static int comp (const void *a, const void *b)
-      {
-	uint64_t x1 = ((std::pair<int, uint64_t> *)a)->second;
-	uint64_t x2 = ((std::pair<int, uint64_t> *)b)->second;
-
-	if (x1 < x2)
-	  {
-	    return 1;
-	  }
-	else if (x1 > x2)
-	  {
-	    return -1;
-	  }
-
-	return 0;
-      }
-      static inline int MMM_COMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val)
-      {
-	return (comp_idx_map_val >> 16);
-      }
-
-      static inline int MMM_SUBCOMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val)
-      {
-	return (comp_idx_map_val & MMM_PARSE_MASK);
-      }
-
-      ~memory_monitoring_manager ()
-      {
-	delete[] m_server_name;
-	for (int i = 0; i < MMM_MODULE_LAST; i++)
-	  {
-	    delete m_module[i];
-	  }
-      }
+      inline int COMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val);
+      inline int SUBCOMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val);
 
     private:
       class mmm_aggregater
       {
 	public:
-	  mmm_aggregater (memory_monitoring_manager *mmm)
-	  {
-	    m_memmon_mgr = mmm;
-	  }
-
-	  /* function */
-	  int get_server_info (MEMMON_SERVER_INFO *info);
-	  int get_module_info (MEMMON_MODULE_INFO *info, int module_index);
-	  int get_transaction_info (MEMMON_TRAN_INFO *info, int tran_count);
+	  mmm_aggregater (memory_monitoring_manager *mmm);
+	  mmm_aggregater (const mmm_aggregater &) = delete;
+	  mmm_aggregater (mmm_aggregater &) = delete;
 
 	  ~mmm_aggregater () {}
+
+	  mmm_aggregater &operator = (const mmm_aggregater &) = delete;
+	  mmm_aggregater &operator = (mmm_aggregater &) = delete;
+
+	  /* function */
+	  int get_server_info (const MEMMON_SERVER_INFO &info);
+	  int get_module_info (const MEMMON_MODULE_INFO &info, int module_index);
+	  int get_transaction_info (const MEMMON_TRAN_INFO &info, int tran_count);
+
 	private:
 	  /* backlink of memory_monitoring_manager class */
 	  memory_monitoring_manager *m_memmon_mgr;
       };
 
     private:
-      char *m_server_name;
+      const char *m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;
       mmm_aggregater m_aggregater;
 
-      /* Your module class should add in this array with print function */
       mmm_module *m_module[MMM_MODULE_LAST] =
       {
 	new mmm_module ()				  /* dummy for aligning module index (1 ~) */
       };
   };
+
+  inline int mmm_module::MAKE_STAT_IDX_MAP (int comp_idx, int subcomp_idx)
+  {
+    return (comp_idx << 16 | subcomp_idx);
+  }
+
+  inline int memory_monitoring_manager::COMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val)
+  {
+    return (comp_idx_map_val >> 16);
+  }
+
+  inline int memory_monitoring_manager::SUBCOMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val)
+  {
+    return (comp_idx_map_val & MMM_PARSE_MASK);
+  }
+
   extern memory_monitoring_manager *mmm_Gl;
 } /* namespace cubperf */
 

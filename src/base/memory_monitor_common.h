@@ -26,7 +26,7 @@
 
 #include <cstdint>
 
-typedef enum mmm_modules
+typedef enum mmm_module_id
 {
   MMM_MODULE_LAST = 1
 } MMM_MODULE_ID;
