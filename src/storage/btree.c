@@ -1265,7 +1265,7 @@ static PAGE_PTR btree_find_leftmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, 
 static PAGE_PTR btree_find_rightmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 					   BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
-					     BTREE_STATS * stat_info_p, bool * found_p);
+					     BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
 					  BTREE_BOUNDARY where);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -6665,7 +6665,6 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 {
   BTREE_SCAN *BTS;
   int n, i;
-  bool found;
   int key_cnt;
   double exp_ratio;
   int ret = NO_ERROR;
@@ -6686,48 +6685,44 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  break;		/* found all samples */
 	}
 
-      BTS->C_page =
-	btree_find_AR_sampling_leaf (thread_p, BTS->btid_int.sys_btid, &BTS->C_vpid, env->stat_info, &found);
+      BTS->C_page = btree_find_AR_sampling_leaf (thread_p, BTS->btid_int.sys_btid, &BTS->C_vpid, env->stat_info);
       if (BTS->C_page == NULL)
 	{
 	  goto exit_on_error;
 	}
 
       /* found sampling leaf page */
-      if (found)
-	{
-	  key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
+      key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
 
 #if !defined(NDEBUG)
-	  header = btree_get_node_header (thread_p, BTS->C_page);
+      header = btree_get_node_header (thread_p, BTS->C_page);
 
-	  assert (header != NULL);
-	  assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
+      assert (header != NULL);
+      assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
 #endif
 
-	  if (key_cnt > 0)
+      if (key_cnt > 0)
+	{
+	  env->stat_info->leafs++;
+
+	  BTS->slot_id = 1;
+	  BTS->oid_pos = 0;
+
+	  assert_release (BTS->slot_id <= key_cnt);
+
+	  for (i = 0; i < key_cnt; i++)
 	    {
-	      env->stat_info->leafs++;
-
-	      BTS->slot_id = 1;
-	      BTS->oid_pos = 0;
-
-	      assert_release (BTS->slot_id <= key_cnt);
-
-	      for (i = 0; i < key_cnt; i++)
+	      ret = btree_get_stats_key (thread_p, env, NULL);
+	      if (ret != NO_ERROR)
 		{
-		  ret = btree_get_stats_key (thread_p, env, NULL);
-		  if (ret != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+		  goto exit_on_error;
+		}
 
-		  /* get the next index record */
-		  ret = btree_find_next_index_record (thread_p, BTS);
-		  if (ret != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+	      /* get the next index record */
+	      ret = btree_find_next_index_record (thread_p, BTS);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
 		}
 	    }
 	}
@@ -14574,8 +14569,7 @@ error:
  * Note: Random Sampling from Databases (Chapter 3. Random Sampling from B+ Trees)
  */
 static PAGE_PTR
-btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info_p,
-			     bool * found_p)
+btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info_p)
 {
   PAGE_PTR P_page = NULL, C_page = NULL;
   VPID P_vpid, C_vpid;
