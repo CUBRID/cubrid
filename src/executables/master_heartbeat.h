@@ -118,6 +118,21 @@ enum HB_PROC_STATE
 
 #define HB_REPLICA_PRIORITY                     0x7FFF
 
+/* heartbeat resource process detail state */
+enum HB_SERVER_STATE
+{
+  HB_SERVER_STATE_INIT = 0,
+  HB_SERVER_STATE_RECOVERY = 1,
+  HB_SERVER_STATE_RECOVERED = 2,	/* only for PS */
+  HB_SERVER_STATE_CATCH_UP = 3,	/* only for PS */
+  HB_SERVER_STATE_MAX
+};
+
+#define HB_SERVER_STATE_INIT_STR                "initial"
+#define HB_SERVER_STATE_RECOVERY_STR            "recovery"
+#define HB_SERVER_STATE_RECOVERED_STR           "recovered"
+#define HB_SERVER_STATE_CATCH_UP_STR            "catch_up"
+
 /* heartbeat node score bitmask */
 #define HB_NODE_SCORE_MASTER                    0x8000
 #define HB_NODE_SCORE_TO_BE_MASTER              0xF000
@@ -278,6 +293,7 @@ struct HB_PROC_ENTRY
 
   unsigned char state;		/* process state */
   unsigned char type;		/* single/master-slave */
+  unsigned char server_state;	/* server state */
 
   int sfd;
 

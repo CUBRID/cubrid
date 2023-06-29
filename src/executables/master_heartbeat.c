@@ -3843,6 +3843,7 @@ hb_alloc_new_proc (void)
     {
       memset ((void *) p, 0, sizeof (HB_PROC_ENTRY));
       p->state = HB_PSTATE_UNKNOWN;
+      p->server_state = HB_SERVER_STATE_INIT;
       p->next = NULL;
       p->prev = NULL;
       p->being_shutdown = false;
@@ -5447,6 +5448,24 @@ hb_process_state_string (unsigned char ptype, int pstate)
       return HB_PSTATE_REGISTERED_AND_ACTIVE_STR;
     case HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE:
       return HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE_STR;
+    }
+
+  return "invalid";
+}
+
+const char *
+hb_server_state_string (int state)
+{
+  switch (state)
+    {
+    case HB_SERVER_STATE_INIT:
+      return HB_SERVER_STATE_INIT_STR;
+    case HB_SERVER_STATE_RECOVERY:
+      return HB_SERVER_STATE_RECOVERY_STR;
+    case HB_SERVER_STATE_RECOVERED:
+      return HB_SERVER_STATE_RECOVERED_STR;
+    case HB_SERVER_STATE_CATCH_UP:
+      return HB_SERVER_STATE_CATCH_UP_STR;
     }
 
   return "invalid";
