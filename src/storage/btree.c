@@ -6667,7 +6667,7 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
   int n, i;
   bool found;
   int key_cnt;
-  int exp_ratio;
+  double exp_ratio;
   int ret = NO_ERROR;
 #if !defined(NDEBUG)
   BTREE_NODE_HEADER *header = NULL;
@@ -6751,7 +6751,7 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
   /* apply distributed expension */
   if (env->stat_info->leafs > 0)
     {
-      exp_ratio = env->stat_info->pages / env->stat_info->leafs;
+      exp_ratio = (double) env->stat_info->pages / (double) env->stat_info->leafs;
 
       env->stat_info->leafs *= exp_ratio;
       if (env->stat_info->leafs < 0)
@@ -6965,21 +6965,6 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       return ret;
     }
   assert_release (npages >= 1);
-
-  /* For the optimization of the sampling, if the btree file has currently the same pages as we gathered statistics, we
-   * guess the btree file has not been modified; So, we take current stats as it is */
-  if (!with_fullscan)
-    {
-      /* check if the stats has been gathered */
-      if (stat_info_p->keys > 0)
-	{
-	  /* guess the stats has not been modified */
-	  if (npages == stat_info_p->pages)
-	    {
-	      return NO_ERROR;
-	    }
-	}
-    }
 
   /* set environment variable */
   env = &stat_env;
@@ -14603,12 +14588,11 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
   int est_page_size, free_space;
   int key_cnt = 0;
   int root_level = 0, depth = 0;
-  double prob = 1.0;		/* Acceptance probability */
 
   assert (stat_info_p != NULL);
   assert (found_p != NULL);
 
-  *found_p = false;		/* init */
+  *found_p = true;		/* init */
 
   VPID_SET_NULL (pg_vpid);
 
@@ -14681,13 +14665,6 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
 
       node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
-      /* update Acceptance probability */
-
-      free_space = spage_max_space_for_new_record (thread_p, C_page);
-      assert (est_page_size > free_space);
-
-      prob *= (((double) est_page_size) - free_space) / ((double) est_page_size);
-
       P_page = C_page;
       C_page = NULL;
       P_vpid = C_vpid;
@@ -14749,18 +14726,6 @@ end:
   assert_release (root_level == depth + 1);
 
   stat_info_p->height = root_level;
-
-  /* do Acceptance/Rejection sampling */
-  if (drand48 () < prob)
-    {
-      /* Acceptance */
-      *found_p = true;
-    }
-  else
-    {
-      /* Rejection */
-      assert (*found_p == false);
-    }
 
   return P_page;
 
