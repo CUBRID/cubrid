@@ -40,14 +40,14 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.LinkedHashMap;
 
-public class JavaCodeWriter extends AstVisitor<String[]> {
+public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     public List<String> codeLines = new ArrayList<>();
     public StringBuilder codeRangeMarkers = new StringBuilder();
 
     public void buildCodeLines(Unit unit) {
-        TextToResolve ttr = visit(unit);
-        ttr.resolve(codeLines, codeRangeMarkers);
+        CodeToResolve ttr = visit(unit);
+        ttr.resolve(codeLines, codeRangeMarkers, 0);
         for (String s: codeLines) {
             assert(s.indexOf("\n") == -1) : "not a single line: " + s;
         }
@@ -56,19 +56,18 @@ public class JavaCodeWriter extends AstVisitor<String[]> {
     }
 
     @Override
-    public <E extends AstNode> TextToResolve visitNodeList(NodeList<E> nodeList) {
-        LinkedList<String> list = new LinkedList<>();
+    public <E extends AstNode> CodeToResolve visitNodeList(NodeList<E> nodeList) {
+        CodeList list = new CodeList();
         for (E e : nodeList.nodes) {
-            String[] r = visit(e);
-            list.addAll(r);
+            list.addElement((CodeTemplate) visit(e));
         }
-        return list.toArray(dummyStrArr);
+        return list;
     }
 
     @Override
-    public TextToResolve visitUnit(Unit node) {
+    public CodeToResolve visitUnit(Unit node) {
 
-        String[] strParamArr = Misc.isEmpty(node.routine.paramList) ?
+        Object strParamArr = Misc.isEmpty(node.routine.paramList) ?
             new String[] { "// no parameters" } :
             visit(node.routine.paramList);
 
@@ -79,7 +78,7 @@ public class JavaCodeWriter extends AstVisitor<String[]> {
 
         String strDecls = "// no declarations"; // TODO: temporary
 
-        return new TextToResolve(
+        return new CodeTemplate(
             0, 0,
             new String[] {
                 "%'IMPORTS'%",
@@ -118,361 +117,361 @@ public class JavaCodeWriter extends AstVisitor<String[]> {
             "%'GET-CONNECTION'%", strGetConn,
             "%'DECL-CLASS'%", strDecls,
             "%'BODY'%", visit(node.routine.body)
-        ).resolved;
+        );
     }
 
     @Override
-    public TextToResolve visitDeclFunc(DeclFunc node) {
+    public CodeToResolve visitDeclFunc(DeclFunc node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitDeclProc(DeclProc node) {
+    public CodeToResolve visitDeclProc(DeclProc node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitDeclParamIn(DeclParamIn node) {
+    public CodeToResolve visitDeclParamIn(DeclParamIn node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitDeclParamOut(DeclParamOut node) {
+    public CodeToResolve visitDeclParamOut(DeclParamOut node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitDeclVar(DeclVar node) {
+    public CodeToResolve visitDeclVar(DeclVar node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitDeclConst(DeclConst node) {
+    public CodeToResolve visitDeclConst(DeclConst node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitDeclCursor(DeclCursor node) {
+    public CodeToResolve visitDeclCursor(DeclCursor node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitDeclLabel(DeclLabel node) {
+    public CodeToResolve visitDeclLabel(DeclLabel node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitDeclException(DeclException node) {
+    public CodeToResolve visitDeclException(DeclException node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprBetween(ExprBetween node) {
+    public CodeToResolve visitExprBetween(ExprBetween node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprBinaryOp(ExprBinaryOp node) {
+    public CodeToResolve visitExprBinaryOp(ExprBinaryOp node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprCase(ExprCase node) {
+    public CodeToResolve visitExprCase(ExprCase node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprCond(ExprCond node) {
+    public CodeToResolve visitExprCond(ExprCond node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprCursorAttr(ExprCursorAttr node) {
+    public CodeToResolve visitExprCursorAttr(ExprCursorAttr node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprDate(ExprDate node) {
+    public CodeToResolve visitExprDate(ExprDate node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprDatetime(ExprDatetime node) {
+    public CodeToResolve visitExprDatetime(ExprDatetime node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprFalse(ExprFalse node) {
+    public CodeToResolve visitExprFalse(ExprFalse node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprField(ExprField node) {
+    public CodeToResolve visitExprField(ExprField node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
+    public CodeToResolve visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprId(ExprId node) {
+    public CodeToResolve visitExprId(ExprId node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprIn(ExprIn node) {
+    public CodeToResolve visitExprIn(ExprIn node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprLike(ExprLike node) {
+    public CodeToResolve visitExprLike(ExprLike node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprLocalFuncCall(ExprLocalFuncCall node) {
+    public CodeToResolve visitExprLocalFuncCall(ExprLocalFuncCall node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprNull(ExprNull node) {
+    public CodeToResolve visitExprNull(ExprNull node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprUint(ExprUint node) {
+    public CodeToResolve visitExprUint(ExprUint node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprFloat(ExprFloat node) {
+    public CodeToResolve visitExprFloat(ExprFloat node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprSerialVal(ExprSerialVal node) {
+    public CodeToResolve visitExprSerialVal(ExprSerialVal node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprSqlRowCount(ExprSqlRowCount node) {
+    public CodeToResolve visitExprSqlRowCount(ExprSqlRowCount node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprStr(ExprStr node) {
+    public CodeToResolve visitExprStr(ExprStr node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprTime(ExprTime node) {
+    public CodeToResolve visitExprTime(ExprTime node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprTrue(ExprTrue node) {
+    public CodeToResolve visitExprTrue(ExprTrue node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprUnaryOp(ExprUnaryOp node) {
+    public CodeToResolve visitExprUnaryOp(ExprUnaryOp node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprTimestamp(ExprTimestamp node) {
+    public CodeToResolve visitExprTimestamp(ExprTimestamp node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprAutoParam(ExprAutoParam node) {
+    public CodeToResolve visitExprAutoParam(ExprAutoParam node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprSqlCode(ExprSqlCode node) {
+    public CodeToResolve visitExprSqlCode(ExprSqlCode node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExprSqlErrm(ExprSqlErrm node) {
+    public CodeToResolve visitExprSqlErrm(ExprSqlErrm node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtAssign(StmtAssign node) {
+    public CodeToResolve visitStmtAssign(StmtAssign node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtBasicLoop(StmtBasicLoop node) {
+    public CodeToResolve visitStmtBasicLoop(StmtBasicLoop node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtBlock(StmtBlock node) {
+    public CodeToResolve visitStmtBlock(StmtBlock node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtExit(StmtExit node) {
+    public CodeToResolve visitStmtExit(StmtExit node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtCase(StmtCase node) {
+    public CodeToResolve visitStmtCase(StmtCase node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtCommit(StmtCommit node) {
+    public CodeToResolve visitStmtCommit(StmtCommit node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtContinue(StmtContinue node) {
+    public CodeToResolve visitStmtContinue(StmtContinue node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtCursorClose(StmtCursorClose node) {
+    public CodeToResolve visitStmtCursorClose(StmtCursorClose node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtCursorFetch(StmtCursorFetch node) {
+    public CodeToResolve visitStmtCursorFetch(StmtCursorFetch node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtCursorOpen(StmtCursorOpen node) {
+    public CodeToResolve visitStmtCursorOpen(StmtCursorOpen node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtExecImme(StmtExecImme node) {
+    public CodeToResolve visitStmtExecImme(StmtExecImme node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtStaticSql(StmtStaticSql node) {
+    public CodeToResolve visitStmtStaticSql(StmtStaticSql node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtForCursorLoop(StmtForCursorLoop node) {
+    public CodeToResolve visitStmtForCursorLoop(StmtForCursorLoop node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtForIterLoop(StmtForIterLoop node) {
+    public CodeToResolve visitStmtForIterLoop(StmtForIterLoop node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
+    public CodeToResolve visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
+    public CodeToResolve visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtGlobalProcCall(StmtGlobalProcCall node) {
+    public CodeToResolve visitStmtGlobalProcCall(StmtGlobalProcCall node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtIf(StmtIf node) {
+    public CodeToResolve visitStmtIf(StmtIf node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtLocalProcCall(StmtLocalProcCall node) {
+    public CodeToResolve visitStmtLocalProcCall(StmtLocalProcCall node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtNull(StmtNull node) {
+    public CodeToResolve visitStmtNull(StmtNull node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtOpenFor(StmtOpenFor node) {
+    public CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtRaise(StmtRaise node) {
+    public CodeToResolve visitStmtRaise(StmtRaise node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtRaiseAppErr(StmtRaiseAppErr node) {
+    public CodeToResolve visitStmtRaiseAppErr(StmtRaiseAppErr node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtReturn(StmtReturn node) {
+    public CodeToResolve visitStmtReturn(StmtReturn node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtRollback(StmtRollback node) {
+    public CodeToResolve visitStmtRollback(StmtRollback node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitStmtWhileLoop(StmtWhileLoop node) {
+    public CodeToResolve visitStmtWhileLoop(StmtWhileLoop node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitBody(Body node) {
+    public CodeToResolve visitBody(Body node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExHandler(ExHandler node) {
+    public CodeToResolve visitExHandler(ExHandler node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitExName(ExName node) {
+    public CodeToResolve visitExName(ExName node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitTypeSpecPercent(TypeSpecPercent node) {
+    public CodeToResolve visitTypeSpecPercent(TypeSpecPercent node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitTypeSpecSimple(TypeSpecSimple node) {
+    public CodeToResolve visitTypeSpecSimple(TypeSpecSimple node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitCaseExpr(CaseExpr node) {
+    public CodeToResolve visitCaseExpr(CaseExpr node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitCaseStmt(CaseStmt node) {
+    public CodeToResolve visitCaseStmt(CaseStmt node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitCondExpr(CondExpr node) {
+    public CodeToResolve visitCondExpr(CondExpr node) {
         return null;
     }
 
     @Override
-    public TextToResolve visitCondStmt(CondStmt node) {
+    public CodeToResolve visitCondStmt(CondStmt node) {
         return null;
     }
 
@@ -480,27 +479,40 @@ public class JavaCodeWriter extends AstVisitor<String[]> {
     // Private
     // -----------------------------------------------------------------
 
-    static class TextToResolve {
+    interface CodeToResolve {
+        void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel);
+    }
 
-        String[] resolved;
+    static class CodeFixedWord implements CodeToResolve {
+
+        final String fixedWord;
+
+        CodeFixedWord(String fixedWord) {
+            this.fixedWord = fixedWord;
+        }
+
+        public void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel) {
+            throw new RuntimeException("unreachable");
+        }
+    }
+
+    static class CodeTemplate implements CodeToResolve {
+
+        boolean resolved;
 
         final String plcsqlLineColumn;
         final String[] template;
-        final LinkedHashMap<String, String[]> substitutions = new LinkedHashMap<>();
-            // (template hole name, String, String[] or TextToResolve to fill the hole)
+        final LinkedHashMap<String, Object> substitutions = new LinkedHashMap<>();
+            // key (String) - template hole name
+            // value (Object) - String, String[] or CodeToResolve to fill the hole
 
-        final List<TextToResolve> subtexts = new ArrayList<>();
-
-        TextToResolve(int plcsqlLine, int plcsqlColumn, String[] template, Object... pairs) {
+        CodeTemplate(int plcsqlLine, int plcsqlColumn, String[] template, Object... pairs) {
 
             assert(template != null);
 
-            // unused: subtexts
-            subtexts = null;
-
             // used: plcsqlLineColumn, template, substitutions
-            if (plcsqlLine < 0 || plcsqlColumn < 0) {
-                this.plcsqlLineColumn = null;
+            if (plcsqlLine < 0 && plcsqlColumn < 0) {
+                this.plcsqlLineColumn = null;   // do not mark code range in this case
             } else {
                 this.plcsqlLineColumn = String.format("%d,%d", plcsqlLine, plcsqlColumn);
             }
@@ -511,137 +523,86 @@ public class JavaCodeWriter extends AstVisitor<String[]> {
             for (int i = 0; i < len; i += 2) {
                 assert(pairs[i] instanceof String);
                 Object thing = pairs[i + 1];
-                if (thing instanceof String) {
-                    this.substitutions.put((String) pairs[i], new String[] { (String) thing });
-                } else if (thing instanceof String[]) {
-                    this.substitutions.put((String) pairs[i], (String[]) thing);
-                } else if (thing instanceof TextToResolve) {
-                    this.substitutions.put((String) pairs[i], ((TextToResolve) thing).resolved);
+                if (thing instanceof CodeFixedWord) {
+                    this.substitutions.put((String) pairs[i], ((CodeFixedWord) thing).fixedWord);
+                } else if (thing instanceof String || thing instanceof String[] || thing instanceof CodeToResolve) {
+                    this.substitutions.put((String) pairs[i], thing);
                 } else {
                     assert(false);
                 }
             }
         }
 
-        TextToResolve() {
+        public void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel) {
 
-            // unused: template, substitutions
-            this.plcsqlLineColumn = null;
-            this.template = null;
-            this.substitutions = null;
-
-            // used: plcsqlLineColumn, subtexts
-            subtexts = new ArrayList<>();
-        }
-
-        void addSubtexts(TextToResolve subtext) {
-            subtexts.add(subtext);
-        }
-
-        String[] resolve(List<String> codeLines, StringBuilder codeRangeMarkers) {
-
-            if (resolved == null) {
+            if (resolved) {
+                throw new RuntimeException("already resolved");
+            } else {
 
                 boolean markCodeRange = plcsqlLineColumn != null;
                 if (markCodeRange) {
                     codeRangeMarkers.append(String.format(" (%d,%s", codeLines.size() + 1, plcsqlLineColumn));
                 }
 
-                if (template == null) {
-                    for (TextToResolve t: subtexts) {
-                        t.resolve(codeLines, codeRangeMarkers);
-                    }
-                } else {
-                    for (String line: template) {
-                        List<String> expanded = expandTemplateLine(line);
-                        codeLines.addAll(expanded);
-                    }
+                for (String line: template) {
+                    resolveTemplateLine(codeLines, codeRangeMarkers, indentLevel, line);
                 }
 
                 if (markCodeRange) {
-                    codeRangeMarkers.append(String.format(" )%d", codeLines.size() + 1);
+                    codeRangeMarkers.append(String.format(" )%d", codeLines.size() + 1));
                 }
 
-                resolved = accum.toArray(dummy);
+                resolved = true;
             }
-
-            return resolved;
         }
-
 
         // -----------------------------------------------
         // Private
         // -----------------------------------------------
 
-        private static final String[] dummy = new String[0];
+        private static final String[] dummyStrArr = new String[0];
 
-        private List<String> expandTemplateLine(String line) {
+        private void resolveTemplateLine(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel,
+                String line) {
 
             assert(line != null);
-
-            LinkedList<String> list1 = new LinkedList<>();
-            LinkedList<String> list2 = new LinkedList<>();
-            Set<String> holes = new HashSet<>();
-
-            list1.add(line);
-
-            while (true) {
-
-                boolean changed = false;
-                while (!list1.isEmpty()) {
-
-                    String l = list1.removeFirst();
-
-                    holes.clear();  // to reuse a set rather than creating temporary ones
-                    getHoles(holes, l);
-                    if (holes.isEmpty()) {
-                        list2.addLast(l);
-                    } else {
-
-                        if (holes.size() == 1 && holes.contains(l.trim())) {
-                            // this l is for indented whole replacement
-
-                            assert(!l.endsWith(" "));    // do not append a trailing space to a template line
-                            int indents = l.indexOf("%'");
-                            assert(indents % Misc.INDENT.length() == 0);
-                            int indentLevel = indents / Misc.INDENT.length();
-
-                            addNewLines(list2, indentLevel, substitutions.get(l.trim()));
-                            changed = true;
-
-                        } else {
-
-                            for (String hole: substitutions.keySet()) {
-                                if (holes.contains(hole)) {
-                                    String[] newLines = substitutions.get(hole);
-                                    assert(newLines.length == 1);    // a single string
-                                    l = l.replace(hole, newLines[0]);
-                                    changed = true;
-                                }
-                            }
-                            assert(l.indexOf("%'") == -1);  // no remaining holes
-                            list2.addLast(l);
-                        }
-                    }
-                }
-
-                if (changed) {
-                    // swap list1 and list2
-                    LinkedList<String> store = list1;
-                    list1 = list2;
-                    list2 = store;
-                } else {
-                    return list2;
-                }
-            }
-        }
-
-        private void addNewLines(LinkedList<String> list, int indentLevel, String[] newLines) {
+            assert(!line.endsWith(" ")) : "a template line has a trailing space: '" + line + "'";
 
             String indent = Misc.getIndent(indentLevel);
 
-            for (String s: newLines) {
-                list.addLast(indent + s);
+            Set<String> holes = new HashSet<>();
+            getHoles(holes, line);
+            if (holes.size() == 1 && holes.contains(line.trim())) {
+                // case 1: expanded to multiple lines
+                String hole = line.trim();
+                int indentLevelDelta = line.indexOf(hole) / Misc.INDENT_SIZE;
+
+                Object substitute = substitutions.get(hole);
+                if (substitute instanceof String[]) {
+                    indent = indent + Misc.getIndent(indentLevelDelta);
+                    for (String l: (String[]) substitute) {
+                        assert(l.indexOf("%'") == -1);  // no holes in the substitutes
+                        codeLines.add(indent + l);
+                    }
+                } else if (substitute instanceof CodeToResolve) {
+                    ((CodeToResolve) substitute).resolve(codeLines, codeRangeMarkers, indentLevel + indentLevelDelta);
+                } else {
+                    assert(false);  // cannot be a single String
+                }
+            } else {
+                // case 2: word replacements in a single line
+                for (String hole: substitutions.keySet()) {
+                    if (holes.contains(hole)) {
+                        Object substitute = substitutions.get(hole);
+                        if (substitute instanceof String) {
+                            line = line.replace(hole, (String) substitute);
+                        } else {
+                            assert(false);  // cannot be a String[] or CodeToResolve
+                        }
+                    }
+                }
+                assert(line.indexOf("%'") == -1);  // no holes in the substitutes
+                codeLines.add(indent + line);
             }
         }
 
@@ -659,6 +620,34 @@ public class JavaCodeWriter extends AstVisitor<String[]> {
                     i = end + 2;
                     holes.add(line.substring(begin, i));
                 }
+            }
+        }
+    }
+
+    static class CodeList implements CodeToResolve {
+
+        boolean resolved;
+        final List<CodeTemplate> elements;
+
+        CodeList() {
+            elements = new ArrayList<>();
+        }
+
+        void addElement(CodeTemplate element) {
+            elements.add(element);
+        }
+
+        public void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel) {
+
+            if (resolved) {
+                throw new RuntimeException("already resolved");
+            } else {
+
+                for (CodeTemplate t: elements) {
+                    t.resolve(codeLines, codeRangeMarkers, indentLevel);
+                }
+
+                resolved = true;
             }
         }
     }

@@ -43,6 +43,7 @@ import java.util.HashMap;
 public class Misc {
 
     public static final String INDENT = "  "; // two spaces
+    public static final int INDENT_SIZE = INDENT.length();
 
     public enum RoutineType {
         FUNC,

@@ -144,6 +144,14 @@ public class Unit extends AstNode {
         return className;
     }
 
+    public String[] getImportsArray() {
+        if (imports.size() == 0) {
+            return new String[] { "// no imports" };
+        } else {
+            return imports.toArray(dummyStrArr);
+        }
+    }
+
     // ------------------------------------------
     // Private
     // ------------------------------------------
@@ -194,14 +202,6 @@ public class Unit extends AstNode {
                     "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
 
     private String className;
-
-    private String[] getImportsArray() {
-        if (imports.size() == 0) {
-            return new String[] { "// no imports" };
-        } else {
-            return imports.toArray(dummyStrArr);
-        }
-    }
 
     private String getImportString() {
         if (imports.size() == 0) {
