@@ -453,7 +453,6 @@ tran_server::uses_remote_storage () const
 void
 tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 {
-  auto lockg_conn = std::lock_guard<std::shared_mutex> { m_conn_mtx };
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 24;   // Arbitrarily chosen
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
   // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
@@ -461,6 +460,8 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
   // Transaction server will use message specific error handlers.
   // Implementation will assert that an error handler is present if needed.
+
+  auto lockg_conn = std::lock_guard<std::shared_mutex> { m_conn_mtx };
 
   assert (m_conn == nullptr);
   m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
