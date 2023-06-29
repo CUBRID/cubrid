@@ -34,8 +34,8 @@
 #define STATS_WITH_FULLSCAN  true
 #define STATS_WITH_SAMPLING  false
 
-#define STATS_SAMPLING_THRESHOLD 50	/* sampling trial count */
-#define STATS_SAMPLING_LEAFS_MAX   8	/* sampling leaf pages */
+#define STATS_SAMPLING_THRESHOLD 1000	/* sampling trial count */
+#define STATS_SAMPLING_LEAFS_MAX  500	/* sampling leaf pages */
 
 /* disk-resident elements of pkeys[] field */
 #define BTREE_STATS_PKEYS_NUM      8
