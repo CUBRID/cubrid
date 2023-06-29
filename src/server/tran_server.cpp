@@ -117,7 +117,9 @@ tran_server::parse_page_server_hosts_config (std::string &hosts)
 int
 tran_server::boot (const char *db_name)
 {
-  int error_code = init_page_server_hosts (db_name);
+  m_server_name = db_name;
+
+  int error_code = init_page_server_hosts ();
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -133,6 +135,8 @@ tran_server::boot (const char *db_name)
 	  return error_code;
 	}
     }
+
+  m_ps_connector.start ();
 
   return NO_ERROR;
 }
@@ -192,7 +196,7 @@ tran_server::send_receive (tran_to_page_request reqid, std::string &&payload_in,
 }
 
 int
-tran_server::init_page_server_hosts (const char *db_name)
+tran_server::init_page_server_hosts ()
 {
   assert_is_tran_server ();
   assert (m_page_server_conn_vec.empty ());
@@ -254,7 +258,7 @@ tran_server::init_page_server_hosts (const char *db_name)
     {
       /* create a empty connection_handler specialized for each tran serve type */
       m_page_server_conn_vec.emplace_back (create_connection_handler (*this));
-      exit_code = connect_to_page_server (*m_page_server_conn_vec.back ().get (), node, db_name);
+      exit_code = m_page_server_conn_vec.back ()->connect (node);
       if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
@@ -318,19 +322,26 @@ tran_server::get_boot_info_from_page_server ()
 }
 
 int
-tran_server::connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node, const char *db_name)
+tran_server::connection_handler::connect (const cubcomm::node &node)
 {
-  auto ps_conn_error_lambda = [&node] ()
+  auto ps_conn_error_lambda = [&node, this] (const std::lock_guard<std::shared_mutex> &)
   {
+    m_state = state::IDLE;
+
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
     return ER_NET_PAGESERVER_CONNECTION;
   };
 
   assert_is_tran_server ();
 
+  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+  assert (m_state == state::IDLE);
+
+  m_state = state::CONNECTING;
+
   // connect to page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
-  cubcomm::server_channel srv_chn (db_name, SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
+  cubcomm::server_channel srv_chn (m_ts.m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
 
   srv_chn.set_channel_name ("TS_PS_comm");
 
@@ -338,27 +349,31 @@ tran_server::connect_to_page_server (connection_handler &conn_handler, const cub
 				   CMD_SERVER_SERVER_CONNECT);
   if (comm_error_code != css_error_code::NO_ERRORS)
     {
-      return ps_conn_error_lambda ();
+      return ps_conn_error_lambda (lockg_state);
     }
 
-  if (srv_chn.send_int (static_cast<int> (m_conn_type)) != NO_ERRORS)
+  if (srv_chn.send_int (static_cast<int> (m_ts.m_conn_type)) != NO_ERRORS)
     {
-      return ps_conn_error_lambda ();
+      return ps_conn_error_lambda (lockg_state);
     }
 
   int returned_code;
   if (srv_chn.recv_int (returned_code) != css_error_code::NO_ERRORS)
     {
-      return ps_conn_error_lambda ();
+      return ps_conn_error_lambda (lockg_state);
     }
-  if (returned_code != static_cast<int> (m_conn_type))
+  if (returned_code != static_cast<int> (m_ts.m_conn_type))
     {
-      return ps_conn_error_lambda ();
+      return ps_conn_error_lambda (lockg_state);
     }
 
   // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
   // moved as argument below
-  conn_handler.set_connection (std::move (srv_chn));
+  set_connection (std::move (srv_chn));
+
+  // TODO initailizing jobs will be triggered such as the catch-up process. state::CONNECTED will be set asynchronously when it's done.
+
+  m_state = state::CONNECTED;
 
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
@@ -370,6 +385,9 @@ void
 tran_server::disconnect_all_page_servers ()
 {
   assert_is_tran_server ();
+
+  m_ps_connector.terminate ();
+
   for (auto &conn : m_page_server_conn_vec)
     {
       constexpr bool with_disconnect_msg = true;
@@ -459,25 +477,13 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
       }
   };
 
-  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+  auto lockg_conn = std::lock_guard<std::shared_mutex> { m_conn_mtx };
 
-  {
-    auto lockg_conn = std::lock_guard<std::shared_mutex> { m_conn_mtx };
+  assert (m_conn == nullptr);
+  m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
+					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (default_error_handler)));
 
-    assert (m_conn == nullptr);
-    m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
-					  page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (default_error_handler)));
-    assert (m_conn != nullptr);
-
-    m_conn->start ();
-  }
-
-  assert (m_state == state::IDLE);
-  m_state = state::CONNECTING;
-
-  // TODO initailizing jobs will be triggered such as the catch-up process. state::CONNECTED will be set asynchronously when it's done.
-
-  m_state = state::CONNECTED;
+  m_conn->start ();
 }
 
 tran_server::connection_handler::~connection_handler ()
@@ -635,6 +641,74 @@ tran_server::connection_handler::is_connected ()
 {
   auto slock = std::shared_lock<std::shared_mutex> { m_state_mtx };
   return m_state == state::CONNECTED;
+}
+
+bool
+tran_server::connection_handler::is_idle ()
+{
+  auto slock = std::shared_lock<std::shared_mutex> { m_state_mtx };
+  return m_state == state::IDLE;
+}
+
+tran_server::ps_connector::ps_connector (tran_server &ts)
+  : m_ts { ts }
+  , m_daemon { nullptr }
+  , m_terminate { false }
+{
+}
+
+tran_server::ps_connector::~ps_connector ()
+{
+  terminate ();
+}
+
+void
+tran_server::ps_connector::start ()
+{
+  assert (m_terminate.load () == false);
+  /* After init_page_server_hosts() */
+  assert (m_ts.m_page_server_conn_vec.empty () == false);
+
+  auto func_exec = std::bind (&tran_server::ps_connector::try_connect_to_all_ps, std::ref (*this), std::placeholders::_1);
+  auto entry = new cubthread::entry_callable_task (std::move (func_exec));
+
+  constexpr std::chrono::seconds five_sec { 5 };
+  cubthread::looper loop (five_sec);
+  m_daemon = cubthread::get_manager ()->create_daemon (loop, entry, "tran_server::ps_connector");
+}
+
+void
+tran_server::ps_connector::terminate ()
+{
+  if (m_terminate.exchange (true) == false)
+    {
+      cubthread::get_manager ()->destroy_daemon (m_daemon);
+    }
+}
+
+void
+tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
+{
+  /* Assume that they store PS information in the same order.
+   * TODO: combine two vectors */
+  assert (m_ts.m_connection_list.size () == m_ts.m_page_server_conn_vec.size());
+
+  for (size_t i = 0; i < m_ts.m_page_server_conn_vec.size (); i++)
+    {
+      if (m_ts.m_page_server_conn_vec[i]->is_idle ())
+	{
+	  /*
+	   * TODO It can be too verbose now since it always complain to fail to connect when a PS has been stopped.
+	   * Later on, this job is going to be triggered by a cluster manager or cub_master when a PS is ready to connect.
+	   */
+	  m_ts.m_page_server_conn_vec[i]->connect (m_ts.m_connection_list[i]);
+	}
+
+      if (m_terminate.load ())
+	{
+	  break;
+	}
+    }
 }
 
 void
