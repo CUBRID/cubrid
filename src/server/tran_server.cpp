@@ -324,7 +324,7 @@ tran_server::get_boot_info_from_page_server ()
 int
 tran_server::connection_handler::connect (const cubcomm::node &node)
 {
-  auto ps_conn_error_lambda = [&node, this] ()
+  auto ps_conn_error_lambda = [&node, this] (const std::lock_guard<std::shared_mutex> &)
   {
     m_state = state::IDLE;
 
@@ -349,22 +349,22 @@ tran_server::connection_handler::connect (const cubcomm::node &node)
 				   CMD_SERVER_SERVER_CONNECT);
   if (comm_error_code != css_error_code::NO_ERRORS)
     {
-      return ps_conn_error_lambda ();
+      return ps_conn_error_lambda (lockg_state);
     }
 
   if (srv_chn.send_int (static_cast<int> (m_ts.m_conn_type)) != NO_ERRORS)
     {
-      return ps_conn_error_lambda ();
+      return ps_conn_error_lambda (lockg_state);
     }
 
   int returned_code;
   if (srv_chn.recv_int (returned_code) != css_error_code::NO_ERRORS)
     {
-      return ps_conn_error_lambda ();
+      return ps_conn_error_lambda (lockg_state);
     }
   if (returned_code != static_cast<int> (m_ts.m_conn_type))
     {
-      return ps_conn_error_lambda ();
+      return ps_conn_error_lambda (lockg_state);
     }
 
   // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
