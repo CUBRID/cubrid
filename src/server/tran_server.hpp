@@ -233,8 +233,8 @@ class tran_server
     int get_boot_info_from_page_server ();
     int reset_main_connection ();
 
-    int parse_server_host (const std::string &host);
-    int parse_page_server_hosts_config (std::string &hosts);
+    int create_connection_with_server_host (const std::string &host);
+    int create_connections_with_server_hosts_config (std::string &hosts);
 
   private:
     cubcomm::server_server m_conn_type;

@@ -43,7 +43,7 @@ tran_server::~tran_server ()
 }
 
 int
-tran_server::parse_server_host (const std::string &host)
+tran_server::create_connection_with_server_host (const std::string &host)
 {
   std::string m_ps_hostname;
   auto col_pos = host.find (":");
@@ -81,7 +81,7 @@ tran_server::parse_server_host (const std::string &host)
 }
 
 int
-tran_server::parse_page_server_hosts_config (std::string &hosts)
+tran_server::create_connections_with_server_hosts_config (std::string &hosts)
 {
   auto col_pos = hosts.find (":");
 
@@ -101,12 +101,12 @@ tran_server::parse_page_server_hosts_config (std::string &hosts)
       std::string token = hosts.substr (0, pos);
       hosts.erase (0, pos + delimiter.length ());
 
-      if (parse_server_host (token) != NO_ERROR)
+      if (create_connection_with_server_host (token) != NO_ERROR)
 	{
 	  exit_code = ER_HOST_PORT_PARAMETER;
 	}
     }
-  if (parse_server_host (hosts) != NO_ERROR)
+  if (create_connection_with_server_host (hosts) != NO_ERROR)
     {
       exit_code = ER_HOST_PORT_PARAMETER;
     }
@@ -235,7 +235,7 @@ tran_server::init_page_server_hosts ()
 	}
     }
 
-  int exit_code = parse_page_server_hosts_config (hosts);
+  int exit_code = create_connections_with_server_hosts_config (hosts);
   if (m_connection_list.empty ())
     {
       // no valid hosts
