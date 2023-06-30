@@ -18,15 +18,15 @@
 include(FindJava)
 find_package(Java 1.6 COMPONENTS Development)
 
-# Find gradlew
-if(UNIX)
-  set(GRADLE_EXECUTABLE ${CMAKE_CURRENT_SOURCE_DIR}/gradlew)
-else(UNIX)
-  set(GRADLE_EXECUTABLE ${CMAKE_CURRENT_SOURCE_DIR}/gradlew.bat)
-endif(UNIX)
-
 set(PL_ENGINE_SOURCE_DIR ${CMAKE_SOURCE_DIR}/pl_engine)
 set(PL_ENGINE_BUILD_DIR ${CMAKE_BINARY_DIR}/pl_engine)
+
+# Find gradlew
+if(UNIX)
+  set(GRADLE_EXECUTABLE ${PL_ENGINE_SOURCE_DIR}/gradlew)
+else(UNIX)
+  set(GRADLE_EXECUTABLE ${PL_ENGINE_SOURCE_DIR}/gradlew.bat)
+endif(UNIX)
 
 set(LOCAL_JDBC_PATH_COMMAND)
 
