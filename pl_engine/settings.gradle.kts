@@ -14,4 +14,4 @@ plugins {
 
 rootProject.name = "cubrid plserver"
 
-include("pl-server")
+include("pl_server")
