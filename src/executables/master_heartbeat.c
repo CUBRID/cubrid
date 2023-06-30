@@ -294,8 +294,6 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
 
 #define HA_PROCESS_INFO_FORMAT_STRING    \
 	" HA-Process Info (master %d, state %s)\n"
-#define HA_SERVER_PROCESS_FORMAT_STRING  \
-	"   Server %s (pid %d, state %s)\n"
 #define HA_TRAN_SERVER_PROCESS_FORMAT_STRING  \
 	"   Transaction-Server %s (pid %d, state %s)\n"
 #define HA_PAGE_SERVER_PROCESS_FORMAT_STRING  \
