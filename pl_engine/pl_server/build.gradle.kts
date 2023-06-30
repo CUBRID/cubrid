@@ -22,10 +22,12 @@ repositories {
     // CUBRID JDBC
     var jdbc_path = project.properties["cubridJdbcPath"]
     if (jdbc_path != null) {
+        // find cubrid-jdbc in local submodule path
         flatDir {
             dirs("$jdbc_path")
         }
     } else {
+        // find in cubrid's artifactory repository
         maven {
             url = uri("http://maven.cubrid.org/")
             isAllowInsecureProtocol = true
