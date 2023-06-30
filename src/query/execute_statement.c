@@ -14279,6 +14279,28 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   return error;
 }
 
+static PT_NODE *
+pt_vars_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PARSER_CONTEXT *query = (PARSER_CONTEXT *) arg;
+
+  if (node->node_type == PT_HOST_VAR)
+    {
+      if (node->info.host_var.index >= 0)
+	{
+	  parser->host_variables[parser->host_var_count] = query->host_variables[node->info.host_var.index];
+	  node->info.host_var.index = parser->host_var_count;
+	  parser->dbval_cnt++;
+	}
+
+      parser->host_var_count++;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  return node;
+}
+
 /*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
@@ -14339,16 +14361,24 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.query.with)
     {
       int error;
-      PARSER_CONTEXT cte_context;
       PT_NODE *cte_statement;
+      PARSER_CONTEXT cte_context;
+      int var_count;
 
       PT_NODE *cte_def_list = statement->info.query.with->info.with_clause.cte_definition_list;
 
       while (cte_def_list)
 	{
-	  cte_statement = cte_def_list->info.cte.non_recursive_part;
+	  cte_statement = parser_copy_tree (parser, cte_def_list->info.cte.non_recursive_part);
 
 	  cte_context = *parser;
+	  cte_context.dbval_cnt = 0;
+	  cte_context.host_var_count = cte_context.auto_param_count = 0;
+
+	  var_count = parser->host_var_count + parser->auto_param_count;
+	  cte_context.host_variables = (DB_VALUE *) malloc (var_count * sizeof (DB_VALUE));
+
+	  parser_walk_tree (&cte_context, cte_statement, pt_vars_count, parser, NULL, NULL);
 
 	  error = do_prepare_select (&cte_context, cte_statement);
 	  if (error != NO_ERROR)
@@ -14363,6 +14393,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      return error;
 	    }
+
 	  cte_def_list = cte_def_list->next;
 	}
     }
