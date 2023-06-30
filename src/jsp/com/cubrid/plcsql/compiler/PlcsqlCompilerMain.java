@@ -44,6 +44,7 @@ import com.cubrid.plcsql.compiler.SyntaxError;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
+import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
@@ -255,6 +256,12 @@ public class PlcsqlCompilerMain {
         if (verbose) {
             t0 = printElapsedTime("typechecking", t0);
         }
+
+        // ------------------------------------------
+        // temporary
+
+        JavaCodeWriter jcw = new JavaCodeWriter();
+        jcw.buildCodeLines(unit);
 
         // ------------------------------------------
         //

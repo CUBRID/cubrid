@@ -53,6 +53,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
 
         System.out.println(String.format("[temp] code range markers = [%s]", codeRangeMarkers.toString()));
+        System.out.println(String.format("[temp] code\n%s", String.join("\n", codeLines.toArray(dummyStrArr))));
     }
 
     @Override
@@ -76,27 +77,27 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "(\"jdbc:default:connection::?autonomous_transaction=%s\");", node.autonomousTransaction) :
             "// connection not required";
 
-        String strDecls = "// no declarations"; // TODO: temporary
+        String[] strDecls = new String[] { "// no declarations" }; // TODO: temporary
 
         return new CodeTemplate(
-            0, 0,
+            new int[] { 0, 0 },
             new String[] {
-                "%'IMPORTS'%",
+                "%'%IMPORTS'%",
                 "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
                 "",
                 "public class %'CLASS-NAME'% {",
                 "",
                 "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
-                "      %'PARAMETERS'%",
+                "      %'%PARAMETERS'%",
                 "    ) throws Exception {",
                 "",
                 "    try {",
                 "      Long[] sql_rowcount = new Long[] { -1L };",
                 "      %'GET-CONNECTION'%",
                 "",
-                "      %'DECL-CLASS'%",
+                "      %'%DECL-CLASS'%",
                 "",
-                "      %'BODY'%",
+                "      %'%BODY'%",
                 "    } catch (OutOfMemoryError e) {",
                 "      Server.log(e);",
                 "      throw new STORAGE_ERROR();",
@@ -109,381 +110,424 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  }",
                 "}"
             },
-            "%'IMPORTS'%", node.getImportsArray(),
+            "%'%IMPORTS'%", node.getImportsArray(),
             "%'CLASS-NAME'%", node.getClassName(),
             "%'RETURN-TYPE'%", node.routine.retType == null ? "void" : visit(node.routine.retType),
             "%'METHOD-NAME'%", node.routine.name,
-            "%'PARAMETERS'%", strParamArr,
+            "%'%PARAMETERS'%", strParamArr,
             "%'GET-CONNECTION'%", strGetConn,
-            "%'DECL-CLASS'%", strDecls,
-            "%'BODY'%", visit(node.routine.body)
+            "%'%DECL-CLASS'%", strDecls,
+            "%'%BODY'%", visit(node.routine.body)
         );
     }
 
     @Override
     public CodeToResolve visitDeclFunc(DeclFunc node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitDeclProc(DeclProc node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitDeclParamIn(DeclParamIn node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitDeclParamOut(DeclParamOut node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitDeclVar(DeclVar node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitDeclConst(DeclConst node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitDeclCursor(DeclCursor node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitDeclLabel(DeclLabel node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitDeclException(DeclException node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprBetween(ExprBetween node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprBinaryOp(ExprBinaryOp node) {
-        return null;
+        return new CodeTemplate(Misc.getLineColumnOf(node.ctx),
+            new String[] {
+                "op%'OPERATION'%(",
+                "  %'%LEFT-OPERAND'%,",
+                "  %'%RIGHT-OPERAND'%",
+                ")"
+            },
+            "%'OPERATION'%", node.opStr,
+            "%'%LEFT-OPERAND'%", visit(node.left),
+            "%'%RIGHT-OPERAND'%", visit(node.right)
+        );
     }
 
     @Override
     public CodeToResolve visitExprCase(ExprCase node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprCond(ExprCond node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprCursorAttr(ExprCursorAttr node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprDate(ExprDate node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprDatetime(ExprDatetime node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprFalse(ExprFalse node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprField(ExprField node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprId(ExprId node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprIn(ExprIn node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprLike(ExprLike node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprLocalFuncCall(ExprLocalFuncCall node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprNull(ExprNull node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprUint(ExprUint node) {
-        return null;
+        return new CodeTemplate(Misc.getLineColumnOf(node.ctx), new String[] { node.toJavaCode() }); // TODO: temporary
     }
 
     @Override
     public CodeToResolve visitExprFloat(ExprFloat node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprSerialVal(ExprSerialVal node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprSqlRowCount(ExprSqlRowCount node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprStr(ExprStr node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprTime(ExprTime node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprTrue(ExprTrue node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprUnaryOp(ExprUnaryOp node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprTimestamp(ExprTimestamp node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprAutoParam(ExprAutoParam node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprSqlCode(ExprSqlCode node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExprSqlErrm(ExprSqlErrm node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtAssign(StmtAssign node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtBasicLoop(StmtBasicLoop node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtBlock(StmtBlock node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtExit(StmtExit node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtCase(StmtCase node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtCommit(StmtCommit node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtContinue(StmtContinue node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtCursorClose(StmtCursorClose node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtCursorFetch(StmtCursorFetch node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtCursorOpen(StmtCursorOpen node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtExecImme(StmtExecImme node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtStaticSql(StmtStaticSql node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtForCursorLoop(StmtForCursorLoop node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtForIterLoop(StmtForIterLoop node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtGlobalProcCall(StmtGlobalProcCall node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtIf(StmtIf node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtLocalProcCall(StmtLocalProcCall node) {
-        return null;
+
+        String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
+
+        return Misc.isEmpty(node.args) ?
+            new CodeTemplate(Misc.getLineColumnOf(node.ctx),
+                new String[] {
+                    "%'BLOCK'%%'NAME'%();",
+                },
+                "%'BLOCK'%", block,
+                "%'NAME'%", node.name
+            ) :
+            new CodeTemplate(Misc.getLineColumnOf(node.ctx),
+                new String[] {
+                    "%'BLOCK'%%'NAME'%(",
+                    "  %'%ARGUMENTS'%",
+                    ");"
+                },
+                "%'BLOCK'%", block,
+                "%'NAME'%", node.name,
+                "%'%ARGUMENTS'%", visit(node.args)
+            );
+
     }
 
     @Override
     public CodeToResolve visitStmtNull(StmtNull node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtRaise(StmtRaise node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtRaiseAppErr(StmtRaiseAppErr node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtReturn(StmtReturn node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtRollback(StmtRollback node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitStmtWhileLoop(StmtWhileLoop node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitBody(Body node) {
-        return null;
+        return new CodeTemplate(POSITION_IGNORED,
+            new String[] {
+                "try {",
+                "  %'%STATEMENTS'%",
+                "}",
+                "%'%CATCHES'%"
+            },
+            "%'%STATEMENTS'%", visit(node.stmts),
+            "%'%CATCHES'%", visit(node.exHandlers)
+        );
     }
 
     @Override
     public CodeToResolve visitExHandler(ExHandler node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitExName(ExName node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitTypeSpecPercent(TypeSpecPercent node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitTypeSpecSimple(TypeSpecSimple node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitCaseExpr(CaseExpr node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitCaseStmt(CaseStmt node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitCondExpr(CondExpr node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
     }
 
     @Override
     public CodeToResolve visitCondStmt(CondStmt node) {
-        return null;
+        throw new RuntimeException("unimplemented yet");
+    }
+
+    interface CodeToResolve {
+        void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel);
     }
 
     // -----------------------------------------------------------------
     // Private
     // -----------------------------------------------------------------
 
-    interface CodeToResolve {
-        void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel);
-    }
+    private static final int[] POSITION_IGNORED = new int[] { -1, -1 };
+    private static final String[] dummyStrArr = new String[0];
 
-    static class CodeFixedWord implements CodeToResolve {
+    private static class CodeFixedWord implements CodeToResolve {
 
         final String fixedWord;
 
@@ -496,7 +540,35 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
     }
 
-    static class CodeTemplate implements CodeToResolve {
+    private static class CodeList implements CodeToResolve {
+
+        boolean resolved;
+        final List<CodeTemplate> elements;
+
+        CodeList() {
+            elements = new ArrayList<>();
+        }
+
+        void addElement(CodeTemplate element) {
+            elements.add(element);
+        }
+
+        public void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel) {
+
+            if (resolved) {
+                throw new RuntimeException("already resolved");
+            } else {
+
+                for (CodeTemplate t: elements) {
+                    t.resolve(codeLines, codeRangeMarkers, indentLevel);
+                }
+
+                resolved = true;
+            }
+        }
+    }
+
+    private static class CodeTemplate implements CodeToResolve {
 
         boolean resolved;
 
@@ -506,14 +578,19 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             // key (String) - template hole name
             // value (Object) - String, String[] or CodeToResolve to fill the hole
 
-        CodeTemplate(int plcsqlLine, int plcsqlColumn, String[] template, Object... pairs) {
+        CodeTemplate(int[] pos, String[] template, Object... pairs) {
 
+            assert(pos != null);
             assert(template != null);
+
+            int plcsqlLine = pos[0];
+            int plcsqlColumn = pos[1];
 
             // used: plcsqlLineColumn, template, substitutions
             if (plcsqlLine < 0 && plcsqlColumn < 0) {
                 this.plcsqlLineColumn = null;   // do not mark code range in this case
             } else {
+                assert(plcsqlLine >= 0 && plcsqlColumn >= 0);
                 this.plcsqlLineColumn = String.format("%d,%d", plcsqlLine, plcsqlColumn);
             }
             this.template = template;
@@ -560,8 +637,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         // Private
         // -----------------------------------------------
 
-        private static final String[] dummyStrArr = new String[0];
-
         private void resolveTemplateLine(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel,
                 String line) {
 
@@ -571,13 +646,29 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             String indent = Misc.getIndent(indentLevel);
 
             Set<String> holes = new HashSet<>();
-            getHoles(holes, line);
-            if (holes.size() == 1 && holes.contains(line.trim())) {
-                // case 1: expanded to multiple lines
-                String hole = line.trim();
-                int indentLevelDelta = line.indexOf(hole) / Misc.INDENT_SIZE;
+            String bigHole = getHoles(holes, line);
+            if (bigHole == null) {
+                // case 1 (namely, small hole) : word replacements in a single line
+                for (String hole: substitutions.keySet()) {
+                    if (holes.contains(hole)) {
+                        assert(!isBigHole(hole)) : "wrong big hole " + hole;
+                        Object substitute = substitutions.get(hole);
+                        if (substitute instanceof String) {
+                            line = line.replace(hole, (String) substitute);
+                        } else {
+                            assert(false) : "wrong substitution for " + hole; // cannot be a String[] or CodeToResolve
+                        }
+                    }
+                }
+                assert(line.indexOf("%'") == -1);  // no holes in the substitutes
+                codeLines.add(indent + line);
+            } else {
+                // case 2 (namely, big hole) : expanded to multiple lines
+                int spaces = line.indexOf(bigHole);
+                int indentLevelDelta = spaces / Misc.INDENT_SIZE;
+                String suffix = line.substring(spaces + bigHole.length());
 
-                Object substitute = substitutions.get(hole);
+                Object substitute = substitutions.get(bigHole);
                 if (substitute instanceof String[]) {
                     indent = indent + Misc.getIndent(indentLevelDelta);
                     for (String l: (String[]) substitute) {
@@ -587,68 +678,54 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 } else if (substitute instanceof CodeToResolve) {
                     ((CodeToResolve) substitute).resolve(codeLines, codeRangeMarkers, indentLevel + indentLevelDelta);
                 } else {
-                    assert(false);  // cannot be a single String
+                    assert(false) : "wrong substitution for " + bigHole;  // cannot be a single String
                 }
-            } else {
-                // case 2: word replacements in a single line
-                for (String hole: substitutions.keySet()) {
-                    if (holes.contains(hole)) {
-                        Object substitute = substitutions.get(hole);
-                        if (substitute instanceof String) {
-                            line = line.replace(hole, (String) substitute);
-                        } else {
-                            assert(false);  // cannot be a String[] or CodeToResolve
-                        }
-                    }
+
+                // append the suffix, if any, to the last line (this is mainly for the commas after expressions)
+                if (suffix.length() > 0) {
+                    int lastLineIndex = codeLines.size() - 1;
+                    String lastLine = codeLines.get(lastLineIndex);
+                    codeLines.set(lastLineIndex, lastLine + suffix);
                 }
-                assert(line.indexOf("%'") == -1);  // no holes in the substitutes
-                codeLines.add(indent + line);
             }
         }
 
-        private void getHoles(Set<String> holes, String line) {
+        private boolean isBigHole(String hole) {
+            return hole.startsWith("%'%");
+        }
+
+        //
+        private String getHoles(Set<String> holes, String line) {
 
             int i = 0;
             int len = line.length();
+            boolean first = true;
             while (i < len) {
                 int begin = line.indexOf("%'", i);
                 if (begin == -1) {
-                    return;
+                    return null;
                 } else {
                     int end = line.indexOf("'%", begin + 2);
                     assert(end != -1);
                     i = end + 2;
-                    holes.add(line.substring(begin, i));
+
+                    String hole = line.substring(begin, i);
+                    if (first) {
+                        first = false;
+                        if (isBigHole(hole)) {
+                            for (int j = 0; j < begin; j++) {
+                                assert(line.charAt(j) == ' ');  // only spaces allowed before a big hole
+                            }
+                            assert(line.indexOf("%'", i) == -1); // ho more holes after a big hole
+
+                            return hole;
+                        }
+                    }
+                    holes.add(hole);
                 }
             }
-        }
-    }
 
-    static class CodeList implements CodeToResolve {
-
-        boolean resolved;
-        final List<CodeTemplate> elements;
-
-        CodeList() {
-            elements = new ArrayList<>();
-        }
-
-        void addElement(CodeTemplate element) {
-            elements.add(element);
-        }
-
-        public void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel) {
-
-            if (resolved) {
-                throw new RuntimeException("already resolved");
-            } else {
-
-                for (CodeTemplate t: elements) {
-                    t.resolve(codeLines, codeRangeMarkers, indentLevel);
-                }
-
-                resolved = true;
-            }
+            return null;
         }
     }
 }

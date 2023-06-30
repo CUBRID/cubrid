@@ -184,7 +184,7 @@ public class Misc {
     // Private
     // ----------------------------------------------
 
-    private static final int[] UNKNOWN_LINE_COLUMN = new int[] {0, 0};
+    private static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
 
     private static final String[] smallIndents = new String[] {
         makeIndent(0), makeIndent(1), makeIndent(2), makeIndent(3), makeIndent(4),
