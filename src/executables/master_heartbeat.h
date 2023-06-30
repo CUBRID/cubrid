@@ -118,7 +118,10 @@ enum HB_PROC_STATE
 
 #define HB_REPLICA_PRIORITY                     0x7FFF
 
-/* heartbeat resource process detail state */
+/* Heartbeat resource process detail state.
+ * These states are to provide detailed information about server process
+ * from start to the provision of the service.
+ */
 enum HB_SERVER_STATE
 {
   HB_SERVER_STATE_INIT = 0,
@@ -291,9 +294,9 @@ struct HB_PROC_ENTRY
   HB_PROC_ENTRY *next;
   HB_PROC_ENTRY **prev;
 
-  unsigned char state;		/* process state */
+  unsigned char state;		/* process state (HB_PROC_STATE) */
+  unsigned char server_state;	/* detailed server state (HB_SERVER_STATE) */
   unsigned char type;		/* single/master-slave */
-  unsigned char server_state;	/* server state */
 
   int sfd;
 
