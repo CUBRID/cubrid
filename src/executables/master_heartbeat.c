@@ -6118,11 +6118,6 @@ hb_get_process_info_string (char **str, bool verbose_yn)
 	    snprintf (p, MAX ((last - p), 0), HA_PAGE_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
 		      hb_process_state_string (proc->type, proc->state));
 	  break;
-	case HB_PTYPE_SERVER:
-	  p +=
-	    snprintf (p, MAX ((last - p), 0), HA_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
-		      hb_process_state_string (proc->type, proc->state));
-	  break;
 	case HB_PTYPE_COPYLOGDB:
 	  p +=
 	    snprintf (p, MAX ((last - p), 0), HA_COPYLOG_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
