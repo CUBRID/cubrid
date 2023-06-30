@@ -21,6 +21,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_lsa_utils.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
 
@@ -185,15 +186,24 @@ void
 active_tran_server::connection_handler::send_start_catch_up_request ()
 {
   cubpacking::packer packer;
-  cubmem::extensible_block ext_blk;
+  size_t size = 0;
 
-  log_lsa lsa = { 1, 2 };
-  long port = 3363L;
-  std::string str1 = "str1";
+  log_lsa catchup_lsa = { 1, 2 };
+  int32_t port = 3363;
+  std::string hostname = "127.0.0.1";
 
-  packer.set_buffer_and_pack_all (ext_blk, static_cast<int64_t> (lsa), port, str1);
+  size += cublog::lsa_utils::get_packed_size (packer, size);
+  size += packer.get_packed_int_size (size);
+  size += packer.get_packed_string_size (hostname, size);
 
-  push_request (tran_to_page_request::SEND_START_CATCH_UP, ext_blk.get_ptr ());
+  std::unique_ptr < char[] > buffer (new char[size]);
+
+  packer.set_buffer (buffer.get (), size);
+  cublog::lsa_utils::pack (packer, catchup_lsa);
+  packer.pack_int (port);
+  packer.pack_string (hostname);
+
+  push_request (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
 }
 
 log_lsa

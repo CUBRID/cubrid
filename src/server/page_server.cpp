@@ -193,18 +193,18 @@ void
 page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   auto payload = a_sp.pull_payload ();
-  cubpacking::unpacker unpacker { payload.c_str(), payload.size ()};
+  cubpacking::unpacker unpacker { payload.c_str (), payload.size ()};
 
-  int64_t lsa;
-  long port;
+  LOG_LSA catchup_lsa;
+  int32_t port;
   std::string str;
 
-  unpacker.unpack_all (lsa, port, str);
-
-  log_lsa lsa1 { lsa };
+  cublog::lsa_utils::unpack (unpacker, catchup_lsa);
+  unpacker.unpack_int (port);
+  unpacker.unpack_string (str);
 
   er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname: %s, port : %ld, LSA (%lld|%d)\n", str.c_str (), port,
-		LSA_AS_ARGS (&lsa1));
+		LSA_AS_ARGS (&catchup_lsa));
 }
 
 
