@@ -338,7 +338,7 @@ public class ExecuteThread extends Thread {
 
                 Path cubrid_env_root = Server.getRootPath();
                 String javacOpts[] = {
-                    "-classpath", cubrid_env_root + "/java/pl-server.jar", file.getPath()
+                    "-classpath", cubrid_env_root + "/java/pl_server.jar", file.getPath()
                 };
 
                 if (compiler.run(null, null, null, javacOpts) != 0) {
@@ -347,7 +347,7 @@ public class ExecuteThread extends Thread {
                                     + javaFilePath
                                     + " -cp "
                                     + cubrid_env_root
-                                    + "/java/pl-server.jar";
+                                    + "/java/pl_server.jar";
                     throw new RuntimeException(command);
                 }
             }

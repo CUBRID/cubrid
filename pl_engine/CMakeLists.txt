@@ -58,7 +58,7 @@ add_custom_command(TARGET pl_unittest
 add_dependencies(pl_unittest pl_build)
 
 install(FILES
-  ${PL_ENGINE_BUILD_DIR}/libs/pl-server.jar
+  ${PL_ENGINE_BUILD_DIR}/libs/pl_server.jar
   ${PL_ENGINE_BUILD_DIR}/resources/main/logging.properties
   DESTINATION ${CUBRID_JAVADIR}
 )

@@ -67,7 +67,7 @@ cm_common/cub_jobsa
 cm_common/cub_sainfo
 .installed
 /java/bin/
-/java/pl-server.jar
+/java/pl_server.jar
 /java/src-jsp/
 /java/src/
 /msg/*/*.cat
