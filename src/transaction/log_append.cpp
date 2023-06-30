@@ -184,6 +184,7 @@ LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
   // todo - concurrency safe-guard
   log_Gl.hdr.append_lsa = *lsa;
   log_Gl.prior_info.prior_lsa = *lsa;
+  log_Gl.m_prior_sender.reset_unsent_lsa (*lsa);
   log_Gl.append.set_nxio_lsa (*lsa);
 }
 

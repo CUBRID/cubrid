@@ -26,7 +26,7 @@
 namespace cublog
 {
   void
-  prior_sender::send_list (const log_prior_node *head)
+  prior_sender::send_list (const log_prior_node *head, const LOG_LSA *unsent_lsa)
   {
     if (head == nullptr)
       {
@@ -44,10 +44,12 @@ namespace cublog
       }
 
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+    assert (m_unsent_lsa == head->start_lsa);
     for (auto &sink : m_sink_hooks)
       {
 	(*sink) (std::string (message));
       }
+    m_unsent_lsa = *unsent_lsa;
   }
 
   void
@@ -69,5 +71,11 @@ namespace cublog
     const auto find_it = std::find (m_sink_hooks.begin (), m_sink_hooks.end (), &fun);
     assert (find_it != m_sink_hooks.end ());
     m_sink_hooks.erase (find_it);
+  }
+
+  void
+  prior_sender::reset_unsent_lsa (const LOG_LSA &lsa)
+  {
+    m_unsent_lsa = lsa;
   }
 }
