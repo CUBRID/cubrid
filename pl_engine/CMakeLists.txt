@@ -38,10 +38,11 @@ if (EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
   add_custom_command(TARGET pl_build
     COMMAND ${CMAKE_COMMAND} -E make_directory ${PL_LIB_DIR}
-    COMMAND ${CMAKE_COMMAND} -DJDBC_DIR=${JDBC_DIR} -DPL_LIB_DIR=${PL_LIB_DIR} -P ${CMAKE_SOURCE_DIR}/jsp/cmake/copy_submodule_jdbc.cmake
+    COMMAND ${CMAKE_COMMAND} -DJDBC_DIR=${JDBC_DIR} -DPL_LIB_DIR=${PL_LIB_DIR} -P ${PL_ENGINE_SOURCE_DIR}/cmake/copy_submodule_jdbc.cmake
   )
   
   set(LOCAL_JDBC_PATH_COMMAND "-PcubridJdbcPath=${PL_LIB_DIR}")
+  message ("Add cubrid jdbc dependency from cubrid-jdbc submodule path: ${LOCAL_JDBC_PATH_COMMAND}")
 
   add_dependencies(pl_build jdbc_build)
 endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)

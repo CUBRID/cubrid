@@ -19,9 +19,17 @@ repositories {
     // Use Maven Central for resolving dependencies.
     mavenCentral()
 
-    maven {
-        url = uri("http://maven.cubrid.org/")
-        isAllowInsecureProtocol = true
+    // CUBRID JDBC
+    var jdbc_path = project.properties["cubridJdbcPath"]
+    if (jdbc_path != null) {
+        flatDir {
+            dirs("$jdbc_path")
+        }
+    } else {
+        maven {
+            url = uri("http://maven.cubrid.org/")
+            isAllowInsecureProtocol = true
+        }
     }
 }
 
@@ -41,12 +49,7 @@ dependencies {
     implementation("org.antlr:antlr4-runtime:4.9.3")
 
     // CUBRID JDBC
-    var jdbc_path = project.properties["cubridJdbcPath"]
-    if (jdbc_path != null) {
-        implementation(files("$jdbc_path"))
-    } else {
-        implementation("cubrid:cubrid-jdbc:latest.integration")
-    }
+    implementation("cubrid:cubrid-jdbc:latest.integration")
 }
 
 // Antlr
