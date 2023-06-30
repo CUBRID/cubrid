@@ -55,14 +55,10 @@ public class NodeList<N extends AstNode> extends AstNode {
 
     @Override
     public String toJavaCode() {
-        return toJavaCode(null, "\n");
+        return toJavaCode("\n");
     }
 
     public String toJavaCode(String delim) {
-        return toJavaCode(null, delim);
-    }
-
-    public String toJavaCode(String prefix, String delim) {
 
         StringBuffer sbuf = new StringBuffer();
 
@@ -75,10 +71,6 @@ public class NodeList<N extends AstNode> extends AstNode {
                 } else {
                     sbuf.append(delim);
                 }
-            }
-
-            if (prefix != null) {
-                sbuf.append(prefix);
             }
 
             sbuf.append(p.toJavaCode());
