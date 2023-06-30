@@ -21,9 +21,9 @@ message ("[INFO] JDBC Driver built at cubrid-jdbc submodule")
 set(JDBC_VERSION_FILE ${JDBC_DIR}/output/VERSION-DIST)
 file(STRINGS ${JDBC_VERSION_FILE} JDBC_VERSION_STR)
 execute_process (
-    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar ${JSP_LIB_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar
+    COMMAND ${CMAKE_COMMAND} -E copy ${JDBC_DIR}/JDBC-${JDBC_VERSION_STR}-cubrid.jar ${PL_LIB_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar
 )
 
-if (NOT EXISTS ${JSP_LIB_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar)
+if (NOT EXISTS ${PL_LIB_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar)
     message (FATAL_ERROR "Could not copy JDBC driver")
-endif (NOT EXISTS ${JSP_LIB_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar)
+endif (NOT EXISTS ${PL_LIB_DIR}/cubrid-jdbc-${JDBC_VERSION_STR}.jar)
