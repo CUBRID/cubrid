@@ -59,9 +59,12 @@ class active_tran_server : public tran_server
 	// request handlers
 	void receive_saved_lsa (page_server_conn_t::sequenced_payload &&a_sp);
 
-	void send_start_catch_up_request (LOG_LSA &&catchup_lsa);
+	// a request only used internally
+	void send_start_catch_up_request (LOG_LSA &&catchup_lsa, std::lock_guard<std::shared_mutex> &);
 
 	log_lsa get_saved_lsa () const override final;
+	void finish_connecting () override final;
+
 
       private:
 	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;

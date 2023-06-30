@@ -136,11 +136,6 @@ active_tran_server::connection_handler::connection_handler (tran_server &ts, cub
   : tran_server::connection_handler (ts, std::move (node))
   ,m_saved_lsa { NULL_LSA }
 {
-  m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
-				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
-  LOG_LSA unsent_lsa = log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
-
-  send_start_catch_up_request (std::move (unsent_lsa));
 }
 
 active_tran_server::connection_handler::~connection_handler ()
@@ -183,7 +178,8 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 }
 
 void
-active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&catchup_lsa)
+active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&catchup_lsa,
+    std::lock_guard<std::shared_mutex> &)
 {
   cubpacking::packer packer;
   size_t size = 0;
@@ -201,13 +197,31 @@ active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&c
   packer.pack_int (port);
   packer.pack_string (hostname);
 
-  push_request (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
+  m_conn->push (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
 }
 
 log_lsa
 active_tran_server::connection_handler::get_saved_lsa () const
 {
   return m_saved_lsa.load ();
+}
+
+void
+active_tran_server::connection_handler::finish_connecting ()
+{
+  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+  assert (m_state == state::CONNECTING);
+
+  m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
+				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
+  LOG_LSA unsent_lsa = log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
+
+  send_start_catch_up_request (std::move (unsent_lsa), lockg_state);
+
+  m_state = state::CONNECTED;
+
+  er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
+		get_channel_id ().c_str ());
 }
 
 void

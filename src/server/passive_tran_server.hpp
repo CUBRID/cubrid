@@ -64,6 +64,7 @@ class passive_tran_server : public tran_server
 
       private:
 	request_handlers_map_t get_request_handlers () final override;
+	void finish_connecting () override final;
 
 	/* reuqest handlers */
 	void receive_log_prior_list (page_server_conn_t::sequenced_payload &&a_sp);

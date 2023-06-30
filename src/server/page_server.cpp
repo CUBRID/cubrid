@@ -203,6 +203,8 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
   unpacker.unpack_int (port);
   unpacker.unpack_string (str);
 
+  // TODO catchup_lsa == the first received lsa from the ATS somewhere
+
   er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname: %s, port : %ld, LSA (%lld|%d)\n", str.c_str (), port,
 		LSA_AS_ARGS (&catchup_lsa));
 }

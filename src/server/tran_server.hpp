@@ -160,6 +160,12 @@ class tran_server
 
 	virtual request_handlers_map_t get_request_handlers ();
 
+	/*
+	 * Do the josb depending on the servery type and set m_state to state::CONNECTED.
+	 * the connection has been established already, do the preliminary jobs before opening the connection to ouside.
+	 * */
+	virtual void finish_connecting () = 0;
+
       protected:
 	tran_server &m_ts;
 	cubcomm::node m_node;
