@@ -138,9 +138,9 @@ active_tran_server::connection_handler::connection_handler (tran_server &ts, cub
 {
   m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
 				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
-  log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
+  LOG_LSA unsent_lsa = log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
 
-  send_start_catch_up_request ();
+  send_start_catch_up_request (std::move (unsent_lsa));
 }
 
 active_tran_server::connection_handler::~connection_handler ()
@@ -183,22 +183,20 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 }
 
 void
-active_tran_server::connection_handler::send_start_catch_up_request ()
+active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&catchup_lsa)
 {
   cubpacking::packer packer;
   size_t size = 0;
+  const auto hostname = m_node.get_host ();
+  const auto port = m_node.get_port ();
 
-  log_lsa catchup_lsa = { 1, 2 };
-  int32_t port = 3363;
-  std::string hostname = "127.0.0.1";
-
-  size += cublog::lsa_utils::get_packed_size (packer, size);
-  size += packer.get_packed_int_size (size);
-  size += packer.get_packed_string_size (hostname, size);
+  size += cublog::lsa_utils::get_packed_size (packer, size); // catchup_lsa
+  size += packer.get_packed_int_size (size); // port
+  size += packer.get_packed_string_size (hostname, size); // hostname
 
   std::unique_ptr < char[] > buffer (new char[size]);
-
   packer.set_buffer (buffer.get (), size);
+
   cublog::lsa_utils::pack (packer, catchup_lsa);
   packer.pack_int (port);
   packer.pack_string (hostname);

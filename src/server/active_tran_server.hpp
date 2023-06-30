@@ -59,7 +59,7 @@ class active_tran_server : public tran_server
 	// request handlers
 	void receive_saved_lsa (page_server_conn_t::sequenced_payload &&a_sp);
 
-	void send_start_catch_up_request ();
+	void send_start_catch_up_request (LOG_LSA &&catchup_lsa);
 
 	log_lsa get_saved_lsa () const override final;
 

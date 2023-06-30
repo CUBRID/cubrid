@@ -52,13 +52,15 @@ namespace cublog
     m_unsent_lsa = *unsent_lsa;
   }
 
-  void
+  LOG_LSA
   prior_sender::add_sink (const sink_hook_t &fun)
   {
     assert (fun != nullptr);
 
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     m_sink_hooks.push_back (&fun);
+
+    return m_unsent_lsa;
   }
 
   void

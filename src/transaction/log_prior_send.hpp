@@ -20,6 +20,7 @@
 #define _LOG_PRIOR_SEND_HPP_
 
 #include "log_append.hpp"
+#include "log_lsa.hpp"
 
 #include <functional>
 #include <mutex>
@@ -49,7 +50,7 @@ namespace cublog
       void send_list (const log_prior_node *head,
 		      const LOG_LSA *unsent_lsa);                // send prior node list to all sinks
 
-      void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
+      LOG_LSA add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
       void reset_unsent_lsa (const LOG_LSA &lsa);                    // reset only when prior_lsa is reset
 

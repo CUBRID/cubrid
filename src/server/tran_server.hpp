@@ -132,6 +132,7 @@ class tran_server
 
       protected:
 	tran_server &m_ts;
+	cubcomm::node m_node;
 
       private:
 	/*
@@ -169,8 +170,6 @@ class tran_server
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &&a_sp);
 
       private:
-	cubcomm::node m_node;
-
 	std::unique_ptr<page_server_conn_t> m_conn;
 	std::shared_mutex m_conn_mtx;
 
