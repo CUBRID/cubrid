@@ -74,8 +74,7 @@ tran_server::create_connection_with_server_host (const std::string &host)
   m_ps_hostname = host.substr (0, col_pos);
   er_log_debug (ARG_FILE_LINE, "Page server hosts: %s port: %d\n", m_ps_hostname.c_str (), port);
 
-  cubcomm::node conn{port, m_ps_hostname};
-  m_connection_list.push_back (conn);
+  m_page_server_conn_vec.emplace_back (create_connection_handler (*this, {port, m_ps_hostname}));
 
   return NO_ERROR;
 }
@@ -236,7 +235,7 @@ tran_server::init_page_server_hosts ()
     }
 
   int exit_code = create_connections_with_server_hosts_config (hosts);
-  if (m_connection_list.empty ())
+  if (m_page_server_conn_vec.empty ())
     {
       // no valid hosts
       int exit_code = ER_HOST_PORT_PARAMETER;
@@ -254,11 +253,9 @@ tran_server::init_page_server_hosts ()
   //
   int valid_connection_count = 0;
   bool failed_conn = false;
-  for (const cubcomm::node &node : m_connection_list)
+  for (const auto &conn : m_page_server_conn_vec)
     {
-      /* create a empty connection_handler specialized for each tran serve type */
-      m_page_server_conn_vec.emplace_back (create_connection_handler (*this));
-      exit_code = m_page_server_conn_vec.back ()->connect (node);
+      exit_code = conn->connect ();
       if (exit_code == NO_ERROR)
 	{
 	  ++valid_connection_count;
@@ -266,7 +263,6 @@ tran_server::init_page_server_hosts ()
       else
 	{
 	  failed_conn = true;
-	  er_log_debug (ARG_FILE_LINE, "Failed to connect to host: %s port: %d\n", node.get_host ().c_str (), node.get_port ());
 	}
     }
   reset_main_connection ();
@@ -322,13 +318,13 @@ tran_server::get_boot_info_from_page_server ()
 }
 
 int
-tran_server::connection_handler::connect (const cubcomm::node &node)
+tran_server::connection_handler::connect ()
 {
-  auto ps_conn_error_lambda = [&node, this] (const std::lock_guard<std::shared_mutex> &)
+  auto ps_conn_error_lambda = [this] (const std::lock_guard<std::shared_mutex> &)
   {
     m_state = state::IDLE;
 
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, m_node.get_host ().c_str ());
     return ER_NET_PAGESERVER_CONNECTION;
   };
 
@@ -345,7 +341,7 @@ tran_server::connection_handler::connect (const cubcomm::node &node)
 
   srv_chn.set_channel_name ("TS_PS_comm");
 
-  css_error_code comm_error_code = srv_chn.connect (node.get_host ().c_str (), node.get_port (),
+  css_error_code comm_error_code = srv_chn.connect (m_node.get_host ().c_str (), m_node.get_port (),
 				   CMD_SERVER_SERVER_CONNECT);
   if (comm_error_code != css_error_code::NO_ERRORS)
     {
@@ -664,19 +660,15 @@ tran_server::ps_connector::terminate ()
 void
 tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 {
-  /* Assume that they store PS information in the same order.
-   * TODO: combine two vectors */
-  assert (m_ts.m_connection_list.size () == m_ts.m_page_server_conn_vec.size());
-
-  for (size_t i = 0; i < m_ts.m_page_server_conn_vec.size (); i++)
+  for (const auto &conn : m_ts.m_page_server_conn_vec)
     {
-      if (m_ts.m_page_server_conn_vec[i]->is_idle ())
+      if (conn->is_idle ())
 	{
 	  /*
 	   * TODO It can be too verbose now since it always complain to fail to connect when a PS has been stopped.
 	   * Later on, this job is going to be triggered by a cluster manager or cub_master when a PS is ready to connect.
 	   */
-	  m_ts.m_page_server_conn_vec[i]->connect (m_ts.m_connection_list[i]);
+	  conn->connect ();
 	}
 
       if (m_terminate.load ())

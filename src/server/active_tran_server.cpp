@@ -132,8 +132,8 @@ active_tran_server::stop_outgoing_page_server_messages ()
 {
 }
 
-active_tran_server::connection_handler::connection_handler (tran_server &ts)
-  : tran_server::connection_handler (ts)
+active_tran_server::connection_handler::connection_handler (tran_server &ts, cubcomm::node &&node)
+  : tran_server::connection_handler (ts, std::move (node))
   ,m_saved_lsa { NULL_LSA }
 {
   m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
@@ -227,8 +227,8 @@ active_tran_server::connection_handler::remove_prior_sender_sink ()
 }
 
 active_tran_server::connection_handler *
-active_tran_server::create_connection_handler (tran_server &ts) const
+active_tran_server::create_connection_handler (tran_server &ts, cubcomm::node &&node) const
 {
   // active_tran_server::connection_handler
-  return new connection_handler (ts);
+  return new connection_handler (ts, std::move (node));
 }

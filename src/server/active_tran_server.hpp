@@ -42,7 +42,7 @@ class active_tran_server : public tran_server
     {
       public:
 	connection_handler () = delete;
-	connection_handler (tran_server &ts);
+	connection_handler (tran_server &ts, cubcomm::node &&node);
 
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
@@ -72,7 +72,7 @@ class active_tran_server : public tran_server
     bool get_remote_storage_config () final override;
 
     void stop_outgoing_page_server_messages () final override;
-    connection_handler *create_connection_handler (tran_server &ts) const final override;
+    connection_handler *create_connection_handler (tran_server &ts, cubcomm::node &&node) const final override;
 
   private:
     bool m_uses_remote_storage = false;
