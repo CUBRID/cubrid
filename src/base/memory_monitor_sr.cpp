@@ -31,29 +31,29 @@
 
 namespace cubperf
 {
-  memory_monitoring_manager *mmm_Gl = nullptr;
+  memory_monitor *mmon_Gl = nullptr;
 
-  const char *mmm_subcomponent::get_name ()
+  const char *mmon_subcomponent::get_name ()
   {
     return m_subcomp_name.c_str ();
   }
 
-  void mmm_subcomponent::add_cur_stat (uint64_t size)
+  void mmon_subcomponent::add_cur_stat (uint64_t size)
   {
     m_cur_stat.fetch_add (size);
   }
 
-  void mmm_subcomponent::sub_cur_stat (uint64_t size)
+  void mmon_subcomponent::sub_cur_stat (uint64_t size)
   {
     m_cur_stat.fetch_sub (size);
   }
 
-  const char *mmm_component::get_name ()
+  const char *mmon_component::get_name ()
   {
     return m_comp_name.c_str ();
   }
 
-  void mmm_component::add_stat (uint64_t size, int subcomp_idx, bool init, bool expand)
+  void mmon_component::add_stat (uint64_t size, int subcomp_idx, bool init, bool expand)
   {
     /* description of add_stat(..).
      * 1) if init == true, add init_stat
@@ -65,7 +65,7 @@ namespace cubperf
     return;
   }
 
-  void mmm_component::sub_stat (uint64_t size, int subcomp_idx, bool init)
+  void mmon_component::sub_stat (uint64_t size, int subcomp_idx, bool init)
   {
     /* description of sub_stat(size, init).
      * 1) if init == true, sub init_stat
@@ -74,7 +74,7 @@ namespace cubperf
     return;
   }
 
-  int mmm_component::is_subcomp_exist (const char *subcomp_name)
+  int mmon_component::is_subcomp_exist (const char *subcomp_name)
   {
     for (int i = 0; i < m_subcomponent.size (); i++)
       {
@@ -84,26 +84,26 @@ namespace cubperf
 	  }
       }
 
-    /* if not exist, return mmm_module::MAX_COMP_IDX */
-    return mmm_module::MAX_COMP_IDX;
+    /* if not exist, return mmon_module::MAX_COMP_IDX */
+    return mmon_module::MAX_COMP_IDX;
   }
 
-  int mmm_component::add_subcomponent (const char *name)
+  int mmon_component::add_subcomponent (const char *name)
   {
     return 0;
   }
 
-  mmm_module::mmm_module (const char *module_name, const MMM_COMP_INFO *info)
+  mmon_module::mmon_module (const char *module_name, const MMON_COMP_INFO *info)
     : m_module_name (module_name)
   {
     /* register component and subcomponent information
      * add component and subcomponent */
     int cnt = 0;
-    while (info[cnt].id != MMM_STAT_LAST)
+    while (info[cnt].id != MMON_STAT_LAST)
       {
 	bool comp_skip = false;
 	bool subcomp_skip = false;
-	int comp_idx = mmm_module::MAX_COMP_IDX, subcomp_idx = mmm_module::MAX_COMP_IDX;
+	int comp_idx = mmon_module::MAX_COMP_IDX, subcomp_idx = mmon_module::MAX_COMP_IDX;
 	int i;
 	if (info[cnt].comp_name)
 	  {
@@ -125,7 +125,7 @@ namespace cubperf
 	    if (info[cnt].subcomp_name)
 	      {
 		subcomp_idx = m_component[comp_idx]->is_subcomp_exist (info[cnt].subcomp_name);
-		if (subcomp_idx != mmm_module::MAX_COMP_IDX)
+		if (subcomp_idx != mmon_module::MAX_COMP_IDX)
 		  {
 		    subcomp_skip = true;
 		  }
@@ -143,12 +143,12 @@ namespace cubperf
       }
   }
 
-  int mmm_module::aggregate_stats (const MEMMON_MODULE_INFO &info)
+  int mmon_module::aggregate_stats (const MMON_MODULE_INFO &info)
   {
     return 0;
   }
 
-  void mmm_module::add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init, bool expand)
+  void mmon_module::add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init, bool expand)
   {
     /* description of add_stat(..).
      * 1) if init == true, add init_stat
@@ -160,7 +160,7 @@ namespace cubperf
     return;
   }
 
-  void mmm_module::sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init)
+  void mmon_module::sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init)
   {
     /* description of sub_stat(size, init).
      * 1) if init == true, sub init_stat
@@ -169,66 +169,66 @@ namespace cubperf
     return;
   }
 
-  int mmm_module::add_component (const char *name)
+  int mmon_module::add_component (const char *name)
   {
     return 0;
   }
 
-  memory_monitoring_manager::mmm_aggregater::mmm_aggregater (memory_monitoring_manager *mmm)
+  memory_monitor::aggregater::aggregater (memory_monitor *mmon)
   {
-    m_memmon_mgr = mmm;
+    m_mmon = mmon;
   }
 
-  int memory_monitoring_manager::mmm_aggregater::get_server_info (const MEMMON_SERVER_INFO &info)
+  int memory_monitor::aggregater::get_server_info (const MMON_SERVER_INFO &info)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::mmm_aggregater::get_module_info (const MEMMON_MODULE_INFO &info, int module_index)
+  int memory_monitor::aggregater::get_module_info (const MMON_MODULE_INFO &info, int module_index)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::mmm_aggregater::get_transaction_info (const MEMMON_TRAN_INFO &info, int tran_count)
+  int memory_monitor::aggregater::get_transaction_info (const MMON_TRAN_INFO &info, int tran_count)
   {
     return 0;
   }
 
-  memory_monitoring_manager::~memory_monitoring_manager ()
+  memory_monitor::~memory_monitor ()
   {
-    for (int i = 0; i < MMM_MODULE_LAST; i++)
+    for (int i = 0; i < MMON_MODULE_LAST; i++)
       {
 	delete m_module[i];
       }
   }
 
-  int memory_monitoring_manager::add_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size, bool expand)
+  int memory_monitor::add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool expand)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::sub_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t size)
+  int memory_monitor::sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::resize_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID stat_id, uint64_t old_size,
-      uint64_t new_size)
+  int memory_monitor::resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size,
+				   uint64_t new_size)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::move_stat (THREAD_ENTRY *thread_p, MMM_STAT_ID src, MMM_STAT_ID dest, uint64_t size)
+  int memory_monitor::move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::aggregate_module_info (MEMMON_MODULE_INFO *info, int module_index)
+  int memory_monitor::aggregate_module_info (MMON_MODULE_INFO *info, int module_index)
   {
     return 0;
   }
 
-  int memory_monitoring_manager::aggregate_tran_info (MEMMON_TRAN_INFO *info, int tran_count)
+  int memory_monitor::aggregate_tran_info (MMON_TRAN_INFO *info, int tran_count)
   {
     return 0;
   }
