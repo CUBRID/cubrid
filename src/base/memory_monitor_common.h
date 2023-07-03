@@ -37,7 +37,7 @@ typedef struct mmon_output_mem_stat
   uint64_t cur_stat;
   uint64_t peak_stat;
   uint32_t expand_count;
-} MMON_OUTPUT_MEM_STAT;
+} MMON_OUTPUT_STAT;
 
 typedef struct mmon_server_info
 {

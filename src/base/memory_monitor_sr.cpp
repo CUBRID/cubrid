@@ -60,8 +60,8 @@ namespace cubperf
      * 2) then, add cur_stat
      * 3) compare with peak_stat
      * 4) if cur_stat(new) > peak_stat, update peak_stat
-    	 * 5) if expand == true, expand_count++
-    	 * 6) call subcomponent->add_cur_stat(size) */
+     * 5) if expand == true, expand_count++
+     * 6) call subcomponent->add_cur_stat(size) */
     return;
   }
 
@@ -70,7 +70,7 @@ namespace cubperf
     /* description of sub_stat(size, init).
      * 1) if init == true, sub init_stat
      * 2) then, sub cur_stat
-    	 * 3) call component->sub_stat(size, subcomp_idx, init) */
+     * 3) call component->sub_stat(size, subcomp_idx, init) */
     return;
   }
 
@@ -155,8 +155,8 @@ namespace cubperf
      * 2) then, add cur_stat
      * 3) compare with peak_stat
      * 4) if cur_stat(new) > peak_stat, update peak_stat
-    	 * 5) if expand == true, expand_count++
-    	 * 6) call component->add_stat(size, subcomp_idx, init, expand) */
+     * 5) if expand == true, expand_count++
+     * 6) call component->add_stat(size, subcomp_idx, init, expand) */
     return;
   }
 
@@ -165,7 +165,7 @@ namespace cubperf
     /* description of sub_stat(size, init).
      * 1) if init == true, sub init_stat
      * 2) then, sub cur_stat
-    	 * 3) call component->sub_stat(size, subcomp_idx, init) */
+     * 3) call component->sub_stat(size, subcomp_idx, init) */
     return;
   }
 

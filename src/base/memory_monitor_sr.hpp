@@ -69,7 +69,7 @@ namespace cubperf
     std::atomic<uint64_t> cur_stat;
     std::atomic<uint64_t> peak_stat;
     std::atomic<uint32_t> expand_count;
-  } MMON_MEM_STAT;
+  } MMON_STAT;
 
   class mmon_subcomponent
   {
