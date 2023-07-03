@@ -31,7 +31,7 @@ typedef enum mmon_module_id
   MMON_MODULE_LAST = 1
 } MMON_MODULE_ID;
 
-typedef struct mmon_output_mem_stat
+typedef struct mmon_output_stat
 {
   uint64_t init_stat;
   uint64_t cur_stat;
@@ -54,7 +54,7 @@ typedef struct mmon_subcomp_info
 typedef struct mmon_comp_info
 {
   char name[DB_MAX_IDENTIFIER_LENGTH];
-  MMON_OUTPUT_MEM_STAT stat;
+  MMON_OUTPUT_STAT stat;
   uint32_t num_subcomp;
   MMON_SUBCOMP_INFO *subcomp_info;
 } MMON_COMP_INFO;
@@ -63,7 +63,7 @@ typedef struct mmon_module_info
 {
   MMON_SERVER_INFO server_info;
   char name[DB_MAX_IDENTIFIER_LENGTH];
-  MMON_OUTPUT_MEM_STAT stat;
+  MMON_OUTPUT_STAT stat;
   uint32_t num_comp;
   MMON_COMP_INFO *comp_info;
 } MMON_MODULE_INFO;

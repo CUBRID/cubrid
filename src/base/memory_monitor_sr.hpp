@@ -63,7 +63,7 @@ namespace cubperf
     const char *subcomp_name;
   } MMON_COMP_INFO;
 
-  typedef struct mmon_mem_stat
+  typedef struct mmon_stat
   {
     std::atomic<uint64_t> init_stat;
     std::atomic<uint64_t> cur_stat;
@@ -116,7 +116,7 @@ namespace cubperf
 
     private:
       std::string m_comp_name;
-      MMON_MEM_STAT m_stat;
+      MMON_STAT m_stat;
       std::vector<std::unique_ptr<mmon_subcomponent>> m_subcomponent;
   };
 
@@ -149,7 +149,7 @@ namespace cubperf
 
     private:
       std::string m_module_name;
-      MMON_MEM_STAT m_stat;
+      MMON_STAT m_stat;
       std::vector<std::unique_ptr<mmon_component>> m_component;
       std::vector<int> m_comp_idx_map;
   };
