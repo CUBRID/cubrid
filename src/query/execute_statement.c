@@ -14640,9 +14640,9 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* execute cte query first */
-  if (statement->info.prepare.cte_list)
+  if (statement->info.execute.cte_list)
     {
-      err = do_execute_cte (parser, statement->info.prepare.cte_list);
+      err = do_execute_cte (parser, statement->info.execute.cte_list);
       if (err != NO_ERROR)
 	{
 	  return err;

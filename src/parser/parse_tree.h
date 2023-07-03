@@ -3326,7 +3326,6 @@ struct pt_prepare_info
   PT_NODE *name;		/* the name of the prepared statement */
   PT_NODE *statement;		/* the string literal that defines the statement */
   PT_NODE *using_list;		/* the list of values given for statement execution */
-  PT_NODE *cte_list;		/* for CTE query */
 };
 
 struct pt_execute_info
@@ -3335,6 +3334,7 @@ struct pt_execute_info
   PT_NODE *query;		/* the string literal that defines the statement */
   PT_NODE *using_list;		/* the list of values given for statement execution */
   PT_NODE *into_list;		/* for a prepared select using into */
+  PT_NODE *cte_list;		/* for CTE processing */
   XASL_ID xasl_id;		/* XASL id */
   CUBRID_STMT_TYPE stmt_type;	/* statement type */
   int recompile;		/* not 0 if this statement should be recompiled */
