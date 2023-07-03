@@ -11447,19 +11447,16 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
   PT_NODE *name = NULL;
 
-  if (node->node_type == PT_SELECT)
+  switch (node->node_type)
     {
-      *continue_walk = PT_STOP_WALK;
-    }
-  else if (node->node_type == PT_DOT_)
-    {				// case: tbl.col      
+    case PT_DOT_:
       check_for_already_exists
 	(parser, plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original);
 
       *continue_walk = PT_LIST_WALK;
-    }
-  else if (node->node_type == PT_NAME)
-    {
+      break;
+
+    case PT_NAME:
       if (node->type_enum == PT_TYPE_STAR)
 	{			// case:  tbl.*
 	  check_for_already_exists (parser, plkcol, node->info.name.original, NULL);
@@ -11468,42 +11465,75 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	{
 	  check_for_already_exists (parser, plkcol, NULL, node->info.name.original);
 	}
-    }
-  else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_STAR)
-    {
-      {
-	name = parser_new_node (parser, PT_NAME);
-	name->type_enum = PT_TYPE_STAR;
-	if (plkcol->col_list)
-	  {
-	    parser_free_node (parser, plkcol->col_list);
-	  }
-	plkcol->col_list = name;
-      }
-    }
-  return node;
-}
+      break;
 
-static PT_NODE *
-pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  *continue_walk = PT_CONTINUE_WALK;
+    case PT_VALUE:
+      if (node->type_enum == PT_TYPE_STAR)
+	{
+	  name = parser_new_node (parser, PT_NAME);
+	  name->type_enum = PT_TYPE_STAR;
+	  if (plkcol->col_list)
+	    {
+	      parser_free_node (parser, plkcol->col_list);
+	    }
+	  plkcol->col_list = name;
+	}
+      break;
+
+    default:
+      break;
+    }
+
   return node;
 }
 
 static void
-pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_NODE * node_list)
+pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUERY_INFO * query, PT_NODE * on_cond)
 {
-  if (node_list == NULL)
+  if (query->q.select.list)
     {
-      return;
+      (void) parser_walk_tree (parser, query->q.select.list, pt_get_column_name_pre, plkcol, NULL, NULL);
+      if (plkcol->col_list && plkcol->col_list->type_enum == PT_TYPE_STAR)
+	{
+	  return;
+	}
     }
-  else if (plkcol->col_list && plkcol->col_list->type_enum == PT_TYPE_STAR)
+  if (on_cond)
     {
-      return;
+      (void) parser_walk_tree (parser, on_cond, pt_get_column_name_pre, plkcol, NULL, NULL);
     }
-
-  (void) parser_walk_tree (parser, node_list, pt_get_column_name_pre, plkcol, NULL, NULL);
+  if (query->q.select.where)
+    {
+      (void) parser_walk_tree (parser, query->q.select.where, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.having)
+    {
+      (void) parser_walk_tree (parser, query->q.select.having, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.group_by)
+    {
+      (void) parser_walk_tree (parser, query->q.select.group_by, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.connect_by)
+    {
+      (void) parser_walk_tree (parser, query->q.select.connect_by, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.start_with)
+    {
+      (void) parser_walk_tree (parser, query->q.select.start_with, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->q.select.after_cb_filter)
+    {
+      (void) parser_walk_tree (parser, query->q.select.after_cb_filter, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->order_by)
+    {
+      (void) parser_walk_tree (parser, query->order_by, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
+  if (query->orderby_for)
+    {
+      (void) parser_walk_tree (parser, query->orderby_for, pt_get_column_name_pre, plkcol, NULL, NULL);
+    }
 }
 
 static void
@@ -11532,12 +11562,7 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      lkcol.col_list = table->info.dblink_table.sel_list;
 
 	      lkcol.tbl_name_node = spec->info.spec.range_var;
-	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.list);
-	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.where);
-	      pt_get_cols_for_dblink (parser, &lkcol, spec->info.spec.on_cond);
-	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.having);
-	      pt_get_cols_for_dblink (parser, &lkcol, query->q.select.group_by);
-	      pt_get_cols_for_dblink (parser, &lkcol, query->order_by);
+	      pt_get_cols_for_dblink (parser, &lkcol, query, spec->info.spec.on_cond);
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
 	      lkcol.col_list = NULL;
