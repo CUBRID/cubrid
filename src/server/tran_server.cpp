@@ -134,9 +134,9 @@ tran_server::boot (const char *db_name)
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
-    }
 
-  m_ps_connector.start ();
+      m_ps_connector.start ();
+    }
 
   return NO_ERROR;
 }
@@ -625,7 +625,7 @@ tran_server::connection_handler::is_idle ()
 tran_server::ps_connector::ps_connector (tran_server &ts)
   : m_ts { ts }
   , m_daemon { nullptr }
-  , m_terminate { false }
+  , m_terminate { true }
 {
 }
 
@@ -637,16 +637,19 @@ tran_server::ps_connector::~ps_connector ()
 void
 tran_server::ps_connector::start ()
 {
-  assert (m_terminate.load () == false);
+  assert (m_terminate.load () == true);
   /* After init_page_server_hosts() */
   assert (m_ts.m_page_server_conn_vec.empty () == false);
 
   auto func_exec = std::bind (&tran_server::ps_connector::try_connect_to_all_ps, std::ref (*this), std::placeholders::_1);
   auto entry = new cubthread::entry_callable_task (std::move (func_exec));
 
+  m_terminate.store (false);
+
   constexpr std::chrono::seconds five_sec { 5 };
   cubthread::looper loop (five_sec);
   m_daemon = cubthread::get_manager ()->create_daemon (loop, entry, "tran_server::ps_connector");
+  assert (m_daemon != NULL);
 }
 
 void
