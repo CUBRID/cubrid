@@ -1803,9 +1803,20 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
   for (p = list; p; p = p->next)
     {
       /* aggregate optimize related should be free */
-      if (p->s_id.scan_stats.agg_index_name != NULL)
+      if (p->s_id.scan_stats.agl)
 	{
-	  free (p->s_id.scan_stats.agg_index_name);
+	  SCAN_AGL *next, *agl = p->s_id.scan_stats.agl;;
+
+	  while (agl)
+	    {
+	      /* save before free */
+	      next = agl->next;
+
+	      free (agl->agg_index_name);
+	      free (agl);
+
+	      agl = next;
+	    }
 	}
 
       memset (&p->s_id.scan_stats, 0, sizeof (SCAN_STATS));
@@ -23841,7 +23852,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	{
 	  /* scan is needed for this aggregate */
 	  *is_scan_needed = true;
-	  break;
+	  continue;
 	}
 
       /* If we deal with a count optimization and the snapshot wasn't already taken then prepare current class for
@@ -23855,7 +23866,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    {
 	      agg_ptr->flag_agg_optimize = false;
 	      *is_scan_needed = true;
-	      break;
+	      continue;
 	    }
 	  if (tdes->mvccinfo.snapshot.valid)
 	    {
@@ -23863,7 +23874,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		{
 		  agg_ptr->flag_agg_optimize = false;
 		  *is_scan_needed = true;
-		  break;
+		  continue;
 		}
 	    }
 	  else
@@ -23872,7 +23883,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		{
 		  agg_ptr->flag_agg_optimize = false;
 		  *is_scan_needed = true;
-		  break;
+		  continue;
 		}
 	      class_cos->count_state = COS_TO_LOAD;
 
@@ -23883,16 +23894,45 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		}
 
 	    }
+	}
 
-	  if (thread_is_on_trace (thread_p))
+      if (thread_is_on_trace (thread_p))
+	{
+	  char *agg_index_name;
+	  SCAN_AGL *agl;
+
+	  error = heap_get_indexinfo_of_btid (thread_p, &ACCESS_SPEC_CLS_OID (spec), &agg_ptr->btid,
+					      NULL, NULL, NULL, NULL, &agg_index_name, NULL);
+	  if (error != NO_ERROR)
 	    {
-	      /* agg_index_name is set to show it in the trace information */
-	      error = heap_get_indexinfo_of_btid (thread_p, &ACCESS_SPEC_CLS_OID (spec), &agg_ptr->btid,
-						  NULL, NULL, NULL, NULL, &spec->s_id.scan_stats.agg_index_name, NULL);
-	      if (error != NO_ERROR)
+	      return error;
+	    }
+
+	  for (agl = spec->s_id.scan_stats.agl; agl; agl = agl->next)
+	    {
+	      if (strcmp (agl->agg_index_name, agg_index_name) == 0)
 		{
-		  return error;
+		  /* same index name found */
+		  break;
 		}
+	    }
+
+	  if (agl == NULL)
+	    {
+	      agl = (SCAN_AGL *) malloc (sizeof (SCAN_AGL));
+	      if (agl == NULL)
+		{
+		  return ER_FAILED;
+		}
+
+	      agl->agg_index_name = agg_index_name;
+	      agl->next = spec->s_id.scan_stats.agl;
+	      spec->s_id.scan_stats.agl = agl;
+	    }
+	  else
+	    {
+	      /* same index name found */
+	      free (agg_index_name);
 	    }
 	}
     }
@@ -23929,6 +23969,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    }
 	}
     }
+
+  spec->s_id.scan_stats.noscan = (*is_scan_needed) ? false : true;
 
   return error;
 }

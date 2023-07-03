@@ -4345,6 +4345,8 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
   PT_NODE *lhs, *sum, *part1, *part2, *node;
   DB_VALUE sum_val;
 
+  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
+
   db_make_null (&sum_val);
 
   if (limit == NULL)
@@ -4457,6 +4459,12 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
       sum->data_type->type_enum = PT_TYPE_NUMERIC;
       sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
       sum->data_type->info.data_type.dec_precision = 0;
+
+      if (oracle_style_divide)
+	{
+	  /* It is necessary to prepare for the division operation in advance. */
+	  sum->data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_DIVISION_SCALE;	/* 9 */
+	}
 
       sum->info.expr.arg1 = parser_copy_tree (parser, limit);
       sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
@@ -6748,6 +6756,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 				  PT_NODE * args)
 {
   int i;
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *arg, *id_string;
   PT_NODE *prev = NULL, *head = NULL;
 
@@ -6776,8 +6785,10 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 	      goto error;
 	    }
 
+	  intl_identifier_lower (arg->info.name.original, lower_table_name);
+
 	  /* replace identifier node with string value node */
-	  id_string = pt_make_string_value (parser, arg->info.name.original);
+	  id_string = pt_make_string_value (parser, lower_table_name);
 	  if (id_string == NULL)
 	    {
 	      goto error;
@@ -10849,7 +10860,6 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
   PT_NODE *new_name, *new_owner;
 
-  //*continue_walk = PT_STOP_WALK;
   *continue_walk = PT_CONTINUE_WALK;
   assert (continue_walk != NULL);
 
@@ -11886,10 +11896,9 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
 
   parser_walk_tree (parser, query_stmt, pt_convert_dblink_synonym, NULL, NULL, NULL);
 
+  parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
   while (from_tbl)
     {
-      parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
-
       if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
 	{
 	  assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
