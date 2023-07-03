@@ -14357,47 +14357,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
 
-  /* check with query */
-  if (statement->info.query.with)
-    {
-      int error;
-      PT_NODE *cte_statement;
-      PARSER_CONTEXT cte_context;
-      int var_count;
-
-      PT_NODE *cte_def_list = statement->info.query.with->info.with_clause.cte_definition_list;
-
-      while (cte_def_list)
-	{
-	  cte_statement = parser_copy_tree (parser, cte_def_list->info.cte.non_recursive_part);
-
-	  cte_context = *parser;
-	  cte_context.dbval_cnt = 0;
-	  cte_context.host_var_count = cte_context.auto_param_count = 0;
-
-	  var_count = parser->host_var_count + parser->auto_param_count;
-	  cte_context.host_variables = (DB_VALUE *) malloc (var_count * sizeof (DB_VALUE));
-
-	  parser_walk_tree (&cte_context, cte_statement, pt_vars_count, parser, NULL, NULL);
-
-	  error = do_prepare_select (&cte_context, cte_statement);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-
-	  cte_statement->sha1 = cte_context.context.sha1;
-
-	  error = do_execute_select (&cte_context, cte_statement);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-
-	  cte_def_list = cte_def_list->next;
-	}
-    }
-
   PT_NODE_PRINT_TO_ALIAS (parser, statement,
 			  (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_USER));
 
@@ -14564,6 +14523,56 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * do_execute_cte () - execute a CTE statement in WITH clause
+ * return : Error code
+ * parser (in)	  : parser context
+ * statement (in) : statement to execute
+ */
+static int
+do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  PT_NODE *cte_statement;
+  PT_NODE *cte_def_list;
+  PARSER_CONTEXT cte_context;
+  int var_count;
+
+  for (cte_def_list = statement; cte_def_list; cte_def_list = cte_def_list->next)
+    {
+
+      if (cte_def_list->info.cte.non_recursive_part->info.query.hint & PT_HINT_QUERY_CACHE)
+	{
+	  cte_statement = parser_copy_tree (parser, cte_def_list->info.cte.non_recursive_part);
+
+	  cte_context = *parser;
+	  cte_context.dbval_cnt = 0;
+	  cte_context.host_var_count = cte_context.auto_param_count = 0;
+
+	  var_count = parser->host_var_count + parser->auto_param_count;
+	  cte_context.host_variables = (DB_VALUE *) malloc (var_count * sizeof (DB_VALUE));
+
+	  parser_walk_tree (&cte_context, cte_statement, pt_vars_count, parser, NULL, NULL);
+
+	  error = do_prepare_select (&cte_context, cte_statement);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+
+	  cte_statement->sha1 = cte_context.context.sha1;
+
+	  error = do_execute_select (&cte_context, cte_statement);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+    }
+
+  return error;
+}
+
+/*
  * do_execute_session_statement () - execute a prepared session statement
  * return :
  * parser (in)	  : parser context
@@ -14628,6 +14637,16 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
+    }
+
+  /* execute cte query first */
+  if (statement->info.prepare.cte_list)
+    {
+      err = do_execute_cte (parser, statement->info.prepare.cte_list);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
     }
 
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host
@@ -14821,6 +14840,19 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
+    }
+
+  /* execute cte query first */
+  if (statement->info.query.with)
+    {
+      int err;
+      PT_NODE *cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
+
+      err = do_execute_cte (parser, cte_list);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
     }
 
   /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the host

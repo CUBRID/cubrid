@@ -2364,6 +2364,15 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
       goto cleanup;
     }
 
+  if (prepared_stmt->info.query.with)
+    {
+      PT_NODE *cte_list = prepared_stmt->info.query.with->info.with_clause.cte_definition_list;
+
+      if (cte_list->info.query.hint & PT_HINT_QUERY_CACHE)
+	{
+	  statement->info.prepare.cte_list = cte_list;
+	}
+    }
   /* set statement literal */
   prepare_info.statement = (char *) statement_literal;
   /* set columns */
