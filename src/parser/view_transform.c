@@ -3842,15 +3842,10 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
       rewritten = pt_append_bytes (parser, rewritten, "SELECT * FROM (", 15);
       query_str = query->info.dblink_table.qstr->info.value.data_value.str;
       rewritten = pt_append_varchar (parser, rewritten, query_str);
-      rewritten = pt_append_bytes (parser, rewritten, ") cublink", 9);
-#if 0
-      /* wrapped query SELECT * FROM */
-      rewritten = pt_append_bytes (parser, rewritten, "SELECT * FROM (", 15);
-      query_str = query->info.dblink_table.qstr->info.value.data_value.str;
-      rewritten = pt_append_varchar (parser, rewritten, query_str);
 
       /* alias name: cublink */
       rewritten = pt_append_bytes (parser, rewritten, ") cublink", 9);
+
       if (query->info.dblink_table.cols != NULL)
 	{
 	  /* aliased column list */
@@ -3859,7 +3854,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	  rewritten = pt_append_varchar (parser, rewritten, col_list);
 	  rewritten = pt_append_bytes (parser, rewritten, ")", 1);
 	}
-#endif
+
       if (pushed_pred != NULL)
 	{
 	  /* where predicate */
