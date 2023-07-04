@@ -29,7 +29,7 @@
 #include "dbtype_def.h"
 #include "memory_monitor_common.h"
 
-const char *module_names[] =
+constexpr char *module_names[] =
 {
   ""				/* dummy for aligning module index (1 ~) */
 };

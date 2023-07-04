@@ -20,7 +20,6 @@
  * memory_monitor_sr.cpp - implementation of memory monitoring manager
  */
 
-#include <stdexcept>
 #include <cstring>
 
 #include "perf.hpp"
@@ -74,9 +73,9 @@ namespace cubperf
     return;
   }
 
-  int mmon_component::is_subcomp_exist (const char *subcomp_name)
+  int mmon_component::get_subcomp_index (const char *subcomp_name)
   {
-    for (int i = 0; i < m_subcomponent.size (); i++)
+    for (size_t i = 0; i < m_subcomponent.size (); i++)
       {
 	if (!strcmp (subcomp_name, m_subcomponent[i]->get_name()))
 	  {
@@ -84,8 +83,8 @@ namespace cubperf
 	  }
       }
 
-    /* if not exist, return mmon_module::MAX_COMP_IDX */
-    return mmon_module::MAX_COMP_IDX;
+    /* if not exist, return -1 */
+    return -1;
   }
 
   int mmon_component::add_subcomponent (const char *name)
@@ -121,11 +120,12 @@ namespace cubperf
 	      {
 		comp_idx = add_component (info[cnt].comp_name);
 	      }
+	    /* XXX: add error if comp_idx > MAX_COMP_IDX */
 
 	    if (info[cnt].subcomp_name)
 	      {
-		subcomp_idx = m_component[comp_idx]->is_subcomp_exist (info[cnt].subcomp_name);
-		if (subcomp_idx != mmon_module::MAX_COMP_IDX)
+		subcomp_idx = m_component[comp_idx]->get_subcomp_index (info[cnt].subcomp_name);
+		if (subcomp_idx != -1)
 		  {
 		    subcomp_skip = true;
 		  }
@@ -134,6 +134,7 @@ namespace cubperf
 		  {
 		    subcomp_idx = m_component[comp_idx]->add_subcomponent (info[cnt].subcomp_name);
 		  }
+		/* XXX: add error if subcomp_idx > MAX_SUBCOMP_IDX */
 	      }
 	  }
 

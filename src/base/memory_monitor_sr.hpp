@@ -77,12 +77,12 @@ namespace cubperf
       mmon_subcomponent (const char *subcomp_name)
 	: m_subcomp_name (subcomp_name) {}
       mmon_subcomponent (const mmon_subcomponent &) = delete;
-      mmon_subcomponent (mmon_subcomponent &) = delete;
+      mmon_subcomponent (mmon_subcomponent &&) = delete;
 
       ~mmon_subcomponent () {}
 
       mmon_subcomponent &operator = (const mmon_subcomponent &) = delete;
-      mmon_subcomponent &operator = (mmon_subcomponent &) = delete;
+      mmon_subcomponent &operator = (mmon_subcomponent &&) = delete;
 
       /* function */
       const char *get_name ();
@@ -100,12 +100,12 @@ namespace cubperf
       mmon_component (const char *comp_name)
 	: m_comp_name (comp_name) {}
       mmon_component (const mmon_component &) = delete;
-      mmon_component (mmon_component &) = delete;
+      mmon_component (mmon_component &&) = delete;
 
       ~mmon_component () {}
 
       mmon_component &operator = (const mmon_component &) = delete;
-      mmon_component &operator = (mmon_component &) = delete;
+      mmon_component &operator = (mmon_component &&) = delete;
 
       /* function */
       const char *get_name ();
@@ -123,22 +123,15 @@ namespace cubperf
   class mmon_module
   {
     public:
-      /* const */
-      /* max index of component or subcomponent is 0x0000FFFF
-       * if some stats have max index of component or subcomponent,
-       * we don't have to increase it */
-      static constexpr int MAX_COMP_IDX = 0x0000FFFF;
-
-    public:
       mmon_module (const char *module_name, const MMON_COMP_INFO *info);
       mmon_module () {} /* for dummy */
       mmon_module (const mmon_module &) = delete;
-      mmon_module (mmon_module &) = delete;
+      mmon_module (mmon_module &&) = delete;
 
       virtual ~mmon_module () {}
 
       mmon_module &operator = (const mmon_module &) = delete;
-      mmon_module &operator = (mmon_module &) = delete;
+      mmon_module &operator = (mmon_module &&) = delete;
 
       /* function */
       virtual int aggregate_stats (const MMON_MODULE_INFO &info);
@@ -146,6 +139,13 @@ namespace cubperf
       void sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init);
       int add_component (const char *name);
       inline int MAKE_STAT_IDX_MAP (int comp_idx, int subcomp_idx);
+
+    private:
+      /* const */
+      /* max index of component or subcomponent is 0x0000FFFF
+       * if some stats have max index of component or subcomponent,
+       * we don't have to increase it */
+      static constexpr int MAX_COMP_IDX = 0x0000FFFF;
 
     private:
       std::string m_module_name;
@@ -161,12 +161,12 @@ namespace cubperf
       memory_monitor (const char *server_name)
 	: m_aggregater (this), m_server_name (server_name) {}
       memory_monitor (const memory_monitor &) = delete;
-      memory_monitor (memory_monitor &) = delete;
+      memory_monitor (memory_monitor &&) = delete;
 
       ~memory_monitor ();
 
       memory_monitor &operator = (const memory_monitor &) = delete;
-      memory_monitor &operator = (memory_monitor &) = delete;
+      memory_monitor &operator = (memory_monitor &&) = delete;
 
       /* function */
       int add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool expand);
@@ -184,12 +184,12 @@ namespace cubperf
 	public:
 	  aggregater (memory_monitor *mmon);
 	  aggregater (const aggregater &) = delete;
-	  aggregater (aggregater &) = delete;
+	  aggregater (aggregater &&) = delete;
 
 	  ~aggregater () {}
 
 	  aggregater &operator = (const aggregater &) = delete;
-	  aggregater &operator = (aggregater &) = delete;
+	  aggregater &operator = (aggregater &&) = delete;
 
 	  /* function */
 	  int get_server_info (const MMON_SERVER_INFO &info);
@@ -206,10 +206,7 @@ namespace cubperf
       std::atomic<uint64_t> m_total_mem_usage;
       aggregater m_aggregater;
 
-      mmon_module *m_module[MMON_MODULE_LAST] =
-      {
-	new mmon_module ()				  /* dummy for aligning module index (1 ~) */
-      };
+      std::unique_ptr<mmon_module> m_module[MMON_MODULE_LAST];
   };
 
   inline int mmon_module::MAKE_STAT_IDX_MAP (int comp_idx, int subcomp_idx)

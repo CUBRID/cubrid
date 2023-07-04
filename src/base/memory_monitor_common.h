@@ -28,7 +28,8 @@
 
 typedef enum mmon_module_id
 {
-  MMON_MODULE_LAST = 1
+  //MMON_MODULE_HEAP = 1,
+  MMON_MODULE_LAST
 } MMON_MODULE_ID;
 
 typedef struct mmon_output_stat
