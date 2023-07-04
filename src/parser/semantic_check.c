@@ -13749,15 +13749,15 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
        * 
        */
     case PT_NAME:
+      if (p->info.name.spec_id != q->info.name.spec_id)
+	{
+	  return 1;
+	}
       if (pt_user_specified_name_compare (p->info.name.original, q->info.name.original))
 	{
 	  return 1;
 	}
       if (pt_user_specified_name_compare (p->info.name.resolved, q->info.name.resolved))
-	{
-	  return 1;
-	}
-      if (p->info.name.spec_id != q->info.name.spec_id)
 	{
 	  return 1;
 	}
@@ -13823,8 +13823,6 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	save_custom = parser->custom_print;	/* save */
 	parser->custom_print |= PT_CONVERT_RANGE;
 
-	// p_str = (const char *) pt_get_varchar_bytes (pt_print_bytes (parser, p));
-	// q_str = (const char *) pt_get_varchar_bytes (pt_print_bytes (parser, q));
 	p_str = parser_print_tree (parser, p);
 	q_str = parser_print_tree (parser, q);
 
@@ -13879,11 +13877,11 @@ pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
     {
       /* if a name, the resolved (class name) fields must match */
     case PT_NAME:
-      if (pt_str_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
+      if (p->info.name.spec_id != q->info.name.spec_id)
 	{
 	  return 1;
 	}
-      if (p->info.name.spec_id != q->info.name.spec_id)
+      if (pt_str_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
 	{
 	  return 1;
 	}
