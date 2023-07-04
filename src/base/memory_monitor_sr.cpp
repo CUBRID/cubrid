@@ -103,10 +103,10 @@ namespace cubperf
 	bool comp_skip = false;
 	bool subcomp_skip = false;
 	int comp_idx = mmon_module::MAX_COMP_IDX, subcomp_idx = mmon_module::MAX_COMP_IDX;
-	int i;
+
 	if (info[cnt].comp_name)
 	  {
-	    for (i = 0; i < m_component.size (); i++)
+	    for (size_t i = 0; i < m_component.size (); i++)
 	      {
 		if (!strcmp (info[cnt].comp_name, m_component[i]->get_name ()))
 		  {
@@ -193,14 +193,6 @@ namespace cubperf
   int memory_monitor::aggregater::get_transaction_info (const MMON_TRAN_INFO &info, int tran_count)
   {
     return 0;
-  }
-
-  memory_monitor::~memory_monitor ()
-  {
-    for (int i = 0; i < MMON_MODULE_LAST; i++)
-      {
-	delete m_module[i];
-      }
   }
 
   int memory_monitor::add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool expand)

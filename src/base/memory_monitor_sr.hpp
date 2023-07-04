@@ -111,7 +111,7 @@ namespace cubperf
       const char *get_name ();
       void add_stat (uint64_t size, int subcomp_idx, bool init, bool expand);
       void sub_stat (uint64_t size, int subcomp_idx, bool init);
-      int is_subcomp_exist (const char *subcomp_name);
+      int get_subcomp_index (const char *subcomp_name);
       int add_subcomponent (const char *name);
 
     private:
@@ -163,7 +163,7 @@ namespace cubperf
       memory_monitor (const memory_monitor &) = delete;
       memory_monitor (memory_monitor &&) = delete;
 
-      ~memory_monitor ();
+      ~memory_monitor () {}
 
       memory_monitor &operator = (const memory_monitor &) = delete;
       memory_monitor &operator = (memory_monitor &&) = delete;
