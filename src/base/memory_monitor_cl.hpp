@@ -31,6 +31,6 @@
 
 constexpr char *module_names[] =
 {
-  ""				/* dummy for aligning module index (1 ~) */
+  ""				/* It will be changed to "heap" */
 };
 #endif // _MEMORY_MONITOR_CL_HPP_
