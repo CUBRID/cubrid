@@ -3454,12 +3454,19 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
 	{
 	  k = dk_sm_deduplicate_key_position (n_attrs, atts, constraint->func_index_info);
-
-	  if ((k != -1) && IS_DEDUPLICATE_KEY_ATTR_ID (atts[k]->id))
+	  if (k != -1)
 	    {
-	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf),
-					     GET_DEDUPLICATE_KEY_ATTR_LEVEL (atts[k]->id));
-	      n_attrs--;	/* Hidden column should not be displayed. */
+	      if (constraint->func_index_info && constraint->func_index_info->attr_index_start > 0)
+		{
+		  k--;
+		}
+
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (atts[k]->id))
+		{
+		  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf),
+						 GET_DEDUPLICATE_KEY_ATTR_LEVEL (atts[k]->id));
+		  n_attrs--;	/* Hidden column should not be displayed. */
+		}
 	    }
 	}
 #endif
