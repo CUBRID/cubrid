@@ -919,6 +919,8 @@ typedef struct _ha_config
 
 #define CHECK_SERVER              "Server"
 #define CHECK_HA_SERVER           "HA-Server"
+#define CHECK_HA_PAGE_SERVER      "HA-Page-server"
+#define CHECK_HA_TRANSACTION_SERVER      "HA-Transaction-server"
 #define CHECK_PAGE_SERVER         "Page-Server"
 #define CHECK_TRANSACTION_SERVER  "Transaction-Server"
 
@@ -1745,9 +1747,6 @@ extern "C"
   extern bool utility_check_system_class_name (const char *class_name);
 
   extern FILE *fopen_ex (const char *filename, const char *type);
-
-  extern bool util_is_localhost (char *host);
-  extern bool are_hostnames_equal (const char *hostname_a, const char *hostname_b);
 
   extern void util_free_ha_conf (HA_CONF * ha_conf);
   extern int util_make_ha_conf (HA_CONF * ha_conf);

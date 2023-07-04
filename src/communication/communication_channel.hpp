@@ -114,7 +114,7 @@ namespace cubcomm
 	    ss << "_" << m_port;
 	  }
 
-	ss << "_" << m_socket;
+	ss << "_" << m_unique_id;
 
 	return ss.str ();
       }
@@ -126,8 +126,11 @@ namespace cubcomm
       std::string m_channel_name;
       std::string m_hostname;
       int m_port = INVALID_PORT;
-  };
+      const uint64_t m_unique_id;
 
+    private:
+      static std::atomic<uint64_t> unique_id_allocator; // allocates ever-increasing value to m_uqniue_id
+  };
 
 } /* cubcomm namespace */
 

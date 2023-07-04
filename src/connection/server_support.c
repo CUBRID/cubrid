@@ -102,8 +102,8 @@ static bool css_Server_shutdown_inited = false;
 static struct timeval css_Shutdown_timeout = { 0, 0 };
 
 static char *css_Master_server_name = NULL;	/* database identifier */
-static int css_Master_port_id;
-static CSS_CONN_ENTRY *css_Master_conn;
+static int css_Master_port_id = -1;
+static CSS_CONN_ENTRY *css_Master_conn = NULL;
 static IP_INFO *css_Server_accessible_ip_info;
 static char *ip_list_file_name = NULL;
 static char ip_file_real_path[PATH_MAX];
@@ -1289,6 +1289,59 @@ css_start_shutdown_server ()
   css_Server_shutdown_inited = true;
 }
 
+#if !defined (WINDOWS)
+/*
+ * css_register_ha_server() - register server to cub_master
+ *  return: error if failed to register
+ *  server_name(in): server name
+ */
+int
+css_register_ha_server (const char *server_name)
+{
+  assert (server_name != NULL);
+  assert (!HA_DISABLED ());
+
+  CSS_CONN_ENTRY *conn;
+  std::string message_to_master = css_pack_message_to_master (server_name);
+
+  // connection is established before server recovery, only when ha_mode is turned on.
+  conn =
+    css_connect_to_master_server (prm_get_integer_value (PRM_ID_TCP_PORT_ID), message_to_master.c_str (),
+				  message_to_master.size ());
+  if (conn != NULL)
+    {
+      const int status = hb_register_to_master (conn,
+						get_server_type () ==
+						SERVER_TYPE_TRANSACTION ? HB_PTYPE_TRAN_SERVER : HB_PTYPE_PAGE_SERVER);
+
+      if (status != NO_ERROR)
+	{
+	  fprintf (stderr, "failed to hearbeat register to master\n");
+	  css_close_connection_to_master ();
+
+	  return status;
+	}
+      else
+	{
+	  // established connection will be re-used in css_init () after server recovery.
+	  css_insert_into_active_conn_list (conn);
+
+	  css_Master_server_name = strdup (server_name);
+	  css_Master_port_id = prm_get_integer_value (PRM_ID_TCP_PORT_ID);
+	  css_Pipe_to_master = conn->fd;
+	  css_Master_conn = conn;
+
+	  return NO_ERROR;
+	}
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+      return ERR_CSS_ERROR_DURING_SERVER_CONNECT;
+    }
+}
+#endif /* !WINDOWS */
+
 /*
  * css_init() -
  *   return:
@@ -1361,39 +1414,39 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 
   css_Server_connection_socket = INVALID_SOCKET;
 
-  conn = css_connect_to_master_server (port_id, message_to_master.c_str (), (int) message_to_master.size ());
-  if (conn != NULL)
+  if (!HA_DISABLED ())
     {
-      /* insert conn into active conn list */
-      css_insert_into_active_conn_list (conn);
-
-      css_Master_server_name = strdup (server_name);
-      css_Master_port_id = port_id;
-      css_Pipe_to_master = conn->fd;
-      css_Master_conn = conn;
-
-#if !defined(WINDOWS)
-      if (!HA_DISABLED ())
-	{
-	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
-	  if (status != NO_ERROR)
-	    {
-	      fprintf (stderr, "failed to heartbeat register.\n");
-	    }
-	}
-#endif
-
-      if (status == NO_ERROR)
-	{
-	  // server message loop
-	  css_setup_server_loop ();
-	}
+      // These global variables are set in css_register_ha_server ()
+      assert (css_Master_server_name != NULL);
+      assert (css_Master_port_id != -1);
+      assert (css_Pipe_to_master != INVALID_SOCKET);
+      assert (css_Master_conn != NULL);
     }
   else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
-      status = ERR_CSS_ERROR_DURING_SERVER_CONNECT;
+      conn = css_connect_to_master_server (port_id, message_to_master.c_str (), (int) message_to_master.size ());
+
+      if (conn != NULL)
+	{
+	  /* insert conn into active conn list */
+	  css_insert_into_active_conn_list (conn);
+
+	  css_Master_server_name = strdup (server_name);
+	  css_Master_port_id = port_id;
+	  css_Pipe_to_master = conn->fd;
+	  css_Master_conn = conn;
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_DURING_SERVER_CONNECT, 1, server_name);
+	  status = ERR_CSS_ERROR_DURING_SERVER_CONNECT;
+
+	  goto shutdown;
+	}
     }
+
+  // server message loop
+  css_setup_server_loop ();
 
 shutdown:
   /*
@@ -1796,6 +1849,10 @@ css_pack_message_to_master (const char *server_name)
   const char *env_name = NULL;
   char pid_string[16];
   std::string message;
+  const size_t ha_token_size = (HA_DISABLED() ? 0 : 1);
+
+  SERVER_TYPE type = get_server_type ();
+  assert (type == SERVER_TYPE_TRANSACTION || type == SERVER_TYPE_PAGE);
 
   assert (server_name != NULL);
 
@@ -1816,23 +1873,19 @@ css_pack_message_to_master (const char *server_name)
     */
 
   sprintf (pid_string, "%d", getpid ());
+
+  /* | server_type (1 byte) | '#' if HA-mode enabled (1 byte) | server_name | release string | env_name | pid | */
   size_t message_size =
-    strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1
-    + strlen (pid_string) + 1;
-  /* in order to prepend '#' or server type */
-  message_size++;
+    1 + ha_token_size + strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1 + strlen (pid_string) + 1;
 
   message.reserve (message_size);
 
-  if (!HA_DISABLED ())
+  message.append (1, '0' + ((char) type));
+
+  if (!HA_DISABLED())
     {
+      /* cub_master checks if the server is in ha_mode or not, using '#dbname' (IS_MASTER_CONN_NAME_HA_SERVER ()) */
       message.append (1, '#');
-    }
-  else
-    {
-      SERVER_TYPE type = get_server_type ();
-      assert (type == SERVER_TYPE_TRANSACTION || type == SERVER_TYPE_PAGE);
-      message.append (1, '0' + ((char) type));
     }
 
   message.append (server_name);

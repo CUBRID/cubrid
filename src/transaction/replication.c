@@ -299,6 +299,8 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
   char *ptr;
   int error = NO_ERROR, strlen;
 
+  assert (log_does_allow_replication () == true);
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
@@ -514,6 +516,8 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
   LOG_REPL_RECORD *repl_rec;
   char *ptr;
   int error = NO_ERROR, strlen1, strlen2, strlen3, strlen4;
+
+  assert (log_does_allow_replication () == true);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);

@@ -206,15 +206,15 @@ void passive_tran_server::wait_replication_past_target_lsa (LOG_LSA lsa)
 }
 
 passive_tran_server::connection_handler *
-passive_tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
+passive_tran_server::create_connection_handler (tran_server &ts) const
 {
   // passive_tran_server::connection_handler
-  return new connection_handler (std::move (chn), ts);
+  return new connection_handler (ts);
 }
 
 void
-passive_tran_server::connection_handler::receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip)
+passive_tran_server::connection_handler::receive_log_prior_list (page_server_conn_t::sequenced_payload &&a_sp)
 {
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }

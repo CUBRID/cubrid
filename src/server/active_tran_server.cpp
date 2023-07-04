@@ -63,25 +63,26 @@ active_tran_server::get_oldest_active_mvccid_from_page_server ()
 log_lsa
 active_tran_server::compute_consensus_lsa ()
 {
-  const int total_node_cnt = m_connection_list.size ();
+  const int total_node_cnt = m_page_server_conn_vec.size ();
   const int quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
-  int cur_node_cnt;
+  int cur_node_cnt = 0;
   std::vector<log_lsa> collected_saved_lsa;
 
-  {
-    std::shared_lock<std::shared_mutex> s_lock (m_page_server_conn_vec_mtx);
-    cur_node_cnt = m_page_server_conn_vec.size ();
-    if (cur_node_cnt < quorum)
-      {
-	quorum_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
-				  total_node_cnt, cur_node_cnt, quorum);
-	return NULL_LSA;
-      }
-    for (const auto &conn : m_page_server_conn_vec)
-      {
-	collected_saved_lsa.emplace_back (conn->get_saved_lsa ());
-      }
-  }
+  for (const auto &conn : m_page_server_conn_vec)
+    {
+      if (conn->is_connected ())
+	{
+	  collected_saved_lsa.emplace_back (conn->get_saved_lsa ());
+	  cur_node_cnt++;
+	}
+    }
+
+  if (cur_node_cnt < quorum)
+    {
+      quorum_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
+				total_node_cnt, cur_node_cnt, quorum);
+      return NULL_LSA;
+    }
   /*
    * Gather all PS'es saved_lsa and sort it in ascending order.
    * The <cur_node_count - quorum>'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
@@ -130,9 +131,9 @@ active_tran_server::stop_outgoing_page_server_messages ()
 {
 }
 
-active_tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts)
-  : tran_server::connection_handler (std::move (chn), ts, get_request_handlers ())
-  , m_saved_lsa { NULL_LSA }
+active_tran_server::connection_handler::connection_handler (tran_server &ts)
+  : tran_server::connection_handler (ts)
+  ,m_saved_lsa { NULL_LSA }
 {
   m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
 				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
@@ -159,9 +160,9 @@ active_tran_server::connection_handler::get_request_handlers ()
 }
 
 void
-active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip)
+active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::sequenced_payload &&a_sp)
 {
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
   log_lsa saved_lsa;
 
   assert (sizeof (log_lsa) == message.size ());
@@ -199,8 +200,8 @@ active_tran_server::connection_handler::remove_prior_sender_sink ()
 }
 
 active_tran_server::connection_handler *
-active_tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
+active_tran_server::create_connection_handler (tran_server &ts) const
 {
   // active_tran_server::connection_handler
-  return new connection_handler (std::move (chn), ts);
+  return new connection_handler (ts);
 }

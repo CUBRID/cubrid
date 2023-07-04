@@ -55,6 +55,8 @@ extern int css_readn (SOCKET fd, char *ptr, int nbytes, int timeout);
 extern void css_read_remaining_bytes (SOCKET fd, int len);
 
 extern int css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout);
+extern css_error_code css_net_recv_allow_truncated (SOCKET fd, char *buffer, int *maxlen, int *remlen, int timeout);
+extern css_error_code css_net_recv_remainder (SOCKET fd, char *buffer, int *maxlen, int timeout);
 extern int css_net_send (CSS_CONN_ENTRY * conn, const char *buff, int len, int timeout);
 extern int css_net_send_buffer_only (CSS_CONN_ENTRY * conn, const char *buff, int len, int timeout);
 

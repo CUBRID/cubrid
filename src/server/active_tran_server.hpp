@@ -42,7 +42,7 @@ class active_tran_server : public tran_server
     {
       public:
 	connection_handler () = delete;
-	connection_handler (cubcomm::channel &&chn, tran_server &ts);
+	connection_handler (tran_server &ts);
 
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
@@ -57,7 +57,7 @@ class active_tran_server : public tran_server
 	void remove_prior_sender_sink ();
 
 	// request handlers
-	void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
+	void receive_saved_lsa (page_server_conn_t::sequenced_payload &&a_sp);
 
 	log_lsa get_saved_lsa () const override final;
 
@@ -70,8 +70,7 @@ class active_tran_server : public tran_server
     bool get_remote_storage_config () final override;
 
     void stop_outgoing_page_server_messages () final override;
-    connection_handler *create_connection_handler (cubcomm::channel &&chn,
-	tran_server &ts) const final override;
+    connection_handler *create_connection_handler (tran_server &ts) const final override;
 
   private:
     bool m_uses_remote_storage = false;
