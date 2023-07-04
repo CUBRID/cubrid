@@ -223,6 +223,11 @@ active_tran_server::connection_handler::finish_connecting ()
   er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
 		get_channel_id ().c_str ());
 }
+void
+active_tran_server::connection_handler::on_disconnecting ()
+{
+  remove_prior_sender_sink ();
+}
 
 void
 active_tran_server::connection_handler::remove_prior_sender_sink ()

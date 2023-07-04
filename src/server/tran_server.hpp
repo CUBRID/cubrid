@@ -165,6 +165,7 @@ class tran_server
 	 * the connection has been established already, do the preliminary jobs before opening the connection to ouside.
 	 * */
 	virtual void finish_connecting () = 0;
+	virtual void on_disconnecting () = 0;
 
       protected:
 	tran_server &m_ts;

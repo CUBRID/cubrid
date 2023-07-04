@@ -75,6 +75,11 @@ passive_tran_server::connection_handler::finish_connecting ()
 		get_channel_id ().c_str ());
 }
 
+void
+passive_tran_server::connection_handler::on_disconnecting ()
+{
+
+}
 
 void
 passive_tran_server::stop_outgoing_page_server_messages ()
