@@ -24,7 +24,7 @@
 #define _MEMORY_MONITOR_SR_HPP_
 
 #if !defined (SERVER_MODE)
-#error SERVER_MODE macro should be pre-defined(to compile)
+#error SERVER_MODE macro should be pre-defined to compile
 #endif /* SERVER_MODE */
 
 #include <cstdint>

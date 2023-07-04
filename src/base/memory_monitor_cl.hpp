@@ -24,9 +24,6 @@
 #ifndef _MEMORY_MONITOR_CL_HPP_
 #define _MEMORY_MONITOR_CL_HPP_
 
-#include <cstdint>
-
-#include "dbtype_def.h"
 #include "memory_monitor_common.h"
 
 constexpr char *module_names[] =

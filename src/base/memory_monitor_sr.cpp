@@ -35,20 +35,20 @@ namespace cubperf
   class memory_monitor;
   memory_monitor *mmon_Gl = nullptr;
 
-  typedef struct mmon_comp_info
+  typedef struct mmon_stat_info
   {
     MMON_STAT_ID id;
     const char *comp_name;
     const char *subcomp_name;
-  } MMON_COMP_INFO;
+  } MMON_STAT_INFO;
 
-  typedef struct mmon_stat
+  typedef struct mmon_mem_stat
   {
     std::atomic<uint64_t> init_stat;
     std::atomic<uint64_t> cur_stat;
     std::atomic<uint64_t> peak_stat;
     std::atomic<uint32_t> expand_count;
-  } MMON_STAT;
+  } MMON_MEM_STAT;
 
   class mmon_subcomponent
   {
@@ -63,7 +63,6 @@ namespace cubperf
       mmon_subcomponent &operator = (const mmon_subcomponent &) = delete;
       mmon_subcomponent &operator = (mmon_subcomponent &&) = delete;
 
-      /* function */
       const char *get_name ();
       void add_cur_stat (uint64_t size);
       void sub_cur_stat (uint64_t size);
@@ -86,7 +85,6 @@ namespace cubperf
       mmon_component &operator = (const mmon_component &) = delete;
       mmon_component &operator = (mmon_component &&) = delete;
 
-      /* function */
       const char *get_name ();
       void add_stat (uint64_t size, int subcomp_idx, bool init, bool expand);
       void sub_stat (uint64_t size, int subcomp_idx, bool init);
@@ -95,15 +93,14 @@ namespace cubperf
 
     private:
       std::string m_comp_name;
-      MMON_STAT m_stat;
+      MMON_MEM_STAT m_stat;
       std::vector<std::unique_ptr<mmon_subcomponent>> m_subcomponent;
   };
 
   class mmon_module
   {
     public:
-      mmon_module (const char *module_name, const MMON_COMP_INFO *info);
-      mmon_module () {} /* for dummy */
+      mmon_module (const char *module_name, const MMON_STAT_INFO *info);
       mmon_module (const mmon_module &) = delete;
       mmon_module (mmon_module &&) = delete;
 
@@ -112,15 +109,13 @@ namespace cubperf
       mmon_module &operator = (const mmon_module &) = delete;
       mmon_module &operator = (mmon_module &&) = delete;
 
-      /* function */
       virtual int aggregate_stats (const MMON_MODULE_INFO &info);
       void add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init, bool expand);
       void sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init);
       int add_component (const char *name);
-      inline int MAKE_STAT_IDX_MAP (int comp_idx, int subcomp_idx);
+      inline int make_stat_idx_map (int comp_idx, int subcomp_idx);
 
     private:
-      /* const */
       /* max index of component or subcomponent is 0x0000FFFF
        * if some stats have max index of component or subcomponent,
        * we don't have to increase it */
@@ -128,7 +123,7 @@ namespace cubperf
 
     private:
       std::string m_module_name;
-      MMON_STAT m_stat;
+      MMON_MEM_STAT m_stat;
       std::vector<std::unique_ptr<mmon_component>> m_component;
       std::vector<int> m_comp_idx_map;
   };
@@ -147,15 +142,14 @@ namespace cubperf
       memory_monitor &operator = (const memory_monitor &) = delete;
       memory_monitor &operator = (memory_monitor &&) = delete;
 
-      /* function */
       int add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool expand);
       int sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size);
       int resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size);
       int move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size);
       int aggregate_module_info (MMON_MODULE_INFO *info, int module_index);
       int aggregate_tran_info (MMON_TRAN_INFO *info, int tran_count);
-      inline int COMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val);
-      inline int SUBCOMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val);
+      inline int get_comp_idx_from_comp_idx_map (int comp_idx_map_val);
+      inline int get_subcomp_idx_from_comp_idx_map (int comp_idx_map_val);
 
     private:
       class aggregater
@@ -170,13 +164,11 @@ namespace cubperf
 	  aggregater &operator = (const aggregater &) = delete;
 	  aggregater &operator = (aggregater &&) = delete;
 
-	  /* function */
 	  int get_server_info (const MMON_SERVER_INFO &info);
 	  int get_module_info (const MMON_MODULE_INFO &info, int module_index);
 	  int get_transaction_info (const MMON_TRAN_INFO &info, int tran_count);
 
 	private:
-	  /* backlink of memory_monitor class */
 	  memory_monitor *m_mmon;
       };
 
@@ -188,17 +180,17 @@ namespace cubperf
       std::unique_ptr<mmon_module> m_module[MMON_MODULE_LAST];
   };
 
-  inline int mmon_module::MAKE_STAT_IDX_MAP (int comp_idx, int subcomp_idx)
+  inline int mmon_module::make_stat_idx_map (int comp_idx, int subcomp_idx)
   {
     return (comp_idx << 16 | subcomp_idx);
   }
 
-  inline int memory_monitor::COMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val)
+  inline int memory_monitor::get_comp_idx_from_comp_idx_map (int comp_idx_map_val)
   {
     return (comp_idx_map_val >> 16);
   }
 
-  inline int memory_monitor::SUBCOMP_IDX_FROM_COMP_IDX_MAP (int comp_idx_map_val)
+  inline int memory_monitor::get_subcomp_idx_from_comp_idx_map (int comp_idx_map_val)
   {
     return (comp_idx_map_val & MMON_PARSE_MASK);
   }
@@ -263,7 +255,7 @@ namespace cubperf
     return 0;
   }
 
-  mmon_module::mmon_module (const char *module_name, const MMON_COMP_INFO *info)
+  mmon_module::mmon_module (const char *module_name, const MMON_STAT_INFO *info)
     : m_module_name (module_name)
   {
     /* register component and subcomponent information
@@ -309,7 +301,7 @@ namespace cubperf
 	      }
 	  }
 
-	m_comp_idx_map.push_back (MAKE_STAT_IDX_MAP (comp_idx, subcomp_idx));
+	m_comp_idx_map.push_back (make_stat_idx_map (comp_idx, subcomp_idx));
 
 	cnt++;
       }
