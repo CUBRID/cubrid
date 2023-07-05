@@ -182,6 +182,8 @@ active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&c
 {
   cubpacking::packer packer;
   size_t size = 0;
+
+  /* TODO: It will be the target PS's info. */
   const auto hostname = m_node.get_host ();
   const auto port = m_node.get_port ();
 
