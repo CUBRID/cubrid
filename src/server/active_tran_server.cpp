@@ -140,7 +140,7 @@ active_tran_server::connection_handler::connection_handler (tran_server &ts, cub
 
 active_tran_server::connection_handler::~connection_handler ()
 {
-  remove_prior_sender_sink ();
+  assert (m_prior_sender_sink_hook_func == nullptr);
 }
 
 active_tran_server::connection_handler::request_handlers_map_t
@@ -209,26 +209,17 @@ active_tran_server::connection_handler::get_saved_lsa () const
 void
 active_tran_server::connection_handler::on_connecting ()
 {
+  assert (m_prior_sender_sink_hook_func == nullptr);
+
   m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
 				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
-  LOG_LSA unsent_lsa = log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
-
-  send_start_catch_up_request (std::move (unsent_lsa));
+  log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
 }
+
 void
 active_tran_server::connection_handler::on_disconnecting ()
 {
-  remove_prior_sender_sink ();
-}
-
-void
-active_tran_server::connection_handler::remove_prior_sender_sink ()
-{
-  /*
-   * Now, it's removed only when disconencting all page servers during shutdown.
-   * TODO: used when abnormal or normal disonnection of PS. It may need a latch.
-   */
-  if (static_cast<bool> (m_prior_sender_sink_hook_func))
+  if (m_prior_sender_sink_hook_func != nullptr)
     {
       log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
       m_prior_sender_sink_hook_func = nullptr;
