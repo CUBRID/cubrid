@@ -363,11 +363,10 @@ tran_server::connection_handler::connect ()
       return ps_conn_error_lambda (lockg_state);
     }
 
-  // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
-  // moved as argument below
   set_connection (std::move (srv_chn));
 
-  // TODO initailizing jobs will be triggered such as the catch-up process. state::CONNECTED will be set asynchronously when it's done.
+  // Do the preliminary jobs depending on the server type before opening the conneciton to the outisde.
+  on_connecting ();
 
   m_state = state::CONNECTED;
 
@@ -483,6 +482,8 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 
   assert (m_state == state::CONNECTING || m_state == state::CONNECTED);
   m_state = state::DISCONNECTING;
+
+  on_disconnecting (); // server-type specific jobs before disconnect
 
   m_disconn_future = std::async (std::launch::async, [this, with_disc_msg]
   {
