@@ -24,7 +24,8 @@
 #include "log_lsa.hpp"
 #include "request_sync_client_server.hpp"
 #include "tran_page_requests.hpp"
-#include "async_disconnect_handler.hpp"
+#include "thread_manager.hpp"
+#include "thread_looper.hpp"
 
 #include <string>
 #include <vector>
@@ -65,6 +66,7 @@ class tran_server
     tran_server (cubcomm::server_server conn_type)
       : m_main_conn { nullptr }
       , m_conn_type { conn_type }
+      , m_ps_connector { *this }
     {
     }
     tran_server (const tran_server &) = delete;
@@ -106,7 +108,7 @@ class tran_server
 
 	virtual ~connection_handler ();
 
-	void set_connection (cubcomm::channel &&chn);
+	int connect (const cubcomm::node &node);
 	void disconnect_async (bool with_disc_msg);
 	void wait_async_disconnection ();
 
@@ -115,6 +117,7 @@ class tran_server
 
 	const std::string get_channel_id () const;
 	bool is_connected ();
+	bool is_idle ();
 
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
@@ -160,6 +163,7 @@ class tran_server
 	};
 
       private:
+	void set_connection (cubcomm::channel &&chn);
 	// Request handlers for requests in common
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &&a_sp);
 
@@ -192,9 +196,41 @@ class tran_server
     std::shared_mutex m_main_conn_mtx;
 
   private:
-    int init_page_server_hosts (const char *db_name);
+    /*
+     * Try to [re]connect to disconected page servers.
+     * TODO This is a temporary feature, which is going to be done by the cluster manager or cub_master. It tries to connect to all page servers periodically, but later on, it is going to connect to PSes that are ready to connect.
+    */
+    class ps_connector
+    {
+      public:
+	ps_connector (tran_server &ts);
+
+	ps_connector (const ps_connector &) = delete;
+	ps_connector (ps_connector &&) = delete;
+
+	~ps_connector ();
+
+	ps_connector &operator = (const ps_connector &) = delete;
+	ps_connector &operator = (ps_connector &&) = delete;
+
+	void start ();
+	void terminate ();
+
+      private:
+	void try_connect_to_all_ps (cubthread::entry &);
+
+      private:
+	tran_server &m_ts;
+
+	cubthread::daemon *m_daemon;
+
+	std::atomic<bool> m_terminate;
+	std::mutex m_mtx;
+    };
+
+  private:
+    int init_page_server_hosts ();
     int get_boot_info_from_page_server ();
-    int connect_to_page_server (connection_handler &conn_handler, const cubcomm::node &node, const char *db_name);
     int reset_main_connection ();
 
     int parse_server_host (const std::string &host);
@@ -202,6 +238,9 @@ class tran_server
 
   private:
     cubcomm::server_server m_conn_type;
+    std::string m_server_name;
+
+    ps_connector m_ps_connector;
 };
 
 #endif // !_tran_server_HPP_
