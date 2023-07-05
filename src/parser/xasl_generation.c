@@ -17263,8 +17263,6 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
       return NULL;
     }
   non_recursive_part_xasl = (XASL_NODE *) non_recursive_part->info.query.xasl;
-  non_recursive_part_xasl->sha1 = non_recursive_part->sha1;
-  non_recursive_part_xasl->cached_list_id = (QFILE_LIST_ID *) non_recursive_part->etc;
 
   if (recursive_part)
     {

@@ -1028,7 +1028,8 @@ struct xasl_node
   int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added to the select list in case of
 				 * UPDATE/DELETE in MVCC */
   SHA1Hash sha1;
-  QFILE_LIST_ID *cached_list_id;	/* cached list-id from Query Cache */
+  int cte_host_var_count;
+  int *cte_host_var_index;
 
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */

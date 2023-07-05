@@ -2764,7 +2764,7 @@ static char *
 xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 {
   int offset;
-  int cnt;
+  int cnt, i;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
   assert (PTR_ALIGN (ptr, MAX_ALIGNMENT) == ptr);
@@ -3040,18 +3040,11 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ptr = or_pack_int (ptr, xasl->sha1.h[3]);
   ptr = or_pack_int (ptr, xasl->sha1.h[4]);
 
-  if (xasl->cached_list_id == NULL)
+  ptr = or_pack_int (ptr, xasl->cte_host_var_count);
+
+  for (i = 0; i < xasl->cte_host_var_count; i++)
     {
-      ptr = or_pack_int (ptr, 0);
-    }
-  else
-    {
-      offset = xts_save_list_id (xasl->cached_list_id);
-      if (offset == ER_FAILED)
-	{
-	  return NULL;
-	}
-      ptr = or_pack_int (ptr, offset);
+      ptr = or_pack_int (ptr, xasl->cte_host_var_index[i]);
     }
 
   /*
@@ -5825,6 +5818,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 {
   int size = 0;
   int tmp_size = 0;
+  int i;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
   size += (XASL_NODE_HEADER_SIZE	/* header */
@@ -5887,7 +5881,12 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     }
 
   size += OR_INT_SIZE * 5;	/* sha1 */
-  size += OR_PTR_SIZE;		/* cached list-id */
+  size += OR_INT_SIZE; 		/* for CTE host variable count */
+
+  for (i = 0; i < xasl->cte_host_var_count; i++)
+    {
+      size += OR_INT_SIZE;
+    }
 
   switch (xasl->type)
     {

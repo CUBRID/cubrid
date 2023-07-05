@@ -2366,11 +2366,10 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
 
   if (prepared_stmt->info.query.with)
     {
-      PT_NODE *cte_list;
+      PT_NODE *cte_query;
 
-      cte_list =
-	parser_copy_tree (session->parser, prepared_stmt->info.query.with->info.with_clause.cte_definition_list);
-      prepare_info.cte_list = (void *) cte_list;
+      cte_query = parser_copy_tree(prepared_session->parser, prepared_stmt->info.query.with->info.with_clause.cte_definition_list);
+      prepare_info.cte_list = cte_query;
     }
   else
     {

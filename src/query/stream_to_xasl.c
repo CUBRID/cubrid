@@ -1650,7 +1650,7 @@ static char *
 stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
   int offset;
-  int tmp;
+  int tmp, i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   /* initialize query_in_progress flag */
@@ -2128,18 +2128,14 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->sha1.h[3]);
   ptr = or_unpack_int (ptr, &xasl->sha1.h[4]);
 
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
+  ptr = or_unpack_int (ptr, &xasl->cte_host_var_count);
+  if (xasl->cte_host_var_count > 0)
     {
-      xasl->cached_list_id = NULL;
-    }
-  else
-    {
-      xasl->cached_list_id = stx_restore_list_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (xasl->cached_list_id == NULL)
-	{
-	  goto error;
-	}
+      xasl->cte_host_var_index = (int *)malloc (sizeof(int) * xasl->cte_host_var_count);
+      for (i = 0; i < xasl->cte_host_var_count; i++)
+        {
+          ptr = or_unpack_int (ptr, &xasl->cte_host_var_index[i]);
+        }
     }
 
 #if defined (ENABLE_COMPOSITE_LOCK)

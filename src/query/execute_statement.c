@@ -14280,7 +14280,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 }
 
 static PT_NODE *
-pt_vars_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PARSER_CONTEXT *query = (PARSER_CONTEXT *) arg;
 
@@ -14289,6 +14289,7 @@ pt_vars_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       if (node->info.host_var.index >= 0)
 	{
 	  parser->host_variables[parser->host_var_count] = query->host_variables[node->info.host_var.index];
+	  parser->cte_host_var_index[parser->host_var_count] = node->info.host_var.index;
 	  node->info.host_var.index = parser->host_var_count;
 	  parser->dbval_cnt++;
 	}
@@ -14300,6 +14301,9 @@ pt_vars_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
   return node;
 }
+
+static int
+do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 /*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
@@ -14374,6 +14378,19 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       statement->flag.cannot_prepare = 1;
       return NO_ERROR;
+    }
+
+  /* execute cte query first */
+  if (statement->info.query.with)
+    {
+      int err;
+      PT_NODE *cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
+
+      err = do_execute_cte (parser, cte_list);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
     }
 
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
@@ -14542,7 +14559,7 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (cte_def_list->info.cte.non_recursive_part->info.query.hint & PT_HINT_QUERY_CACHE)
 	{
-	  cte_statement = parser_copy_tree (parser, cte_def_list->info.cte.non_recursive_part);
+	  cte_statement = cte_def_list->info.cte.non_recursive_part;
 
 	  cte_context = *parser;
 	  cte_context.dbval_cnt = 0;
@@ -14550,22 +14567,26 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  var_count = parser->host_var_count + parser->auto_param_count;
 	  cte_context.host_variables = (DB_VALUE *) malloc (var_count * sizeof (DB_VALUE));
+	  cte_context.cte_host_var_index = (int *) malloc (var_count * sizeof (int));
 
-	  parser_walk_tree (&cte_context, cte_statement, pt_vars_count, parser, NULL, NULL);
+	  parser_walk_tree (&cte_context, cte_statement, pt_cte_host_vars_index, parser, NULL, NULL);
+
+	  cte_statement->sha1 = cte_context.context.sha1;
+	  cte_statement->cte_host_var_count = var_count;
+	  cte_statement->cte_host_var_index = cte_context.cte_host_var_index;
 
 	  error = do_prepare_select (&cte_context, cte_statement);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
-
-	  cte_statement->sha1 = cte_context.context.sha1;
-
+#if 0
 	  error = do_execute_select (&cte_context, cte_statement);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
+#endif
 	}
     }
 
@@ -14727,6 +14748,36 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   return err;
 }
 
+static int
+copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
+{
+  PR_TYPE *pr_type_p;
+  DB_TYPE src_type;
+
+  /* check if there is nothing to do, so we don't clobber a db_value if we happen to try to copy it to itself */
+  if (dest_p == src_p)
+    {
+      return NO_ERROR;
+    }
+
+  /* clear any value from a previous iteration */
+  (void) pr_clear_value (dest_p);
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src_p);
+  pr_type_p = pr_type_from_id (src_type);
+  if (pr_type_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (pr_type_p->setval (dest_p, src_p, true) == NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * do_execute_select() - Execute the prepared SELECT statement
  *   return: Error code
@@ -14845,10 +14896,29 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* execute cte query first */
   if (statement->info.query.with)
     {
-      int err;
+      PT_NODE *stmt;
       PT_NODE *cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
+      QUERY_ID query_id;
+      QFILE_LIST_ID *list_id;
+      DB_VALUE *host_variables;
 
-      err = do_execute_cte (parser, cte_list);
+      while (cte_list)
+	{
+	  stmt = cte_list->info.cte.non_recursive_part;
+	  if (stmt)
+	    {
+	      host_variables = (DB_VALUE *) malloc (sizeof(DB_VALUE) * stmt->cte_host_var_count);
+	      for (i = 0; i < stmt->cte_host_var_count; i++)
+		{
+		  copy_db_value (&host_variables[i], &parser->host_variables[stmt->cte_host_var_index[i]]);
+		}
+	      
+              err =
+                execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id, 0, &clt_cache_time, &stmt->cache_time);
+	    }
+	  cte_list = cte_list->next;
+	}
+
       if (err != NO_ERROR)
 	{
 	  return err;
