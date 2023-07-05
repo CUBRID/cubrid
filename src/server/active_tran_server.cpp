@@ -186,6 +186,20 @@ active_tran_server::connection_handler::get_saved_lsa () const
 }
 
 void
+active_tran_server::connection_handler::on_connecting ()
+{
+  m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
+				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
+  log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
+}
+
+void
+active_tran_server::connection_handler::on_disconnecting ()
+{
+  remove_prior_sender_sink ();
+}
+
+void
 active_tran_server::connection_handler::remove_prior_sender_sink ()
 {
   /*

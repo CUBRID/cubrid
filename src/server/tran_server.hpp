@@ -130,6 +130,15 @@ class tran_server
 
 	virtual request_handlers_map_t get_request_handlers ();
 
+	/*
+	 * Do the server-type-specific jobs before state transtition.
+	 *
+	 * on_connecting:     CONNECTING -> (*) -> CONNECTED
+	 * on_disconnecting:  DISCONNECTING -> (*) -> IDLE
+	 */
+	virtual void on_connecting () = 0;
+	virtual void on_disconnecting () = 0;
+
       protected:
 	tran_server &m_ts;
 
