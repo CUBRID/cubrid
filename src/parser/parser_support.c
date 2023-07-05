@@ -4458,15 +4458,30 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 
       sum->data_type->type_enum = PT_TYPE_NUMERIC;
       sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-      sum->data_type->info.data_type.dec_precision = 0;
 
       if (oracle_style_divide)
 	{
-	  /* It is necessary to prepare for the division operation in advance. */
+	  PT_NODE *fl_limit;
+
+	  /* It is necessary to prepare for the division operation in advance.
+	     the arg1 and arg2 of the SUM function require a floor operation,
+	     but it can apply the floor function only to arg1.
+	     This is because arg2 can respond to SUM operation by setting only the scale. */
+
+	  fl_limit = parser_new_node (parser, PT_EXPR);
+	  fl_limit->info.expr.op = PT_FLOOR;
+	  fl_limit->type_enum = PT_TYPE_NUMERIC;
+	  fl_limit->info.expr.arg1 = limit;
+
 	  sum->data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_DIVISION_SCALE;	/* 9 */
+	  sum->info.expr.arg1 = parser_copy_tree (parser, fl_limit);
+	}
+      else
+	{
+	  sum->data_type->info.data_type.dec_precision = 0;
+	  sum->info.expr.arg2 = parser_copy_tree (parser, limit);
 	}
 
-      sum->info.expr.arg1 = parser_copy_tree (parser, limit);
       sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
       if (sum->info.expr.arg1 == NULL || sum->info.expr.arg2 == NULL)
 	{
