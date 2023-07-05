@@ -295,9 +295,9 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
 #define HA_PROCESS_INFO_FORMAT_STRING    \
 	" HA-Process Info (master %d, state %s)\n"
 #define HA_TRAN_SERVER_PROCESS_FORMAT_STRING  \
-	"   Transaction-Server %s (pid %d, state %s)\n"
+	"   Transaction-Server %s (pid %d, state %s%s)\n"
 #define HA_PAGE_SERVER_PROCESS_FORMAT_STRING  \
-	"   Page-Server %s (pid %d, state %s)\n"
+	"   Page-Server %s (pid %d, state %s%s)\n"
 #define HA_COPYLOG_PROCESS_FORMAT_STRING \
 	"   Copylogdb %s (pid %d, state %s)\n"
 #define HA_APPLYLOG_PROCESS_FORMAT_STRING        \
@@ -4394,10 +4394,14 @@ hb_resource_receive_changemode (CSS_CONN_ENTRY * conn)
     {
     case HA_SERVER_STATE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_ACTIVE;
+      /* When the ATS is set to active, then the server state is set to ready.
+       * Temporary setting to make understand easier */
+      proc->server_state = HB_SERVER_STATE_READY;
       break;
 
     case HA_SERVER_STATE_TO_BE_ACTIVE:
       proc->state = HB_PSTATE_REGISTERED_AND_TO_BE_ACTIVE;
+      proc->server_state = HB_SERVER_STATE_RECOVERY;
       break;
 
     case HA_SERVER_STATE_STANDBY:
@@ -5468,6 +5472,8 @@ hb_server_state_string (int state)
       return HB_SERVER_STATE_RECOVERED_STR;
     case HB_SERVER_STATE_CATCH_UP:
       return HB_SERVER_STATE_CATCH_UP_STR;
+    case HB_SERVER_STATE_READY:
+      return HB_SERVER_STATE_READY_STR;
     }
 
   return "invalid";
@@ -6076,6 +6082,7 @@ hb_get_process_info_string (char **str, bool verbose_yn)
   required_size += 256;		/* length of connection name */
   required_size += 10;		/* length of pid */
   required_size += HB_PSTATE_STR_SZ;	/* length of process state */
+  required_size += HB_SERVER_STATE_STR_SZ;	/* length of server state */
 
   if (verbose_yn)
     {
@@ -6128,12 +6135,12 @@ hb_get_process_info_string (char **str, bool verbose_yn)
 	case HB_PTYPE_TRAN_SERVER:
 	  p +=
 	    snprintf (p, MAX ((last - p), 0), HA_TRAN_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
-		      hb_process_state_string (proc->type, proc->state));
+		      hb_process_state_string (proc->type, proc->state), hb_server_state_string (proc->server_state));
 	  break;
 	case HB_PTYPE_PAGE_SERVER:
 	  p +=
 	    snprintf (p, MAX ((last - p), 0), HA_PAGE_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
-		      hb_process_state_string (proc->type, proc->state));
+		      hb_process_state_string (proc->type, proc->state), hb_server_state_string (proc->server_state));
 	  break;
 	case HB_PTYPE_COPYLOGDB:
 	  p +=

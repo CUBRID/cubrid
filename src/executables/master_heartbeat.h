@@ -120,7 +120,8 @@ enum HB_PROC_STATE
 
 /* Heartbeat resource process detail state.
  * These states are to provide detailed information about server process
- * from start to the provision of the service.
+ * from start (HB_PSTATE_STARTED) to the provision of the service (HB_PSTATE_REGISTERED_*).
+ * When the server is ready to provide a service, then it does not need to show a detail state.
  */
 enum HB_SERVER_STATE
 {
@@ -128,13 +129,15 @@ enum HB_SERVER_STATE
   HB_SERVER_STATE_RECOVERY = 1,
   HB_SERVER_STATE_RECOVERED = 2,	/* only for PS */
   HB_SERVER_STATE_CATCH_UP = 3,	/* only for PS */
-  HB_SERVER_STATE_MAX
+  HB_SERVER_STATE_READY = 4	/* When the server is ready, then no detail state to be shown to user */
 };
 
-#define HB_SERVER_STATE_INIT_STR                "initial"
-#define HB_SERVER_STATE_RECOVERY_STR            "recovery"
-#define HB_SERVER_STATE_RECOVERED_STR           "recovered"
-#define HB_SERVER_STATE_CATCH_UP_STR            "catch_up"
+#define HB_SERVER_STATE_INIT_STR                "(initial)"	/* ex) state registered(initial) */
+#define HB_SERVER_STATE_RECOVERY_STR            "(recovery)"
+#define HB_SERVER_STATE_RECOVERED_STR           "(recovered)"
+#define HB_SERVER_STATE_CATCH_UP_STR            "(catch_up)"
+#define HB_SERVER_STATE_READY_STR                ""	/* Nothing to be shown */
+#define HB_SERVER_STATE_STR_SZ                   (16)
 
 /* heartbeat node score bitmask */
 #define HB_NODE_SCORE_MASTER                    0x8000
