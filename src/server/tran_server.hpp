@@ -108,7 +108,7 @@ class tran_server
 
 	virtual ~connection_handler ();
 
-	int connect (const cubcomm::node &node);
+	int connect ();
 	void disconnect_async (bool with_disc_msg);
 	void wait_async_disconnection ();
 
@@ -122,8 +122,9 @@ class tran_server
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
       protected:
-	connection_handler (tran_server &ts)
+	connection_handler (tran_server &ts, cubcomm::node &&node)
 	  : m_ts { ts }
+	  , m_node { std::move (node) }
 	  , m_state { state::IDLE }
 	{ }
 
@@ -168,6 +169,8 @@ class tran_server
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &&a_sp);
 
       private:
+	const cubcomm::node m_node;
+
 	std::unique_ptr<page_server_conn_t> m_conn;
 	std::shared_mutex m_conn_mtx;
 
@@ -178,7 +181,7 @@ class tran_server
     };
 
   protected:
-    virtual connection_handler *create_connection_handler (tran_server &ts) const = 0;
+    virtual connection_handler *create_connection_handler (tran_server &ts, cubcomm::node &&node) const = 0;
 
     // Booting functions that require specialization
     virtual bool get_remote_storage_config () = 0;
@@ -189,7 +192,6 @@ class tran_server
      * For now, this information is static. In the future this can be maintained dinamically (eg: via cluster
      * management sofware).
      */
-    std::vector<cubcomm::node> m_connection_list;
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
 
     connection_handler *m_main_conn;
@@ -233,8 +235,8 @@ class tran_server
     int get_boot_info_from_page_server ();
     int reset_main_connection ();
 
-    int parse_server_host (const std::string &host);
-    int parse_page_server_hosts_config (std::string &hosts);
+    int register_connection_handlers (std::string &hosts);
+    int register_connection_handler (const std::string &host);
 
   private:
     cubcomm::server_server m_conn_type;
