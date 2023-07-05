@@ -132,7 +132,7 @@ enum HB_SERVER_STATE
   HB_SERVER_STATE_READY = 4	/* When the server is ready, then no detail state to be shown to user */
 };
 
-#define HB_SERVER_STATE_INIT_STR                "(initial)"	/* ex) state registered(initial) */
+#define HB_SERVER_STATE_INIT_STR                "(initial)"	/* ex) state started(initial) */
 #define HB_SERVER_STATE_RECOVERY_STR            "(recovery)"
 #define HB_SERVER_STATE_RECOVERED_STR           "(recovered)"
 #define HB_SERVER_STATE_CATCH_UP_STR            "(catch_up)"
