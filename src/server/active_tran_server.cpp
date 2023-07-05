@@ -178,8 +178,7 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 }
 
 void
-active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&catchup_lsa,
-    std::lock_guard<std::shared_mutex> &)
+active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&catchup_lsa)
 {
   cubpacking::packer packer;
   size_t size = 0;
@@ -197,6 +196,7 @@ active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&c
   packer.pack_int (port);
   packer.pack_string (hostname);
 
+  auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
   m_conn->push (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
 }
 
