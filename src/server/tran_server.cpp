@@ -265,7 +265,6 @@ tran_server::init_page_server_hosts ()
 	  failed_conn = true;
 	}
     }
-  reset_main_connection ();
 
   if (failed_conn && valid_connection_count > 0)
     {
@@ -330,49 +329,54 @@ tran_server::connection_handler::connect ()
 
   assert_is_tran_server ();
 
-  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
-  assert (m_state == state::IDLE);
+  {
+    auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+    assert (m_state == state::IDLE);
 
-  m_state = state::CONNECTING;
+    m_state = state::CONNECTING;
 
-  // connect to page server
-  constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
-  cubcomm::server_channel srv_chn (m_ts.m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
+    // connect to page server
+    constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
+    cubcomm::server_channel srv_chn (m_ts.m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
 
-  srv_chn.set_channel_name ("TS_PS_comm");
+    srv_chn.set_channel_name ("TS_PS_comm");
 
-  css_error_code comm_error_code = srv_chn.connect (m_node.get_host ().c_str (), m_node.get_port (),
-				   CMD_SERVER_SERVER_CONNECT);
-  if (comm_error_code != css_error_code::NO_ERRORS)
+    css_error_code comm_error_code = srv_chn.connect (m_node.get_host ().c_str (), m_node.get_port (),
+				     CMD_SERVER_SERVER_CONNECT);
+    if (comm_error_code != css_error_code::NO_ERRORS)
+      {
+	return ps_conn_error_lambda (lockg_state);
+      }
+
+    if (srv_chn.send_int (static_cast<int> (m_ts.m_conn_type)) != NO_ERRORS)
+      {
+	return ps_conn_error_lambda (lockg_state);
+      }
+
+    int returned_code;
+    if (srv_chn.recv_int (returned_code) != css_error_code::NO_ERRORS)
+      {
+	return ps_conn_error_lambda (lockg_state);
+      }
+    if (returned_code != static_cast<int> (m_ts.m_conn_type))
+      {
+	return ps_conn_error_lambda (lockg_state);
+      }
+
+    // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
+    // moved as argument below
+    set_connection (std::move (srv_chn));
+
+    m_state = state::CONNECTED;
+
+    er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
+		  srv_chn.get_channel_id ().c_str ());
+  }
+
+  if (m_ts.reset_main_connection () != NO_ERROR)
     {
-      return ps_conn_error_lambda (lockg_state);
+      assert (false); // At least this connection_handler can be the main connection
     }
-
-  if (srv_chn.send_int (static_cast<int> (m_ts.m_conn_type)) != NO_ERRORS)
-    {
-      return ps_conn_error_lambda (lockg_state);
-    }
-
-  int returned_code;
-  if (srv_chn.recv_int (returned_code) != css_error_code::NO_ERRORS)
-    {
-      return ps_conn_error_lambda (lockg_state);
-    }
-  if (returned_code != static_cast<int> (m_ts.m_conn_type))
-    {
-      return ps_conn_error_lambda (lockg_state);
-    }
-
-  // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
-  // moved as argument below
-  set_connection (std::move (srv_chn));
-
-  // TODO initailizing jobs will be triggered such as the catch-up process. state::CONNECTED will be set asynchronously when it's done.
-
-  m_state = state::CONNECTED;
-
-  er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
-		srv_chn.get_channel_id ().c_str ());
 
   return NO_ERROR;
 }
