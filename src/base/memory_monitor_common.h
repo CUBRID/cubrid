@@ -26,54 +26,60 @@
 
 #include <cstdint>
 
-typedef struct memmon_mem_stat
+typedef enum mmon_module_id
+{
+  //MMON_MODULE_HEAP = 1,
+  MMON_MODULE_LAST
+} MMON_MODULE_ID;
+
+typedef struct mmon_output_mem_stat
 {
   uint64_t init_stat;
   uint64_t cur_stat;
   uint64_t peak_stat;
   uint32_t expand_count;
-} MEMMON_MEM_STAT;
+} MMON_OUTPUT_MEM_STAT;
 
-typedef struct memmon_server_info
+typedef struct mmon_server_info
 {
   char name[DB_MAX_IDENTIFIER_LENGTH];
   uint64_t total_mem_usage;
-} MEMMON_SERVER_INFO;
+} MMON_SERVER_INFO;
 
-typedef struct memmon_subcomp_info
+typedef struct mmon_subcomp_info
 {
   char name[DB_MAX_IDENTIFIER_LENGTH];
   uint64_t cur_stat;
-} MEMMON_SUBCOMP_INFO;
+} MMON_SUBCOMP_INFO;
 
-typedef struct memmon_comp_info
+typedef struct mmon_comp_info
 {
   char name[DB_MAX_IDENTIFIER_LENGTH];
-  MEMMON_MEM_STAT stat;
+  MMON_OUTPUT_MEM_STAT stat;
   uint32_t num_subcomp;
-  MEMMON_SUBCOMP_INFO *subcomp_info;
-} MEMMON_COMP_INFO;
+  MMON_SUBCOMP_INFO *subcomp_info;
+} MMON_COMP_INFO;
 
-typedef struct memmon_module_info
+typedef struct mmon_module_info
 {
-  MEMMON_SERVER_INFO server_info;
+  MMON_SERVER_INFO server_info;
   char name[DB_MAX_IDENTIFIER_LENGTH];
-  MEMMON_MEM_STAT stat;
+  MMON_OUTPUT_MEM_STAT stat;
   uint32_t num_comp;
-  MEMMON_COMP_INFO *comp_info;
-} MEMMON_MODULE_INFO;
+  MMON_COMP_INFO *comp_info;
+} MMON_MODULE_INFO;
 
-typedef struct memmon_tran_stat
+typedef struct mmon_tran_stat
 {
   int tranid;
   uint64_t cur_stat;
-} MEMMON_TRAN_STAT;
+} MMON_TRAN_STAT;
 
-typedef struct memmon_tran_info
+typedef struct mmon_tran_info
 {
-  MEMMON_SERVER_INFO server_info;
+  MMON_SERVER_INFO server_info;
   uint32_t num_tran;
-  MEMMON_TRAN_STAT *tran_stat;
-} MEMMON_TRAN_INFO;
+  MMON_TRAN_STAT *tran_stat;
+} MMON_TRAN_INFO;
 
 #endif // _MEMORY_MONITOR_COMMON_H_
