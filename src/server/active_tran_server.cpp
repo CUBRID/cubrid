@@ -135,14 +135,11 @@ active_tran_server::connection_handler::connection_handler (tran_server &ts, cub
   : tran_server::connection_handler (ts, std::move (node))
   ,m_saved_lsa { NULL_LSA }
 {
-  m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
-				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
-  log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
 }
 
 active_tran_server::connection_handler::~connection_handler ()
 {
-  remove_prior_sender_sink ();
+  assert (m_prior_sender_sink_hook_func == nullptr);
 }
 
 active_tran_server::connection_handler::request_handlers_map_t
@@ -197,12 +194,6 @@ active_tran_server::connection_handler::on_connecting ()
 
 void
 active_tran_server::connection_handler::on_disconnecting ()
-{
-  remove_prior_sender_sink ();
-}
-
-void
-active_tran_server::connection_handler::remove_prior_sender_sink ()
 {
   if (m_prior_sender_sink_hook_func != nullptr)
     {
