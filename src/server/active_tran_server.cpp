@@ -207,21 +207,13 @@ active_tran_server::connection_handler::get_saved_lsa () const
 }
 
 void
-active_tran_server::connection_handler::finish_connecting ()
+active_tran_server::connection_handler::on_connecting ()
 {
-  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
-  assert (m_state == state::CONNECTING);
-
   m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
 				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
   LOG_LSA unsent_lsa = log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
 
-  send_start_catch_up_request (std::move (unsent_lsa), lockg_state);
-
-  m_state = state::CONNECTED;
-
-  er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
-		get_channel_id ().c_str ());
+  send_start_catch_up_request (std::move (unsent_lsa));
 }
 void
 active_tran_server::connection_handler::on_disconnecting ()

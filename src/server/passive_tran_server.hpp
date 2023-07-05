@@ -64,7 +64,8 @@ class passive_tran_server : public tran_server
 
       private:
 	request_handlers_map_t get_request_handlers () final override;
-	void finish_connecting () override final;
+
+	void on_connecting () override final;
 	void on_disconnecting () override final;
 
 	/* reuqest handlers */

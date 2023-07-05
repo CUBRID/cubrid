@@ -63,7 +63,8 @@ class active_tran_server : public tran_server
 	void send_start_catch_up_request (LOG_LSA &&catchup_lsa, std::lock_guard<std::shared_mutex> &);
 
 	log_lsa get_saved_lsa () const override final;
-	void finish_connecting () override final;
+
+	void on_connecting () override final;
 	void on_disconnecting () override final;
 
       private:

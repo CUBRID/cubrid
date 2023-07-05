@@ -136,10 +136,10 @@ class tran_server
 	 * | IDLE          | O            | X            | X            | X          | X           |
 	 * | CONNECTING    | X            | O            | X            | O          | X           |
 	 * | CONNECTED     | X            | O            | O            | O          | O           |
-	 * | DISCONNECTING | X            | O            | X            | △          | X           |
+	 * | DISCONNECTING | X            | O            | X            | O          | X           |
 	 * +---------------+--------------+--------------+--------------+------------+-------------+
 	 *
-	 * O: Allowed, X: not allowed, △: not certain
+	 * O: Allowed, X: not allowed
 	 *
 	 * m_state and m_conn are coupled and mutexes for them are managed carefully to provide above rules.
 	 */
@@ -161,10 +161,12 @@ class tran_server
 	virtual request_handlers_map_t get_request_handlers ();
 
 	/*
-	 * Do the josb depending on the servery type and set m_state to state::CONNECTED.
-	 * the connection has been established already, do the preliminary jobs before opening the connection to ouside.
-	 * */
-	virtual void finish_connecting () = 0;
+	 * Do the server-type-specific jobs before state transtition.
+	 *
+	 * on_connecting:     CONNECTING -> (*) -> CONNECTED
+	 * on_disconnecting:  DISCONNECTING -> (*) -> IDLE
+	 */
+	virtual void on_connecting () = 0;
 	virtual void on_disconnecting () = 0;
 
       protected:

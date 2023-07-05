@@ -369,9 +369,17 @@ tran_server::connection_handler::connect ()
     set_connection (std::move (srv_chn));
   }
 
-  // Do the josb depending on the servery type
-  // and set m_state to state::CONNECTED either synchronously or asynchronously
-  finish_connecting ();
+  // Do the preliminary jobs depending on the server type before opening the conneciton to the outisde
+  on_connecting ();
+
+  {
+    auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+    assert (m_state == state::CONNECTING);
+    m_state = state::CONNECTED;
+  }
+
+  er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
+		get_channel_id ().c_str ());
 
   return NO_ERROR;
 }
