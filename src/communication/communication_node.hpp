@@ -28,11 +28,11 @@ namespace cubcomm
   {
     public:
       node () = default;
-      node (const node &nd) = default;
+      node (const node &nd) = delete;
       node (node &&nd) = default;
       node (long port, std::string host);
 
-      node &operator= (const node &nd) = default;
+      node &operator= (const node &nd) = delete;
       node &operator= (node &&nd) = default;
 
       long get_port () const;
