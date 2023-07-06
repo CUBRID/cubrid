@@ -227,7 +227,7 @@ namespace cubcomm
   // Helper function that packs MsgId & PackableArgs and sends them on chn
   template <typename MsgId, typename ... PackableArgs>
   css_error_code send_client_request (channel &chn, cubmem::extensible_block &send_ext_block,
-				      MsgId msgid, const PackableArgs &... args);
+				      MsgId msgid, PackableArgs &&... args);
 
   // Err logging functions
   void er_log_send_request (const channel &chn, int msgid, size_t size);
@@ -267,6 +267,13 @@ namespace cubcomm
     : m_channel (std::move (chn))
     , m_recv_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
+    // arbitrary initial size; will be grown upon need
+    // TODO:
+    //  - in an ideal situation, the maximum size used will be the size of an IO page size +
+    //    some overhead as dictated by the used packing mechanism
+    //  - however, there are known issues where the transmitted size of a message can be huge;
+    //  - this will be addressed later (see http://jira.cubrid.org/browse/LETS-743 )
+    m_recv_extensible_block.extend_to (IO_PAGESIZE * 2);
   }
 
   template <typename MsgId>
@@ -344,33 +351,47 @@ namespace cubcomm
   template <typename MsgId>
   css_error_code request_server<MsgId>::receive_request_buffer (size_t &message_size)
   {
-    size_t expected_size = 0;
-    size_t size_ilen = sizeof (expected_size);
-
     message_size = 0;
 
-    // NOTE: no ntohl here; integer value received as a stream of bytes
-    css_error_code err = m_channel.recv (reinterpret_cast <char *> (&expected_size), size_ilen);
-    if (err != NO_ERRORS)
+    size_t recv_size = m_recv_extensible_block.get_size ();
+    size_t rem_size = 0;
+    const css_error_code err = m_channel.recv_allow_truncated (m_recv_extensible_block.get_ptr (), recv_size,
+			       rem_size);
+    if (err == RECORD_TRUNCATED)
+      {
+	// there is more data to retrieve
+	// extend the block and supply the new pointer
+
+	assert (recv_size == m_recv_extensible_block.get_size ());
+	assert (rem_size > 0);
+
+	m_recv_extensible_block.extend_by (rem_size);
+
+	char *const advanced_ptr = m_recv_extensible_block.get_ptr () + recv_size;
+	size_t recv_rem_size = rem_size;
+	const css_error_code err_rem = m_channel.recv_remainder (advanced_ptr, recv_rem_size);
+	if (err_rem != NO_ERRORS)
+	  {
+	    er_log_recv_fail (m_channel, err_rem);
+	    return err_rem;
+	  }
+
+	assert (rem_size == recv_rem_size);
+
+	message_size += recv_rem_size;
+      }
+    else if (err != NO_ERRORS)
       {
 	er_log_recv_fail (m_channel, err);
 	return err;
       }
-    assert (size_ilen == sizeof (expected_size));
-
-    // will re-alloc until the block size gets big enough that will not neet to re-alloc anymore
-    m_recv_extensible_block.extend_to (expected_size);
-
-    size_t receive_size = expected_size;
-    err = m_channel.recv (m_recv_extensible_block.get_ptr (), receive_size);
-    if (err != NO_ERRORS)
+    else
       {
-	er_log_recv_fail (m_channel, err);
-	return err;
+	assert (rem_size == 0);
+	assert (recv_size <= m_recv_extensible_block.get_size ());
       }
-    assert (receive_size == expected_size);
 
-    message_size = receive_size;
+    message_size += recv_size;
 
     return NO_ERRORS;
   }
@@ -433,16 +454,7 @@ namespace cubcomm
 
     er_log_send_request (chn, static_cast<int> (msgid), packer_current_size);
 
-    // NOTE: no htonl here; integer value sent as a stream of bytes
-    const css_error_code css_size_err = chn.send (
-	reinterpret_cast<const char *> (&packer_current_size), sizeof (packer_current_size));
-    if (css_size_err != NO_ERRORS)
-      {
-	er_log_send_fail (chn, css_size_err);
-	return css_size_err;
-      }
-
-    const css_error_code css_err = chn.send (send_ext_block.get_ptr (), packer.get_current_size ());
+    const css_error_code css_err = chn.send (send_ext_block.get_ptr (), packer_current_size);
     if (css_err != NO_ERRORS)
       {
 	er_log_send_fail (chn, css_err);
