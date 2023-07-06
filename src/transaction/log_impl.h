@@ -60,6 +60,7 @@
 #include "tde.h"
 #include "lockfree_circular_queue.hpp"
 
+#include <atomic>
 #include <unordered_set>
 #include <queue>
 #include <assert.h>
@@ -602,6 +603,7 @@ struct log_tdes
   log_postpone_cache m_log_postpone_cache;
 
   bool has_supplemental_log;	/* Checks if supplemental log has been appended within the transaction */
+    std::atomic < uint64_t > cur_mem_usage;
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))

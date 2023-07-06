@@ -87,6 +87,7 @@
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
+#include "memory_monitor_sr.hpp"
 #endif /* SERVER_MODE */
 
 #if defined(WINDOWS)
@@ -2359,6 +2360,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	  goto error;
 	}
     }
+
+#if defined(SERVER_MODE)
+  error_code = mmon_initialize (db_name);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+#endif
 
   spage_boot (thread_p);
   error_code = heap_manager_initialize ();
