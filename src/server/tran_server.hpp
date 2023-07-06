@@ -164,6 +164,8 @@ class tran_server
 
       private:
 	void set_connection (cubcomm::channel &&chn);
+	// The default error handler for sending reqeust
+	void default_error_handler (css_error_code error_code, bool &abort_further_processing);
 	// Request handlers for requests in common
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &&a_sp);
 
