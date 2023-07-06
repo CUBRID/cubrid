@@ -544,7 +544,7 @@ jsp_start_server (const char *db_name, const char *path, int port)
       }
 
     snprintf (classpath, sizeof (classpath) - 1, "-Djava.class.path=%s",
-	      envvar_javadir_file (jsp_file_path, PATH_MAX, "jspserver.jar"));
+	      envvar_javadir_file (jsp_file_path, PATH_MAX, "pl_server.jar"));
 
     snprintf (logging_prop, sizeof (logging_prop) - 1, "-Djava.util.logging.config.file=%s",
 	      envvar_javadir_file (jsp_file_path, PATH_MAX, "logging.properties"));
