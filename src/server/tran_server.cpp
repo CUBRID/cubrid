@@ -460,6 +460,8 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   cubcomm::send_queue_error_handler default_error_handler = [this]
       (css_error_code error_code, bool &abort_further_processing)
   {
+    abort_further_processing = false;
+
     // Remove the connection_handler if the internal socket is closed. It's been disconnected abnormally.
     if (error_code == CONNECTION_CLOSED)
       {
