@@ -4479,7 +4479,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
       else
 	{
 	  sum->data_type->info.data_type.dec_precision = 0;
-	  sum->info.expr.arg2 = parser_copy_tree (parser, limit);
+	  sum->info.expr.arg1 = parser_copy_tree (parser, limit);
 	}
 
       sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
