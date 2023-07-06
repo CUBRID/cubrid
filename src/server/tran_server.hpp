@@ -138,10 +138,10 @@ class tran_server
 	 * | IDLE          | O            | X            | X            | X          | X           |
 	 * | CONNECTING    | X            | O            | X            | O          | X           |
 	 * | CONNECTED     | X            | O            | O            | O          | O           |
-	 * | DISCONNECTING | X            | O            | X            | O          | X           |
+	 * | DISCONNECTING | X            | O            | X            | △          | X           |
 	 * +---------------+--------------+--------------+--------------+------------+-------------+
 	 *
-	 * O: Allowed, X: not allowed
+	 * O: Allowed, X: not allowed, △: not certain
 	 *
 	 * m_state and m_conn are coupled and mutexes for them are managed carefully to provide above rules.
 	 */

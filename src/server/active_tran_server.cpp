@@ -67,7 +67,6 @@ active_tran_server::compute_consensus_lsa ()
   const int total_node_cnt = m_page_server_conn_vec.size ();
   const int quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
   int cur_node_cnt = 0;
-
   std::vector<log_lsa> collected_saved_lsa;
 
   for (const auto &conn : m_page_server_conn_vec)
