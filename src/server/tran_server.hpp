@@ -85,6 +85,7 @@ class tran_server
 
     void disconnect_all_page_servers ();
     bool is_page_server_connected () const;
+    bool get_main_connection_info (std::string &host_out, int &port_out); // return false if m_main_conn == nullptr
     virtual bool uses_remote_storage () const;
 
     // Before disconnecting page server, make sure no message is being sent anymore to the page server.
@@ -118,6 +119,7 @@ class tran_server
 	const std::string get_channel_id () const;
 	bool is_connected ();
 	bool is_idle ();
+	const cubcomm::node &get_node () const;
 
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 

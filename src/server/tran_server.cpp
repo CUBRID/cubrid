@@ -453,6 +453,21 @@ tran_server::uses_remote_storage () const
   return false;
 }
 
+bool tran_server::get_main_connection_info (std::string &host_out, int32_t &port_out)
+{
+  auto slock = std::shared_lock<std::shared_mutex> { m_main_conn_mtx };
+  if (m_main_conn == nullptr)
+    {
+      return false;
+    }
+
+  auto &node = m_main_conn->get_node ();
+  host_out = node.get_host ();
+  port_out = node.get_port ();
+
+  return true;
+}
+
 void
 tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 {
@@ -661,6 +676,12 @@ tran_server::connection_handler::is_idle ()
 {
   auto slock = std::shared_lock<std::shared_mutex> { m_state_mtx };
   return m_state == state::IDLE;
+}
+
+const cubcomm::node &
+tran_server::connection_handler::get_node () const
+{
+  return m_node;
 }
 
 tran_server::ps_connector::ps_connector (tran_server &ts)

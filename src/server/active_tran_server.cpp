@@ -67,6 +67,7 @@ active_tran_server::compute_consensus_lsa ()
   const int total_node_cnt = m_page_server_conn_vec.size ();
   const int quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
   int cur_node_cnt = 0;
+
   std::vector<log_lsa> collected_saved_lsa;
 
   for (const auto &conn : m_page_server_conn_vec)
@@ -183,9 +184,14 @@ active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&c
   cubpacking::packer packer;
   size_t size = 0;
 
-  /* TODO: It will be the target PS's info. */
-  const auto hostname = m_node.get_host ();
-  const auto port = m_node.get_port ();
+  std::string hostname;
+  int32_t port = -1;
+
+  if (m_ts.get_main_connection_info (hostname, port) == false)
+    {
+      // there is no main connection yet. you will be the main connection and don't catch-up
+      catchup_lsa.set_null ();
+    }
 
   size += cublog::lsa_utils::get_packed_size (packer, size); // catchup_lsa
   size += packer.get_packed_int_size (size); // port
