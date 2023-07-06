@@ -367,6 +367,8 @@ tran_server::connection_handler::connect ()
     // moved as argument below
     set_connection (std::move (srv_chn));
 
+
+    // TODO initailizing jobs will be triggered such as the catch-up process. state::CONNECTED will be set asynchronously when it's done.
     m_state = state::CONNECTED;
 
     er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
