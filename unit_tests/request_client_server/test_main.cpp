@@ -1417,6 +1417,8 @@ test_two_request_sync_client_server_env::mock_socket_between_two_sync_client_ser
 #include "system_parameter.h"
 #include "object_representation.h"
 
+PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
+
 void
 _er_log_debug (const char *, const int, const char *, ...)
 {

@@ -268,7 +268,12 @@ namespace cubcomm
     , m_recv_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
     // arbitrary initial size; will be grown upon need
-    m_recv_extensible_block.extend_to (IO_MAX_PAGE_SIZE * 4);
+    // TODO:
+    //  - in an ideal situation, the maximum size used will be the size of an IO page size +
+    //    some overhead as dictated by the used packing mechanism
+    //  - however, there are known issues where the transmitted size of a message can be huge;
+    //  - this will be addressed later (see http://jira.cubrid.org/browse/LETS-743 )
+    m_recv_extensible_block.extend_to (IO_PAGESIZE * 2);
   }
 
   template <typename MsgId>
@@ -360,7 +365,6 @@ namespace cubcomm
 	assert (recv_size == m_recv_extensible_block.get_size ());
 	assert (rem_size > 0);
 
-	// TODO: maybe it should be extended to a multiple of page size?
 	m_recv_extensible_block.extend_by (rem_size);
 
 	char *const advanced_ptr = m_recv_extensible_block.get_ptr () + recv_size;
