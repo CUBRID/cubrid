@@ -453,17 +453,38 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
   // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
 
-  cubcomm::send_queue_error_handler no_transaction_handler { nullptr };
-  // Transaction server will use message specific error handlers.
-  // Implementation will assert that an error handler is present if needed.
+  auto error_handler = std::bind (&tran_server::connection_handler::default_error_handler, this,
+				  std::placeholders::_1, std::placeholders::_2);
 
   auto lockg_conn = std::lock_guard<std::shared_mutex> { m_conn_mtx };
 
   assert (m_conn == nullptr);
   m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
-					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (no_transaction_handler)));
+					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (error_handler)));
 
   m_conn->start ();
+}
+
+void
+tran_server::connection_handler::default_error_handler (css_error_code error_code, bool &abort_further_processing)
+{
+  abort_further_processing = false;
+
+  // Remove the connection_handler if the internal socket is closed. It's been disconnected abnormally.
+  if (error_code == CONNECTION_CLOSED)
+    {
+      abort_further_processing = true;
+      er_log_debug (ARG_FILE_LINE,
+		    "default_error_handler: an abnormal disconnection has been detected. channel id: %s.\n", get_channel_id ().c_str ());
+
+      constexpr auto with_disc_msg = false;
+      disconnect_async (with_disc_msg);
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "default_error_handler: error code: %d, channel id: %s.\n", error_code,
+		    get_channel_id ().c_str ());
+    }
 }
 
 tran_server::connection_handler::~connection_handler ()
@@ -590,6 +611,18 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
   const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
   if (error_code != NO_ERRORS)
     {
+      if (error_code == CONNECTION_CLOSED)
+	{
+	  er_log_debug (ARG_FILE_LINE,
+			"send_receive: an abnormal disconnection has been detected. error code: %d, channel id: %s.\n", error_code,
+			get_channel_id ().c_str ());
+
+	  slock_conn.unlock (); /* disconnect_async requires that m_conn_mtx and m_state_mtx are unlocked */
+
+	  constexpr auto with_disc_msg = false;
+	  disconnect_async (with_disc_msg);
+	}
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
       return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
     }
