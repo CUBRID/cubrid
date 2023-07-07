@@ -86,7 +86,7 @@ namespace cubperf
       mmon_component &operator = (mmon_component &&) = delete;
 
       const char *get_name ();
-      void add_stat (uint64_t size, int subcomp_idx, bool allocation_at_init, bool expand);
+      void add_stat (uint64_t size, int subcomp_idx, bool allocation_at_init, bool is_expanded);
       void sub_stat (uint64_t size, int subcomp_idx, bool deallocation_at_init);
       int get_subcomp_index (const char *subcomp_name);
       int add_subcomponent (const char *name);
@@ -116,7 +116,7 @@ namespace cubperf
       mmon_module &operator = (mmon_module &&) = delete;
 
       virtual int aggregate_stats (const MMON_MODULE_INFO &info);
-      void add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool allocation_at_init, bool expand);
+      void add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool allocation_at_init, bool is_expanded);
       void sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool deallocation_at_init);
       int add_component (const char *name);
       int get_comp_idx_map_val (int idx);
@@ -143,7 +143,7 @@ namespace cubperf
       memory_monitor &operator = (const memory_monitor &) = delete;
       memory_monitor &operator = (memory_monitor &&) = delete;
 
-      void add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool expand);
+      void add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool is_expanded);
       void sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size);
       void resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size);
       void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size);
@@ -216,14 +216,14 @@ namespace cubperf
     return m_comp_name.c_str ();
   }
 
-  void mmon_component::add_stat (uint64_t size, int subcomp_idx, bool allocation_at_init, bool is_resized)
+  void mmon_component::add_stat (uint64_t size, int subcomp_idx, bool allocation_at_init, bool is_expanded)
   {
     /* description of add_stat(..).
      * 1) if allocation_at_init == true, add init_stat
      * 2) then, add cur_stat
      * 3) compare with peak_stat
      * 4) if cur_stat(new) > peak_stat, update peak_stat
-     * 5) if is_resized == true, expand_count++
+     * 5) if is_expanded == true, expand_count++
      * 6) call subcomponent->add_cur_stat(size) */
 
     if (allocation_at_init)
@@ -238,7 +238,7 @@ namespace cubperf
 	m_stat.peak_stat = m_stat.cur_stat.load ();
       }
 
-    if (is_resized)
+    if (is_expanded)
       {
 	m_stat.expand_count++;
       }
@@ -355,14 +355,14 @@ namespace cubperf
     return error;
   }
 
-  void mmon_module::add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool allocation_at_init, bool is_resized)
+  void mmon_module::add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool allocation_at_init, bool is_expanded)
   {
     /* description of add_stat(..).
      * 1) if allocation_at_init == true, add init_stat
      * 2) then, add cur_stat
      * 3) compare with peak_stat
      * 4) if cur_stat(new) > peak_stat, update peak_stat
-     * 5) if is_resized == true, expand_count++
+     * 5) if is_expanded == true, expand_count++
      * 6) call component->add_stat(size, subcomp_idx, allocation_at_init, is_resized) */
 
     if (allocation_at_init)
@@ -377,7 +377,7 @@ namespace cubperf
 	m_stat.peak_stat = m_stat.cur_stat.load ();
       }
 
-    if (is_resized)
+    if (is_expanded)
       {
 	m_stat.expand_count++;
       }
@@ -439,7 +439,7 @@ namespace cubperf
     return 0;
   }
 
-  void memory_monitor::add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool is_resized)
+  void memory_monitor::add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool is_expanded)
   {
     LOG_TDES *tdes;
     TRANID trid = NULL_TRANID;
@@ -459,7 +459,7 @@ namespace cubperf
 
     m_total_mem_usage += size;
 
-    m_module[module_idx]->add_stat (size, comp_idx, subcomp_idx, allocation_at_init, is_resized);
+    m_module[module_idx]->add_stat (size, comp_idx, subcomp_idx, allocation_at_init, is_expanded);
 
     if (thread_p)
       {
@@ -507,7 +507,14 @@ namespace cubperf
 				    uint64_t new_size)
   {
     this->sub_stat (thread_p, stat_id, old_size);
-    this->add_stat (thread_p, stat_id, new_size, true);
+    if (new_size - old_size > 0) /* expand */
+      {
+	this->add_stat (thread_p, stat_id, new_size, true);
+      }
+    else /* shrink */
+      {
+	this->add_stat (thread_p, stat_id, new_size, false);
+      }
   }
 
   void memory_monitor::move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size)
