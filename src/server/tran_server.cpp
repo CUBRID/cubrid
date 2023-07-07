@@ -435,11 +435,7 @@ tran_server::reset_main_connection ()
     }
 
   auto ulock = std::unique_lock<std::shared_mutex> { m_main_conn_mtx };
-  if (m_main_conn == main_conn_cand->get ())
-    {
-      er_log_debug (ARG_FILE_LINE, "The main connection has been already reset.\n");
-    }
-  else
+  if (m_main_conn != main_conn_cand->get ())
     {
       m_main_conn = main_conn_cand->get ();
       er_log_debug (ARG_FILE_LINE, "The main connection is set to %s.\n",
