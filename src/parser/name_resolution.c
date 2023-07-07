@@ -255,8 +255,6 @@ static PT_NODE *pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, 
 static int pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node, char **server_owner_name);
 static int pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, char **server_owner_name);
 
-static T_CCI_COL_INFO *pt_dblink_get_column_info (char *url, char *user, char *password, char *sql_text);
-
 static void pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt);
 typedef struct
 {
@@ -5108,57 +5106,6 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 }
 
 #define MAX_LEN_CONNECTION_URL	512
-
-static T_CCI_COL_INFO *
-pt_dblink_get_column_info (char *url, char *user_name, char *password, char *sql_text)
-{
-  T_CCI_ERROR err_buf;
-  T_CCI_COL_INFO *col_info;
-  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
-  int conn_handle, stmt_handle;
-  char *find = strstr (url, ":?");
-  int stmt_type, col_cnt;
-
-  if (find)
-    {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "&__gateway=true");
-    }
-  else
-    {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "?__gateway=true");
-    }
-
-  conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
-  if (conn_handle < 0)
-    {
-      stmt_handle = -1;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      goto error_exit;
-    }
-  else
-    {
-      T_CCI_CUBRID_STMT stmt_type;
-
-      stmt_handle = cci_prepare (conn_handle, sql_text, 0, &err_buf);
-      if (stmt_handle < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  goto error_exit;
-	}
-      col_info = (T_CCI_COL_INFO *) cci_get_result_info (stmt_handle, &stmt_type, &col_cnt);
-      if (col_info == NULL)
-	{
-	  /* this can not be reached, something wrong */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
-	  goto error_exit;
-	}
-    }
-
-  return col_info;
-
-error_exit:
-  return NULL;
-}
 
 static int
 pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_REMOTE_TBL_COLS * rmt_tbl_cols)
