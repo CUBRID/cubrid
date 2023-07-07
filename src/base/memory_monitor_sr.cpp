@@ -363,7 +363,7 @@ namespace cubperf
      * 3) compare with peak_stat
      * 4) if cur_stat(new) > peak_stat, update peak_stat
      * 5) if is_expanded == true, expand_count++
-     * 6) call component->add_stat(size, subcomp_idx, allocation_at_init, is_resized) */
+     * 6) call component->add_stat(size, subcomp_idx, allocation_at_init, is_expanded) */
 
     if (allocation_at_init)
       {
@@ -384,7 +384,7 @@ namespace cubperf
 
     if (comp_idx != mmon_module::MAX_COMP_IDX)
       {
-	m_component[comp_idx]->add_stat (size, subcomp_idx, allocation_at_init, is_resized);
+	m_component[comp_idx]->add_stat (size, subcomp_idx, allocation_at_init, is_expanded);
       }
   }
 
@@ -445,7 +445,7 @@ namespace cubperf
     TRANID trid = NULL_TRANID;
     int module_idx = MMON_GET_MODULE_IDX_FROM_STAT_ID (stat_id);
     int comp_map_idx = MMON_GET_COMP_MAP_IDX_FROM_STAT_ID (stat_id);
-    int compound, comp_idx, subcomp_idx;
+    int idx_map_val, comp_idx, subcomp_idx;
     bool allocation_at_init = false;
 
     if (!LOG_ISRESTARTED ())
@@ -453,9 +453,9 @@ namespace cubperf
 	allocation_at_init = true;
       }
 
-    compound = m_module[module_idx]->get_comp_idx_map_val (comp_map_idx);
-    comp_idx = get_comp_idx_from_comp_idx_map (compound);
-    subcomp_idx = get_subcomp_idx_from_comp_idx_map (compound);
+    idx_map_val = m_module[module_idx]->get_comp_idx_map_val (comp_map_idx);
+    comp_idx = get_comp_idx_from_comp_idx_map (idx_map_val);
+    subcomp_idx = get_subcomp_idx_from_comp_idx_map (idx_map_val);
 
     m_total_mem_usage += size;
 
@@ -477,7 +477,7 @@ namespace cubperf
     TRANID trid = NULL_TRANID;
     int module_idx = MMON_GET_MODULE_IDX_FROM_STAT_ID (stat_id);
     int comp_map_idx = MMON_GET_COMP_MAP_IDX_FROM_STAT_ID (stat_id);
-    int compound, comp_idx, subcomp_idx;
+    int idx_map_val, comp_idx, subcomp_idx;
     bool deallocation_at_init = false;
 
     if (!LOG_ISRESTARTED ())
@@ -485,9 +485,9 @@ namespace cubperf
 	deallocation_at_init = true;
       }
 
-    compound = m_module[module_idx]->get_comp_idx_map_val (comp_map_idx);
-    comp_idx = get_comp_idx_from_comp_idx_map (compound);
-    subcomp_idx = get_subcomp_idx_from_comp_idx_map (compound);
+    idx_map_val = m_module[module_idx]->get_comp_idx_map_val (comp_map_idx);
+    comp_idx = get_comp_idx_from_comp_idx_map (idx_map_val);
+    subcomp_idx = get_subcomp_idx_from_comp_idx_map (idx_map_val);
 
     m_total_mem_usage -= size;
 
