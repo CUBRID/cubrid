@@ -375,6 +375,15 @@ tran_server::connection_handler::connect ()
 		  srv_chn.get_channel_id ().c_str ());
   }
 
+  /*
+   *  Now, the main connection is reset whenever a new connection is established.
+   *  The main connection information is used in the following connection_handler's connection.
+   *  Sepcifically, the target PS to catch up with during CONNECTING is the main connection.
+   *
+   *  TODO: later, when the ATS recovery with multi-PS comes in, a leader PS elected will be the target PS,
+   *  and the main connection doesn't need to be set here, but in more appropriate location.
+   *  For example, it can be set after establishing all connection.
+   */
   if (m_ts.reset_main_connection () != NO_ERROR)
     {
       assert (false); // At least this connection_handler can be the main connection
