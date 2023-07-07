@@ -18724,7 +18724,9 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_bytes (parser, q, ", ", 2);
   if (p->info.dblink_table.rewritten)
     {
-      q = pt_append_varchar (parser, q, p->info.dblink_table.rewritten);
+      q =
+	pt_append_quoted_string (parser, q, (char *) p->info.dblink_table.rewritten->bytes,
+				 p->info.dblink_table.rewritten->length);
     }
   else if (p->info.dblink_table.qstr)
     {
