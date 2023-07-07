@@ -31,9 +31,8 @@
 package com.cubrid.plcsql.predefined;
 
 import static com.cubrid.plcsql.predefined.sp.SpLib.*;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -48,7 +47,6 @@ import java.util.List;
 import java.util.Set;
 import org.apache.commons.collections4.MultiSet;
 import org.apache.commons.collections4.multiset.HashMultiSet;
-import org.junit.Test;
 
 public class TestSpLib {
     @Test
