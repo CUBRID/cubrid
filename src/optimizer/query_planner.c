@@ -9910,6 +9910,12 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
       return 0;
     }
 
+  if (info->ndv > 0)
+    {
+      int ndv = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;	/* need to change type to INT64 */
+      return ndv;
+    }
+
   if (info->cum_stats.is_indexed != true)
     {
       return 0;
