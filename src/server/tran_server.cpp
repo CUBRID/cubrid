@@ -378,7 +378,6 @@ tran_server::connection_handler::connect ()
 
     m_state = state::CONNECTED;
   }
-
   /*
    *  Now, the main connection is reset whenever a new connection is established.
    *  The main connection information is used in the following connection_handler's connection.
