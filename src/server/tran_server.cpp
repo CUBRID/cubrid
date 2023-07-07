@@ -478,7 +478,7 @@ tran_server::connection_handler::~connection_handler ()
 void
 tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 {
-  auto lockg = std::lock_guard <std::shared_mutex> { m_state_mtx };
+  auto ulock = std::unique_lock <std::shared_mutex> { m_state_mtx };
 
   if (m_state == state::IDLE || m_state == state::DISCONNECTING)
     {
@@ -487,6 +487,8 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 
   assert (m_state == state::CONNECTING || m_state == state::CONNECTED);
   m_state = state::DISCONNECTING;
+
+  ulock.unlock();
 
   on_disconnecting (); // server-type specific jobs before disconnect
 
