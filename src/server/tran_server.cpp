@@ -330,49 +330,53 @@ tran_server::connection_handler::connect ()
 
   assert_is_tran_server ();
 
+  {
+    auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+    assert (m_state == state::IDLE);
+
+    m_state = state::CONNECTING;
+
+    // connect to page server
+    constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
+    cubcomm::server_channel srv_chn (m_ts.m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
+
+    srv_chn.set_channel_name ("TS_PS_comm");
+
+    css_error_code comm_error_code = srv_chn.connect (m_node.get_host ().c_str (), m_node.get_port (),
+				     CMD_SERVER_SERVER_CONNECT);
+    if (comm_error_code != css_error_code::NO_ERRORS)
+      {
+	return ps_conn_error_lambda (lockg_state);
+      }
+
+    if (srv_chn.send_int (static_cast<int> (m_ts.m_conn_type)) != NO_ERRORS)
+      {
+	return ps_conn_error_lambda (lockg_state);
+      }
+
+    int returned_code;
+    if (srv_chn.recv_int (returned_code) != css_error_code::NO_ERRORS)
+      {
+	return ps_conn_error_lambda (lockg_state);
+      }
+    if (returned_code != static_cast<int> (m_ts.m_conn_type))
+      {
+	return ps_conn_error_lambda (lockg_state);
+      }
+
+    set_connection (std::move (srv_chn));
+
+    er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
+		  srv_chn.get_channel_id ().c_str ());
+  }
+
+  // Do the preliminary jobs depending on the server type before opening the conneciton to the outisde.
+  on_connecting ();
+
   auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
-  assert (m_state == state::IDLE);
-
-  m_state = state::CONNECTING;
-
-  // connect to page server
-  constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
-  cubcomm::server_channel srv_chn (m_ts.m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
-
-  srv_chn.set_channel_name ("TS_PS_comm");
-
-  css_error_code comm_error_code = srv_chn.connect (m_node.get_host ().c_str (), m_node.get_port (),
-				   CMD_SERVER_SERVER_CONNECT);
-  if (comm_error_code != css_error_code::NO_ERRORS)
-    {
-      return ps_conn_error_lambda (lockg_state);
-    }
-
-  if (srv_chn.send_int (static_cast<int> (m_ts.m_conn_type)) != NO_ERRORS)
-    {
-      return ps_conn_error_lambda (lockg_state);
-    }
-
-  int returned_code;
-  if (srv_chn.recv_int (returned_code) != css_error_code::NO_ERRORS)
-    {
-      return ps_conn_error_lambda (lockg_state);
-    }
-  if (returned_code != static_cast<int> (m_ts.m_conn_type))
-    {
-      return ps_conn_error_lambda (lockg_state);
-    }
-
-  // NOTE: only the base class part (cubcomm::channel) of a cubcomm::server_channel instance is
-  // moved as argument below
-  set_connection (std::move (srv_chn));
-
-  // TODO initailizing jobs will be triggered such as the catch-up process. state::CONNECTED will be set asynchronously when it's done.
+  assert (m_state == state::CONNECTING);
 
   m_state = state::CONNECTED;
-
-  er_log_debug (ARG_FILE_LINE, "Transaction server successfully connected to the page server. Channel id: %s.\n",
-		srv_chn.get_channel_id ().c_str ());
 
   return NO_ERROR;
 }
@@ -507,6 +511,7 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 
   m_disconn_future = std::async (std::launch::async, [this, with_disc_msg]
   {
+    on_disconnecting (); // server-type specific jobs before disconnect
     // m_conn is not nullptr since it's only set to nullptr here below once
     m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
     auto ulock_conn = std::unique_lock<std::shared_mutex> { m_conn_mtx };
