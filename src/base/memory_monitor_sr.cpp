@@ -317,7 +317,7 @@ namespace cubperf
 	      {
 		comp_idx = add_component (info[idx].comp_name);
 	      }
-	    /* XXX: add error if comp_idx > MAX_COMP_IDX */
+	    assert (comp_idx < MAX_COMP_IDX);
 
 	    if (info[idx].subcomp_name)
 	      {
@@ -331,7 +331,7 @@ namespace cubperf
 		  {
 		    subcomp_idx = m_component[comp_idx]->add_subcomponent (info[idx].subcomp_name);
 		  }
-		/* XXX: add error if subcomp_idx > MAX_SUBCOMP_IDX */
+		assert (subcomp_idx < MAX_COMP_IDX);
 	      }
 	    else
 	      {
