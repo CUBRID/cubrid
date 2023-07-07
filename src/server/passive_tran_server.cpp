@@ -64,6 +64,16 @@ passive_tran_server::connection_handler::get_saved_lsa () const
 }
 
 void
+passive_tran_server::connection_handler::on_connecting ()
+{
+}
+
+void
+passive_tran_server::connection_handler::on_disconnecting ()
+{
+}
+
+void
 passive_tran_server::stop_outgoing_page_server_messages ()
 {
   cubthread::get_manager ()->destroy_daemon (m_oldest_active_mvccid_sender);

@@ -54,12 +54,14 @@ class active_tran_server : public tran_server
 
       private:
 	request_handlers_map_t get_request_handlers () final override;
-	void remove_prior_sender_sink ();
 
 	// request handlers
 	void receive_saved_lsa (page_server_conn_t::sequenced_payload &&a_sp);
 
 	log_lsa get_saved_lsa () const override final;
+
+	void on_connecting () override final;
+	void on_disconnecting () override final;
 
       private:
 	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;

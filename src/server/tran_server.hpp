@@ -130,6 +130,15 @@ class tran_server
 
 	virtual request_handlers_map_t get_request_handlers ();
 
+	/*
+	 * Do the server-type-specific jobs before state transtition.
+	 *
+	 * on_connecting:     CONNECTING -> (*) -> CONNECTED
+	 * on_disconnecting:  DISCONNECTING -> (*) -> IDLE
+	 */
+	virtual void on_connecting () = 0;
+	virtual void on_disconnecting () = 0;
+
       protected:
 	tran_server &m_ts;
 
@@ -165,6 +174,8 @@ class tran_server
 
       private:
 	void set_connection (cubcomm::channel &&chn);
+	// The default error handler for sending reqeust
+	void default_error_handler (css_error_code error_code, bool &abort_further_processing);
 	// Request handlers for requests in common
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &&a_sp);
 

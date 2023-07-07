@@ -197,6 +197,15 @@ namespace cubcomm
 	}
 	if (err_code != NO_ERRORS)
 	  {
+	    /*
+	     * Set CONNECTION_CLOSED as the error code if the internal socket is closed.
+	     * It lets the outside know that it's disconnected abnormally for some reason.
+	     */
+	    if (!m_client.get_channel ().is_connection_alive ())
+	      {
+		err_code = CONNECTION_CLOSED;
+	      }
+
 	    /* The send over socket is not - in and by itself - capable of detecting when the peer has
 	     * actully dropped the connection. It errors-out as an after effect (eg: when, maybe, the buffer
 	     * is full and there's no more space left to write new data).

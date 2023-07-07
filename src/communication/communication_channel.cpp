@@ -95,16 +95,57 @@ namespace cubcomm
 
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
-    int copy_of_maxlen_in_recvlen_out = (int) maxlen_in_recvlen_out;
-    int rc = NO_ERRORS;
+    int actual_recv_maxlen = (int) maxlen_in_recvlen_out;
 
     assert (m_type != NO_TYPE);
 
-    rc = css_net_recv (m_socket, buffer, &copy_of_maxlen_in_recvlen_out, m_max_timeout_in_ms);
+    const css_error_code rc = (css_error_code) css_net_recv (m_socket, buffer, &actual_recv_maxlen,
+			      m_max_timeout_in_ms);
     er_log_chn_debug ("[%s] Receive buffer of size = %d, max_size = %zu, result = %d", get_channel_id ().c_str (),
-		      copy_of_maxlen_in_recvlen_out, maxlen_in_recvlen_out, rc);
-    maxlen_in_recvlen_out = copy_of_maxlen_in_recvlen_out;
-    return (css_error_code) rc;
+		      actual_recv_maxlen, maxlen_in_recvlen_out, (int)rc);
+    maxlen_in_recvlen_out = actual_recv_maxlen;
+    return rc;
+  }
+
+  css_error_code channel::recv_allow_truncated (char *buffer, std::size_t &maxlen_in_recvlen_out,
+      std::size_t &remaining_len)
+  {
+    int actual_recv_maxlen = (int) maxlen_in_recvlen_out;
+    int actual_remaining_len = (int) remaining_len;
+
+    assert (m_type != NO_TYPE);
+    assert (actual_remaining_len == 0);
+
+    const css_error_code rc = css_net_recv_allow_truncated (m_socket, buffer, &actual_recv_maxlen,
+			      &actual_remaining_len, m_max_timeout_in_ms);
+    er_log_chn_debug ("[%s] Receive%s buffer of size = %d, max_size = %zu, remain = %d, result = %d",
+		      get_channel_id ().c_str (), ((actual_remaining_len > 0) ? " truncated" : " full"),
+		      actual_recv_maxlen, maxlen_in_recvlen_out,
+		      actual_remaining_len, (int)rc);
+
+    assert (actual_recv_maxlen >= 0);
+    maxlen_in_recvlen_out = static_cast<std::size_t> (actual_recv_maxlen);
+
+    assert (actual_remaining_len >= 0);
+    remaining_len = static_cast<std::size_t> (actual_remaining_len);
+
+    return rc;
+  }
+
+  css_error_code channel::recv_remainder (char *buffer, std::size_t &maxlen_in_recvlen_out)
+  {
+    int actual_recv_maxlen = (int) maxlen_in_recvlen_out;
+
+    assert (m_type != NO_TYPE);
+
+    const css_error_code rc = css_net_recv_remainder (m_socket, buffer, &actual_recv_maxlen, m_max_timeout_in_ms);
+    er_log_chn_debug ("[%s] Receive remainder buffer of size = %d, max_size = %zu, result = %d",
+		      get_channel_id ().c_str (), actual_recv_maxlen, maxlen_in_recvlen_out, (int)rc);
+
+    assert (actual_recv_maxlen >= 0);
+    maxlen_in_recvlen_out = static_cast<std::size_t> (actual_recv_maxlen);
+
+    return rc;
   }
 
   css_error_code channel::send (const char *buffer, std::size_t length)
