@@ -4448,7 +4448,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	}
 
       sum->info.expr.op = PT_PLUS;
-      sum->type_enum = PT_TYPE_NUMERIC;
+      sum->type_enum = PT_TYPE_INTEGER;
       sum->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (sum->data_type == NULL)
 	{
@@ -4456,15 +4456,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	  goto error_exit;
 	}
 
-      sum->data_type->type_enum = PT_TYPE_NUMERIC;
-      sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-      sum->data_type->info.data_type.dec_precision = 0;
-
-      if (oracle_style_divide)
-	{
-	  /* It is necessary to prepare for the division operation in advance. */
-	  sum->data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_DIVISION_SCALE;	/* 9 */
-	}
+      sum->data_type->type_enum = PT_TYPE_INTEGER;
 
       sum->info.expr.arg1 = parser_copy_tree (parser, limit);
       sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
