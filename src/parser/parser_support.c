@@ -4448,7 +4448,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	}
 
       sum->info.expr.op = PT_PLUS;
-      sum->type_enum = PT_TYPE_INTEGER;
+      sum->type_enum = PT_TYPE_BIGINT;
       sum->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (sum->data_type == NULL)
 	{
@@ -4456,7 +4456,7 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	  goto error_exit;
 	}
 
-      sum->data_type->type_enum = PT_TYPE_INTEGER;
+      sum->data_type->type_enum = PT_TYPE_BIGINT;
 
       sum->info.expr.arg1 = parser_copy_tree (parser, limit);
       sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
