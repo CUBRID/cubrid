@@ -2815,6 +2815,7 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+  mmon_finalize ();
   cdc_daemons_destroy ();
 
   pgbuf_daemons_destroy ();
@@ -3130,6 +3131,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+  mmon_finalize ();
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
 #endif
