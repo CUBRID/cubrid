@@ -333,14 +333,10 @@ namespace cubperf
 		  }
 		assert (subcomp_idx < MAX_COMP_IDX);
 	      }
-	    else
-	      {
-		assert (info[idx].subcomp_name == NULL);
-	      }
 	  }
 	else
 	  {
-	    assert (info[idx].comp_name == NULL);
+	    assert (info[idx].subcomp_name == NULL);
 	  }
 
 	m_comp_idx_map.push_back (make_comp_idx_map_val (comp_idx, subcomp_idx));
@@ -446,12 +442,7 @@ namespace cubperf
     int module_idx = MMON_GET_MODULE_IDX_FROM_STAT_ID (stat_id);
     int comp_map_idx = MMON_GET_COMP_MAP_IDX_FROM_STAT_ID (stat_id);
     int idx_map_val, comp_idx, subcomp_idx;
-    bool allocation_at_init = false;
-
-    if (!LOG_ISRESTARTED ())
-      {
-	allocation_at_init = true;
-      }
+    bool allocation_at_init = !LOG_ISRESTARTED ();
 
     idx_map_val = m_module[module_idx]->get_comp_idx_map_val (comp_map_idx);
     comp_idx = get_comp_idx_from_comp_idx_map (idx_map_val);
@@ -478,12 +469,7 @@ namespace cubperf
     int module_idx = MMON_GET_MODULE_IDX_FROM_STAT_ID (stat_id);
     int comp_map_idx = MMON_GET_COMP_MAP_IDX_FROM_STAT_ID (stat_id);
     int idx_map_val, comp_idx, subcomp_idx;
-    bool deallocation_at_init = false;
-
-    if (!LOG_ISRESTARTED ())
-      {
-	deallocation_at_init = true;
-      }
+    bool deallocation_at_init = !LOG_ISRESTARTED ();
 
     idx_map_val = m_module[module_idx]->get_comp_idx_map_val (comp_map_idx);
     comp_idx = get_comp_idx_from_comp_idx_map (idx_map_val);
