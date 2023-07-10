@@ -86,8 +86,9 @@ namespace cubperf
       mmon_component &operator = (mmon_component &&) = delete;
 
       const char *get_name ();
-      void add_stat (uint64_t size, int subcomp_idx, bool allocation_at_init, bool is_expanded);
+      void add_stat (uint64_t size, int subcomp_idx, bool allocation_at_init);
       void sub_stat (uint64_t size, int subcomp_idx, bool deallocation_at_init);
+      void add_expand_count ();
       int get_subcomp_index (const char *subcomp_name);
       int add_subcomponent (const char *name);
 
@@ -116,8 +117,9 @@ namespace cubperf
       mmon_module &operator = (mmon_module &&) = delete;
 
       virtual int aggregate_stats (const MMON_MODULE_INFO &info);
-      void add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool allocation_at_init, bool is_expanded);
+      void add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool allocation_at_init);
       void sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool deallocation_at_init);
+      void add_expand_count (int comp_idx);
       int add_component (const char *name);
       int get_comp_idx_map_val (int idx);
       inline int make_comp_idx_map_val (int comp_idx, int subcomp_idx);
@@ -143,8 +145,9 @@ namespace cubperf
       memory_monitor &operator = (const memory_monitor &) = delete;
       memory_monitor &operator = (memory_monitor &&) = delete;
 
-      void add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool is_expanded);
+      void add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size);
       void sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size);
+      void add_expand_count (MMON_STAT_ID stat_id);
       void resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size);
       void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size);
       int aggregate_module_info (MMON_MODULE_INFO *info, int module_index);
@@ -216,15 +219,14 @@ namespace cubperf
     return m_comp_name.c_str ();
   }
 
-  void mmon_component::add_stat (uint64_t size, int subcomp_idx, bool allocation_at_init, bool is_expanded)
+  void mmon_component::add_stat (uint64_t size, int subcomp_idx, bool allocation_at_init)
   {
     /* description of add_stat(..).
      * 1) if allocation_at_init == true, add init_stat
      * 2) then, add cur_stat
      * 3) compare with peak_stat
      * 4) if cur_stat(new) > peak_stat, update peak_stat
-     * 5) if is_expanded == true, expand_count++
-     * 6) call subcomponent->add_cur_stat(size) */
+     * 5) call subcomponent->add_cur_stat(size) */
 
     if (allocation_at_init)
       {
@@ -238,11 +240,7 @@ namespace cubperf
 	m_stat.peak_stat = m_stat.cur_stat.load ();
       }
 
-    if (is_expanded)
-      {
-	m_stat.expand_count++;
-      }
-
+    /* If there is a subcomponent info */
     if (subcomp_idx != mmon_module::MAX_COMP_IDX)
       {
 	m_subcomponent[subcomp_idx]->add_cur_stat (size);
@@ -263,10 +261,16 @@ namespace cubperf
 
     m_stat.cur_stat -= size;
 
+    /* If there is a subcomponent info */
     if (subcomp_idx != mmon_module::MAX_COMP_IDX)
       {
 	m_subcomponent[subcomp_idx]->sub_cur_stat (size);
       }
+  }
+
+  void mmon_component::add_expand_count ()
+  {
+    m_stat.expand_count++;
   }
 
   int mmon_component::get_subcomp_index (const char *subcomp_name)
@@ -351,15 +355,14 @@ namespace cubperf
     return error;
   }
 
-  void mmon_module::add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool allocation_at_init, bool is_expanded)
+  void mmon_module::add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool allocation_at_init)
   {
     /* description of add_stat(..).
      * 1) if allocation_at_init == true, add init_stat
      * 2) then, add cur_stat
      * 3) compare with peak_stat
      * 4) if cur_stat(new) > peak_stat, update peak_stat
-     * 5) if is_expanded == true, expand_count++
-     * 6) call component->add_stat(size, subcomp_idx, allocation_at_init, is_expanded) */
+     * 5) call component->add_stat(size, subcomp_idx, allocation_at_init) */
 
     if (allocation_at_init)
       {
@@ -373,14 +376,10 @@ namespace cubperf
 	m_stat.peak_stat = m_stat.cur_stat.load ();
       }
 
-    if (is_expanded)
-      {
-	m_stat.expand_count++;
-      }
-
+    /* If there is a component info */
     if (comp_idx != mmon_module::MAX_COMP_IDX)
       {
-	m_component[comp_idx]->add_stat (size, subcomp_idx, allocation_at_init, is_expanded);
+	m_component[comp_idx]->add_stat (size, subcomp_idx, allocation_at_init);
       }
   }
 
@@ -398,9 +397,21 @@ namespace cubperf
 
     m_stat.cur_stat -= size;
 
+    /* If there is a component info */
     if (comp_idx != mmon_module::MAX_COMP_IDX)
       {
 	m_component[comp_idx]->sub_stat (size, subcomp_idx, deallocation_at_init);
+      }
+  }
+
+  void mmon_module::add_expand_count (int comp_idx)
+  {
+    m_stat.expand_count++;
+
+    /* If there is a component info */
+    if (comp_idx != mmon_module::MAX_COMP_IDX)
+      {
+	m_component[comp_idx]->add_expand_count ();
       }
   }
 
@@ -435,7 +446,7 @@ namespace cubperf
     return 0;
   }
 
-  void memory_monitor::add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool is_expanded)
+  void memory_monitor::add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
   {
     LOG_TDES *tdes;
     TRANID trid = NULL_TRANID;
@@ -450,7 +461,7 @@ namespace cubperf
 
     m_total_mem_usage += size;
 
-    m_module[module_idx]->add_stat (size, comp_idx, subcomp_idx, allocation_at_init, is_expanded);
+    m_module[module_idx]->add_stat (size, comp_idx, subcomp_idx, allocation_at_init);
 
     if (thread_p)
       {
@@ -489,24 +500,34 @@ namespace cubperf
       }
   }
 
+  void memory_monitor::add_expand_count (MMON_STAT_ID stat_id)
+  {
+    int module_idx = MMON_GET_MODULE_IDX_FROM_STAT_ID (stat_id);
+    int comp_map_idx = MMON_GET_COMP_MAP_IDX_FROM_STAT_ID (stat_id);
+    int idx_map_val, comp_idx, subcomp_idx;
+
+    idx_map_val = m_module[module_idx]->get_comp_idx_map_val (comp_map_idx);
+    comp_idx = get_comp_idx_from_comp_idx_map (idx_map_val);
+    subcomp_idx = get_subcomp_idx_from_comp_idx_map (idx_map_val);
+
+    m_module[module_idx]->add_expand_count (comp_idx);
+  }
+
   void memory_monitor::resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size,
 				    uint64_t new_size)
   {
     this->sub_stat (thread_p, stat_id, old_size);
+    this->add_stat (thread_p, stat_id, new_size);
     if (new_size - old_size > 0) /* expand */
       {
-	this->add_stat (thread_p, stat_id, new_size, true);
-      }
-    else /* shrink */
-      {
-	this->add_stat (thread_p, stat_id, new_size, false);
+	this->add_expand_count (stat_id);
       }
   }
 
   void memory_monitor::move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size)
   {
     this->sub_stat (thread_p, src, size);
-    this->add_stat (thread_p, dest, size, false);
+    this->add_stat (thread_p, dest, size);
   }
 
   int memory_monitor::aggregate_module_info (MMON_MODULE_INFO *info, int module_index)
@@ -528,11 +549,10 @@ int mmon_initialize (const char *server_name)
 
   if (cubperf::mmon_Gl == nullptr)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (cubperf::memory_monitor));
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      return error;
     }
 
-  /* normal return */
   return error;
 }
 
@@ -543,7 +563,7 @@ void mmon_finalize ()
 
 void mmon_add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
 {
-  cubperf::mmon_Gl->add_stat (thread_p, stat_id, size, false);
+  cubperf::mmon_Gl->add_stat (thread_p, stat_id, size);
 }
 
 void mmon_sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
