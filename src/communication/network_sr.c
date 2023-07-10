@@ -737,6 +737,13 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_LOGINFO];
   req_p->processing_function = sflashback_get_loginfo;
+
+  /* memory monitoring */
+  req_p = &net_Requests[NET_SERVER_MMON_GET_MODULE_INFO];
+  req_p->processing_function = smmon_get_module_info;
+
+  req_p = &net_Requests[NET_SERVER_MMON_GET_TRAN_INFO];
+  req_p->processing_function = smmon_get_tran_info;
 }
 
 /*

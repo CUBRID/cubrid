@@ -88,6 +88,7 @@
 #include "log_manager.h"
 #include "crypt_opfunc.h"
 #include "flashback.h"
+#include "memory_monitor_sr.hpp"
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -7266,6 +7267,208 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
   fclose (outfp);
   db_private_free_and_init (thread_p, buffer);
+}
+
+/*
+ * smmon_get_module_info -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ */
+void
+smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer, *ptr;
+  int size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+  MMON_MODULE_INFO info;
+  MMON_COMP_INFO *c_info;
+  MMON_SUBCOMP_INFO *s_info;
+  int module_index = 0;
+
+  ptr = or_unpack_int (request, &module_index);
+
+  error = mmon_aggregate_module_info (info, module_index);
+
+  if (error == NO_ERROR)
+    {
+      /* before send information 
+       * 1) check size
+       * 2) allocate buffer
+       * 3) packing information 
+       * 4) deallocate MMON_MODULE_INFO */
+
+      /* 1) check size 
+       *    - calculate buffer size of packed values
+       *    - server info -> module info -> component info w/ subcomponent info */
+      size += or_packed_string_length (info.server_info.name, NULL);
+      size += OR_INT64_SIZE;
+
+      size += or_packed_string_length (info.name, NULL);
+      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
+
+      for (int i = 0; i < info.num_comp; i++)
+	{
+	  c_info = &(info.comp_info[i]);
+	  size += or_packed_string_length (c_info->name, NULL);
+	  size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
+
+	  for (int j = 0; j < c_info->num_subcomp; j++)
+	    {
+	      s_info = &(c_info->subcomp_info[j]);
+	      size += or_packed_string_length (s_info->name, NULL);
+	      size += OR_INT64_SIZE;
+	    }
+	}
+
+      /* 2) allocate buffer */
+      buffer = (char *) malloc (size);
+
+      /* 3) packing information
+       *    - packing information with sequence of
+       *      server info -> module info -> component info w/ subcomponent info */
+      ptr = or_pack_string (buffer, info.server_info.name);
+      ptr = or_pack_int64 (ptr, info.server_info.total_mem_usage);
+
+      ptr = or_pack_string (ptr, info.name);
+      ptr = or_pack_int64 (ptr, info.stat.init_stat);
+      ptr = or_pack_int64 (ptr, info.stat.cur_stat);
+      ptr = or_pack_int64 (ptr, info.stat.peak_stat);
+      ptr = or_pack_int (ptr, info.stat.expand_count);
+
+      ptr = or_pack_int (ptr, info.num_comp);
+
+      for (int i = 0; i < info.num_comp; i++)
+	{
+	  c_info = &(info.comp_info[i]);
+	  ptr = or_pack_string (ptr, c_info->name);
+	  ptr = or_pack_int64 (ptr, c_info->stat.init_stat);
+	  ptr = or_pack_int64 (ptr, c_info->stat.cur_stat);
+	  ptr = or_pack_int64 (ptr, c_info->stat.peak_stat);
+	  ptr = or_pack_int (ptr, c_info->stat.expand_count);
+
+	  ptr = or_pack_int (ptr, c_info->num_subcomp);
+
+	  for (int j = 0; j < c_info->num_subcomp; j++)
+	    {
+	      s_info = &(c_info->subcomp_info[j]);
+	      ptr = or_pack_string (ptr, s_info->name);
+	      ptr = or_pack_int64 (ptr, s_info->cur_stat);
+	    }
+	}
+
+      /* 4) deallocate memory */
+      for (int i = 0; i < info.num_comp; i++)
+	{
+	  free (info.comp_info[i].subcomp_info);
+	}
+      free (info.comp_info);
+    }
+
+  if (error != NO_ERROR)
+    {
+      ptr = or_pack_int (reply, 0);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      free_and_init (buffer);
+    }
+  else
+    {
+      ptr = or_pack_int (reply, size);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
+      free_and_init (buffer);
+    }
+}
+
+
+/*
+ * smmon_get_tran_info -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ */
+void
+smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer, *ptr;
+  int size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+  MMON_TRAN_INFO info;
+  int tran_count = 0;
+
+  ptr = or_unpack_int (request, &tran_count);
+
+  error = mmon_aggregate_tran_info (info, tran_count);
+
+  if (error == NO_ERROR)
+    {
+      /* before send information 
+       * 1) check size
+       * 2) allocate buffer
+       * 3) packing information 
+       * 4) deallocate MMON_TRAN_INFO */
+
+      /* 1) check size 
+       *    - calculate buffer size of packed values
+       *    - server info -> transaction info */
+      size += or_packed_string_length (info.server_info.name, NULL);
+      size += OR_INT64_SIZE;
+
+      size += OR_INT_SIZE;
+
+      for (int i = 0; i < info.num_tran; i++)
+	{
+	  size += OR_INT_SIZE + OR_INT64_SIZE;
+	}
+
+      /* 2) allocate buffer */
+      buffer = (char *) malloc (size);
+
+      /* 3) packing information
+       *    - packing information with sequence of
+       *      server info -> transaction info */
+      ptr = or_pack_string (buffer, info.server_info.name);
+      ptr = or_pack_int64 (ptr, info.server_info.total_mem_usage);
+
+      ptr = or_pack_int (ptr, info.num_tran);
+
+      for (int i = 0; i < info.num_tran; i++)
+	{
+	  ptr = or_pack_int (ptr, info.tran_stat[i].tranid);
+	  ptr = or_pack_int64 (ptr, info.tran_stat[i].cur_stat);
+	}
+
+      /* 4) deallocate memory */
+      free (info.tran_stat);
+    }
+
+  if (error != NO_ERROR)
+    {
+      ptr = or_pack_int (reply, 0);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      free_and_init (buffer);
+    }
+  else
+    {
+      ptr = or_pack_int (reply, size);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
+      free_and_init (buffer);
+    }
 }
 
 /*

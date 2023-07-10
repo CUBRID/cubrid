@@ -438,14 +438,14 @@ int mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old
   return error;
 }
 
-int mmon_aggregate_module_info (MMON_MODULE_INFO *info, int module_index)
+int mmon_aggregate_module_info (MMON_MODULE_INFO &info, int module_index)
 {
   int error = NO_ERROR;
 
   return error;
 }
 
-int mmon_aggregate_tran_info (MMON_TRAN_INFO *info, int tran_count)
+int mmon_aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count)
 {
   int error = NO_ERROR;
 
