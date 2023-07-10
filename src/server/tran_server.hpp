@@ -142,6 +142,9 @@ class tran_server
       protected:
 	tran_server &m_ts;
 
+	std::unique_ptr<page_server_conn_t> m_conn;
+	std::shared_mutex m_conn_mtx;
+
       private:
 	/*
 	 * The internal state of connection_handler. A connection_handler must be in one of those states.
@@ -181,9 +184,6 @@ class tran_server
 
       private:
 	const cubcomm::node m_node;
-
-	std::unique_ptr<page_server_conn_t> m_conn;
-	std::shared_mutex m_conn_mtx;
 
 	state m_state;
 	std::shared_mutex m_state_mtx;
