@@ -603,7 +603,9 @@ struct log_tdes
   log_postpone_cache m_log_postpone_cache;
 
   bool has_supplemental_log;	/* Checks if supplemental log has been appended within the transaction */
-    std::atomic < uint64_t > cur_mem_usage;
+  // *INDENT-OFF*
+  std::atomic < uint64_t > cur_mem_usage;
+  // *INDENT-ON*
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))

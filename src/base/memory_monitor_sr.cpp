@@ -528,8 +528,8 @@ int mmon_initialize (const char *server_name)
 
   if (cubperf::mmon_Gl == nullptr)
     {
-      /* error case */
-      return -1;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      return error;
     }
 
   /* normal return */
