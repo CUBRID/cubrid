@@ -465,11 +465,8 @@ namespace cubperf
 
     if (thread_p)
       {
-	tdes = LOG_FIND_TDES (thread_p->tran_index);
-	if (tdes != NULL)
-	  {
-	    tdes->cur_mem_usage += size;
-	  }
+	tdes = LOG_FIND_CURRENT_TDES (thread_p);
+	tdes->cur_mem_usage += size;
       }
   }
 
@@ -492,11 +489,8 @@ namespace cubperf
 
     if (thread_p)
       {
-	tdes = LOG_FIND_TDES (thread_p->tran_index);
-	if (tdes != NULL)
-	  {
-	    tdes->cur_mem_usage -= size;
-	  }
+	tdes = LOG_FIND_CURRENT_TDES (thread_p);
+	tdes->cur_mem_usage -= size;
       }
   }
 
