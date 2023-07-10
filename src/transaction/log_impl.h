@@ -604,7 +604,7 @@ struct log_tdes
 
   bool has_supplemental_log;	/* Checks if supplemental log has been appended within the transaction */
   // *INDENT-OFF*
-  std::atomic < uint64_t > cur_mem_usage;
+  std::atomic<uint64_t> cur_mem_usage;
   // *INDENT-ON*
 
   // *INDENT-OFF*
