@@ -6322,7 +6322,7 @@ SYSPRM_PARAM prm_Def[] = {
 #endif
   {PRM_ID_DEDUPLICATE_FK_LEVEL,
    PRM_NAME_DEDUPLICATE_FK_LEVEL,
-   (PRM_FOR_CLIENT | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
    PRM_INTEGER,
    &prm_deduplicate_fk_level_flag,
    (void *) &prm_deduplicate_fk_level_default,
