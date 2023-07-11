@@ -439,12 +439,7 @@ namespace cubperf
     m_module[module_idx]->add_stat (size, comp_idx, subcomp_idx, allocation_at_init);
 
     tdes = LOG_FIND_CURRENT_TDES (thread_p);
-    if (tdes == NULL)
-      {
-	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-	/* for code protection */
-	assert (tdes != NULL);
-      }
+    assert (tdes != NULL);
     tdes->cur_mem_usage += size;
   }
 
@@ -466,12 +461,7 @@ namespace cubperf
     m_module[module_idx]->sub_stat (size, comp_idx, subcomp_idx, deallocation_at_init);
 
     tdes = LOG_FIND_CURRENT_TDES (thread_p);
-    if (tdes == NULL)
-      {
-	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-	/* for code protection */
-	assert (tdes != NULL);
-      }
+    assert (tdes != NULL);
     tdes->cur_mem_usage -= size;
   }
 
