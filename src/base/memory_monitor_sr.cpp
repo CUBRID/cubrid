@@ -147,7 +147,6 @@ namespace cubperf
 
       void add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size);
       void sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size);
-      void add_expand_count (MMON_STAT_ID stat_id);
       void resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size);
       void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size);
       int aggregate_module_info (MMON_MODULE_INFO *info, int module_index);
@@ -221,13 +220,6 @@ namespace cubperf
 
   void mmon_component::add_stat (uint64_t size, int subcomp_idx, bool allocation_at_init)
   {
-    /* description of add_stat(..).
-     * 1) if allocation_at_init == true, add init_stat
-     * 2) then, add cur_stat
-     * 3) compare with peak_stat
-     * 4) if cur_stat(new) > peak_stat, update peak_stat
-     * 5) call subcomponent->add_cur_stat(size) */
-
     if (allocation_at_init)
       {
 	m_stat.init_stat += size;
@@ -249,11 +241,6 @@ namespace cubperf
 
   void mmon_component::sub_stat (uint64_t size, int subcomp_idx, bool deallocation_at_init)
   {
-    /* description of sub_stat(..).
-     * 1) if deallocation_at_init == true, sub init_stat
-     * 2) then, sub cur_stat
-     * 3) call subcomponent->sub_stat(size) */
-
     if (deallocation_at_init)
       {
 	m_stat.init_stat -= size;
@@ -357,13 +344,6 @@ namespace cubperf
 
   void mmon_module::add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool allocation_at_init)
   {
-    /* description of add_stat(..).
-     * 1) if allocation_at_init == true, add init_stat
-     * 2) then, add cur_stat
-     * 3) compare with peak_stat
-     * 4) if cur_stat(new) > peak_stat, update peak_stat
-     * 5) call component->add_stat(size, subcomp_idx, allocation_at_init) */
-
     if (allocation_at_init)
       {
 	m_stat.init_stat += size;
@@ -385,11 +365,6 @@ namespace cubperf
 
   void mmon_module::sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool deallocation_at_init)
   {
-    /* description of sub_stat(..).
-     * 1) if deallocation_at_init == true, sub init_stat
-     * 2) then, sub cur_stat
-     * 3) call component->sub_stat(size, subcomp_idx, deallocation_at_init) */
-
     if (deallocation_at_init)
       {
 	m_stat.init_stat -= size;
@@ -463,11 +438,14 @@ namespace cubperf
 
     m_module[module_idx]->add_stat (size, comp_idx, subcomp_idx, allocation_at_init);
 
-    if (thread_p)
+    tdes = LOG_FIND_CURRENT_TDES (thread_p);
+    if (tdes == NULL)
       {
-	tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	tdes->cur_mem_usage += size;
+	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	/* for code protection */
+	assert (tdes != NULL);
       }
+    tdes->cur_mem_usage += size;
   }
 
   void memory_monitor::sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
@@ -487,41 +465,38 @@ namespace cubperf
 
     m_module[module_idx]->sub_stat (size, comp_idx, subcomp_idx, deallocation_at_init);
 
-    if (thread_p)
+    tdes = LOG_FIND_CURRENT_TDES (thread_p);
+    if (tdes == NULL)
       {
-	tdes = LOG_FIND_CURRENT_TDES (thread_p);
-	tdes->cur_mem_usage -= size;
+	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	/* for code protection */
+	assert (tdes != NULL);
       }
-  }
-
-  void memory_monitor::add_expand_count (MMON_STAT_ID stat_id)
-  {
-    int module_idx = MMON_GET_MODULE_IDX_FROM_STAT_ID (stat_id);
-    int comp_map_idx = MMON_GET_COMP_MAP_IDX_FROM_STAT_ID (stat_id);
-    int idx_map_val, comp_idx, subcomp_idx;
-
-    idx_map_val = m_module[module_idx]->get_comp_idx_map_val (comp_map_idx);
-    comp_idx = get_comp_idx_from_comp_idx_map (idx_map_val);
-    subcomp_idx = get_subcomp_idx_from_comp_idx_map (idx_map_val);
-
-    m_module[module_idx]->add_expand_count (comp_idx);
+    tdes->cur_mem_usage -= size;
   }
 
   void memory_monitor::resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size,
 				    uint64_t new_size)
   {
-    this->sub_stat (thread_p, stat_id, old_size);
-    this->add_stat (thread_p, stat_id, new_size);
+    int module_idx = MMON_GET_MODULE_IDX_FROM_STAT_ID (stat_id);
+    int comp_map_idx = MMON_GET_COMP_MAP_IDX_FROM_STAT_ID (stat_id);
+    int idx_map_val, comp_idx, subcomp_idx;
+
+    sub_stat (thread_p, stat_id, old_size);
+    add_stat (thread_p, stat_id, new_size);
     if (new_size - old_size > 0) /* expand */
       {
-	this->add_expand_count (stat_id);
+	idx_map_val = m_module[module_idx]->get_comp_idx_map_val (comp_map_idx);
+	comp_idx = get_comp_idx_from_comp_idx_map (idx_map_val);
+	subcomp_idx = get_subcomp_idx_from_comp_idx_map (idx_map_val);
+	m_module[module_idx]->add_expand_count (comp_idx);
       }
   }
 
   void memory_monitor::move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size)
   {
-    this->sub_stat (thread_p, src, size);
-    this->add_stat (thread_p, dest, size);
+    sub_stat (thread_p, src, size);
+    add_stat (thread_p, dest, size);
   }
 
   int memory_monitor::aggregate_module_info (MMON_MODULE_INFO *info, int module_index)
