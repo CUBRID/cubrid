@@ -732,7 +732,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #ifndef NDEBUG
 #define PRM_NAME_USE_DEDUPLICATE_KEY_MODE_OID_TEST  "use_deduplicate_key_mode_oid_test"
 #endif
-#define PRM_NAME_DEDUPLICATE_MIN_KEYS      "deduplicate_min_keys"
 #define PRM_NAME_DEDUPLICATE_FK_LEVEL      "deduplicate_fk_level"
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
 #define PRM_NAME_DEDUPLICATE_PRINT_LEVEL   "deduplicate_print_level"
@@ -1222,12 +1221,6 @@ static bool prm_use_deduplicate_key_mode_oid_default = false;
 static unsigned int prm_use_deduplicate_key_mode_oid_flag = 0;
 #endif
 
-
-int PRM_DEDUPLICATE_MIN_KEYS = DEDUPLICATE_MIN_KEYS_DFLT;
-static int prm_deduplicate_min_keys_default = DEDUPLICATE_MIN_KEYS_DFLT;
-static unsigned int prm_deduplicate_min_keys_flag = 0;
-static int prm_deduplicate_min_keys_lower = DEDUPLICATE_MIN_KEYS_UNUSE;
-static int prm_deduplicate_min_keys_upper = DEDUPLICATE_MIN_KEYS_MAX;
 
 int PRM_DEDUPLICATE_FK_MOD_LEVEL = DEDUPLICATE_FK_LEVEL_DFLT;
 static int prm_deduplicate_fk_level_default = DEDUPLICATE_FK_LEVEL_DFLT;
@@ -6327,18 +6320,6 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
 #endif
-  {PRM_ID_DEDUPLICATE_MIN_KEYS,
-   PRM_NAME_DEDUPLICATE_MIN_KEYS,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
-   PRM_INTEGER,
-   &prm_deduplicate_min_keys_flag,
-   (void *) &prm_deduplicate_min_keys_default,
-   (void *) &PRM_DEDUPLICATE_MIN_KEYS,
-   (void *) &prm_deduplicate_min_keys_upper,
-   (void *) &prm_deduplicate_min_keys_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_DEDUPLICATE_FK_LEVEL,
    PRM_NAME_DEDUPLICATE_FK_LEVEL,
    (PRM_FOR_CLIENT | PRM_HIDDEN),

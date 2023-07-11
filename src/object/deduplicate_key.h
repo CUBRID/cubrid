@@ -39,11 +39,6 @@
 #define DEDUPLICATE_KEY_LEVEL_DFLT     (10)
 #define DEDUPLICATE_FK_LEVEL_DFLT      (10)
 
-#define DEDUPLICATE_MIN_KEYS_UNUSE     (0)
-#define DEDUPLICATE_MIN_KEYS_MIN       (1)
-#define DEDUPLICATE_MIN_KEYS_MAX       (INT_MAX)
-#define DEDUPLICATE_MIN_KEYS_DFLT      (DEDUPLICATE_MIN_KEYS_UNUSE)
-
 #define DEDUPLICATE_OPTION_AUTO        (-1)
 
 /* ******************************************************** */

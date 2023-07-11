@@ -2800,30 +2800,8 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 
 	  if ((idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF) && (idx_info->prefix_length == NULL))
 	    {
-	      if (idx_info->deduplicate_min_keys == DEDUPLICATE_OPTION_AUTO)
-		{
-		  PT_INDEX_INFO *t_info = (PT_INDEX_INFO *) idx_info;
-		  t_info->deduplicate_min_keys = prm_get_integer_value (PRM_ID_DEDUPLICATE_MIN_KEYS);
-		}
-
-	      if (idx_info->deduplicate_min_keys == DEDUPLICATE_MIN_KEYS_UNUSE)
-		{
-		  has_deduplicate_key_col = true;
-		  nnames++;
-		}
-	      else if (idx_info->function_expr)
-		{
-		  if ((nnames - idx_info->func_no_args + 1) <= idx_info->deduplicate_min_keys)
-		    {
-		      has_deduplicate_key_col = true;
-		      nnames++;
-		    }
-		}
-	      else if (nnames <= idx_info->deduplicate_min_keys)
-		{
-		  has_deduplicate_key_col = true;
-		  nnames++;
-		}
+	      has_deduplicate_key_col = true;
+	      nnames++;
 	    }
 	}
 #endif

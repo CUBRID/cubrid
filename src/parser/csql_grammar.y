@@ -1047,9 +1047,9 @@ int g_original_buffer_len;
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
 %type <boolean> opt_fk_deduplicate_off
-%type <c3> opt_index_with_clause_no_online
-%type <c3> opt_index_with_clause
-%type <c3> index_with_item_list
+%type <c2> opt_index_with_clause_no_online
+%type <c2> opt_index_with_clause
+%type <c2> index_with_item_list
 
 
 /*}}}*/
@@ -2847,7 +2847,6 @@ create_stmt
 			    node->info.index.column_names = col;
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
                             node->info.index.deduplicate_level = CONTAINER_AT_1($13);
-                            node->info.index.deduplicate_min_keys = CONTAINER_AT_2($13);
 #endif                            
 			    node->info.index.comment = $15;
 
@@ -10509,7 +10508,6 @@ attr_index_def
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
                         assert(CONTAINER_AT_0($5) == 0);
                         node->info.index.deduplicate_level = CONTAINER_AT_1($5);
-                        node->info.index.deduplicate_min_keys = CONTAINER_AT_2($5);
 #endif                            
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
@@ -21581,29 +21579,22 @@ opt_fk_deduplicate_off
 
 opt_index_with_clause_no_online
         : /* empty */
-          { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
-            container_3 ctn;
-            memset(&ctn, 0x00, sizeof(ctn));       
-            ctn.c1 = 0; // not online
-            ctn.c2 = DEDUPLICATE_OPTION_AUTO; // key_level
-            ctn.c3 = DEDUPLICATE_OPTION_AUTO; // min_keys
+          { DBG_TRACE_GRAMMAR(opt_index_with_clause_no_online, : );
+            container_2 ctn;
+            SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
             $$ = ctn; }
         | WITH deduplicate_key_mod_level
-           { DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH deduplicate_key_mod_level );
-                container_3 ctn;
-		SET_CONTAINER_3(ctn, 0, $2, DEDUPLICATE_MIN_KEYS_UNUSE);
-		$$ = ctn;
-          }
+           { DBG_TRACE_GRAMMAR(opt_index_with_clause_no_online, | WITH deduplicate_key_mod_level );
+             container_2 ctn;
+    	     SET_CONTAINER_2(ctn, 0, $2);
+	     $$ = ctn; }
         ;
 
 opt_index_with_clause
         : /* empty */
           { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
-            container_3 ctn;
-            memset(&ctn, 0x00, sizeof(ctn));
-            ctn.c1 = 0; // not online
-            ctn.c2 = DEDUPLICATE_OPTION_AUTO; // key_level
-            ctn.c3 = DEDUPLICATE_OPTION_AUTO; // min_keys
+            container_2 ctn;
+            SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
             $$ = ctn; }
         | WITH index_with_item_list
           {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
@@ -21614,26 +21605,26 @@ opt_index_with_clause
 index_with_item_list  
         : online_parallel
           { DBG_TRACE_GRAMMAR(index_with_item_list, : online_parallel );
-                container_3 ctn;
-                SET_CONTAINER_3(ctn, $1, DEDUPLICATE_OPTION_AUTO, DEDUPLICATE_OPTION_AUTO);
+                container_2 ctn;
+                SET_CONTAINER_2(ctn, $1, DEDUPLICATE_OPTION_AUTO);
 		$$ = ctn;
           }
         | online_parallel ',' deduplicate_key_mod_level
           { DBG_TRACE_GRAMMAR(index_with_item_list, | online_parallel ',' deduplicate_key_mod_level );
-                container_3 ctn;
-		SET_CONTAINER_3(ctn, $1, $3, DEDUPLICATE_MIN_KEYS_UNUSE);
+                container_2 ctn;
+		SET_CONTAINER_2(ctn, $1, $3);
 		$$ = ctn;
           }
         | deduplicate_key_mod_level
           { DBG_TRACE_GRAMMAR(index_with_item_list, | deduplicate_key_mod_level );
-                container_3 ctn;
-		SET_CONTAINER_3(ctn, 0, $1, DEDUPLICATE_MIN_KEYS_UNUSE);
+                container_2 ctn;
+		SET_CONTAINER_2(ctn, 0, $1);
 		$$ = ctn;
           }
         | deduplicate_key_mod_level ',' online_parallel
           { DBG_TRACE_GRAMMAR(index_with_item_list, | deduplicate_key_mod_level ',' online_parallel ); 
-                container_3 ctn;
-		SET_CONTAINER_3(ctn, $3, $1, DEDUPLICATE_MIN_KEYS_UNUSE);
+                container_2 ctn;
+		SET_CONTAINER_2(ctn, $3, $1);
 		$$ = ctn;
           }
         ;        
