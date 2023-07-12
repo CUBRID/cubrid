@@ -152,14 +152,14 @@ namespace cubperf
 
       void add_stat (MMON_STAT_ID stat_id, int64_t size);
       void add_tran_stat (THREAD_ENTRY *thread_p, int64_t size);
-      void resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size);
-      void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size);
+      void resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size, int64_t new_size);
+      void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size);
       void end_init_phase ();
       int aggregate_module_info (MMON_MODULE_INFO *info, int module_index);
       int aggregate_tran_info (MMON_TRAN_INFO *info, int tran_count);
 
     private:
-      inline int get_module_idx (MMON_STAT_ID stat_id);
+      inline int get_module_idx (MMON_STAT_ID stat_id) const;
 
     private:
       class aggregater
@@ -199,7 +199,7 @@ namespace cubperf
   {
     return (((int) stat_id) & MMON_PARSE_MASK);
   }
-  inline int memory_monitor::get_module_idx (MMON_STAT_ID stat_id)
+  inline int memory_monitor::get_module_idx (MMON_STAT_ID stat_id) const
   {
     return (((int) stat_id) >> 16);
   }
@@ -253,6 +253,7 @@ namespace cubperf
 
   void mmon_component::end_init_phase ()
   {
+    assert (m_stat.init_stat == 0);
     m_stat.init_stat = m_stat.cur_stat.load ();
   }
 
@@ -387,11 +388,12 @@ namespace cubperf
 
   void mmon_module::end_init_phase ()
   {
+    assert (m_stat.init_stat == 0);
     m_stat.init_stat = m_stat.cur_stat.load ();
 
-    for (auto i = 0; i < m_component.size (); i++)
+    for (const auto &comp : m_component)
       {
-	m_component[i]->end_init_phase ();
+	comp->end_init_phase ();
       }
   }
 
@@ -433,12 +435,11 @@ namespace cubperf
   void memory_monitor::add_tran_stat (THREAD_ENTRY *thread_p, int64_t size)
   {
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-    assert (tdes != NULL);
     tdes->cur_mem_usage += size;
   }
 
-  void memory_monitor::resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size,
-				    uint64_t new_size)
+  void memory_monitor::resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size,
+				    int64_t new_size)
   {
     int module_idx = get_module_idx (stat_id);
 
@@ -452,7 +453,7 @@ namespace cubperf
       }
   }
 
-  void memory_monitor::move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size)
+  void memory_monitor::move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size)
   {
     add_stat (src, - (size));
     add_stat (dest, size);
@@ -486,6 +487,7 @@ int mmon_initialize (const char *server_name)
   int error = NO_ERROR;
 
   assert (server_name != NULL);
+  assert (mmon_Gl == nullptr);
 
   if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
     {
@@ -502,7 +504,7 @@ int mmon_initialize (const char *server_name)
 
 void mmon_notify_server_start ()
 {
-  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+  if (mmon_Gl != nullptr)
     {
       mmon_Gl->end_init_phase ();
     }
@@ -510,7 +512,7 @@ void mmon_notify_server_start ()
 
 void mmon_finalize ()
 {
-  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+  if (mmon_Gl != nullptr)
     {
       delete mmon_Gl;
     }
@@ -518,7 +520,7 @@ void mmon_finalize ()
 
 void mmon_add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t size)
 {
-  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+  if (mmon_Gl != nullptr)
     {
       mmon_Gl->add_stat (stat_id, size);
       mmon_Gl->add_tran_stat (thread_p, size);
@@ -527,7 +529,7 @@ void mmon_add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t size)
 
 void mmon_sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t size)
 {
-  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+  if (mmon_Gl != nullptr)
     {
       mmon_Gl->add_stat (stat_id, - (size));
       mmon_Gl->add_tran_stat (thread_p, - (size));
@@ -536,7 +538,7 @@ void mmon_sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t size)
 
 void mmon_move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size)
 {
-  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+  if (mmon_Gl != nullptr)
     {
       mmon_Gl->move_stat (thread_p, src, dest, size);
     }
@@ -544,7 +546,7 @@ void mmon_move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest
 
 void mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size, int64_t new_size)
 {
-  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+  if (mmon_Gl != nullptr)
     {
       mmon_Gl->resize_stat (thread_p, stat_id, old_size, new_size);
     }
