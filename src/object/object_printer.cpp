@@ -809,7 +809,10 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   else if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint.type))
     {
       dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
-      m_buf (" WITH %s", reserved_col_buf);
+      if (reserved_col_buf[0])
+	{
+	  m_buf (" WITH %s", reserved_col_buf);
+	}
     }
 #endif
 

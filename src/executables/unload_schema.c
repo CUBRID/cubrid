@@ -4289,13 +4289,13 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  output_ctx (")");
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-	  if (reserved_col_buf[0])
-	    {
-	      output_ctx (" %s", reserved_col_buf);
-	    }
-	  else
+	  if (reserved_col_buf[0] == '\0')
 	    {
 	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
+	    }
+
+	  if (reserved_col_buf[0])
+	    {
 	      output_ctx (" %s", reserved_col_buf);
 	    }
 #endif
