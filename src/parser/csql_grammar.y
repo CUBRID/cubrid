@@ -21621,11 +21621,7 @@ online_parallel
 	;
 
 deduplicate_key_mod_level
-        : DEDUPLICATE_
-               { DBG_TRACE_GRAMMAR(deduplicate_key_mod_level,  : DEDUPLICATE_); 
-                 $$ = DEDUPLICATE_KEY_LEVEL_MAX;
-               DBG_PRINT}
-        | DEDUPLICATE_ '=' unsigned_integer
+        : DEDUPLICATE_ '=' unsigned_integer
                { DBG_TRACE_GRAMMAR(deduplicate_key_mod_level,  | DEDUPLICATE_ = unsigned_integer); 
                   int int_val = $3->info.value.data_value.i;
                   if(int_val < DEDUPLICATE_KEY_LEVEL_OFF || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
