@@ -376,20 +376,16 @@ dk_print_deduplicate_key_info (char *buf, int buf_size, int deduplicate_level)
 {
   int len = 0;
 
-  assert (deduplicate_level >= DEDUPLICATE_KEY_LEVEL_MIN && deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX);
-
-  buf[0] = '\0';
+  assert ((deduplicate_level == DEDUPLICATE_KEY_LEVEL_OFF)
+	  || (deduplicate_level >= DEDUPLICATE_KEY_LEVEL_MIN && deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX));
 
   if (prm_get_bool_value (PRM_ID_DEDUPLICATE_PRINT_LEVEL))
     {
-      if (deduplicate_level == DEDUPLICATE_KEY_LEVEL_MAX)
-	{
-	  len = snprintf (buf, buf_size, "DEDUPLICATE");
-	}
-      else
-	{
-	  len = snprintf (buf, buf_size, "DEDUPLICATE=%d", deduplicate_level);
-	}
+      len = snprintf (buf, buf_size, "DEDUPLICATE=%d", deduplicate_level);
+    }
+  else
+    {
+      buf[0] = '\0';
     }
 
   assert (len < buf_size);

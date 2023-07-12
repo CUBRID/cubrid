@@ -3539,6 +3539,11 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	      || (ctype != DB_CONSTRAINT_UNIQUE && ctype != DB_CONSTRAINT_REVERSE_UNIQUE));
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if ((reserved_col_buf[0] == '\0') && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
+	{
+	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
+	}
+
       if (reserved_col_buf[0])
 	{
 	  if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
@@ -4209,6 +4214,9 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   char *class_name = NULL;
   MOP ref_clsop;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
+#endif
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
@@ -4229,8 +4237,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	      if (db_attribute_class (*att) != cl->op)
 		{
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-		  att_name = db_attribute_name (*att);
-		  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_name))
+		  if (IS_DEDUPLICATE_KEY_ATTR_ID ((*att)->id))
 		    {
 		      assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type));
 		      assert (att[1] == NULL);
@@ -4255,24 +4262,43 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  output_ctx ("\nALTER CLASS %s%s%s%s ADD", output_owner, PRINT_IDENTIFIER (class_name));
 	  output_ctx (" CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  reserved_col_buf[0] = '\0';
+#endif
 	  for (att = atts; *att != NULL; att++)
 	    {
-	      att_name = db_attribute_name (*att);
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-	      if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_name))
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (att[0]->id))
 		{
 		  assert (att[1] == NULL);
+		  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf),
+						 GET_DEDUPLICATE_KEY_ATTR_LEVEL (att[0]->id));
 		  break;
 		}
 #endif
+	      att_name = db_attribute_name (*att);
 	      if (att != atts)
 		{
-		  output_ctx (", ");
+		  output_ctx (", %s%s%s", PRINT_IDENTIFIER (att_name));
 		}
-
-	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (att_name));
+	      else
+		{
+		  output_ctx ("%s%s%s", PRINT_IDENTIFIER (att_name));
+		}
 	    }
 	  output_ctx (")");
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (reserved_col_buf[0])
+	    {
+	      output_ctx (" %s", reserved_col_buf);
+	    }
+	  else
+	    {
+	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
+	      output_ctx (" %s", reserved_col_buf);
+	    }
+#endif
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
 	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
