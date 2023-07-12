@@ -366,7 +366,6 @@ static void parser_restore_hvar (void);
 static void parser_save_found_Oracle_outer (void);
 static void parser_restore_found_Oracle_outer (void);
 
-static bool parser_is_null_alter_node ();
 static void parser_save_alter_node (PT_NODE * node);
 static PT_NODE *parser_get_alter_node (void);
 
@@ -630,6 +629,7 @@ int g_original_buffer_len;
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
 %type <number> deduplicate_key_mod_level
+%type <number> opt_index_with_clause_no_online
 /*}}}*/
 
 /* define rule type (node) */
@@ -1046,8 +1046,6 @@ int g_original_buffer_len;
 %type <c2> alter_server_item
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
-%type <boolean> opt_fk_deduplicate_off
-%type <c2> opt_index_with_clause_no_online
 %type <c2> opt_index_with_clause
 %type <c2> index_with_item_list
 
@@ -9711,7 +9709,7 @@ foreign_key_constraint
 	  KEY 						/* 2 */
 	  opt_identifier				/* 3 */
 	  '(' index_column_identifier_list ')'		/* 4, 5, 6 */
-          opt_fk_deduplicate_off                        /* 7 ,  Notice) Make sure not to specify it in the manual. */
+          opt_index_with_clause_no_online               /* 7 */
 	  REFERENCES					/* 8 */
 	  user_specified_name				/* 9 */
 	  opt_paren_attr_list				/* 10 */
@@ -9727,8 +9725,7 @@ foreign_key_constraint
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-                            node->info.constraint.un.foreign_key.deduplicate_level = 
-                                  (($7 == true) ? DEDUPLICATE_KEY_LEVEL_OFF : DEDUPLICATE_OPTION_AUTO);
+                            node->info.constraint.un.foreign_key.deduplicate_level = $7;
 #endif
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
@@ -10506,8 +10503,7 @@ attr_index_def
 			      }
 			  }
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-                        assert(CONTAINER_AT_0($5) == 0);
-                        node->info.index.deduplicate_level = CONTAINER_AT_1($5);
+                        node->info.index.deduplicate_level = $5;
 #endif                            
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
@@ -10881,12 +10877,13 @@ column_other_constraint_def
 
 		DBG_PRINT}}
 	| opt_constraint_id			/* 1 */
-	  opt_foreign_key			/* 2 */          
-	  REFERENCES				/* 3 */
-	  class_name				/* 4 */
-	  opt_paren_attr_list			/* 5 */
-	  opt_ref_rule_list			/* 6 */
-	  opt_constraint_attr_list		/* 7 */
+	  opt_foreign_key			/* 2 */
+          opt_index_with_clause_no_online       /* 3 */
+	  REFERENCES				/* 4 */
+	  class_name				/* 5 */
+	  opt_paren_attr_list			/* 6 */
+	  opt_ref_rule_list			/* 7 */
+	  opt_constraint_attr_list		/* 8 */
 		{{ DBG_TRACE_GRAMMAR(column_other_constraint_def, | opt_constraint_id opt_foreign_key REFERENCES class_name ~);
 
 			PT_NODE *node = parser_get_attr_def_one ();
@@ -10895,14 +10892,14 @@ column_other_constraint_def
 
 			if (constraint)
 			  {
-			    constraint->info.constraint.un.foreign_key.referenced_attrs = $5;
+			    constraint->info.constraint.un.foreign_key.referenced_attrs = $6;
 			    constraint->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
-			    constraint->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($6));	/* delete_action */
-			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($6));	/* update_action */
-			    constraint->info.constraint.un.foreign_key.referenced_class = $4;
+			    constraint->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($7));	/* delete_action */
+			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
+			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)                                                        
-                            constraint->info.constraint.un.foreign_key.deduplicate_level = DEDUPLICATE_OPTION_AUTO;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+                            constraint->info.constraint.un.foreign_key.deduplicate_level = $3;
 #endif  
 
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
@@ -10910,14 +10907,14 @@ column_other_constraint_def
 
 			    constraint->info.constraint.name = $1;
 
-			    if (TO_NUMBER (CONTAINER_AT_0 ($7)))
+			    if (TO_NUMBER (CONTAINER_AT_0 ($8)))
 			      {
-				constraint->info.constraint.deferrable = (short)TO_NUMBER (CONTAINER_AT_1 ($7));
+				constraint->info.constraint.deferrable = (short)TO_NUMBER (CONTAINER_AT_1 ($8));
 			      }
 
-			    if (TO_NUMBER (CONTAINER_AT_2 ($7)))
+			    if (TO_NUMBER (CONTAINER_AT_2 ($8)))
 			      {
-				constraint->info.constraint.initially_deferred = (short)TO_NUMBER (CONTAINER_AT_3 ($7));
+				constraint->info.constraint.initially_deferred = (short)TO_NUMBER (CONTAINER_AT_3 ($8));
 			      }
 			  }
 
@@ -21555,39 +21552,13 @@ opt_encrypt_algorithm
       $$ = 2; }   /* TDE_ALGORITHM_ARIA */
   ;
 
-opt_fk_deduplicate_off
-        : /* empty */
-          { DBG_TRACE_GRAMMAR(opt_fk_deduplicate_off, : );
-            $$ = false; }
-        | WITH DEDUPLICATE_ '=' unsigned_integer
-          { DBG_TRACE_GRAMMAR(opt_fk_deduplicate_off,  | DEDUPLICATE_ '=' unsigned_integer); 
-           /* It can be entered through the table constraint clause of "CREATE TABLE" and the add constraint clause of "ALTER TABLE".
-            * If it is entered in the "CREATE TABLE" statement, an error is processed.
-           */          
-            if(parser_is_null_alter_node())
-            {
-                PT_ERROR (this_parser, $4, "\"WITH DEDUPLICATE\" is not supported.");
-            }
-            else if($4->info.value.data_value.i != DEDUPLICATE_KEY_LEVEL_OFF)
-            {
-               PT_ERROR (this_parser, $4, "Only \"WITH DEDUPLICATE=0\" is supported.");
-            }
-                 
-            $$ = true;
-          DBG_PRINT}
-        ;
-
 opt_index_with_clause_no_online
         : /* empty */
           { DBG_TRACE_GRAMMAR(opt_index_with_clause_no_online, : );
-            container_2 ctn;
-            SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
-            $$ = ctn; }
+            $$ = DEDUPLICATE_OPTION_AUTO; }
         | WITH deduplicate_key_mod_level
            { DBG_TRACE_GRAMMAR(opt_index_with_clause_no_online, | WITH deduplicate_key_mod_level );
-             container_2 ctn;
-    	     SET_CONTAINER_2(ctn, 0, $2);
-	     $$ = ctn; }
+	     $$ = 2; }
         ;
 
 opt_index_with_clause
@@ -25245,13 +25216,7 @@ parser_restore_found_Oracle_outer ()
   parser_found_Oracle_outer = parser_oracle_stack[--parser_oracle_sp];
 }
 
-static PT_NODE *parser_alter_node_saved = NULL;
-
-static bool
-parser_is_null_alter_node ()
-{
-  return (parser_alter_node_saved == NULL);
-}
+static PT_NODE *parser_alter_node_saved;
 
 static void
 parser_save_alter_node (PT_NODE * node)
