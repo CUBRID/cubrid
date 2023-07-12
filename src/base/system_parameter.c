@@ -729,9 +729,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
 
-#ifndef NDEBUG
-#define PRM_NAME_USE_DEDUPLICATE_KEY_MODE_OID_TEST  "use_deduplicate_key_mode_oid_test"
-#endif
 #define PRM_NAME_DEDUPLICATE_FK_LEVEL      "deduplicate_fk_level"
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
 #define PRM_NAME_DEDUPLICATE_PRINT_LEVEL   "deduplicate_print_level"
@@ -1215,13 +1212,6 @@ static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-#ifndef NDEBUG
-bool PRM_USE_DEDUPLICATE_KEY_MODE_OID = false;
-static bool prm_use_deduplicate_key_mode_oid_default = false;
-static unsigned int prm_use_deduplicate_key_mode_oid_flag = 0;
-#endif
-
-
 int PRM_DEDUPLICATE_FK_MOD_LEVEL = DEDUPLICATE_FK_LEVEL_DFLT;
 static int prm_deduplicate_fk_level_default = DEDUPLICATE_FK_LEVEL_DFLT;
 static unsigned int prm_deduplicate_fk_level_flag = 0;
@@ -6307,19 +6297,6 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-#ifndef NDEBUG
-  {PRM_ID_USE_DEDUPLICATE_KEY_MODE_OID_TEST,
-   PRM_NAME_USE_DEDUPLICATE_KEY_MODE_OID_TEST,
-   (PRM_FOR_CLIENT | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   &prm_use_deduplicate_key_mode_oid_flag,
-   (void *) &prm_use_deduplicate_key_mode_oid_default,
-   (void *) &PRM_USE_DEDUPLICATE_KEY_MODE_OID,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-#endif
   {PRM_ID_DEDUPLICATE_FK_LEVEL,
    PRM_NAME_DEDUPLICATE_FK_LEVEL,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),

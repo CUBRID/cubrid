@@ -147,10 +147,11 @@ dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
   assert (IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
 
 #ifndef NDEBUG
-#define OID_2_BIGINT(oidptr) (((oidptr)->volid << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
-
-  if (prm_get_bool_value (PRM_ID_USE_DEDUPLICATE_KEY_MODE_OID_TEST))
+  /* This code is to be used only for internal developer testing.  */
+  bool is_test_for_developer = false;
+  if (is_test_for_developer)
     {
+#define OID_2_BIGINT(oidptr) (((oidptr)->volid << 48) | ((oidptr)->pageid << 16) | (oidptr)->slotid)
       assert (CALC_MOD_VALUE_FROM_LEVEL (level) <= SHRT_MAX);
       db_make_short (value, (short) (OID_2_BIGINT (rec_oid) % CALC_MOD_VALUE_FROM_LEVEL (level)));
 
