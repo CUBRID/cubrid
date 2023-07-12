@@ -121,13 +121,13 @@ namespace cubperf
       void add_expand_count (MMON_STAT_ID stat_id);
       void end_init_phase ();
       int add_component (const char *name);
-      inline int make_comp_idx_map_val (int comp_idx, int subcomp_idx);
 
     private:
-      void get_comp_and_subcomp_idx (MMON_STAT_ID stat_id, int &comp_idx, int &subcomp_idx);
-      inline int get_comp_map_idx (MMON_STAT_ID stat_id);
-      inline int get_comp_idx (int comp_idx_map_val);
-      inline int get_subcomp_idx (int comp_idx_map_val);
+      void get_comp_and_subcomp_idx (MMON_STAT_ID stat_id, int &comp_idx, int &subcomp_idx) const;
+      inline int make_comp_idx_map_val (int comp_idx, int subcomp_idx) const;
+      inline int get_comp_map_idx (MMON_STAT_ID stat_id) const;
+      inline int get_comp_idx (int comp_idx_map_val) const;
+      inline int get_subcomp_idx (int comp_idx_map_val) const;
 
     private:
       std::string m_module_name;
@@ -190,28 +190,29 @@ namespace cubperf
       std::unique_ptr<mmon_module> m_module[MMON_MODULE_LAST];
   };
 
-  inline int mmon_module::make_comp_idx_map_val (int comp_idx, int subcomp_idx)
+  inline int mmon_module::make_comp_idx_map_val (int comp_idx, int subcomp_idx) const
   {
     return (comp_idx << 16 | subcomp_idx);
   }
 
-  inline int mmon_module::get_comp_map_idx (MMON_STAT_ID stat_id)
+  inline int mmon_module::get_comp_map_idx (MMON_STAT_ID stat_id) const
   {
     return (((int) stat_id) & MMON_PARSE_MASK);
   }
-  inline int memory_monitor::get_module_idx (MMON_STAT_ID stat_id) const
-  {
-    return (((int) stat_id) >> 16);
-  }
 
-  inline int mmon_module::get_comp_idx (int comp_idx_map_val)
+  inline int mmon_module::get_comp_idx (int comp_idx_map_val) const
   {
     return (comp_idx_map_val >> 16);
   }
 
-  inline int mmon_module::get_subcomp_idx (int comp_idx_map_val)
+  inline int mmon_module::get_subcomp_idx (int comp_idx_map_val) const
   {
     return (comp_idx_map_val & MMON_PARSE_MASK);
+  }
+
+  inline int memory_monitor::get_module_idx (MMON_STAT_ID stat_id) const
+  {
+    return (((int) stat_id) >> 16);
   }
 
   const char *mmon_subcomponent::get_name ()
@@ -339,7 +340,7 @@ namespace cubperf
     return error;
   }
 
-  void mmon_module::get_comp_and_subcomp_idx (MMON_STAT_ID stat_id, int &comp_idx, int &subcomp_idx)
+  void mmon_module::get_comp_and_subcomp_idx (MMON_STAT_ID stat_id, int &comp_idx, int &subcomp_idx) const
   {
     int comp_map_idx = get_comp_map_idx (stat_id);
     int idx_map_val;
