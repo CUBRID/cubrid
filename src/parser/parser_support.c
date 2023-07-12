@@ -4332,6 +4332,25 @@ regu_set_global_error (void)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
+ * replace the PT_DIVIDE operator with PT_DIV in the expression
+ * containing the division operation in the limit clause.
+ * This is because the DIV operator performs integer arithmetic division.
+ */
+static PT_NODE *
+pt_replace_div_op_for_limit (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_EXPR)
+    {
+      if (node->info.expr.op == PT_DIVIDE)
+	{
+	  node->info.expr.op = PT_DIV;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_limit_to_numbering_expr () -rewrite limit expr to xxx_num() expr
  *   return: expr node with numbering
  *   limit(in): limit node
@@ -4345,7 +4364,12 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
   PT_NODE *lhs, *sum, *part1, *part2, *node;
   DB_VALUE sum_val;
 
-  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
+  static bool oracle_style_number = prm_get_bool_value (PRM_ID_ORACLE_STYLE_NUMBER_RETURN);
+
+  if (oracle_style_number)
+    {
+      parser_walk_tree (parser, limit, pt_replace_div_op_for_limit, NULL, NULL, NULL);
+    }
 
   db_make_null (&sum_val);
 
@@ -4361,7 +4385,6 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
       lhs = parser_new_node (parser, PT_FUNCTION);
       if (lhs != NULL)
 	{
-	  lhs->type_enum = PT_TYPE_BIGINT;
 	  lhs->info.function.function_type = PT_GROUPBY_NUM;
 	  lhs->info.function.arg_list = NULL;
 	  lhs->info.function.all_or_distinct = PT_ALL;
@@ -4449,15 +4472,6 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 
       sum->info.expr.op = PT_PLUS;
       sum->type_enum = PT_TYPE_BIGINT;
-      sum->data_type = parser_new_node (parser, PT_DATA_TYPE);
-      if (sum->data_type == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  goto error_exit;
-	}
-
-      sum->data_type->type_enum = PT_TYPE_BIGINT;
-
       sum->info.expr.arg1 = parser_copy_tree (parser, limit);
       sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
       if (sum->info.expr.arg1 == NULL || sum->info.expr.arg2 == NULL)
@@ -4473,13 +4487,13 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 	    {
 	      goto error_exit;
 	    }
-
 	  parser_free_tree (parser, sum);
 	}
       else
 	{
 	  part2->info.expr.arg2 = sum;
 	}
+
       sum = NULL;
 
       node = parser_new_node (parser, PT_EXPR);
