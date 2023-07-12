@@ -4331,20 +4331,6 @@ regu_set_global_error (void)
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
-static PT_NODE *
-pt_change_div_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  if (node->node_type == PT_EXPR)
-    {
-      if (node->info.expr.op == PT_DIVIDE)
-	{
-	  node->info.expr.op = PT_DIV;
-	}
-    }
-
-  return node;
-}
-
 /*
  * replace the PT_DIVIDE operator with PT_DIV in the expression
  * containing the division operation in the limit clause.
@@ -4444,8 +4430,6 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
     }
   else
     {
-      parser_walk_tree (parser, limit, pt_change_div_node, NULL, NULL, NULL);
-
       part1 = parser_new_node (parser, PT_EXPR);
       if (part1 == NULL)
 	{
