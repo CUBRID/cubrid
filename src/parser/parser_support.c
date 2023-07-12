@@ -4332,25 +4332,6 @@ regu_set_global_error (void)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * replace the PT_DIVIDE operator with PT_DIV in the expression
- * containing the division operation in the limit clause.
- * This is because the DIV operator performs integer arithmetic division.
- */
-static PT_NODE *
-pt_replace_div_op_for_limit (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  if (node->node_type == PT_EXPR)
-    {
-      if (node->info.expr.op == PT_DIVIDE)
-	{
-	  node->info.expr.op = PT_DIV;
-	}
-    }
-
-  return node;
-}
-
-/*
  * pt_limit_to_numbering_expr () -rewrite limit expr to xxx_num() expr
  *   return: expr node with numbering
  *   limit(in): limit node
@@ -4363,13 +4344,6 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
 {
   PT_NODE *lhs, *sum, *part1, *part2, *node;
   DB_VALUE sum_val;
-
-  static bool oracle_style_number = prm_get_bool_value (PRM_ID_ORACLE_STYLE_NUMBER_RETURN);
-
-  if (oracle_style_number)
-    {
-      parser_walk_tree (parser, limit, pt_replace_div_op_for_limit, NULL, NULL, NULL);
-    }
 
   db_make_null (&sum_val);
 
