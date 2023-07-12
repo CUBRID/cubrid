@@ -44,17 +44,6 @@
 
 static char dk_reserved_deduplicate_key_attr_name[COUNT_OF_DEDUPLICATE_KEY_LEVEL][DEDUPLICATE_KEY_ATTR_NAME_LEN];
 
-static DB_DOMAIN *
-get_reserved_index_attr_domain_type (int level)
-{
-  if (level == DEDUPLICATE_KEY_LEVEL_MAX)
-    {
-      return &tp_Integer_domain;
-    }
-
-  return (CALC_MOD_VALUE_FROM_LEVEL (level) > SHRT_MAX) ? &tp_Integer_domain : &tp_Short_domain;
-}
-
 //=============================================================================
 #if defined(SERVER_MODE) || defined(SA_MODE)
 static OR_ATTRIBUTE st_or_atts[COUNT_OF_DEDUPLICATE_KEY_LEVEL];
@@ -65,13 +54,15 @@ dk_or_attribute_initialized ()
 {
   int att_id;
   int level, idx;
+  DB_DOMAIN *domain = &tp_Short_domain;
 
   for (level = DEDUPLICATE_KEY_LEVEL_MIN; level <= DEDUPLICATE_KEY_LEVEL_MAX; level++)
     {
       att_id = MK_DEDUPLICATE_KEY_ATTR_ID (level);
       idx = LEVEL_2_IDX (level);
       st_or_atts[idx].id = att_id;
-      st_or_atts[idx].domain = get_reserved_index_attr_domain_type (level);
+      assert (CALC_MOD_VALUE_FROM_LEVEL (level) <= SHRT_MAX);
+      st_or_atts[idx].domain = domain;
       st_or_atts[idx].type = st_or_atts[idx].domain->type->id;
     }
 
@@ -160,43 +151,15 @@ dk_get_deduplicate_key_value (OID * rec_oid, int att_id, DB_VALUE * value)
 
   if (prm_get_bool_value (PRM_ID_USE_DEDUPLICATE_KEY_MODE_OID_TEST))
     {
-      if (level == DEDUPLICATE_KEY_LEVEL_MAX)
-	{
-	  db_make_int (value, (int) (OID_2_BIGINT (rec_oid) % INT_MAX));
-	}
-      else
-	{
-	  unsigned int mod_val = CALC_MOD_VALUE_FROM_LEVEL (level);
-	  if (mod_val > SHRT_MAX)
-	    {
-	      db_make_int (value, (int) (OID_PSEUDO_KEY (rec_oid) % mod_val));
-	    }
-	  else
-	    {
-	      db_make_short (value, (short) (OID_PSEUDO_KEY (rec_oid) % mod_val));
-	    }
-	}
+      assert (CALC_MOD_VALUE_FROM_LEVEL (level) <= SHRT_MAX);
+      db_make_short (value, (short) (OID_2_BIGINT (rec_oid) % CALC_MOD_VALUE_FROM_LEVEL (level)));
 
       return NO_ERROR;
     }
 #endif
 
-  if (level == DEDUPLICATE_KEY_LEVEL_MAX)
-    {
-      db_make_int (value, rec_oid->pageid);
-    }
-  else
-    {
-      unsigned int mod_val = CALC_MOD_VALUE_FROM_LEVEL (level);
-      if (mod_val > SHRT_MAX)
-	{
-	  db_make_int (value, (int) (rec_oid->pageid % mod_val));
-	}
-      else
-	{
-	  db_make_short (value, (short) (rec_oid->pageid % mod_val));
-	}
-    }
+  assert (CALC_MOD_VALUE_FROM_LEVEL (level) <= SHRT_MAX);
+  db_make_short (value, (short) (rec_oid->pageid % CALC_MOD_VALUE_FROM_LEVEL (level)));
 
   return NO_ERROR;
 }
@@ -238,18 +201,12 @@ dk_sm_attribute_initialized ()
   int level;
   const char *reserved_name = NULL;
   SM_ATTRIBUTE *att;
-  DB_DOMAIN *domain = NULL;
+  DB_DOMAIN *domain = &tp_Short_domain;
 
   for (level = DEDUPLICATE_KEY_LEVEL_MIN; level <= DEDUPLICATE_KEY_LEVEL_MAX; level++)
     {
+      assert (CALC_MOD_VALUE_FROM_LEVEL (level) <= SHRT_MAX);
       reserved_name = dk_get_deduplicate_key_attr_name (level);
-      domain = get_reserved_index_attr_domain_type (level);
-      if (domain == NULL)
-	{
-	  assert (false);
-	  ERROR0 (error_code, ER_FAILED);
-	  goto error_exit;
-	}
 
       att = classobj_make_attribute (reserved_name, domain->type, ID_ATTRIBUTE);
       if (att == NULL)
