@@ -265,7 +265,6 @@ tran_server::init_page_server_hosts ()
 	  failed_conn = true;
 	}
     }
-  reset_main_connection ();
 
   if (failed_conn && valid_connection_count > 0)
     {
@@ -373,10 +372,25 @@ tran_server::connection_handler::connect ()
   // Do the preliminary jobs depending on the server type before opening the conneciton to the outisde.
   on_connecting ();
 
-  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
-  assert (m_state == state::CONNECTING);
+  {
+    auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+    assert (m_state == state::CONNECTING);
 
-  m_state = state::CONNECTED;
+    m_state = state::CONNECTED;
+  }
+  /*
+   *  Now, the main connection is reset whenever a new connection is established.
+   *  The main connection information is used in the following connection_handler's connection.
+   *  Specifically, the target PS to catch up with during CONNECTING is the main connection.
+   *
+   *  TODO: later, when the ATS recovery with multi-PS comes in, a leader PS elected will be the target PS,
+   *  and the main connection doesn't need to be set here, but in more appropriate location.
+   *  For example, it can be set after establishing all connection.
+   */
+  if (m_ts.reset_main_connection () != NO_ERROR)
+    {
+      assert (false); // At least this connection_handler can be the main connection
+    }
 
   return NO_ERROR;
 }
@@ -419,17 +433,15 @@ tran_server::reset_main_connection ()
       return ER_CONN_NO_PAGE_SERVER_AVAILABLE;
     }
 
-  auto ulock = std::unique_lock<std::shared_mutex> { m_main_conn_mtx };
-  if (m_main_conn == main_conn_cand->get ())
-    {
-      er_log_debug (ARG_FILE_LINE, "The main connection has been already reset.\n");
-    }
-  else
-    {
-      m_main_conn = main_conn_cand->get ();
-      er_log_debug (ARG_FILE_LINE, "The main connection is set to %s.\n",
-		    m_main_conn->get_channel_id ().c_str ());
-    }
+  {
+    auto ulock = std::unique_lock<std::shared_mutex> { m_main_conn_mtx };
+    if (m_main_conn != main_conn_cand->get ())
+      {
+	m_main_conn = main_conn_cand->get ();
+	er_log_debug (ARG_FILE_LINE, "The main connection is set to %s.\n",
+		      m_main_conn->get_channel_id ().c_str ());
+      }
+  }
 
   return NO_ERROR;
 }
@@ -706,7 +718,7 @@ tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 	   * TODO It can be too verbose now since it always complain to fail to connect when a PS has been stopped.
 	   * Later on, this job is going to be triggered by a cluster manager or cub_master when a PS is ready to connect.
 	   */
-	  conn->connect ();
+	  (void) conn->connect ();
 	}
 
       if (m_terminate.load ())
