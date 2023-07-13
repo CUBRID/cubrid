@@ -536,14 +536,10 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
   assert (m_state == state::CONNECTING || m_state == state::CONNECTED);
   m_state = state::DISCONNECTING;
 
-  on_disconnecting (); // server-type specific jobs before disconnect
-
   m_disconn_future = std::async (std::launch::async, [this, with_disc_msg]
   {
-    on_disconnecting (); // server-type specific jobs before disconnect
-    // m_conn is not nullptr since it's only set to nullptr here below once
-
     on_disconnecting (); // server-type specific jobs before disconnecting.
+    // m_conn is not nullptr since it's only set to nullptr here below once
 
     m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
     auto ulock_conn = std::unique_lock<std::shared_mutex> { m_conn_mtx };
