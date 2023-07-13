@@ -4544,5 +4544,17 @@ error_exit:
 int
 mmon (UTIL_FUNCTION_ARG * arg)
 {
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char *module;
+  bool transaction, show_all;
+  int tran_count;
+  module = utility_get_option_string_value (arg_map, MMON_MODULE_S, 0);
+  transaction = utility_get_option_bool_value (arg_map, MMON_TRANSACTION_S);
+  tran_count = utility_get_option_int_value (arg_map, MMON_TRAN_COUNT_S);
+  show_all = utility_get_option_bool_value (arg_map, MMON_SHOW_ALL_S);
+
+  // XXX: for test, it will removed at main implementation
+  fprintf (stdout, "mmon utility: -m %s, -t %s, -c %d, -a %s\n", (module ? module : "NULL"),
+	   (transaction ? "true" : "false"), tran_count, (show_all ? "true" : "false"));
   return EXIT_SUCCESS;
 }

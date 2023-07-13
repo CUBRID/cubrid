@@ -1695,13 +1695,13 @@ typedef struct _ha_config
 
 /* mmon option list */
 #define MMON_MODULE_S         'm'
-#define MMON_MODULE_L         "20123"
+#define MMON_MODULE_L         "module"
 #define MMON_TRANSACTION_S    't'
-#define MMON_TRANSACTION_L    "20124"
+#define MMON_TRANSACTION_L    "trnasction"
 #define MMON_TRAN_COUNT_S     'c'
 #define MMON_TRAN_COUNT_L     "tran-count"
 #define MMON_SHOW_ALL_S       'a'
-#define MMON_SHOW_ALL_L       "20125"
+#define MMON_SHOW_ALL_L       "all"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
