@@ -12001,8 +12001,6 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       stop_at--;
     }
 
-
-
   if (node_type == BTREE_LEAF_NODE)
     {
       new_ent_size = btree_get_max_new_data_size (thread_p, btid, page_ptr, node_type, key_len, helper, found);
@@ -12024,8 +12022,11 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     }
   else
     {
-#if 1				// ctshim
-      /* New key or prefix key is added to non-leaf. */
+      /* prefix key is added to non-leaf. */
+      /* When a new prefix_key is raised from a child node by a new entity, we don't know where it belongs, 
+       * so we need to make sure we have enough space on both the left and right leaves. 
+       * Also, since the size of prefix_key is not known in advance, consider the maximum value.
+       */
       new_ent_size =
 	btree_get_max_new_data_size (thread_p, btid, page_ptr, node_type, MAX (key_len, header->max_key_len), helper,
 				     false);
@@ -12033,10 +12034,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       /* Until we know where new entity belongs, we must reserve enough space in both left and right leaf. */
       left_max_size -= new_ent_size;
       right_max_size -= new_ent_size;
-#else
-      /* New key is not added to non-leaf. */
-      new_ent_size = 0;
-#endif
+
       /* No fences in non-leaf. */
       new_fence_size = 0;
     }
