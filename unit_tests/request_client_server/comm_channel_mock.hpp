@@ -59,6 +59,7 @@ class mock_socket_direction
   public:
 
     bool push_message (std::string &&str);      // push a message on channel send/send_int
+    bool peek_message (std::string &str);       // wait until a message arrives and peek at it
     bool pull_message (std::string &str);       // wait until a message arrives and pop it on channel recv/recv_int
     bool has_message ();
     void disconnect ();                         // abort all waits when channels are disconnected

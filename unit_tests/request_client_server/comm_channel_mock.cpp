@@ -57,6 +57,29 @@ mock_socket_direction::push_message (std::string &&str)
 }
 
 bool
+mock_socket_direction::peek_message (std::string &str)
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_condvar.wait (ulock, [this]
+  {
+    return !m_messages.empty () || m_disconnect;
+  });
+
+  if (m_disconnect)
+    {
+      return false;
+    }
+
+  assert (str.empty ());
+  str = m_messages.front ();
+
+  ulock.unlock ();
+  m_condvar.notify_all ();
+
+  return true;
+}
+
+bool
 mock_socket_direction::pull_message (std::string &str)
 {
   std::unique_lock<std::mutex> ulock (m_mutex);
@@ -197,18 +220,76 @@ namespace cubcomm
 
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
+    // function is not used in unit test context anymore
+    REQUIRE (false);
+    return NO_ERRORS;
+  }
+
+  css_error_code channel::recv_allow_truncated (char *buffer, std::size_t &maxlen_in_recvlen_out,
+      std::size_t &remaining_len)
+  {
     const std::string channel_id = get_channel_id ();
-    assert (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.cend ());
+    REQUIRE (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.cend ());
 
-    std::string message;
+    std::string message_peek;
 
-    if (!global_receiver_sockdirs[channel_id]->pull_message (message))
+    remaining_len = 0;
+
+    if (!global_receiver_sockdirs[channel_id]->peek_message (message_peek))
       {
 	return CONNECTION_CLOSED;
       }
 
-    REQUIRE (maxlen_in_recvlen_out == message.size ());
-    std::memcpy (buffer, message.c_str (), maxlen_in_recvlen_out);
+    REQUIRE (message_peek.size () > 0);
+    if (message_peek.size () > maxlen_in_recvlen_out)
+      {
+	// copy at most what is supported and report back remaining
+	// maxlen_in_recvlen_out - same length
+	std::memcpy (buffer, message_peek.c_str (), maxlen_in_recvlen_out);
+
+	remaining_len = message_peek.size () - maxlen_in_recvlen_out;
+
+	// message will be consumed at completion/remainder
+	return RECORD_TRUNCATED;
+      }
+    else
+      {
+	//REQUIRE (message.size () <= maxlen_in_recvlen_out);
+	maxlen_in_recvlen_out = message_peek.size ();
+	std::memcpy (buffer, message_peek.c_str (), maxlen_in_recvlen_out);
+
+	std::string message_pull;
+	if (!global_receiver_sockdirs[channel_id]->pull_message (message_pull))
+	  {
+	    REQUIRE (false);
+	    return CONNECTION_CLOSED;
+	  }
+	assert (maxlen_in_recvlen_out == message_pull.size ());
+	// message peek is now a dangling reference
+
+	return NO_ERRORS;
+      }
+  }
+
+  css_error_code channel::recv_remainder (char *buffer, std::size_t &maxlen_in_recvlen_out)
+  {
+    const std::string channel_id = get_channel_id ();
+    REQUIRE (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.cend ());
+
+    std::string message_pull;
+
+    if (!global_receiver_sockdirs[channel_id]->pull_message (message_pull))
+      {
+	REQUIRE (false);
+	return CONNECTION_CLOSED;
+      }
+
+    //maxlen_in_recvlen_out remains the same
+    // TODO: how to actually read from remaining offset
+    std::size_t str_offset = (message_pull.size () - maxlen_in_recvlen_out);
+    const char *const str_at_offset = message_pull.c_str () + str_offset;
+    std::memcpy (buffer, str_at_offset, maxlen_in_recvlen_out);
+
     return NO_ERRORS;
   }
 
