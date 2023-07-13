@@ -3852,7 +3852,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   bool found_first_non_zero = false;
   int scale = db_value_scale (val);
 
-  static bool oracle_style_number = prm_get_bool_value (PRM_ID_ORACLE_STYLE_NUMBER_RETURN);
+  static bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
 
   assert (val != NULL && buf != NULL);
 
@@ -3881,7 +3881,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
 	{
 	  int k = temp_size - 1;
 
-	  if (oracle_style_number)
+	  if (oracle_compat_number)
 	    {
 	      /* remove trailing zero */
 	      while (k > i && temp[k] == '0')
