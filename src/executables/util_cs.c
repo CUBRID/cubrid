@@ -4540,3 +4540,9 @@ error_exit:
 #endif /* !CS_MODE */
 
 }
+
+int
+mmon (UTIL_FUNCTION_ARG * arg)
+{
+  return EXIT_SUCCESS;
+}

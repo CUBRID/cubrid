@@ -252,6 +252,14 @@ static ARG_MAP_TABLE ua_Sqlx_map[] = {
   {0, 0}
 };
 
+static ARG_MAP_TABLE ua_Mmon_map[] = {
+  {"-m", "--" MMON_MODULE_L},
+  {"-t", "--" MMON_TRANSACTION_L},
+  {"-c", "--" MMON_TRAN_COUNT_L},
+  {"-a", "--" MMON_SHOW_ALL_L},
+  {0, 0}
+};
+
 static ARG_MAP_TABLE us_Commdb_map[] = {
   {"-P", "--" COMMDB_SERVER_LIST_L},
   {"-O", "--" COMMDB_ALL_LIST_L},
@@ -297,6 +305,7 @@ UTIL_MAP_TABLE ua_Util_table[] = {
   {"compactdb", UTIL_OPTION_COMPACTDB, ua_Compact_map},
   {"acldb", UTIL_OPTION_ACLDB, ua_Acldb_map},
   {"tranlist", UTIL_OPTION_TRANLIST, ua_Tranlist_map},
+  {"mmon", UTIL_OPTION_MMON, ua_Mmon_map},
   {0, 0, 0}
 };
 
