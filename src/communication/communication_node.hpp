@@ -39,7 +39,7 @@ namespace cubcomm
       std::string get_host () const;
 
     private:
-      int m_port = -1; // initialize with an invalid port
+      int32_t m_port = -1; // initialize with an invalid port
       std::string m_host;
   };
 
@@ -49,7 +49,7 @@ namespace cubcomm
     m_host = host;
   }
 
-  inline int node::get_port () const
+  inline int32_t node::get_port () const
   {
     return m_port;
   }
