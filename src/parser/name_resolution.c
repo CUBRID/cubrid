@@ -5106,23 +5106,31 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 static int
 pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_REMOTE_TBL_COLS * rmt_tbl_cols)
 {
-  PT_NODE *attr_def;
-  int req, conn, col_count, res;
+  int req, conn, col_cnt, res, i;
   T_CCI_ERROR cci_error;
   T_CCI_COL_INFO *col_info;
-  T_CCI_CUBRID_STMT cmd_type;
+  T_CCI_CUBRID_STMT stmt_type;
+
   PT_DBLINK_INFO *dblink_table = &dblink->info.dblink_table;
   char *table_name = dblink_table->remote_table_name;
-
   char *find;
   char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
 
   char *url = (char *) dblink_table->url->info.value.data_value.str->bytes;
   char *user = (char *) dblink_table->user->info.value.data_value.str->bytes;
   char *passwd = (char *) dblink_table->pwd->info.value.data_value.str->bytes;
-  bool need_get_err_msg = false;
+  char sql_text[300], *sql = sql_text;
 
-  assert (dblink_table->cols == NULL);
+  S_REMOTE_COL_ATTR *rmt_attr;
+
+  if (table_name)
+    {
+      sprintf (sql_text, "SELECT * FROM %s", table_name);
+    }
+  else
+    {
+      sql = (char *) dblink_table->qstr->info.value.data_value.str->bytes;
+    }
 
   find = strstr (url, ":?");
 
@@ -5135,7 +5143,6 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "?__gateway=true");
     }
 
-  req = -1;
   conn = cci_connect_with_url_ex (conn_url, user, passwd, &cci_error);
   if (conn < 0)
     {
@@ -5144,7 +5151,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       goto set_parser_error;
     }
 
-  req = cci_schema_info (conn, CCI_SCH_ATTRIBUTE, table_name, NULL, CCI_ATTR_NAME_PATTERN_MATCH, &cci_error);
+  req = cci_prepare (conn, sql, 0, &cci_error);
   if (req < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
@@ -5152,97 +5159,37 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       goto set_parser_error;
     }
 
-  /* 
-   * TTR_NAME, DOMAIN, SCALE, PRECISION, INDEXED, NON_NULL, SHARED, UNIQUE, DEFAULT, ATTR_ORDER, 
-   * CLASS_NAME, SOURCE_CLASS, IS_KEY, REMARKS 
-   */
-  col_info = cci_get_result_info (req, &cmd_type, &col_count);
-  if (!col_info && col_count == 0)
+  col_info = (T_CCI_COL_INFO *) cci_get_result_info (req, &stmt_type, &col_cnt);
+  if (col_info == NULL || col_cnt <= 0)
     {
+      /* this can not be reached, something wrong */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
       res = ER_FAILED;
       goto set_parser_error;
     }
 
-  res = cci_cursor (req, 1, CCI_CURSOR_FIRST, &cci_error);
-  if (res < 0)
+  for (i = 0; i < col_cnt; i++)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
-      goto set_parser_error;
+      rmt_attr = rmt_tbl_cols->get_col_attr (col_info[i].col_name);
+      rmt_attr->type_idx = col_info[i].ext_type;
+      rmt_attr->dec_precision = col_info[i].scale;
+      rmt_attr->precision = col_info[i].precision;
     }
 
-  S_REMOTE_COL_ATTR *rmt_attr;
-  do
-    {
-      int ind, dec_precision, precision;
-      PT_TYPE_ENUM type_idx;
-      char *buf = 0x00;
-
-      res = cci_fetch (req, &cci_error);
-      if (res < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
-	  goto set_parser_error;
-	}
-
-      if ((res = cci_get_data (req, DBLINK_ATTR_NAME, CCI_A_TYPE_STR, &buf, &ind)) < 0)
-	{
-	  need_get_err_msg = true;
-	  goto set_parser_error;
-	}
-
-      rmt_attr = rmt_tbl_cols->get_col_attr (buf);
-
-      /* type */
-      if ((res = cci_get_data (req, DBLINK_ATTR_TYPE, CCI_A_TYPE_INT, &rmt_attr->type_idx, &ind)) < 0)
-	{
-	  need_get_err_msg = true;
-	  goto set_parser_error;
-	}
-      /* scale */
-      if ((res = cci_get_data (req, DBLINK_ATTR_SCALE, CCI_A_TYPE_INT, &rmt_attr->dec_precision, &ind)) < 0)
-	{
-	  need_get_err_msg = true;
-	  goto set_parser_error;
-	}
-      /* precision */
-      if ((res = cci_get_data (req, DBLINK_ATTR_PRECISION, CCI_A_TYPE_INT, &rmt_attr->precision, &ind)) < 0)
-	{
-	  need_get_err_msg = true;
-	  goto set_parser_error;
-	}
-
-      res = cci_cursor (req, 1, CCI_CURSOR_CURRENT, &cci_error);
-    }
-  while (res == CCI_ER_NO_ERROR);
-
-  if (res != CCI_ER_NO_MORE_DATA)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
-    }
-  else
-    {
-      res = NO_ERROR;
-    }
+  res = NO_ERROR;
 
 set_parser_error:
-  if (need_get_err_msg)
-    {
-      cci_error.err_msg[0] = 0x00;
-      if (cci_get_err_msg (res, cci_error.err_msg, sizeof (cci_error.err_msg)) == 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
-	}
-    }
-
   if (req >= 0)
     {
       int err;
+
       if ((err = cci_close_req_handle (req)) < 0)
 	{
 	  cci_get_err_msg (err, cci_error.err_msg, sizeof (cci_error.err_msg));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
 	}
     }
+
   if (conn >= 0)
     {
       if (cci_disconnect (conn, &cci_error) < 0)
@@ -11586,4 +11533,36 @@ pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
     }
 
   return node;
+}
+
+int
+pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
+{
+  int i = 0, err;
+  S_REMOTE_TBL_COLS rmt_tbl_cols;
+  PT_NODE *cols;
+
+  err = pt_dblink_table_get_column_defs (parser, dblink, &rmt_tbl_cols);
+
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  cols = dblink->info.dblink_table.cols;
+  while (cols)
+    {
+      if (strcmp (rmt_tbl_cols.get_name (i), cols->info.attr_def.attr_name->info.name.original) != 0)
+	{
+	  PT_ERRORf3 (parser, dblink, "\"%s\" not matched column or alias \"%s\"",
+		      rmt_tbl_cols.get_name (i), cols->info.attr_def.attr_name->info.name.original, ER_DBLINK);
+	  return ER_FAILED;
+	}
+
+      i++;
+      cols = cols->next;
+    }
+
+  return NO_ERROR;
+
 }
