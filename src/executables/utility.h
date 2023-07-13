@@ -1697,7 +1697,7 @@ typedef struct _ha_config
 #define MMON_MODULE_S         'm'
 #define MMON_MODULE_L         "module"
 #define MMON_TRANSACTION_S    't'
-#define MMON_TRANSACTION_L    "trnasction"
+#define MMON_TRANSACTION_L    "transaction"
 #define MMON_TRAN_COUNT_S     'c'
 #define MMON_TRAN_COUNT_L     "tran-count"
 #define MMON_SHOW_ALL_S       'a'
