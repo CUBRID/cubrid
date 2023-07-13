@@ -169,6 +169,11 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  sysprm_set_force (prm_get_name (PRM_ID_DEDUPLICATE_PRINT_LEVEL),
+		    utility_get_option_bool_value (arg_map, UNLOAD_PRINT_LEVEL_S) ? "yes" : "no");
+#endif
+
   /*
    * Open db
    */
