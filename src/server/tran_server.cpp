@@ -381,7 +381,7 @@ tran_server::connection_handler::connect ()
   /*
    *  Now, the main connection is reset whenever a new connection is established.
    *  The main connection information is used in the following connection_handler's connection.
-   *  Sepcifically, the target PS to catch up with during CONNECTING is the main connection.
+   *  Specifically, the target PS to catch up with during CONNECTING is the main connection.
    *
    *  TODO: later, when the ATS recovery with multi-PS comes in, a leader PS elected will be the target PS,
    *  and the main connection doesn't need to be set here, but in more appropriate location.
@@ -716,7 +716,7 @@ tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 	   * TODO It can be too verbose now since it always complain to fail to connect when a PS has been stopped.
 	   * Later on, this job is going to be triggered by a cluster manager or cub_master when a PS is ready to connect.
 	   */
-	  conn->connect ();
+	  (void) conn->connect ();
 	}
 
       if (m_terminate.load ())
