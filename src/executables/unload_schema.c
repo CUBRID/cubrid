@@ -3539,11 +3539,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	      || (ctype != DB_CONSTRAINT_UNIQUE && ctype != DB_CONSTRAINT_REVERSE_UNIQUE));
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-      if ((reserved_col_buf[0] == '\0') && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
-	{
-	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
-	}
-
       if (reserved_col_buf[0])
 	{
 	  if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
@@ -4289,11 +4284,6 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  output_ctx (")");
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-	  if (reserved_col_buf[0] == '\0')
-	    {
-	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
-	    }
-
 	  if (reserved_col_buf[0])
 	    {
 	      output_ctx (" %s", reserved_col_buf);
