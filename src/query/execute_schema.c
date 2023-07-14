@@ -7527,7 +7527,7 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (fk_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
     {
-      fk_info->deduplicate_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_FK_LEVEL);
+      fk_info->deduplicate_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
     }
 
   if (fk_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
