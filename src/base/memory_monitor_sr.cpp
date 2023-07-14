@@ -48,7 +48,7 @@ namespace cubperf
     std::atomic<uint64_t> init_stat;
     std::atomic<uint64_t> cur_stat;
     std::atomic<uint64_t> peak_stat;
-    std::atomic<uint32_t> expand_count;
+    std::atomic<uint32_t> expand_resize_count;
   } MMON_MEM_STAT;
 
   class mmon_subcomponent
@@ -87,7 +87,7 @@ namespace cubperf
 
       const char *get_name ();
       void add_stat (int64_t size, int subcomp_idx);
-      void add_expand_count ();
+      void add_expand_resize_count ();
       void end_init_phase ();
       int add_subcomponent (const char *name, bool &subcomp_exist);
 
@@ -117,7 +117,7 @@ namespace cubperf
 
       virtual int aggregate_stats (const MMON_MODULE_INFO &info);
       void add_stat (MMON_STAT_ID stat_id, int64_t size);
-      void add_expand_count (MMON_STAT_ID stat_id);
+      void add_expand_resize_count (MMON_STAT_ID stat_id);
       void end_init_phase ();
       int add_component (const char *name, bool &comp_exist);
 
@@ -221,10 +221,8 @@ namespace cubperf
 
   void mmon_subcomponent::add_cur_stat (int64_t size)
   {
-    if (size < 0)
-      {
-	assert (size <= m_cur_stat);
-      }
+    assert ((size >= 0) || (- (size) <= m_cur_stat));
+
     m_cur_stat += size;
   }
 
@@ -235,10 +233,8 @@ namespace cubperf
 
   void mmon_component::add_stat (int64_t size, int subcomp_idx)
   {
-    if (size < 0)
-      {
-	assert (size <= m_stat.cur_stat);
-      }
+    assert ((size >= 0) || (- (size) <= m_stat.cur_stat));
+
     m_stat.cur_stat += size;
 
     if (m_stat.cur_stat > m_stat.peak_stat)
@@ -254,9 +250,9 @@ namespace cubperf
       }
   }
 
-  void mmon_component::add_expand_count ()
+  void mmon_component::add_expand_resize_count ()
   {
-    m_stat.expand_count++;
+    m_stat.expand_resize_count++;
   }
 
   void mmon_component::end_init_phase ()
@@ -339,10 +335,7 @@ namespace cubperf
   {
     int comp_idx, subcomp_idx;
 
-    if (size < 0)
-      {
-	assert (size <= m_stat.cur_stat);
-      }
+    assert ((size >= 0) || (- (size) <= m_stat.cur_stat));
 
     get_comp_and_subcomp_idx (stat_id, comp_idx, subcomp_idx);
 
@@ -361,11 +354,11 @@ namespace cubperf
       }
   }
 
-  void mmon_module::add_expand_count (MMON_STAT_ID stat_id)
+  void mmon_module::add_expand_resize_count (MMON_STAT_ID stat_id)
   {
     int comp_idx, subcomp_idx;
 
-    m_stat.expand_count++;
+    m_stat.expand_resize_count++;
 
     get_comp_and_subcomp_idx (stat_id, comp_idx, subcomp_idx);
 
@@ -373,7 +366,7 @@ namespace cubperf
     if (comp_idx != mmon_module::MAX_COMP_IDX)
       {
 	assert (comp_idx < m_component.size ());
-	m_component[comp_idx]->add_expand_count ();
+	m_component[comp_idx]->add_expand_resize_count ();
       }
   }
 
@@ -461,7 +454,7 @@ namespace cubperf
     add_tran_stat (thread_p, new_size);
     if (new_size - old_size > 0) /* expand */
       {
-	m_module[module_idx]->add_expand_count (stat_id);
+	m_module[module_idx]->add_expand_resize_count (stat_id);
       }
   }
 
