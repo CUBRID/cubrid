@@ -5618,6 +5618,10 @@ boot_define_view_index (void)
     {"key_count", "integer"},
     {"is_primary_key", "varchar(3)"},
     {"is_foreign_key", "varchar(3)"},
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+    {"is_deduplicate", "varchar(3)"},
+    {"deduplicate_key_level", "smallint"},
+#endif
     {"filter_expression", "varchar(255)"},
     {"have_function", "varchar(3)"},
     {"comment", "varchar(1024)"},
@@ -5673,6 +5677,30 @@ boot_define_view_index (void)
 #endif          
 	  "CASE [i].[is_primary_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
 	  "CASE [i].[is_foreign_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  "CAST(NVL ("
+                  "(" 
+		      "SELECT 'YES' "
+		      "FROM [%s] [k] "
+		      "WHERE [k].index_of.class_of = [i].class_of "
+			  "AND [k].index_of.index_name = [i].[index_name] "
+			  "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
+   		   "), "
+                   "'NO') "
+                   "AS VARCHAR(3)"
+             ") AS [is_deduplicate], "
+	  "CAST(NVL (" 
+                  "("
+		      "SELECT REPLACE([k].key_attr_name,'%s','') "
+		      "FROM [%s] [k]"
+		      "WHERE [k].index_of.class_of = [i].class_of "
+			   "AND [k].index_of.index_name = [i].[index_name] "
+			   "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
+		   ")"
+                   ", 0)" 
+                  " AS SMALLINT" 
+             ") AS [deduplicate_key_level], "
+#endif
 	  "[i].[filter_expression] AS [filter_expression], "
 	  "CASE [i].[have_function] WHEN 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
 	  "[i].[comment] AS [comment], "
@@ -5725,6 +5753,9 @@ boot_define_view_index (void)
 	    ")",            
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	CT_INDEXKEY_NAME,
+        CT_INDEXKEY_NAME,
+        DEDUPLICATE_KEY_ATTR_NAME_PREFIX,
+        CT_INDEXKEY_NAME,
 #endif            
 	CT_INDEX_NAME,
 	AU_USER_CLASS_NAME,
