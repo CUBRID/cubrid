@@ -34,15 +34,12 @@
 #include "thread_compat.hpp"
 #include "memory_monitor_common.h"
 
-/* 32-bit MMON_STAT_ID: [module_idx: 16 | comp_idx_map_idx: 16]
- * 32-bit mmon_module::m_comp_idx_map[comp_idx_map_idx] value: [comp_idx: 16 | subcomp_idx: 16]
- */
 #define MMON_PARSE_MASK 0x0000FFFF
-#define MMON_MAKE_INIT_STAT_ID(module_idx) ((module_idx) << 16)
+#define MMON_MAKE_STAT_ID(module_idx) ((module_idx) << 16)
 
 typedef enum
 {
-  MMON_STAT_LAST = MMON_MAKE_INIT_STAT_ID (MMON_MODULE_LAST)
+  MMON_STAT_LAST = MMON_MAKE_STAT_ID (MMON_MODULE_LAST)
 } MMON_STAT_ID;
 
 /* APIs */

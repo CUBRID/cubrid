@@ -89,8 +89,7 @@ namespace cubperf
       void add_stat (int64_t size, int subcomp_idx);
       void add_expand_count ();
       void end_init_phase ();
-      int get_subcomp_index (const char *subcomp_name);
-      int add_subcomponent (const char *name);
+      int add_subcomponent (const char *name, bool &subcomp_exist);
 
     private:
       std::string m_comp_name;
@@ -120,7 +119,7 @@ namespace cubperf
       void add_stat (MMON_STAT_ID stat_id, int64_t size);
       void add_expand_count (MMON_STAT_ID stat_id);
       void end_init_phase ();
-      int add_component (const char *name);
+      int add_component (const char *name, bool &comp_exist);
 
     private:
       void get_comp_and_subcomp_idx (MMON_STAT_ID stat_id, int &comp_idx, int &subcomp_idx) const;
@@ -222,6 +221,10 @@ namespace cubperf
 
   void mmon_subcomponent::add_cur_stat (int64_t size)
   {
+    if (size < 0)
+      {
+	assert (size <= m_cur_stat);
+      }
     m_cur_stat += size;
   }
 
@@ -232,6 +235,10 @@ namespace cubperf
 
   void mmon_component::add_stat (int64_t size, int subcomp_idx)
   {
+    if (size < 0)
+      {
+	assert (size <= m_stat.cur_stat);
+      }
     m_stat.cur_stat += size;
 
     if (m_stat.cur_stat > m_stat.peak_stat)
@@ -239,7 +246,7 @@ namespace cubperf
 	m_stat.peak_stat = m_stat.cur_stat.load ();
       }
 
-    /* If there is a component info */
+    /* If there is a subcomponent info */
     if (subcomp_idx != mmon_module::MAX_COMP_IDX)
       {
 	assert (subcomp_idx < m_subcomponent.size ());
@@ -258,24 +265,20 @@ namespace cubperf
     m_stat.init_stat = m_stat.cur_stat.load ();
   }
 
-  int mmon_component::get_subcomp_index (const char *subcomp_name)
+  int mmon_component::add_subcomponent (const char *name, bool &subcomp_exist)
   {
     for (size_t i = 0; i < m_subcomponent.size (); i++)
       {
-	if (!strcmp (subcomp_name, m_subcomponent[i]->get_name()))
+	if (!strcmp (name, m_subcomponent[i]->get_name ()))
 	  {
+	    subcomp_exist = true;
 	    return i;
 	  }
       }
 
-    /* if not exist, return -1 */
-    return -1;
-  }
-
-  int mmon_component::add_subcomponent (const char *name)
-  {
     m_subcomponent.push_back (std::make_unique<mmon_subcomponent> (name));
-    return (m_subcomponent.size () - 1);
+
+    return m_subcomponent.size () - 1;
   }
 
   mmon_module::mmon_module (const char *module_name, const MMON_STAT_INFO *info)
@@ -286,40 +289,18 @@ namespace cubperf
     int idx = 0;
     while (info[idx].id != MMON_STAT_LAST)
       {
-	bool comp_skip = false;
-	bool subcomp_skip = false;
+	bool comp_exist = false;
+	bool subcomp_exist = false;
 	int comp_idx = mmon_module::MAX_COMP_IDX, subcomp_idx = mmon_module::MAX_COMP_IDX;
 
 	if (info[idx].comp_name)
 	  {
-	    for (size_t i = 0; i < m_component.size (); i++)
-	      {
-		if (!strcmp (info[idx].comp_name, m_component[i]->get_name ()))
-		  {
-		    comp_idx = i;
-		    comp_skip = true;
-		    break;
-		  }
-	      }
-
-	    if (!comp_skip)
-	      {
-		comp_idx = add_component (info[idx].comp_name);
-	      }
+	    comp_idx = add_component (info[idx].comp_name, comp_exist);
 	    assert (comp_idx < MAX_COMP_IDX);
 
 	    if (info[idx].subcomp_name)
 	      {
-		subcomp_idx = m_component[comp_idx]->get_subcomp_index (info[idx].subcomp_name);
-		if (subcomp_idx != -1)
-		  {
-		    subcomp_skip = true;
-		  }
-
-		if (!subcomp_skip)
-		  {
-		    subcomp_idx = m_component[comp_idx]->add_subcomponent (info[idx].subcomp_name);
-		  }
+		subcomp_idx = m_component[comp_idx]->add_subcomponent (info[idx].subcomp_name, subcomp_exist);
 		assert (subcomp_idx < MAX_COMP_IDX);
 	      }
 	  }
@@ -328,6 +309,7 @@ namespace cubperf
 	    assert (info[idx].subcomp_name == NULL);
 	  }
 
+	assert ((comp_exist && subcomp_exist) == false);
 	m_comp_idx_map.push_back (make_comp_idx_map_val (comp_idx, subcomp_idx));
 
 	idx++;
@@ -342,6 +324,9 @@ namespace cubperf
 
   void mmon_module::get_comp_and_subcomp_idx (MMON_STAT_ID stat_id, int &comp_idx, int &subcomp_idx) const
   {
+    /* 32-bit MMON_STAT_ID: [module_idx: 16 | comp_idx_map_idx: 16]
+     * 32-bit mmon_module::m_comp_idx_map[comp_idx_map_idx] value: [comp_idx: 16 | subcomp_idx: 16]
+     */
     int comp_map_idx = get_comp_map_idx (stat_id);
     int idx_map_val;
 
@@ -353,6 +338,11 @@ namespace cubperf
   void mmon_module::add_stat (MMON_STAT_ID stat_id, int64_t size)
   {
     int comp_idx, subcomp_idx;
+
+    if (size < 0)
+      {
+	assert (size <= m_stat.cur_stat);
+      }
 
     get_comp_and_subcomp_idx (stat_id, comp_idx, subcomp_idx);
 
@@ -398,10 +388,20 @@ namespace cubperf
       }
   }
 
-  int mmon_module::add_component (const char *name)
+  int mmon_module::add_component (const char *name, bool &comp_exist)
   {
+    for (size_t i = 0; i < m_component.size (); i++)
+      {
+	if (!strcmp (name, m_component[i]->get_name ()))
+	  {
+	    comp_exist = true;
+	    return i;
+	  }
+      }
+
     m_component.push_back (std::make_unique<mmon_component> (name));
-    return (m_component.size () - 1);
+
+    return m_component.size () - 1;
   }
 
   memory_monitor::aggregater::aggregater (memory_monitor *mmon)
@@ -428,6 +428,11 @@ namespace cubperf
   {
     int module_idx = get_module_idx (stat_id);
 
+    if (size < 0)
+      {
+	assert (size < m_total_mem_usage);
+      }
+
     m_total_mem_usage += size;
 
     m_module[module_idx]->add_stat (stat_id, size);
@@ -436,6 +441,12 @@ namespace cubperf
   void memory_monitor::add_tran_stat (THREAD_ENTRY *thread_p, int64_t size)
   {
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+    if (size < 0)
+      {
+	assert (size <= tdes->cur_mem_usage);
+      }
+
     tdes->cur_mem_usage += size;
   }
 
