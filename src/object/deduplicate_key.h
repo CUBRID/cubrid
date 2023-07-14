@@ -37,7 +37,6 @@
 #define DEDUPLICATE_KEY_LEVEL_MIN      (1)
 #define DEDUPLICATE_KEY_LEVEL_MAX      (14)
 #define DEDUPLICATE_KEY_LEVEL_DFLT     (0)
-#define DEDUPLICATE_FK_LEVEL_DFLT      (0)
 
 #define DEDUPLICATE_OPTION_AUTO        (-1)
 

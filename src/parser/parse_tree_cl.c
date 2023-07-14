@@ -7327,7 +7327,7 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  /* Do not print level */ ;
 	}
-      else
+      else if (p->info.index.deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
 	{
 	  dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.deduplicate_level);
 	}
