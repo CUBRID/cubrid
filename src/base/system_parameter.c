@@ -729,7 +729,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
 
-#define PRM_NAME_DEDUPLICATE_FK_LEVEL      "deduplicate_fk_level"
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
 #define PRM_NAME_WITH_OPTION_PRINT         "with_option_print"
 
@@ -6292,7 +6291,7 @@ SYSPRM_PARAM prm_Def[] = {
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   {PRM_ID_DEDUPLICATE_KEY_LEVEL,
    PRM_NAME_DEDUPLICATE_KEY_LEVEL,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_FOR_CLIENT),
    PRM_INTEGER,
    &prm_deduplicate_key_level_flag,
    (void *) &prm_deduplicate_key_level_default,
