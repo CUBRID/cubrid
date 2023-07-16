@@ -21558,7 +21558,7 @@ opt_index_with_clause_no_online
             $$ = DEDUPLICATE_OPTION_AUTO; }
         | WITH deduplicate_key_mod_level
            { DBG_TRACE_GRAMMAR(opt_index_with_clause_no_online, | WITH deduplicate_key_mod_level );
-	     $$ = 2; }
+	     $$ = $2; }
         ;
 
 opt_index_with_clause
