@@ -203,8 +203,7 @@ active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&c
   packer.pack_int (port);
   packer.pack_string (hostname);
 
-  auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-  m_conn->push (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
+  push_request_regardless_of_state (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
 }
 
 log_lsa
@@ -218,8 +217,8 @@ active_tran_server::connection_handler::on_connecting ()
 {
   assert (m_prior_sender_sink_hook_func == nullptr);
 
-  m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
-				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
+  m_prior_sender_sink_hook_func = std::bind (&active_tran_server::connection_handler::prior_sender_sink_hook, this,
+				  std::placeholders::_1);
 
   auto unsent_lsa = log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
 
@@ -234,6 +233,14 @@ active_tran_server::connection_handler::on_disconnecting ()
       log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
       m_prior_sender_sink_hook_func = nullptr;
     }
+}
+
+void
+active_tran_server::connection_handler::prior_sender_sink_hook (std::string &&message)
+{
+  assert (message.size () > 0);
+
+  push_request_regardless_of_state (tran_to_page_request::SEND_LOG_PRIOR_LIST, std::move (message));
 }
 
 active_tran_server::connection_handler *
