@@ -1693,7 +1693,7 @@ typedef struct _ha_config
 #define FLASHBACK_OLDEST_S          14102
 #define FLASHBACK_OLDEST_L          "oldest"
 
-/* mmon option list */
+/* memmon option list */
 #define MEMMON_MODULE_S         'm'
 #define MEMMON_MODULE_L         "module"
 #define MEMMON_TRANSACTION_S    't'
