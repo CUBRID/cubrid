@@ -31,6 +31,7 @@ test_defaults: &test_defaults
           mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log
           find /home -name "core.*" | xargs -I{} mv -f {} /tmp/logs
           #dmesg > /tmp/logs/dmesg.out
+          cat CUBRID/log/mdb_loaddb.err # imsi
         when: on_fail
     - store_test_results:
         path: /tmp/tests
