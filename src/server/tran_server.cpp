@@ -47,7 +47,7 @@ tran_server::register_connection_handler (const std::string &host)
 {
   std::string m_ps_hostname;
   auto col_pos = host.find (":");
-  long port = -1;
+  int32_t port = -1;
 
   if (col_pos < 1 || col_pos >= host.length () - 1)
     {
@@ -58,7 +58,7 @@ tran_server::register_connection_handler (const std::string &host)
 
   try
     {
-      port = std::stol (host.substr (col_pos + 1));
+      port = std::stoi (host.substr (col_pos + 1));
     }
   catch (...)
     {
