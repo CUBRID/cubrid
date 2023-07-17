@@ -5677,6 +5677,7 @@ boot_define_view_index (void)
 #endif          
 	  "CASE [i].[is_primary_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
 	  "CASE [i].[is_foreign_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
+#if 0 // Not yet, Disabled for QA verification convenience          
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  "CAST(NVL ("
                   "(" 
@@ -5700,6 +5701,7 @@ boot_define_view_index (void)
                    ", 0)" 
                   " AS SMALLINT" 
              ") AS [deduplicate_key_level], "
+#endif
 #endif
 	  "[i].[filter_expression] AS [filter_expression], "
 	  "CASE [i].[have_function] WHEN 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
@@ -5753,9 +5755,11 @@ boot_define_view_index (void)
 	    ")",            
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	CT_INDEXKEY_NAME,
+#if 0 // Not yet, Disabled for QA verification convenience        
         CT_INDEXKEY_NAME,
         DEDUPLICATE_KEY_ATTR_NAME_PREFIX,
         CT_INDEXKEY_NAME,
+#endif        
 #endif            
 	CT_INDEX_NAME,
 	AU_USER_CLASS_NAME,
