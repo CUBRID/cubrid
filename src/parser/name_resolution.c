@@ -11397,10 +11397,8 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   switch (node->node_type)
     {
     case PT_DOT_:
-      check_for_already_exists
-	(parser, plkcol, node->info.dot.arg1->info.name.original, node->info.dot.arg2->info.name.original);
-
-      *continue_walk = PT_LIST_WALK;
+      check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
+				node->info.dot.arg2->info.name.original);
       break;
 
     case PT_NAME:
