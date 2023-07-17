@@ -1201,6 +1201,9 @@ extern bool logtb_has_deadlock_priority (int tran_index);
 /* For Debugging */
 extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 
+/* For memory monitoring */
+extern LOG_TDES **logtb_get_trantable_nolatch (int *total_tran_indices);
+
 extern bool logpb_need_wal (const LOG_LSA * lsa);
 extern char *logpb_backup_level_info_to_string (char *buf, int buf_size, const LOG_HDR_BKUP_LEVEL_INFO * info);
 extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);

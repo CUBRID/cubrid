@@ -1458,6 +1458,20 @@ xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp)
 }
 
 /*
+ * logtb_get_trantable_nolatch - get the transaction table with nolatch
+ *
+ * return: trantable list
+ *
+ */
+LOG_TDES **
+logtb_get_trantable_nolatch (int *total_tran_indices)
+{
+  *total_tran_indices = NUM_TOTAL_TRAN_INDICES;
+
+  return log_Gl.trantable.all_tdes;
+}
+
+/*
  * logtb_free_tran_mvcc_info - free transaction MVCC info
  *
  * return: nothing..
