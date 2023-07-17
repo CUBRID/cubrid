@@ -5618,9 +5618,11 @@ boot_define_view_index (void)
     {"key_count", "integer"},
     {"is_primary_key", "varchar(3)"},
     {"is_foreign_key", "varchar(3)"},
+#if 0				// Not yet, Disabled for QA verification convenience
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
     {"is_deduplicate", "varchar(3)"},
     {"deduplicate_key_level", "smallint"},
+#endif
 #endif
     {"filter_expression", "varchar(255)"},
     {"have_function", "varchar(3)"},
