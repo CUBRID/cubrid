@@ -785,7 +785,7 @@ typedef enum
   CHECKSUMDB,
   TDE,
   FLASHBACK,
-  MMON,
+  MEMMON,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -998,7 +998,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
 #define UTIL_OPTION_TDE			        "tde"
 #define UTIL_OPTION_FLASHBACK                   "flashback"
-#define UTIL_OPTION_MMON                        "mmon"
+#define UTIL_OPTION_MEMMON                        "memmon"
 
 #define HIDDEN_CS_MODE_S                        15000
 
@@ -1694,14 +1694,14 @@ typedef struct _ha_config
 #define FLASHBACK_OLDEST_L          "oldest"
 
 /* mmon option list */
-#define MMON_MODULE_S         'm'
-#define MMON_MODULE_L         "module"
-#define MMON_TRANSACTION_S    't'
-#define MMON_TRANSACTION_L    "transaction"
-#define MMON_TRAN_COUNT_S     'c'
-#define MMON_TRAN_COUNT_L     "tran-count"
-#define MMON_SHOW_ALL_S       'a'
-#define MMON_SHOW_ALL_L       "all"
+#define MEMMON_MODULE_S         'm'
+#define MEMMON_MODULE_L         "module"
+#define MEMMON_TRANSACTION_S    't'
+#define MEMMON_TRANSACTION_L    "transaction"
+#define MEMMON_TRAN_COUNT_S     'c'
+#define MEMMON_TRAN_COUNT_L     "tran-count"
+#define MEMMON_SHOW_ALL_S       'a'
+#define MEMMON_SHOW_ALL_L       "all"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
@@ -1839,7 +1839,7 @@ extern "C"
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int tde (UTIL_FUNCTION_ARG * arg_map);
   extern int flashback (UTIL_FUNCTION_ARG * arg_map);
-  extern int mmon (UTIL_FUNCTION_ARG * arg_map);
+  extern int memmon (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);
