@@ -721,7 +721,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_REGEXP_ENGINE "regexp_engine"
 
-#define PRM_NAME_ORACLE_STYLE_NUMBER_RETURN "oracle_style_number_return"
+#define PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR "oracle_compat_number_behavior"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2415,17 +2415,13 @@ static int prm_regexp_engine_upper = cubregex::engine_type::LIB_RE2;
 static unsigned int prm_regexp_engine_flag = 0;
 /* *INDENT-ON* */
 
-bool PRM_ORACLE_STYLE_NUMBER_RETURN = false;
-static bool prm_oracle_style_number_return_default = false;
-static unsigned int prm_oracle_style_number_return_flag = 0;
+bool PRM_ORACLE_COMPAT_NUMBER_BEHAVIOR = false;
+static bool prm_oracle_compat_number_behavior_default = false;
+static unsigned int prm_oracle_compat_number_behavior_flag = 0;
 
 bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
-
-bool PRM_ORACLE_STYLE_DIVIDE = false;
-static bool prm_oracle_style_divide_default = false;
-static unsigned int prm_oracle_style_divide_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6245,13 +6241,13 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_ORACLE_STYLE_NUMBER_RETURN,
-   PRM_NAME_ORACLE_STYLE_NUMBER_RETURN,
+  {PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
+   PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    (PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
-   &prm_oracle_style_number_return_flag,
-   (void *) &prm_oracle_style_number_return_default,
-   (void *) &PRM_ORACLE_STYLE_NUMBER_RETURN,
+   &prm_oracle_compat_number_behavior_flag,
+   (void *) &prm_oracle_compat_number_behavior_default,
+   (void *) &PRM_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -6312,6 +6308,7 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_sql_log_max_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
+<<<<<<< HEAD
    (DUP_PRM_FUNC) NULL},
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 #ifndef NDEBUG
@@ -6385,6 +6382,8 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
+=======
+>>>>>>> upstream/develop
    (DUP_PRM_FUNC) NULL}
 };
 
