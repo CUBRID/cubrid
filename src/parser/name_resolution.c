@@ -11552,7 +11552,7 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
   cols = dblink->info.dblink_table.cols;
   while (cols)
     {
-      if (strcmp (rmt_tbl_cols.get_name (i), cols->info.attr_def.attr_name->info.name.original) != 0)
+      if (strcasecmp (rmt_tbl_cols.get_name (i), cols->info.attr_def.attr_name->info.name.original) != 0)
 	{
 	  PT_ERRORf3 (parser, dblink, "\"%s\" not matched column or alias \"%s\"",
 		      rmt_tbl_cols.get_name (i), cols->info.attr_def.attr_name->info.name.original, ER_DBLINK);
