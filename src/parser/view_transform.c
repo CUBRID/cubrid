@@ -3772,6 +3772,7 @@ pt_remove_cast_wrap_for_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, voi
   return new_node;
 }
 
+extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
 /*
  * pt_copypush_terms() - push sargable term into the derived subquery
  *   return:
@@ -3828,6 +3829,12 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	}
       break;
     case PT_DBLINK_TABLE:
+
+      if (pt_check_dblink_column_alias (parser, query) != NO_ERROR)
+	{
+	  return;
+	}
+
       /* copy terms */
       query->info.dblink_table.pushed_pred = parser_copy_tree_list (parser, term_list);
       /* remove the cast wrap from pushed predicate */
@@ -3845,7 +3852,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       /* alias name: cublink */
       rewritten = pt_append_bytes (parser, rewritten, ") cublink", 9);
-
+#if 0
       if (query->info.dblink_table.cols != NULL)
 	{
 	  /* aliased column list */
@@ -3854,7 +3861,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	  rewritten = pt_append_varchar (parser, rewritten, col_list);
 	  rewritten = pt_append_bytes (parser, rewritten, ")", 1);
 	}
-
+#endif
       if (pushed_pred != NULL)
 	{
 	  /* where predicate */
