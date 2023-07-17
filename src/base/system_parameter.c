@@ -6297,19 +6297,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_SQL_LOG_MAX_COUNT,
-   PRM_NAME_HA_SQL_LOG_MAX_COUNT,
-   (PRM_FOR_CLIENT | PRM_FOR_HA),
-   PRM_INTEGER,
-   &prm_ha_sql_log_max_count_flag,
-   (void *) &prm_ha_sql_log_max_count_default,
-   (void *) &PRM_HA_SQL_LOG_MAX_COUNT,
-   (void *) &prm_ha_sql_log_max_count_upper,
-   (void *) &prm_ha_sql_log_max_count_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-<<<<<<< HEAD
-   (DUP_PRM_FUNC) NULL},
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 #ifndef NDEBUG
   {PRM_ID_USE_DEDUPLICATE_KEY_MODE_OID_TEST,
@@ -6372,19 +6359,18 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
 #endif
-  {PRM_ID_ORACLE_STYLE_DIVIDE,
-   PRM_NAME_ORACLE_STYLE_DIVIDE,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
-   PRM_BOOLEAN,
-   &prm_oracle_style_divide_flag,
-   (void *) &prm_oracle_style_divide_default,
-   (void *) &PRM_ORACLE_STYLE_DIVIDE,
-   (void *) NULL, (void *) NULL,
+  {PRM_ID_HA_SQL_LOG_MAX_COUNT,
+   PRM_NAME_HA_SQL_LOG_MAX_COUNT,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   &prm_ha_sql_log_max_count_flag,
+   (void *) &prm_ha_sql_log_max_count_default,
+   (void *) &PRM_HA_SQL_LOG_MAX_COUNT,
+   (void *) &prm_ha_sql_log_max_count_upper,
+   (void *) &prm_ha_sql_log_max_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-=======
->>>>>>> upstream/develop
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;
