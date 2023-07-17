@@ -7926,17 +7926,13 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	{
 	  SCAN_AGL *agl;
 
-	  fprintf (fp, ", agl: [");
+	  fprintf (fp, ", agl: ");
 	  for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
 	    {
 	      fprintf (fp, "%s", agl->agg_index_name);
 	      if (agl->next)
 		{
 		  fprintf (fp, ", ");
-		}
-	      else
-		{
-		  fprintf (fp, "]");
 		}
 	    }
 	}
