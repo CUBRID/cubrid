@@ -127,6 +127,13 @@ tran_server::boot (const char *db_name)
 
   if (uses_remote_storage ())
     {
+      error_code = reset_main_connection ();
+      if (error_code != NO_ERROR)
+	{
+	  assert (false);
+	  return error_code;
+	}
+
       error_code = get_boot_info_from_page_server ();
       if (error_code != NO_ERROR)
 	{
@@ -378,19 +385,6 @@ tran_server::connection_handler::connect ()
 
     m_state = state::CONNECTED;
   }
-  /*
-   *  Now, the main connection is reset whenever a new connection is established.
-   *  The main connection information is used in the following connection_handler's connection.
-   *  Specifically, the target PS to catch up with during CONNECTING is the main connection.
-   *
-   *  TODO: later, when the ATS recovery with multi-PS comes in, a leader PS elected will be the target PS,
-   *  and the main connection doesn't need to be set here, but in more appropriate location.
-   *  For example, it can be set after establishing all connection.
-   */
-  if (m_ts.reset_main_connection () != NO_ERROR)
-    {
-      assert (false); // At least this connection_handler can be the main connection
-    }
 
   return NO_ERROR;
 }
@@ -717,6 +711,7 @@ tran_server::ps_connector::terminate ()
 void
 tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 {
+  bool newly_connected = false;
   for (const auto &conn : m_ts.m_page_server_conn_vec)
     {
       if (conn->is_idle ())
@@ -725,13 +720,23 @@ tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 	   * TODO It can be too verbose now since it always complain to fail to connect when a PS has been stopped.
 	   * Later on, this job is going to be triggered by a cluster manager or cub_master when a PS is ready to connect.
 	   */
-	  (void) conn->connect ();
+	  if (conn->connect () == NO_ERROR)
+	    {
+	      newly_connected = true;
+	    }
 	}
 
       if (m_terminate.load ())
 	{
 	  break;
 	}
+    }
+
+  if (newly_connected)
+    {
+      // It should be done when the connection_handler's state gets CONNECTED.
+      // TODO Someday, it will be CONNECTING right after connect() and become CONNECTED asynchronously, then it should be chnaged along.
+      (void) m_ts.reset_main_connection ();
     }
 }
 
