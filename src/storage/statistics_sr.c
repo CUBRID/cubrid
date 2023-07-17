@@ -499,25 +499,12 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   assert (cls_info_p->ci_tot_objects >= 0);
   assert (cls_info_p->ci_tot_pages >= 0);
 
-  if (HFID_IS_NULL (&cls_info_p->ci_hfid))
-    {
-      /* The class does not have a heap file (i.e. it has no instances); so no statistics can be obtained for this
-       * class */
-      OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
-      buf_p += OR_INT_SIZE;
+  /* use statistics info */
+  OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
+  buf_p += OR_INT_SIZE;
 
-      OR_PUT_INT (buf_p, cls_info_p->ci_tot_pages);	/* #pages */
-      buf_p += OR_INT_SIZE;
-    }
-  else
-    {
-      /* use statistics info */
-      OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
-      buf_p += OR_INT_SIZE;
-
-      OR_PUT_INT (buf_p, MAX (cls_info_p->ci_tot_pages, 1));	/* #pages */
-      buf_p += OR_INT_SIZE;
-    }
+  OR_PUT_INT (buf_p, MAX (cls_info_p->ci_tot_pages, 1));	/* #pages */
+  buf_p += OR_INT_SIZE;
 
   OR_PUT_INT (buf_p, n_attrs);
   buf_p += OR_INT_SIZE;
