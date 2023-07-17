@@ -609,6 +609,13 @@ tran_server::connection_handler::push_request (tran_to_page_request reqid, std::
   return NO_ERROR;
 }
 
+void
+tran_server::connection_handler::push_request_regardless_of_state (tran_to_page_request reqid, std::string &&payload)
+{
+  auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
+  m_conn->push (reqid, std::move (payload));
+}
+
 int
 tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
     std::string &payload_out)

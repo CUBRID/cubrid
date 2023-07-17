@@ -63,6 +63,9 @@ class active_tran_server : public tran_server
 	void on_connecting () override final;
 	void on_disconnecting () override final;
 
+	// Function used as sink for log transfer
+	void prior_sender_sink_hook (std::string &&message);
+
       private:
 	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
 	std::atomic<log_lsa> m_saved_lsa;
