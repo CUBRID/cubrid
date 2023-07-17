@@ -735,8 +735,11 @@ tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
   if (newly_connected)
     {
       // It should be done when the connection_handler's state gets CONNECTED.
-      // TODO Someday, it will be CONNECTING right after connect() and become CONNECTED asynchronously, then it should be chnaged along.
-      (void) m_ts.reset_main_connection ();
+      // TODO in near future, it will be CONNECTING right after connect() and become CONNECTED asynchronously, then it should be changed along.
+      if (m_ts.reset_main_connection () != NO_ERROR)
+	{
+	  assert (false);
+	}
     }
 }
 
