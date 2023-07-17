@@ -559,6 +559,7 @@ opzioni valide:\n\
   -C, --CS-mode               modalità di esecuzione client-server\n\
       --datafile-per-class    creare un file oggetto per ogni classe; predefinito: non attivo\n\
       --split-schema-files    dividere le informazioni sullo schema per oggetto e generare ciascun file; Predefinito: genera un file schema con tutti gli oggetti\n\
+      --no-with-option-print  Stampa le opzioni della clausola WITH specificate durante la creazione dell'indice; predefinito: disabilitato.\n\
       --as-dba                Se l'utente di accesso è un membro del gruppo DBA, estrai lo stesso file di schema del DBA.\n
 
 
