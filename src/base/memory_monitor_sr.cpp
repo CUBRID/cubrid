@@ -517,7 +517,14 @@ namespace cubperf
       }
     else
       {
-	info.num_tran = tran_count;
+	if (tran_count > tran_info.size ())
+	  {
+	    info.num_tran = tran_info.size ();
+	  }
+	else
+	  {
+	    info.num_tran = tran_count;
+	  }
 	qsort (&tran_info.front (), tran_info.size (), sizeof (tran_info[0]), comp);
       }
 
