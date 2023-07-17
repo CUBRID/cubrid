@@ -207,7 +207,6 @@ active_tran_server::connection_handler::prior_sender_sink_hook (std::string &&me
 {
   assert (message.size () > 0);
 
-  auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
   push_request_regardless_of_state (tran_to_page_request::SEND_LOG_PRIOR_LIST, std::move (message));
 }
 
