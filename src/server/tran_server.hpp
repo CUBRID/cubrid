@@ -129,6 +129,7 @@ class tran_server
 	{ }
 
 	virtual request_handlers_map_t get_request_handlers ();
+	void push_request_regardless_of_state (tran_to_page_request reqid, std::string &&payload);
 
 	/*
 	 * Do the server-type-specific jobs before state transtition.
