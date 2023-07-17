@@ -4548,6 +4548,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
   char *module;
   bool transaction, show_all;
   int tran_count;
+  
   module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
   transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
   tran_count = utility_get_option_int_value (arg_map, MEMMON_TRAN_COUNT_S);
