@@ -4544,18 +4544,69 @@ error_exit:
 int
 memmon (UTIL_FUNCTION_ARG * arg)
 {
+#if defined(CS_MODE)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
-  char *module;
+  char *module, *stop;
   bool transaction, show_all;
   int tran_count;
+  int module_index;
+
+  if (!prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
+      goto error_exit;
+    }
 
   module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
   transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
   tran_count = utility_get_option_int_value (arg_map, MEMMON_TRAN_COUNT_S);
   show_all = utility_get_option_bool_value (arg_map, MEMMON_SHOW_ALL_S);
 
+  if ((!transaction) && tran_count)
+    {
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_OPTION));
+      goto error_exit;
+    }
+
+  if (show_all && (transaction || module))
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
+      goto error_exit;
+    }
+
+  // TODO: MEMMON_MSG_NO_MATCHING_MODULE check
+  module_index = strtol (module, &stop, 10);
+  if (module_index)
+    {
+      if (module_index >= MMON_MODULE_LAST)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
+		   module);
+	  goto error_exit;
+	}
+    }
+  else				/* module == NULL or module with module name */
+    {
+      // TODO: convert module name to module index
+    }
+
   // XXX: for test, it will removed at main implementation
   fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (module ? module : "NULL"),
 	   (transaction ? "true" : "false"), tran_count, (show_all ? "true" : "false"));
   return EXIT_SUCCESS;
+
+print_memmon_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERAL_INVALID_ARGUMENT);
+
+error_exit:
+  return EXIT_FAILURE;
+
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* CS_MODE */
 }
