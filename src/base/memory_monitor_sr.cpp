@@ -25,8 +25,9 @@
 #include <vector>
 #include <cassert>
 
-#include "perf.hpp"
 #include "error_manager.h"
+#include "system_parameter.h"
+#include "perf.hpp"
 #include "memory_monitor_sr.hpp"
 #include "log_impl.h"
 
@@ -47,7 +48,7 @@ namespace cubperf
     std::atomic<uint64_t> init_stat;
     std::atomic<uint64_t> cur_stat;
     std::atomic<uint64_t> peak_stat;
-    std::atomic<uint32_t> expand_count;
+    std::atomic<uint32_t> expand_resize_count;
   } MMON_MEM_STAT;
 
   class mmon_subcomponent
@@ -64,8 +65,7 @@ namespace cubperf
       mmon_subcomponent &operator = (mmon_subcomponent &&) = delete;
 
       const char *get_name ();
-      void add_cur_stat (uint64_t size);
-      void sub_cur_stat (uint64_t size);
+      void add_cur_stat (int64_t size);
 
     private:
       std::string m_subcomp_name;
@@ -86,10 +86,10 @@ namespace cubperf
       mmon_component &operator = (mmon_component &&) = delete;
 
       const char *get_name ();
-      void add_stat (uint64_t size, int subcomp_idx, bool init, bool expand);
-      void sub_stat (uint64_t size, int subcomp_idx, bool init);
-      int get_subcomp_index (const char *subcomp_name);
-      int add_subcomponent (const char *name);
+      void add_stat (int64_t size, int subcomp_idx);
+      void add_expand_resize_count ();
+      void end_init_phase ();
+      int add_subcomponent (const char *name, bool &subcomp_exist);
 
     private:
       std::string m_comp_name;
@@ -99,6 +99,12 @@ namespace cubperf
 
   class mmon_module
   {
+    public:
+      /* max index of component or subcomponent is 0x0000FFFF
+       * if some stats have max index of component or subcomponent,
+       * we don't have to increase it */
+      static constexpr int MAX_COMP_IDX = 0x0000FFFF;
+
     public:
       mmon_module (const char *module_name, const MMON_STAT_INFO *info);
       mmon_module (const mmon_module &) = delete;
@@ -110,16 +116,17 @@ namespace cubperf
       mmon_module &operator = (mmon_module &&) = delete;
 
       virtual int aggregate_stats (const MMON_MODULE_INFO &info);
-      void add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init, bool expand);
-      void sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init);
-      int add_component (const char *name);
-      inline int make_stat_idx_map (int comp_idx, int subcomp_idx);
+      void add_stat (MMON_STAT_ID stat_id, int64_t size);
+      void add_expand_resize_count (MMON_STAT_ID stat_id);
+      void end_init_phase ();
+      int add_component (const char *name, bool &comp_exist);
 
     private:
-      /* max index of component or subcomponent is 0x0000FFFF
-       * if some stats have max index of component or subcomponent,
-       * we don't have to increase it */
-      static constexpr int MAX_COMP_IDX = 0x0000FFFF;
+      void get_comp_and_subcomp_idx (MMON_STAT_ID stat_id, int &comp_idx, int &subcomp_idx) const;
+      inline int make_comp_idx_map_val (int comp_idx, int subcomp_idx) const;
+      inline int get_comp_map_idx (MMON_STAT_ID stat_id) const;
+      inline int get_comp_idx (int comp_idx_map_val) const;
+      inline int get_subcomp_idx (int comp_idx_map_val) const;
 
     private:
       std::string m_module_name;
@@ -142,14 +149,16 @@ namespace cubperf
       memory_monitor &operator = (const memory_monitor &) = delete;
       memory_monitor &operator = (memory_monitor &&) = delete;
 
-      int add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool expand);
-      int sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size);
-      int resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size);
-      int move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size);
+      void add_stat (MMON_STAT_ID stat_id, int64_t size);
+      void add_tran_stat (THREAD_ENTRY *thread_p, int64_t size);
+      void resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size, int64_t new_size);
+      void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size);
+      void end_init_phase ();
       int aggregate_module_info (MMON_MODULE_INFO *info, int module_index);
       int aggregate_tran_info (MMON_TRAN_INFO *info, int tran_count);
-      inline int get_comp_idx_from_comp_idx_map (int comp_idx_map_val);
-      inline int get_subcomp_idx_from_comp_idx_map (int comp_idx_map_val);
+
+    private:
+      inline int get_module_idx (MMON_STAT_ID stat_id) const;
 
     private:
       class aggregater
@@ -180,19 +189,29 @@ namespace cubperf
       std::unique_ptr<mmon_module> m_module[MMON_MODULE_LAST];
   };
 
-  inline int mmon_module::make_stat_idx_map (int comp_idx, int subcomp_idx)
+  inline int mmon_module::make_comp_idx_map_val (int comp_idx, int subcomp_idx) const
   {
     return (comp_idx << 16 | subcomp_idx);
   }
 
-  inline int memory_monitor::get_comp_idx_from_comp_idx_map (int comp_idx_map_val)
+  inline int mmon_module::get_comp_map_idx (MMON_STAT_ID stat_id) const
+  {
+    return (((int) stat_id) & MMON_PARSE_MASK);
+  }
+
+  inline int mmon_module::get_comp_idx (int comp_idx_map_val) const
   {
     return (comp_idx_map_val >> 16);
   }
 
-  inline int memory_monitor::get_subcomp_idx_from_comp_idx_map (int comp_idx_map_val)
+  inline int mmon_module::get_subcomp_idx (int comp_idx_map_val) const
   {
     return (comp_idx_map_val & MMON_PARSE_MASK);
+  }
+
+  inline int memory_monitor::get_module_idx (MMON_STAT_ID stat_id) const
+  {
+    return (((int) stat_id) >> 16);
   }
 
   const char *mmon_subcomponent::get_name ()
@@ -200,14 +219,11 @@ namespace cubperf
     return m_subcomp_name.c_str ();
   }
 
-  void mmon_subcomponent::add_cur_stat (uint64_t size)
+  void mmon_subcomponent::add_cur_stat (int64_t size)
   {
-    m_cur_stat.fetch_add (size);
-  }
+    assert ((size >= 0) || (- (size) <= m_cur_stat));
 
-  void mmon_subcomponent::sub_cur_stat (uint64_t size)
-  {
-    m_cur_stat.fetch_sub (size);
+    m_cur_stat += size;
   }
 
   const char *mmon_component::get_name ()
@@ -215,44 +231,50 @@ namespace cubperf
     return m_comp_name.c_str ();
   }
 
-  void mmon_component::add_stat (uint64_t size, int subcomp_idx, bool init, bool expand)
+  void mmon_component::add_stat (int64_t size, int subcomp_idx)
   {
-    /* description of add_stat(..).
-     * 1) if init == true, add init_stat
-     * 2) then, add cur_stat
-     * 3) compare with peak_stat
-     * 4) if cur_stat(new) > peak_stat, update peak_stat
-     * 5) if expand == true, expand_count++
-     * 6) call subcomponent->add_cur_stat(size) */
-    return;
+    assert ((size >= 0) || (- (size) <= m_stat.cur_stat));
+
+    m_stat.cur_stat += size;
+
+    if (m_stat.cur_stat > m_stat.peak_stat)
+      {
+	m_stat.peak_stat = m_stat.cur_stat.load ();
+      }
+
+    /* If there is a subcomponent info */
+    if (subcomp_idx != mmon_module::MAX_COMP_IDX)
+      {
+	assert (subcomp_idx < m_subcomponent.size ());
+	m_subcomponent[subcomp_idx]->add_cur_stat (size);
+      }
   }
 
-  void mmon_component::sub_stat (uint64_t size, int subcomp_idx, bool init)
+  void mmon_component::add_expand_resize_count ()
   {
-    /* description of sub_stat(size, init).
-     * 1) if init == true, sub init_stat
-     * 2) then, sub cur_stat
-     * 3) call component->sub_stat(size, subcomp_idx, init) */
-    return;
+    m_stat.expand_resize_count++;
   }
 
-  int mmon_component::get_subcomp_index (const char *subcomp_name)
+  void mmon_component::end_init_phase ()
+  {
+    assert (m_stat.init_stat == 0);
+    m_stat.init_stat = m_stat.cur_stat.load ();
+  }
+
+  int mmon_component::add_subcomponent (const char *name, bool &subcomp_exist)
   {
     for (size_t i = 0; i < m_subcomponent.size (); i++)
       {
-	if (!strcmp (subcomp_name, m_subcomponent[i]->get_name()))
+	if (!strcmp (name, m_subcomponent[i]->get_name ()))
 	  {
+	    subcomp_exist = true;
 	    return i;
 	  }
       }
 
-    /* if not exist, return -1 */
-    return -1;
-  }
+    m_subcomponent.push_back (std::make_unique<mmon_subcomponent> (name));
 
-  int mmon_component::add_subcomponent (const char *name)
-  {
-    return 0;
+    return m_subcomponent.size () - 1;
   }
 
   mmon_module::mmon_module (const char *module_name, const MMON_STAT_INFO *info)
@@ -260,82 +282,119 @@ namespace cubperf
   {
     /* register component and subcomponent information
      * add component and subcomponent */
-    int cnt = 0;
-    while (info[cnt].id != MMON_STAT_LAST)
+    int idx = 0;
+    while (info[idx].id != MMON_STAT_LAST)
       {
-	bool comp_skip = false;
-	bool subcomp_skip = false;
+	bool comp_exist = false;
+	bool subcomp_exist = false;
 	int comp_idx = mmon_module::MAX_COMP_IDX, subcomp_idx = mmon_module::MAX_COMP_IDX;
 
-	if (info[cnt].comp_name)
+	if (info[idx].comp_name)
 	  {
-	    for (size_t i = 0; i < m_component.size (); i++)
-	      {
-		if (!strcmp (info[cnt].comp_name, m_component[i]->get_name ()))
-		  {
-		    comp_idx = i;
-		    comp_skip = true;
-		    break;
-		  }
-	      }
+	    comp_idx = add_component (info[idx].comp_name, comp_exist);
+	    assert (comp_idx < MAX_COMP_IDX);
 
-	    if (!comp_skip)
+	    if (info[idx].subcomp_name)
 	      {
-		comp_idx = add_component (info[cnt].comp_name);
-	      }
-	    /* XXX: add error if comp_idx > MAX_COMP_IDX */
-
-	    if (info[cnt].subcomp_name)
-	      {
-		subcomp_idx = m_component[comp_idx]->get_subcomp_index (info[cnt].subcomp_name);
-		if (subcomp_idx != -1)
-		  {
-		    subcomp_skip = true;
-		  }
-
-		if (!subcomp_skip)
-		  {
-		    subcomp_idx = m_component[comp_idx]->add_subcomponent (info[cnt].subcomp_name);
-		  }
-		/* XXX: add error if subcomp_idx > MAX_SUBCOMP_IDX */
+		subcomp_idx = m_component[comp_idx]->add_subcomponent (info[idx].subcomp_name, subcomp_exist);
+		assert (subcomp_idx < MAX_COMP_IDX);
 	      }
 	  }
+	else
+	  {
+	    assert (info[idx].subcomp_name == NULL);
+	  }
 
-	m_comp_idx_map.push_back (make_stat_idx_map (comp_idx, subcomp_idx));
+	assert ((comp_exist && subcomp_exist) == false);
+	m_comp_idx_map.push_back (make_comp_idx_map_val (comp_idx, subcomp_idx));
 
-	cnt++;
+	idx++;
       }
   }
 
   int mmon_module::aggregate_stats (const MMON_MODULE_INFO &info)
   {
-    return 0;
+    int error = NO_ERROR;
+    return error;
   }
 
-  void mmon_module::add_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init, bool expand)
+  void mmon_module::get_comp_and_subcomp_idx (MMON_STAT_ID stat_id, int &comp_idx, int &subcomp_idx) const
   {
-    /* description of add_stat(..).
-     * 1) if init == true, add init_stat
-     * 2) then, add cur_stat
-     * 3) compare with peak_stat
-     * 4) if cur_stat(new) > peak_stat, update peak_stat
-     * 5) if expand == true, expand_count++
-     * 6) call component->add_stat(size, subcomp_idx, init, expand) */
-    return;
+    /* 32-bit MMON_STAT_ID: [module_idx: 16 | comp_idx_map_idx: 16]
+     * 32-bit mmon_module::m_comp_idx_map[comp_idx_map_idx] value: [comp_idx: 16 | subcomp_idx: 16]
+     */
+    int comp_map_idx = get_comp_map_idx (stat_id);
+    int idx_map_val;
+
+    idx_map_val = m_comp_idx_map[comp_map_idx];
+    comp_idx = get_comp_idx (idx_map_val);
+    subcomp_idx = get_subcomp_idx (idx_map_val);
   }
 
-  void mmon_module::sub_stat (uint64_t size, int comp_idx, int subcomp_idx, bool init)
+  void mmon_module::add_stat (MMON_STAT_ID stat_id, int64_t size)
   {
-    /* description of sub_stat(size, init).
-     * 1) if init == true, sub init_stat
-     * 2) then, sub cur_stat
-     * 3) call component->sub_stat(size, subcomp_idx, init) */
-    return;
+    int comp_idx, subcomp_idx;
+
+    assert ((size >= 0) || (- (size) <= m_stat.cur_stat));
+
+    get_comp_and_subcomp_idx (stat_id, comp_idx, subcomp_idx);
+
+    m_stat.cur_stat += size;
+
+    if (m_stat.cur_stat > m_stat.peak_stat)
+      {
+	m_stat.peak_stat = m_stat.cur_stat.load ();
+      }
+
+    /* If there is a component info */
+    if (comp_idx != mmon_module::MAX_COMP_IDX)
+      {
+	assert (comp_idx < m_component.size ());
+	m_component[comp_idx]->add_stat (size, subcomp_idx);
+      }
   }
 
-  int mmon_module::add_component (const char *name)
+  void mmon_module::add_expand_resize_count (MMON_STAT_ID stat_id)
   {
-    return 0;
+    int comp_idx, subcomp_idx;
+
+    m_stat.expand_resize_count++;
+
+    get_comp_and_subcomp_idx (stat_id, comp_idx, subcomp_idx);
+
+    /* If there is a component info */
+    if (comp_idx != mmon_module::MAX_COMP_IDX)
+      {
+	assert (comp_idx < m_component.size ());
+	m_component[comp_idx]->add_expand_resize_count ();
+      }
+  }
+
+  void mmon_module::end_init_phase ()
+  {
+    assert (m_stat.init_stat == 0);
+    m_stat.init_stat = m_stat.cur_stat.load ();
+
+    for (const auto &comp : m_component)
+      {
+	comp->end_init_phase ();
+      }
+  }
+
+  int mmon_module::add_component (const char *name, bool &comp_exist)
+  {
+    for (size_t i = 0; i < m_component.size (); i++)
+      {
+	if (!strcmp (name, m_component[i]->get_name ()))
+	  {
+	    comp_exist = true;
+	    return i;
+	  }
+      }
+
+    m_component.push_back (std::make_unique<mmon_component> (name));
+
+    return m_component.size () - 1;
   }
 
   memory_monitor::aggregater::aggregater (memory_monitor *mmon)
@@ -358,25 +417,59 @@ namespace cubperf
     return 0;
   }
 
-  int memory_monitor::add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size, bool expand)
+  void memory_monitor::add_stat (MMON_STAT_ID stat_id, int64_t size)
   {
-    return 0;
+    int module_idx = get_module_idx (stat_id);
+
+    if (size < 0)
+      {
+	assert (size < m_total_mem_usage);
+      }
+
+    m_total_mem_usage += size;
+
+    m_module[module_idx]->add_stat (stat_id, size);
   }
 
-  int memory_monitor::sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
+  void memory_monitor::add_tran_stat (THREAD_ENTRY *thread_p, int64_t size)
   {
-    return 0;
+    LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+    if (size < 0)
+      {
+	assert (size <= tdes->cur_mem_usage);
+      }
+
+    tdes->cur_mem_usage += size;
   }
 
-  int memory_monitor::resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size,
-				   uint64_t new_size)
+  void memory_monitor::resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size,
+				    int64_t new_size)
   {
-    return 0;
+    int module_idx = get_module_idx (stat_id);
+
+    add_stat (stat_id, - (old_size));
+    add_tran_stat (thread_p, - (old_size));
+    add_stat (stat_id, new_size);
+    add_tran_stat (thread_p, new_size);
+    if (new_size - old_size > 0) /* expand */
+      {
+	m_module[module_idx]->add_expand_resize_count (stat_id);
+      }
   }
 
-  int memory_monitor::move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size)
+  void memory_monitor::move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size)
   {
-    return 0;
+    add_stat (src, - (size));
+    add_stat (dest, size);
+  }
+
+  void memory_monitor::end_init_phase ()
+  {
+    for (int i = 0; i < MMON_MODULE_LAST; i++)
+      {
+	m_module[i]->end_init_phase ();
+      }
   }
 
   int memory_monitor::aggregate_module_info (MMON_MODULE_INFO *info, int module_index)
@@ -391,51 +484,77 @@ namespace cubperf
 } // namespace cubperf
 
 /* APIs */
+// TODO: API parameter check (after error code setting)
+using namespace cubperf;
+
 int mmon_initialize (const char *server_name)
 {
-  cubperf::mmon_Gl = new cubperf::memory_monitor (server_name);
+  int error = NO_ERROR;
 
-  if (cubperf::mmon_Gl == nullptr)
+  assert (server_name != NULL);
+  assert (mmon_Gl == nullptr);
+
+  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
     {
-      /* error case */
-      return -1;
-    }
+      mmon_Gl = new memory_monitor (server_name);
 
-  /* normal return */
-  return 0;
+      if (mmon_Gl == nullptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (memory_monitor));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  return error;
+}
+
+void mmon_notify_server_start ()
+{
+  if (mmon_Gl != nullptr)
+    {
+      mmon_Gl->end_init_phase ();
+    }
 }
 
 void mmon_finalize ()
 {
-  delete cubperf::mmon_Gl;
+  if (mmon_Gl != nullptr)
+    {
+      delete mmon_Gl;
+    }
 }
 
-int mmon_add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
+void mmon_add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t size)
 {
-  int error = NO_ERROR;
-
-  return error;
+  if (mmon_Gl != nullptr)
+    {
+      mmon_Gl->add_stat (stat_id, size);
+      mmon_Gl->add_tran_stat (thread_p, size);
+    }
 }
 
-int mmon_sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
+void mmon_sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t size)
 {
-  int error = NO_ERROR;
-
-  return error;
+  if (mmon_Gl != nullptr)
+    {
+      mmon_Gl->add_stat (stat_id, - (size));
+      mmon_Gl->add_tran_stat (thread_p, - (size));
+    }
 }
 
-int mmon_move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size)
+void mmon_move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size)
 {
-  int error = NO_ERROR;
-
-  return error;
+  if (mmon_Gl != nullptr)
+    {
+      mmon_Gl->move_stat (thread_p, src, dest, size);
+    }
 }
 
-int mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size)
+void mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size, int64_t new_size)
 {
-  int error = NO_ERROR;
-
-  return error;
+  if (mmon_Gl != nullptr)
+    {
+      mmon_Gl->resize_stat (thread_p, stat_id, old_size, new_size);
+    }
 }
 
 int mmon_aggregate_module_info (MMON_MODULE_INFO *info, int module_index)
