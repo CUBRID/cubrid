@@ -4240,6 +4240,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       parser_free_tree (parser, push_term_list);
     }
 
+
   return push_cnt;
 }
 
@@ -4265,6 +4266,8 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
   info.in.subquery = subquery = spec->info.spec.derived_table;
 
   push_cnt = mq_copypush_sargable_terms_helper (parser, statement, spec, subquery, &info);
+
+  pt_clear_dblink_remote_cols (parser, subquery);
 
   return push_cnt;
 }

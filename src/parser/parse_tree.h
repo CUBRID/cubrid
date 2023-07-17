@@ -3453,6 +3453,8 @@ typedef struct pt_dblink_info
   PT_NODE *sel_list;
   PT_NODE *owner_list;
 
+  void *remote_col_list;	/* remote table's column list */
+
 } PT_DBLINK_INFO;
 
 typedef struct pt_create_server_info

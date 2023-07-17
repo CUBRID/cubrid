@@ -100,4 +100,5 @@ extern PT_NODE *mq_rewrite_query_as_derived (PARSER_CONTEXT * parser, PT_NODE * 
 extern int mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec);
 
 extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
+void pt_clear_dblink_remote_cols (PARSER_CONTEXT * parser, PT_NODE * dblink);
 #endif /* _VIEW_TRANSFORM_H_ */
