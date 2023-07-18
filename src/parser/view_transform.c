@@ -4240,7 +4240,6 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       parser_free_tree (parser, push_term_list);
     }
 
-
   return push_cnt;
 }
 
