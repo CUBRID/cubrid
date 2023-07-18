@@ -694,7 +694,11 @@ int uw_sem_post (sem_t * sem_t);
 int uw_sem_destroy (sem_t * sem_t);
 #endif
 T_SHM_BROKER *broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag,
-						char *acl_file);
+						char *acl_file, unsigned char *ip_addr);
 T_SHM_APPL_SERVER *broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p);
+
+#if !defined(WINDOWS)
+int get_host_ip (unsigned char *ip_addr);
+#endif
 
 #endif /* _BROKER_SHM_H_ */

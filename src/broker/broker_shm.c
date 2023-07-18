@@ -48,6 +48,8 @@
 #include "broker_filename.h"
 #include "broker_util.h"
 #include "host_lookup.h"
+#include "error_code.h"
+#include "system_parameter.h"
 
 #if defined(WINDOWS)
 #include "broker_list.h"
@@ -61,7 +63,6 @@ static int shm_id_cmp_func (void *key1, void *key2);
 static int shm_info_assign_func (T_LIST * node, void *key, void *value);
 static char *shm_id_to_name (int shm_key);
 #endif
-static int get_host_ip (unsigned char *ip_addr);
 
 #if defined(WINDOWS)
 T_LIST *shm_id_list_header = NULL;
@@ -414,16 +415,11 @@ uw_shm_destroy (int shm_key)
 }
 
 T_SHM_BROKER *
-broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag, char *acl_file)
+broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag, char *acl_file,
+				  unsigned char *ip_addr)
 {
   int i, shm_size;
   T_SHM_BROKER *shm_br = NULL;
-  unsigned char ip_addr[4];
-
-  if (get_host_ip (ip_addr) < 0)
-    {
-      return NULL;
-    }
 
   shm_size = sizeof (T_SHM_BROKER) + (br_num - 1) * sizeof (T_BROKER_INFO);
 
@@ -747,7 +743,7 @@ shm_id_to_name (int shm_key)
 }
 #endif /* WINDOWS */
 
-static int
+int
 get_host_ip (unsigned char *ip_addr)
 {
   char hostname[CUB_MAXHOSTNAMELEN];
@@ -760,7 +756,7 @@ get_host_ip (unsigned char *ip_addr)
     }
   if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
-      fprintf (stderr, "unknown host : %s\n", hostname);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, hostname, HOSTS_FILE);
       return -1;
     }
   memcpy ((void *) ip_addr, (void *) hp->h_addr_list[0], 4);
