@@ -26,6 +26,9 @@
 
 #include <cstdint>
 
+#define MMON_MODULE_BRIEF_OPTION 1
+#define MMON_MODULE_DEFAULT_OPTION 2
+
 typedef enum mmon_module_id
 {
   //MMON_MODULE_HEAP = 1,

@@ -66,7 +66,7 @@ namespace cubperf
 
       const char *get_name ();
       void add_cur_stat (int64_t size);
-      void get_stat (MMON_SUBCOMP_INFO &info);
+      void get_stat (MMON_SUBCOMP_INFO &info) const;
 
     private:
       std::string m_subcomp_name;
@@ -90,7 +90,7 @@ namespace cubperf
       void add_stat (int64_t size, int subcomp_idx);
       void add_expand_resize_count ();
       void end_init_phase ();
-      int get_stat (MMON_COMP_INFO &info);
+      int get_stat (MMON_COMP_INFO &info) const;
       int add_subcomponent (const char *name, bool &subcomp_exist);
 
     private:
@@ -117,7 +117,7 @@ namespace cubperf
       mmon_module &operator = (const mmon_module &) = delete;
       mmon_module &operator = (mmon_module &&) = delete;
 
-      virtual int aggregate_stats (MMON_MODULE_INFO &info);
+      virtual int aggregate_stats (MMON_MODULE_INFO &info, bool get_brief_info) const;
       void add_stat (MMON_STAT_ID stat_id, int64_t size);
       void add_expand_resize_count (MMON_STAT_ID stat_id);
       void end_init_phase ();
@@ -142,7 +142,7 @@ namespace cubperf
   {
     public:
       memory_monitor (const char *server_name)
-	: m_aggregater (this), m_server_name (server_name) {}
+	: m_server_name (server_name), m_aggregater (this) {}
       memory_monitor (const memory_monitor &) = delete;
       memory_monitor (memory_monitor &&) = delete;
 
@@ -156,8 +156,9 @@ namespace cubperf
       void resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size, int64_t new_size);
       void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size);
       void end_init_phase ();
-      int aggregate_module_info (MMON_MODULE_INFO &info, int module_index);
-      int aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count);
+      int aggregate_module_info (MMON_MODULE_INFO &info, int module_index) const;
+      int aggregate_module_brief_info (MMON_MODULE_INFO *&info, int option) const;
+      int aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count) const;
 
     private:
       inline int get_module_idx (MMON_STAT_ID stat_id) const;
@@ -175,26 +176,10 @@ namespace cubperf
 	  aggregater &operator = (const aggregater &) = delete;
 	  aggregater &operator = (aggregater &&) = delete;
 
-	  void get_server_info (MMON_SERVER_INFO &info);
-	  int get_module_info (MMON_MODULE_INFO &info, int module_index);
-	  int get_transaction_info (MMON_TRAN_INFO &info, int tran_count);
-
-	private:
-	  static int comp (const void *a, const void *b)
-	  {
-	    uint64_t x1 = ((std::pair<int, uint64_t> *)a)->second;
-	    uint64_t x2 = ((std::pair<int, uint64_t> *)b)->second;
-
-	    if (x1 < x2)
-	      {
-		return 1;
-	      }
-	    else if (x1 > x2)
-	      {
-		return -1;
-	      }
-	    return 0;
-	  }
+	  void get_server_info (MMON_SERVER_INFO &info) const;
+	  int get_module_info (MMON_MODULE_INFO &info, int module_index) const;
+	  int get_module_brief_info (MMON_MODULE_INFO *&info, int option) const;
+	  int get_transaction_info (MMON_TRAN_INFO &info, int tran_count) const;
 
 	private:
 	  memory_monitor *m_mmon;
@@ -240,14 +225,14 @@ namespace cubperf
 
   void mmon_subcomponent::add_cur_stat (int64_t size)
   {
-    assert ((size >= 0) || (- (size) <= m_cur_stat));
+    assert ((size >= 0) || ((uint64_t) (-size) <= m_cur_stat));
 
     m_cur_stat += size;
   }
 
-  void mmon_subcomponent::get_stat (MMON_SUBCOMP_INFO &info)
+  void mmon_subcomponent::get_stat (MMON_SUBCOMP_INFO &info) const
   {
-    strcpy (info.name, m_subcomp_name.c_str ());
+    strncpy (info.name, m_subcomp_name.c_str (), m_subcomp_name.size ());
     info.cur_stat = m_cur_stat.load ();
   }
 
@@ -258,7 +243,7 @@ namespace cubperf
 
   void mmon_component::add_stat (int64_t size, int subcomp_idx)
   {
-    assert ((size >= 0) || (- (size) <= m_stat.cur_stat));
+    assert ((size >= 0) || ((uint64_t) (-size) <= m_stat.cur_stat));
 
     m_stat.cur_stat += size;
 
@@ -270,7 +255,7 @@ namespace cubperf
     /* If there is a subcomponent info */
     if (subcomp_idx != mmon_module::MAX_COMP_IDX)
       {
-	assert (subcomp_idx < m_subcomponent.size ());
+	assert ((size_t)subcomp_idx < m_subcomponent.size ());
 	m_subcomponent[subcomp_idx]->add_cur_stat (size);
       }
   }
@@ -286,9 +271,9 @@ namespace cubperf
     m_stat.init_stat = m_stat.cur_stat.load ();
   }
 
-  int mmon_component::get_stat (MMON_COMP_INFO &info)
+  int mmon_component::get_stat (MMON_COMP_INFO &info) const
   {
-    strcpy (info.name, m_comp_name.c_str ());
+    strncpy (info.name, m_comp_name.c_str (), m_comp_name.size ());
 
     info.stat.init_stat = m_stat.init_stat.load ();
     info.stat.cur_stat = m_stat.cur_stat.load ();
@@ -305,11 +290,11 @@ namespace cubperf
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MMON_SUBCOMP_INFO) * info.num_subcomp);
 	    return ER_OUT_OF_VIRTUAL_MEMORY;
 	  }
-      }
 
-    for (int i = 0; i < info.num_subcomp; i++)
-      {
-	m_subcomponent[i]->get_stat (info.subcomp_info[i]);
+	for (uint32_t i = 0; i < info.num_subcomp; i++)
+	  {
+	    m_subcomponent[i]->get_stat (info.subcomp_info[i]);
+	  }
       }
 
     return NO_ERROR;
@@ -366,14 +351,22 @@ namespace cubperf
       }
   }
 
-  int mmon_module::aggregate_stats (MMON_MODULE_INFO &info)
+  int mmon_module::aggregate_stats (MMON_MODULE_INFO &info, bool get_brief_info) const
   {
-    strcpy (info.name, m_module_name.c_str ());
+    strncpy (info.name, m_module_name.c_str (), m_module_name.size ());
 
-    info.stat.init_stat = m_stat.init_stat.load ();
-    info.stat.cur_stat = m_stat.cur_stat.load ();
-    info.stat.peak_stat = m_stat.peak_stat.load ();
-    info.stat.expand_resize_count = m_stat.expand_resize_count.load ();
+    if (get_brief_info)
+      {
+	info.stat.cur_stat = m_stat.cur_stat.load ();
+	return NO_ERROR;
+      }
+    else
+      {
+	info.stat.init_stat = m_stat.init_stat.load ();
+	info.stat.cur_stat = m_stat.cur_stat.load ();
+	info.stat.peak_stat = m_stat.peak_stat.load ();
+	info.stat.expand_resize_count = m_stat.expand_resize_count.load ();
+      }
 
     info.num_comp = m_component.size ();
     if (info.num_comp != 0)
@@ -385,11 +378,11 @@ namespace cubperf
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MMON_COMP_INFO) * info.num_comp);
 	    return ER_OUT_OF_VIRTUAL_MEMORY;
 	  }
-      }
 
-    for (int i = 0; i < info.num_comp; i++)
-      {
-	m_component[i]->get_stat (info.comp_info[i]);
+	for (uint32_t i = 0; i < info.num_comp; i++)
+	  {
+	    m_component[i]->get_stat (info.comp_info[i]);
+	  }
       }
 
     return NO_ERROR;
@@ -412,7 +405,7 @@ namespace cubperf
   {
     int comp_idx, subcomp_idx;
 
-    assert ((size >= 0) || (- (size) <= m_stat.cur_stat));
+    assert ((size >= 0) || ((uint64_t) (-size) <= m_stat.cur_stat));
 
     get_comp_and_subcomp_idx (stat_id, comp_idx, subcomp_idx);
 
@@ -426,7 +419,7 @@ namespace cubperf
     /* If there is a component info */
     if (comp_idx != mmon_module::MAX_COMP_IDX)
       {
-	assert (comp_idx < m_component.size ());
+	assert ((size_t)comp_idx < m_component.size ());
 	m_component[comp_idx]->add_stat (size, subcomp_idx);
       }
   }
@@ -442,7 +435,7 @@ namespace cubperf
     /* If there is a component info */
     if (comp_idx != mmon_module::MAX_COMP_IDX)
       {
-	assert (comp_idx < m_component.size ());
+	assert ((size_t)comp_idx < m_component.size ());
 	m_component[comp_idx]->add_expand_resize_count ();
       }
   }
@@ -479,21 +472,46 @@ namespace cubperf
     m_mmon = mmon;
   }
 
-  void memory_monitor::aggregater::get_server_info (MMON_SERVER_INFO &info)
+  void memory_monitor::aggregater::get_server_info (MMON_SERVER_INFO &info) const
   {
-    strcpy (info.name, m_mmon->m_server_name.c_str ());
+    strncpy (info.name, m_mmon->m_server_name.c_str (), m_mmon->m_server_name.size ());
     info.total_mem_usage = m_mmon->m_total_mem_usage.load ();
   }
 
-  int memory_monitor::aggregater::get_module_info (MMON_MODULE_INFO &info, int module_index)
+  int memory_monitor::aggregater::get_module_info (MMON_MODULE_INFO &info, int module_index) const
   {
     int error = NO_ERROR;
 
-    error = m_mmon->m_module[module_index]->aggregate_stats (info);
+    error = m_mmon->m_module[module_index]->aggregate_stats (info, false);
     return error;
   }
 
-  int memory_monitor::aggregater::get_transaction_info (MMON_TRAN_INFO &info, int tran_count)
+  int memory_monitor::aggregater::get_module_brief_info (MMON_MODULE_INFO *&info, int option) const
+  {
+    int error = NO_ERROR;
+
+    for (int i = 0; i < MMON_MODULE_LAST; i++)
+      {
+	error = m_mmon->m_module[i]->aggregate_stats (info[i], true);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+      }
+
+    if (MMON_MODULE_DEFAULT_OPTION)
+      {
+	const auto &comp = [] (const auto& module_info1, const auto& module_info2)
+	{
+	  return module_info1.stat.cur_stat > module_info2.stat.cur_stat;
+	};
+	std::sort (info, info + MMON_MODULE_LAST, comp);
+      }
+
+    return error;
+  }
+
+  int memory_monitor::aggregater::get_transaction_info (MMON_TRAN_INFO &info, int tran_count) const
   {
     int num_total_indices = 0;
     LOG_TDES **trantable;
@@ -513,11 +531,14 @@ namespace cubperf
 
     if (tran_count == 0)
       {
+	// transaction option with no tran-count option
 	info.num_tran = tran_info.size ();
       }
     else
       {
-	if (tran_count > tran_info.size ())
+	// 1) transaction option with tran-count option
+	// 2) default option (cubrid memmon <server-name>)
+	if ((size_t)tran_count > tran_info.size ())
 	  {
 	    info.num_tran = tran_info.size ();
 	  }
@@ -525,7 +546,12 @@ namespace cubperf
 	  {
 	    info.num_tran = tran_count;
 	  }
-	qsort (&tran_info.front (), tran_info.size (), sizeof (tran_info[0]), comp);
+
+	const auto &comp = [] (const auto& tran_pair1, const auto& tran_pair2)
+	{
+	  return tran_pair1.second > tran_pair2.second;
+	};
+	std::sort (tran_info.begin (), tran_info.end (), comp);
       }
 
     info.tran_stat = (MMON_TRAN_STAT *)malloc (sizeof (MMON_TRAN_STAT) * info.num_tran);
@@ -535,7 +561,7 @@ namespace cubperf
 	return ER_OUT_OF_VIRTUAL_MEMORY;
       }
 
-    for (int i = 0; i < info.num_tran; i++)
+    for (uint32_t i = 0; i < info.num_tran; i++)
       {
 	info.tran_stat[i].tranid = tran_info[i].first;
 	info.tran_stat[i].cur_stat = tran_info[i].second;
@@ -548,10 +574,7 @@ namespace cubperf
   {
     int module_idx = get_module_idx (stat_id);
 
-    if (size < 0)
-      {
-	assert (size < m_total_mem_usage);
-      }
+    assert ((size >= 0) || ((uint64_t) (-size) <= m_total_mem_usage));
 
     m_total_mem_usage += size;
 
@@ -562,10 +585,7 @@ namespace cubperf
   {
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-    if (size < 0)
-      {
-	assert (size <= tdes->cur_mem_usage);
-      }
+    assert ((size >= 0) || ((uint64_t) (-size) <= tdes->cur_mem_usage));
 
     tdes->cur_mem_usage += size;
   }
@@ -599,7 +619,7 @@ namespace cubperf
       }
   }
 
-  int memory_monitor::aggregate_module_info (MMON_MODULE_INFO &info, int module_index)
+  int memory_monitor::aggregate_module_info (MMON_MODULE_INFO &info, int module_index) const
   {
     int error = NO_ERROR;
 
@@ -609,7 +629,17 @@ namespace cubperf
     return error;
   }
 
-  int memory_monitor::aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count)
+  int memory_monitor::aggregate_module_brief_info (MMON_MODULE_INFO *&info, int option) const
+  {
+    int error = NO_ERROR;
+
+    m_aggregater.get_server_info (info[0].server_info);
+    error = m_aggregater.get_module_brief_info (info, option);
+
+    return error;
+  }
+
+  int memory_monitor::aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count) const
   {
     int error = NO_ERROR;
 
@@ -698,9 +728,28 @@ int mmon_aggregate_module_info (MMON_MODULE_INFO &info, int module_index)
 {
   int error = NO_ERROR;
 
-  if (mmon_Gl != nullptr)
+  assert (mmon_Gl != nullptr);
+  assert (module_index < (int)MMON_MODULE_LAST && module_index > 0);
+
+  error = mmon_Gl->aggregate_module_info (info, module_index);
+
+  return error;
+}
+
+int mmon_aggregate_module_brief_info (MMON_MODULE_INFO *&info, int option)
+{
+  int error = NO_ERROR;
+
+  assert (mmon_Gl != nullptr);
+
+  if (option == MMON_MODULE_BRIEF_OPTION || option == MMON_MODULE_DEFAULT_OPTION)
     {
-      error = mmon_Gl->aggregate_module_info (info, module_index);
+      error = mmon_Gl->aggregate_module_brief_info (info, option);
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   return error;
@@ -710,10 +759,9 @@ int mmon_aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count)
 {
   int error = NO_ERROR;
 
-  if (mmon_Gl != nullptr)
-    {
-      error = mmon_Gl->aggregate_tran_info (info, tran_count);
-    }
+  assert (mmon_Gl != nullptr);
+
+  error = mmon_Gl->aggregate_tran_info (info, tran_count);
 
   return error;
 }
