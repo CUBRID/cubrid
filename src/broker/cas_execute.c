@@ -1103,11 +1103,6 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
 
-  if (get_stmt_type (sql_stmt) != CUBRID_STMT_SELECT)
-    {
-      goto prepare_error;
-    }
-
   err_code = cgw_sql_prepare ((SQLCHAR *) sql_stmt);
   if (err_code < 0)
     {
