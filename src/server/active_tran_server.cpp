@@ -178,30 +178,22 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 }
 
 void
-active_tran_server::connection_handler::send_start_catch_up_request (LOG_LSA &&catchup_lsa)
+active_tran_server::connection_handler::send_start_catch_up_request (std::string &&host, int32_t port,
+    LOG_LSA &&catchup_lsa)
 {
   cubpacking::packer packer;
   size_t size = 0;
 
-  std::string hostname;
-  int32_t port = -1;
-
-  if (m_ts.get_main_connection_info (hostname, port) == false)
-    {
-      // there is no main connection yet. you will be the main connection and don't catch-up
-      catchup_lsa.set_null ();
-    }
-
   size += cublog::lsa_utils::get_packed_size (packer, size); // catchup_lsa
   size += packer.get_packed_int_size (size); // port
-  size += packer.get_packed_string_size (hostname, size); // hostname
+  size += packer.get_packed_string_size (host, size); // host
 
   std::unique_ptr < char[] > buffer (new char[size]);
   packer.set_buffer (buffer.get (), size);
 
   cublog::lsa_utils::pack (packer, catchup_lsa);
   packer.pack_int (port);
-  packer.pack_string (hostname);
+  packer.pack_string (host);
 
   push_request_regardless_of_state (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
 }
@@ -222,7 +214,20 @@ active_tran_server::connection_handler::on_connecting ()
 
   auto unsent_lsa = log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
 
-  send_start_catch_up_request (std::move (unsent_lsa));
+  std::string hostname = "N/A";
+  int32_t port = -1;
+
+  if (m_ts.get_main_connection_info (hostname, port) == false)
+    {
+      // there is no main connection yet. it's booting up.
+      // TODO: We should make two paths to set a connection_handler to CONNECTED:
+      //    - While booting: a target PS is determined after communicating with multiple PSes and
+      //      send the catch-up request based on it.
+      //    - While running: the unsent_lsa from prior_sender is the LSA of the first log records to send.
+      unsent_lsa.set_null ();
+    }
+
+  send_start_catch_up_request (std::move (hostname), port, std::move (unsent_lsa));
 }
 
 void
