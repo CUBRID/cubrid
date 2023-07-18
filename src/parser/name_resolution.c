@@ -5151,7 +5151,29 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
   if (table_name)
     {
-      sprintf (sql_text, "SELECT * FROM %s", table_name);
+      int len = strlen (table_name);
+      char user_name[256];
+
+      /* make upper case for Oracle */
+      for (i = 0; i < len; i++)
+	{
+	  if (table_name[i] >= 'a' && table_name[i] <= 'z')
+	    {
+	      table_name[i] -= ('a' - 'A');
+	    }
+	}
+
+      /* make "user-name"."table-name" for Oracle */
+      find = strchr (table_name, '.');
+      if (find)
+	{
+	  snprintf (user_name, (int) (find - table_name) + 1, "%s", table_name);
+	  sprintf (sql_text, "SELECT * FROM \"%s\".\"%s\"", user_name, find + 1);
+	}
+      else
+	{
+	  sprintf (sql_text, "SELECT * FROM \"%s\"", table_name);
+	}
     }
   else
     {
@@ -11571,11 +11593,13 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
   S_REMOTE_TBL_COLS *rmt_tbl_cols;
   PT_NODE *cols;
   bool found;
+  char *col_name;
 
   rmt_tbl_cols = (S_REMOTE_TBL_COLS *) dblink->info.dblink_table.remote_col_list;
   if (rmt_tbl_cols == NULL)
     {
-      return NO_ERROR;
+      PT_ERRORf (parser, dblink, "internal error, no remote columns", ER_DBLINK);
+      return ER_FAILED;
     }
 
   cols = dblink->info.dblink_table.cols;
@@ -11584,7 +11608,8 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
       found = false;
       for (i = 0; i < rmt_tbl_cols->get_attr_size (); i++)
 	{
-	  if (strcasecmp (rmt_tbl_cols->get_name (i), cols->info.attr_def.attr_name->info.name.original) == 0)
+	  col_name = (char *) cols->info.attr_def.attr_name->info.name.original;
+	  if (intl_identifier_casecmp (rmt_tbl_cols->get_name (i), col_name) == 0)
 	    {
 	      found = true;
 	      break;
