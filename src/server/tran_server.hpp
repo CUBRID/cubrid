@@ -144,7 +144,6 @@ class tran_server
 
       protected:
 	tran_server &m_ts;
-	cubcomm::node m_node;
 
       private:
 	/*
@@ -184,13 +183,17 @@ class tran_server
 	void receive_disconnect_request (page_server_conn_t::sequenced_payload &&a_sp);
 
       private:
-	std::future<void> m_disconn_future; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
+	const cubcomm::node m_node;
+
+	std::unique_ptr<page_server_conn_t> m_conn;
+	std::shared_mutex m_conn_mtx;
 
 	state m_state;
 	std::shared_mutex m_state_mtx;
 
-	std::unique_ptr<page_server_conn_t> m_conn;
-	std::shared_mutex m_conn_mtx;
+	std::future<void> m_disconn_future; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
+
+
     };
 
   protected:
