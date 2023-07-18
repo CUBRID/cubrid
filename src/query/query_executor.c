@@ -6662,6 +6662,11 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	      curr_spec->parts = NULL;
 	      curr_spec->curent = NULL;
 	      curr_spec->pruned = false;
+	      /* init btid */
+	      if (curr_spec->indexptr)
+		{
+		  BTID_COPY (&curr_spec->indexptr->btid, &curr_spec->btid);
+		}
 	    }
 	  break;
 	case TARGET_CLASS_ATTR:
