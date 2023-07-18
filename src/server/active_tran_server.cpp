@@ -184,16 +184,16 @@ active_tran_server::connection_handler::send_start_catch_up_request (std::string
   cubpacking::packer packer;
   size_t size = 0;
 
-  size += cublog::lsa_utils::get_packed_size (packer, size); // catchup_lsa
-  size += packer.get_packed_int_size (size); // port
   size += packer.get_packed_string_size (host, size); // host
+  size += packer.get_packed_int_size (size); // port
+  size += cublog::lsa_utils::get_packed_size (packer, size); // catchup_lsa
 
   std::unique_ptr < char[] > buffer (new char[size]);
   packer.set_buffer (buffer.get (), size);
 
-  cublog::lsa_utils::pack (packer, catchup_lsa);
-  packer.pack_int (port);
   packer.pack_string (host);
+  packer.pack_int (port);
+  cublog::lsa_utils::pack (packer, catchup_lsa);
 
   push_request_regardless_of_state (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
 }

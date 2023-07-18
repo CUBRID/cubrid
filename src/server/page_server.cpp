@@ -195,17 +195,15 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
   auto payload = a_sp.pull_payload ();
   cubpacking::unpacker unpacker { payload.c_str (), payload.size ()};
 
-  LOG_LSA catchup_lsa;
+  std::string host;
   int32_t port;
-  std::string str;
+  LOG_LSA catchup_lsa;
 
-  cublog::lsa_utils::unpack (unpacker, catchup_lsa);
+  unpacker.unpack_string (host);
   unpacker.unpack_int (port);
-  unpacker.unpack_string (str);
+  cublog::lsa_utils::unpack (unpacker, catchup_lsa);
 
-  // TODO catchup_lsa == the first received lsa from the ATS somewhere
-
-  er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname: %s, port : %d, LSA (%lld|%d)\n", str.c_str (), port,
+  er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname: %s, port : %d, LSA (%lld|%d)\n", host.c_str (), port,
 		LSA_AS_ARGS (&catchup_lsa));
 }
 
