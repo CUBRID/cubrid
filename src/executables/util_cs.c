@@ -65,6 +65,7 @@
 #include "heartbeat.h"
 #endif
 #include "network_histogram.hpp"
+#include "memory_monitor_cl.hpp"
 
 #define PASSBUF_SIZE 12
 #define SPACEDB_NUM_VOL_PURPOSE 2
@@ -4546,21 +4547,22 @@ memmon (UTIL_FUNCTION_ARG * arg)
 {
 #if defined(CS_MODE)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  const char *database_name;
   char *module, *stop;
   bool transaction, show_all;
   int tran_count;
-  int module_index;
-
-  if (!prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
-    {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
-      goto error_exit;
-    }
+  int module_index = MMON_MODULE_LAST + 1;
 
   module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
   transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
   tran_count = utility_get_option_int_value (arg_map, MEMMON_TRAN_COUNT_S);
   show_all = utility_get_option_bool_value (arg_map, MEMMON_SHOW_ALL_S);
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_memmon_usage;
+    }
 
   if ((!transaction) && tran_count)
     {
@@ -4575,20 +4577,32 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  // TODO: MEMMON_MSG_NO_MATCHING_MODULE check
   module_index = strtol (module, &stop, 10);
   if (module_index)
     {
-      if (module_index >= MMON_MODULE_LAST)
+      if (module_index > MMON_MODULE_LAST)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
 		   module);
 	  goto error_exit;
 	}
     }
-  else				/* module == NULL or module with module name */
+  else
     {
+      /* module == NULL or module with module name */
       // TODO: convert module name to module index
+    }
+
+  if (db_restart (arg->command_name, TRUE, database_name))
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
+      goto error_exit;
+    }
+
+  if (!prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
+      goto error_exit;
     }
 
   // XXX: for test, it will removed at main implementation
@@ -4599,7 +4613,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 print_memmon_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_USAGE),
 	   basename (arg->argv0));
-  util_log_write_errid (MSGCAT_UTIL_GENERAL_INVALID_ARGUMENT);
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
   return EXIT_FAILURE;
