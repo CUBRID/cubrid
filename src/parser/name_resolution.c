@@ -317,14 +317,6 @@ private:
     return (m_attr != NULL);
   }
 
-  void init ()
-  {
-    m_nm_alloc = m_nm_used = 0;
-    m_nm_buf = NULL;
-    m_attr_alloc = m_attr_used = 0;
-    m_attr = NULL;
-  }
-
 public:
   remote_tbl_cols ()
   {
@@ -1211,18 +1203,24 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
 	      if (table->info.dblink_table.is_name && table->info.dblink_table.url == NULL)
 		{
+		  int err;
+		  S_REMOTE_TBL_COLS *rmt_tbl_cols;
+		  REMOTE_COLS *remote;
+		  PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
+
 		  if (pt_resolve_dblink_server_name (parser, table, NULL) != NO_ERROR)
 		    {
 		      return;
 		    }
+
+		  rmt_tbl_cols = new S_REMOTE_TBL_COLS;
+
+		  err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
+
 		  if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
 		    {
-		      int err;
-		      PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
-		      S_REMOTE_TBL_COLS *rmt_tbl_cols = new S_REMOTE_TBL_COLS;
-
-		      err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
-		      if (err != NO_ERROR)
+		      /* error from table-name@server */
+		      if (err < 0)
 			{
 			  if (dblink_table->owner_name)
 			    {
@@ -1242,13 +1240,31 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 			  return;
 			}
 
-		      dblink_table->remote_col_list = (void *) rmt_tbl_cols;
-
-		      if ((err = pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols)) != NO_ERROR)
+		      if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
 			{
 			  return;
 			}
 		    }
+
+		  /* error from dblink(server, 'select ... from ...' */
+		  if (err < 0)
+		    {
+		      return;
+		    }
+
+		  dblink_table->remote_col_list = (void *) rmt_tbl_cols;
+
+		  /* save the column lists for free at end of parsing */
+		  remote = (REMOTE_COLS *) parser_alloc (parser, sizeof (REMOTE_COLS));
+		  if (remote == NULL)
+		    {
+		      PT_INTERNAL_ERROR (parser, "parser_alloc");
+		      return;
+		    }
+
+		  remote->cols = (void *) rmt_tbl_cols;
+		  remote->next = parser->dblink_remote;
+		  parser->dblink_remote = remote;
 		}
 
 	      table->info.dblink_table.cols =
@@ -5189,6 +5205,11 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   res = NO_ERROR;
 
 set_parser_error:
+  if (res < 0)
+    {
+      delete rmt_tbl_cols;
+    }
+
   if (req >= 0)
     {
       int err;
@@ -11552,6 +11573,10 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
   bool found;
 
   rmt_tbl_cols = (S_REMOTE_TBL_COLS *) dblink->info.dblink_table.remote_col_list;
+  if (rmt_tbl_cols == NULL)
+    {
+      return NO_ERROR;
+    }
 
   cols = dblink->info.dblink_table.cols;
   while (cols)
@@ -11579,16 +11604,13 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
 }
 
 void
-pt_clear_dblink_remote_cols (PARSER_CONTEXT * parser, PT_NODE * dblink)
+pt_free_dblink_remote_cols (PARSER_CONTEXT * parser)
 {
-  if (dblink->node_type == PT_DBLINK_TABLE)
-    {
-      S_REMOTE_TBL_COLS *rmt_tbl_cols = (S_REMOTE_TBL_COLS *) dblink->info.dblink_table.remote_col_list;
+  REMOTE_COLS *remote = parser->dblink_remote;
 
-      if (rmt_tbl_cols)
-	{
-	  delete rmt_tbl_cols;
-	  dblink->info.dblink_table.remote_col_list = NULL;
-	}
+  while (remote)
+    {
+      delete (S_REMOTE_TBL_COLS *) remote->cols;
+      remote = remote->next;
     }
 }

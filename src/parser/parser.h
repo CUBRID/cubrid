@@ -687,6 +687,7 @@ extern "C"
 
   extern int pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec);
 
+  extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
 #ifdef __cplusplus
 }
 #endif

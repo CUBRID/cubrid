@@ -930,7 +930,9 @@ enum pt_custom_print
   /* the '@' sign has to be suppressed during printing remote-table speicification for pure remote query */
   PT_PRINT_SUPPRESS_SERVER_NAME = (0x1 << 25),
   /* suppress next_value to serial_next_value(...) or current_value to serial_current_value(...) */
-  PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26)
+  PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
+  /* suppress target-name at 'DELETE target-name FROM' for dblink's other DBMS */
+  PT_PRINT_SUPPRESS_DELETE_TARGET = (0x1 << 27)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -3809,6 +3811,12 @@ typedef struct pt_plan_trace_info
   } trace;
 } PT_PLAN_TRACE_INFO;
 
+typedef struct remote_cols
+{
+  void *cols;
+  struct remote_cols *next;
+} REMOTE_COLS;
+
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
@@ -3881,6 +3889,8 @@ struct parser_context
   PT_PLAN_TRACE_INFO plan_trace[MAX_NUM_PLAN_TRACE];
 
   int max_print_len;		/* for pt_short_print */
+
+  REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   struct
   {

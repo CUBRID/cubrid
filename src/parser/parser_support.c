@@ -11671,10 +11671,12 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
      It also should set flag not to convert to serial_next_value
      or serial_current_value for ORACLE or other DBMS.
    */
-  parser->custom_print |= PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV;
+  parser->custom_print |=
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_SUPPRESS_DELETE_TARGET;
   val->info.value.data_value.str = pt_print_bytes (parser, node);
   PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
-  parser->custom_print &= ~(PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV);
+  parser->custom_print &=
+    ~(PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_SUPPRESS_DELETE_TARGET);
 
   if (into_spec)
     {

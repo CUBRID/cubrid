@@ -4267,8 +4267,6 @@ mq_copypush_sargable_terms (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NOD
 
   push_cnt = mq_copypush_sargable_terms_helper (parser, statement, spec, subquery, &info);
 
-  pt_clear_dblink_remote_cols (parser, subquery);
-
   return push_cnt;
 }
 
