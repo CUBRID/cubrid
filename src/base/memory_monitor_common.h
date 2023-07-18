@@ -26,8 +26,11 @@
 
 #include <cstdint>
 
-#define MMON_MODULE_BRIEF_OPTION 1
-#define MMON_MODULE_DEFAULT_OPTION 2
+typedef enum mmon_module_option
+{
+  MMON_MODULE_BRIEF_OPTION,
+  MMON_MODULE_DEFAULT_OPTION
+} MMON_MODULE_OPTION;
 
 typedef enum mmon_module_id
 {

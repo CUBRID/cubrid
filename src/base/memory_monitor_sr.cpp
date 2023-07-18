@@ -157,7 +157,7 @@ namespace cubperf
       void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size);
       void end_init_phase ();
       int aggregate_module_info (MMON_MODULE_INFO &info, int module_index) const;
-      int aggregate_module_brief_info (MMON_MODULE_INFO *&info, int option) const;
+      int aggregate_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option) const;
       int aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count) const;
 
     private:
@@ -178,7 +178,7 @@ namespace cubperf
 
 	  void get_server_info (MMON_SERVER_INFO &info) const;
 	  int get_module_info (MMON_MODULE_INFO &info, int module_index) const;
-	  int get_module_brief_info (MMON_MODULE_INFO *&info, int option) const;
+	  int get_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option) const;
 	  int get_transaction_info (MMON_TRAN_INFO &info, int tran_count) const;
 
 	private:
@@ -480,13 +480,10 @@ namespace cubperf
 
   int memory_monitor::aggregater::get_module_info (MMON_MODULE_INFO &info, int module_index) const
   {
-    int error = NO_ERROR;
-
-    error = m_mmon->m_module[module_index]->aggregate_stats (info, false);
-    return error;
+    return m_mmon->m_module[module_index]->aggregate_stats (info, false);
   }
 
-  int memory_monitor::aggregater::get_module_brief_info (MMON_MODULE_INFO *&info, int option) const
+  int memory_monitor::aggregater::get_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option) const
   {
     int error = NO_ERROR;
 
@@ -629,7 +626,7 @@ namespace cubperf
     return error;
   }
 
-  int memory_monitor::aggregate_module_brief_info (MMON_MODULE_INFO *&info, int option) const
+  int memory_monitor::aggregate_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option) const
   {
     int error = NO_ERROR;
 
@@ -726,42 +723,22 @@ void mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old
 
 int mmon_aggregate_module_info (MMON_MODULE_INFO &info, int module_index)
 {
-  int error = NO_ERROR;
-
   assert (mmon_Gl != nullptr);
   assert (module_index < (int)MMON_MODULE_LAST && module_index > 0);
 
-  error = mmon_Gl->aggregate_module_info (info, module_index);
-
-  return error;
+  return mmon_Gl->aggregate_module_info (info, module_index);
 }
 
-int mmon_aggregate_module_brief_info (MMON_MODULE_INFO *&info, int option)
+int mmon_aggregate_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option)
 {
-  int error = NO_ERROR;
-
   assert (mmon_Gl != nullptr);
 
-  if (option == MMON_MODULE_BRIEF_OPTION || option == MMON_MODULE_DEFAULT_OPTION)
-    {
-      error = mmon_Gl->aggregate_module_brief_info (info, option);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
-    }
-
-  return error;
+  return mmon_Gl->aggregate_module_brief_info (info, option);
 }
 
 int mmon_aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count)
 {
-  int error = NO_ERROR;
-
   assert (mmon_Gl != nullptr);
 
-  error = mmon_Gl->aggregate_tran_info (info, tran_count);
-
-  return error;
+  return mmon_Gl->aggregate_tran_info (info, tran_count);
 }
