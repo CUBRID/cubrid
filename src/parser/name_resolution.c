@@ -1213,7 +1213,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		      return;
 		    }
 
-		  rmt_tbl_cols = new (std::nothrow)S_REMOTE_TBL_COLS;
+		  rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
 
 		  err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
 
