@@ -5128,6 +5128,7 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 }
 
 #define MAX_LEN_CONNECTION_URL	512
+#define SQL_MAX_TEXT_LEN DB_MAX_IDENTIFIER_LENGTH * 2 + 16
 
 static int
 pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_REMOTE_TBL_COLS * rmt_tbl_cols)
@@ -5145,34 +5146,29 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   char *url = (char *) dblink_table->url->info.value.data_value.str->bytes;
   char *user = (char *) dblink_table->user->info.value.data_value.str->bytes;
   char *passwd = (char *) dblink_table->pwd->info.value.data_value.str->bytes;
-  char sql_text[300], *sql = sql_text;
+  char sql_text[SQL_MAX_TEXT_LEN], *sql = sql_text;
 
   S_REMOTE_COL_ATTR *rmt_attr;
 
   if (table_name)
     {
       int len = strlen (table_name);
-      char user_name[256];
+      char table_name_up[DB_MAX_IDENTIFIER_LENGTH * 2 + 1];
+      char user_name[DB_MAX_IDENTIFIER_LENGTH];
 
       /* make upper case for Oracle */
-      for (i = 0; i < len; i++)
-	{
-	  if (table_name[i] >= 'a' && table_name[i] <= 'z')
-	    {
-	      table_name[i] -= ('a' - 'A');
-	    }
-	}
+      intl_identifier_upper (table_name, table_name_up);
 
       /* make "user-name"."table-name" for Oracle */
-      find = strchr (table_name, '.');
+      find = strchr (table_name_up, '.');
       if (find)
 	{
-	  snprintf (user_name, (int) (find - table_name) + 1, "%s", table_name);
+	  snprintf (user_name, (int) (find - table_name_up) + 1, "%s", table_name_up);
 	  sprintf (sql_text, "SELECT * FROM \"%s\".\"%s\"", user_name, find + 1);
 	}
       else
 	{
-	  sprintf (sql_text, "SELECT * FROM \"%s\"", table_name);
+	  sprintf (sql_text, "SELECT * FROM \"%s\"", table_name_up);
 	}
     }
   else
