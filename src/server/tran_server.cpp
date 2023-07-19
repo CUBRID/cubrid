@@ -417,21 +417,21 @@ tran_server::reset_main_connection ()
   auto ulock = std::unique_lock<std::shared_mutex> { m_main_conn_mtx };
 
   /* the priority to select the main connection is the order in the container */
-  const auto main_conn_cand = std::find_if (conn_vec.cbegin (), conn_vec.cend (),
-			      [] (const auto &conn)
+  const auto main_conn_cand_it = std::find_if (conn_vec.cbegin (), conn_vec.cend (),
+				 [] (const auto &conn)
   {
     return conn->is_connected ();
   });
 
-  if (main_conn_cand == conn_vec.cend())
+  if (main_conn_cand_it == conn_vec.cend())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_NO_PAGE_SERVER_AVAILABLE, 0);
       return ER_CONN_NO_PAGE_SERVER_AVAILABLE;
     }
 
-  if (m_main_conn != main_conn_cand->get ())
+  if (m_main_conn != main_conn_cand_it->get ())
     {
-      m_main_conn = main_conn_cand->get ();
+      m_main_conn = main_conn_cand_it->get ();
       er_log_debug (ARG_FILE_LINE, "The main connection is set to %s.\n",
 		    m_main_conn->get_channel_id ().c_str ());
     }
