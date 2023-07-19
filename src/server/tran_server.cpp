@@ -726,7 +726,7 @@ tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 
       if (m_terminate.load ())
 	{
-	  break;
+	  return;
 	}
     }
 
