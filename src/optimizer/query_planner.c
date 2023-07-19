@@ -141,6 +141,7 @@ static void qo_sscan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
 static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
+static void qo_nljoin_cost (QO_PLAN *);
 static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
@@ -198,7 +199,6 @@ static int qo_generate_index_scan (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, 
 static int qo_generate_loose_index_scan (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *);
 static int qo_generate_sort_limit_plan (QO_ENV *, QO_INFO *, QO_PLAN *);
 static void qo_plan_add_to_free_list (QO_PLAN *, void *ignore);
-static void qo_nljoin_cost (QO_PLAN *);
 static void qo_plans_teardown (QO_ENV * env);
 static void qo_plans_init (QO_ENV * env);
 static void qo_plan_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *, void (*)(QO_PLAN *, void *), void *);
@@ -1895,10 +1895,7 @@ qo_iscan_cost (QO_PLAN * planp)
 	   * cardinality of the scan will 0 or 1. In this case we will make the scan cost to zero, thus to force the
 	   * optimizer to select this scan.
 	   */
-	  qo_zero_cost (planp);
-
 	  index_entryp->all_unique_index_columns_are_equi_terms = true;
-	  return;
 	}
     }
 
@@ -2038,57 +2035,22 @@ qo_iscan_cost (QO_PLAN * planp)
     }
 
   /* IO cost to fetch objects */
-  if (sel < 0.3)
+  if (qo_is_index_covering_scan (planp))
     {
-      /* p = 1.0 (sel - 0.0) + 0.0 */
-      object_IO = opages * sel;
-      /* 0.0 <= sel < 0.3; 0 <= object_IO < opages * 0.3 */
-    }
-  else if (sel < 0.8)
-    {
-      /* p = ((1.0 - 0.6) / (0.8 - 0.3)) (sel - 0.3) + 0.6 = 0.8 sel + 0.36 */
-      object_IO = opages * (0.8 * sel + 0.36);
-      /* 0.3 <= selectivity < 0.8; opages * 0.6 <= object_IO < opages * 1.0 */
+      object_IO = 1.0;
     }
   else
     {
-      /* p = 0.0 (sel - 0.0) + 1.0 = 1.0 */
-      object_IO = opages;
-      /* 0.8 <= sel <= 1.0; object_IO = opages */
+      object_IO = opages * sel;
     }
 
-  if (object_IO < 1.0)
-    {
-      /* at least one page */
-      object_IO = 1.0;
-    }
-  else if ((double) prm_get_integer_value (PRM_ID_PB_NBUFFERS) - index_IO < object_IO)
-    {
-      object_IO =
-	objects * (1.0 - (((double) prm_get_integer_value (PRM_ID_PB_NBUFFERS) - index_IO) / (double) opages));
-    }
-
-  if (sel < 1.0)
-    {				/* is not Full-Range sel */
-      object_IO = ceil (FUDGE_FACTOR * object_IO);
-    }
   object_IO = MAX (1.0, object_IO);
 
   /* index scan requires more CPU cost than sequential scan */
-
   planp->fixed_cpu_cost = 0.0;
   planp->fixed_io_cost = index_IO;
   planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT *ISCAN_OVERHEAD_FACTOR;
   planp->variable_io_cost = object_IO;
-
-  /* one page heap file; reconfig iscan cost */
-  if (QO_NODE_TCARD (nodep) <= 1)
-    {
-      if (QO_NODE_NCARD (nodep) > 1)
-	{			/* index scan is worth */
-	  planp->fixed_io_cost = 0.0;
-	}
-    }
 }
 
 
@@ -3005,8 +2967,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double pages, guessed_result_cardinality;
-  double pages2, io_cost, diff_cost;
+  double guessed_result_cardinality;
 
   inner = planp->plan_un.join.inner;
 
@@ -3042,94 +3003,10 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       guessed_result_cardinality = (outer->info)->cardinality;
     }
-  inner_cpu_cost = guessed_result_cardinality * (double) QO_CPU_WEIGHT;
-  /* join cost */
-
-  if (qo_is_iscan (inner) && inner->plan_un.scan.index_equi == true)
-    {
-      /* correlated index equi-join */
-      inner_cpu_cost += inner->variable_cpu_cost;
-      if (qo_is_seq_scan (outer) && prm_get_integer_value (PRM_ID_MAX_OUTER_CARD_OF_IDXJOIN) != 0
-	  && guessed_result_cardinality > prm_get_integer_value (PRM_ID_MAX_OUTER_CARD_OF_IDXJOIN))
-	{
-	  planp->variable_cpu_cost = QO_INFINITY;
-	  planp->variable_io_cost = QO_INFINITY;
-	  return;
-	}
-    }
-  else
-    {
-      /* neither correlated index join nor equi-join */
-      inner_cpu_cost += MAX (1.0, (outer->info)->cardinality) * inner->variable_cpu_cost;
-    }
+  inner_cpu_cost = guessed_result_cardinality * inner->variable_cpu_cost;
 
   /* inner side IO cost of nested-loop block join */
-  inner_io_cost = outer->variable_io_cost * inner->variable_io_cost;	/* assume IO as # blocks */
-  if (inner->plan_type == QO_PLANTYPE_SCAN)
-    {
-      pages = QO_NODE_TCARD (inner->plan_un.scan.node);
-      if (inner_io_cost > pages * 2)
-	{
-	  /* inner IO cost cannot be greater than two times of the number of pages of the class because buffering */
-	  inner_io_cost = pages * 2;
-
-	  /* for iscan of inner, reconfig inner_io_cost */
-	  inner_io_cost -= inner->fixed_io_cost;
-	  inner_io_cost = MAX (0.0, inner_io_cost);
-
-	}
-
-      if (qo_is_seq_scan (outer) && qo_is_seq_scan (inner))
-	{
-	  if ((outer->info)->cardinality == (inner->info)->cardinality)
-	    {
-	      pages2 = QO_NODE_TCARD (outer->plan_un.scan.node);
-	      /* exclude too many heavy-sequential scan nl-join - sscan (small) + sscan (big) */
-	      if (pages > pages2)
-		{
-		  io_cost = (inner->variable_io_cost + MIN (inner_io_cost, pages2 * 2));
-		  diff_cost = io_cost - (outer->variable_io_cost + inner_io_cost);
-		  if (diff_cost > 0)
-		    {
-		      inner_io_cost += diff_cost + 0.1;
-		    }
-		}
-	    }
-	}
-
-      if (planp->plan_un.join.join_type != JOIN_INNER)
-	{
-	  /* outer join leads nongrouped scan overhead */
-	  inner_cpu_cost += ((outer->info)->cardinality * pages * NONGROUPED_SCAN_COST);
-	}
-    }
-
-  if (inner->plan_type == QO_PLANTYPE_SORT)
-    {
-      /* (inner->plan_un.sort.subplan)->info == inner->info */
-      pages = ((inner->info)->cardinality * (inner->info)->projected_size) / IO_PAGESIZE;
-      if (pages < 1)
-	pages = 1;
-
-      pages2 = pages * 2;
-      if (inner_io_cost > pages2)
-	{
-	  diff_cost = inner_io_cost - pages2;
-
-	  /* inner IO cost cannot be greater than two times of the number of pages of the list file */
-	  inner_io_cost = pages2;
-
-	  /* The cost (in io's) of just handling a list file.  This is mostly to discourage the optimizer from choosing
-	   * nl-join with temp inner for joins of little classes.
-	   */
-	  io_cost = inner->fixed_io_cost * 0.1;
-	  diff_cost = MIN (io_cost, diff_cost);
-	  planp->fixed_io_cost += diff_cost + 0.1;
-	}
-
-      inner_cpu_cost += (outer->info)->cardinality * pages * NONGROUPED_SCAN_COST;
-
-    }
+  inner_io_cost = guessed_result_cardinality * inner->variable_io_cost;	/* assume IO as # blocks */
 
   /* outer side CPU cost of nested-loop block join */
   outer_cpu_cost = outer->variable_cpu_cost;
