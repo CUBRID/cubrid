@@ -11278,7 +11278,7 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 }
 
 static PT_NODE *
-pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy, int *continue_walk)
+pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_insert, int *continue_walk)
 {
   char *class_name;
   char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -11319,7 +11319,7 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy,
 	  spec->info.spec.entity_name->info.name.original = pt_append_string (parser, NULL, class_name);
 	  spec->info.spec.remote_server_name = parser_new_node (parser, PT_NAME);
 	  spec->info.spec.remote_server_name->info.name.original = pt_append_string (parser, NULL, r + 1);
-	  if (spec->info.spec.range_var == NULL)
+	  if (!is_insert && spec->info.spec.range_var == NULL)
 	    {
 	      spec->info.spec.range_var = parser_new_node (parser, PT_NAME);
 	      spec->info.spec.range_var->info.name.original = pt_append_string (parser, NULL, synonym_name);
@@ -11383,8 +11383,9 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 {
   PT_NODE *insert, *spec;
   int remote_ins = 0;
+  bool is_insert = true;
 
-  parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &is_insert, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
