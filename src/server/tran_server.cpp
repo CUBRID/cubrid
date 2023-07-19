@@ -413,17 +413,16 @@ tran_server::disconnect_all_page_servers ()
 int
 tran_server::reset_main_connection ()
 {
-  auto &conn_vec = m_page_server_conn_vec;
   auto ulock = std::unique_lock<std::shared_mutex> { m_main_conn_mtx };
 
   /* the priority to select the main connection is the order in the container */
-  const auto main_conn_cand_it = std::find_if (conn_vec.cbegin (), conn_vec.cend (),
+  const auto main_conn_cand_it = std::find_if (m_page_server_conn_vec.cbegin (), m_page_server_conn_vec.cend (),
 				 [] (const auto &conn)
   {
     return conn->is_connected ();
   });
 
-  if (main_conn_cand_it == conn_vec.cend())
+  if (main_conn_cand_it == m_page_server_conn_vec.cend ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_NO_PAGE_SERVER_AVAILABLE, 0);
       return ER_CONN_NO_PAGE_SERVER_AVAILABLE;
