@@ -127,6 +127,13 @@ tran_server::boot (const char *db_name)
 
   if (uses_remote_storage ())
     {
+      error_code = reset_main_connection ();
+      if (error_code != NO_ERROR)
+	{
+	  assert (false);
+	  return error_code;
+	}
+
       error_code = get_boot_info_from_page_server ();
       if (error_code != NO_ERROR)
 	{
@@ -378,19 +385,6 @@ tran_server::connection_handler::connect ()
 
     m_state = state::CONNECTED;
   }
-  /*
-   *  Now, the main connection is reset whenever a new connection is established.
-   *  The main connection information is used in the following connection_handler's connection.
-   *  Specifically, the target PS to catch up with during CONNECTING is the main connection.
-   *
-   *  TODO: later, when the ATS recovery with multi-PS comes in, a leader PS elected will be the target PS,
-   *  and the main connection doesn't need to be set here, but in more appropriate location.
-   *  For example, it can be set after establishing all connection.
-   */
-  if (m_ts.reset_main_connection () != NO_ERROR)
-    {
-      assert (false); // At least this connection_handler can be the main connection
-    }
 
   return NO_ERROR;
 }
@@ -419,29 +413,27 @@ tran_server::disconnect_all_page_servers ()
 int
 tran_server::reset_main_connection ()
 {
-  auto &conn_vec = m_page_server_conn_vec;
+  auto ulock = std::unique_lock<std::shared_mutex> { m_main_conn_mtx };
+
   /* the priority to select the main connection is the order in the container */
-  const auto main_conn_cand = std::find_if (conn_vec.cbegin (), conn_vec.cend (),
-			      [] (const auto &conn)
+  const auto main_conn_cand_it = std::find_if (m_page_server_conn_vec.cbegin (), m_page_server_conn_vec.cend (),
+				 [] (const auto &conn)
   {
     return conn->is_connected ();
   });
 
-  if (main_conn_cand == conn_vec.cend())
+  if (main_conn_cand_it == m_page_server_conn_vec.cend ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_NO_PAGE_SERVER_AVAILABLE, 0);
       return ER_CONN_NO_PAGE_SERVER_AVAILABLE;
     }
 
-  {
-    auto ulock = std::unique_lock<std::shared_mutex> { m_main_conn_mtx };
-    if (m_main_conn != main_conn_cand->get ())
-      {
-	m_main_conn = main_conn_cand->get ();
-	er_log_debug (ARG_FILE_LINE, "The main connection is set to %s.\n",
-		      m_main_conn->get_channel_id ().c_str ());
-      }
-  }
+  if (m_main_conn != main_conn_cand_it->get ())
+    {
+      m_main_conn = main_conn_cand_it->get ();
+      er_log_debug (ARG_FILE_LINE, "The main connection is set to %s.\n",
+		    m_main_conn->get_channel_id ().c_str ());
+    }
 
   return NO_ERROR;
 }
@@ -717,6 +709,7 @@ tran_server::ps_connector::terminate ()
 void
 tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 {
+  bool newly_connected = false;
   for (const auto &conn : m_ts.m_page_server_conn_vec)
     {
       if (conn->is_idle ())
@@ -725,12 +718,25 @@ tran_server::ps_connector::try_connect_to_all_ps (cubthread::entry &)
 	   * TODO It can be too verbose now since it always complain to fail to connect when a PS has been stopped.
 	   * Later on, this job is going to be triggered by a cluster manager or cub_master when a PS is ready to connect.
 	   */
-	  (void) conn->connect ();
+	  if (conn->connect () == NO_ERROR)
+	    {
+	      newly_connected = true;
+	    }
 	}
 
       if (m_terminate.load ())
 	{
-	  break;
+	  return;
+	}
+    }
+
+  if (newly_connected)
+    {
+      // It should be done when the connection_handler's state gets CONNECTED.
+      // TODO in near future, it will be CONNECTING right after connect() and become CONNECTED asynchronously, then it should be changed along.
+      if (m_ts.reset_main_connection () != NO_ERROR)
+	{
+	  assert (false);
 	}
     }
 }
