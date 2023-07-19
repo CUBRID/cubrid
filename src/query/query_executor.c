@@ -6665,7 +6665,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	      /* init btid */
 	      if (curr_spec->indexptr)
 		{
-		  BTID_COPY (&curr_spec->indexptr->btid, &curr_spec->btid);
+		  curr_spec->indexptr->indx_id = curr_spec->indx_id;
 		}
 	    }
 	  break;
