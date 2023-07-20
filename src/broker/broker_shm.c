@@ -63,6 +63,7 @@ static int shm_id_cmp_func (void *key1, void *key2);
 static int shm_info_assign_func (T_LIST * node, void *key, void *value);
 static char *shm_id_to_name (int shm_key);
 #endif
+static int get_host_ip (unsigned char *ip_addr);
 
 #if defined(WINDOWS)
 T_LIST *shm_id_list_header = NULL;
@@ -415,11 +416,16 @@ uw_shm_destroy (int shm_key)
 }
 
 T_SHM_BROKER *
-broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag, char *acl_file,
-				  unsigned char *ip_addr)
+broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag, char *acl_file)
 {
   int i, shm_size;
   T_SHM_BROKER *shm_br = NULL;
+  unsigned char ip_addr[4];
+
+  if (get_host_ip (ip_addr) < 0)
+    {
+      return NULL;
+    }
 
   shm_size = sizeof (T_SHM_BROKER) + (br_num - 1) * sizeof (T_BROKER_INFO);
 
@@ -743,7 +749,7 @@ shm_id_to_name (int shm_key)
 }
 #endif /* WINDOWS */
 
-int
+static int
 get_host_ip (unsigned char *ip_addr)
 {
   char hostname[CUB_MAXHOSTNAMELEN];
