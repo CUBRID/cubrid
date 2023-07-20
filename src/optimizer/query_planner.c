@@ -67,10 +67,11 @@
 #define VALID_INNER(plan)	(plan->well_rooted || \
 				 (plan->plan_type == QO_PLANTYPE_SORT))
 
-#define FUDGE_FACTOR 0.7
 #define ISCAN_OVERHEAD_FACTOR   1.2
 #define TEMP_SETUP_COST 5.0
-#define NONGROUPED_SCAN_COST 0.1
+
+#define RBO_CHECK_COST 10
+#define RBO_CHECK_RATIO 1.2
 
 #define	qo_scan_walk	qo_generic_walk
 #define	qo_worst_walk	qo_generic_walk
@@ -1857,7 +1858,7 @@ qo_iscan_cost (QO_PLAN * planp)
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
-  int i, t, n, pkeys_num;
+  int i, t, n, pkeys_num, index;
 
   nodep = planp->plan_un.scan.node;
   ni_entryp = planp->plan_un.scan.index;
@@ -1914,14 +1915,14 @@ qo_iscan_cost (QO_PLAN * planp)
   sel_limit = 0.0;		/* init */
 
   /* set selectivity limit */
-  if (pkeys_num > 0 && cum_statsp->pkeys[0] > 1)
+  if (pkeys_num > 0 && cum_statsp->pkeys[0] >= 1)
     {
       sel_limit = 1.0 / (double) cum_statsp->pkeys[0];
     }
   else
     {
       /* can not use btree partial-key statistics */
-      if (cum_statsp->keys > 1)
+      if (cum_statsp->keys >= 1)
 	{
 	  sel_limit = 1.0 / (double) cum_statsp->keys;
 	}
@@ -1932,14 +1933,14 @@ qo_iscan_cost (QO_PLAN * planp)
 	      sel = 0.0;
 	      is_null_sel = true;
 	    }
-	  else if (QO_NODE_NCARD (nodep) > 1)
+	  else if (QO_NODE_NCARD (nodep) >= 1)
 	    {
 	      sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
 	    }
 	}
     }
 
-  assert (sel_limit < 1.0);
+  assert (sel_limit <= 1.0);
 
   /* check lower bound */
   if (is_null_sel == false)
@@ -1974,26 +1975,27 @@ qo_iscan_cost (QO_PLAN * planp)
       sel_limit = 0.0;		/* init */
 
       /* set selectivity limit */
-      if (i < pkeys_num && cum_statsp->pkeys[i] > 1)
+      index = (i == 0) ? 0 : i - 1;
+      if (i <= pkeys_num && cum_statsp->pkeys[index] >= 1)
 	{
-	  sel_limit = 1.0 / (double) cum_statsp->pkeys[i];
+	  sel_limit = 1.0 / (double) cum_statsp->pkeys[index];
 	}
       else
 	{			/* can not use btree partial-key statistics */
-	  if (cum_statsp->keys > 1)
+	  if (cum_statsp->keys >= 1)
 	    {
 	      sel_limit = 1.0 / (double) cum_statsp->keys;
 	    }
 	  else
 	    {
-	      if (QO_NODE_NCARD (nodep) > 1)
+	      if (QO_NODE_NCARD (nodep) >= 1)
 		{
 		  sel_limit = 1.0 / (double) QO_NODE_NCARD (nodep);
 		}
 	    }
 	}
 
-      assert (sel_limit < 1.0);
+      assert (sel_limit <= 1.0);
 
       /* check lower bound */
       sel = MAX (sel, sel_limit);
@@ -3493,7 +3495,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       return QO_PLAN_ACCESS_COST (b) <= QO_PLAN_ACCESS_COST (a) ? b : a;
     }
 #else /* OLD_CODE */
-  double af, aa, bf, ba;
+  double af, aa, bf, ba, ta, tb;
   QO_NODE *a_node, *b_node;
   QO_PLAN_COMPARE_RESULT temp_res;
 
@@ -3501,6 +3503,18 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   aa = a->variable_cpu_cost + a->variable_io_cost;
   bf = b->fixed_cpu_cost + b->fixed_io_cost;
   ba = b->variable_cpu_cost + b->variable_io_cost;
+
+  /* Check if RBO is needed */
+  ta = af + aa;
+  tb = bf + ba;
+  if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
+    {
+      return PLAN_COMP_LT;
+    }
+  else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
+    {
+      return PLAN_COMP_GT;
+    }
 
   if (qo_is_sort_limit (a))
     {
@@ -7898,7 +7912,7 @@ qo_search_planner (QO_PLANNER * planner)
   BITSET seg_terms;
   BITSET nodes, subqueries, remaining_subqueries;
   int join_info_bytes;
-  int normal_index_plan_n, n;
+  int n;
   int start_column = 0;
   PT_NODE *tree = NULL;
   bool special_index_scan = false;
@@ -8035,8 +8049,6 @@ qo_search_planner (QO_PLANNER * planner)
        *  There is no purpose looking for index scans for a node without
        *  indexes so skip the search in this case.
        */
-      normal_index_plan_n = 0;
-
       if (node_index != NULL)
 	{
 	  bitset_init (&seg_terms, planner->env);
@@ -8083,7 +8095,6 @@ qo_search_planner (QO_PLANNER * planner)
 		  assert (nsegs > 0);
 
 		  n = qo_generate_index_scan (info, node, ni_entry, nsegs);
-		  normal_index_plan_n += n;
 		}
 	      else if (index_entry->constraints->filter_predicate && index_entry->force > 0)
 		{
@@ -8099,14 +8110,12 @@ qo_search_planner (QO_PLANNER * planner)
 		    qo_check_plan_on_info (info,
 					   qo_index_scan_new (info, node, ni_entry, QO_SCANMETHOD_INDEX_SCAN,
 							      &seg_terms, NULL));
-		  normal_index_plan_n += n;
 		}
 	      else if (index_entry->ils_prefix_len > 0)
 		{
 		  assert (bitset_is_empty (&seg_terms));
 
 		  n = qo_generate_loose_index_scan (info, node, ni_entry);
-		  normal_index_plan_n += n;
 		}
 	      else
 		{
@@ -8154,18 +8163,8 @@ qo_search_planner (QO_PLANNER * planner)
 	  bitset_delset (&seg_terms);
 	}
 
-      /*
-       * Create a sequential scan plan for each node.
-       */
-      if (normal_index_plan_n > 0)
-	{
-	  /* Already generate some index scans. Skip sequential scan plan for the node. */
-	  ;			/* nop */
-	}
-      else
-	{
-	  qo_generate_seq_scan (info, node);
-	}
+      /* Create a sequential scan plan for each node. */
+      qo_generate_seq_scan (info, node);
 
       if (QO_ENV_USE_SORT_LIMIT (planner->env) && QO_NODE_SORT_LIMIT_CANDIDATE (node))
 	{
