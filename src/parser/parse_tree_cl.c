@@ -12703,7 +12703,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   // TODO: [PL/CSQL] need refactoring
   unsigned int save_custom = parser->custom_print;
-  if (parser->flag.is_parsing_static_sql == 1)
+  if (parser->flag.is_parsing_static_sql == 1 || parser->flag.is_test_mode == 1)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;

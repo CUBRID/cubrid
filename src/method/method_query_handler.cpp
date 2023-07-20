@@ -790,6 +790,11 @@ namespace cubmethod
 	get_db_session()->parser->flag.is_parsing_static_sql = 1;
       }
 
+    if (flag & PREPARE_TEST_MODE)
+      {
+	get_db_session()->parser->flag.is_test_mode = 1;
+      }
+
     m_stmt_type = CUBRID_STMT_NONE;
     int stmt_id = db_compile_statement (m_session);
     if (stmt_id < 0)
