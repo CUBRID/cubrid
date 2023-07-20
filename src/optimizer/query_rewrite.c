@@ -1152,6 +1152,7 @@ static PT_NODE *
 qo_collect_name_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NAME_SPEC_INFO *info = (PT_NAME_SPEC_INFO *) arg;
+  PT_NODE *backup_node = node;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -1261,7 +1262,7 @@ qo_collect_name_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       *continue_walk = PT_STOP_WALK;
     }
 
-  return node;
+  return backup_node;
 }
 
 /*
