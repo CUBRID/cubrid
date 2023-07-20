@@ -427,6 +427,7 @@ EXPORTS
     prm_get_string_value
     prm_set_integer_value
     prm_Def
+    qo_set_optimization_param
     rel_copy_version_string
     rel_build_number
     rel_release_string
