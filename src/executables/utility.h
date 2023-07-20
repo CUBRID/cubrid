@@ -1366,8 +1366,8 @@ typedef struct _ha_config
 #define UNLOAD_AS_DBA_S                         11921
 #define UNLOAD_AS_DBA_L                         "as-dba"
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-#define UNLOAD_NO_PRINT_LEVEL_S                 11922
-#define UNLOAD_NO_PRINT_LEVEL_L                 "no-with-option-print"
+#define UNLOAD_SKIP_INDEX_DETAIL_S              11922
+#define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"
 #endif
 
 /* compactdb option list */

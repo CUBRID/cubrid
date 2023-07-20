@@ -558,7 +558,7 @@ unloaddb: 从数据库导出对象和结构.\n\
   -C, --CS-mode                客户端-服务器模式执行\n\
       --datafile-per-class     为每个表创建一个对象文件; 默认: 禁止\n\
       --split-schema-files     按对象拆分模式信息并生成每个文件； 默认：生成一个包含所有对象的模式文件\n\
-      --no-with-option-print   创建索引时打印指定的WITH子句选项； 默认值：禁用。\n\
+      --skip-index-detail      创建索引时不打印指定的WITH子句选项； 默认值：禁用\n\
       --as-dba                 如果登录用户是 DBA 组的成员，则提取与 DBA 相同的架构文件。\n
 
 

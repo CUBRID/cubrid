@@ -472,7 +472,7 @@ enum param_id
   PRM_ID_HA_SQL_LOG_PATH,
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   PRM_ID_DEDUPLICATE_KEY_LEVEL,
-  PRM_ID_WITH_OPTION_PRINT,
+  PRM_ID_PRINT_INDEX_DETAIL,
 #endif
   PRM_ID_HA_SQL_LOG_MAX_COUNT,
   /* change PRM_LAST_ID when adding new system parameters */

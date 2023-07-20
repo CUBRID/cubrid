@@ -337,7 +337,7 @@ dk_print_deduplicate_key_info (char *buf, int buf_size, int deduplicate_level)
   assert ((deduplicate_level == DEDUPLICATE_KEY_LEVEL_OFF)
 	  || (deduplicate_level >= DEDUPLICATE_KEY_LEVEL_MIN && deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX));
 
-  if (prm_get_bool_value (PRM_ID_WITH_OPTION_PRINT))
+  if (prm_get_bool_value (PRM_ID_PRINT_INDEX_DETAIL))
     {
       len = snprintf (buf, buf_size, "DEDUPLICATE=%d", deduplicate_level);
     }

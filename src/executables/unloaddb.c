@@ -170,8 +170,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  sysprm_set_force (prm_get_name (PRM_ID_WITH_OPTION_PRINT),
-		    utility_get_option_bool_value (arg_map, UNLOAD_NO_PRINT_LEVEL_S) ? "no" : "yes");
+  sysprm_set_force (prm_get_name (PRM_ID_PRINT_INDEX_DETAIL),
+		    utility_get_option_bool_value (arg_map, UNLOAD_SKIP_INDEX_DETAIL_S) ? "no" : "yes");
 #endif
 
   /*

@@ -574,7 +574,7 @@ opţiuni valide:\n\
   -C, --CS-mode                  mod de execuţie client-server\n\
       --datafile-per-class       creează un fişier obiect pentru fieacre clasă; implicit: dezactivat\n\
       --split-schema-files       împărțiți informațiile de schemă pe obiect și generați fiecare fișier; Implicit: generați un fișier de schemă cu toate obiectele\n\
-      --no-with-option-print     Tipărește opțiunile specificate pentru clauza WITH la crearea indexului; implicit: dezactivat.\n\
+      --skip-index-detail        Nu tipăriți opțiunile specificate pentru clauza WITH la crearea indexului; implicit: dezactivat\n\
       --as-dba                   Dacă utilizatorul de conectare este membru al grupului DBA, extrageți același fișier de schemă ca și DBA.\n
 
 

@@ -559,7 +559,7 @@ opciones validas:\n\
   -C, --CS-mode               modo de ejecucion cliente-servidor\n\
       --datafile-per-class    crear un archivo de objeto para cada clase; estandar: inhabilitado\n\
       --split-schema-files    dividir la información del esquema por objeto y generar cada archivo; Predeterminado: generar un archivo de esquema con todos los objetos\n\
-      --no-with-option-print  Imprime las opciones de la cláusula WITH especificadas al crear el índice; predeterminado: deshabilitado.\n\
+      --skip-index-detail     No imprima las opciones de la cláusula WITH especificadas al crear el índice; predeterminado: deshabilitado\n\
       --as-dba                Si el usuario de inicio de sesión es miembro del grupo DBA, extraiga el mismo archivo de esquema que el DBA.\n
 
 
