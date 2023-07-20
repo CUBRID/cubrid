@@ -553,6 +553,7 @@ EXPORTS
     optind
     parser_create_parser
     parser_parse_string
+    parser_print_tree
     pt_append_string
     pt_free_host_info
     pt_get_cursor

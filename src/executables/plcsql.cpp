@@ -228,7 +228,7 @@ static bool dbvalue_to_str (DB_VALUE *value, std::string &out)
 
   if (valid)
     {
-      string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
+      string_buffer sb (cubmem::STANDARD_BLOCK_ALLOCATOR, BUFFER_SIZE);
 
       db_value_printer printer (sb);
       printer.describe_value (value);
