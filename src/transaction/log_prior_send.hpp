@@ -52,6 +52,9 @@ namespace cublog
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
 
     private:
+      void send_serialized_message (std::string &&message);
+
+    private:
       // non-owning pointers
       std::vector<const sink_hook_t *> m_sink_hooks;              // hooks for sinks
       std::mutex m_sink_hooks_mutex;                              // protect access on sink hooks

@@ -1855,7 +1855,7 @@ prior_list_serialize (const log_prior_node *head)
     }
 
   // calculate size
-  size_t size = prior_list_serialized_size (head);
+  const size_t size = prior_list_serialized_size (head);
 
   std::string serialized;
   serialized.reserve (size);

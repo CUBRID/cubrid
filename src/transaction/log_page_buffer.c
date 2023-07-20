@@ -3438,6 +3438,10 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
   assert (log_Gl.prior_info.prior_flush_list_header == NULL);
   log_Gl.prior_info.prior_flush_list_header = list;
 
+  // TODO
+  //  - only send this in case of active transaction server
+  //  - from page server to passive transaction servers, the log prior messages are
+  //    relayed without going through the unpackage-repackage loop
   log_Gl.m_prior_sender.send_list (list);
 
   /* append log buffer */
