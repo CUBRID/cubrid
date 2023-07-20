@@ -10414,6 +10414,10 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
 	      /* rhs must be set type and (value or function type) */
 	      goto error;
 	    }
+	  if (rhs == NULL)
+	    {
+	      goto error;
+	    }
 	  for (pos = 0; pos < multi_col_pos[i]; pos++)
 	    {
 	      if (!rhs || (rhs && pt_is_set_type (rhs)))

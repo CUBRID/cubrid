@@ -2203,12 +2203,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 	      switch (op_type)
 		{
-		case PT_EQ:
-		  if (!PT_IS_CONST (rhs_expr) || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
-		    {
-		      lhs_indexable = false;
-		    }
-		  break;
 		case PT_RANGE:
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 		    {
@@ -2249,7 +2243,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 			}
 		      segs++;
 		    }
-		  if (!is_find_local_name)
+		  if (!is_find_local_name || segs <= 1)
 		    {
 		      lhs_indexable = false;
 		    }
