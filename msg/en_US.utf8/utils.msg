@@ -1315,7 +1315,7 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 1 Mutually exclusive options cannot be used together.\n
 2 'memory_monitorting' option is turned off. Please set system parameter 'memory_monitoring' in 'cubrid.conf'.\n
 3 Argument %1$s in option '-m(--module)' does not match in the list of registered server's module.\n
-4 -c(--tran-count) option must be used with -t(--transaction) option\n\
+4 -c(--tran-count) option must be used with -t(--transaction) option.\n
 59 Memmon cannot run as standalone mode.\n
 60 \
 memmon: Provides memory usage information of a server.\n\
