@@ -16391,7 +16391,15 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
    * in case of desc domain index,
    * we have to find the min/max key in opposite order.
    */
-  if (BTS->btid_int.key_type->is_desc)
+
+  if (TP_DOMAIN_TYPE (BTS->btid_int.key_type) == DB_TYPE_MIDXKEY)
+    {
+      if (BTS->btid_int.key_type->setdomain->is_desc)
+	{
+	  find_min_key = !find_min_key;
+	}
+    }
+  else if (BTS->btid_int.key_type->is_desc)
     {
       find_min_key = !find_min_key;
     }

@@ -10852,7 +10852,6 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
   PT_NODE *new_name, *new_owner;
 
-  //*continue_walk = PT_STOP_WALK;
   *continue_walk = PT_CONTINUE_WALK;
   assert (continue_walk != NULL);
 
@@ -11205,184 +11204,75 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_
 #endif
 
 static int
-pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
-		     int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data)
+pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_upd, int *remote_upd)
 {
   int error = NO_ERROR;
-  int assign_cnt = 0, upd_cls_cnt = 0;
-  int idx, idx2;
+  int upd_cls_cnt = 0;
+  int remote = 0, local = 0;
 
   PT_ASSIGNMENTS_HELPER ea;
-  PT_NODE *node = NULL, *assignments, *spec, *class_spec;
-  CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls_info_tmp = NULL;
-  CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL, *assign2 = NULL;
+  PT_NODE *node = NULL, *assignments, *spec;
 
-  assign_cnt = 0;
-  assignments =
-    statement->node_type == PT_MERGE ? statement->info.merge.update.assignment : statement->info.update.assignment;
-  spec = statement->node_type == PT_MERGE ? statement->info.merge.into : statement->info.update.spec;
-  class_spec = statement->node_type == PT_MERGE ? NULL : statement->info.update.class_specs;
+  assignments = statement->info.update.assignment;
+  spec = statement->info.update.spec;
+
+  while (spec)
+    {
+      upd_cls_cnt++;
+      spec = spec->next;
+    }
+
+  spec = statement->info.update.spec;
 
   pt_init_assignments_helper (parser, &ea, assignments);
+
   while (pt_get_next_assignment (&ea))
     {
-      /* count number of assignments */
-      assign_cnt++;
-    }
-
-  /* allocate memory for assignment structures */
-  assigns = (CLIENT_UPDATE_INFO *) malloc (assign_cnt * sizeof (CLIENT_UPDATE_INFO));
-  if (assigns == NULL)
-    {
-      error = ER_REGU_NO_SPACE;
-      goto error_return;
-    }
-  memset (assigns, 0, assign_cnt * sizeof (CLIENT_UPDATE_INFO));
-
-  node = spec;
-  while (node)
-    {
-      /* count classes that will be updated */
-      upd_cls_cnt++;
-      node = node->next;
-    }
-
-  node = class_spec;
-  while (node)
-    {
-      /* count classes that will be updated */
-      upd_cls_cnt++;
-      node = node->next;
-    }
-
-  /* allocate array of classes information structures */
-  cls_info = (CLIENT_UPDATE_CLASS_INFO *) malloc (upd_cls_cnt * sizeof (CLIENT_UPDATE_CLASS_INFO));
-  if (cls_info == NULL)
-    {
-      error = ER_REGU_NO_SPACE;
-      goto error_return;
-    }
-
-  memset (cls_info, 0, upd_cls_cnt * sizeof (CLIENT_UPDATE_CLASS_INFO));
-
-  /* initialize classes info array */
-  idx = 0;
-  node = spec;
-  while (node)
-    {
-      cls_info_tmp = &cls_info[idx++];
-      cls_info_tmp->spec = node;
-      cls_info_tmp->first_assign = NULL;
-
-      node = node->next;
-    }
-
-  /* initialize classes info array */
-  idx = 0;
-  node = class_spec;
-  while (node)
-    {
-      cls_info_tmp = &cls_info[idx++];
-      cls_info_tmp->spec = node;
-      cls_info_tmp->first_assign = NULL;
-
-      node = node->next;
-    }
-
-  /* Fill assignment structures */
-  pt_init_assignments_helper (parser, &ea, assignments);
-  for (assign = assigns; pt_get_next_assignment (&ea); assign++)
-    {
-      PT_NODE *tbl_spec = NULL;
-      PT_NODE *entity_spec;
       char *tbl_name;
       char *tbl_alias = NULL;
       char *lhs_name;
       bool found = false;
 
-      for (idx = 0; idx < upd_cls_cnt; idx++)
+      lhs_name = (char *) ea.lhs->info.name.original;
+      while (spec && !found)
 	{
-	  if (cls_info[idx].spec->info.spec.entity_name)
+	  if (spec->info.spec.entity_name)
 	    {
-	      if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
+	      tbl_name = (char *) spec->info.spec.entity_name->info.name.original;
+	      if (spec->info.spec.range_var)
 		{
-		  tbl_spec = cls_info[idx].spec;
-		}
-	      else if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_SPEC)
-		{
-		  tbl_spec = cls_info[idx].spec->info.spec.entity_name;
-		}
-	    }
-
-	  lhs_name = (char *) ea.lhs->info.name.original;
-	  while (tbl_spec && !found)
-	    {
-	      if (tbl_spec->info.spec.range_var)
-		{
-		  tbl_name = (char *) tbl_spec->info.spec.range_var->info.name.original;
-		  tbl_alias = (char *) tbl_spec->info.spec.range_var->info.name.original;
-		  entity_spec = NULL;
-		}
-	      else
-		{
-		  entity_spec = tbl_spec->info.spec.entity_name;
+		  tbl_alias = (char *) spec->info.spec.range_var->info.name.original;
 		}
 
-	      while (entity_spec)
+	      if ((tbl_name && strcmp (tbl_name, lhs_name) == 0) || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0)
+		  || upd_cls_cnt == 1)
 		{
-		  if (entity_spec->node_type == PT_NAME)
+		  found = true;
+		  if (spec->info.spec.remote_server_name)
 		    {
-		      tbl_name = (char *) entity_spec->info.name.original;
-		      break;
-		    }
-		  entity_spec = entity_spec->info.spec.entity_name;
-		}
-
-	      assign->cls_info = NULL;
-	      if (strcmp (tbl_name, lhs_name) == 0 || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0))
-		{
-		  assign->cls_info = &cls_info[idx];
-		  /* link assignment to its class info */
-		  if (cls_info[idx].first_assign)
-		    {
-		      assign2 = cls_info[idx].first_assign;
-		      while (assign2->next)
-			{
-			  assign2 = assign2->next;
-			}
-		      assign2->next = assign;
+		      remote++;
 		    }
 		  else
 		    {
-		      cls_info[idx].first_assign = assign;
+		      local++;
 		    }
-		  assign->next = NULL;
-		  found = true;
-		  break;
 		}
-	      tbl_spec = tbl_spec->next;
 	    }
+	  spec = spec->next;
+	}
+
+      if (!found && remote > 0 && local > 0)
+	{
+	  /* remote & local updates are mixed */
+	  /* the update would be ambiguous */
+	  PT_ERRORmf (parser, assignments, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO, lhs_name);
+	  error = ER_FAILED;
+	  break;
 	}
     }
 
-  *assigns_data = assigns;
-  *assigns_count = assign_cnt;
-  *cls_data = cls_info;
-
-  return error;
-
-error_return:
-  /* free class information array */
-  if (cls_info)
-    {
-      free (cls_info);
-    }
-
-  /* free assignments information */
-  if (assigns != NULL)
-    {
-      free (assigns);
-    }
+  *remote_upd = remote;
+  *local_upd = local;
 
   return error;
 }
@@ -11581,13 +11471,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 static void
 pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
-  int idx, local_upd = 0, assigns_count = 0;
-  int error, remote_upd = 0, upd_cls_cnt, vals_cnt, multi_assign_cnt;
-  PT_NODE *assignments = NULL, *rhs, *tbl_spec;
-  PT_ASSIGNMENTS_HELPER ea;
-  CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
-  CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls = NULL;
-  DB_VALUE *dbvals = NULL;
+  int local_upd = 0, remote_upd = 0;
+  int error;
 
   parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
@@ -11595,51 +11480,11 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       return;
     }
 
-  assignments = node->info.update.assignment;
-  tbl_spec = node->info.update.spec;
+  error = pt_check_update_set (parser, node, &local_upd, &remote_upd);
 
-  error = pt_init_update_data (parser, node, &assigns, &assigns_count, &cls_info);
-
-  pt_init_assignments_helper (parser, &ea, assignments);
-  for (idx = 0; idx < assigns_count && error == NO_ERROR; idx += multi_assign_cnt)
+  if (error != NO_ERROR)
     {
-      multi_assign_cnt = 1;
-      assign = &assigns[idx];
-      cls = assign->cls_info;
-      if (cls == NULL)
-	{
-	  continue;
-	}
-      if (cls->spec->info.spec.remote_server_name == NULL)
-	{
-	  local_upd++;
-	}
-      else
-	{
-	  remote_upd++;
-	}
-
-      pt_get_next_assignment (&ea);
-      rhs = ea.rhs;
-      if (ea.is_n_column)
-	{
-	  while (pt_get_next_assignment (&ea) && rhs == ea.rhs)
-	    {
-	      multi_assign_cnt++;
-	    }
-	}
-    }
-
-  /* free assignments array */
-  if (assigns != NULL)
-    {
-      free (assigns);
-    }
-
-  /* free classes info array */
-  if (cls_info != NULL)
-    {
-      free (cls_info);
+      return;
     }
 
   pt_convert_dblink_dml_query (parser, node, local_upd, remote_upd, snl);
@@ -11747,7 +11592,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (local_upd > 0 && upd_spec)
     {
-      pt_check_sub_query_spec (parser, upd_spec, snl, NULL);
+      parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
     }
 
   if (into_spec)
@@ -11889,10 +11734,9 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
 
   parser_walk_tree (parser, query_stmt, pt_convert_dblink_synonym, NULL, NULL, NULL);
 
+  parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
   while (from_tbl)
     {
-      parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
-
       if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
 	{
 	  assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
