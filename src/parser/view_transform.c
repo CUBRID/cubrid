@@ -4099,6 +4099,128 @@ mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement,
 #endif
 
 /*
+ * mq_has_dblink_spec () - check if the PT_NAME node has dblink spec
+ *   return: PT_NODE *
+ *   parser(in):
+ *   node(in):
+ */
+static PT_NODE *
+mq_has_dblink_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec;
+  bool *related = (bool *) arg;
+
+  if (node->node_type == PT_NAME && !*related)
+    {
+      spec = (PT_NODE *) node->info.name.spec_id;
+      if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  *related = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      else if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
+	{
+	  spec = spec->info.spec.derived_table->info.query.q.select.from;
+	  if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	    {
+	      *related = true;
+	      *continue_walk = PT_STOP_WALK;
+	    }
+	}
+    }
+
+  return node;
+}
+
+/*
+ * mq_is_dblink_pushable_term () - check if the predicate is pushable for dblink
+ *   return: bool
+ *   parser(in):
+ *   term(in):
+ */
+static bool
+mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
+{
+  bool related = false;
+
+  if (term->node_type == PT_EXPR)
+    {
+      if (pt_is_operator_logical (term->info.expr.op))
+	{
+	  if (mq_is_dblink_pushable_term (parser, term->info.expr.arg1))
+	    {
+	      if (term->info.expr.arg2)
+		{
+		  if (mq_is_dblink_pushable_term (parser, term->info.expr.arg2))
+		    {
+		      /* every argument is pushable */
+		      return true;
+		    }
+		  /* some argument is not pushable */
+		  return false;
+		}
+	      /* every argument is pushable */
+	      return true;
+	    }
+
+	  /* it's not pushable because the expression may have function-like */
+	  return false;
+	}
+      else
+	{
+	  /* other expression like substring */
+	  /* if one of arguments is related to dblink, then return false */
+	  if (term->info.expr.arg1)
+	    {
+	      parser_walk_tree (parser, term->info.expr.arg1, mq_has_dblink_spec, &related, NULL, NULL);
+	      if (related)
+		{
+		  return false;
+		}
+	    }
+	  if (term->info.expr.arg2)
+	    {
+	      parser_walk_tree (parser, term->info.expr.arg2, mq_has_dblink_spec, &related, NULL, NULL);
+	      if (related)
+		{
+		  return false;
+		}
+	    }
+	  if (term->info.expr.arg3)
+	    {
+	      parser_walk_tree (parser, term->info.expr.arg3, mq_has_dblink_spec, &related, NULL, NULL);
+	      if (related)
+		{
+		  return false;
+		}
+	    }
+	  return true;
+	}
+    }
+
+  switch (term->node_type)
+    {
+    case PT_NAME:
+    case PT_HOST_VAR:
+      return true;
+    case PT_VALUE:
+      if (term->type_enum == PT_TYPE_VARCHAR)
+	{
+	  /* The PT_LIKE_LOWER_BOUND and the PT_LIKE_UPPER_BOUND is rewritten */
+	  /* checking the function like_match_lower_bound and like_match_upper_bound */
+	  if (strstr (term->info.value.text, "like_match_lower_bound") == 0
+	      || strstr (term->info.value.text, "like_match_upper_bound") == 0)
+	    {
+	      return false;
+	    }
+	}
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -4189,6 +4311,12 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   /* term(predicate) check */
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
+      /* check for dblink's function term */
+      if (!mq_is_dblink_pushable_term (parser, term))
+	{
+	  continue;
+	}
+
       /* check for on_cond term */
       assert (term->node_type == PT_EXPR || term->node_type == PT_VALUE);
       if ((term->node_type == PT_EXPR && term->info.expr.location > 0)
