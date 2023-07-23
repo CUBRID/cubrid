@@ -8648,6 +8648,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   if (r1)
     {
+      /* DELETE without target FROM ... for dblink's other DBMS */
       if (parser->custom_print & PT_PRINT_SUPPRESS_DELETE_TARGET)
 	{
 	  if (p->info.delete_.spec->next)

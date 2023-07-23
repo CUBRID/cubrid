@@ -1213,6 +1213,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		      return;
 		    }
 
+		  /* remote table's column list */
 		  rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
 
 		  err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
@@ -1254,7 +1255,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 
 		  dblink_table->remote_col_list = (void *) rmt_tbl_cols;
 
-		  /* save the column lists for free at end of parsing */
+		  /* save the column lists to free at end of parsing */
 		  remote = (REMOTE_COLS *) parser_alloc (parser, sizeof (REMOTE_COLS));
 		  if (remote == NULL)
 		    {
@@ -1262,6 +1263,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		      return;
 		    }
 
+		  /* add dblink remote table's column list to Parser */
 		  remote->cols = (void *) rmt_tbl_cols;
 		  remote->next = parser->dblink_remote;
 		  parser->dblink_remote = remote;
@@ -5152,19 +5154,22 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
   if (table_name)
     {
+      /* for collecting column info from "SELECT sel-list FROM table@server WHERE" */
       int len = strlen (table_name);
       char table_name_up[DB_MAX_IDENTIFIER_LENGTH * 2 + 1];
       char user_name[DB_MAX_IDENTIFIER_LENGTH];
 
       PARSER_VARCHAR *var_buf = 0;
+
+      /* preparing the query to get the column info */
       var_buf = pt_append_nulstring (parser, var_buf, "SELECT ");
       var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_for_dblink (parser, dblink_table->sel_list));
       var_buf = pt_append_nulstring (parser, var_buf, " FROM ");
 
-      /* make upper case for Oracle */
+      /* make it upper case for Oracle */
       intl_identifier_upper (table_name, table_name_up);
 
-      /* make "user-name"."table-name" for Oracle */
+      /* make "user-name"."table-name" for reserved word */
       find = strchr (table_name_up, '.');
       if (find)
 	{
@@ -5180,6 +5185,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     }
   else
     {
+      /* for collecting column info from "SELECT sel-list form dblink(server, 'SELECT ...') */
       sql = (char *) dblink_table->qstr->info.value.data_value.str->bytes;
     }
 

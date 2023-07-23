@@ -3811,6 +3811,7 @@ typedef struct pt_plan_trace_info
   } trace;
 } PT_PLAN_TRACE_INFO;
 
+/* to save the remote column list for dblink */
 typedef struct remote_cols
 {
   void *cols;

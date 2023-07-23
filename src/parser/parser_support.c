@@ -11319,6 +11319,8 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
 	  spec->info.spec.entity_name->info.name.original = pt_append_string (parser, NULL, class_name);
 	  spec->info.spec.remote_server_name = parser_new_node (parser, PT_NAME);
 	  spec->info.spec.remote_server_name->info.name.original = pt_append_string (parser, NULL, r + 1);
+
+	  /* it's not necessary to alias name for INSERT statement's table name */
 	  if (!is_insert && spec->info.spec.range_var == NULL)
 	    {
 	      spec->info.spec.range_var = parser_new_node (parser, PT_NAME);
@@ -11328,7 +11330,7 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
     }
   else
     {
-/* synonym_mop == NULL */
+      /* synonym_mop == NULL */
       ASSERT_ERROR_AND_SET (error);
       if (error == ER_SYNONYM_NOT_EXIST)
 	{
