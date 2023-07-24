@@ -1312,23 +1312,24 @@ valid options:\n\
                                   default: latest\n
 
 $set 59 MSGCAT_UTIL_SET_MEMMON
-1 Mutually exclusive options cannot be used together.\n
-2 'memory_monitorting' option is turned off. Please set system parameter 'memory_monitoring' in 'cubrid.conf'.\n
-3 Argument %1$s in option '-m(--module)' does not match in the list of registered server's module.\n
-4 -c(--tran-count) option must be used with -t(--transaction) option\n\
+1 Mutually exclusive option '-a(--all)' cannot be used with other options.\n
+2 Please set system parameter 'memory_monitoring' in 'cubrid.conf'.\n
+3 Invalid argument '%1$s' is set to '-m(--module)' option.\n
+4 -c(--tran-count) option must be used with -t(--transaction) option.\n\
 59 Memmon cannot run as standalone mode.\n
 60 \
-memmon: Provides memory usage information of a server.\n\
+memmon: Provides memory usage information of a cub_server process.\n\
 usage: %1$s memmon [OPTION] database-name\n\
 \n\
 valid options:\n\
-    -m, --module=MODULE_NAME      print the module's total memory usage and memory usage details.\n\
-                 MODULE_INDEX\n\
-                 b(or brief)      print summary of memory usage of the entire registered modules.\n\
-    -t, --transaction             print transaction id and memory usage of the entire active transaction.\n\
+    -m, --module=TYPE             TYPE of argument
+                                    MODULE NAME or INDEX    display the module's total memory usage and memory usage details.\n\
+                                    brief(or b)             display summary of memory usage of the entire registered modules.\n\
+    -t, --transaction             display memory usage of active transaction.\n\
     -c, --tran-count=NUMBER       set how many transactions will be printed. If NUMBER is greater than the total\n\
-                                  number of active transactions of the server, memmon will print only the number of\n\
-                                  active transactions.\n\
-    -a, --all                     print all memory usage information registered in the server including\n\
+                                  number of active transactions of the server, memmon will only show\n\
+                                  the memory usage information of the number of active transaction.\n\
+                                  This option have to use with '-t(--transaction)' option.\n\
+    -a, --all                     display all memory usage information registered in the server including\n\
                                   total server memory usage, detailed memory usage information of modules,\n\
-                                  and memory occupancy of active transactions.\n
+                                  and memory occupancy of active transactions. This option can only be used standalone.\n

@@ -4571,6 +4571,11 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  if (tran_count < 0)
+    {
+      goto print_memmon_usage;
+    }
+
   if (show_all && (transaction || module))
     {
       fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
@@ -4580,7 +4585,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
   module_index = strtol (module, &stop, 10);
   if (module_index)
     {
-      if (module_index > MMON_MODULE_LAST)
+      if (module_index < 0 || module_index > MMON_MODULE_LAST)
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
 		   module);
