@@ -32,21 +32,35 @@ namespace cublog
       {
 	return;
       }
-    const std::string message = prior_list_serialize (head);
+    std::string message = prior_list_serialize (head);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
       {
 	const log_prior_node *tail;
 	for (tail = head; tail->next != nullptr; tail = tail->next);
 	_er_log_debug (ARG_FILE_LINE,
-		       "[LOG_PRIOR_TRANSFER] Sending. Head lsa %lld|%d. Tail lsa %lld|%d. Message size = %zu.\n",
+		       "[LOG_PRIOR_TRANSFER] Sending. head_lsa = %lld|%d tail_lsa = %lld|%d. Message size = %zu.\n",
 		       LSA_AS_ARGS (&head->start_lsa), LSA_AS_ARGS (&tail->start_lsa), message.size ());
       }
 
+    send_serialized_message (std::move (message));
+  }
+
+  void
+  prior_sender::send_serialized_message (std::string &&message)
+  {
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
-    for (auto &sink : m_sink_hooks)
+    // copy the message into every sink but the last..
+    for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
       {
-	(*sink) (std::string (message));
+	const sink_hook_t *const sink_p = m_sink_hooks[index];
+	(*sink_p) (std::string (message));
+      }
+    // ..and optimize by moving the message into the last sink, because it is of no use afterwards
+    if (m_sink_hooks.size () > 0)
+      {
+	const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1];
+	(*sink_p) (std::move (message));
       }
   }
 
