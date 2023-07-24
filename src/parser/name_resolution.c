@@ -275,6 +275,7 @@ private:
 
   int m_attr_alloc;
   int m_attr_used;
+  bool m_attr_star;
   S_REMOTE_COL_ATTR *m_attr;
 
 private:
@@ -324,6 +325,7 @@ public:
     m_nm_buf = NULL;
     m_attr_alloc = m_attr_used = 0;
     m_attr = NULL;
+    m_attr_star = false;
   }
 
   ~remote_tbl_cols ()
@@ -380,6 +382,16 @@ public:
   int get_attr_size ()
   {
     return m_attr_used;
+  }
+
+  bool is_select_star ()
+  {
+    return m_attr_star;
+  }
+
+  void set_select_star ()
+  {
+    m_attr_star = true;
   }
 };				/* struct remote_tbl_cols */
 
@@ -5163,10 +5175,11 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
       PARSER_VARCHAR *var_buf = 0;
 
+      /* all attr's from "SELECT * FROM" */
+      rmt_tbl_cols->set_select_star ();
+
       /* preparing the query to get the column info */
-      var_buf = pt_append_nulstring (parser, var_buf, "SELECT ");
-      var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_for_dblink (parser, dblink_table->sel_list));
-      var_buf = pt_append_nulstring (parser, var_buf, " FROM ");
+      var_buf = pt_append_nulstring (parser, var_buf, "SELECT * FROM ");
 
       /* make it upper case for Oracle */
       intl_identifier_upper (table_name, table_name_up);
@@ -11611,6 +11624,11 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
     {
       PT_ERRORf (parser, dblink, "internal error, no remote columns", ER_DBLINK);
       return ER_FAILED;
+    }
+
+  if (rmt_tbl_cols->is_select_star ())
+    {
+      return NO_ERROR;
     }
 
   cols = dblink->info.dblink_table.cols;
