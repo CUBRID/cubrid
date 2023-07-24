@@ -2792,34 +2792,20 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
       if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
 	{
-	  if (idx_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+	  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+	  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
 	    {
-	      PT_INDEX_INFO *t_info = (PT_INDEX_INFO *) idx_info;
-	      t_info->deduplicate_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+	      ((PT_INDEX_INFO *) idx_info)->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
 	    }
-
-	  if ((idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF) && (idx_info->prefix_length == NULL))
+	  else
 	    {
-	      if (idx_info->deduplicate_min_keys == DEDUPLICATE_OPTION_AUTO)
+	      if (idx_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
 		{
 		  PT_INDEX_INFO *t_info = (PT_INDEX_INFO *) idx_info;
-		  t_info->deduplicate_min_keys = prm_get_integer_value (PRM_ID_DEDUPLICATE_MIN_KEYS);
+		  t_info->deduplicate_level = param_dedup_level;
 		}
 
-	      if (idx_info->deduplicate_min_keys == DEDUPLICATE_MIN_KEYS_UNUSE)
-		{
-		  has_deduplicate_key_col = true;
-		  nnames++;
-		}
-	      else if (idx_info->function_expr)
-		{
-		  if ((nnames - idx_info->func_no_args + 1) <= idx_info->deduplicate_min_keys)
-		    {
-		      has_deduplicate_key_col = true;
-		      nnames++;
-		    }
-		}
-	      else if (nnames <= idx_info->deduplicate_min_keys)
+	      if ((idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF) && (idx_info->prefix_length == NULL))
 		{
 		  has_deduplicate_key_col = true;
 		  nnames++;
@@ -7547,48 +7533,56 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
     }
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  if (fk_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
     {
-      fk_info->deduplicate_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_FK_LEVEL);
+      fk_info->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
     }
-
-  if (fk_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
+  else
     {
-      SM_CLASS *class_ = NULL;
-      SM_CLASS_CONSTRAINT *free_cons = NULL;
-      SM_CLASS_CONSTRAINT *check_cons;
-
-      if (ctemplate->op != NULL)
+      if (fk_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
 	{
-	  error = au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX);
-	  if (error != NO_ERROR)
+	  fk_info->deduplicate_level = param_dedup_level;
+	}
+
+      if (fk_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
+	{
+	  SM_CLASS *class_ = NULL;
+	  SM_CLASS_CONSTRAINT *free_cons = NULL;
+	  SM_CLASS_CONSTRAINT *check_cons;
+
+	  if (ctemplate->op != NULL)
 	    {
-	      return error;
+	      error = au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      check_cons = class_->constraints;
+	    }
+	  else
+	    {
+	      error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &check_cons);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      free_cons = check_cons;
 	    }
 
-	  check_cons = class_->constraints;
-	}
-      else
-	{
-	  error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &check_cons);
-	  if (error != NO_ERROR)
+	  att_names[i] = NULL;
+	  if (check_cons == NULL || !classobj_check_attr_in_unique_constraint (check_cons, (char **) att_names, NULL))
 	    {
-	      return error;
+	      // adjust for FK: add deduplicate_key_attr column
+	      att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->deduplicate_level);
 	    }
 
-	  free_cons = check_cons;
-	}
-
-      att_names[i] = NULL;
-      if (check_cons == NULL || !classobj_check_attr_in_unique_constraint (check_cons, (char **) att_names, NULL))
-	{
-	  // adjust for FK: add deduplicate_key_attr column
-	  att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->deduplicate_level);
-	}
-
-      if (free_cons != NULL)
-	{
-	  classobj_free_class_constraints (free_cons);
+	  if (free_cons != NULL)
+	    {
+	      classobj_free_class_constraints (free_cons);
+	    }
 	}
     }
 #endif

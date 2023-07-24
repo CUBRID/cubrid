@@ -729,13 +729,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
 
-#ifndef NDEBUG
-#define PRM_NAME_USE_DEDUPLICATE_KEY_MODE_OID_TEST  "use_deduplicate_key_mode_oid_test"
-#endif
-#define PRM_NAME_DEDUPLICATE_MIN_KEYS      "deduplicate_min_keys"
-#define PRM_NAME_DEDUPLICATE_FK_LEVEL      "deduplicate_fk_level"
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
-#define PRM_NAME_DEDUPLICATE_PRINT_LEVEL   "deduplicate_print_level"
+#define PRM_NAME_PRINT_INDEX_DETAIL        "print_index_detail"
 
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
@@ -1216,35 +1211,15 @@ static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-#ifndef NDEBUG
-bool PRM_USE_DEDUPLICATE_KEY_MODE_OID = false;
-static bool prm_use_deduplicate_key_mode_oid_default = false;
-static unsigned int prm_use_deduplicate_key_mode_oid_flag = 0;
-#endif
-
-
-int PRM_DEDUPLICATE_MIN_KEYS = DEDUPLICATE_MIN_KEYS_DFLT;
-static int prm_deduplicate_min_keys_default = DEDUPLICATE_MIN_KEYS_DFLT;
-static unsigned int prm_deduplicate_min_keys_flag = 0;
-static int prm_deduplicate_min_keys_lower = DEDUPLICATE_MIN_KEYS_UNUSE;
-static int prm_deduplicate_min_keys_upper = DEDUPLICATE_MIN_KEYS_MAX;
-
-int PRM_DEDUPLICATE_FK_MOD_LEVEL = DEDUPLICATE_FK_LEVEL_DFLT;
-static int prm_deduplicate_fk_level_default = DEDUPLICATE_FK_LEVEL_DFLT;
-static unsigned int prm_deduplicate_fk_level_flag = 0;
-static int prm_deduplicate_fk_level_lower = DEDUPLICATE_KEY_LEVEL_OFF;
-static int prm_deduplicate_fk_level_upper = DEDUPLICATE_KEY_LEVEL_MAX;
-
-int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_DFLT;
-static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_DFLT;
+int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
+static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
 static unsigned int prm_deduplicate_key_level_flag = 0;
-static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_OFF;
-static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_MAX;
+static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MIN;
+static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MAX;
 
-bool PRM_USE_DEDUPLICATE_PRINT_LEVEL = false;
-static bool prm_use_deduplicate_print_level_default = false;
-static unsigned int prm_use_deduplicate_print_level_flag = 0;
-
+bool PRM_USE_WITH_OPTION_PRINT = false;
+static bool prm_use_print_index_detail_default = false;
+static unsigned int prm_use_print_index_detail_flag = 0;
 #endif
 
 int PRM_DEFAULT_WEEK_FORMAT = 0;
@@ -6298,46 +6273,10 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-#ifndef NDEBUG
-  {PRM_ID_USE_DEDUPLICATE_KEY_MODE_OID_TEST,
-   PRM_NAME_USE_DEDUPLICATE_KEY_MODE_OID_TEST,
-   (PRM_FOR_CLIENT | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   &prm_use_deduplicate_key_mode_oid_flag,
-   (void *) &prm_use_deduplicate_key_mode_oid_default,
-   (void *) &PRM_USE_DEDUPLICATE_KEY_MODE_OID,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-#endif
-  {PRM_ID_DEDUPLICATE_MIN_KEYS,
-   PRM_NAME_DEDUPLICATE_MIN_KEYS,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
-   PRM_INTEGER,
-   &prm_deduplicate_min_keys_flag,
-   (void *) &prm_deduplicate_min_keys_default,
-   (void *) &PRM_DEDUPLICATE_MIN_KEYS,
-   (void *) &prm_deduplicate_min_keys_upper,
-   (void *) &prm_deduplicate_min_keys_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_DEDUPLICATE_FK_LEVEL,
-   PRM_NAME_DEDUPLICATE_FK_LEVEL,
-   (PRM_FOR_CLIENT | PRM_HIDDEN),
-   PRM_INTEGER,
-   &prm_deduplicate_fk_level_flag,
-   (void *) &prm_deduplicate_fk_level_default,
-   (void *) &PRM_DEDUPLICATE_FK_MOD_LEVEL,
-   (void *) &prm_deduplicate_fk_level_upper,
-   (void *) &prm_deduplicate_fk_level_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_DEDUPLICATE_KEY_LEVEL,
    PRM_NAME_DEDUPLICATE_KEY_LEVEL,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   // It is not specified in the manual that it can be changed in the session.
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
    PRM_INTEGER,
    &prm_deduplicate_key_level_flag,
    (void *) &prm_deduplicate_key_level_default,
@@ -6347,13 +6286,13 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_DEDUPLICATE_PRINT_LEVEL,
-   PRM_NAME_DEDUPLICATE_PRINT_LEVEL,
+  {PRM_ID_PRINT_INDEX_DETAIL,
+   PRM_NAME_PRINT_INDEX_DETAIL,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
    PRM_BOOLEAN,
-   &prm_use_deduplicate_print_level_flag,
-   (void *) &prm_use_deduplicate_print_level_default,
-   (void *) &PRM_USE_DEDUPLICATE_PRINT_LEVEL,
+   &prm_use_print_index_detail_flag,
+   (void *) &prm_use_print_index_detail_default,
+   (void *) &PRM_USE_WITH_OPTION_PRINT,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

@@ -2113,7 +2113,6 @@ struct pt_index_info
   int ib_threads;
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   short deduplicate_level;	/* -1: Not set yet, 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
-  int deduplicate_min_keys;	/* -1: Not set yet, 0 : Not Use */
 #endif
 };
 
