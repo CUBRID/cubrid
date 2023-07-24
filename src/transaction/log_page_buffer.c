@@ -2202,6 +2202,21 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
     }
 }
 // *INDENT-ON*
+
+void
+logpb_dispatch_received_log_prior_list (THREAD_ENTRY & thread_r, std::string && payload_in)
+{
+  assert (is_page_server ());
+
+  // the log prior is copied and forwarded to:
+  //  - the page server's own log prior received
+  //  - copied as is to the prior sender
+
+  //log_Gl.m_prior_sender.send_list (list);
+  log_Gl.get_log_prior_receiver ().push_message (std::string (payload_in));
+
+  log_Gl.m_prior_sender.send_serialized_message (std::move (payload_in));
+}
 #endif // SERVER_MODE
 
 #if defined (SERVER_MODE)
@@ -3438,11 +3453,13 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
   assert (log_Gl.prior_info.prior_flush_list_header == NULL);
   log_Gl.prior_info.prior_flush_list_header = list;
 
-  // TODO
-  //  - only send this in case of active transaction server
-  //  - from page server to passive transaction servers, the log prior messages are
-  //    relayed without going through the unpackage-repackage loop
-  log_Gl.m_prior_sender.send_list (list);
+  if (is_active_transaction_server ())
+    {
+      // - only dispatch on active transaction server
+      // - for the other dispatch path - from page server to connected passive transaction servers - the
+      //  log prior messages are relayed without going through the unpackage-repackage loop
+      log_Gl.m_prior_sender.send_list (list);
+    }
 
   /* append log buffer */
   while (log_Gl.prior_info.prior_flush_list_header != NULL)

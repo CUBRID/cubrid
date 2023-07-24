@@ -146,7 +146,13 @@ page_server::connection_handler::push_request (page_to_tran_request id, std::str
 void
 page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  log_Gl.get_log_prior_receiver ().push_message (std::move (a_sp.pull_payload ()));
+  assert (a_sp.get_response_sequence_number () == cubcomm::NO_RESPONSE_SEQUENCE_NUMBER);
+
+  auto handler_func = std::bind (logpb_dispatch_received_log_prior_list, std::placeholders::_1, std::placeholders::_2);
+  page_server::responder_t &responder = m_ps.get_responder ();
+  // not interested in the response sequence number because the message is response-less
+  responder.async_execute_responseless (std::ref (*m_conn), std::move (a_sp.pull_payload ()),
+					std::move (handler_func));
 }
 
 template<class F, class ... Args>

@@ -47,12 +47,10 @@ namespace cublog
 
     public:
       void send_list (const log_prior_node *head);                // send prior node list to all sinks
+      void send_serialized_message (std::string &&message);
 
       void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
-
-    private:
-      void send_serialized_message (std::string &&message);
 
     private:
       // non-owning pointers

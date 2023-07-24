@@ -1276,6 +1276,7 @@ extern int logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p);
 
 // *INDENT-OFF*
 extern void logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out);
+extern void logpb_dispatch_received_log_prior_list (THREAD_ENTRY & thread_r, std::string &&payload_in);
 // *INDENT-ON*
 
 //////////////////////////////////////////////////////////////////////////

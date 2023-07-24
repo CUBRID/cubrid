@@ -50,9 +50,11 @@ class server_request_responder
     using connection_t = T_CONN;
     using payload_t = typename connection_t::payload_t;
     using sequenced_payload_t = typename connection_t::sequenced_payload;
-    using handler_func_t = std::function<void (cubthread::entry &, payload_t &in_out)>;
+    using handler_func_t = std::function<void (cubthread::entry &, payload_t &)>;
+    using handler_func_responseless_t = std::function<void (cubthread::entry &, payload_t &&)>;
 
     class task;
+    class task_responseless;
 
     server_request_responder ();
 
@@ -68,15 +70,18 @@ class server_request_responder
 
     // Create a task that executes handler function asynchronously and pushes the response on the given connection
     void async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp, handler_func_t &&a_func);
+    void async_execute_responseless (connection_t &a_conn, payload_t &&a_payload,
+				     handler_func_responseless_t &&a_func_responseless);
 
     // tests if there are in-flight requests being processed for the connection
     void wait_connection_to_become_idle (const connection_t *connection);
 
   private:
     inline void async_execute (task *a_task);
+    inline void async_execute_responseless (task_responseless *a_task_responseless);
 
-    inline void new_task (const connection_t *connection_ptr);
-    inline void retire_task (const connection_t *connection_ptr);
+    inline void enlist_task (const connection_t *connection_ptr);
+    inline void delist_task (const connection_t *connection_ptr);
 
   private:
     std::unique_ptr<cubthread::system_worker_entry_manager> m_threads_context_manager;
@@ -155,6 +160,36 @@ class server_request_responder<T_CONN>::task : public cubthread::entry_task
     handler_func_t m_function;			// the request handler
 };
 
+template<typename T_CONN>
+class server_request_responder<T_CONN>::task_responseless : public cubthread::entry_task
+{
+    // Specialized task for the server_request_responder. Override execute function to call m_function and then
+    // send the response on m_conn_reference.
+
+  public:
+    task_responseless () = delete;
+    task_responseless (server_request_responder &request_responder, connection_t &a_conn_ref,
+		       payload_t &&a_sp, handler_func_responseless_t &&a_func_responseless);
+
+    ~task_responseless () override;
+
+    task_responseless (const task_responseless &) = delete;
+    task_responseless (task_responseless &&) = delete;
+
+    task_responseless &operator = (const task_responseless &) = delete;
+    task_responseless &operator = (task_responseless &&) = delete;
+
+    void execute (cubthread::entry &thread_entry) final override;
+    void retire (void) final override;
+
+  private:
+    server_request_responder &m_request_responder;
+
+    connection_t &m_conn_reference;
+    payload_t m_payload;
+    handler_func_responseless_t m_function_responseless;
+};
+
 //
 // server_request_responder implementation
 //
@@ -205,16 +240,34 @@ server_request_responder<T_CONN>::async_execute (task *a_task)
 
 template<typename T_CONN>
 void
+server_request_responder<T_CONN>::async_execute_responseless (task_responseless *a_task_responseless)
+{
+  m_threads->execute (a_task_responseless);
+}
+
+template<typename T_CONN>
+void
 server_request_responder<T_CONN>::async_execute (connection_t &a_conn, sequenced_payload_t &&a_sp,
     handler_func_t &&a_func)
 {
-  new_task (&a_conn);
+  enlist_task (&a_conn);
   async_execute (new task (*this, a_conn, std::move (a_sp), std::move (a_func)));
 }
 
 template<typename T_CONN>
 void
-server_request_responder<T_CONN>::new_task (const connection_t *connection_ptr)
+server_request_responder<T_CONN>::async_execute_responseless (connection_t &a_conn, payload_t &&a_payload,
+    handler_func_responseless_t &&a_func_responseless)
+{
+  enlist_task (&a_conn);
+  async_execute_responseless (new task_responseless (*this, a_conn,
+			      std::move (a_payload),
+			      std::move (a_func_responseless)));
+}
+
+template<typename T_CONN>
+void
+server_request_responder<T_CONN>::enlist_task (const connection_t *connection_ptr)
 {
   std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
 
@@ -227,7 +280,7 @@ server_request_responder<T_CONN>::new_task (const connection_t *connection_ptr)
 
 template<typename T_CONN>
 void
-server_request_responder<T_CONN>::retire_task (const connection_t *connection_ptr)
+server_request_responder<T_CONN>::delist_task (const connection_t *connection_ptr)
 {
   {
     std::lock_guard<std::mutex> lockg { m_executing_tasks_mtx };
@@ -306,9 +359,47 @@ template<typename T_CONN>
 void
 server_request_responder<T_CONN>::task::retire (void)
 {
-  m_request_responder.retire_task (&m_conn_reference);
+  m_request_responder.delist_task (&m_conn_reference);
   // will self delete
   this->cubthread::entry_task::retire ();
 }
+
+//
+// server_request_responder::task_responseless implementation
+//
+
+template<typename T_CONN>
+server_request_responder<T_CONN>::task_responseless::task_responseless (server_request_responder &request_responder,
+    connection_t &a_conn_ref, payload_t &&a_payload, handler_func_responseless_t &&a_func_responseless)
+  : m_request_responder { request_responder }
+  , m_conn_reference (a_conn_ref)
+  , m_payload (std::move (a_payload))
+  , m_function_responseless (std::move (a_func_responseless))
+{
+}
+
+template<typename T_CONN>
+server_request_responder<T_CONN>::task_responseless::~task_responseless ()
+{
+  m_function_responseless = nullptr;
+}
+
+template<typename T_CONN>
+void
+server_request_responder<T_CONN>::task_responseless::execute (cubthread::entry &thread_entry)
+{
+  // execute may be called only once! payload is lost after this call
+  m_function_responseless (thread_entry, std::move (m_payload));
+}
+
+template<typename T_CONN>
+void
+server_request_responder<T_CONN>::task_responseless::retire (void)
+{
+  m_request_responder.delist_task (&m_conn_reference);
+  // will self delete
+  this->cubthread::entry_task::retire ();
+}
+
 
 #endif // !_REQUEST_RESPONSE_HANDLER_HPP_
