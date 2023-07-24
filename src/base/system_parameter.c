@@ -1211,11 +1211,11 @@ static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
 #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_DFLT;
-static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_DFLT;
+int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
+static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
 static unsigned int prm_deduplicate_key_level_flag = 0;
-static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_OFF;
-static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_MAX;
+static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MIN;
+static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MAX;
 
 bool PRM_USE_WITH_OPTION_PRINT = false;
 static bool prm_use_print_index_detail_default = false;
