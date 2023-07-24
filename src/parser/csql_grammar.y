@@ -15550,7 +15550,7 @@ limit_term
                 DBG_PRINT}}
         | limit_term '/' limit_factor
                 {{ DBG_TRACE_GRAMMAR(limit_term, | limit_term '/' limit_factor);
-                        $$ = parser_make_expression (this_parser, PT_DIVIDE, $1, $3, NULL);
+                        $$ = parser_make_expression (this_parser, PT_DIV, $1, $3, NULL);
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
                 DBG_PRINT}}

@@ -8688,8 +8688,20 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   if (r1)
     {
-      q = pt_append_nulstring (parser, q, " ");
-      q = pt_append_varchar (parser, q, r1);
+      /* DELETE without target FROM ... for dblink's other DBMS */
+      if (parser->custom_print & PT_PRINT_SUPPRESS_DELETE_TARGET)
+	{
+	  if (p->info.delete_.spec->next)
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, " ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
     }
   q = pt_append_nulstring (parser, q, " from ");
   q = pt_append_varchar (parser, q, r2);
