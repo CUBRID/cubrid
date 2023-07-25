@@ -4977,7 +4977,7 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
       return;
     }
 
-  int i, col_cnt = 0;
+  int i;
   const char *col_name;
   PT_NODE *new_sel_list = NULL;
   PT_NODE *sel_list = dblink_table->sel_list;
@@ -5021,23 +5021,7 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
       if (i < rmt_cols->get_attr_size ())
 	{
 	  new_sel_list = new_sel_list ? parser_append_node (col, new_sel_list) : col;
-	  col_cnt++;
 	}
-      else
-	{
-	  if (!PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_DBLINK_SPECIFIED))
-	    {
-	      /* no column matched */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, 0);
-	    }
-	}
-    }
-
-  if (col_cnt == 0)
-    {
-      /* no column matched */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, 0);
-      return;
     }
 
   dblink_table->sel_list = new_sel_list;
@@ -11475,8 +11459,6 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
     {
       name->info.name.original = pt_append_string (parser, NULL, original);
     }
-
-  name->info.name.flag |= PT_NAME_INFO_DBLINK_SPECIFIED;
 
   plkcol->col_list = parser_append_node (name, plkcol->col_list);
 }
