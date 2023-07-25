@@ -5024,7 +5024,13 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
 	}
       else
 	{
-	  parser_free_node (parser, col);
+	  if (!PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_DBLINK_SPECIFIED))
+	    {
+	      /* no column matched */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 1, 0);
+	    }
+
+	  return;
 	}
     }
 
@@ -11463,6 +11469,8 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
     {
       name->info.name.original = pt_append_string (parser, NULL, original);
     }
+
+  name->info.name.flag |= PT_NAME_INFO_DBLINK_SPECIFIED;
 
   plkcol->col_list = parser_append_node (name, plkcol->col_list);
 }
