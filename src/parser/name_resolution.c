@@ -1255,9 +1255,12 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		      return;
 		    }
 
-		  if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
+		  if (table->info.dblink_table.cols == NULL)
 		    {
-		      return;
+		      if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
+			{
+			  return;
+			}
 		    }
 		}
 
