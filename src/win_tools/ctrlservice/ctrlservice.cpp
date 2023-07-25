@@ -267,17 +267,17 @@ _tmain (int argc, char *argv[])
 	  if (service_control_code == SERVICE_CONTROL_BROKER_START)
 	    {
 	      for (int i = 0; i < broker_start_loop_cnt_max; i++ )
-	        {
-	          if (!rc && ss.dwCurrentState == SERVICE_RUNNING && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
-	            {
-	              Sleep (200);
-	              rc = ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss);
-	            }
-	          else
-	            {
-	              break;
-	            }
-	        }
+		{
+		  if (!rc && ss.dwCurrentState == SERVICE_RUNNING && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
+		    {
+		      Sleep (200);
+		      rc = ControlService (scHandle, SERVICE_CONTROL_INTERROGATE, &ss);
+		    }
+		  else
+		    {
+		      break;
+		    }
+		}
 	    }
 
 	  if (!rc && ss.dwCurrentState == SERVICE_RUNNING && GetLastError () == ERROR_SERVICE_REQUEST_TIMEOUT)
