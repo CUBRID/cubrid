@@ -4977,7 +4977,7 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
       return;
     }
 
-  int i;
+  int i, col_cnt = 0;
   const char *col_name;
   PT_NODE *new_sel_list = NULL;
   PT_NODE *sel_list = dblink_table->sel_list;
@@ -5021,17 +5021,23 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
       if (i < rmt_cols->get_attr_size ())
 	{
 	  new_sel_list = new_sel_list ? parser_append_node (col, new_sel_list) : col;
+	  col_cnt++;
 	}
       else
 	{
 	  if (!PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_DBLINK_SPECIFIED))
 	    {
 	      /* no column matched */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 1, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, 0);
 	    }
-
-	  return;
 	}
+    }
+
+  if (col_cnt == 0)
+    {
+      /* no column matched */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, 0);
+      return;
     }
 
   dblink_table->sel_list = new_sel_list;

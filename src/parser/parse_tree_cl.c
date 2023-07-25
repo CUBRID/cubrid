@@ -8649,7 +8649,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
   if (r1)
     {
       /* DELETE without target FROM ... for dblink's other DBMS */
-      if (parser->custom_print & PT_PRINT_SUPPRESS_DELETE_TARGET)
+      if (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK)
 	{
 	  if (p->info.delete_.spec->next)
 	    {
@@ -15860,7 +15860,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
     case PT_TYPE_SEQUENCE:
-      if (p->spec_ident)
+      if (p->spec_ident || (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
 	  /* this is tagged as an "in" clause right hand side Print it as a parenthesized list */
 	  r1 = pt_print_bytes_l (parser, p->info.value.data_value.set);
