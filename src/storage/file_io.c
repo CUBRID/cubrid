@@ -10197,7 +10197,6 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
   int unit;
   int i;
   char *buffer_p;
-  bool incremental_includes_volume_header = false;
 
   npages = (int) CEIL_PTVDIV (session_p->dbfile.nbytes, IO_PAGESIZE);
   session_p->dbfile.vlabel = to_vol_label_p;
@@ -10314,10 +10313,6 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
       if (session_p->dbfile.level != FILEIO_BACKUP_FULL_LEVEL)
 	{
 	  next_page_id = FILEIO_GET_BACKUP_PAGE_ID (session_p->dbfile.area);
-	  if (next_page_id == DISK_VOLHEADER_PAGE)
-	    {
-	      incremental_includes_volume_header = true;
-	    }
 	}
 
       buffer_p = (char *) &session_p->dbfile.area->iopage;
@@ -10357,10 +10352,11 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
   /* check for restoring the database and log volumes to the path specified in the database-loc-file */
   if (session_p->bkup.loc_db_fullname[0] != '\0' && session_p->dbfile.volid >= LOG_DBFIRST_VOLID)
     {
-      /* Volume header page may not be included in incremental backup volumes.
-       * This means that volume header of a partially restoredb volume may not exist.
+      /* Volume header pages may not be included in incremental backup volumes.
+       * This means that the volume header page may not exist in a partially restored volume.
+       * Accordingly, setting of it is omitted in the incremental restoration steps.
        */
-      if (session_p->dbfile.level == FILEIO_BACKUP_FULL_LEVEL || incremental_includes_volume_header == true)
+      if (session_p->dbfile.level == FILEIO_BACKUP_FULL_LEVEL)
 	{
 	  VOLID volid;
 
