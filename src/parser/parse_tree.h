@@ -932,7 +932,9 @@ enum pt_custom_print
   /* suppress next_value to serial_next_value(...) or current_value to serial_current_value(...) */
   PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
   /* suppress print various generated functions including suppress delete targe for dblink */
-  PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27)
+  PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
+  /* print the name with double quotes for dblink's othe DBMS */
+  PT_PRINT_QUOTED_NAME = (0x1 << 28)
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -2741,6 +2743,7 @@ struct pt_name_info
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
+#define PT_NAME_INFO_QUOTED 16384	/* dblink processing for other DBMS like ORACLE */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))

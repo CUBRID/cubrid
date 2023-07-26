@@ -22231,6 +22231,8 @@ identifier
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
+
+			    p->info.name.flag = PT_NAME_INFO_QUOTED;
 			  }
 			$$ = p;
 		DBG_PRINT}}
@@ -22248,6 +22250,7 @@ identifier
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
+			    p->info.name.flag = PT_NAME_INFO_QUOTED;
 			  }
 			$$ = p;
 		DBG_PRINT}}
@@ -22265,6 +22268,7 @@ identifier
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
+			    p->info.name.flag = PT_NAME_INFO_QUOTED;
 			  }
 			$$ = p;
 		DBG_PRINT}}

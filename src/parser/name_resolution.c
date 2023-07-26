@@ -5035,6 +5035,16 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   PT_NODE *entity_name = dblink_table->qstr;
   PT_NODE *range_var = dblink_table->qstr->next;
 
+  PT_NODE *attr_def_node = NULL;
+  PT_NODE *id_node;
+  PT_NODE *tmp;
+
+  PARSER_VARCHAR *var_buf = 0;
+
+  int error = NO_ERROR;
+
+  parser->custom_print |= PT_PRINT_SUPPRESS_FOR_DBLINK;
+
   assert (dblink_table->qstr != NULL);
   assert (class_spec->range_var != NULL);
   assert (class_spec->only_all == PT_ONLY);
@@ -5046,11 +5056,11 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   if (val == NULL)
     {
       PT_ERROR (parser, derived_table, er_msg ());
-      return ER_FAILED;
+      error = ER_DBLINK;
+      goto error_exit;
     }
 
   // select * from dblink_t1@remote_srv1;
-  PARSER_VARCHAR *var_buf = 0;
   var_buf = pt_append_nulstring (parser, var_buf, "SELECT ");
   var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_for_dblink (parser, dblink_table->sel_list));
 
@@ -5087,21 +5097,19 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
       PT_NODE *id_node = parser_new_node (parser, PT_NAME);
       if (id_node == NULL)
 	{
-	  return ER_FAILED;
+	  error = ER_DBLINK;
+	  goto error_exit;
 	}
 
       id_node->info.name.original = "c";
       if ((dblink_table->cols = pt_mk_attr_def_node (parser, id_node, NULL)) == NULL)
 	{
-	  return ER_FAILED;
+	  error = ER_DBLINK;
+	  goto error_exit;
 	}
 
       return NO_ERROR;
     }
-
-  PT_NODE *attr_def_node = NULL;
-  PT_NODE *id_node;
-  PT_NODE *tmp;
 
   if (dblink_table->sel_list->node_type == PT_NAME && dblink_table->sel_list->type_enum == PT_TYPE_STAR)
     {
@@ -5111,13 +5119,15 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	  if ((id_node = parser_new_node (parser, PT_NAME)) == NULL)
 	    {
 	      PT_ERROR (parser, derived_table, er_msg ());
-	      return ER_FAILED;
+	      error = ER_DBLINK;
+	      goto error_exit;
 	    }
 
 	  id_node->info.name.original = pt_append_string (parser, NULL, rmt_cols->get_name (i));
 	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
 	    {
-	      return ER_FAILED;
+	      error = ER_DBLINK;
+	      goto error_exit;
 	    }
 	  attr_def_node = attr_def_node ? parser_append_node (tmp, attr_def_node) : tmp;
 	}
@@ -5132,14 +5142,18 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 
 	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
 	    {
-	      return ER_FAILED;
+	      error = ER_DBLINK;
+	      goto error_exit;
 	    }
 	  attr_def_node = attr_def_node ? parser_append_node (tmp, attr_def_node) : tmp;
 	}
     }
 
   dblink_table->cols = attr_def_node;
-  return NO_ERROR;
+
+error_exit:
+  parser->custom_print &= ~PT_PRINT_SUPPRESS_FOR_DBLINK;
+  return error;
 }
 
 #define MAX_LEN_CONNECTION_URL	512
@@ -5235,7 +5249,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     {
       /* this can not be reached, something wrong */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
-      res = ER_FAILED;
+      res = ER_DBLINK;
       goto set_parser_error;
     }
 
@@ -11487,6 +11501,7 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	{
 	  check_for_already_exists (parser, plkcol, NULL, node->info.name.original);
 	}
+      plkcol->col_list->info.name.flag = node->info.name.flag;
       break;
 
     case PT_VALUE:

@@ -5330,9 +5330,15 @@ pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 PARSER_VARCHAR *
 pt_append_name (const PARSER_CONTEXT * parser, PARSER_VARCHAR * string, const char *name)
 {
-  if ((!(parser->custom_print & PT_SUPPRESS_QUOTES)
-       && (pt_is_keyword (name) || lang_check_identifier (name, strlen (name)) != true))
-      || parser->custom_print & PT_PRINT_QUOTES)
+  if ((parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK) && (parser->custom_print & PT_PRINT_QUOTED_NAME))
+    {
+      string = pt_append_nulstring (parser, string, "\"");
+      string = pt_append_nulstring (parser, string, name);
+      string = pt_append_nulstring (parser, string, "\"");
+    }
+  else if ((!(parser->custom_print & PT_SUPPRESS_QUOTES)
+	    && (pt_is_keyword (name) || lang_check_identifier (name, strlen (name)) != true))
+	   || parser->custom_print & PT_PRINT_QUOTES)
     {
       string = pt_append_nulstring (parser, string, "[");
       string = pt_append_nulstring (parser, string, name);
@@ -13180,10 +13186,16 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
+  bool quoted = false;
 
   char *dot = NULL;
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
+
+  if (PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_QUOTED))
+    {
+      parser->custom_print |= PT_PRINT_QUOTED_NAME;
+    }
 
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS) && (p->info.name.meta_class == PT_META_CLASS))
     {

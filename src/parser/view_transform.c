@@ -3841,7 +3841,8 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	parser_walk_tree (parser, query->info.dblink_table.pushed_pred, pt_remove_cast_wrap_for_dblink, NULL, NULL,
 			  NULL);
       save_custom = parser->custom_print;
-      parser->custom_print |= PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX;
+      parser->custom_print |=
+	PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX | PT_PRINT_SUPPRESS_FOR_DBLINK;
       pushed_pred = pt_print_and_list (parser, query->info.dblink_table.pushed_pred);
 
       /* wrapped query SELECT * FROM */
@@ -10992,6 +10993,7 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 		  result->column_number = node->column_number;
 		  result->flag.is_hidden_column = node->flag.is_hidden_column;
 		  result->buffer_pos = node->buffer_pos;
+		  result->info.name.flag = node->info.name.flag;
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */
