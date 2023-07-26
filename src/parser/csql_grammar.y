@@ -3157,9 +3157,12 @@ create_stmt
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 
-			    if (strchr (node->info.synonym.target_name->info.name.original, '@'))
+			    if (node->info.synonym.target_name)
 			      {
-				node->info.synonym.dblinked = 1;
+			        if (strchr (node->info.synonym.target_name->info.name.original, '@'))
+			          {
+				    node->info.synonym.dblinked = 1;
+			          }
 			      }
 			  }
 
@@ -4037,11 +4040,13 @@ alter_stmt
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 
-			    if (strchr (node->info.synonym.target_name->info.name.original, '@'))
-                              {
-                                node->info.synonym.dblinked = 1;
-                              }
-
+			    if (node->info.synonym.target_name)
+			      {
+			        if (strchr (node->info.synonym.target_name->info.name.original, '@'))
+                                  {
+                                    node->info.synonym.dblinked = 1;
+                                  }
+			      }
 			  }
 
 			$$ = node;
