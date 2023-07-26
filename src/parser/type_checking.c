@@ -20144,20 +20144,6 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
       tree = NULL;
     }
 
-  /* When qo_reduce_equality_terms is executed in mq_optimize, a removable predicate like '1=1' is generated.
-   * This predicate is removed by executing pt_where_type after pt_fold_const_expr has executed.
-   * 
-   * If this predicate remains without being removed, it becomes a data filter and MRO (Multiple Key Ranges
-   * Optimization) cannot be performed.
-   *
-   * See CBRD-24735 and CBRD-24906 for details. CBRD-24906 is a regression of CBRD-24735.
-   */
-  tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
-  if (pt_has_error (parser))
-    {
-      tree = NULL;
-    }
-
   return tree;
 }
 
