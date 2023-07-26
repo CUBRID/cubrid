@@ -806,6 +806,7 @@ struct json_t;
 #define PT_SYNONYM_ACCESS_MODIFIER(n)	((n)->info.synonym.access_modifier)
 #define PT_SYNONYM_OR_REPLACE(n)	((n)->info.synonym.or_replace)
 #define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
+#define PT_SYNONYM_DBLINKED(n)		((n)->info.synonym.dblinked)	/* for user.table@server */
 
 /* Check node_type of PT_NODE */
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
@@ -3525,6 +3526,7 @@ struct pt_synonym_info
   PT_NODE *comment;		/* PT_VALUE */
   unsigned or_replace:1;	/* OR REPLACE clause for CREATE SYNONYM */
   unsigned if_exists:1;		/* IF EXISTS clause for DROP SYNONYM */
+  unsigned dblinked:1;		/* server name specified */
 };
 
 /* Info field of the basic NODE

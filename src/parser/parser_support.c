@@ -10491,8 +10491,15 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  }
 	else
 	  {
-	    assert (target_owner_name != NULL);
-	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
+	    if (PT_SYNONYM_DBLINKED (node))
+	      {
+		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
+	      }
+	    else
+	      {
+		assert (target_owner_name != NULL);
+		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
+	      }
 	  }
 
 	return node;

@@ -135,10 +135,10 @@ static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NO
 			     PT_NODE ** update, PT_NODE * values);
 
 static int do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT * target_owner,
-				      const char *comment, const int is_public_synonym);
+				      const char *comment, const int is_public_synonym, bool is_dblinked);
 static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
 				       DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
-				       const int or_replace);
+				       const int or_replace, bool is_dblinked);
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
@@ -17775,13 +17775,21 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       /* PT_SYNONYM_TARGET_NAME (statement) != NULL */
+      if (PT_SYNONYM_DBLINKED (statement))
+	{
+	  sprintf (target_name_buf, "%s", (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement))));
+	  /* target_owner = synonym_owner */
+	  target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_OWNER_NAME (statement)));
+	}
+      else
+	{
+	  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
+				  DB_MAX_IDENTIFIER_LENGTH);
+	  /* target_owner */
+	  target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
+	}
 
-      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
-			      DB_MAX_IDENTIFIER_LENGTH);
       target_name = target_name_buf;
-
-      /* target_owner */
-      target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
       if (target_owner_obj == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -17796,7 +17804,9 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
       comment = (char *) PT_SYNONYM_COMMENT_BYTES (statement);
     }
 
-  error = do_alter_synonym_internal (synonym_name, target_name, target_owner_obj, comment, FALSE);
+  error =
+    do_alter_synonym_internal (synonym_name, target_name, target_owner_obj, comment, FALSE,
+			       PT_SYNONYM_DBLINKED (statement));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17816,7 +17826,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 static int
 do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT * target_owner,
-			   const char *comment, const int is_public_synonym)
+			   const char *comment, const int is_public_synonym, bool is_dblinked)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
@@ -17891,7 +17901,14 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	}
 
       /* target_name */
-      db_make_string (&value, sm_remove_qualifier_name (target_name));
+      if (is_dblinked)
+	{
+	  db_make_string (&value, target_name);
+	}
+      else
+	{
+	  db_make_string (&value, sm_remove_qualifier_name (target_name));
+	}
       error = dbt_put_internal (obj_tmpl, "target_name", &value);
       db_value_clear (&value);
       if (error != NO_ERROR)
@@ -18005,10 +18022,20 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   or_replace = PT_SYNONYM_OR_REPLACE (statement);
 
   /* target_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name, DB_MAX_IDENTIFIER_LENGTH);
+  if (PT_SYNONYM_DBLINKED (statement))
+    {
+      sprintf (target_name, "%s", PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)));
+      /* target_owner = synonym ower name */
+      target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_OWNER_NAME (statement)));
+    }
+  else
+    {
+      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name,
+			      DB_MAX_IDENTIFIER_LENGTH);
+      /* target_owner */
+      target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
+    }
 
-  /* target_owner */
-  target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
   if (target_owner_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -18024,7 +18051,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error =
     do_create_synonym_internal (synonym_name, synonym_owner_obj, target_name, target_owner_obj, comment, FALSE,
-				or_replace);
+				or_replace, PT_SYNONYM_DBLINKED (statement));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18047,7 +18074,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 static int
 do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
 			    DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
-			    const int or_replace)
+			    const int or_replace, bool is_dblinked)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
@@ -18182,7 +18209,14 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
     }
 
   /* target_name */
-  db_make_string (&value, sm_remove_qualifier_name (target_name));
+  if (is_dblinked)
+    {
+      db_make_string (&value, target_name);
+    }
+  else
+    {
+      db_make_string (&value, sm_remove_qualifier_name (target_name));
+    }
   error = dbt_put_internal (obj_tmpl, "target_name", &value);
   db_value_clear (&value);
   if (error != NO_ERROR)
