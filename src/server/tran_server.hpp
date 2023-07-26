@@ -192,8 +192,6 @@ class tran_server
 	std::shared_mutex m_state_mtx;
 
 	std::future<void> m_disconn_future; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
-
-
     };
 
   protected:
