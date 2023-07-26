@@ -217,14 +217,19 @@ active_tran_server::connection_handler::on_connecting ()
   std::string hostname = "N/A";
   int32_t port = -1;
 
-  if (m_ts.get_main_connection_info (hostname, port) == false)
+  // TODO: We should make two paths to set a connection_handler to CONNECTED:
+  //    - While booting: a target PS is determined after communicating with multiple PSes and
+  //      send the catch-up request based on it.
+  //    - While running: the unsent_lsa from prior_sender is the LSA of the first log records to send.
+  if (!unsent_lsa.is_null ())
     {
-      // there is no main connection yet. it's booting up.
-      // TODO: We should make two paths to set a connection_handler to CONNECTED:
-      //    - While booting: a target PS is determined after communicating with multiple PSes and
-      //      send the catch-up request based on it.
-      //    - While running: the unsent_lsa from prior_sender is the LSA of the first log records to send.
-      unsent_lsa.set_null ();
+      auto res = m_ts.get_main_connection_info (hostname, port);
+      assert (res);
+    }
+  else
+    {
+      // It's booting up and before log_initialize (). There is no main connection yet. For now, it just sends NULL_LSA.
+      // TODO: While booting up, the catchup_lsa is not unsent_lsa, but determined by communicating with PSes.
     }
 
   send_start_catch_up_request (std::move (hostname), port, std::move (unsent_lsa));
