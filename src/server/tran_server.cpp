@@ -459,6 +459,8 @@ bool tran_server::get_main_connection_info (std::string &host_out, int32_t &port
   auto slock = std::shared_lock<std::shared_mutex> { m_main_conn_mtx };
   if (m_main_conn == nullptr)
     {
+      host_out = "N/A";
+      port_out = -1;
       return false;
     }
 
