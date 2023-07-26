@@ -203,7 +203,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
   unpacker.unpack_int (port);
   cublog::lsa_utils::unpack (unpacker, catchup_lsa);
 
-  er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname: %s, port : %d, LSA (%lld|%d)\n", host.c_str (), port,
+  er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname = %s, port = %d, LSA = (%lld|%d)\n", host.c_str (), port,
 		LSA_AS_ARGS (&catchup_lsa));
 }
 
