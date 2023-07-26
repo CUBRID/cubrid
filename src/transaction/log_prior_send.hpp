@@ -39,7 +39,7 @@ namespace cublog
       using sink_hook_t = std::function<void (std::string &&)>;   // messages are passed to sink hooks.
 
     public:
-      prior_sender () = default;
+      prior_sender () : m_unsent_lsa { NULL_LSA } {}
       prior_sender (const prior_sender &) = delete;
       prior_sender (prior_sender &&) = default;
 
