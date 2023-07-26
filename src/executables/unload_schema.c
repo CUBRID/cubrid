@@ -4294,7 +4294,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    }
 	  if (reserved_col_buf[0])
 	    {
-	      output_ctx (" %s", reserved_col_buf);
+	      output_ctx (" WITH %s", reserved_col_buf);
 	    }
 #endif
 
