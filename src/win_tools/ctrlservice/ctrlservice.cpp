@@ -83,7 +83,7 @@ int
 _tmain (int argc, char *argv[])
 {
   bool rc;
-  int broker_start_loop_cnt_max = 40;
+  int broker_start_loop_cnt_max = 50;
 
   // Install a Service if -i switch used
   if (argc == 2)
