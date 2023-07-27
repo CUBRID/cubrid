@@ -737,12 +737,15 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * INTEGER_LIST type is an array of int type where the first element is
  * the size of the array. The max size of INTEGER_LIST is 255.
  */
+
 /*
  * Bit masks for flag representing status words
  */
+
 /*
  * Macros to call functions
  */
+
 #define PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER(prm,out_val,in_val,err) \
   do \
     { \
@@ -752,6 +755,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
+
 #define PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT(prm,out_val,in_val,err) \
   do \
     { \
@@ -761,6 +765,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
+
 #define PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) \
   do \
     { \
@@ -770,6 +775,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER);\
     } \
   while (0)
+
 #define PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) \
   do \
     { \
@@ -779,6 +785,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
     } \
   while (0)
+
 #define PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) \
   do \
     { \
@@ -788,6 +795,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
+
 #define PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT(prm,out_val,in_val,err) \
   do \
     { \
@@ -797,6 +805,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_INTEGER); \
     } \
   while (0)
+
 #define PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT(prm,out_val,in_val,err) \
   do \
     { \
@@ -806,6 +815,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_FLOAT); \
     } \
   while (0)
+
 #define PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) \
   do \
     { \
@@ -815,6 +825,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER); \
     } \
   while (0)
+
 #define PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) \
   do \
     { \
@@ -824,6 +835,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
     } \
   while (0)
+
 #define PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) \
   do \
     { \
@@ -837,6 +849,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * Other macros
  */
 #define PRM_DEFAULT_BUFFER_SIZE 256
+
 /* initial error and integer lists */
 static int int_list_initial[1] = { 0 };
 

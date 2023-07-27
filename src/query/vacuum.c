@@ -49,9 +49,9 @@
 #include "thread_manager.hpp"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
+#include "ovfp_threahold_monitor.hpp"
 #endif // SERVER_MODE
 #include "util_func.h"
-#include "ovfp_threahold_monitor.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -652,7 +652,7 @@ struct vacuum_dropped_files_rcv_data
 
 bool vacuum_Is_booted = false;
 #if defined (SERVER_MODE)
-class COvfpThresholdMgr g_ovfp_htreshold_mgr;
+class ovfp_threshold_mgr g_ovfp_htreshold_mgr;
 #endif
 
 /* Logging */
