@@ -720,15 +720,13 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_REGEXP_ENGINE "regexp_engine"
 
-#define PRM_NAME_ORACLE_STYLE_NUMBER_RETURN "oracle_style_number_return"
+#define PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR "oracle_compat_number_behavior"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
 
 #define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
-
-#define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
 #define PRM_NAME_VACUUM_OVFP_CHECK_DURATION  "vacuum_ovfp_check_duration"
 #define PRM_NAME_VACUUM_OVFP_CHECK_THRESHOLD "vacuum_ovfp_check_threshold"
@@ -739,15 +737,12 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * INTEGER_LIST type is an array of int type where the first element is
  * the size of the array. The max size of INTEGER_LIST is 255.
  */
-
 /*
  * Bit masks for flag representing status words
  */
-
 /*
  * Macros to call functions
  */
-
 #define PRM_ADJUST_FOR_SET_BIGINT_TO_INTEGER(prm,out_val,in_val,err) \
   do \
     { \
@@ -757,7 +752,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
-
 #define PRM_ADJUST_FOR_SET_BIGINT_TO_FLOAT(prm,out_val,in_val,err) \
   do \
     { \
@@ -767,7 +761,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
-
 #define PRM_ADJUST_FOR_SET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) \
   do \
     { \
@@ -777,7 +770,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER);\
     } \
   while (0)
-
 #define PRM_ADJUST_FOR_SET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) \
   do \
     { \
@@ -787,7 +779,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->set_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
     } \
   while (0)
-
 #define PRM_ADJUST_FOR_SET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) \
   do \
     { \
@@ -797,7 +788,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (*((prm)->set_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_BIGINT); \
     } \
   while (0)
-
 #define PRM_ADJUST_FOR_GET_INTEGER_TO_BIGINT(prm,out_val,in_val,err) \
   do \
     { \
@@ -807,7 +797,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_INTEGER); \
     } \
   while (0)
-
 #define PRM_ADJUST_FOR_GET_FLOAT_TO_BIGINT(prm,out_val,in_val,err) \
   do \
     { \
@@ -817,7 +806,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_BIGINT, (void *) (in_val), PRM_FLOAT); \
     } \
   while (0)
-
 #define PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER(prm,out_val,in_val,err) \
   do \
     { \
@@ -827,7 +815,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_INTEGER, (void *) (in_val), PRM_INTEGER); \
     } \
   while (0)
-
 #define PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT(prm,out_val,in_val,err) \
   do \
     { \
@@ -837,7 +824,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
       *(err) = (SYSPRM_ERR) (*((prm)->get_dup)) ((void *) (out_val), PRM_FLOAT, (void *) (in_val), PRM_FLOAT); \
     } \
   while (0)
-
 #define PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT(prm,out_val,in_val,err) \
   do \
     { \
@@ -851,7 +837,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * Other macros
  */
 #define PRM_DEFAULT_BUFFER_SIZE 256
-
 /* initial error and integer lists */
 static int int_list_initial[1] = { 0 };
 
@@ -2377,17 +2362,13 @@ static int prm_regexp_engine_upper = cubregex::engine_type::LIB_RE2;
 static unsigned int prm_regexp_engine_flag = 0;
 /* *INDENT-ON* */
 
-bool PRM_ORACLE_STYLE_NUMBER_RETURN = false;
-static bool prm_oracle_style_number_return_default = false;
-static unsigned int prm_oracle_style_number_return_flag = 0;
+bool PRM_ORACLE_COMPAT_NUMBER_BEHAVIOR = false;
+static bool prm_oracle_compat_number_behavior_default = false;
+static unsigned int prm_oracle_compat_number_behavior_flag = 0;
 
 bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
-
-bool PRM_ORACLE_STYLE_DIVIDE = false;
-static bool prm_oracle_style_divide_default = false;
-static unsigned int prm_oracle_style_divide_flag = 0;
 
 int PRM_VACUUM_OVFP_CHECK_DURATION = 2678400;
 static int prm_vacuum_ovfp_check_duration_default = 2678400;	/* 31 days * 24 hours * 60 min * 60 secs  */
@@ -6219,13 +6200,13 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_ORACLE_STYLE_NUMBER_RETURN,
-   PRM_NAME_ORACLE_STYLE_NUMBER_RETURN,
+  {PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
+   PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    (PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
-   &prm_oracle_style_number_return_flag,
-   (void *) &prm_oracle_style_number_return_default,
-   (void *) &PRM_ORACLE_STYLE_NUMBER_RETURN,
+   &prm_oracle_compat_number_behavior_flag,
+   (void *) &prm_oracle_compat_number_behavior_default,
+   (void *) &PRM_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -6275,18 +6256,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_SQL_LOG_MAX_COUNT,
-   PRM_NAME_HA_SQL_LOG_MAX_COUNT,
-   (PRM_FOR_CLIENT | PRM_FOR_HA),
-   PRM_INTEGER,
-   &prm_ha_sql_log_max_count_flag,
-   (void *) &prm_ha_sql_log_max_count_default,
-   (void *) &PRM_HA_SQL_LOG_MAX_COUNT,
-   (void *) &prm_ha_sql_log_max_count_upper,
-   (void *) &prm_ha_sql_log_max_count_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_VACUUM_OVFP_CHECK_DURATION,
    PRM_NAME_VACUUM_OVFP_CHECK_DURATION,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
@@ -6311,14 +6280,15 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_ORACLE_STYLE_DIVIDE,
-   PRM_NAME_ORACLE_STYLE_DIVIDE,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
-   PRM_BOOLEAN,
-   &prm_oracle_style_divide_flag,
-   (void *) &prm_oracle_style_divide_default,
-   (void *) &PRM_ORACLE_STYLE_DIVIDE,
-   (void *) NULL, (void *) NULL,
+  {PRM_ID_HA_SQL_LOG_MAX_COUNT,
+   PRM_NAME_HA_SQL_LOG_MAX_COUNT,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   &prm_ha_sql_log_max_count_flag,
+   (void *) &prm_ha_sql_log_max_count_default,
+   (void *) &PRM_HA_SQL_LOG_MAX_COUNT,
+   (void *) &prm_ha_sql_log_max_count_upper,
+   (void *) &prm_ha_sql_log_max_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
