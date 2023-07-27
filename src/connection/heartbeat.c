@@ -105,10 +105,6 @@ hb_process_type_string (int ptype)
 {
   switch (ptype)
     {
-    case HB_PTYPE_TRAN_SERVER:
-      return HB_PTYPE_TRAN_SERVER_STR;
-    case HB_PTYPE_PAGE_SERVER:
-      return HB_PTYPE_PAGE_SERVER_STR;
     case HB_PTYPE_SERVER:
       return HB_PTYPE_SERVER_STR;
     case HB_PTYPE_COPYLOGDB:
