@@ -471,8 +471,10 @@ enum param_id
   PRM_ID_STATDUMP_FORCE_ADD_INT_MAX,	/* Hidden parameter for QA only */
   PRM_ID_HA_SQL_LOG_PATH,
   PRM_ID_HA_SQL_LOG_MAX_COUNT,
-  /* change PRM_LAST_ID when adding new system parameters */
+  PRM_ID_VACUUM_OVFP_CHECK_DURATION,
+  PRM_ID_VACUUM_OVFP_CHECK_THRESHOLD,
   PRM_ID_ORACLE_STYLE_DIVIDE,
+  /* change PRM_LAST_ID when adding new system parameters */
   PRM_LAST_ID = PRM_ID_ORACLE_STYLE_DIVIDE
 };
 typedef enum param_id PARAM_ID;

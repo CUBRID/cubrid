@@ -11174,6 +11174,9 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
       /* Not found. */
       return NO_ERROR;
     }
+
+  thread_p->read_ovfl_pages_count = 0;	// For Vacuum only.
+
   /* Search through overflow pages. */
   VPID_COPY (&overflow_vpid, &leaf_rec_info->ovfl);
   do
@@ -11194,6 +11197,9 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
 	  ASSERT_ERROR ();
 	  goto error;
 	}
+
+      thread_p->read_ovfl_pages_count++;	// For Vacuum only.
+
       if (*offset_to_object != NOT_FOUND)
 	{
 	  /* Object was found. Stop looking. */
