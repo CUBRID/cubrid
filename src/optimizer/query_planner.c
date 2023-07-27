@@ -3715,6 +3715,18 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_GT;
 	}
 
+      /* check index scan */
+      if (qo_is_iscan (a) && qo_is_seq_scan (b))
+	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
+	}
+      if (qo_is_iscan (b) && qo_is_seq_scan (a))
+	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	  return PLAN_COMP_GT;
+	}
+
       /* a plan does order by skip, the other does group by skip - prefer the group by skipping because it's done in
        * the final step
        */
