@@ -1126,6 +1126,10 @@ qo_collect_name_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 {
   PT_NAME_SPEC_INFO *info = (PT_NAME_SPEC_INFO *) arg;
 
+  /* To fall through from PT_DOT to PT_NAME, the `node` is changed in PT_DOT.
+   * The original `node` needs to be backed up in order to return it later. */
+  PT_NODE *backup_node = node;
+
   *continue_walk = PT_CONTINUE_WALK;
 
   switch (node->node_type)
@@ -1234,7 +1238,7 @@ qo_collect_name_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       *continue_walk = PT_STOP_WALK;
     }
 
-  return node;
+  return backup_node;
 }
 
 /*
