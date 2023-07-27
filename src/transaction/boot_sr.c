@@ -2263,30 +2263,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-#if defined (SERVER_MODE) && !defined (WINDOWS)
-  if (!HA_DISABLED ())
-    {
-      /* This must be called before server recovery (log_initialize_passive_tran_server (), or log_initialize ())
-       * The Transaction Server (TS) can be recovered under the following conditions:
-       *   1. It connects to all the Page Servers (PSes).
-       *   2. It connects to the PS that has the latest image.
-       * If the above conditions are not met, then the TS waits.
-       * While the TS is waiting, the cluster can be shutdown, so that the cub_master should be able to
-       * manage the TS that has not been recovered.
-       * So that the cub_master can instruct the TS to either stop or perform recovery when needed.
-       *
-       * This must be called after
-       * 1) css_init_conn_list () because all the global variables related to connection are initialized there, and
-       * 2) init_server_type () because cub_master have to know which type of server it is.
-       */
-      error_code = css_register_ha_server (db_name);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-#endif /* SERVER_MODE && !WINDOWS */
-
   /*
    * Compose the full name of the database and find location of logs
    */
