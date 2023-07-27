@@ -1635,15 +1635,13 @@ hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_l
 {
   HBP_HEADER *hbp_header;
   char buffer[HB_BUFFER_SZ], *p;
-  const size_t hb_body_len = OR_INT_SIZE * 3;	//heartbeat message body length
-  const size_t hb_len = sizeof (HBP_HEADER) + hb_body_len;	//heartbeat message length including header and body
-
+  size_t hb_len;
   int send_len;
 
   memset ((void *) buffer, 0, sizeof (buffer));
   hbp_header = (HBP_HEADER *) (&buffer[0]);
 
-  int error_code = hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, hb_body_len, 0, dest_host_name);
+  int error_code = hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, OR_INT_SIZE, 0, dest_host_name);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -1651,8 +1649,8 @@ hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_l
 
   p = (char *) (hbp_header + 1);
   p = or_pack_int (p, hb_Cluster->state);
-  p = or_pack_int (p, hb_Cluster->myself->is_tran_server_alive);
-  p = or_pack_int (p, hb_Cluster->myself->is_page_server_alive);
+
+  hb_len = sizeof (HBP_HEADER) + OR_INT_SIZE;
 
   if (hb_Cluster->sfd == INVALID_SOCKET)
     {
@@ -1731,13 +1729,9 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
     case HBP_CLUSTER_HEARTBEAT:
       {
 	HB_NODE_STATE_TYPE hb_state;
-	bool is_tran_server_alive = false;
-	bool is_page_server_alive = false;
 
 	p = (char *) (hbp_header + 1);
 	or_unpack_int (p, &state);
-	or_unpack_int (p, (int *) &is_tran_server_alive);
-	or_unpack_int (p, (int *) &is_page_server_alive);
 
 	hb_state = (HB_NODE_STATE_TYPE) state;
 
@@ -1807,8 +1801,6 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 
 	    node->state = hb_state;
 	    node->heartbeat_gap = MAX (0, (node->heartbeat_gap - 1));
-	    node->is_tran_server_alive = is_tran_server_alive;
-	    node->is_page_server_alive = is_page_server_alive;
 	    gettimeofday (&node->last_recv_hbtime, NULL);
 	  }
 	else
