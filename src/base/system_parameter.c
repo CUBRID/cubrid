@@ -2373,7 +2373,7 @@ static unsigned int prm_statdump_force_add_int_max_flag = 0;
 int PRM_VACUUM_OVFP_CHECK_DURATION = 2678400;
 static int prm_vacuum_ovfp_check_duration_default = 2678400;	/* 31 days * 24 hours * 60 min * 60 secs  */
 static int prm_vacuum_ovfp_check_duration_upper = INT_MAX;
-static int prm_vacuum_ovfp_check_duration_lower = 0;
+static int prm_vacuum_ovfp_check_duration_lower = 60;	// 1 min
 static unsigned int prm_vacuum_ovfp_check_duration_flag = 0;
 
 int PRM_VACUUM_OVFP_CHECK_THRESHOLD = 1000;
@@ -6270,7 +6270,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) prm_sec_to_msec},
   {PRM_ID_VACUUM_OVFP_CHECK_THRESHOLD,
    PRM_NAME_VACUUM_OVFP_CHECK_THRESHOLD,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER),
    PRM_INTEGER,
    &prm_vacuum_ovfp_check_threshold_flag,
    (void *) &prm_vacuum_ovfp_check_threshold_default,

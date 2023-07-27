@@ -637,9 +637,6 @@ class COvfpThresholdMgr
 
       assert (outfp != NULL);
 
-      int hours = prm_get_integer_value (PRM_ID_VACUUM_OVFP_CHECK_DURATION);
-      printf ("hours= %d\n", hours); //ctshim
-
       cPrinter.set_worker_idx (LOCK_ALL_OWNER_ID, NULL);
 
       for (int i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
