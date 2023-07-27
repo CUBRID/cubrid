@@ -5182,10 +5182,11 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   if (table_name)
     {
       /* for collecting column info from "SELECT sel-list FROM table@server WHERE" */
+#if 0
       int len = strlen (table_name);
       char table_name_up[DB_MAX_IDENTIFIER_LENGTH * 2 + 1];
       char user_name[DB_MAX_IDENTIFIER_LENGTH];
-
+#endif
       PARSER_VARCHAR *var_buf = 0;
 
       /* all attr's from "SELECT * FROM" */
@@ -5193,7 +5194,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
       /* preparing the query to get the column info */
       var_buf = pt_append_nulstring (parser, var_buf, "SELECT * FROM ");
-
+#if 0
       /* make it upper case for Oracle */
       intl_identifier_upper (table_name, table_name_up);
 
@@ -5208,7 +5209,8 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 	{
 	  sprintf (t_name, "\"%s\"", table_name_up);
 	}
-      var_buf = pt_append_nulstring (parser, var_buf, t_name);
+#endif
+      var_buf = pt_append_nulstring (parser, var_buf, table_name);
       sql = (char *) var_buf->bytes;
     }
   else

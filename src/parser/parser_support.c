@@ -10769,42 +10769,45 @@ static PT_NODE *
 pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
 {
   PT_SPEC_INFO *class_spec_info = &from_tbl->info.spec;
-  PT_NODE *drived_spec;
+  PT_NODE *derived_spec;
   PT_NODE *new_range_var;
   PT_NODE *dbl_col = NULL;
 
-  if ((drived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
+  if ((derived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
     {
-      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
       return NULL;
     }
 
   if ((new_range_var = parser_new_node (parser, PT_NAME)) == NULL)
     {
-      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
-      parser_free_node (parser, drived_spec);
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      parser_free_node (parser, derived_spec);
       return NULL;
     }
 
   if (class_spec_info->entity_name->info.name.resolved)
     {
-      char tmp[1024];
-      snprintf (tmp, sizeof (tmp), "%s.%s", class_spec_info->entity_name->info.name.resolved,
-		class_spec_info->entity_name->info.name.original);
-      drived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, NULL, tmp);
+      derived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, class_spec_info->entity_name->info.name.resolved, ".");
+    }
+
+  if (PT_NAME_INFO_IS_FLAGED (class_spec_info->entity_name, PT_NAME_INFO_QUOTED))
+    {
+      derived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, "\"");
+      derived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, class_spec_info->entity_name->info.name.original);
+      derived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, "\"");
     }
   else
     {
-      drived_spec->info.dblink_table.remote_table_name =
-	pt_append_string (parser, NULL, class_spec_info->entity_name->info.name.original);
+      derived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, class_spec_info->entity_name->info.name.original);
     }
 
   assert (class_spec_info->remote_server_name->node_type == PT_NAME);
-  drived_spec->info.dblink_table.is_name = true;
-  drived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
+  derived_spec->info.dblink_table.is_name = true;
+  derived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
   if (class_spec_info->remote_server_name->next)
     {
-      drived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
+      derived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
       class_spec_info->remote_server_name->next = NULL;
     }
   class_spec_info->remote_server_name = NULL;
@@ -10828,16 +10831,16 @@ pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
   new_range_var->info.name.original = pt_append_string (parser, NULL, (char *) var_buf->bytes);
 
 
-  drived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
+  derived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
   class_spec_info->entity_name = NULL;
 
-  drived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
+  derived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
   class_spec_info->range_var = NULL;
 
-  drived_spec->info.dblink_table.cols = NULL;
+  derived_spec->info.dblink_table.cols = NULL;
 
   from_tbl->info.spec.range_var = new_range_var;
-  from_tbl->info.spec.derived_table = drived_spec;
+  from_tbl->info.spec.derived_table = derived_spec;
   from_tbl->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
 
   return from_tbl;
