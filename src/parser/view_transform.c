@@ -4118,15 +4118,6 @@ mq_has_dblink_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  *related = true;
 	  *continue_walk = PT_STOP_WALK;
 	}
-      else if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
-	{
-	  spec = spec->info.spec.derived_table->info.query.q.select.from;
-	  if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	    {
-	      *related = true;
-	      *continue_walk = PT_STOP_WALK;
-	    }
-	}
     }
 
   return node;
@@ -4208,8 +4199,8 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 	{
 	  /* The PT_LIKE_LOWER_BOUND and the PT_LIKE_UPPER_BOUND is rewritten */
 	  /* checking the function like_match_lower_bound and like_match_upper_bound */
-	  if (strstr (term->info.value.text, "like_match_lower_bound") == 0
-	      || strstr (term->info.value.text, "like_match_upper_bound") == 0)
+	  if (strstr (term->info.value.text, "like_match_lower_bound") != NULL
+	      || strstr (term->info.value.text, "like_match_upper_bound") != NULL)
 	    {
 	      return false;
 	    }
@@ -4261,7 +4252,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   int push_cnt, push_correlated_cnt, copy_cnt;
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
-  PT_NODE *save_next;
+  PT_NODE *save_next, *in_spec;
   bool is_outer_joined;
 
   /* init */
@@ -4309,12 +4300,16 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   is_outer_joined = mq_is_outer_join_spec (parser, spec);
 
   /* term(predicate) check */
+  in_spec = statement->info.query.q.select.from;
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
       /* check for dblink's function term */
-      if (!mq_is_dblink_pushable_term (parser, term))
+      if (in_spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
-	  continue;
+	  if (!mq_is_dblink_pushable_term (parser, term))
+	    {
+	      continue;
+	    }
 	}
 
       /* check for on_cond term */
