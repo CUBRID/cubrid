@@ -59,18 +59,12 @@
 /* heartbeat resource process type */
 enum hb_proc_type
 {
-  HB_PTYPE_PAGE_SERVER = 0,
-  HB_PTYPE_TRAN_SERVER = 1,
-  // TODO: Remove HB_PTYPE_SERVER/COPYLOGDB/APPLYLOGDB
-  HB_PTYPE_SERVER = 2,
-  HB_PTYPE_COPYLOGDB = 3,
-  HB_PTYPE_APPLYLOGDB = 4,
+  HB_PTYPE_SERVER = 0,
+  HB_PTYPE_COPYLOGDB = 1,
+  HB_PTYPE_APPLYLOGDB = 2,
   HB_PTYPE_MAX
 };
 typedef enum hb_proc_type HB_PROC_TYPE;
-#define HB_PTYPE_TRAN_SERVER_STR        "HA-tran-server"
-#define HB_PTYPE_PAGE_SERVER_STR        "HA-page-server"
-// TODO: Remove HB_PTYPE_SERVER/COPYLOGDB/APPLYLOGDB_STR
 #define HB_PTYPE_SERVER_STR             "HA-server"
 #define HB_PTYPE_COPYLOGDB_STR          "HA-copylogdb"
 #define HB_PTYPE_APPLYLOGDB_STR         "HA-applylogdb"
