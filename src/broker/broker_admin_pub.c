@@ -57,6 +57,7 @@
 #endif /* LINUX */
 
 #include "porting.h"
+#include "tcp.h"
 #include "cas_common.h"
 #include "broker_shm.h"
 #include "shard_metadata.h"
@@ -251,6 +252,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   int res = 0;
   char path[BROKER_PATH_MAX];
   char upper_broker_name[BROKER_NAME_LEN];
+  char hostname[CUB_MAXHOSTNAMELEN];
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
@@ -321,6 +323,12 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	}
     }
   chdir (envvar_bindir_file (path, BROKER_PATH_MAX, ""));
+
+  /* cannot execute broker initialize unless success host look-up */
+  if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) != 0)
+    {
+      return -1;
+    }
 
   /* create master shared memory */
   shm_br = broker_shm_initialize_shm_broker (master_shm_id, br_info, br_num, acl_flag, acl_file);

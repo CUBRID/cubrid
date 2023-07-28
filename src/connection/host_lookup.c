@@ -218,14 +218,6 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   /*Hostname and IP addr cannot be found */
   else
     {
-      if (lookup_type == HOSTNAME_TO_IPADDR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, hostname);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, addr_trans_ch_buf);
-	}
       goto return_phase;
     }
 
@@ -301,9 +293,6 @@ load_hosts_file ()
 	    {
 	      if (is_valid_ip (temp_token) == false)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "IP address", token, line_num,
-			  CUBRID_HOSTS);
-
 		  continue;
 		}
 	      else
@@ -322,16 +311,10 @@ load_hosts_file ()
 		}
 	      else if (is_valid_ip (temp_token) == true)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
-			  CUBRID_HOSTS);
-
 		  continue;
 		}
 	      else if (is_valid_hostname (temp_token, str_len) == false)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
-			  CUBRID_HOSTS);
-
 		  continue;
 		}
 	      else

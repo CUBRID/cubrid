@@ -4345,8 +4345,6 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
   PT_NODE *lhs, *sum, *part1, *part2, *node;
   DB_VALUE sum_val;
 
-  static bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
-
   db_make_null (&sum_val);
 
   if (limit == NULL)
@@ -4459,12 +4457,6 @@ pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE
       sum->data_type->type_enum = PT_TYPE_NUMERIC;
       sum->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
       sum->data_type->info.data_type.dec_precision = 0;
-
-      if (oracle_compat_number)
-	{
-	  /* It is necessary to prepare for the division operation in advance. */
-	  sum->data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_DIVISION_SCALE;	/* 9 */
-	}
 
       sum->info.expr.arg1 = parser_copy_tree (parser, limit);
       sum->info.expr.arg2 = parser_copy_tree (parser, limit->next);
@@ -11286,7 +11278,7 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 }
 
 static PT_NODE *
-pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy, int *continue_walk)
+pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_insert, int *continue_walk)
 {
   char *class_name;
   char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -11327,7 +11319,9 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy,
 	  spec->info.spec.entity_name->info.name.original = pt_append_string (parser, NULL, class_name);
 	  spec->info.spec.remote_server_name = parser_new_node (parser, PT_NAME);
 	  spec->info.spec.remote_server_name->info.name.original = pt_append_string (parser, NULL, r + 1);
-	  if (spec->info.spec.range_var == NULL)
+
+	  /* it's not necessary to alias name for INSERT statement's table name */
+	  if (!is_insert && spec->info.spec.range_var == NULL)
 	    {
 	      spec->info.spec.range_var = parser_new_node (parser, PT_NAME);
 	      spec->info.spec.range_var->info.name.original = pt_append_string (parser, NULL, synonym_name);
@@ -11336,7 +11330,7 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy,
     }
   else
     {
-/* synonym_mop == NULL */
+      /* synonym_mop == NULL */
       ASSERT_ERROR_AND_SET (error);
       if (error == ER_SYNONYM_NOT_EXIST)
 	{
@@ -11391,8 +11385,9 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 {
   PT_NODE *insert, *spec;
   int remote_ins = 0;
+  bool is_insert = true;
 
-  parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &is_insert, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
@@ -11671,10 +11666,12 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
      It also should set flag not to convert to serial_next_value
      or serial_current_value for ORACLE or other DBMS.
    */
-  parser->custom_print |= PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV;
+  parser->custom_print |=
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_SUPPRESS_DELETE_TARGET;
   val->info.value.data_value.str = pt_print_bytes (parser, node);
   PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
-  parser->custom_print &= ~(PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV);
+  parser->custom_print &=
+    ~(PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_SUPPRESS_DELETE_TARGET);
 
   if (into_spec)
     {
