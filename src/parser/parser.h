@@ -358,7 +358,6 @@ extern "C"
   extern void pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node);
   extern int pt_resolved (const PT_NODE * expr);
   extern bool pt_false_where (PARSER_CONTEXT * parser, PT_NODE * statement);
-  extern PT_NODE *pt_do_where_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where);
   extern PT_NODE *pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where);
   extern bool pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
