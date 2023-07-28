@@ -1375,9 +1375,7 @@ css_init (THREAD_ENTRY * thread_p, const char *server_name, int port_id)
 #if !defined(WINDOWS)
       if (!HA_DISABLED ())
 	{
-	  status =
-	    hb_register_to_master (css_Master_conn,
-				   is_transaction_server ()? HB_PTYPE_TRAN_SERVER : HB_PTYPE_PAGE_SERVER);
+	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
 	  if (status != NO_ERROR)
 	    {
 	      fprintf (stderr, "failed to heartbeat register.\n");
@@ -1798,10 +1796,6 @@ css_pack_message_to_master (const char *server_name)
   const char *env_name = NULL;
   char pid_string[16];
   std::string message;
-  const size_t ha_token_size = (HA_DISABLED() ? 0 : 1);
-
-  SERVER_TYPE type = get_server_type ();
-  assert (type == SERVER_TYPE_TRANSACTION || type == SERVER_TYPE_PAGE);
 
   assert (server_name != NULL);
 
@@ -1822,19 +1816,22 @@ css_pack_message_to_master (const char *server_name)
     */
 
   sprintf (pid_string, "%d", getpid ());
-
-  /* | server_type (1 byte) | '#' if HA-mode enabled (1 byte) | server_name | release string | env_name | pid | */
-  size_t message_size =
-    1 + ha_token_size + strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1 + strlen (pid_string) + 1;
+  size_t message_size = strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1
+    + strlen (pid_string) + 1;
+  /* in order to prepend '#' or server type */
+  message_size++;
 
   message.reserve (message_size);
 
-  message.append (1, '0' + ((char) type));
-
   if (!HA_DISABLED())
     {
-      /* cub_master checks if the server is in ha_mode or not, using '#dbname' (IS_MASTER_CONN_NAME_HA_SERVER ()) */
       message.append (1, '#');
+    }
+  else
+    {
+      SERVER_TYPE type = get_server_type ();
+      assert (type == SERVER_TYPE_TRANSACTION || type == SERVER_TYPE_PAGE);
+      message.append (1, '0' + ((char) type));
     }
 
   message.append (server_name);
