@@ -1437,15 +1437,10 @@ $ LOADDB
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" hat ein ungültiges Format in Zeile %3$d der Datei "%4$s"
-1356 Hostname "%1$s" ist zu lang, er sollte kleiner oder gleich 256 in Zeile %2$d der Datei "%3$s" sein.
-1357 Der Hostname "%1$s" existiert bereits, ein Hostname kann nicht mit anderen IP-Adressen in Zeile %2$d der Datei "%3$s" dupliziert werden.
-1358 Sowohl die IP-Adresse als auch der Hostname müssen vollständig in Zeile %1$d der Datei "%2$s" stehen.
-1359 "%1$s" kann nicht in der cubrid_hosts.conf nachgeschlagen werden.
 
-1360 Datei "%1$s" wurde nicht gefunden.
+1355 Datei "%1$s" wurde nicht gefunden.
 
-1361 Letzter Fehler
+1356 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
