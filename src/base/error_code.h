@@ -1627,7 +1627,7 @@
 
 #define ER_HOST_PORT_PARAMETER                      -1264
 #define ER_NET_PAGESERVER_CONNECTION                -1265
-#define ER_INCOMPATIBLE_SERVER_TYPE_HA_CONFIG       -1266	/* Obsolete */
+#define ER_INCOMPATIBLE_SERVER_TYPE_HA_CONFIG       -1266
 #define ER_COPYDB_CANNOT_COPY_VOLUME                -1267
 #define ER_EMPTY_PAGE_SERVER_HOSTS_CONFIG           -1268
 #define ER_NO_PAGE_SERVER_CONNECTION                -1269

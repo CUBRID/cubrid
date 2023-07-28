@@ -66,8 +66,6 @@
 
 #define SERVER_FORMAT_STRING " %s-Server %s (rel %s, pid %d)\n"
 #define HA_SERVER_FORMAT_STRING " HA-Server %s (rel %s, pid %d)\n"
-#define HA_PAGE_SERVER_FORMAT_STRING " HA-Page-server %s (rel %s, pid %d)\n"
-#define HA_TRAN_SERVER_FORMAT_STRING " HA-Transaction-server %s (rel %s, pid %d)\n"
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
 
@@ -410,14 +408,7 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  switch (temp->name[0])
 	    {
 	    case '#':
-	      if (temp->server_type == SERVER_TYPE_TRANSACTION)
-		{
-		  required_size += strlen (HA_TRAN_SERVER_FORMAT_STRING);
-		}
-	      else
-		{
-		  required_size += strlen (HA_PAGE_SERVER_FORMAT_STRING);
-		}
+	      required_size += strlen (HA_SERVER_FORMAT_STRING);
 	      break;
 	    case '$':
 	      required_size += strlen (HA_COPYLOGDB_FORMAT_STRING);
@@ -470,10 +461,8 @@ css_process_all_list_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
 	  switch (temp->name[0])
 	    {
 	    case '#':
-	      snprintf (buffer + strlen (buffer), required_size,
-			temp->server_type ==
-			SERVER_TYPE_TRANSACTION ? HA_TRAN_SERVER_FORMAT_STRING : HA_PAGE_SERVER_FORMAT_STRING,
-			temp->name + 1, (temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
+	      snprintf (buffer + strlen (buffer), required_size, HA_SERVER_FORMAT_STRING, temp->name + 1,
+			(temp->version_string == NULL ? "?" : temp->version_string), temp->pid);
 	      break;
 	    case '$':
 	      snprintf (buffer + strlen (buffer), required_size, HA_COPYLOGDB_FORMAT_STRING, temp->name + 1,
