@@ -117,6 +117,8 @@ Mevcut yönetici yardımcı programı-adı:\n\
     paramdump\n\
     statdump\n\
     changemode\n\
+    copylogdb\n\
+    applylogdb\n\
     applyinfo\n\
     acldb\n\
     genlocale\n\
@@ -239,6 +241,9 @@ kullanım: %2$s heartbeat <komut> [args]\n\
 Mevcut komut:\n\
     start          [database-name]\n\
     stop           [-h <host-name>] [-i] [database-name]\n\
+    copylogdb      <start|stop> [-h <host-name>] database-name node-name\n\
+    applylogdb     <start|stop> [-h <host-name>] database-name node-name\n\
+    replication    <start|stop> node-name\n\
     status         [-v] [-h <host-name>]\n\
     reload\n
 31 '%1$s' argümanı gerekli değildir.\n
