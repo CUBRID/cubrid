@@ -2077,8 +2077,6 @@ hb_add_node_to_cluster (char *host_name, unsigned short priority)
       p->state = HB_NSTATE_UNKNOWN;
       p->score = 0;
       p->heartbeat_gap = 0;
-      p->is_tran_server_alive = false;
-      p->is_page_server_alive = false;
       p->last_recv_hbtime.tv_sec = 0;
       p->last_recv_hbtime.tv_usec = 0;
 
@@ -5571,8 +5569,6 @@ hb_reload_config (void)
 	  new_node->state = old_node->state;
 	  new_node->score = old_node->score;
 	  new_node->heartbeat_gap = old_node->heartbeat_gap;
-	  new_node->is_tran_server_alive = old_node->is_tran_server_alive;
-	  new_node->is_page_server_alive = old_node->is_page_server_alive;
 	  new_node->last_recv_hbtime.tv_sec = old_node->last_recv_hbtime.tv_sec;
 	  new_node->last_recv_hbtime.tv_usec = old_node->last_recv_hbtime.tv_usec;
 
