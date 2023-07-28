@@ -40,7 +40,7 @@ namespace cublog
     public:
       prior_sender () = default;
       prior_sender (const prior_sender &) = delete;
-      prior_sender (prior_sender &&) = default;
+      prior_sender (prior_sender &&) = delete;
 
       prior_sender &operator = (const prior_sender &) = delete;
       prior_sender &operator = (prior_sender &&) = delete;
@@ -50,6 +50,8 @@ namespace cublog
 
       void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
+
+      bool is_empty ();
 
     private:
       void send_serialized_message (std::string &&message);

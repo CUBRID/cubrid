@@ -77,7 +77,6 @@ log_global::log_global ()
   , bg_archive_info ()
   , mvcc_table ()
   , unique_stats_table GLOBAL_UNIQUE_STATS_TABLE_INITIALIZER
-  , m_prior_sender ()
   , m_ps_lsa_up_to_date (false)
   , m_ps_consensus_flushed_lsa (NULL_LSA)
 {
@@ -142,14 +141,38 @@ log_global::wait_for_ps_flushed_lsa (const log_lsa &flush_lsa)
 }
 
 void
+log_global::initialize_log_prior_sender ()
+{
+  assert (m_prior_sender == nullptr);
+  m_prior_sender = std::make_unique<cublog::prior_sender> ();
+}
+
+void
+log_global::finalize_log_prior_sender ()
+{
+  assert (m_prior_sender != nullptr);
+  assert (m_prior_sender->is_empty ());
+  m_prior_sender.reset (nullptr);
+}
+
+cublog::prior_sender &
+log_global::get_log_prior_sender()
+{
+  assert (m_prior_sender != nullptr);
+  return *m_prior_sender;
+}
+
+void
 log_global::initialize_log_prior_receiver ()
 {
+  assert (m_prior_recver == nullptr);
   m_prior_recver = std::make_unique<cublog::prior_recver> (prior_info);
 }
 
 void
 log_global::finalize_log_prior_receiver ()
 {
+  assert (m_prior_recver != nullptr);
   m_prior_recver.reset (nullptr);
 }
 

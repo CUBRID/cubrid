@@ -84,4 +84,11 @@ namespace cublog
     assert (find_it != m_sink_hooks.end ());
     m_sink_hooks.erase (find_it);
   }
+
+  bool
+  prior_sender::is_empty ()
+  {
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+    return m_sink_hooks.empty ();
+  }
 }

@@ -714,29 +714,40 @@ struct log_global
 
   // *INDENT-OFF*
   cublog::meta m_metainfo;
-  cublog::prior_sender m_prior_sender;
+private:
 #if defined (SERVER_MODE)
+  std::unique_ptr<cublog::prior_sender> m_prior_sender = nullptr;
   std::unique_ptr<cublog::prior_recver> m_prior_recver = nullptr;
-#endif // SERVER_MODE = !SA_MODE
+#endif /* SERVER_MODE = !SA_MODE */
+  // *INDENT-ON*
 
-  private:
-    std::mutex m_ps_lsa_mutex;
-    std::condition_variable m_ps_lsa_cv;
-    std::atomic<bool> m_ps_lsa_up_to_date;
-    LOG_LSA m_ps_consensus_flushed_lsa; // The quorum (number of the majority) of PS have done flushing log recrods until this.
+private:
+  // *INDENT-OFF*
+  std::mutex m_ps_lsa_mutex;
+  std::condition_variable m_ps_lsa_cv;
+  std::atomic<bool> m_ps_lsa_up_to_date;
+  LOG_LSA m_ps_consensus_flushed_lsa;	// The quorum (number of the majority) of PS have done flushing log recrods until this.
+  // *INDENT-ON*
 
-  public:
-  log_global ();
-  ~log_global ();
+public:
+    log_global ();
+   ~log_global ();
 
 #if defined (SERVER_MODE)
+  void initialize_log_prior_sender ();
+  void finalize_log_prior_sender ();
+  // *INDENT-OFF*
+  cublog::prior_sender &get_log_prior_sender ();
+  // *INDENT-ON*
   void initialize_log_prior_receiver ();
   void finalize_log_prior_receiver ();
+  // *INDENT-OFF*
   cublog::prior_recver &get_log_prior_receiver ();
+  // *INDENT-ON*
+
   void wait_for_ps_flushed_lsa (const log_lsa & flush_lsa);
   void wakeup_ps_flush_waiters ();
-#endif // SERVER_MODE
-  // *INDENT-ON*
+#endif				/* SERVER_MODE */
 };
 
 /* logging statistics */

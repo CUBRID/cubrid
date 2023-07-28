@@ -152,6 +152,9 @@ int init_server_type (const char *db_name)
 
       if (is_active_transaction_server ())
 	{
+	  // initialize this before ATS; as ATS could do some initialization that involves the sender
+	  log_Gl.initialize_log_prior_sender ();
+
 	  assert (ats_Gl == nullptr);
 	  ats_Gl = new active_tran_server ();
 	  ts_Gl.reset (ats_Gl);
@@ -161,6 +164,7 @@ int init_server_type (const char *db_name)
 	  assert (pts_Gl == nullptr);
 
 	  // passive tran server also needs (a) prior receiver(s) to receive log from page server(s)
+	  // the mechanism is that of a pub sub; a PTS subscribes to receive log from one page server (for now)
 	  log_Gl.initialize_log_prior_receiver ();
 
 	  pts_Gl = new passive_tran_server ();
@@ -174,8 +178,11 @@ int init_server_type (const char *db_name)
     }
   else if (g_server_type == SERVER_TYPE_PAGE)
     {
-      ps_Gl.reset (new page_server());
-      // page server needs a log prior receiver
+      ps_Gl.reset (new page_server ());
+
+      // initialize the sender before the receiver; such that the receiver has the
+      // sender ready, if needed (very unlikely scenario, but principially so)
+      log_Gl.initialize_log_prior_sender ();
       log_Gl.initialize_log_prior_receiver ();
     }
   else
