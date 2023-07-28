@@ -65,9 +65,6 @@ extern void
 css_initialize_server_interfaces (int (*request_handler)
 				  (THREAD_ENTRY * thrd, unsigned int eid, int request, int size, char *buffer),
 				  CSS_THREAD_FN connection_error_handler);
-#if !defined (WINDOWS)
-extern int css_register_ha_server (const char *server_name);
-#endif // !WINDOWS
 extern int css_init (THREAD_ENTRY * thread_p, const char *server_name, int connection_id);
 extern char *css_add_client_version_string (THREAD_ENTRY * thread_p, const char *version_string);
 #if defined (ENABLE_UNUSED_FUNCTION)
