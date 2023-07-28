@@ -1328,7 +1328,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	if (src_type == CCI_U_TYPE_BIGINT)
 	  {
 	    net_arg_get_bigint (&bi_val, net_value);
-	    snprintf (tmp, sizeof (tmp), "%" PRId64, bi_val);
+	    snprintf (tmp, sizeof (tmp), "%lld", bi_val);
 	  }
 	else
 	  {
