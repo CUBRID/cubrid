@@ -3772,7 +3772,6 @@ pt_remove_cast_wrap_for_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, voi
   return new_node;
 }
 
-extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
 /*
  * pt_copypush_terms() - push sargable term into the derived subquery
  *   return:
