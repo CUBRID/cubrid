@@ -429,8 +429,7 @@ ovfp_threshold_mgr::get_classoid (THREAD_ENTRY *thread_p, BTID *btid, OID *class
   return true;
 }
 
-#define BTID_ARGS_FORMAT  "(%d, %d|%d)"
-#define OID_ARGS_FORMAT   "(%d|%d|%d)"
+#define print_args(b, fmt, args)   sprintf ((b), fmt, args)
 void
 ovfp_threshold_mgr::get_class_name_index_name (THREAD_ENTRY *thread_p, BTID *btid, OID *class_oid, char **class_name,
     char **index_name)
@@ -455,15 +454,15 @@ ovfp_threshold_mgr::get_class_name_index_name (THREAD_ENTRY *thread_p, BTID *bti
       /* get index name */
       if (heap_get_indexinfo_of_btid (thread_p, class_oid, btid, NULL, NULL, NULL, NULL, index_name, NULL) != NO_ERROR)
 	{
-	  sprintf (tmp, BTID_ARGS_FORMAT,  BTID_AS_ARGS (btid));
+	  print_args (tmp, "(%d, %d|%d)", BTID_AS_ARGS (btid));
 	  *index_name = strdup (tmp);
 	}
     }
   else
     {
-      sprintf (tmp, OID_ARGS_FORMAT, OID_AS_ARGS (class_oid));
+      print_args (tmp, "(%d|%d|%d)", OID_AS_ARGS (class_oid));
       *class_name = strdup (tmp);
-      sprintf (tmp, BTID_ARGS_FORMAT,  BTID_AS_ARGS (btid));
+      print_args (tmp, "(%d, %d|%d)", BTID_AS_ARGS (btid));
       *index_name = strdup (tmp);
     }
 }
