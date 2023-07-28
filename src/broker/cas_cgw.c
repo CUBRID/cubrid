@@ -42,6 +42,16 @@
                                 if (rc != SQL_SUCCESS) \
                                 { \
                                     cgw_error_msg (h, ht, rc); \
+                                } \
+                                if (rc <= SQL_ERROR) \
+                                { \
+                                   if (db_error_code () == 0)  \
+                                     {  \
+                                       er_set (ER_ERROR_SEVERITY, \
+					           ARG_FILE_LINE,  \
+					           ER_CGW_NATIVE_ODBC, \
+					           3, cgw_get_dbms_name (cgw_get_dbms_type ()), -1, "Unknown ODBC Driver Error");   \
+				     }  \
                                     goto ODBC_ERROR;  \
                                 } \
                             }
@@ -67,7 +77,9 @@ struct t_supported_dbms
 static INTL_CODESET client_charset = INTL_CODESET_UTF8;
 static char conv_out_string[CONV_STRING_BUF_SIZE + 1];
 static T_SUPPORTED_DBMS supported_dbms_list[] =
-  { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL}, {"mariadb", SUPPORTED_DBMS_MARIADB} };
+  { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL}, {"mariadb", SUPPORTED_DBMS_MARIADB},
+{"not supported db", NOT_SUPPORTED_DBMS}
+};
 
 static int supported_dbms_max_num = sizeof (supported_dbms_list) / sizeof (T_SUPPORTED_DBMS);
 static SUPPORTED_DBMS_TYPE curr_dbms_type = NOT_SUPPORTED_DBMS;
@@ -104,6 +116,7 @@ static int cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target
 static int cgw_conv_mtow (wchar_t * destStr, char *sourStr);
 static int cgw_uint32_to_uni16 (uint32_t i, uint16_t * u);
 static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t * src, size_t len);
+static char *cgw_get_dbms_name (SUPPORTED_DBMS_TYPE db_type);
 
 
 int
@@ -250,7 +263,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_execute (T_SRV_HANDLE * srv_handle)
+cgw_execute (T_SRV_HANDLE * srv_handle, SQLLEN * row_count)
 {
   SQLRETURN err_code;
 
@@ -271,6 +284,14 @@ cgw_execute (T_SRV_HANDLE * srv_handle)
     }
 
   SQL_CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (srv_handle->cgw_handle->hstmt));
+
+  if (err_code < 0)
+    {
+      cgw_error_msg (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code);
+      goto ODBC_ERROR;
+    }
+
+  SQLRowCount (srv_handle->cgw_handle->hstmt, row_count);
 
   srv_handle->is_cursor_open = true;
 
@@ -1150,8 +1171,11 @@ cgw_error_msg (SQLHANDLE hHandle, SQLSMALLINT hType, RETCODE retcode)
   char szMessage[SQL_MAX_MESSAGE_LENGTH + 1];
   char szState[SQL_SQLSTATE_SIZE + 1];
 
+  er_clear ();
+
   if (retcode == SQL_INVALID_HANDLE)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
       return;
     }
 
@@ -1200,6 +1224,7 @@ static int
 cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *net_value, ODBC_BIND_INFO * value_list)
 {
   char type;
+  char src_type = -1;
   int err_code = 0;
   int data_size;
   SQLLEN indPtr = 0;
@@ -1225,6 +1250,17 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
     {
       type = CCI_U_TYPE_NULL;
       data_size = 0;
+    }
+
+  // Oracle ODBC does not support the BIGINT type.
+  // So, change it to Numeric type.
+  if (curr_dbms_type == SUPPORTED_DBMS_ORACLE)
+    {
+      if (type == CCI_U_TYPE_BIGINT)
+	{
+	  src_type = type;
+	  type = CCI_U_TYPE_NUMERIC;
+	}
     }
 
   switch (type)
@@ -1277,23 +1313,33 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
     case CCI_U_TYPE_NUMERIC:
       {
-	char *value, *p;
-	int val_size;
-	size_t precision, scale;
-	char num_str[64];
-	char tmp[64];
+	char *value = NULL, *p = NULL;
+	int val_size = 0;
+	size_t precision = 0, scale = 0;
+	char num_str[64] = { 0, };
+	char tmp[64] = { 0, };
 	SQLHDESC hdesc = NULL;
+	DB_BIGINT bi_val;
 
 	SQL_CHK_ERR (handle->hdbc, SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_DESC, handle->hdbc, &hdesc));
 
 	memset (&value_list->ns_val, 0x00, sizeof (SQL_NUMERIC_STRUCT));
 
-	net_arg_get_str (&value, &val_size, net_value);
-	if (value != NULL)
+	if (src_type == CCI_U_TYPE_BIGINT)
 	  {
-	    strcpy (tmp, value);
+	    net_arg_get_bigint (&bi_val, net_value);
+	    snprintf (tmp, sizeof (tmp), "%" PRId64, bi_val);
 	  }
-	tmp[val_size] = '\0';
+	else
+	  {
+	    net_arg_get_str (&value, &val_size, net_value);
+	    if (value != NULL)
+	      {
+		strcpy (tmp, value);
+	      }
+	    tmp[val_size] = '\0';
+	  }
+
 	ut_trim (tmp);
 	precision = strlen (tmp);
 	p = strchr (tmp, '.');
@@ -1380,7 +1426,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	DB_BIGINT bi_val;
 	net_arg_get_bigint (&bi_val, net_value);
 
-	c_data_type = SQL_C_UBIGINT;
+	c_data_type = SQL_C_SBIGINT;
 	sql_bind_type = SQL_BIGINT;
 
 	value_list->bigint_val = bi_val;
@@ -2362,7 +2408,7 @@ cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type)
   curr_dbms_type = dbms_type;
 }
 
-int
+SUPPORTED_DBMS_TYPE
 cgw_get_dbms_type ()
 {
   return curr_dbms_type;
@@ -2693,4 +2739,17 @@ cgw_wchar_to_sqlwchar (wchar_t * src, size_t len)
     }
 
   return NULL;
+}
+
+static char *
+cgw_get_dbms_name (SUPPORTED_DBMS_TYPE db_type)
+{
+  for (int i = 0; i < supported_dbms_max_num; i++)
+    {
+      if (db_type == supported_dbms_list[i].dbms_type)
+	{
+	  return supported_dbms_list[i].dbms_name;
+	}
+    }
+  return "";
 }

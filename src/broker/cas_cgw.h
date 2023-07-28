@@ -147,8 +147,6 @@ union odbc_bind_info
 #endif
 };
 
-extern void test_log (char *fmt, ...);
-
 extern int cgw_init ();
 extern void cgw_cleanup ();
 extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding,
@@ -173,7 +171,7 @@ extern int cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_
 
 // Execute funtions
 extern int cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit);
-extern int cgw_execute (T_SRV_HANDLE * srv_handle);
+extern int cgw_execute (T_SRV_HANDLE * srv_handle, SQLLEN * row_count);
 extern int cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_type);
 extern int cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv, ODBC_BIND_INFO ** ret_val);
 
@@ -187,6 +185,6 @@ extern int cgw_copy_tuple (T_COL_BINDER * src_col_binding, T_COL_BINDER * dst_co
 extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
 extern SUPPORTED_DBMS_TYPE cgw_is_supported_dbms (char *dbms);
 extern void cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type);
-extern int cgw_get_dbms_type ();
+extern SUPPORTED_DBMS_TYPE cgw_get_dbms_type ();
 
 #endif /* _CAS_CGW_H_ */
