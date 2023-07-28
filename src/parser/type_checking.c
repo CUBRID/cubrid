@@ -6794,45 +6794,6 @@ pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, D
 }
 
 /*
- * pt_do_where_type () -
- *   return:
- *   parser(in):
- *   node(in):
- *   arg(in):
- *   continue_walk(in):
- */
-PT_NODE *
-pt_do_where_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_NODE *spec = NULL;
-
-  if (node == NULL)
-    {
-      return NULL;
-    }
-
-  switch (node->node_type)
-    {
-    case PT_SELECT:
-      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
-	{
-	  if (spec->node_type == PT_SPEC && spec->info.spec.on_cond)
-	    {
-	      spec->info.spec.on_cond = pt_where_type (parser, spec->info.spec.on_cond);
-	    }
-	}
-
-      node->info.query.q.select.where = pt_where_type (parser, node->info.query.q.select.where);
-      break;
-
-    default:
-      break;
-    }
-
-  return node;
-}
-
-/*
  * pt_where_type () - Test for constant folded where clause,
  * 		      and fold as necessary
  *   return:
@@ -20339,20 +20300,6 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   /* do constant folding */
   tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
-  if (pt_has_error (parser))
-    {
-      tree = NULL;
-    }
-
-  /* When qo_reduce_equality_terms is executed in mq_optimize, a removable predicate like '1=1' is generated.
-   * This predicate is removed by executing pt_where_type after pt_fold_const_expr has executed.
-   * 
-   * If this predicate remains without being removed, it becomes a data filter and MRO (Multiple Key Ranges
-   * Optimization) cannot be performed.
-   *
-   * See CBRD-24735 for the details.
-   */
-  tree = parser_walk_tree (parser, tree, NULL, NULL, pt_do_where_type, NULL);
   if (pt_has_error (parser))
     {
       tree = NULL;
