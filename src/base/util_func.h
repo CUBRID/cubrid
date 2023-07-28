@@ -79,7 +79,4 @@ extern void util_get_second_and_ms_since_epoch (time_t * secs, int *msec);
 extern int64_t util_get_time_as_ms_since_epoch ();
 extern time_t util_msec_to_sec (int64_t msec);
 
-extern bool util_is_localhost (const char *host);
-extern bool are_hostnames_equal (const char *hostname_a, const char *hostname_b);
-
 #endif /* _UTIL_FUNC_H_ */
