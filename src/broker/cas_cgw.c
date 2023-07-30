@@ -1254,13 +1254,10 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
   // Oracle ODBC does not support the BIGINT type.
   // So, change it to Numeric type.
-  if (curr_dbms_type == SUPPORTED_DBMS_ORACLE)
+  if (curr_dbms_type == SUPPORTED_DBMS_ORACLE && type == CCI_U_TYPE_BIGINT)
     {
-      if (type == CCI_U_TYPE_BIGINT)
-	{
-	  src_type = type;
-	  type = CCI_U_TYPE_NUMERIC;
-	}
+      src_type = type;
+      type = CCI_U_TYPE_NUMERIC;
     }
 
   switch (type)
