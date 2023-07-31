@@ -35,6 +35,7 @@
 #include <assert.h>
 
 #include "area_alloc.h"
+#include "deduplicate_key.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -667,6 +668,10 @@ tp_init (void)
     }
 
   tp_Initialized = true;
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  dk_deduplicate_key_attribute_initialized ();
+#endif
 
   return NO_ERROR;
 }
