@@ -34,6 +34,7 @@
 #include "query_executor.h"
 
 #include "binaryheap.h"
+#include "deduplicate_key.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "partition_sr.h"
@@ -10382,7 +10383,11 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+				, NULL, false
+#endif
+	);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -10612,7 +10617,11 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       is_global_index = false;
 
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+				, NULL, false
+#endif
+	);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
@@ -11054,7 +11063,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->has_uniques && (insert->do_replace || odku_assignments != NULL))
     {
-      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info) < 0)
+      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+					  , false
+#endif
+	  ) < 0)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -21854,7 +21867,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   size_values = xasl->outptr_list->valptr_cnt;
-  assert (size_values == 14);
+  assert (size_values == 14);	/* The 14 is number of aliases[] in pt_make_query_show_index() */
   out_values = (DB_VALUE **) malloc (size_values * sizeof (DB_VALUE *));
   if (out_values == NULL)
     {
@@ -21963,8 +21976,15 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
-	  assert (att_id >= 0);
+	  assert (att_id >= 0 || IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
+	    {
+	      assert ((j + 1) == num_idx_att);
+	      break;
+	    }
+#endif
 	  if (index_position == function_index_pos)
 	    {
 	      /* function position in index founded, compute attribute position in index */
