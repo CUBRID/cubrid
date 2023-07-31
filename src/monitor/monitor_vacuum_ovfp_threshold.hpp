@@ -41,14 +41,14 @@ class ovfp_monitor_lock final
     std::mutex  m_ovfp_monitor_mutex;
     int         m_lock_arr[LOCK_ITEMS_SIZE];
 
-  private:  
+  private:
     // Deleting the copy constructor and copy assignment operator
-    ovfp_monitor_lock(const ovfp_monitor_lock&) = delete;
-    ovfp_monitor_lock& operator=(const ovfp_monitor_lock&) = delete;
+    ovfp_monitor_lock (const ovfp_monitor_lock &) = delete;
+    ovfp_monitor_lock &operator= (const ovfp_monitor_lock &) = delete;
 
     // Deleting the move constructor and move assignment operator
-    ovfp_monitor_lock(ovfp_monitor_lock&&) = delete;
-    ovfp_monitor_lock& operator=(ovfp_monitor_lock&&) = delete;
+    ovfp_monitor_lock (ovfp_monitor_lock &&) = delete;
+    ovfp_monitor_lock &operator= (ovfp_monitor_lock &&) = delete;
 
   public:
     ovfp_monitor_lock();
@@ -130,7 +130,10 @@ class ovfp_threshold_mgr
     void init();
     void add_read_pages_count (THREAD_ENTRY *thread_p, int worker_idx, BTID *btid, int npages);
     void dump (THREAD_ENTRY *thread_p, FILE *outfp);
-    inline int get_threshold_page_cnt () const { return m_threshold_pages; }
+    inline int get_threshold_page_cnt () const
+    {
+      return m_threshold_pages;
+    }
 };
 #endif // #if defined (SERVER_MODE)
 #endif /* _OVFP_THRESHOLD_MONITOR_H_ */
