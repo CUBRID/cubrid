@@ -26,6 +26,13 @@
 
 #include "memory_monitor_common.h"
 
+typedef enum mmon_module_option
+{
+  MMON_MODULE_DETAIL,
+  MMON_MODULE_BRIEF,
+  MMON_MODULE_DEFAULT
+} MMON_MODULE_OPTION;
+
 constexpr char *module_names[] =
 {
   ""				/* It will be changed to "heap" */

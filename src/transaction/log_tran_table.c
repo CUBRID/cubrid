@@ -68,6 +68,7 @@
 #include "dbtype.h"
 #if defined (SERVER_MODE)
 #include "server_support.h"
+#include "memory_monitor_sr.hpp"
 #endif // SERVER_MODE
 #include "string_buffer.hpp"
 #if defined (SA_MODE)
@@ -1458,17 +1459,25 @@ xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp)
 }
 
 /*
- * logtb_get_trantable_nolatch - get the transaction table with nolatch
+ * logtb_get_tran_memory_info_nolatch - get the transaction memory information
+ *                                      with nolatch
  *
- * return: trantable list
+ * return: nothing
  *
  */
-LOG_TDES **
-logtb_get_trantable_nolatch (int *total_tran_indices)
+void
+logtb_get_tran_memory_info_nolatch (std::vector < std::pair < int, uint64_t >> &tran_info)
 {
-  *total_tran_indices = NUM_TOTAL_TRAN_INDICES;
+  LOG_TDES *tdes;
 
-  return log_Gl.trantable.all_tdes;
+  for (int i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+    {
+      tdes = log_Gl.trantable.all_tdes[i];
+      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->state == TRAN_ACTIVE)
+	{
+	  tran_info.push_back (std::make_pair (tdes->trid, tdes->cur_mem_usage.load ()));
+	}
+    }
 }
 
 /*

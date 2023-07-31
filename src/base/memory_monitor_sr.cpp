@@ -117,7 +117,7 @@ namespace cubperf
       mmon_module &operator = (const mmon_module &) = delete;
       mmon_module &operator = (mmon_module &&) = delete;
 
-      virtual int aggregate_stats (MMON_MODULE_INFO &info, bool get_brief_info) const;
+      virtual int aggregate_stats (MMON_MODULE_INFO &info, bool get_summary) const;
       void add_stat (MMON_STAT_ID stat_id, int64_t size);
       void add_expand_resize_count (MMON_STAT_ID stat_id);
       void end_init_phase ();
@@ -156,8 +156,9 @@ namespace cubperf
       void resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size, int64_t new_size);
       void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size);
       void end_init_phase ();
-      int aggregate_module_info (MMON_MODULE_INFO &info, int module_index) const;
-      int aggregate_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option) const;
+      void aggregate_server_info (MMON_SERVER_INFO &info) const;
+      int aggregate_module_info (MMON_MODULE_INFO *&info, int module_index) const;
+      int aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result) const;
       int aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count) const;
 
     private:
@@ -177,8 +178,8 @@ namespace cubperf
 	  aggregater &operator = (aggregater &&) = delete;
 
 	  void get_server_info (MMON_SERVER_INFO &info) const;
-	  int get_module_info (MMON_MODULE_INFO &info, int module_index) const;
-	  int get_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option) const;
+	  int get_module_info (MMON_MODULE_INFO *&info, int module_index) const;
+	  int get_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result) const;
 	  int get_transaction_info (MMON_TRAN_INFO &info, int tran_count) const;
 
 	private:
@@ -351,14 +352,16 @@ namespace cubperf
       }
   }
 
-  int mmon_module::aggregate_stats (MMON_MODULE_INFO &info, bool get_brief_info) const
+  int mmon_module::aggregate_stats (MMON_MODULE_INFO &info, bool get_summary) const
   {
+    int error = NO_ERROR;
+
     strncpy (info.name, m_module_name.c_str (), m_module_name.size ());
 
-    if (get_brief_info)
+    if (get_summary)
       {
 	info.stat.cur_stat = m_stat.cur_stat.load ();
-	return NO_ERROR;
+	return error;
       }
     else
       {
@@ -376,16 +379,25 @@ namespace cubperf
 	if (info.comp_info == NULL)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MMON_COMP_INFO) * info.num_comp);
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	    error =  ER_OUT_OF_VIRTUAL_MEMORY;
 	  }
 
 	for (uint32_t i = 0; i < info.num_comp; i++)
 	  {
-	    m_component[i]->get_stat (info.comp_info[i]);
+	    error = m_component[i]->get_stat (info.comp_info[i]);
 	  }
       }
 
-    return NO_ERROR;
+    if (error == ER_OUT_OF_VIRTUAL_MEMORY)
+      {
+	for (uint32_t i = 0; i < info.num_comp; i++)
+	  {
+	    free_and_init (info.comp_info[i].subcomp_info);
+	  }
+	free_and_init (info.comp_info);
+      }
+
+    return error;
   }
 
   void mmon_module::get_comp_and_subcomp_idx (MMON_STAT_ID stat_id, int &comp_idx, int &subcomp_idx) const
@@ -478,12 +490,31 @@ namespace cubperf
     info.total_mem_usage = m_mmon->m_total_mem_usage.load ();
   }
 
-  int memory_monitor::aggregater::get_module_info (MMON_MODULE_INFO &info, int module_index) const
+  int memory_monitor::aggregater::get_module_info (MMON_MODULE_INFO *&info, int module_index) const
   {
-    return m_mmon->m_module[module_index]->aggregate_stats (info, false);
+    int idx = 0;
+    int error = NO_ERROR;
+    if (module_index == -1)
+      {
+	// aggregate all detail memory information of modules
+	for (idx; idx < MMON_MODULE_LAST; idx++)
+	  {
+	    error = m_mmon->m_module[idx]->aggregate_stats (info[idx], false);
+	    if (error != NO_ERROR)
+	      {
+		return error;
+	      }
+	  }
+      }
+    else
+      {
+	error =  m_mmon->m_module[module_index]->aggregate_stats (info[idx], false);
+      }
+
+    return error;
   }
 
-  int memory_monitor::aggregater::get_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option) const
+  int memory_monitor::aggregater::get_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result) const
   {
     int error = NO_ERROR;
 
@@ -496,7 +527,7 @@ namespace cubperf
 	  }
       }
 
-    if (MMON_MODULE_DEFAULT_OPTION)
+    if (sorted_result)
       {
 	const auto &comp = [] (const auto& module_info1, const auto& module_info2)
 	{
@@ -515,16 +546,7 @@ namespace cubperf
     LOG_TDES *tdes = nullptr;
     std::vector <std::pair <int, uint64_t>> tran_info;
 
-    trantable = logtb_get_trantable_nolatch (&num_total_indices);
-
-    for (int i = 0; i < num_total_indices; i++)
-      {
-	tdes = trantable[i];
-	if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->state == TRAN_ACTIVE)
-	  {
-	    tran_info.push_back (std::make_pair (tdes->trid, tdes->cur_mem_usage.load ()));
-	  }
-      }
+    logtb_get_tran_memory_info_nolatch (tran_info);
 
     if (tran_count == 0)
       {
@@ -616,34 +638,27 @@ namespace cubperf
       }
   }
 
-  int memory_monitor::aggregate_module_info (MMON_MODULE_INFO &info, int module_index) const
+  void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &info) const
   {
-    int error = NO_ERROR;
-
-    m_aggregater.get_server_info (info.server_info);
-    error = m_aggregater.get_module_info (info, module_index);
-
-    return error;
+    m_aggregater.get_server_info (info);
   }
 
-  int memory_monitor::aggregate_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option) const
+  int memory_monitor::aggregate_module_info (MMON_MODULE_INFO *&info, int module_index) const
   {
-    int error = NO_ERROR;
+    // Convert utility module index(1 ~) to server module index(0 ~).
+    // If utility module index == 0, it means -a option.
+    // It will convert -1 in this case.
+    return m_aggregater.get_module_info (info, module_index - 1);
+  }
 
-    m_aggregater.get_server_info (info[0].server_info);
-    error = m_aggregater.get_module_brief_info (info, option);
-
-    return error;
+  int memory_monitor::aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result) const
+  {
+    return m_aggregater.get_module_info_summary (info, sorted_result);
   }
 
   int memory_monitor::aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count) const
   {
-    int error = NO_ERROR;
-
-    m_aggregater.get_server_info (info.server_info);
-    error = m_aggregater.get_transaction_info (info, tran_count);
-
-    return error;
+    return m_aggregater.get_transaction_info (info, tran_count);
   }
 } // namespace cubperf
 
@@ -721,19 +736,25 @@ void mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old
     }
 }
 
-int mmon_aggregate_module_info (MMON_MODULE_INFO &info, int module_index)
+void mmon_aggregate_server_info (MMON_SERVER_INFO &info)
 {
   assert (mmon_Gl != nullptr);
-  assert (module_index < (int)MMON_MODULE_LAST && module_index > 0);
+  mmon_Gl->aggregate_server_info (info);
+}
+
+int mmon_aggregate_module_info (MMON_MODULE_INFO *&info, int module_index)
+{
+  assert (mmon_Gl != nullptr);
+  assert (module_index < (int)MMON_MODULE_LAST && module_index >= 0);
 
   return mmon_Gl->aggregate_module_info (info, module_index);
 }
 
-int mmon_aggregate_module_brief_info (MMON_MODULE_INFO *&info, MMON_MODULE_OPTION option)
+int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result)
 {
   assert (mmon_Gl != nullptr);
 
-  return mmon_Gl->aggregate_module_brief_info (info, option);
+  return mmon_Gl->aggregate_module_info_summary (info, sorted_result);
 }
 
 int mmon_aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count)
