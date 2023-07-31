@@ -4630,6 +4630,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
     {
       db_shutdown ();
     }
+  // XXX: for test, it will removed at main implementation
+  fprintf (stdout, "EXIT SUCCESS\n");
   return EXIT_SUCCESS;
 
 print_memmon_usage:
