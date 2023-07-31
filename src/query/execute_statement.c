@@ -13686,8 +13686,6 @@ int
 do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   INT64 err;
-  PT_NODE *flat;
-  DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   QUERY_FLAG query_flag;
   QUERY_ID query_id_self = parser->query_id;
@@ -13696,19 +13694,20 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (statement->xasl_id == NULL)
+  /* for dblink: no need to check xal_is is NULL */
+  if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
     {
-      /* check if it is not necessary to execute this statement */
-      if (qo_need_skip_execution ())
+      if (statement->xasl_id == NULL)
 	{
-	  statement->etc = NULL;
-	  return NO_ERROR;
+	  /* check if it is not necessary to execute this statement */
+	  if (qo_need_skip_execution ())
+	    {
+	      statement->etc = NULL;
+	      return NO_ERROR;
+	    }
+	  return do_insert (parser, statement);
 	}
-      return do_insert (parser, statement);
     }
-
-  flat = statement->info.insert.spec->info.spec.flat_entity_list;
-  class_obj = (flat) ? flat->info.name.db_object : NULL;
 
   query_flag = DEFAULT_EXEC_MODE;
 

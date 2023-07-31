@@ -11663,12 +11663,18 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
+  /*
+   ** the query which has generic function is set flag.cannont_prepare to 1 by parser
+   ** because the generic function might not be executed, 
+   ** However, the dblink DML should be prepared even though it has generic function
+   */
+  node->flag.cannot_prepare = 0;
+
   /*  
    ** The target server must all be the same.
    ** Therefore, even if multiple tables are specified, only the first information is configured as PT_DBLINK_TABLE_DML.
    ** Postpone checking that "user.server" and "server" are the same.
    */
-
   PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
   if (!ct)
     {
