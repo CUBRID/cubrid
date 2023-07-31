@@ -87,7 +87,7 @@ namespace cubperf
       mmon_component &operator = (mmon_component &&) = delete;
 
       const char *get_name ();
-      void add_stat (int64_t size, int subcomp_idx);
+      void add_stat (int subcomp_idx, int64_t size);
       void add_expand_resize_count ();
       void end_init_phase ();
       int get_stat (MMON_COMP_INFO &info) const;
@@ -242,7 +242,7 @@ namespace cubperf
     return m_comp_name.c_str ();
   }
 
-  void mmon_component::add_stat (int64_t size, int subcomp_idx)
+  void mmon_component::add_stat (int subcomp_idx, int64_t size)
   {
     assert ((size >= 0) || ((uint64_t) (-size) <= m_stat.cur_stat));
 
@@ -369,32 +369,33 @@ namespace cubperf
 	info.stat.cur_stat = m_stat.cur_stat.load ();
 	info.stat.peak_stat = m_stat.peak_stat.load ();
 	info.stat.expand_resize_count = m_stat.expand_resize_count.load ();
-      }
 
-    info.num_comp = m_component.size ();
-    if (info.num_comp != 0)
-      {
-	info.comp_info = (MMON_COMP_INFO *)malloc (sizeof (MMON_COMP_INFO) * info.num_comp);
 
-	if (info.comp_info == NULL)
+	info.num_comp = m_component.size ();
+	if (info.num_comp != 0)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MMON_COMP_INFO) * info.num_comp);
-	    error =  ER_OUT_OF_VIRTUAL_MEMORY;
+	    info.comp_info = (MMON_COMP_INFO *)malloc (sizeof (MMON_COMP_INFO) * info.num_comp);
+
+	    if (info.comp_info == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MMON_COMP_INFO) * info.num_comp);
+		error =  ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
+
+	    for (uint32_t i = 0; i < info.num_comp; i++)
+	      {
+		error = m_component[i]->get_stat (info.comp_info[i]);
+	      }
 	  }
 
-	for (uint32_t i = 0; i < info.num_comp; i++)
+	if (error == ER_OUT_OF_VIRTUAL_MEMORY)
 	  {
-	    error = m_component[i]->get_stat (info.comp_info[i]);
+	    for (uint32_t i = 0; i < info.num_comp; i++)
+	      {
+		free_and_init (info.comp_info[i].subcomp_info);
+	      }
+	    free_and_init (info.comp_info);
 	  }
-      }
-
-    if (error == ER_OUT_OF_VIRTUAL_MEMORY)
-      {
-	for (uint32_t i = 0; i < info.num_comp; i++)
-	  {
-	    free_and_init (info.comp_info[i].subcomp_info);
-	  }
-	free_and_init (info.comp_info);
       }
 
     return error;
@@ -432,7 +433,7 @@ namespace cubperf
     if (comp_idx != mmon_module::MAX_COMP_IDX)
       {
 	assert ((size_t)comp_idx < m_component.size ());
-	m_component[comp_idx]->add_stat (size, subcomp_idx);
+	m_component[comp_idx]->add_stat (subcomp_idx, size);
       }
   }
 
