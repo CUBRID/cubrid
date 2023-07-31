@@ -1315,7 +1315,7 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 1 Mutually exclusive option '-a(--all)' cannot be used with other options.\n
 2 Please set system parameter 'memory_monitoring' in 'cubrid.conf'.\n
 3 Invalid argument '%1$s' is set to '-m(--module)' option.\n
-4 -c(--tran-count) option must be used with -t(--transaction) option.\n\
+4 -c(--tran-count) option must be used with -t(--transaction) option.\n
 59 Memmon cannot run as standalone mode.\n
 60 \
 memmon: Provides memory usage information of a cub_server process.\n\
