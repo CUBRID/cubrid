@@ -1322,7 +1322,7 @@ memmon: Provides memory usage information of a cub_server process.\n\
 usage: %1$s memmon [OPTION] database-name\n\
 \n\
 valid options:\n\
-    -m, --module=TYPE             TYPE of argument
+    -m, --module=TYPE             TYPE of argument\n\
                                     MODULE NAME or INDEX    display the module's total memory usage and memory usage details.\n\
                                     brief(or b)             display summary of memory usage of the entire registered modules.\n\
     -t, --transaction             display memory usage of active transaction.\n\
