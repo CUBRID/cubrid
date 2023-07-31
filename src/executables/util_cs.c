@@ -4626,10 +4626,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
   fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (module ? module : "NULL"),
 	   (transaction ? "true" : "false"), tran_count, (show_all ? "true" : "false"));
 
-  if (need_shutdown)
-    {
-      db_shutdown ();
-    }
+  db_shutdown ();
+
   // XXX: for test, it will removed at main implementation
   fprintf (stdout, "EXIT SUCCESS\n");
   return EXIT_SUCCESS;
