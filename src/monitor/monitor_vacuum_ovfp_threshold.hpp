@@ -17,7 +17,7 @@
  */
 
 /*
- * ovfp_threahold_monitor.hpp - (at Server).
+ * monitor_vacuum_ovfp_threshold.hpp - (at Server).
  *
  */
 #ifndef _OVFP_THRESHOLD_MONITOR_H_
@@ -32,7 +32,7 @@
 #include <mutex>
 #include "vacuum.h"
 
-class ovfp_monitor_lock
+class ovfp_monitor_lock final
 {
 #define LOCK_FREE_OWNER_ID (-1)
 #define LOCK_ALL_OWNER_ID  (VACUUM_MAX_WORKER_COUNT)
@@ -41,8 +41,18 @@ class ovfp_monitor_lock
     std::mutex  m_ovfp_monitor_mutex;
     int         m_lock_arr[LOCK_ITEMS_SIZE];
 
+  private:  
+    // Deleting the copy constructor and copy assignment operator
+    ovfp_monitor_lock(const ovfp_monitor_lock&) = delete;
+    ovfp_monitor_lock& operator=(const ovfp_monitor_lock&) = delete;
+
+    // Deleting the move constructor and move assignment operator
+    ovfp_monitor_lock(ovfp_monitor_lock&&) = delete;
+    ovfp_monitor_lock& operator=(ovfp_monitor_lock&&) = delete;
+
   public:
     ovfp_monitor_lock();
+
     void lock (int lock_index, int owner_id);
     void unlock (int lock_index, int owner_id);
 };
@@ -107,8 +117,6 @@ class ovfp_threshold_mgr
 
     UINT64 m_over_secs;
     char   m_since_time[32];
-
-  public:
     int   m_threshold_pages;
 
   private:
@@ -122,6 +130,7 @@ class ovfp_threshold_mgr
     void init();
     void add_read_pages_count (THREAD_ENTRY *thread_p, int worker_idx, BTID *btid, int npages);
     void dump (THREAD_ENTRY *thread_p, FILE *outfp);
+    inline int get_threshold_page_cnt () const { return m_threshold_pages; }
 };
 #endif // #if defined (SERVER_MODE)
 #endif /* _OVFP_THRESHOLD_MONITOR_H_ */

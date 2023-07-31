@@ -17,7 +17,7 @@
  */
 
 /*
- * ovfp_threahold_monitor.cpp - (at Server).
+ * monitor_vacuum_ovfp_threshold.cpp - (at Server).
  *
  */
 
@@ -29,7 +29,7 @@
 
 #include <assert.h>
 #include "heap_file.h"
-#include "ovfp_threahold_monitor.hpp"
+#include "monitor_vacuum_ovfp_threshold.hpp"
 
 /* *INDENT-OFF* */
 #define OID_COMPARE(a, b)  (((a)->volid != (b)->volid) ? ((a)->volid - (b)->volid) : \
@@ -596,6 +596,9 @@ ovfp_threshold_mgr::dump (THREAD_ENTRY *thread_p, FILE *outfp)
   INDEX_OVFP_INFO *pt;
   ovfp_printer  printer;
   time_t over_tm = time (NULL) - m_over_secs;
+
+  //ovfp_monitor_lock x2 = m_ovfp_lock;
+  //ovfp_monitor_lock x(m_ovfp_lock);
 
   assert (outfp != NULL);
 

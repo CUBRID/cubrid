@@ -49,7 +49,7 @@
 #include "thread_manager.hpp"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
-#include "ovfp_threahold_monitor.hpp"
+#include "monitor_vacuum_ovfp_threshold.hpp"
 #endif // SERVER_MODE
 #include "util_func.h"
 
@@ -652,7 +652,7 @@ struct vacuum_dropped_files_rcv_data
 
 bool vacuum_Is_booted = false;
 #if defined (SERVER_MODE)
-class ovfp_threshold_mgr g_ovfp_htreshold_mgr;
+class ovfp_threshold_mgr g_ovfp_threshold_mgr;
 #endif
 
 /* Logging */
@@ -1150,7 +1150,7 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
       fprintf (outfp, "(in %s)\n", fileio_get_base_file_name (log_Name_active));
     }
 #if defined (SERVER_MODE)
-  g_ovfp_htreshold_mgr.dump (thread_p, outfp);
+  g_ovfp_threshold_mgr.dump (thread_p, outfp);
 #endif
 }
 
@@ -1241,7 +1241,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
   vacuum_Master.allocated_resources = false;
   vacuum_Master.idx = -1;
 #if defined (SERVER_MODE)
-  g_ovfp_htreshold_mgr.init ();
+  g_ovfp_threshold_mgr.init ();
 #endif
 
   /* Initialize workers */
@@ -3461,9 +3461,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	    }
 
 #if defined (SERVER_MODE)
-	  if (thread_p->read_ovfl_pages_count >= g_ovfp_htreshold_mgr.m_threshold_pages)
+	  if (thread_p->read_ovfl_pages_count >= g_ovfp_threshold_mgr.get_threshold_page_cnt ())
 	    {
-	      g_ovfp_htreshold_mgr.add_read_pages_count (thread_p, worker->idx, btid_int.sys_btid,
+	      g_ovfp_threshold_mgr.add_read_pages_count (thread_p, worker->idx, btid_int.sys_btid,
 							 thread_p->read_ovfl_pages_count);
 	    }
 #endif
