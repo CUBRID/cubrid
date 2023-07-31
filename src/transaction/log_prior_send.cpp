@@ -25,9 +25,24 @@
 
 namespace cublog
 {
+  prior_sender::prior_sender ()
+  {
+    m_thread = std::thread (&prior_sender::loop_dispatch, std::ref (*this));
+  }
+
   void
   prior_sender::send_list (const log_prior_node *head)
   {
+    // NOTE: this functions does 2 things:
+    //  - packs the log prior nodes in a stream of bytes that can be sent over the network (currently: string)
+    //    - this can be thought of as a constly operation
+    //  - dispatches the packed message over to the sinks
+    //    - this can be considered a cheap operation because it is - as of now - just "throwing" the message
+    //      of to a separate thread
+    // with the above description, one might think that it is more important to execute the packing
+    // in an async manner; however, with the way these log prior nodes are structured, it is not possible
+    // to dispatch the packing to a separate thread without copying the entire chain
+
     if (head == nullptr)
       {
 	return;
@@ -43,13 +58,19 @@ namespace cublog
 		       LSA_AS_ARGS (&head->start_lsa), LSA_AS_ARGS (&tail->start_lsa), message.size ());
       }
 
-    send_serialized_message (std::move (message));
+    {
+      {
+	std::lock_guard<std::mutex> lockg { m_messages_mtx };
+	m_messages.push_back (std::move (message));
+      }
+      m_messages_cv.notify_one ();
+    }
   }
 
   void
   prior_sender::send_serialized_message (std::string &&message)
   {
-    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
     // copy the message into every sink but the last..
     for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
       {
@@ -65,11 +86,44 @@ namespace cublog
   }
 
   void
+  prior_sender::loop_dispatch ()
+  {
+    message_container_t to_dispatch_messages;
+    std::unique_lock<std::mutex> ulock { m_messages_mtx };
+    while (!m_shutdown)
+      {
+	m_messages_cv.wait (ulock, [this]
+	{
+	  return m_shutdown || !m_messages.empty ();
+	});
+
+	// locked here
+	if (m_shutdown)
+	  {
+	    break;
+	  }
+
+	assert (to_dispatch_messages.empty ());
+	to_dispatch_messages.swap (m_messages);
+	ulock.unlock ();
+
+	// unlocked here
+	for (auto iter = to_dispatch_messages.begin (); iter != to_dispatch_messages.end (); ++iter)
+	  {
+	    send_serialized_message (std::move (*iter));
+	  }
+	to_dispatch_messages.clear ();
+
+	ulock.lock ();
+      }
+  }
+
+  void
   prior_sender::add_sink (const sink_hook_t &fun)
   {
     assert (fun != nullptr);
 
-    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
     m_sink_hooks.push_back (&fun);
   }
 
@@ -78,7 +132,7 @@ namespace cublog
   {
     assert (fun != nullptr);
 
-    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
 
     const auto find_it = std::find (m_sink_hooks.begin (), m_sink_hooks.end (), &fun);
     assert (find_it != m_sink_hooks.end ());
@@ -88,7 +142,7 @@ namespace cublog
   bool
   prior_sender::is_empty ()
   {
-    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
     return m_sink_hooks.empty ();
   }
 }

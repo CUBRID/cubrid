@@ -21,9 +21,9 @@
 
 #include "log_append.hpp"
 
-#include <functional>
+#include <condition_variable>
+#include <deque>
 #include <mutex>
-#include <string>
 
 namespace cublog
 {
@@ -35,10 +35,21 @@ namespace cublog
   class prior_sender
   {
     public:
-      using sink_hook_t = std::function<void (std::string &&)>;   // messages are passed to sink hooks.
+      using sink_hook_t = std::function<void (std::string &&)>;
 
     public:
-      prior_sender () = default;
+      prior_sender ();
+      ~prior_sender ()
+      {
+	{
+	  std::lock_guard<std::mutex> lockg { m_messages_mtx };
+	  m_shutdown = true;
+	}
+	m_messages_cv.notify_one ();
+
+	m_thread.join ();
+      }
+
       prior_sender (const prior_sender &) = delete;
       prior_sender (prior_sender &&) = delete;
 
@@ -46,20 +57,34 @@ namespace cublog
       prior_sender &operator = (prior_sender &&) = delete;
 
     public:
-      void send_list (const log_prior_node *head);                // send prior node list to all sinks
+      // send prior node list to all sinks
+      void send_list (const log_prior_node *head);
 
-      void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
-      void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
+      // add a hook for a new sink
+      void add_sink (const sink_hook_t &fun);
+      // add a hook for a new sink
+      void remove_sink (const sink_hook_t &fun);
 
       bool is_empty ();
 
     private:
       void send_serialized_message (std::string &&message);
+      void loop_dispatch ();
 
     private:
-      // non-owning pointers
-      std::vector<const sink_hook_t *> m_sink_hooks;              // hooks for sinks
-      std::mutex m_sink_hooks_mutex;                              // protect access on sink hooks
+      using message_container_t = std::deque<std::string>;
+
+      // non-owning pointers to sink hooks; messages are passed to these
+      std::vector<const sink_hook_t *> m_sink_hooks;
+      std::mutex m_sink_hooks_mtx;
+
+      message_container_t m_messages;
+      std::mutex m_messages_mtx;
+      std::condition_variable m_messages_cv;
+
+      std::thread m_thread;
+      // this variable is guarded by messages mutex
+      bool m_shutdown = false;
   };
 }
 
