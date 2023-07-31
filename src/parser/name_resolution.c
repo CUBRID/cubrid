@@ -3377,6 +3377,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		{
 		  /* It may be a generic function supported on the server. We put this case last so that user written
 		   * methods will resolve before trying to make it a server function. */
+
 		  if (!pt_type_generic_func (parser, node))
 		    {
 		      PT_NODE *top_node = NULL;
@@ -5181,12 +5182,6 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
   if (table_name)
     {
-      /* for collecting column info from "SELECT sel-list FROM table@server WHERE" */
-#if 0
-      int len = strlen (table_name);
-      char table_name_up[DB_MAX_IDENTIFIER_LENGTH * 2 + 1];
-      char user_name[DB_MAX_IDENTIFIER_LENGTH];
-#endif
       PARSER_VARCHAR *var_buf = 0;
 
       /* all attr's from "SELECT * FROM" */
@@ -5194,22 +5189,6 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
       /* preparing the query to get the column info */
       var_buf = pt_append_nulstring (parser, var_buf, "SELECT * FROM ");
-#if 0
-      /* make it upper case for Oracle */
-      intl_identifier_upper (table_name, table_name_up);
-
-      /* make "user-name"."table-name" for reserved word */
-      find = strchr (table_name_up, '.');
-      if (find)
-	{
-	  snprintf (user_name, (int) (find - table_name_up) + 1, "%s", table_name_up);
-	  sprintf (t_name, "\"%s\".\"%s\"", user_name, find + 1);
-	}
-      else
-	{
-	  sprintf (t_name, "\"%s\"", table_name_up);
-	}
-#endif
       var_buf = pt_append_nulstring (parser, var_buf, table_name);
       sql = (char *) var_buf->bytes;
     }

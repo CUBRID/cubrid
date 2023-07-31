@@ -13192,11 +13192,6 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
 
-  if (PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_QUOTED))
-    {
-      parser->custom_print |= PT_PRINT_QUOTED_NAME;
-    }
-
   if (!(parser->custom_print & PT_SUPPRESS_META_ATTR_CLASS) && (p->info.name.meta_class == PT_META_CLASS))
     {
       q = pt_append_nulstring (parser, q, "class ");
@@ -13291,6 +13286,18 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
+	  /* for dblink: should be identified as quoted user to use at remote */
+	  if (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK)
+	    {
+	      if (PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_QUOTED_USER))
+		{
+		  parser->custom_print |= PT_PRINT_QUOTED_NAME;
+		}
+	      else
+		{
+		  parser->custom_print &= ~PT_PRINT_QUOTED_NAME;
+		}
+	    }
 	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 	    {
 	      q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.name.resolved));
@@ -13310,6 +13317,18 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  q = pt_append_nulstring (parser, q, ".");
 
+	  /* for dblink: should be identified as quoted name to use at remote */
+	  if (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK)
+	    {
+	      if (PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_QUOTED_NAME))
+		{
+		  parser->custom_print |= PT_PRINT_QUOTED_NAME;
+		}
+	      else
+		{
+		  parser->custom_print &= ~PT_PRINT_QUOTED_NAME;
+		}
+	    }
 	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 	    {
 	      q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.name.original));
@@ -13359,6 +13378,19 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
       /* here we print whatever the length */
       if (p->info.name.original)
 	{
+	  /* for dblink: should be identified as quoted name to use at remote */
+	  if (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK)
+	    {
+	      if (PT_NAME_INFO_IS_FLAGED (p, PT_NAME_INFO_QUOTED_NAME))
+		{
+		  parser->custom_print |= PT_PRINT_QUOTED_NAME;
+		}
+	      else
+		{
+		  parser->custom_print &= ~PT_PRINT_QUOTED_NAME;
+		}
+	    }
+
 	  if (parser->custom_print & PT_PRINT_NO_SPECIFIED_USER_NAME)
 	    {
 	      q = pt_append_name (parser, q, pt_get_name_with_qualifier_removed (p->info.name.original));
