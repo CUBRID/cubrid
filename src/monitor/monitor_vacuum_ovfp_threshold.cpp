@@ -597,9 +597,6 @@ ovfp_threshold_mgr::dump (THREAD_ENTRY *thread_p, FILE *outfp)
   ovfp_printer  printer;
   time_t over_tm = time (NULL) - m_over_secs;
 
-  //ovfp_monitor_lock x2 = m_ovfp_lock;
-  //ovfp_monitor_lock x(m_ovfp_lock);
-
   assert (outfp != NULL);
 
   printer.set_worker_idx (LOCK_ALL_OWNER_ID, NULL);
