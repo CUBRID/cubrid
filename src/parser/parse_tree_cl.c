@@ -7319,6 +7319,45 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r4);
     }
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  if (p->info.index.unique == false)
+    {
+      char buf[64] = { 0x00, };
+      if (p->info.index.deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+	{
+	  /* Do not print level */ ;
+	}
+      else if (p->info.index.deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
+	{
+	  dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.deduplicate_level);
+	}
+      if (buf[0])
+	{
+	  b = pt_append_nulstring (parser, b, " WITH ");
+	  b = pt_append_nulstring (parser, b, buf);
+	  if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	    {
+	      b = pt_append_nulstring (parser, b, ", ONLINE ");
+	    }
+	}
+      else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
+	}
+    }
+  else
+    {
+      if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
+	}
+    }
+
+  if (p->info.index.index_status == SM_INVISIBLE_INDEX)
+    {
+      b = pt_append_nulstring (parser, b, " INVISIBLE ");
+    }
+#else // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
     {
       b = pt_append_nulstring (parser, b, " INVISIBLE ");
@@ -7327,6 +7366,7 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, " WITH ONLINE ");
     }
+#endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
   if (p->info.index.comment != NULL)
     {
