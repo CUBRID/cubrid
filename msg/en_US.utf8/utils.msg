@@ -1328,8 +1328,8 @@ valid options:\n\
     -t, --transaction             display memory usage of active transaction.\n\
     -c, --tran-count=NUMBER       set how many transactions will be printed. If NUMBER is greater than the total\n\
                                   number of active transactions of the server, memmon will only show\n\
-                                  the memory usage information of the number of active transaction.\n\
-                                  This option have to use with '-t(--transaction)' option.\n\
+                                  the memory usage information of all active transactions.\n\
+                                  This option has to be used with '-t(--transaction)' option.\n\
     -a, --all                     display all memory usage information registered in the server including\n\
                                   total server memory usage, detailed memory usage information of modules,\n\
-                                  and memory occupancy of active transactions. This option can only be used standalone.\n
+                                  and memory occupancy of active transactions. This option can only be used alone.\n

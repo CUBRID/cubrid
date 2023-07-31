@@ -4551,7 +4551,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
   char *module, *stop;
   bool transaction, show_all;
   int tran_count;
-  int module_index = MMON_MODULE_LAST + 1;
+  int module_index = MMON_MODULE_LAST;
 
   module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
   transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
@@ -4621,6 +4621,8 @@ print_memmon_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
+  // XXX: for test, it will removed at main implementation
+  fprintf (stdout, "EXIT FAILURE\n");
   return EXIT_FAILURE;
 
 #else /* CS_MODE */

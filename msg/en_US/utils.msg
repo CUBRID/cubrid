@@ -1315,21 +1315,21 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 1 Mutually exclusive option '-a(--all)' cannot be used with other options.\n
 2 Please set system parameter 'memory_monitoring' in 'cubrid.conf'.\n
 3 Invalid argument '%1$s' is set to '-m(--module)' option.\n
-4 -c(--tran-count) option must be used with -t(--transaction) option.\n\
+4 -c(--tran-count) option must be used with -t(--transaction) option.\n
 59 Memmon cannot run as standalone mode.\n
 60 \
 memmon: Provides memory usage information of a cub_server process.\n\
 usage: %1$s memmon [OPTION] database-name\n\
 \n\
 valid options:\n\
-    -m, --module=TYPE             TYPE of argument
+    -m, --module=TYPE             TYPE of argument\n\
                                     MODULE NAME or INDEX    display the module's total memory usage and memory usage details.\n\
                                     brief(or b)             display summary of memory usage of the entire registered modules.\n\
     -t, --transaction             display memory usage of active transaction.\n\
     -c, --tran-count=NUMBER       set how many transactions will be printed. If NUMBER is greater than the total\n\
                                   number of active transactions of the server, memmon will only show\n\
-                                  the memory usage information of the number of active transaction.\n\
-                                  This option have to use with '-t(--transaction)' option.\n\
+                                  the memory usage information of all active transactions.\n\
+                                  This option has to be used with '-t(--transaction)' option.\n\
     -a, --all                     display all memory usage information registered in the server including\n\
                                   total server memory usage, detailed memory usage information of modules,\n\
-                                  and memory occupancy of active transactions. This option can only be used standalone.\n
+                                  and memory occupancy of active transactions. This option can only be used alone.\n
