@@ -4547,9 +4547,10 @@ memmon (UTIL_FUNCTION_ARG * arg)
 {
 #if defined(CS_MODE)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char er_msg_file[PATH_MAX];
   const char *database_name;
   char *module, *stop;
-  bool transaction, show_all;
+  bool transaction, show_all, need_shutdown;
   int tran_count;
   int module_index = MMON_MODULE_LAST;
 
@@ -4564,10 +4565,15 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto print_memmon_usage;
     }
 
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
   if ((!transaction) && tran_count)
     {
-      fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_OPTION));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_OPTION));
       goto error_exit;
     }
 
@@ -4578,7 +4584,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   if (show_all && (transaction || module))
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
       goto error_exit;
     }
 
@@ -4587,8 +4594,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
     {
       if (module_index < 0 || module_index > MMON_MODULE_LAST)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
-		   module);
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE), module);
 	  goto error_exit;
 	}
     }
@@ -4598,21 +4605,31 @@ memmon (UTIL_FUNCTION_ARG * arg)
       // TODO: convert module name to module index
     }
 
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
   if (db_restart (arg->command_name, TRUE, database_name))
     {
       PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
       goto error_exit;
     }
+  need_shutdown = true;
 
   if (!prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
       goto error_exit;
     }
 
   // XXX: for test, it will removed at main implementation
   fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (module ? module : "NULL"),
 	   (transaction ? "true" : "false"), tran_count, (show_all ? "true" : "false"));
+
+  if (need_shutdown)
+    {
+      db_shutdown ();
+    }
   return EXIT_SUCCESS;
 
 print_memmon_usage:
@@ -4623,6 +4640,12 @@ print_memmon_usage:
 error_exit:
   // XXX: for test, it will removed at main implementation
   fprintf (stdout, "EXIT FAILURE\n");
+
+  if (need_shutdown)
+    {
+      db_shutdown ();
+    }
+
   return EXIT_FAILURE;
 
 #else /* CS_MODE */

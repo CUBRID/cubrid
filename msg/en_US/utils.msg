@@ -1316,7 +1316,7 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 2 Please set system parameter 'memory_monitoring' in 'cubrid.conf'.\n
 3 Invalid argument '%1$s' is set to '-m(--module)' option.\n
 4 -c(--tran-count) option must be used with -t(--transaction) option.\n
-59 Memmon cannot run as standalone mode.\n
+59 Memmon cannot run in standalone mode.\n
 60 \
 memmon: Provides memory usage information of a cub_server process.\n\
 usage: %1$s memmon [OPTION] database-name\n\
@@ -1324,8 +1324,8 @@ usage: %1$s memmon [OPTION] database-name\n\
 valid options:\n\
     -m, --module=TYPE             TYPE of argument\n\
                                     MODULE NAME or INDEX    display the module's total memory usage and memory usage details.\n\
-                                    brief(or b)             display summary of memory usage of the entire registered modules.\n\
-    -t, --transaction             display memory usage of active transaction.\n\
+                                    brief(or b)             display a summary of memory usage of the entire registered modules.\n\
+    -t, --transaction             display memory usage of active transactions.\n\
     -c, --tran-count=NUMBER       set how many transactions will be printed. If NUMBER is greater than the total\n\
                                   number of active transactions of the server, memmon will only show\n\
                                   the memory usage information of all active transactions.\n\
