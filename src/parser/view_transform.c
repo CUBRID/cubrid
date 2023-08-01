@@ -4098,31 +4098,6 @@ mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement,
 #endif
 
 /*
- * mq_has_dblink_spec () - check if the PT_NAME node has dblink spec
- *   return: PT_NODE *
- *   parser(in):
- *   node(in):
- */
-static PT_NODE *
-mq_has_dblink_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_NODE *spec;
-  bool *related = (bool *) arg;
-
-  if (node->node_type == PT_NAME && !*related)
-    {
-      spec = (PT_NODE *) node->info.name.spec_id;
-      if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	{
-	  *related = true;
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-
-  return node;
-}
-
-/*
  * mq_is_dblink_pushable_term () - check if the predicate is pushable for dblink
  *   return: bool
  *   parser(in):
@@ -4131,8 +4106,6 @@ mq_has_dblink_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 static bool
 mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 {
-  bool related = false;
-
   if (term->node_type == PT_EXPR)
     {
       if (pt_is_operator_logical (term->info.expr.op))
