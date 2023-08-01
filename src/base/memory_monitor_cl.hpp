@@ -28,9 +28,9 @@
 
 typedef enum mmon_module_option
 {
-  MMON_MODULE_DETAIL,
-  MMON_MODULE_BRIEF,
-  MMON_MODULE_DEFAULT
+  MMON_MODULE_DETAIL,   /* -m <module_index> or <module_name> */
+  MMON_MODULE_BRIEF,    /* -m brief */
+  MMON_MODULE_DEFAULT   /* default case (with no command option) */
 } MMON_MODULE_OPTION;
 
 constexpr char *module_names[] =

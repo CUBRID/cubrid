@@ -158,7 +158,7 @@ namespace cubperf
       void end_init_phase ();
       void aggregate_server_info (MMON_SERVER_INFO &info) const;
       int aggregate_module_info (MMON_MODULE_INFO *&info, int module_index) const;
-      int aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result) const;
+      int aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_by_mem_usage) const;
       int aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count) const;
 
     private:
@@ -179,7 +179,7 @@ namespace cubperf
 
 	  void get_server_info (MMON_SERVER_INFO &info) const;
 	  int get_module_info (MMON_MODULE_INFO *&info, int module_index) const;
-	  int get_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result) const;
+	  int get_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_by_mem_usage) const;
 	  int get_transaction_info (MMON_TRAN_INFO &info, int tran_count) const;
 
 	private:
@@ -291,10 +291,12 @@ namespace cubperf
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MMON_SUBCOMP_INFO) * info.num_subcomp);
 	    return ER_OUT_OF_VIRTUAL_MEMORY;
 	  }
-
-	for (uint32_t i = 0; i < info.num_subcomp; i++)
+	else
 	  {
-	    m_subcomponent[i]->get_stat (info.subcomp_info[i]);
+	    for (uint32_t i = 0; i < info.num_subcomp; i++)
+	      {
+		m_subcomponent[i]->get_stat (info.subcomp_info[i]);
+	      }
 	  }
       }
 
@@ -381,20 +383,23 @@ namespace cubperf
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MMON_COMP_INFO) * info.num_comp);
 		error =  ER_OUT_OF_VIRTUAL_MEMORY;
 	      }
-
-	    for (uint32_t i = 0; i < info.num_comp; i++)
+	    else
 	      {
-		error = m_component[i]->get_stat (info.comp_info[i]);
-	      }
-	  }
+		for (uint32_t i = 0; i < info.num_comp; i++)
+		  {
+		    error = m_component[i]->get_stat (info.comp_info[i]);
 
-	if (error == ER_OUT_OF_VIRTUAL_MEMORY)
-	  {
-	    for (uint32_t i = 0; i < info.num_comp; i++)
-	      {
-		free_and_init (info.comp_info[i].subcomp_info);
+		    if (error != NO_ERROR)
+		      {
+			for (uint32_t i = 0; i < info.num_comp; i++)
+			  {
+			    free_and_init (info.comp_info[i].subcomp_info);
+			  }
+			free_and_init (info.comp_info);
+			break;
+		      }
+		  }
 	      }
-	    free_and_init (info.comp_info);
 	  }
       }
 
@@ -495,6 +500,7 @@ namespace cubperf
   {
     int idx = 0;
     int error = NO_ERROR;
+
     if (module_index == -1)
       {
 	// aggregate all detail memory information of modules
@@ -515,7 +521,7 @@ namespace cubperf
     return error;
   }
 
-  int memory_monitor::aggregater::get_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result) const
+  int memory_monitor::aggregater::get_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_by_mem_usage) const
   {
     int error = NO_ERROR;
 
@@ -528,7 +534,7 @@ namespace cubperf
 	  }
       }
 
-    if (sorted_result)
+    if (sorted_by_mem_usage)
       {
 	const auto &comp = [] (const auto& module_info1, const auto& module_info2)
 	{
@@ -556,17 +562,9 @@ namespace cubperf
       }
     else
       {
-	// 1) transaction option with tran-count option
-	// 2) default option (cubrid memmon <server-name>)
-	if ((size_t)tran_count > tran_info.size ())
-	  {
-	    info.num_tran = tran_info.size ();
-	  }
-	else
-	  {
-	    info.num_tran = tran_count;
-	  }
+	info.num_tran = std::min (tran_count, (int) tran_info.size ());
 
+	// sort memory usage in descending order
 	const auto &comp = [] (const auto& tran_pair1, const auto& tran_pair2)
 	{
 	  return tran_pair1.second > tran_pair2.second;
@@ -652,9 +650,9 @@ namespace cubperf
     return m_aggregater.get_module_info (info, module_index - 1);
   }
 
-  int memory_monitor::aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result) const
+  int memory_monitor::aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_by_mem_usage) const
   {
-    return m_aggregater.get_module_info_summary (info, sorted_result);
+    return m_aggregater.get_module_info_summary (info, sorted_by_mem_usage);
   }
 
   int memory_monitor::aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count) const
@@ -751,11 +749,11 @@ int mmon_aggregate_module_info (MMON_MODULE_INFO *&info, int module_index)
   return mmon_Gl->aggregate_module_info (info, module_index);
 }
 
-int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result)
+int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_by_mem_usage)
 {
   assert (mmon_Gl != nullptr);
 
-  return mmon_Gl->aggregate_module_info_summary (info, sorted_result);
+  return mmon_Gl->aggregate_module_info_summary (info, sorted_by_mem_usage);
 }
 
 int mmon_aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count)

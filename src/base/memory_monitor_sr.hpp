@@ -52,7 +52,7 @@ void mmon_move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest
 void mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size, int64_t new_size);
 void mmon_aggregate_server_info (MMON_SERVER_INFO &info);
 int mmon_aggregate_module_info (MMON_MODULE_INFO *&info, int module_index);
-int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result);
+int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_by_mem_usage);
 int mmon_aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count);
 
 #endif /* _MEMORY_MONITOR_SR_HPP_ */
