@@ -727,11 +727,11 @@ private:
   std::condition_variable m_ps_lsa_cv;
   std::atomic<bool> m_ps_lsa_up_to_date;
   LOG_LSA m_ps_consensus_flushed_lsa;	// The quorum (number of the majority) of PS have done flushing log recrods until this.
-  // *INDENT-ON*
 
 public:
-    log_global ();
-   ~log_global ();
+  log_global ();
+  ~log_global ();
+  // *INDENT-ON*
 
 #if defined (SERVER_MODE)
   void initialize_log_prior_sender ();

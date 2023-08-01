@@ -942,7 +942,9 @@ er_set (int severity, const char */*file_name*/, const int /*line_no*/, int err_
 }
 
 // ****************************************************************
-// CUBRID stuff; not used but required by linker
+// CUBRID stuff; required by linker:
+//  - whatever is not (should not be) touched at all is asserted
+//  - some of it actually called with benign/no effect
 // ****************************************************************
 
 const char *
@@ -1073,17 +1075,19 @@ namespace cublog
   {
     assert_release (!m_thread.joinable ());
   }
+
+  prior_sender::~prior_sender ()
+  {
+    assert_release (false);
+  }
 }
 
 log_global::log_global ()
-//: m_prior_recver (std::make_unique<cublog::prior_recver> (prior_info))
 {
-  //assert (false);
 }
 
 log_global::~log_global ()
 {
-  //assert (false);
 }
 
 int

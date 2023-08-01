@@ -30,6 +30,9 @@ namespace cublog
     m_thread = std::thread (&prior_sender::loop_dispatch, std::ref (*this));
   }
 
+    assert (is_empty ());
+  }
+
   void
   prior_sender::send_list (const log_prior_node *head)
   {
