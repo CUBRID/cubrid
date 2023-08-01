@@ -7270,6 +7270,61 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 }
 
 /*
+ * smmon_get_server_info -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ */
+void
+smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer, *ptr;
+  int size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+  MMON_SERVER_INFO server_info;
+
+  mmon_aggregate_module_info_summary (server_info);
+
+  size += or_packed_string_length (server_info.name, NULL);
+  // Size of total_mem_usage
+  size += OR_INT64_SIZE;
+
+  buffer = (char *) malloc (size);
+
+  if (buffer == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  else
+    {
+      ptr = or_pack_string (ptr, server_info.name);
+      ptr = or_pack_int64 (ptr, server_info.total_mem_usage);
+    }
+
+  if (error != NO_ERROR)
+    {
+      ptr = or_pack_int (reply, 0);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      free_and_init (buffer);
+    }
+  else
+    {
+      ptr = or_pack_int (reply, size);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
+      free (buffer);
+    }
+}
+
+/*
  * smmon_get_module_info -
  *
  * return:
@@ -7286,14 +7341,34 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
-  MMON_MODULE_INFO info;
-  MMON_COMP_INFO *c_info;
-  MMON_SUBCOMP_INFO *s_info;
-  int module_index = 0;
+  MMON_MODULE_INFO *module_info;
+  MMON_COMP_INFO *comp_info;
+  MMON_SUBCOMP_INFO *subcomp_info;
+  int module_index, module_count;
 
   ptr = or_unpack_int (request, &module_index);
 
-  error = mmon_aggregate_module_info (info, module_index);
+  if (module_index == 0)
+    {
+      module_info = (MMON_MODULE_INFO *) malloc (sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
+      module_count = MMON_MODULE_LAST;
+    }
+  else
+    {
+      module_info = (MMON_MODULE_INFO *) malloc (sizeof (MMON_MODULE_INFO));
+      module_count = 1;
+    }
+
+  if (module_info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  else
+    {
+      error = mmon_aggregate_module_info (module_info, module_index);
+    }
 
   if (error == NO_ERROR)
     {
@@ -7305,70 +7380,86 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
       /* 1) check size 
        *    - calculate buffer size of packed values
-       *    - server info -> module info -> component info w/ subcomponent info */
-      size += or_packed_string_length (info.server_info.name, NULL);
-      size += OR_INT64_SIZE;
-
-      size += or_packed_string_length (info.name, NULL);
-      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
-
-      for (int i = 0; i < info.num_comp; i++)
+       *    - module info -> component info w/ subcomponent info */
+      for (int idx = 0; idx < module_count; idx++)
 	{
-	  c_info = &(info.comp_info[i]);
-	  size += or_packed_string_length (c_info->name, NULL);
+	  size += or_packed_string_length (module_info[idx].name, NULL);
+	  // Size of stat information (OR_INT64_SIZE * 3 + OR_INT_SIZE)
+	  // and size of num_comp (OR_INT_SIZE)
 	  size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
-	  for (int j = 0; j < c_info->num_subcomp; j++)
+	  for (int i = 0; i < module_info[idx].num_comp; i++)
 	    {
-	      s_info = &(c_info->subcomp_info[j]);
-	      size += or_packed_string_length (s_info->name, NULL);
-	      size += OR_INT64_SIZE;
+	      comp_info = &(module_info[idx].comp_info[i]);
+	      size += or_packed_string_length (comp_info->name, NULL);
+	      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
+
+	      for (int j = 0; j < comp_info->num_subcomp; j++)
+		{
+		  subcomp_info = &(comp_info->subcomp_info[j]);
+		  size += or_packed_string_length (subcomp_info->name, NULL);
+		  size += OR_INT64_SIZE;
+		}
 	    }
 	}
 
       /* 2) allocate buffer */
       buffer = (char *) malloc (size);
+      ptr = buffer;
 
-      /* 3) packing information
-       *    - packing information with sequence of
-       *      server info -> module info -> component info w/ subcomponent info */
-      ptr = or_pack_string (buffer, info.server_info.name);
-      ptr = or_pack_int64 (ptr, info.server_info.total_mem_usage);
-
-      ptr = or_pack_string (ptr, info.name);
-      ptr = or_pack_int64 (ptr, info.stat.init_stat);
-      ptr = or_pack_int64 (ptr, info.stat.cur_stat);
-      ptr = or_pack_int64 (ptr, info.stat.peak_stat);
-      ptr = or_pack_int (ptr, info.stat.expand_count);
-
-      ptr = or_pack_int (ptr, info.num_comp);
-
-      for (int i = 0; i < info.num_comp; i++)
+      if (buffer == NULL)
 	{
-	  c_info = &(info.comp_info[i]);
-	  ptr = or_pack_string (ptr, c_info->name);
-	  ptr = or_pack_int64 (ptr, c_info->stat.init_stat);
-	  ptr = or_pack_int64 (ptr, c_info->stat.cur_stat);
-	  ptr = or_pack_int64 (ptr, c_info->stat.peak_stat);
-	  ptr = or_pack_int (ptr, c_info->stat.expand_count);
-
-	  ptr = or_pack_int (ptr, c_info->num_subcomp);
-
-	  for (int j = 0; j < c_info->num_subcomp; j++)
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      else
+	{
+	  /* 3) packing information
+	   *    - packing information with sequence of
+	   *      module info -> component info w/ subcomponent info */
+	  for (int idx = 0; idx < module_count; idx++)
 	    {
-	      s_info = &(c_info->subcomp_info[j]);
-	      ptr = or_pack_string (ptr, s_info->name);
-	      ptr = or_pack_int64 (ptr, s_info->cur_stat);
+	      ptr = or_pack_string (ptr, module_info[idx].name);
+	      ptr = or_pack_int64 (ptr, module_info[idx].stat.init_stat);
+	      ptr = or_pack_int64 (ptr, module_info[idx].stat.cur_stat);
+	      ptr = or_pack_int64 (ptr, module_info[idx].stat.peak_stat);
+	      ptr = or_pack_int (ptr, module_info[idx].stat.expand_count);
+
+	      ptr = or_pack_int (ptr, module_info[idx].num_comp);
+
+	      for (int i = 0; i < module_info[idx].num_comp; i++)
+		{
+		  comp_info = &(module_info[idx].comp_info[i]);
+		  ptr = or_pack_string (ptr, comp_info->name);
+		  ptr = or_pack_int64 (ptr, comp_info->stat.init_stat);
+		  ptr = or_pack_int64 (ptr, comp_info->stat.cur_stat);
+		  ptr = or_pack_int64 (ptr, comp_info->stat.peak_stat);
+		  ptr = or_pack_int (ptr, comp_info->stat.expand_count);
+
+		  ptr = or_pack_int (ptr, comp_info->num_subcomp);
+
+		  for (int j = 0; j < comp_info->num_subcomp; j++)
+		    {
+		      subcomp_info = &(comp_info->subcomp_info[j]);
+		      ptr = or_pack_string (ptr, subcomp_info->name);
+		      ptr = or_pack_int64 (ptr, subcomp_info->cur_stat);
+		    }
+		}
 	    }
 	}
 
       /* 4) deallocate memory */
-      for (int i = 0; i < info.num_comp; i++)
+      for (int idx = 0; idx < module_count; idx++)
 	{
-	  free (info.comp_info[i].subcomp_info);
+	  for (int i = 0; i < module_info[idx].num_comp; i++)
+	    {
+	      free (module_info[idx].comp_info[i].subcomp_info);
+	    }
+	  free (module_info[idx].comp_info);
 	}
-      free (info.comp_info);
     }
+
+  free_and_init (module_info);
 
   if (error != NO_ERROR)
     {
@@ -7383,10 +7474,105 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
-      free_and_init (buffer);
+      free (buffer);
     }
 }
 
+/*
+ * smmon_get_module_info_summary -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ */
+void
+smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *buffer, *ptr;
+  int size = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int error = NO_ERROR;
+  MMON_MODULE_INFO *module_info;
+  int module_count, temp;
+  bool sorted_result;
+
+  ptr = or_unpack_int (request, &temp);
+  ptr = or_unpack_int (request, &module_count);
+
+  sorted_result = (bool) temp;
+
+  module_info = (MMON_MODULE_INFO *) malloc (sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
+
+  if (module_info == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  else
+    {
+      error = mmon_aggregate_module_info_summary (module_info, sorted_result);
+    }
+
+  if (error == NO_ERROR)
+    {
+      /* before send information 
+       * 1) check size
+       * 2) allocate buffer
+       * 3) packing information 
+       * 4) deallocate MMON_MODULE_INFO */
+
+      /* 1) check size 
+       *    - calculate buffer size of packed values of module info */
+      for (int idx = 0; idx < module_count; idx++)
+	{
+	  size += or_packed_string_length (module_info[idx].name, NULL);
+	  size += OR_INT64_SIZE;
+	}
+
+      /* 2) allocate buffer */
+      buffer = (char *) malloc (size);
+      ptr = buffer;
+
+      if (buffer == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      else
+	{
+	  /* 3) packing information
+	   *    - packing information with sequence of module info */
+	  for (int idx = 0; idx < module_count; idx++)
+	    {
+	      ptr = or_pack_string (ptr, module_info[idx].name);
+	      ptr = or_pack_int64 (ptr, module_info[idx].stat.cur_stat);
+	    }
+	}
+    }
+
+  /* 4) deallocate memory */
+  free_and_init (module_info);
+
+  if (error != NO_ERROR)
+    {
+      ptr = or_pack_int (reply, 0);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      free_and_init (buffer);
+    }
+  else
+    {
+      ptr = or_pack_int (reply, size);
+      ptr = or_pack_int (ptr, error);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
+      free (buffer);
+    }
+}
 
 /*
  * smmon_get_tran_info -
@@ -7414,40 +7600,45 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (error == NO_ERROR)
     {
-      /* before send information 
+      /* Before send information 
        * 1) check size
        * 2) allocate buffer
        * 3) packing information 
        * 4) deallocate MMON_TRAN_INFO */
 
       /* 1) check size 
-       *    - calculate buffer size of packed values
-       *    - server info -> transaction info */
-      size += or_packed_string_length (info.server_info.name, NULL);
-      size += OR_INT64_SIZE;
+       *    - calculate buffer size of packed values of transaction info */
 
+      // Size of num_tran
       size += OR_INT_SIZE;
 
       for (int i = 0; i < info.num_tran; i++)
 	{
+	  // Size of transaction id (OR_INT_SIZE)
+	  // and current memory usage (OR_INT64_SIZE)
 	  size += OR_INT_SIZE + OR_INT64_SIZE;
 	}
 
       /* 2) allocate buffer */
       buffer = (char *) malloc (size);
 
-      /* 3) packing information
-       *    - packing information with sequence of
-       *      server info -> transaction info */
-      ptr = or_pack_string (buffer, info.server_info.name);
-      ptr = or_pack_int64 (ptr, info.server_info.total_mem_usage);
-
-      ptr = or_pack_int (ptr, info.num_tran);
-
-      for (int i = 0; i < info.num_tran; i++)
+      if (buffer == NULL)
 	{
-	  ptr = or_pack_int (ptr, info.tran_stat[i].tranid);
-	  ptr = or_pack_int64 (ptr, info.tran_stat[i].cur_stat);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      else
+	{
+	  /* 3) packing information
+	   *    - packing information with sequence of
+	   *      server info -> transaction info */
+	  ptr = or_pack_int (buffer, info.num_tran);
+
+	  for (int i = 0; i < info.num_tran; i++)
+	    {
+	      ptr = or_pack_int (ptr, info.tran_stat[i].tranid);
+	      ptr = or_pack_int64 (ptr, info.tran_stat[i].cur_stat);
+	    }
 	}
 
       /* 4) deallocate memory */
@@ -7467,7 +7658,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
-      free_and_init (buffer);
+      free (buffer);
     }
 }
 

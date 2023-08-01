@@ -62,7 +62,6 @@ typedef struct mmon_comp_info
 
 typedef struct mmon_module_info
 {
-  MMON_SERVER_INFO server_info;
   char name[DB_MAX_IDENTIFIER_LENGTH];
   MMON_OUTPUT_MEM_STAT stat;
   uint32_t num_comp;
@@ -77,7 +76,6 @@ typedef struct mmon_tran_stat
 
 typedef struct mmon_tran_info
 {
-  MMON_SERVER_INFO server_info;
   uint32_t num_tran;
   MMON_TRAN_STAT *tran_stat;
 } MMON_TRAN_INFO;
