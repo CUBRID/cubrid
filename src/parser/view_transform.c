@@ -4158,33 +4158,8 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 	}
       else
 	{
-	  /* other expression like substring */
-	  /* if one of arguments is related to dblink, then return false */
-	  if (term->info.expr.arg1)
-	    {
-	      parser_walk_tree (parser, term->info.expr.arg1, mq_has_dblink_spec, &related, NULL, NULL);
-	      if (related)
-		{
-		  return false;
-		}
-	    }
-	  if (term->info.expr.arg2)
-	    {
-	      parser_walk_tree (parser, term->info.expr.arg2, mq_has_dblink_spec, &related, NULL, NULL);
-	      if (related)
-		{
-		  return false;
-		}
-	    }
-	  if (term->info.expr.arg3)
-	    {
-	      parser_walk_tree (parser, term->info.expr.arg3, mq_has_dblink_spec, &related, NULL, NULL);
-	      if (related)
-		{
-		  return false;
-		}
-	    }
-	  return true;
+	  /* other expression like built-in and stored function and etc. */
+	  return false;
 	}
     }
 
@@ -4192,18 +4167,7 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
     {
     case PT_NAME:
     case PT_HOST_VAR:
-      return true;
     case PT_VALUE:
-      if (term->type_enum == PT_TYPE_VARCHAR)
-	{
-	  /* The PT_LIKE_LOWER_BOUND and the PT_LIKE_UPPER_BOUND is rewritten */
-	  /* checking the function like_match_lower_bound and like_match_upper_bound */
-	  if (strstr (term->info.value.text, "like_match_lower_bound") != NULL
-	      || strstr (term->info.value.text, "like_match_upper_bound") != NULL)
-	    {
-	      return false;
-	    }
-	}
       return true;
     default:
       return false;
