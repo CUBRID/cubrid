@@ -25,6 +25,14 @@
 
 namespace cublog
 {
+  prior_sender::~prior_sender ()
+  {
+    // this assert works because an instance of this class is kept inside a unique pointer;
+    // the way the unique pointer implements the reset functions is:
+    // first un-assigns the held pointer and the deletes it
+    assert (is_empty ());
+  }
+
   void
   prior_sender::send_list (const log_prior_node *head)
   {

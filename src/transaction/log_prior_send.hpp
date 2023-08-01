@@ -39,6 +39,8 @@ namespace cublog
 
     public:
       prior_sender () = default;
+      ~prior_sender ();
+
       prior_sender (const prior_sender &) = delete;
       prior_sender (prior_sender &&) = delete;
 
