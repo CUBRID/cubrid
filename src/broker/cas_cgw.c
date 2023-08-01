@@ -1310,111 +1310,137 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
     case CCI_U_TYPE_NUMERIC:
       {
-	char *value = NULL, *p = NULL;
-	int val_size = 0;
-	size_t precision = 0, scale = 0;
-	char num_str[64] = { 0, };
-	char tmp[64] = { 0, };
-	SQLHDESC hdesc = NULL;
-	DB_BIGINT bi_val;
-
-	SQL_CHK_ERR (handle->hdbc, SQL_HANDLE_DBC, err_code = SQLAllocHandle (SQL_HANDLE_DESC, handle->hdbc, &hdesc));
-
-	memset (&value_list->ns_val, 0x00, sizeof (SQL_NUMERIC_STRUCT));
-
-	if (src_type == CCI_U_TYPE_BIGINT)
+	if (curr_dbms_type == SUPPORTED_DBMS_MARIADB)
 	  {
-	    net_arg_get_bigint (&bi_val, net_value);
-	    snprintf (tmp, sizeof (tmp), "%lld", bi_val);
-	  }
-	else
-	  {
+
+	    char *value = NULL;
+	    int val_size = 0;
+
 	    net_arg_get_str (&value, &val_size, net_value);
-	    if (value != NULL)
+
+	    c_data_type = SQL_C_CHAR;
+	    sql_bind_type = SQL_CHAR;
+
+	    value_list->string_val = value;
+
+	    SQL_CHK_ERR (handle->hstmt,
+			 SQL_HANDLE_STMT,
+			 err_code = SQLBindParameter (handle->hstmt,
+						      bind_num,
+						      SQL_PARAM_INPUT,
+						      c_data_type,
+						      sql_bind_type, val_size + 1, 0, value_list->string_val, 0, NULL));
+	  }
+	else
+	  {
+	    char *value = NULL, *p = NULL;
+	    int val_size = 0;
+	    size_t precision = 0, scale = 0;
+	    char num_str[64] = { 0, };
+	    char tmp[64] = { 0, };
+	    SQLHDESC hdesc = NULL;
+	    DB_BIGINT bi_val;
+
+	    SQL_CHK_ERR (handle->hdbc, SQL_HANDLE_DBC, err_code =
+			 SQLAllocHandle (SQL_HANDLE_DESC, handle->hdbc, &hdesc));
+
+	    memset (&value_list->ns_val, 0x00, sizeof (SQL_NUMERIC_STRUCT));
+
+	    if (src_type == CCI_U_TYPE_BIGINT)
 	      {
-		strcpy (tmp, value);
+		net_arg_get_bigint (&bi_val, net_value);
+		snprintf (tmp, sizeof (tmp), "%lld", bi_val);
 	      }
-	    tmp[val_size] = '\0';
+	    else
+	      {
+		net_arg_get_str (&value, &val_size, net_value);
+		if (value != NULL)
+		  {
+		    strcpy (tmp, value);
+		  }
+		tmp[val_size] = '\0';
+	      }
+
+	    ut_trim (tmp);
+	    precision = strlen (tmp);
+	    p = strchr (tmp, '.');
+	    if (p == NULL)
+	      {
+		scale = 0;
+	      }
+	    else
+	      {
+		scale = strlen (p + 1);
+		precision--;
+	      }
+
+	    if (tmp[0] == '-')
+	      {
+		precision--;
+		value_list->ns_val.sign = MINUS;
+	      }
+	    else
+	      {
+		value_list->ns_val.sign = PLUS;
+	      }
+
+	    value_list->ns_val.precision = precision;
+	    value_list->ns_val.scale = scale;
+
+	    if (value_list->ns_val.sign == MINUS)
+	      {
+		strcpy (num_str, &tmp[1]);
+	      }
+	    else
+	      {
+		strcpy (num_str, &tmp[0]);
+	      }
+
+	    err_code = numeric_string_adjust (&value_list->ns_val, num_str);
+	    if (err_code < 0)
+	      {
+		goto ODBC_ERROR;
+	      }
+
+
+	    c_data_type = SQL_C_NUMERIC;
+	    sql_bind_type = SQL_DECIMAL;
+
+	    indPtr = sizeof (value_list->ns_val);
+	    SQL_CHK_ERR (handle->hstmt,
+			 SQL_HANDLE_STMT,
+			 err_code = SQLBindParameter (handle->hstmt,
+						      bind_num,
+						      SQL_PARAM_INPUT,
+						      c_data_type,
+						      sql_bind_type,
+						      value_list->ns_val.precision,
+						      value_list->ns_val.scale, &value_list->ns_val, 0,
+						      (SQLLEN *) & indPtr));
+
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_TYPE, (SQLPOINTER) SQL_C_NUMERIC, SQL_NTS));
+
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
+					  (SQLPOINTER) value_list->ns_val.precision, 0));
+
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE, (SQLPOINTER) value_list->ns_val.scale, 0));
+
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_DATA_PTR, (SQLPOINTER) & value_list->ns_val, 0));
+
+	    SQLFreeHandle (SQL_HANDLE_DESC, hdesc);
 	  }
-
-	ut_trim (tmp);
-	precision = strlen (tmp);
-	p = strchr (tmp, '.');
-	if (p == NULL)
-	  {
-	    scale = 0;
-	  }
-	else
-	  {
-	    scale = strlen (p + 1);
-	    precision--;
-	  }
-
-	if (tmp[0] == '-')
-	  {
-	    precision--;
-	    value_list->ns_val.sign = MINUS;
-	  }
-	else
-	  {
-	    value_list->ns_val.sign = PLUS;
-	  }
-
-	value_list->ns_val.precision = precision;
-	value_list->ns_val.scale = scale;
-
-	if (value_list->ns_val.sign == MINUS)
-	  {
-	    strcpy (num_str, &tmp[1]);
-	  }
-	else
-	  {
-	    strcpy (num_str, &tmp[0]);
-	  }
-
-	err_code = numeric_string_adjust (&value_list->ns_val, num_str);
-	if (err_code < 0)
-	  {
-	    goto ODBC_ERROR;
-	  }
-
-
-	c_data_type = SQL_C_NUMERIC;
-	sql_bind_type = SQL_DECIMAL;
-
-	indPtr = sizeof (value_list->ns_val);
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type,
-						  value_list->ns_val.precision,
-						  value_list->ns_val.scale, &value_list->ns_val, 0,
-						  (SQLLEN *) & indPtr));
-
-	SQL_CHK_ERR (hdesc,
-		     SQL_HANDLE_DESC,
-		     err_code = SQLSetDescField (hdesc, bind_num, SQL_DESC_TYPE, (SQLPOINTER) SQL_C_NUMERIC, SQL_NTS));
-
-	SQL_CHK_ERR (hdesc,
-		     SQL_HANDLE_DESC,
-		     err_code =
-		     SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
-				      (SQLPOINTER) value_list->ns_val.precision, 0));
-
-	SQL_CHK_ERR (hdesc,
-		     SQL_HANDLE_DESC,
-		     err_code =
-		     SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE, (SQLPOINTER) value_list->ns_val.scale, 0));
-
-	SQL_CHK_ERR (hdesc,
-		     SQL_HANDLE_DESC,
-		     err_code =
-		     SQLSetDescField (hdesc, bind_num, SQL_DESC_DATA_PTR, (SQLPOINTER) & value_list->ns_val, 0));
-
-	SQLFreeHandle (SQL_HANDLE_DESC, hdesc);
       }
       break;
     case CCI_U_TYPE_BIGINT:
