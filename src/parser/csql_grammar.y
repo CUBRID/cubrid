@@ -3161,7 +3161,7 @@ create_stmt
 			      {
 			        if (strchr (node->info.synonym.target_name->info.name.original, '@'))
 			          {
-				    node->info.synonym.dblinked = 1;
+				    node->info.synonym.is_dblinked = 1;
 			          }
 			      }
 			  }
@@ -4044,7 +4044,7 @@ alter_stmt
 			      {
 			        if (strchr (node->info.synonym.target_name->info.name.original, '@'))
                                   {
-                                    node->info.synonym.dblinked = 1;
+                                    node->info.synonym.is_dblinked = 1;
                                   }
 			      }
 			  }
