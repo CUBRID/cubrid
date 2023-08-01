@@ -564,7 +564,7 @@ namespace cubperf
       {
 	info.num_tran = std::min (tran_count, (int) tran_info.size ());
 
-	// sort memory usage in descending order
+	// sort by memory usage in descending order
 	const auto &comp = [] (const auto& tran_pair1, const auto& tran_pair2)
 	{
 	  return tran_pair1.second > tran_pair2.second;
