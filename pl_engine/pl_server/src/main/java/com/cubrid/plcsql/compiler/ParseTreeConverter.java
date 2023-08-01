@@ -1231,7 +1231,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         if (ctx.expression() == null) {
-            controlFlowBlocked = true; // s107-3
+            controlFlowBlocked = true; // s107-9
             return new StmtExit(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
