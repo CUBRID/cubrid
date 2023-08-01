@@ -46,6 +46,7 @@
 
 #include "porting.h"
 #include "chartype.h"
+#include "deduplicate_key.h"
 #include "misc_string.h"
 #include "error_manager.h"
 #include "storage_common.h"
@@ -728,6 +729,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
 
+#define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
+#define PRM_NAME_PRINT_INDEX_DETAIL        "print_index_detail"
+
+#define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -1203,6 +1209,18 @@ static unsigned int prm_compat_mode_flag = 0;
 bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
+static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
+static unsigned int prm_deduplicate_key_level_flag = 0;
+static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MIN;
+static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MAX;
+
+bool PRM_USE_WITH_OPTION_PRINT = false;
+static bool prm_use_print_index_detail_default = false;
+static unsigned int prm_use_print_index_detail_flag = 0;
+#endif
 
 int PRM_DEFAULT_WEEK_FORMAT = 0;
 static int prm_week_format_default = 0;
@@ -6254,6 +6272,32 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  {PRM_ID_DEDUPLICATE_KEY_LEVEL,
+   PRM_NAME_DEDUPLICATE_KEY_LEVEL,
+   // It is not specified in the manual that it can be changed in the session.
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   PRM_INTEGER,
+   &prm_deduplicate_key_level_flag,
+   (void *) &prm_deduplicate_key_level_default,
+   (void *) &PRM_DEDUPLICATE_KEY_MOD_LEVEL,
+   (void *) &prm_deduplicate_key_level_upper,
+   (void *) &prm_deduplicate_key_level_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PRINT_INDEX_DETAIL,
+   PRM_NAME_PRINT_INDEX_DETAIL,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_use_print_index_detail_flag,
+   (void *) &prm_use_print_index_detail_default,
+   (void *) &PRM_USE_WITH_OPTION_PRINT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+#endif
   {PRM_ID_HA_SQL_LOG_MAX_COUNT,
    PRM_NAME_HA_SQL_LOG_MAX_COUNT,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
@@ -6265,7 +6309,7 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_sql_log_max_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;

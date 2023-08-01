@@ -41,6 +41,7 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
+
 // forward definitions
 struct json_t;
 
@@ -2104,11 +2105,15 @@ struct pt_index_info
   PT_ALTER_CODE code;
 
   int func_pos;			/* the position of the expression in the function index's column list */
-  int func_no_args;		/* number of arguments in the function index expression */
+  int func_no_args;		/* number of arguments in the function index expression
+				 * Appears only in function index expressions, excluding constants.  */
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  short deduplicate_level;	/* -1: Not set yet, 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
+#endif
 };
 
 /* CREATE USER INFO */
@@ -3260,6 +3265,9 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  short deduplicate_level;	/* 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
+#endif
 };
 
 /* Info for the CONSTRAINT node */
@@ -4022,6 +4030,7 @@ typedef struct
 } SERVER_NAME_LIST;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
+
 
 #ifdef __cplusplus
 extern "C"

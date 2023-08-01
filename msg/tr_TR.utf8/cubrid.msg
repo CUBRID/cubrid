@@ -1606,6 +1606,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 ALTER SYNONYM için herhangi bir seçenek belirtilmedi.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.
