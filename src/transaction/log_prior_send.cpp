@@ -30,7 +30,20 @@ namespace cublog
     m_thread = std::thread (&prior_sender::loop_dispatch, std::ref (*this));
   }
 
+  prior_sender::~prior_sender ()
+  {
+    // this assert works because an instance of this class is kept inside a unique pointer;
+    // the way the unique pointer implements the reset functions is:
+    // first un-assigns the held pointer and the deletes it
     assert (is_empty ());
+
+    {
+      std::lock_guard<std::mutex> lockg { m_messages_mtx };
+      m_shutdown = true;
+    }
+    m_messages_cv.notify_one ();
+
+    m_thread.join ();
   }
 
   void

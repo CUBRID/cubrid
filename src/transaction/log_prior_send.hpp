@@ -39,16 +39,7 @@ namespace cublog
 
     public:
       prior_sender ();
-      ~prior_sender ()
-      {
-	{
-	  std::lock_guard<std::mutex> lockg { m_messages_mtx };
-	  m_shutdown = true;
-	}
-	m_messages_cv.notify_one ();
-
-	m_thread.join ();
-      }
+      ~prior_sender ();
 
       prior_sender (const prior_sender &) = delete;
       prior_sender (prior_sender &&) = delete;
