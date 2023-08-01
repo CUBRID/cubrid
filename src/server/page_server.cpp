@@ -146,7 +146,16 @@ page_server::connection_handler::push_request (page_to_tran_request id, std::str
 void
 page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  log_Gl.get_log_prior_receiver ().push_message (std::move (a_sp.pull_payload ()));
+  // ensure correct sequenced message type is relayed here
+  assert (a_sp.get_response_sequence_number () == cubcomm::NO_RESPONSE_SEQUENCE_NUMBER);
+
+  std::string payload = a_sp.pull_payload ();
+
+  // execute these synchronously to feed contiguous log prior entries to the page-server's replication
+  log_Gl.get_log_prior_receiver ().push_message (std::string (payload));
+  //log_Gl.get_log_prior_receiver ().push_message (std::move (a_sp.pull_payload ()));
+
+  log_Gl.get_log_prior_sender ().push_serialized_message (std::move (payload));
 }
 
 template<class F, class ... Args>

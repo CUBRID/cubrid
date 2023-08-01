@@ -84,22 +84,34 @@ namespace cublog
   }
 
   void
-  prior_sender::send_serialized_message (std::string &&message)
+  prior_sender::push_serialized_message (std::string &&message)
   {
-    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
-    // copy the message into every sink but the last..
-    for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
-      {
-	const sink_hook_t *const sink_p = m_sink_hooks[index];
-	(*sink_p) (std::string (message));
-      }
-    // ..and optimize by moving the message into the last sink, because it is of no use afterwards
-    if (m_sink_hooks.size () > 0)
-      {
-	const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1];
-	(*sink_p) (std::move (message));
-      }
+    // TODO: logging
+
+    {
+      std::lock_guard<std::mutex> lockg { m_messages_mtx };
+      m_messages.push_back (std::move (message));
+    }
+    m_messages_cv.notify_one ();
   }
+
+//  void
+//  prior_sender::send_serialized_message (std::string &&message)
+//  {
+//    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
+//    // copy the message into every sink but the last..
+//    for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
+//      {
+//	const sink_hook_t *const sink_p = m_sink_hooks[index];
+//	(*sink_p) (std::string (message));
+//      }
+//    // ..and optimize by moving the message into the last sink, because it is of no use afterwards
+//    if (m_sink_hooks.size () > 0)
+//      {
+//	const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1];
+//	(*sink_p) (std::move (message));
+//      }
+//  }
 
   void
   prior_sender::loop_dispatch ()
@@ -113,7 +125,7 @@ namespace cublog
 	  return m_shutdown || !m_messages.empty ();
 	});
 
-	// locked here
+	// messages locked here
 	if (m_shutdown)
 	  {
 	    break;
@@ -123,10 +135,28 @@ namespace cublog
 	to_dispatch_messages.swap (m_messages);
 	ulock.unlock ();
 
-	// unlocked here
+	// NOTE: on a page server,
+	//  right between when the list of messages are acquired and are about to be dispatched
+	//  wait for a certain amount of time such as to introduce a delay for replication on the
+	//  receiving side - passive transaction servers - that is consistent across each of them
+
+	// messages unlocked here
 	for (auto iter = to_dispatch_messages.begin (); iter != to_dispatch_messages.end (); ++iter)
 	  {
-	    send_serialized_message (std::move (*iter));
+	    //send_serialized_message (std::move (*iter));
+	    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
+	    // "copy" the message into every sink but the last..
+	    for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
+	      {
+		const sink_hook_t *const sink_p = m_sink_hooks[index];
+		(*sink_p) (std::string (*iter));
+	      }
+	    // ..and optimize by "moving" the message into the last sink, because it is of no use afterwards
+	    if (m_sink_hooks.size () > 0)
+	      {
+		const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1];
+		(*sink_p) (std::move (*iter));
+	      }
 	  }
 	to_dispatch_messages.clear ();
 
