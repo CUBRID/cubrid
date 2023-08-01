@@ -2748,8 +2748,8 @@ struct pt_name_info
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
-#define PT_NAME_INFO_QUOTED_NAME 16384	/* dblink processing for other DBMS like ORACLE */
-#define PT_NAME_INFO_QUOTED_USER 32768	/* dblink processing for other DBMS like ORACLE */
+#define PT_NAME_INFO_QUOTED_NAME 16384	/* dblink quoted name processing for other DBMS like ORACLE */
+#define PT_NAME_INFO_QUOTED_USER 32768	/* dblink quoted user processing for other DBMS like ORACLE */
 
   int flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))

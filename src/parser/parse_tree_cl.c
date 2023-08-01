@@ -13226,7 +13226,6 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
-  bool quoted = false;
 
   char *dot = NULL;
 

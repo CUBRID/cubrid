@@ -8471,9 +8471,7 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique, PT_NODE 
 	      continue;
 	    }
 
-	  if (spec == NULL
-	      || ((spec->info.spec.flat_entity_list)
-		  && (class_obj = spec->info.spec.flat_entity_list->info.name.db_object) == NULL))
+	  if (spec == NULL || (class_obj = spec->info.spec.flat_entity_list->info.name.db_object) == NULL)
 	    {
 	      error = ER_GENERIC_ERROR;
 	      goto exit_on_error;
