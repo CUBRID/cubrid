@@ -1186,6 +1186,9 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
   PT_NODE *spec, *prev_spec = NULL;
   bool save_donot_fold;
 
+  /* for dblink: remote table's columns */
+  S_REMOTE_TBL_COLS *rmt_tbl_cols;
+
   spec = scopes->specs;
   scopes->specs = NULL;
   while (spec)
@@ -1215,7 +1218,6 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
 
 	      int err;
-	      S_REMOTE_TBL_COLS *rmt_tbl_cols;
 	      REMOTE_COLS *remote;
 	      PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
 
@@ -1229,6 +1231,11 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 
 	      /* remote table's column list */
 	      rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
+	      if (rmt_tbl_cols == NULL)
+		{
+		  PT_ERRORf (parser, table, "Failed to get column information for memory allocation error", ER_DBLINK);
+		  return;
+		}
 
 	      err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
 
@@ -1252,7 +1259,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 				      dblink_table->remote_table_name, dblink_table->conn->info.name.original, err);
 			}
 
-		      return;
+		      goto error_exit;
 		    }
 
 		  if (table->info.dblink_table.cols == NULL)
@@ -1267,7 +1274,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      /* error from dblink(server, 'select ... from ...' */
 	      if (err < 0)
 		{
-		  return;
+		  goto error_exit;
 		}
 
 	      dblink_table->remote_col_list = (void *) rmt_tbl_cols;
@@ -1277,7 +1284,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      if (remote == NULL)
 		{
 		  PT_INTERNAL_ERROR (parser, "parser_alloc");
-		  return;
+		  goto error_exit;
 		}
 
 	      /* add dblink remote table's column list to Parser */
@@ -1335,6 +1342,14 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
       prev_spec = spec;
       spec = prev_spec->next;
       prev_spec->next = NULL;
+    }
+
+  return;
+
+error_exit:
+  if (rmt_tbl_cols)
+    {
+      delete rmt_tbl_cols;
     }
 }
 
@@ -5245,11 +5260,6 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   res = NO_ERROR;
 
 set_parser_error:
-  if (res < 0)
-    {
-      delete rmt_tbl_cols;
-    }
-
   if (req >= 0)
     {
       int err;
