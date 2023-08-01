@@ -18958,12 +18958,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       return expr;
     }
 
-  /* if dblink query, do not constant fold */
-  if (parser->dblink_remote)
-    {
-      return expr;
-    }
-
   location = expr->info.expr.location;
 
   db_make_null (&dbval_res);
