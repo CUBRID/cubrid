@@ -152,10 +152,11 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
   std::string payload = a_sp.pull_payload ();
 
   // execute these synchronously to feed contiguous log prior entries to the page-server's replication
+  // copy the payload for page server's use
   log_Gl.get_log_prior_receiver ().push_message (std::string (payload));
-  //log_Gl.get_log_prior_receiver ().push_message (std::move (a_sp.pull_payload ()));
 
-  log_Gl.get_log_prior_sender ().push_serialized_message (std::move (payload));
+  // move the payload into the dispatcher
+  log_Gl.get_log_prior_sender ().send_serialized_message (std::move (payload));
 }
 
 template<class F, class ... Args>

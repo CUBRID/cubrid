@@ -74,19 +74,17 @@ namespace cublog
 		       LSA_AS_ARGS (&head->start_lsa), LSA_AS_ARGS (&tail->start_lsa), message.size ());
       }
 
-    {
-      {
-	std::lock_guard<std::mutex> lockg { m_messages_mtx };
-	m_messages.push_back (std::move (message));
-      }
-      m_messages_cv.notify_one ();
-    }
+    send_serialized_message (std::move (message));
   }
 
   void
-  prior_sender::push_serialized_message (std::string &&message)
+  prior_sender::send_serialized_message (std::string &&message)
   {
-    // TODO: logging
+    // TODO: when this function is called from page server's log prior handler - to dispatch messages
+    // asynchronously to subscribed passive transaction servers, there is no logging;
+    // if needed, logging must be added here; however, because the message is already packed, there is
+    // not much info to be logged except the length of the message (additional information - lsa - is
+    // already packed as part of the message)
 
     {
       std::lock_guard<std::mutex> lockg { m_messages_mtx };
@@ -94,24 +92,6 @@ namespace cublog
     }
     m_messages_cv.notify_one ();
   }
-
-//  void
-//  prior_sender::send_serialized_message (std::string &&message)
-//  {
-//    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
-//    // copy the message into every sink but the last..
-//    for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
-//      {
-//	const sink_hook_t *const sink_p = m_sink_hooks[index];
-//	(*sink_p) (std::string (message));
-//      }
-//    // ..and optimize by moving the message into the last sink, because it is of no use afterwards
-//    if (m_sink_hooks.size () > 0)
-//      {
-//	const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1];
-//	(*sink_p) (std::move (message));
-//      }
-//  }
 
   void
   prior_sender::loop_dispatch ()
@@ -143,8 +123,7 @@ namespace cublog
 	// messages unlocked here
 	for (auto iter = to_dispatch_messages.begin (); iter != to_dispatch_messages.end (); ++iter)
 	  {
-	    //send_serialized_message (std::move (*iter));
-	    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
+	    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
 	    // "copy" the message into every sink but the last..
 	    for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
 	      {
@@ -169,7 +148,7 @@ namespace cublog
   {
     assert (fun != nullptr);
 
-    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     m_sink_hooks.push_back (&fun);
   }
 
@@ -178,7 +157,7 @@ namespace cublog
   {
     assert (fun != nullptr);
 
-    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
 
     const auto find_it = std::find (m_sink_hooks.begin (), m_sink_hooks.end (), &fun);
     assert (find_it != m_sink_hooks.end ());
@@ -188,7 +167,7 @@ namespace cublog
   bool
   prior_sender::is_empty ()
   {
-    std::unique_lock<std::mutex> ulock (m_sink_hooks_mtx);
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     return m_sink_hooks.empty ();
   }
 }

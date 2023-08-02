@@ -50,7 +50,7 @@ namespace cublog
     public:
       // send prior node list to all sinks
       void send_list (const log_prior_node *head);
-      void push_serialized_message (std::string &&message);
+      void send_serialized_message (std::string &&message);
 
       // add a hook for a new sink
       void add_sink (const sink_hook_t &fun);
@@ -60,7 +60,6 @@ namespace cublog
       bool is_empty ();
 
     private:
-      //void send_serialized_message ();
       void loop_dispatch ();
 
     private:
@@ -68,7 +67,7 @@ namespace cublog
 
       // non-owning pointers to sink hooks; messages are passed to these
       std::vector<const sink_hook_t *> m_sink_hooks;
-      std::mutex m_sink_hooks_mtx;
+      std::mutex m_sink_hooks_mutex;
 
       message_container_t m_messages;
       std::mutex m_messages_mtx;

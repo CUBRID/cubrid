@@ -3439,9 +3439,11 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
   log_Gl.prior_info.prior_flush_list_header = list;
 
 #if defined(SERVER_MODE)
-  if (is_active_transaction_server () /*|| is_page_server () */ )
+  if (is_active_transaction_server ())
     {
-      // the log prior sender is not initialized on a passive transaction server
+      // - log prior sender is not initialized on a passive transaction server
+      // - and, page server dispatches the log prior received from active transaction
+      //    server directly (see page server's handler for incoming log prior messages)
       log_Gl.get_log_prior_sender ().send_list (list);
     }
 #endif /* SERVER_MODE */
