@@ -391,11 +391,6 @@ namespace cubperf
 
 		    if (error != NO_ERROR)
 		      {
-			for (uint32_t j = 0; j < i; j++)
-			  {
-			    free_and_init (info.comp_info[j].subcomp_info);
-			  }
-			free_and_init (info.comp_info);
 			break;
 		      }
 		  }
