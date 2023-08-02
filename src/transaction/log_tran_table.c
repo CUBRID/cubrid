@@ -1582,6 +1582,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->has_deadlock_priority = false;
 
   tdes->num_log_records_written = 0;
+  tdes->cur_mem_usage = 0;
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
@@ -1681,6 +1682,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->is_user_active = false;
 
   tdes->has_supplemental_log = false;
+  tdes->cur_mem_usage = 0;
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
