@@ -8339,6 +8339,8 @@ logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_
   return NO_ERROR;
 }
 
+using namespace std;
+
 /*
  * logpb_restore - Restore volume from its backup
  *
@@ -8412,6 +8414,11 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   INT64 backup_time;
   REL_COMPATIBILITY compat;
   int dummy;
+
+  bool is_prev_volheader_restored = false;
+  // *INDENT-OFF*
+  vector <tuple <int, string, string>> unlinked_vol_info;
+  // *INDENT-ON*
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
   start_level = try_level;
@@ -8744,6 +8751,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	      if (to_volid < LOG_DBFIRST_VOLID)
 		{
 		  remember_pages = false;
+		  is_prev_volheader_restored = false;
 		}
 	      else
 		{
@@ -8767,7 +8775,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 	      success =
 		fileio_restore_volume (thread_p, session, volume_name_p, verbose_to_volname, prev_volname, page_bitmap,
-				       remember_pages);
+				       remember_pages, is_prev_volheader_restored, unlinked_vol_info);
 
 	      if (success != NO_ERROR)
 		{
@@ -8852,6 +8860,44 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	}
 
       try_level = (FILEIO_BACKUP_LEVEL) (try_level - 1);
+    }
+
+  if (!unlinked_vol_info.empty ())
+    {
+      for (int i = 0; i < unlinked_vol_info.size (); i++)
+	{
+	  VOLID prev_volid, volid;
+	  int prev_vdes;
+	  const char *prev_vol_name, *vol_name;
+
+          // *INDENT-OFF*
+	  volid = get<0> (unlinked_vol_info[i]);
+	  vol_name = get<1> (unlinked_vol_info[i]).c_str ();
+	  prev_vol_name = get<2> (unlinked_vol_info[i]).c_str ();
+          // *INDENT-ON*
+
+#if !defined (NDEBUG)
+	  printf ("unlinked_vol_info[%d]:\n", i);
+	  printf ("\tvolid => %d\n", volid);
+	  printf ("\tvol_name => %s\n", vol_name);
+	  printf ("\tprev_vol_name => %s\n\n", prev_vol_name);
+#endif
+
+	  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
+	  prev_vdes = fileio_mount (thread_p, NULL, prev_vol_name, prev_volid, false, false);
+	  if (prev_vdes == NULL_VOLDES)
+	    {
+	      goto error;
+	    }
+
+	  if (disk_set_link (thread_p, prev_volid, volid, vol_name, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
+	    {
+	      fileio_dismount (thread_p, prev_vdes);
+	      goto error;
+	    }
+
+	  fileio_dismount (thread_p, prev_vdes);
+	}
     }
 
   /* make bkvinf file */
