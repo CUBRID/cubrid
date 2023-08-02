@@ -289,7 +289,7 @@ static int sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_f
 			   T_BROKER_VERSION client_version);
 static int sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag, char flag,
 			  T_SRV_HANDLE *);
-static int sch_attr_include_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag,
+static int sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag,
 					  char flag, T_SRV_HANDLE *);
 static int sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE *);
 static void sch_method_info (T_NET_BUF * net_buf, char *class_name, char flag, void **result);
