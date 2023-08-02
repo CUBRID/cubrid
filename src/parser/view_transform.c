@@ -10993,9 +10993,6 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 		  result->column_number = node->column_number;
 		  result->flag.is_hidden_column = node->flag.is_hidden_column;
 		  result->buffer_pos = node->buffer_pos;
-		  /* for dblink: print quoted name to use at remote */
-		  result->info.name.flag |=
-		    node->info.name.flag & (PT_NAME_INFO_QUOTED_NAME | PT_NAME_INFO_QUOTED_USER);
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */

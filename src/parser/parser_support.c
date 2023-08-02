@@ -10786,43 +10786,22 @@ pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
       return NULL;
     }
 
-  /* for dblink: should be identified as quoted user and name to use at remote */
+  parser->custom_print |= PT_PRINT_SUPPRESS_FOR_DBLINK;
+
+  derived_spec->info.dblink_table.remote_table_name = NULL;
   if (class_spec_info->entity_name->info.name.resolved)
     {
-      if (PT_NAME_INFO_IS_FLAGED (class_spec_info->entity_name, PT_NAME_INFO_QUOTED_USER))
-	{
-	  derived_spec->info.dblink_table.remote_table_name =
-	    pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, "\"");
-	}
-
       derived_spec->info.dblink_table.remote_table_name =
 	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name,
 			  class_spec_info->entity_name->info.name.resolved);
-      if (PT_NAME_INFO_IS_FLAGED (class_spec_info->entity_name, PT_NAME_INFO_QUOTED_USER))
-	{
-	  derived_spec->info.dblink_table.remote_table_name =
-	    pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, "\"");
-	}
-
       derived_spec->info.dblink_table.remote_table_name =
 	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, ".");
     }
-
-  if (PT_NAME_INFO_IS_FLAGED (class_spec_info->entity_name, PT_NAME_INFO_QUOTED_NAME))
-    {
-      derived_spec->info.dblink_table.remote_table_name =
-	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, "\"");
-    }
-
   derived_spec->info.dblink_table.remote_table_name =
     pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name,
 		      class_spec_info->entity_name->info.name.original);
 
-  if (PT_NAME_INFO_IS_FLAGED (class_spec_info->entity_name, PT_NAME_INFO_QUOTED_NAME))
-    {
-      derived_spec->info.dblink_table.remote_table_name =
-	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, "\"");
-    }
+  parser->custom_print &= ~PT_PRINT_SUPPRESS_FOR_DBLINK;
 
   assert (class_spec_info->remote_server_name->node_type == PT_NAME);
   derived_spec->info.dblink_table.is_name = true;

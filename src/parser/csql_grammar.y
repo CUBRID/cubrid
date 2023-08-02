@@ -5529,11 +5529,6 @@ object_name
 			if (qualifier && node)
 			  {
 			    node->info.name.resolved = pt_append_string (this_parser, NULL, qualifier->info.name.original);
-			    /* for dblink: should be identified as quoted user-name */
-			    if (PT_NAME_INFO_IS_FLAGED(qualifier, PT_NAME_INFO_QUOTED_NAME))
-			      {
-			        node->info.name.flag |= PT_NAME_INFO_QUOTED_USER;
-			      }
 			    parser_free_tree (this_parser, qualifier);
 			  }
 
@@ -22325,9 +22320,6 @@ identifier
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
-
-			    /* for dblink: identified as quoted name to use at remote */
-			    p->info.name.flag |= PT_NAME_INFO_QUOTED_NAME;
 			  }
 			$$ = p;
 		DBG_PRINT}}
@@ -22345,9 +22337,6 @@ identifier
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
-
-			    /* for dblink: identified as quoted name to use at remote */
-			    p->info.name.flag |= PT_NAME_INFO_QUOTED_NAME;
 			  }
 			$$ = p;
 		DBG_PRINT}}
@@ -22365,9 +22354,6 @@ identifier
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
-
-			    /* for dblink: identified as quoted name to use at remote */
-			    p->info.name.flag |= PT_NAME_INFO_QUOTED_NAME;
 			  }
 			$$ = p;
 		DBG_PRINT}}
