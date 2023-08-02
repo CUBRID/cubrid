@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <signal.h>
+#include <algorithm>
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -10171,6 +10172,9 @@ exit_on_error:
 }
 
 #if !defined(CS_MODE)
+
+using namespace std;
+
 /*
  * fileio_restore_volume () - Restore a volume/file of given database
  *   return:
@@ -10185,7 +10189,8 @@ exit_on_error:
 int
 fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, char *to_vol_label_p,
 		       char *verbose_to_vol_label_p, char *prev_vol_label_p, FILEIO_RESTORE_PAGE_BITMAP * page_bitmap,
-		       bool is_remember_pages)
+		       bool is_remember_pages, bool & is_prev_vol_header_restored, vector < tuple < int, string,
+		       string >> &unlinked_vol_info)
 {
   int next_page_id = 0;
   INT64 total_nbytes = 0;
@@ -10371,7 +10376,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 	      goto error;
 	    }
 
-	  if (volid != LOG_DBFIRST_VOLID)
+	  if (volid != LOG_DBFIRST_VOLID && is_prev_vol_header_restored)
 	    {
 	      VOLID prev_volid;
 	      int prev_vdes;
@@ -10393,6 +10398,50 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 
 	      fileio_dismount (thread_p, prev_vdes);
 	    }
+
+	  // *INDENT-OFF*
+	  auto find_unlinked_vol = [&volid] (const tuple <int, string, string> &unlinked_vol)
+	  {
+	    int unlinked_volid = get<0> (unlinked_vol);
+
+	    if (unlinked_volid == volid)
+	      {
+		return true;
+	      }
+	    else
+	      {
+		return false;
+	      }
+	  };
+	  // *INDENT-ON*
+
+	  if (incremental_includes_volume_header == true)
+	    {
+	      if (volid != LOG_DBFIRST_VOLID && is_prev_vol_header_restored == false)
+		{
+		  auto it_found = find_if (unlinked_vol_info.cbegin (), unlinked_vol_info.cend (), find_unlinked_vol);
+
+		  if (it_found == unlinked_vol_info.cend ())
+		    {
+		      unlinked_vol_info.push_back (make_tuple
+						   (volid, string (to_vol_label_p), string (prev_vol_label_p)));
+		    }
+		}
+	    }
+	  else			/* full level */
+	    {
+	      auto it_found = find_if (unlinked_vol_info.cbegin (), unlinked_vol_info.cend (), find_unlinked_vol);
+
+	      if (it_found != unlinked_vol_info.cend ())
+		{
+		  // The volume headers of both previous and current volumes are in the full level backup volume.
+                  // Therefore, the link between the two volumes is naturally established during the restoration process.
+                  // So, there is no need to explicitly set it.
+		  unlinked_vol_info.erase (it_found);
+		}
+	    }
+
+	  is_prev_vol_header_restored = true;
 	}
 
       /* save current volname */
