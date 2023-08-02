@@ -8534,7 +8534,7 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 }
 
 static int
-sch_attr_include_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag,
+sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag,
 			       char class_attr_flag, T_SRV_HANDLE * srv_handle)
 {
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
