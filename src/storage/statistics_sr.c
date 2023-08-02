@@ -562,6 +562,9 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	    + OR_INT_SIZE	/* pages of BTREE_STATS */
 	    + OR_INT_SIZE	/* height of BTREE_STATS */
 	    + OR_INT_SIZE	/* keys of BTREE_STATS */
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	    + OR_INT_SIZE	/* dedup_idx of BTREE_STATS */
+#endif
 	    + OR_INT_SIZE	/* does the BTREE_STATS correspond to a function index */
 	   ) * tot_n_btstats);	/* total number of indexes */
 
@@ -733,6 +736,11 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 
 	  OR_PUT_INT (buf_p, btree_stats_p->keys);
 	  buf_p += OR_INT_SIZE;
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  OR_PUT_INT (buf_p, btree_stats_p->dedup_idx);
+	  buf_p += OR_INT_SIZE;
+#endif
 
 	  assert_release (btree_stats_p->leafs >= 1);
 	  assert_release (btree_stats_p->pages >= 1);
@@ -1181,7 +1189,13 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 
 	  prefix = "";
 	  assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  assert (bt_stats_p->dedup_idx != 0);
+	  int pkeys_size = (bt_stats_p->dedup_idx >= 0) ? bt_stats_p->dedup_idx : bt_stats_p->pkeys_size;
+	  for (k = 0; k < pkeys_size; k++)
+#else
 	  for (k = 0; k < bt_statsp->pkeys_size; k++)
+#endif
 	    {
 	      fprintf (fpp, "%s%d", prefix, bt_statsp->pkeys[k]);
 	      prefix = ",";
