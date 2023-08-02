@@ -3083,7 +3083,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
   if (btree_glean_root_header_info
-      (thread_p, root_header, &BTS->btid_int, BTS->btid_int.key_type == NULL ? true : false) != NO_ERROR)
+      (thread_p, root_header, &BTS->btid_int, (BTS->btid_int.key_type == NULL)) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, Root);
       goto exit_on_error;
@@ -7926,17 +7926,13 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	{
 	  SCAN_AGL *agl;
 
-	  fprintf (fp, ", agl: [");
+	  fprintf (fp, ", agl: ");
 	  for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
 	    {
 	      fprintf (fp, "%s", agl->agg_index_name);
 	      if (agl->next)
 		{
 		  fprintf (fp, ", ");
-		}
-	      else
-		{
-		  fprintf (fp, "]");
 		}
 	    }
 	}

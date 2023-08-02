@@ -444,7 +444,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  i = 0;
 	  for (a = class_->ordered_attributes; a != NULL; a = a->order_link)
 	    {
-	      if (include_inherited || (!include_inherited && a->class_mop == op))
+	      if (include_inherited || a->class_mop == op)
 		{
 		  sb.clear ();
 		  printer.describe_attribute (*op, *a, (a->class_mop != op), prt_type, force_print_att_coll);
@@ -495,7 +495,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  i = 0;
 	  for (a = class_->class_attributes; a != NULL; a = (SM_ATTRIBUTE *) a->header.next)
 	    {
-	      if (include_inherited || (!include_inherited && a->class_mop == op))
+	      if (include_inherited || a->class_mop == op)
 		{
 		  sb.clear ();
 		  printer.describe_attribute (*op, *a, (a->class_mop != op), prt_type, force_print_att_coll);
@@ -546,7 +546,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  i = 0;
 	  for (m = class_->methods; m != NULL; m = (SM_METHOD *) m->header.next)
 	    {
-	      if (include_inherited || (!include_inherited && m->class_mop == op))
+	      if (include_inherited || m->class_mop == op)
 		{
 		  sb.clear ();
 		  printer.describe_method (*op, *m, prt_type);
@@ -593,7 +593,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  i = 0;
 	  for (m = class_->class_methods; m != NULL; m = (SM_METHOD *) m->header.next)
 	    {
-	      if (include_inherited || (!include_inherited && m->class_mop == op))
+	      if (include_inherited || m->class_mop == op)
 		{
 		  sb.clear ();
 		  printer.describe_method (*op, *m, prt_type);
@@ -666,7 +666,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	  i = 0;
 	  for (SM_METHOD_FILE *f = class_->method_files; f != NULL; f = f->next)
 	    {
-	      if (include_inherited || (!include_inherited && f->class_mop == op))
+	      if (include_inherited || f->class_mop == op)
 		{
 		  sb.clear ();
 		  printer.describe_method_file (*op, *f);
@@ -725,8 +725,14 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	       * itself and belong to the parent table. But show create table will only print the constraints which
 	       * belong to the table itself.
 	       */
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      assert ( (c->attributes[0] && IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? (c->attributes[1] != NULL) : true);
 	      if (include_inherited
-		  || (!include_inherited && c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
+		  || (c->attributes[0] && c->attributes[ ((IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? 1 : 0)]->class_mop == op))
+#else
+	      if (include_inherited
+		  || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
+#endif
 		{
 		  count++;
 		}
@@ -749,8 +755,14 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		{
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+		  assert ( (c->attributes[0] && IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? (c->attributes[1] != NULL) : true);
 		  if (include_inherited
-		      || (!include_inherited && c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
+		      || (c->attributes[0] && c->attributes[ ((IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? 1 : 0)]->class_mop == op))
+#else
+		  if (include_inherited
+		      || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
+#endif
 		    {
 		      sb.clear ();
 		      printer.describe_constraint (*class_, *c, prt_type);

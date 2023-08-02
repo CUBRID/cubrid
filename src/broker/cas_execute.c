@@ -56,6 +56,7 @@
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
 
+#include "deduplicate_key.h"
 #include "tz_support.h"
 #include "release_string.h"
 #include "perf_monitor.h"
@@ -1075,38 +1076,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
 
-  if (cgw_get_dbms_type () == SUPPORTED_DBMS_ORACLE)
-    {
-      char *is_cublink = NULL;
-      is_cublink = strstr (sql_stmt, REWRITE_DELIMITER_CUBLINK);
-      if (is_cublink != NULL)
-	{
-	  char *rewrite_sql = NULL;
-	  err_code = cgw_rewrite_query (sql_stmt, &rewrite_sql);
-	  if (err_code == ER_FAILED)
-	    {
-	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	      goto prepare_error;
-	    }
-	  else if (err_code == ERR_REWRITE_FAILED)
-	    {
-	      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
-	    }
-	  else
-	    {
-	      srv_handle->sql_stmt = rewrite_sql;
-	    }
-	}
-      else
-	{
-	  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
-	}
-    }
-  else
-    {
-      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
-    }
-
+  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
   if (srv_handle->sql_stmt == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -1136,11 +1106,6 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   num_markers = get_num_markers (sql_stmt);
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
-
-  if (get_stmt_type (sql_stmt) != CUBRID_STMT_SELECT)
-    {
-      goto prepare_error;
-    }
 
   err_code = cgw_sql_prepare ((SQLCHAR *) sql_stmt);
   if (err_code < 0)
@@ -9870,6 +9835,9 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pktable_name, *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  int fk_i;
+#endif
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -9966,8 +9934,14 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
+      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
+#else
       assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
       if (pk_attr[i] != NULL || fk_attr[i] != NULL)
+#endif
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -10004,6 +9978,9 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  int fk_i;
+#endif
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -10120,8 +10097,14 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
+      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
+#else
       assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
       if (pk_attr[i] != NULL || fk_attr[i] != NULL)
+#endif
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
