@@ -14471,6 +14471,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
   LOG_LSA process_lsa = LSA_INITIALIZER;
   LOG_LSA forw_lsa = LSA_INITIALIZER;
+  LOG_LSA cur_log_lsa = LSA_INITIALIZER;
 
   LOG_RECORD_HEADER *log_rec_header;
   LOG_REC_DONETIME *donetime;
@@ -14567,6 +14568,8 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
   while (!LSA_ISNULL (&process_lsa))
     {
+      LSA_COPY (&cur_log_lsa, &process_lsa);	// save the current log record lsa
+
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
 
@@ -14577,10 +14580,9 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
 	  donetime = (LOG_REC_DONETIME *) (log_pgptr->area + process_lsa.offset);
 
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
-	  LSA_COPY (ret_lsa, &process_lsa);
-
+	  LSA_COPY (ret_lsa, &cur_log_lsa);
 	  *time = donetime->at_time;
+
 	  return NO_ERROR;
 	}
 
@@ -14589,9 +14591,9 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
 	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_pgptr->area + process_lsa.offset);
 
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
-	  LSA_COPY (ret_lsa, &process_lsa);
-	  *time = dummy->at_time;
+	  LSA_COPY (ret_lsa, &cur_log_lsa);
+	  *time = donetime->at_time;
+
 	  return NO_ERROR;
 	}
 
@@ -14610,6 +14612,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	      return error_code;
 	    }
 	}
+
       LSA_COPY (&process_lsa, &forw_lsa);
     }
 
@@ -14682,8 +14685,6 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 
 	      return NO_ERROR;
 	    }
-
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	}
 
       if (log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
@@ -14699,8 +14700,6 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 
 	      return NO_ERROR;
 	    }
-
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
 	}
 
       if (process_lsa.pageid != forw_lsa.pageid)
