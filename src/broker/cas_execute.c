@@ -290,7 +290,7 @@ static int sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_f
 static int sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag, char flag,
 			  T_SRV_HANDLE *);
 static int sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag,
-					  char flag, T_SRV_HANDLE *);
+				       char flag, T_SRV_HANDLE *);
 static int sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE *);
 static void sch_method_info (T_NET_BUF * net_buf, char *class_name, char flag, void **result);
 static void sch_methfile_info (T_NET_BUF * net_buf, char *class_name, void **result);
@@ -426,7 +426,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_IMPORTED_KEYS */
   fetch_foreign_keys,		/* SCH_EXPORTED_KEYS */
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
-  fetch_attribute,		/* SCH_ATTR_INCLUDE_SYNONYM */
+  fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
 };
 #endif /* CAS_FOR_CGW */
 
@@ -8535,7 +8535,7 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
 
 static int
 sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag,
-			       char class_attr_flag, T_SRV_HANDLE * srv_handle)
+			    char class_attr_flag, T_SRV_HANDLE * srv_handle)
 {
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
