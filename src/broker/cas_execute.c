@@ -3981,7 +3981,7 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
     case CCI_SCH_CLASS_ATTRIBUTE:
       err_code = sch_attr_info (net_buf, arg1, arg2, flag, 1, srv_handle);
       break;
-    case CCI_SCH_ATTR_INCLUDE_SYNONYM:
+    case CCI_SCH_ATTR_WITH_SYNONYM:
       err_code = sch_attr_include_synonym_info (net_buf, arg1, arg2, flag, 0, srv_handle);
       break;
     case CCI_SCH_METHOD:
