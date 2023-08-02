@@ -498,13 +498,12 @@ namespace cubperf
 
   int memory_monitor::aggregater::get_module_info (MMON_MODULE_INFO *&info, int module_index) const
   {
-    int idx = 0;
     int error = NO_ERROR;
 
     if (module_index == -1)
       {
 	// aggregate all detail memory information of modules
-	for (idx; idx < MMON_MODULE_LAST; idx++)
+	for (int idx = 0; idx < MMON_MODULE_LAST; idx++)
 	  {
 	    error = m_mmon->m_module[idx]->aggregate_stats (info[idx], false);
 	    if (error != NO_ERROR)
@@ -515,7 +514,7 @@ namespace cubperf
       }
     else
       {
-	error =  m_mmon->m_module[module_index]->aggregate_stats (info[idx], false);
+	error =  m_mmon->m_module[module_index]->aggregate_stats (info[0], false);
       }
 
     return error;
