@@ -410,32 +410,24 @@ void mmon_finalize ()
   delete cubperf::mmon_Gl;
 }
 
-int mmon_add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
+void mmon_add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
 {
-  int error = NO_ERROR;
-
-  return error;
+  return;
 }
 
-int mmon_sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
+void mmon_sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size)
 {
-  int error = NO_ERROR;
-
-  return error;
+  return;
 }
 
-int mmon_move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size)
+void mmon_move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size)
 {
-  int error = NO_ERROR;
-
-  return error;
+  return;
 }
 
-int mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size)
+void mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size)
 {
-  int error = NO_ERROR;
-
-  return error;
+  return;
 }
 
 void mmon_aggregate_server_info (MMON_SERVER_INFO &info)
@@ -443,14 +435,14 @@ void mmon_aggregate_server_info (MMON_SERVER_INFO &info)
   return;
 }
 
-int mmon_aggregate_module_info (MMON_MODULE_INFO &*info, int module_index)
+int mmon_aggregate_module_info (MMON_MODULE_INFO *&info, int module_index)
 {
   int error = NO_ERROR;
 
   return error;
 }
 
-int mmon_aggregate_module_info_summary (MMON_MODULE_INFO &*info, bool sorted_result)
+int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result)
 {
   return NO_ERROR;
 }

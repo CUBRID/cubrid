@@ -7288,7 +7288,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   int error = NO_ERROR;
   MMON_SERVER_INFO server_info;
 
-  mmon_aggregate_module_info_summary (server_info);
+  mmon_aggregate_server_info (server_info);
 
   size += or_packed_string_length (server_info.name, NULL);
   // Size of total_mem_usage
@@ -7303,7 +7303,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     }
   else
     {
-      ptr = or_pack_string (ptr, server_info.name);
+      ptr = or_pack_string (buffer, server_info.name);
       ptr = or_pack_int64 (ptr, server_info.total_mem_usage);
     }
 
@@ -7312,7 +7312,6 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      free_and_init (buffer);
     }
   else
     {
@@ -7320,8 +7319,8 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
-      free (buffer);
     }
+  free_and_init (buffer);
 }
 
 /*
@@ -7388,13 +7387,13 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	  // and size of num_comp (OR_INT_SIZE)
 	  size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
-	  for (int i = 0; i < module_info[idx].num_comp; i++)
+	  for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
 	    {
 	      comp_info = &(module_info[idx].comp_info[i]);
 	      size += or_packed_string_length (comp_info->name, NULL);
 	      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
-	      for (int j = 0; j < comp_info->num_subcomp; j++)
+	      for (uint32_t j = 0; j < comp_info->num_subcomp; j++)
 		{
 		  subcomp_info = &(comp_info->subcomp_info[j]);
 		  size += or_packed_string_length (subcomp_info->name, NULL);
@@ -7427,7 +7426,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 	      ptr = or_pack_int (ptr, module_info[idx].num_comp);
 
-	      for (int i = 0; i < module_info[idx].num_comp; i++)
+	      for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
 		{
 		  comp_info = &(module_info[idx].comp_info[i]);
 		  ptr = or_pack_string (ptr, comp_info->name);
@@ -7438,7 +7437,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 		  ptr = or_pack_int (ptr, comp_info->num_subcomp);
 
-		  for (int j = 0; j < comp_info->num_subcomp; j++)
+		  for (uint32_t j = 0; j < comp_info->num_subcomp; j++)
 		    {
 		      subcomp_info = &(comp_info->subcomp_info[j]);
 		      ptr = or_pack_string (ptr, subcomp_info->name);
@@ -7451,7 +7450,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       /* 4) deallocate memory */
       for (int idx = 0; idx < module_count; idx++)
 	{
-	  for (int i = 0; i < module_info[idx].num_comp; i++)
+	  for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
 	    {
 	      free (module_info[idx].comp_info[i].subcomp_info);
 	    }
@@ -7466,7 +7465,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      free_and_init (buffer);
     }
   else
     {
@@ -7474,8 +7472,8 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
-      free (buffer);
     }
+  free_and_init (buffer);
 }
 
 /*
@@ -7562,7 +7560,6 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      free_and_init (buffer);
     }
   else
     {
@@ -7570,8 +7567,8 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
-      free (buffer);
     }
+  free_and_init (buffer);
 }
 
 /*
@@ -7612,7 +7609,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       // Size of num_tran
       size += OR_INT_SIZE;
 
-      for (int i = 0; i < info.num_tran; i++)
+      for (uint32_t i = 0; i < info.num_tran; i++)
 	{
 	  // Size of transaction id (OR_INT_SIZE)
 	  // and current memory usage (OR_INT64_SIZE)
@@ -7634,7 +7631,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	   *      server info -> transaction info */
 	  ptr = or_pack_int (buffer, info.num_tran);
 
-	  for (int i = 0; i < info.num_tran; i++)
+	  for (uint32_t i = 0; i < info.num_tran; i++)
 	    {
 	      ptr = or_pack_int (ptr, info.tran_stat[i].tranid);
 	      ptr = or_pack_int64 (ptr, info.tran_stat[i].cur_stat);
@@ -7650,7 +7647,6 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      free_and_init (buffer);
     }
   else
     {
@@ -7658,8 +7654,8 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       ptr = or_pack_int (ptr, error);
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
-      free (buffer);
     }
+  free_and_init (buffer);
 }
 
 /*
