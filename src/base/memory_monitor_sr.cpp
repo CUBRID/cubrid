@@ -565,7 +565,7 @@ void mmon_aggregate_server_info (MMON_SERVER_INFO &info)
 int mmon_aggregate_module_info (MMON_MODULE_INFO *&info, int module_index)
 {
   int error = NO_ERROR;
-  
+
   return error;
 }
 
