@@ -7367,81 +7367,81 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   else
     {
       error = mmon_aggregate_module_info (module_info, module_index);
-    }
 
-  if (error == NO_ERROR)
-    {
-      /* before send information 
-       * 1) check size
-       * 2) allocate buffer
-       * 3) packing information 
-       * 4) deallocate MMON_MODULE_INFO */
-
-      /* 1) check size 
-       *    - calculate buffer size of packed values
-       *    - module info -> component info w/ subcomponent info */
-      for (int idx = 0; idx < module_count; idx++)
+      if (error == NO_ERROR)
 	{
-	  size += or_packed_string_length (module_info[idx].name, NULL);
-	  // Size of stat information (OR_INT64_SIZE * 3 + OR_INT_SIZE)
-	  // and size of num_comp (OR_INT_SIZE)
-	  size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
+	  /* before send information 
+	   * 1) check size
+	   * 2) allocate buffer
+	   * 3) packing information 
+	   * 4) deallocate MMON_MODULE_INFO */
 
-	  for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
-	    {
-	      comp_info = &(module_info[idx].comp_info[i]);
-	      size += or_packed_string_length (comp_info->name, NULL);
-	      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
-
-	      for (uint32_t j = 0; j < comp_info->num_subcomp; j++)
-		{
-		  subcomp_info = &(comp_info->subcomp_info[j]);
-		  size += or_packed_string_length (subcomp_info->name, NULL);
-		  size += OR_INT64_SIZE;
-		}
-	    }
-	}
-
-      /* 2) allocate buffer */
-      buffer = (char *) malloc (size);
-      ptr = buffer;
-
-      if (buffer == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      else
-	{
-	  /* 3) packing information
-	   *    - packing information with sequence of
-	   *      module info -> component info w/ subcomponent info */
+	  /* 1) check size 
+	   *    - calculate buffer size of packed values
+	   *    - module info -> component info w/ subcomponent info */
 	  for (int idx = 0; idx < module_count; idx++)
 	    {
-	      ptr = or_pack_string (ptr, module_info[idx].name);
-	      ptr = or_pack_int64 (ptr, module_info[idx].stat.init_stat);
-	      ptr = or_pack_int64 (ptr, module_info[idx].stat.cur_stat);
-	      ptr = or_pack_int64 (ptr, module_info[idx].stat.peak_stat);
-	      ptr = or_pack_int (ptr, module_info[idx].stat.expand_count);
-
-	      ptr = or_pack_int (ptr, module_info[idx].num_comp);
+	      size += or_packed_string_length (module_info[idx].name, NULL);
+	      // Size of stat information (OR_INT64_SIZE * 3 + OR_INT_SIZE)
+	      // and size of num_comp (OR_INT_SIZE)
+	      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
 	      for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
 		{
 		  comp_info = &(module_info[idx].comp_info[i]);
-		  ptr = or_pack_string (ptr, comp_info->name);
-		  ptr = or_pack_int64 (ptr, comp_info->stat.init_stat);
-		  ptr = or_pack_int64 (ptr, comp_info->stat.cur_stat);
-		  ptr = or_pack_int64 (ptr, comp_info->stat.peak_stat);
-		  ptr = or_pack_int (ptr, comp_info->stat.expand_count);
-
-		  ptr = or_pack_int (ptr, comp_info->num_subcomp);
+		  size += or_packed_string_length (comp_info->name, NULL);
+		  size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
 		  for (uint32_t j = 0; j < comp_info->num_subcomp; j++)
 		    {
 		      subcomp_info = &(comp_info->subcomp_info[j]);
-		      ptr = or_pack_string (ptr, subcomp_info->name);
-		      ptr = or_pack_int64 (ptr, subcomp_info->cur_stat);
+		      size += or_packed_string_length (subcomp_info->name, NULL);
+		      size += OR_INT64_SIZE;
+		    }
+		}
+	    }
+
+	  /* 2) allocate buffer */
+	  buffer = (char *) malloc (size);
+	  ptr = buffer;
+
+	  if (buffer == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  else
+	    {
+	      /* 3) packing information
+	       *    - packing information with sequence of
+	       *      module info -> component info w/ subcomponent info */
+	      for (int idx = 0; idx < module_count; idx++)
+		{
+		  ptr = or_pack_string (ptr, module_info[idx].name);
+		  ptr = or_pack_int64 (ptr, module_info[idx].stat.init_stat);
+		  ptr = or_pack_int64 (ptr, module_info[idx].stat.cur_stat);
+		  ptr = or_pack_int64 (ptr, module_info[idx].stat.peak_stat);
+		  ptr = or_pack_int (ptr, module_info[idx].stat.expand_count);
+
+		  ptr = or_pack_int (ptr, module_info[idx].num_comp);
+
+		  for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
+		    {
+		      comp_info = &(module_info[idx].comp_info[i]);
+		      ptr = or_pack_string (ptr, comp_info->name);
+		      ptr = or_pack_int64 (ptr, comp_info->stat.init_stat);
+		      ptr = or_pack_int64 (ptr, comp_info->stat.cur_stat);
+		      ptr = or_pack_int64 (ptr, comp_info->stat.peak_stat);
+		      ptr = or_pack_int (ptr, comp_info->stat.expand_count);
+
+		      ptr = or_pack_int (ptr, comp_info->num_subcomp);
+
+		      for (uint32_t j = 0; j < comp_info->num_subcomp; j++)
+			{
+			  subcomp_info = &(comp_info->subcomp_info[j]);
+			  ptr = or_pack_string (ptr, subcomp_info->name);
+			  ptr = or_pack_int64 (ptr, subcomp_info->cur_stat);
+			}
 		    }
 		}
 	    }
@@ -7450,15 +7450,18 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       /* 4) deallocate memory */
       for (int idx = 0; idx < module_count; idx++)
 	{
-	  for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
+	  if (module_info[idx].comp_info)
 	    {
-	      free (module_info[idx].comp_info[i].subcomp_info);
+	      for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
+		{
+		  free_and_init (module_info[idx].comp_info[i].subcomp_info);
+		}
+	      free (module_info[idx].comp_info);
 	    }
-	  free (module_info[idx].comp_info);
 	}
-    }
 
-  free_and_init (module_info);
+      free (module_info);
+    }
 
   if (error != NO_ERROR)
     {
@@ -7513,47 +7516,47 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   else
     {
       error = mmon_aggregate_module_info_summary (module_info, sorted_result);
-    }
 
-  if (error == NO_ERROR)
-    {
-      /* before send information 
-       * 1) check size
-       * 2) allocate buffer
-       * 3) packing information 
-       * 4) deallocate MMON_MODULE_INFO */
-
-      /* 1) check size 
-       *    - calculate buffer size of packed values of module info */
-      for (int idx = 0; idx < module_count; idx++)
+      if (error == NO_ERROR)
 	{
-	  size += or_packed_string_length (module_info[idx].name, NULL);
-	  size += OR_INT64_SIZE;
-	}
+	  /* before send information 
+	   * 1) check size
+	   * 2) allocate buffer
+	   * 3) packing information 
+	   * 4) deallocate MMON_MODULE_INFO */
 
-      /* 2) allocate buffer */
-      buffer = (char *) malloc (size);
-      ptr = buffer;
-
-      if (buffer == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      else
-	{
-	  /* 3) packing information
-	   *    - packing information with sequence of module info */
+	  /* 1) check size 
+	   *    - calculate buffer size of packed values of module info */
 	  for (int idx = 0; idx < module_count; idx++)
 	    {
-	      ptr = or_pack_string (ptr, module_info[idx].name);
-	      ptr = or_pack_int64 (ptr, module_info[idx].stat.cur_stat);
+	      size += or_packed_string_length (module_info[idx].name, NULL);
+	      size += OR_INT64_SIZE;
+	    }
+
+	  /* 2) allocate buffer */
+	  buffer = (char *) malloc (size);
+	  ptr = buffer;
+
+	  if (buffer == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  else
+	    {
+	      /* 3) packing information
+	       *    - packing information with sequence of module info */
+	      for (int idx = 0; idx < module_count; idx++)
+		{
+		  ptr = or_pack_string (ptr, module_info[idx].name);
+		  ptr = or_pack_int64 (ptr, module_info[idx].stat.cur_stat);
+		}
 	    }
 	}
-    }
 
-  /* 4) deallocate memory */
-  free_and_init (module_info);
+      /* 4) deallocate memory */
+      free (module_info);
+    }
 
   if (error != NO_ERROR)
     {
