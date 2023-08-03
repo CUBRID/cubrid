@@ -8862,42 +8862,38 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       try_level = (FILEIO_BACKUP_LEVEL) (try_level - 1);
     }
 
-  if (!unlinked_vol_info.empty ())
+  // Incremental backup volumes often do not include volume header pages.
+  // Accordingly, it is necessary to set unconnected volume links after all volume header pages are restored.
+  for (int i = 0; i < unlinked_vol_info.size (); i++)
     {
-      for (int i = 0; i < unlinked_vol_info.size (); i++)
-	{
-	  VOLID prev_volid, volid;
-	  int prev_vdes;
-	  const char *prev_vol_name, *vol_name;
+      VOLID prev_volid, volid;
+      int prev_vdes;
+      const char *prev_vol_name, *vol_name;
 
-          // *INDENT-OFF*
-	  volid = get<0> (unlinked_vol_info[i]);
-	  vol_name = get<1> (unlinked_vol_info[i]).c_str ();
-	  prev_vol_name = get<2> (unlinked_vol_info[i]).c_str ();
-          // *INDENT-ON*
+      // *INDENT-OFF*
+      volid = get<0> (unlinked_vol_info[i]);
+      vol_name = get<1> (unlinked_vol_info[i]).c_str ();
+      prev_vol_name = get<2> (unlinked_vol_info[i]).c_str ();
+      // *INDENT-ON*
 
-#if !defined (NDEBUG)
-	  printf ("unlinked_vol_info[%d]:\n", i);
-	  printf ("\tvolid => %d\n", volid);
-	  printf ("\tvol_name => %s\n", vol_name);
-	  printf ("\tprev_vol_name => %s\n\n", prev_vol_name);
+#if !defined(NDEBUG)
+      printf ("[FIXED UNLINK] volid=%d, vol=%s, prev_vol=%s\n", volid, vol_name, prev_vol_name);
 #endif
 
-	  prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
-	  prev_vdes = fileio_mount (thread_p, NULL, prev_vol_name, prev_volid, false, false);
-	  if (prev_vdes == NULL_VOLDES)
-	    {
-	      goto error;
-	    }
-
-	  if (disk_set_link (thread_p, prev_volid, volid, vol_name, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
-	    {
-	      fileio_dismount (thread_p, prev_vdes);
-	      goto error;
-	    }
-
-	  fileio_dismount (thread_p, prev_vdes);
+      prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
+      prev_vdes = fileio_mount (thread_p, NULL, prev_vol_name, prev_volid, false, false);
+      if (prev_vdes == NULL_VOLDES)
+	{
+	  goto error;
 	}
+
+      if (disk_set_link (thread_p, prev_volid, volid, vol_name, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
+	{
+	  fileio_dismount (thread_p, prev_vdes);
+	  goto error;
+	}
+
+      fileio_dismount (thread_p, prev_vdes);
     }
 
   /* make bkvinf file */
