@@ -77,12 +77,6 @@ active_tran_server::compute_consensus_lsa ()
 	}
     }
 
-  if (cur_node_cnt < quorum)
-    {
-      quorum_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
-				total_node_cnt, cur_node_cnt, quorum);
-      return NULL_LSA;
-    }
   /*
    * Gather all PS'es saved_lsa and sort it in ascending order.
    * The <cur_node_count - quorum>'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
@@ -93,17 +87,34 @@ active_tran_server::compute_consensus_lsa ()
    */
   std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
 
-  const auto consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
+  LOG_LSA consensus_lsa;
+
+  if (cur_node_cnt < quorum)
+    {
+      consensus_lsa = NULL_LSA; // the quorum is not met.
+    }
+  else
+    {
+      consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
+    }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
     {
       constexpr int BUF_SIZE = 1024;
       char msg_buf[BUF_SIZE];
       int n = 0;
+
+      n = snprintf (msg_buf, BUF_SIZE, "compute_consensus_lsa - ");
+
+      if (cur_node_cnt < quorum)
+	{
+	  n += snprintf (msg_buf + n, BUF_SIZE - n, "Quorum unsatisfied: ");
+	}
+
       // cppcheck-suppress [wrongPrintfScanfArgNum]
-      n = snprintf (msg_buf, BUF_SIZE,
-		    "compute_consensus_lsa - total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
-		    total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
+      n += snprintf (msg_buf + n, BUF_SIZE - n,
+		     "total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
+		     total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
       n += snprintf (msg_buf + n, BUF_SIZE - n, "Collected saved lsa list = [ ");
       for (const auto &lsa : collected_saved_lsa)
 	{
