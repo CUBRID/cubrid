@@ -284,6 +284,7 @@ namespace cubperf
     info.num_subcomp = m_subcomponent.size ();
     if (info.num_subcomp != 0)
       {
+	// deallocation of this allocation will occur at smmon_get_module_info()
 	info.subcomp_info = (MMON_SUBCOMP_INFO *)malloc (sizeof (MMON_SUBCOMP_INFO) * info.num_subcomp);
 
 	if (info.subcomp_info == NULL)
@@ -376,6 +377,7 @@ namespace cubperf
 	info.num_comp = m_component.size ();
 	if (info.num_comp != 0)
 	  {
+	    // deallocation of this allocation will occur at smmon_get_module_info()
 	    info.comp_info = (MMON_COMP_INFO *)malloc (sizeof (MMON_COMP_INFO) * info.num_comp);
 
 	    if (info.comp_info == NULL)
@@ -566,6 +568,7 @@ namespace cubperf
 	std::sort (tran_info.begin (), tran_info.end (), comp);
       }
 
+    // deallocation of this allocation will occur at smmon_get_tran_info()
     info.tran_stat = (MMON_TRAN_STAT *)malloc (sizeof (MMON_TRAN_STAT) * info.num_tran);
     if (info.tran_stat == NULL)
       {
