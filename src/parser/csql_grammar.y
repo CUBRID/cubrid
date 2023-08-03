@@ -3157,12 +3157,9 @@ create_stmt
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 
-			    if (node->info.synonym.target_name)
+			    if (PT_NAME_INFO_IS_FLAGED(node->info.synonym.target_name, PT_NAME_INFO_SERVER_SPECIFIED))
 			      {
-			        if (strchr (node->info.synonym.target_name->info.name.original, '@'))
-			          {
-				    node->info.synonym.is_dblinked = 1;
-			          }
+				node->info.synonym.is_dblinked = 1;
 			      }
 			  }
 
@@ -3188,6 +3185,9 @@ class_name_for_synonym
 		    }
 		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, "@");
 		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, sname->info.name.original);
+
+		  PT_NAME_INFO_SET_FLAG (cname, PT_NAME_INFO_SERVER_SPECIFIED);
+
                   parser_free_tree(this_parser, sname);
                   
 		  $$ = cname;
@@ -4040,12 +4040,9 @@ alter_stmt
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 
-			    if (node->info.synonym.target_name)
+			    if (PT_NAME_INFO_IS_FLAGED(node->info.synonym.target_name, PT_NAME_INFO_SERVER_SPECIFIED))
 			      {
-			        if (strchr (node->info.synonym.target_name->info.name.original, '@'))
-                                  {
-                                    node->info.synonym.is_dblinked = 1;
-                                  }
+				node->info.synonym.is_dblinked = 1;
 			      }
 			  }
 

@@ -10457,11 +10457,20 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	    if (target_owner_name == NULL
 		&& sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
 	      {
-		target_owner_name = synonym_owner_name;
+		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, "dba");
 	      }
 	    else
 	      {
-		target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+		if (PT_SYNONYM_DBLINKED (node))
+		  {
+		    target_owner_name = synonym_owner_name;
+		  }
+		else
+		  {
+		    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+		  }
+		assert (target_owner_name != NULL);
+		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
 	      }
 	  }
 
@@ -10498,6 +10507,8 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	      {
 		target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
 	      }
+	    assert (target_owner_name != NULL);
+	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
 	  }
 
 	return node;
