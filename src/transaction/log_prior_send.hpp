@@ -56,6 +56,8 @@ namespace cublog
 
     private:
       bool is_empty ();
+
+    private:
       // non-owning pointers
       std::vector<const sink_hook_t *> m_sink_hooks;              // hooks for sinks
       std::mutex m_sink_hooks_mutex;                              // protect access on sink hooks
