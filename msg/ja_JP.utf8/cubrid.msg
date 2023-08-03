@@ -1437,15 +1437,10 @@ $ LOADDB
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" は、ファイル "%4$s" の %3$d 行目にある無効な形式です。
-1356 ホスト名 "%1$s" が長すぎます。ファイル "%3$s" の %2$d 行で 256 以下にする必要があります。
-1357 ホスト名 "%1$s" は既に存在します。ファイル "%3$s" の %2$d 行でホスト名を他の IP アドレスと重複させることはできません。
-1358 IP アドレスとホスト名の両方を、ファイル "%2$s" の %1$d 行に完全に記述する必要があります。
-1359 cubrid_hosts.conf で「%1$s」を検索できません。
 
-1360 ファイル "%1$s" が見つかりませんでした。
+1355 ファイル "%1$s" が見つかりませんでした。
 
-1361 ラストエラー
+1356 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
@@ -1611,6 +1606,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 「ALTER SYNONYM」にオプションが指定されていません。
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。

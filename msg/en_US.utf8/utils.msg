@@ -560,6 +560,7 @@ valid options:\n\
   -C, --CS-mode               client-server mode execution\n\
       --datafile-per-class    create a object file for each class; default: disabled\n\
       --split-schema-files    Split schema information by object and generate each file; Default: generate one schema file with all objects\n\
+      --skip-index-detail     Do not print the specified WITH clause options when creating the index; default: disabled\n\
       --as-dba                If the login user is a member of the DBA group, extract the same schema file as the DBA.\n
 
 
