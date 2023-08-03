@@ -91,6 +91,10 @@ public class SpLib {
     }
 
     public static class SQL_ERROR extends PlcsqlRuntimeError {
+        public SQL_ERROR() {
+            super(CODE_STORAGE_ERROR, MSG_SQL_ERROR);
+        }
+
         public SQL_ERROR(String s) {
             super(CODE_STORAGE_ERROR, (s == null || s.length() == 0) ? MSG_SQL_ERROR : s);
         }
