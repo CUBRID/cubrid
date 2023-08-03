@@ -3188,6 +3188,7 @@ create_stmt
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 
+			    assert (PT_SYNONYM_TARGET_NAME (node) != NULL);
 			    if (PT_NAME_INFO_IS_FLAGED (PT_SYNONYM_TARGET_NAME (node), PT_NAME_INFO_SERVER_SPECIFIED))
 			      {
 				PT_SYNONYM_IS_DBLINKED (node) = 1;
@@ -4073,9 +4074,12 @@ alter_stmt
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 
-			    if (PT_NAME_INFO_IS_FLAGED (PT_SYNONYM_TARGET_NAME (node), PT_NAME_INFO_SERVER_SPECIFIED))
+			    if (PT_SYNONYM_TARGET_NAME (node) != NULL)
 			      {
-				PT_SYNONYM_IS_DBLINKED (node) = 1;
+				if (PT_NAME_INFO_IS_FLAGED (PT_SYNONYM_TARGET_NAME (node), PT_NAME_INFO_SERVER_SPECIFIED))
+				  {
+				    PT_SYNONYM_IS_DBLINKED (node) = 1;
+				  }
 			      }
 			  }
 
