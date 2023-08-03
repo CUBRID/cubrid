@@ -189,7 +189,7 @@ active_tran_server::connection_handler::on_connecting ()
 
   m_prior_sender_sink_hook_func = std::bind (&active_tran_server::connection_handler::prior_sender_sink_hook, this,
 				  std::placeholders::_1);
-  log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
+  log_Gl.get_log_prior_sender ().add_sink (m_prior_sender_sink_hook_func);
 }
 
 void
@@ -197,7 +197,7 @@ active_tran_server::connection_handler::on_disconnecting ()
 {
   if (m_prior_sender_sink_hook_func != nullptr)
     {
-      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+      log_Gl.get_log_prior_sender ().remove_sink (m_prior_sender_sink_hook_func);
       m_prior_sender_sink_hook_func = nullptr;
     }
 }

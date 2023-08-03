@@ -3458,7 +3458,8 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
       // - only dispatch on active transaction server
       // - for the other dispatch path - from page server to connected passive transaction servers - the
       //  log prior messages are relayed without going through the unpackage-repackage loop
-      log_Gl.m_prior_sender.send_list (list);
+      log_Gl.get_log_prior_sender ().send_list (list);
+      //log_Gl.m_prior_sender.send_list (list);
     }
 
   /* append log buffer */

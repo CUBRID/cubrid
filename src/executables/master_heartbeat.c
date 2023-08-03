@@ -294,10 +294,8 @@ static HB_JOB_FUNC hb_resource_jobs[] = {
 
 #define HA_PROCESS_INFO_FORMAT_STRING    \
 	" HA-Process Info (master %d, state %s)\n"
-#define HA_TRAN_SERVER_PROCESS_FORMAT_STRING  \
-	"   Transaction-Server %s (pid %d, state %s)\n"
-#define HA_PAGE_SERVER_PROCESS_FORMAT_STRING  \
-	"   Page-Server %s (pid %d, state %s)\n"
+#define HA_SERVER_PROCESS_FORMAT_STRING  \
+	"   Server %s (pid %d, state %s)\n"
 #define HA_COPYLOG_PROCESS_FORMAT_STRING \
 	"   Copylogdb %s (pid %d, state %s)\n"
 #define HA_APPLYLOG_PROCESS_FORMAT_STRING        \
@@ -1635,15 +1633,13 @@ hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_l
 {
   HBP_HEADER *hbp_header;
   char buffer[HB_BUFFER_SZ], *p;
-  const size_t hb_body_len = OR_INT_SIZE * 3;	//heartbeat message body length
-  const size_t hb_len = sizeof (HBP_HEADER) + hb_body_len;	//heartbeat message length including header and body
-
+  size_t hb_len;
   int send_len;
 
   memset ((void *) buffer, 0, sizeof (buffer));
   hbp_header = (HBP_HEADER *) (&buffer[0]);
 
-  int error_code = hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, hb_body_len, 0, dest_host_name);
+  int error_code = hb_set_net_header (hbp_header, HBP_CLUSTER_HEARTBEAT, is_req, OR_INT_SIZE, 0, dest_host_name);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -1651,8 +1647,8 @@ hb_cluster_send_heartbeat_internal (struct sockaddr_in *saddr, socklen_t saddr_l
 
   p = (char *) (hbp_header + 1);
   p = or_pack_int (p, hb_Cluster->state);
-  p = or_pack_int (p, hb_Cluster->myself->is_tran_server_alive);
-  p = or_pack_int (p, hb_Cluster->myself->is_page_server_alive);
+
+  hb_len = sizeof (HBP_HEADER) + OR_INT_SIZE;
 
   if (hb_Cluster->sfd == INVALID_SOCKET)
     {
@@ -1731,13 +1727,9 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
     case HBP_CLUSTER_HEARTBEAT:
       {
 	HB_NODE_STATE_TYPE hb_state;
-	bool is_tran_server_alive = false;
-	bool is_page_server_alive = false;
 
 	p = (char *) (hbp_header + 1);
 	or_unpack_int (p, &state);
-	or_unpack_int (p, (int *) &is_tran_server_alive);
-	or_unpack_int (p, (int *) &is_page_server_alive);
 
 	hb_state = (HB_NODE_STATE_TYPE) state;
 
@@ -1807,8 +1799,6 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 
 	    node->state = hb_state;
 	    node->heartbeat_gap = MAX (0, (node->heartbeat_gap - 1));
-	    node->is_tran_server_alive = is_tran_server_alive;
-	    node->is_page_server_alive = is_page_server_alive;
 	    gettimeofday (&node->last_recv_hbtime, NULL);
 	  }
 	else
@@ -2087,8 +2077,6 @@ hb_add_node_to_cluster (char *host_name, unsigned short priority)
       p->state = HB_NSTATE_UNKNOWN;
       p->score = 0;
       p->heartbeat_gap = 0;
-      p->is_tran_server_alive = false;
-      p->is_page_server_alive = false;
       p->last_recv_hbtime.tv_sec = 0;
       p->last_recv_hbtime.tv_usec = 0;
 
@@ -3698,23 +3686,8 @@ hb_resource_job_change_mode (HB_JOB_ARG * arg)
   rv = pthread_mutex_lock (&hb_Resource->lock);
   for (proc = hb_Resource->procs; proc; proc = proc->next)
     {
-      if (proc->type != HB_PTYPE_TRAN_SERVER)
+      if (proc->type != HB_PTYPE_SERVER)
 	{
-	  /* TODO :
-	   * It has been temporarily modified only to resolve the CI test failure, which is because the
-	   * Transaction Server can not execute the write transaction.
-	   * During failover, the Transaction Server state need to be changed to HB_PSTATE_REGISTERED_AND_ACTIVE
-	   * by this job in order to execute the write transaction, which internally changes the "db_Disable_modification" to false
-	   * (in css_change_ha_server_state () -> logtb_enable_update ()).
-	   *
-	   * This job will be re-defined when TS states are re-defined, and failover mechanism is re-designed.
-	   * 1. All the resource jobs check if process type is HB_PTYPE_TRAN_SERVER instead of HB_PTYPE_SERVER.
-	   * 2. hb_Resource is re-defined to have only two processes, HB_PTYPE_PAGE_SERVER and HB_PTYPE_TRAN_SERVER.
-	   * 3. This job check the state of HB_PTYPE_TRAN_SERVER if it is the one that defined for TS such as (HB_PSTATE_IN_TRANSITION), 
-	   *    or this job can be removed if TS state is not change by cub_master, but changed by the TS itself
-	   *    when it meets the condition then informs to cub_master.
-	   */
-
 	  continue;
 	}
 
@@ -5435,7 +5408,7 @@ hb_process_state_string (unsigned char ptype, int pstate)
     case HB_PSTATE_NOT_REGISTERED:
       return HB_PSTATE_NOT_REGISTERED_STR;
     case HB_PSTATE_REGISTERED:
-      if (ptype == HB_PTYPE_TRAN_SERVER)
+      if (ptype == HB_PTYPE_SERVER)
 	{
 	  return HB_PSTATE_REGISTERED_AND_STANDBY_STR;
 	}
@@ -5581,8 +5554,6 @@ hb_reload_config (void)
 	  new_node->state = old_node->state;
 	  new_node->score = old_node->score;
 	  new_node->heartbeat_gap = old_node->heartbeat_gap;
-	  new_node->is_tran_server_alive = old_node->is_tran_server_alive;
-	  new_node->is_page_server_alive = old_node->is_page_server_alive;
 	  new_node->last_recv_hbtime.tv_sec = old_node->last_recv_hbtime.tv_sec;
 	  new_node->last_recv_hbtime.tv_usec = old_node->last_recv_hbtime.tv_usec;
 
@@ -6053,7 +6024,7 @@ hb_get_process_info_string (char **str, bool verbose_yn)
   required_size += HB_NSTATE_STR_SZ;	/* length of node state */
   buf_size += required_size;
 
-  required_size = strlen (HA_TRAN_SERVER_PROCESS_FORMAT_STRING);
+  required_size = strlen (HA_APPLYLOG_PROCESS_FORMAT_STRING);
   required_size += 256;		/* length of connection name */
   required_size += 10;		/* length of pid */
   required_size += HB_PSTATE_STR_SZ;	/* length of process state */
@@ -6106,14 +6077,9 @@ hb_get_process_info_string (char **str, bool verbose_yn)
 
       switch (proc->type)
 	{
-	case HB_PTYPE_TRAN_SERVER:
+	case HB_PTYPE_SERVER:
 	  p +=
-	    snprintf (p, MAX ((last - p), 0), HA_TRAN_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
-		      hb_process_state_string (proc->type, proc->state));
-	  break;
-	case HB_PTYPE_PAGE_SERVER:
-	  p +=
-	    snprintf (p, MAX ((last - p), 0), HA_PAGE_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
+	    snprintf (p, MAX ((last - p), 0), HA_SERVER_PROCESS_FORMAT_STRING, sock_entq->name + 1, proc->pid,
 		      hb_process_state_string (proc->type, proc->state));
 	  break;
 	case HB_PTYPE_COPYLOGDB:

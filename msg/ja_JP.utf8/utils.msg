@@ -117,6 +117,8 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
     paramdump\n\
     statdump\n\
     changemode\n\
+    copylogdb\n\
+    applylogdb\n\
     applyinfo\n\
     acldb\n\
     genlocale\n\
@@ -239,6 +241,9 @@ cubrid 管理者ユーティリティー、バージョン　%1$s\n\
 正しいコマンド:\n\
     start          [データベース名]\n\
     stop           [-h <host-name>] [-i] [データベース名]\n\
+    copylogdb      <start|stop> [-h <host-name>] [データベース名] [ノード名]\n\
+    applylogdb     <start|stop> [-h <host-name>] [データベース名] [ノード名]\n\
+    replication    <start|stop> node-name\n\
     status         [-v] [-h <host-name>]\n\
     reload\n
 31 '%1$s'パラメーターが必要です。\n

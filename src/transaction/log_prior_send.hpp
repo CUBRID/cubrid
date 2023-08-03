@@ -39,8 +39,10 @@ namespace cublog
 
     public:
       prior_sender () = default;
+      ~prior_sender ();
+
       prior_sender (const prior_sender &) = delete;
-      prior_sender (prior_sender &&) = default;
+      prior_sender (prior_sender &&) = delete;
 
       prior_sender &operator = (const prior_sender &) = delete;
       prior_sender &operator = (prior_sender &&) = delete;
@@ -53,6 +55,7 @@ namespace cublog
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
 
     private:
+      bool is_empty ();
       // non-owning pointers
       std::vector<const sink_hook_t *> m_sink_hooks;              // hooks for sinks
       std::mutex m_sink_hooks_mutex;                              // protect access on sink hooks

@@ -25,6 +25,14 @@
 
 namespace cublog
 {
+  prior_sender::~prior_sender ()
+  {
+    // this assert works because an instance of this class is kept inside a unique pointer;
+    // the way the unique pointer implements the reset functions is:
+    // first un-assigns the held pointer and the deletes it
+    assert (is_empty ());
+  }
+
   void
   prior_sender::send_list (const log_prior_node *head)
   {
@@ -83,5 +91,12 @@ namespace cublog
     const auto find_it = std::find (m_sink_hooks.begin (), m_sink_hooks.end (), &fun);
     assert (find_it != m_sink_hooks.end ());
     m_sink_hooks.erase (find_it);
+  }
+
+  bool
+  prior_sender::is_empty ()
+  {
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+    return m_sink_hooks.empty ();
   }
 }

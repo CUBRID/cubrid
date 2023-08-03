@@ -141,7 +141,13 @@ test_env::~test_env ()
   free_list (m_source_nodes_head);
   free_list (m_source_prior_info.prior_list_header);
 
+  for (const auto &sink : m_prior_sender_sinks)
+    {
+      // hooks sinks on the sender
+      m_sender.remove_sink (sink);
+    }
   m_prior_sender_sinks.clear ();
+
   for (size_t i = 0; i < m_recvers.size (); ++i)
     {
       delete m_recvers[i];

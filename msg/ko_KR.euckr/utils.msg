@@ -117,6 +117,8 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     paramdump\n\
     statdump\n\
     changemode\n\
+    copylogdb\n\
+    applylogdb\n\
     applyinfo\n\
     acldb\n\
     genlocale\n\
@@ -239,6 +241,9 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 가용한 명령어:\n\
     start         [데이터베이스 이름]\n\
     stop          [-h <호스트 이름>] [-i] [데이터베이스 이름]\n\
+    copylogdb     <start|stop> [-h <호스트 이름>] <데이터베이스 이름> <노드 이름>\n\
+    applylogdb    <start|stop> [-h <호스트 이름>] <데이터베이스 이름> <노드 이름>\n\
+    replication   <start|stop> <노드 이름>\n\
     status         [-v] [-h <호스트 이름>]\n\
     reload\n
 31 '%1$s' 인자가 필요 없습니다.\n
