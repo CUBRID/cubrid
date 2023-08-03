@@ -3157,9 +3157,9 @@ create_stmt
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 
-			    if (PT_NAME_INFO_IS_FLAGED(node->info.synonym.target_name, PT_NAME_INFO_SERVER_SPECIFIED))
+			    if (PT_NAME_INFO_IS_FLAGED (PT_SYNONYM_TARGET_NAME (node), PT_NAME_INFO_SERVER_SPECIFIED))
 			      {
-				node->info.synonym.is_dblinked = 1;
+				PT_SYNONYM_IS_DBLINKED (node) = 1;
 			      }
 			  }
 
@@ -3177,19 +3177,22 @@ class_name_for_synonym
 		  PT_NODE *cname = CONTAINER_AT_0 ($1);
 		  PT_NODE *sname = CONTAINER_AT_1 ($1);
 
-		  if (cname->info.name.resolved)
+		  if (cname && sname)
 		    {
-		      cname->info.name.original = pt_append_string (this_parser, ".", cname->info.name.original);
-		      cname->info.name.original = pt_append_string (this_parser, cname->info.name.resolved, cname->info.name.original);
-		      cname->info.name.resolved = NULL;
+		      if (cname->info.name.resolved)
+			{
+			  cname->info.name.original = pt_append_string (this_parser, ".", cname->info.name.original);
+			  cname->info.name.original = pt_append_string (this_parser, cname->info.name.resolved, cname->info.name.original);
+			  cname->info.name.resolved = NULL;
+			}
+		      cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, "@");
+		      cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, sname->info.name.original);
+
+		      PT_NAME_INFO_SET_FLAG (cname, PT_NAME_INFO_SERVER_SPECIFIED);
+
+		      parser_free_tree(this_parser, sname);
 		    }
-		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, "@");
-		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, sname->info.name.original);
 
-		  PT_NAME_INFO_SET_FLAG (cname, PT_NAME_INFO_SERVER_SPECIFIED);
-
-                  parser_free_tree(this_parser, sname);
-                  
 		  $$ = cname;
 		}
 	;
@@ -4040,9 +4043,9 @@ alter_stmt
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
 
-			    if (PT_NAME_INFO_IS_FLAGED(node->info.synonym.target_name, PT_NAME_INFO_SERVER_SPECIFIED))
+			    if (PT_NAME_INFO_IS_FLAGED (PT_SYNONYM_TARGET_NAME (node), PT_NAME_INFO_SERVER_SPECIFIED))
 			      {
-				node->info.synonym.is_dblinked = 1;
+				PT_SYNONYM_IS_DBLINKED (node) = 1;
 			      }
 			  }
 

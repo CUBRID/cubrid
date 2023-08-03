@@ -17748,7 +17748,8 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   DB_OBJECT *target_owner_obj = NULL;
   char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *target_name = NULL;
+  char target_name_buf[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *comment = NULL;
   int error = NO_ERROR;
 
@@ -17774,20 +17775,19 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       /* PT_SYNONYM_TARGET_NAME (statement) != NULL */
-      if (PT_SYNONYM_DBLINKED (statement))
+      if (PT_SYNONYM_IS_DBLINKED (statement))
 	{
-	  sprintf (target_name, "%s", (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement))));
-	  /* target_owner = synonym_owner */
-	  target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_OWNER_NAME (statement)));
+	  target_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement));
 	}
       else
 	{
-	  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name,
+	  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
 				  DB_MAX_IDENTIFIER_LENGTH);
-	  /* target_owner */
-	  target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
+	  target_name = target_name_buf;
 	}
 
+      /* target_owner */
+      target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
       if (target_owner_obj == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
@@ -17804,7 +17804,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error =
     do_alter_synonym_internal (synonym_name, target_name, target_owner_obj, comment, FALSE,
-			       PT_SYNONYM_DBLINKED (statement));
+			       PT_SYNONYM_IS_DBLINKED (statement));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17992,7 +17992,8 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *synonym_owner_obj = NULL;
   DB_OBJECT *target_owner_obj = NULL;
   char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *target_name = NULL;
+  char target_name_buf[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *comment = NULL;
   int or_replace = FALSE;
   int error = NO_ERROR;
@@ -18020,20 +18021,19 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   or_replace = PT_SYNONYM_OR_REPLACE (statement);
 
   /* target_name */
-  if (PT_SYNONYM_DBLINKED (statement))
+  if (PT_SYNONYM_IS_DBLINKED (statement))
     {
-      sprintf (target_name, "%s", PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)));
-      /* target_owner = synonym ower name */
-      target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_OWNER_NAME (statement)));
+      target_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement));
     }
   else
     {
-      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name,
+      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
 			      DB_MAX_IDENTIFIER_LENGTH);
-      /* target_owner */
-      target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
+      target_name = target_name_buf;
     }
 
+  /* target_owner */
+  target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
   if (target_owner_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -18049,7 +18049,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error =
     do_create_synonym_internal (synonym_name, synonym_owner_obj, target_name, target_owner_obj, comment, FALSE,
-				or_replace, PT_SYNONYM_DBLINKED (statement));
+				or_replace, PT_SYNONYM_IS_DBLINKED (statement));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();

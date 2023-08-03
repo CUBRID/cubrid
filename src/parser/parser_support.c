@@ -10451,9 +10451,17 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  {
 	    const char *target_owner_name = NULL;
 
+	    if (PT_SYNONYM_IS_DBLINKED (node))
+	      {
+		target_owner_name = synonym_owner_name;
+	      }
+	    else
+	      {
+		target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	      }
+
 	    /* When processing PT_NAME, resolved_name is prefixed to original_name.
 	     * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
-	    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
 	    if (target_owner_name == NULL
 		&& sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
 	      {
@@ -10461,14 +10469,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	      }
 	    else
 	      {
-		if (PT_SYNONYM_DBLINKED (node))
-		  {
-		    target_owner_name = synonym_owner_name;
-		  }
-		else
-		  {
-		    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
-		  }
 		assert (target_owner_name != NULL);
 		PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
 	      }
@@ -10489,9 +10489,17 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	assert (synonym_owner_name != NULL);
 	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
 
+	if (PT_SYNONYM_IS_DBLINKED (node))
+	  {
+	    target_owner_name = synonym_owner_name;
+	  }
+	else
+	  {
+	    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	  }
+
 	/* When processing PT_NAME, resolved_name is prefixed to original_name.
 	 * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
-	target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
 	if (target_owner_name == NULL
 	    && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
 	  {
@@ -10499,14 +10507,6 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  }
 	else
 	  {
-	    if (PT_SYNONYM_DBLINKED (node))
-	      {
-		target_owner_name = synonym_owner_name;
-	      }
-	    else
-	      {
-		target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
-	      }
 	    assert (target_owner_name != NULL);
 	    PT_SYNONYM_TARGET_OWNER_NAME (node) = pt_name (parser, target_owner_name);
 	  }

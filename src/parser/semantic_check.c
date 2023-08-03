@@ -8939,7 +8939,7 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
       /* PT_SYNONYM_TARGET_NAME (node) != NULL */
 
       /* target_owner_name */
-      if (!PT_SYNONYM_DBLINKED (node))
+      if (!PT_SYNONYM_IS_DBLINKED (node))
 	{
 	  owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
 	  assert (owner_name != NULL && *owner_name != '\0');
@@ -9046,7 +9046,7 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
    * || (synonym_obj == NULL && db_find_class () == NULL && er_errid () == ER_LC_UNKNOWN_CLASSNAME) */
 
   /* target_owner_name */
-  if (!PT_SYNONYM_DBLINKED (node))
+  if (!PT_SYNONYM_IS_DBLINKED (node))
     {
       owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
       assert (owner_name != NULL && *owner_name != '\0');

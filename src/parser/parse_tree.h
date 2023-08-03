@@ -806,7 +806,7 @@ struct json_t;
 #define PT_SYNONYM_ACCESS_MODIFIER(n)	((n)->info.synonym.access_modifier)
 #define PT_SYNONYM_OR_REPLACE(n)	((n)->info.synonym.or_replace)
 #define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
-#define PT_SYNONYM_DBLINKED(n)		((n)->info.synonym.is_dblinked)	/* for user.table@server */
+#define PT_SYNONYM_IS_DBLINKED(n)	((n)->info.synonym.is_dblinked)	/* for user.table@server */
 
 /* Check node_type of PT_NODE */
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
