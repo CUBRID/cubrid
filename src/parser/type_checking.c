@@ -18917,7 +18917,7 @@ error_zerodate:
 }
 
 /*
- * pt_fold_const_expr () - check dblinke-related expression
+ * pt_check_dblink_related_expr () - check dblinke-related expression
  *   return: dblink_related = true if successful,
  *           dblink_related = false if not successful.
  *   parser(in): parser global context info for reentrancy
