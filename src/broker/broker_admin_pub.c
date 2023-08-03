@@ -74,6 +74,8 @@
 #include "chartype.h"
 #include "cubrid_getopt.h"
 #include "dbtype_def.h"
+#include "host_lookup.h"
+#include "system_parameter.h"
 
 #if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_EMPTY_SESSION        (0)
@@ -324,9 +326,17 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
     }
   chdir (envvar_bindir_file (path, BROKER_PATH_MAX, ""));
 
+  if (gethostname (hostname, sizeof (hostname)) < 0)
+    {
+      fprintf (stderr, "gethostname error\n");
+      return -1;
+    }
   /* cannot execute broker initialize unless success host look-up */
   if (GETHOSTNAME (hostname, CUB_MAXHOSTNAMELEN) != 0)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, hostname, HOSTS_FILE);
+      fprintf (stderr, er_msg ());
+      fflush (stderr);
       return -1;
     }
 
