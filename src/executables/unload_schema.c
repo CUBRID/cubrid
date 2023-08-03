@@ -3564,7 +3564,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	  output_ctx (" WITH ONLINE");
 	}
 #endif
-      else if (constraint->index_status == SM_INVISIBLE_INDEX)
+      if (constraint->index_status == SM_INVISIBLE_INDEX)
 	{
 	  output_ctx (" INVISIBLE ");
 	}
