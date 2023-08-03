@@ -7403,7 +7403,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 	  /* 2) allocate buffer */
 	  buffer = (char *) db_private_alloc (thread_p, size);
-	  ptr = buffer;
 
 	  if (buffer == NULL)
 	    {
@@ -7415,6 +7414,8 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	      /* 3) packing information
 	       *    - packing information with sequence of
 	       *      module info -> component info w/ subcomponent info */
+	      ptr = buffer;
+
 	      for (int idx = 0; idx < module_count; idx++)
 		{
 		  ptr = or_pack_string (ptr, module_info[idx].name);
@@ -7448,20 +7449,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	}
 
       /* 4) deallocate memory */
-      for (int idx = 0; idx < module_count; idx++)
-	{
-	  if (module_info[idx].comp_info)
-	    {
-	      for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
-		{
-		  // is allocated at mmon_component::get_stat()
-		  free_and_init (module_info[idx].comp_info[i].subcomp_info);
-		}
-	      // is allocated at mmon_module::aggregate_stats()
-	      free (module_info[idx].comp_info);
-	    }
-	}
-
       free (module_info);
     }
 
@@ -7537,7 +7524,6 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
 
 	  /* 2) allocate buffer */
 	  buffer = (char *) db_private_alloc (thread_p, size);
-	  ptr = buffer;
 
 	  if (buffer == NULL)
 	    {
@@ -7548,6 +7534,8 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	    {
 	      /* 3) packing information
 	       *    - packing information with sequence of module info */
+	      ptr = buffer;
+
 	      for (int idx = 0; idx < module_count; idx++)
 		{
 		  ptr = or_pack_string (ptr, module_info[idx].name);
@@ -7642,10 +7630,6 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      ptr = or_pack_int64 (ptr, info.tran_stat[i].cur_stat);
 	    }
 	}
-
-      /* 4) deallocate memory */
-      // is allocated at memory_monitor::aggregater::get_transaction_info()
-      free (info.tran_stat);
     }
 
   if (error != NO_ERROR)

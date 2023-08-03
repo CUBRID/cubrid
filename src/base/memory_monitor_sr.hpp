@@ -27,7 +27,6 @@
 #error SERVER_MODE macro should be pre-defined to compile
 #endif /* SERVER_MODE */
 
-#include <cstdint>
 #include <type_traits>
 
 #include "perf_def.hpp"

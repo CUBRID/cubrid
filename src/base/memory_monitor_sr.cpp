@@ -22,7 +22,6 @@
 
 #include <cstring>
 #include <atomic>
-#include <vector>
 #include <cassert>
 
 #include "error_manager.h"
