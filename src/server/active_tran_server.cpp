@@ -87,14 +87,20 @@ active_tran_server::compute_consensus_lsa ()
    */
   std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
 
-  LOG_LSA consensus_lsa;
-
-  if (cur_node_cnt < quorum)
+    LOG_LSA consensus_lsa;
+    if (cur_node_cnt < quorum)
     {
+      if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
+        {
+          // if the quorum is not met, only sort if we're about to log the details (see below); otherwise the sorting is useless   
+          std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
+        }
       consensus_lsa = NULL_LSA; // the quorum is not met.
     }
   else
     {
+      // always do the sort if the quorum is met:
+      std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
       consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
     }
 
@@ -106,10 +112,7 @@ active_tran_server::compute_consensus_lsa ()
 
       n = snprintf (msg_buf, BUF_SIZE, "compute_consensus_lsa - ");
 
-      if (cur_node_cnt < quorum)
-	{
-	  n += snprintf (msg_buf + n, BUF_SIZE - n, "Quorum unsatisfied: ");
-	}
+      n += snprintf (msg_buf + n, BUF_SIZE - n, "Quorum %ssatisfied: ", ((cur_node_cnt < quorum) ? "un" : ""));
 
       // cppcheck-suppress [wrongPrintfScanfArgNum]
       n += snprintf (msg_buf + n, BUF_SIZE - n,
