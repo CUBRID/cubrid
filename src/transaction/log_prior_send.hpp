@@ -39,8 +39,10 @@ namespace cublog
 
     public:
       prior_sender () = default;
+      ~prior_sender ();
+
       prior_sender (const prior_sender &) = delete;
-      prior_sender (prior_sender &&) = default;
+      prior_sender (prior_sender &&) = delete;
 
       prior_sender &operator = (const prior_sender &) = delete;
       prior_sender &operator = (prior_sender &&) = delete;
@@ -53,6 +55,7 @@ namespace cublog
 
     private:
       void send_serialized_message (std::string &&message);
+      bool is_empty ();
 
     private:
       // non-owning pointers

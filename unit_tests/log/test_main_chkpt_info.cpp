@@ -827,7 +827,16 @@ namespace cublog
     : m_prior_lsa_info (prior_lsa_info)
   {
   }
-  prior_recver::~prior_recver () = default;
+
+  prior_recver::~prior_recver ()
+  {
+    assert_release (!m_thread.joinable ());
+  }
+
+  prior_sender::~prior_sender ()
+  {
+    assert_release (false);
+  }
 }
 
 mvcc_active_tran::mvcc_active_tran () = default;
