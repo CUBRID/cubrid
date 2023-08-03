@@ -8417,7 +8417,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
   bool is_prev_volheader_restored = false;
   // *INDENT-OFF*
-  vector <tuple <int, string, string>> unlinked_vol_info;
+  FILEIO_UNLINKED_VOLINFO unlinked_volinfo;
   // *INDENT-ON*
 
   try_level = (FILEIO_BACKUP_LEVEL) r_args->level;
@@ -8721,6 +8721,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		case LOG_DBLOG_ARCHIVE_VOLID:
 		case LOG_DBTDE_KEYS_VOLID:
 
+		  is_prev_volheader_restored = false;
+
 		  /* We can only take the most recent information, and we do not want to overwrite it with out of data
 		   * information from earlier backups.  This is because we are applying the restoration in reverse time
 		   * order. */
@@ -8751,7 +8753,6 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	      if (to_volid < LOG_DBFIRST_VOLID)
 		{
 		  remember_pages = false;
-		  is_prev_volheader_restored = false;
 		}
 	      else
 		{
@@ -8775,7 +8776,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
 	      success =
 		fileio_restore_volume (thread_p, session, volume_name_p, verbose_to_volname, prev_volname, page_bitmap,
-				       remember_pages, is_prev_volheader_restored, unlinked_vol_info);
+				       remember_pages, is_prev_volheader_restored, unlinked_volinfo);
 
 	      if (success != NO_ERROR)
 		{
@@ -8863,37 +8864,36 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
     }
 
   // Incremental backup volumes often do not include volume header pages.
-  // Accordingly, it is necessary to set unconnected volume links after all volume header pages are restored.
-  for (int i = 0; i < unlinked_vol_info.size (); i++)
+  // Accordingly, it is necessary to set unlinked volumes after all volume header pages are restored.
+  for (int i = 0; i < unlinked_volinfo.size (); i++)
     {
       VOLID prev_volid, volid;
       int prev_vdes;
-      const char *prev_vol_name, *vol_name;
+      const char *prev_volname, *volname;
 
       // *INDENT-OFF*
-      volid = get<0> (unlinked_vol_info[i]);
-      vol_name = get<1> (unlinked_vol_info[i]).c_str ();
-      prev_vol_name = get<2> (unlinked_vol_info[i]).c_str ();
+      volid = get<0> (unlinked_volinfo[i]);
+      volname = get<1> (unlinked_volinfo[i]).c_str ();
+      prev_volname = get<2> (unlinked_volinfo[i]).c_str ();
       // *INDENT-ON*
 
-#if !defined(NDEBUG)
-      printf ("[FIXED UNLINK] volid=%d, vol=%s, prev_vol=%s\n", volid, vol_name, prev_vol_name);
-#endif
-
       prev_volid = fileio_find_previous_perm_volume (thread_p, volid);
-      prev_vdes = fileio_mount (thread_p, NULL, prev_vol_name, prev_volid, false, false);
+      prev_vdes = fileio_mount (thread_p, NULL, prev_volname, prev_volid, false, false);
       if (prev_vdes == NULL_VOLDES)
 	{
 	  goto error;
 	}
 
-      if (disk_set_link (thread_p, prev_volid, volid, vol_name, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
+      if (disk_set_link (thread_p, prev_volid, volid, volname, false, DISK_FLUSH_AND_INVALIDATE) != NO_ERROR)
 	{
 	  fileio_dismount (thread_p, prev_vdes);
 	  goto error;
 	}
 
       fileio_dismount (thread_p, prev_vdes);
+
+      _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [FIXED UNLINK] volid=%d, vol=%s, prev_vol=%s", volid, volname,
+		     prev_volname);
     }
 
   /* make bkvinf file */
