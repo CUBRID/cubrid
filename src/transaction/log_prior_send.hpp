@@ -57,10 +57,9 @@ namespace cublog
       // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);
 
-      bool is_empty ();
-
     private:
       void loop_dispatch ();
+      bool is_empty ();
 
     private:
       using message_container_t = std::deque<std::string>;
