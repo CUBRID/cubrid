@@ -48,6 +48,8 @@
 #include "broker_filename.h"
 #include "broker_util.h"
 #include "host_lookup.h"
+#include "error_code.h"
+#include "system_parameter.h"
 
 #if defined(WINDOWS)
 #include "broker_list.h"
@@ -760,7 +762,7 @@ get_host_ip (unsigned char *ip_addr)
     }
   if ((hp = gethostbyname_uhost (hostname)) == NULL)
     {
-      fprintf (stderr, "unknown host : %s\n", hostname);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, hostname, HOSTS_FILE);
       return -1;
     }
   memcpy ((void *) ip_addr, (void *) hp->h_addr_list[0], 4);
