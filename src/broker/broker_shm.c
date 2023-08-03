@@ -757,7 +757,7 @@ get_host_ip (unsigned char *ip_addr)
 
   if (gethostname (hostname, sizeof (hostname)) < 0)
     {
-      fprintf (stderr, "gethostname error\n");
+      fprintf (stderr, "gethostname error: cannot get local hostname\n");
       return -1;
     }
   if ((hp = gethostbyname_uhost (hostname)) == NULL)
