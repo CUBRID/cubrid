@@ -2197,7 +2197,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	  else if (pt_is_multi_col_term (lhs_expr) && lhs_expr->flag.is_paren)
 	    {
-	      /* multi column case (attr,attr,...) is indexable for RANGE, EQ operation */
+	      /* multi column case (attr,attr,...) is indexable for RANGE operation */
 	      func_arg = lhs_expr->info.function.arg_list;
 	      op_type = pt_expr->info.expr.op;
 
