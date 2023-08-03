@@ -3586,18 +3586,15 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_GT;
 	}
 
-      if (!qo_is_index_iss_scan (a) && !qo_is_index_loose_scan (a))
+      if (a->plan_un.scan.index && a->plan_un.scan.index->head->groupby_skip)
 	{
-	  if (a->plan_un.scan.index && a->plan_un.scan.index->head->groupby_skip)
-	    {
-	      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-	      return PLAN_COMP_LT;
-	    }
-	  if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip)
-	    {
-	      QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-	      return PLAN_COMP_LT;
-	    }
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
+	}
+      if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip)
+	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
 	}
     }
 
