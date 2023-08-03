@@ -10455,6 +10455,10 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 
 	  is_prev_vol_header_restored = true;
 	}
+      else
+	{
+	  is_prev_vol_header_restored = false;
+	}
 
       /* save current volname */
       strncpy (prev_vol_label_p, to_vol_label_p, PATH_MAX);
