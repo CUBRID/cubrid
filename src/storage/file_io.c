@@ -10419,10 +10419,18 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 	    {
 	      if (volid != LOG_DBFIRST_VOLID && is_prev_vol_header_restored == false)
 		{
+#if !defined(NDEBUG)
+		  printf ("[FOUND UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n", session_p->dbfile.level, volid,
+			  to_vol_label_p, prev_vol_label_p);
+#endif
 		  auto it_found = find_if (unlinked_vol_info.cbegin (), unlinked_vol_info.cend (), find_unlinked_vol);
 
 		  if (it_found == unlinked_vol_info.cend ())
 		    {
+#if !defined(NDEBUG)
+		      printf ("[SAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n", session_p->dbfile.level, volid,
+			      to_vol_label_p, prev_vol_label_p);
+#endif
 		      unlinked_vol_info.push_back (make_tuple
 						   (volid, string (to_vol_label_p), string (prev_vol_label_p)));
 		    }
@@ -10434,9 +10442,13 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 
 	      if (it_found != unlinked_vol_info.cend ())
 		{
+#if !defined(NDEBUG)
+		  printf ("[UNSAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n", session_p->dbfile.level, volid,
+			  to_vol_label_p, prev_vol_label_p);
+#endif
 		  // The volume headers of both previous and current volumes are in the full level backup volume.
-                  // Therefore, the link between the two volumes is naturally established during the restoration process.
-                  // So, there is no need to explicitly set it.
+		  // Therefore, the link between the two volumes is naturally established during the restoration process.
+		  // So, there is no need to explicitly set it.
 		  unlinked_vol_info.erase (it_found);
 		}
 	    }
