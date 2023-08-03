@@ -110,5 +110,6 @@ if(UNIX)
     ${CMAKE_SOURCE_DIR}/contrib/scripts/cubrid.sh
     ${CMAKE_SOURCE_DIR}/contrib/scripts/cubrid.csh
     ${CMAKE_SOURCE_DIR}/contrib/scripts/unloaddb.sh
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/check_duplications.sh
     DESTINATION ${CUBRID_DATADIR}/scripts/)
 endif(UNIX)
