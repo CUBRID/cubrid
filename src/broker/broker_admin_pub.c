@@ -328,7 +328,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 
   if (gethostname (hostname, sizeof (hostname)) < 0)
     {
-      fprintf (stderr, "gethostname error\n");
+      fprintf (stderr, "gethostname error: cannot get local hostname\n");
       return -1;
     }
   /* cannot execute broker initialize unless success host look-up */
