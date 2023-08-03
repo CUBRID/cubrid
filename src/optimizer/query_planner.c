@@ -1857,7 +1857,7 @@ qo_iscan_cost (QO_PLAN * planp)
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
-  int i, t, n, pkeys_num, index, iss_cnt = 1;
+  int i, t, n, pkeys_num, index;
 
   nodep = planp->plan_un.scan.node;
   ni_entryp = planp->plan_un.scan.index;
@@ -1994,7 +1994,6 @@ qo_iscan_cost (QO_PLAN * planp)
 
 	  /* K leaves are additionally read */
 	  index_IO += cum_statsp->pkeys[0];
-	  iss_cnt = cum_statsp->pkeys[0];
 	}
     }
 
@@ -2013,7 +2012,7 @@ qo_iscan_cost (QO_PLAN * planp)
   /* index scan requires more CPU cost than sequential scan */
   planp->fixed_cpu_cost = 0.0;
   planp->fixed_io_cost = index_IO;
-  planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT * ISCAN_OVERHEAD_FACTOR * iss_cnt;
+  planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT *ISCAN_OVERHEAD_FACTOR;
   planp->variable_io_cost = object_IO;
 }
 
