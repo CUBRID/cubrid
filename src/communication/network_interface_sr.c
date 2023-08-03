@@ -7294,7 +7294,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   // Size of total_mem_usage
   size += OR_INT64_SIZE;
 
-  buffer = (char *) malloc (size);
+  buffer = (char *) db_private_alloc (thread_p, size);
 
   if (buffer == NULL)
     {
@@ -7320,7 +7320,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
     }
-  free_and_init (buffer);
+  db_private_free_and_init (thread_p, buffer);
 }
 
 /*
@@ -7402,7 +7402,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	    }
 
 	  /* 2) allocate buffer */
-	  buffer = (char *) malloc (size);
+	  buffer = (char *) db_private_alloc (thread_p, size);
 	  ptr = buffer;
 
 	  if (buffer == NULL)
@@ -7454,8 +7454,10 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	    {
 	      for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
 		{
+		  // is allocated at mmon_component::get_stat()
 		  free_and_init (module_info[idx].comp_info[i].subcomp_info);
 		}
+	      // is allocated at mmon_module::aggregate_stats()
 	      free (module_info[idx].comp_info);
 	    }
 	}
@@ -7476,7 +7478,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
     }
-  free_and_init (buffer);
+  db_private_free_and_init (thread_p, buffer);
 }
 
 /*
@@ -7534,7 +7536,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	    }
 
 	  /* 2) allocate buffer */
-	  buffer = (char *) malloc (size);
+	  buffer = (char *) db_private_alloc (thread_p, size);
 	  ptr = buffer;
 
 	  if (buffer == NULL)
@@ -7571,7 +7573,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
     }
-  free_and_init (buffer);
+  db_private_free_and_init (thread_p, buffer);
 }
 
 /*
@@ -7620,7 +7622,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
 
       /* 2) allocate buffer */
-      buffer = (char *) malloc (size);
+      buffer = (char *) db_private_alloc (thread_p, size);
 
       if (buffer == NULL)
 	{
@@ -7642,6 +7644,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
 
       /* 4) deallocate memory */
+      // is allocated at memory_monitor::aggregater::get_transaction_info()
       free (info.tran_stat);
     }
 
@@ -7658,7 +7661,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
       css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
     }
-  free_and_init (buffer);
+  db_private_free_and_init (thread_p, buffer);
 }
 
 /*
