@@ -14649,15 +14649,12 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
-  bool is_active = false;
 
   char ctime_buf[CTIME_MAX];
   int error = NO_ERROR;
 
-  if (LSA_ISNULL (start_lsa))
-    {
-      is_active = true;
-    }
+  assert (!LSA_ISNULL (start_lsa));
+  cdc_log ("%s : start point LSA = %3lld|%3d", __func__, LSA_AS_ARGS (start_lsa));
 
   LSA_COPY (&process_lsa, start_lsa);
 
