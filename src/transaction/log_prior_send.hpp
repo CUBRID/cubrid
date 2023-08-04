@@ -40,8 +40,10 @@ namespace cublog
 
     public:
       prior_sender () : m_unsent_lsa { NULL_LSA } {}
+      ~prior_sender ();
+
       prior_sender (const prior_sender &) = delete;
-      prior_sender (prior_sender &&) = default;
+      prior_sender (prior_sender &&) = delete;
 
       prior_sender &operator = (const prior_sender &) = delete;
       prior_sender &operator = (prior_sender &&) = delete;
@@ -53,6 +55,10 @@ namespace cublog
       LOG_LSA add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
       void reset_unsent_lsa (const LOG_LSA &lsa);                    // reset only when prior_lsa is reset
+
+    private:
+      void send_serialized_message (std::string &&message, const LOG_LSA *unsent_lsa);
+      bool is_empty ();
 
     private:
       // non-owning pointers

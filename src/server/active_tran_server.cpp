@@ -78,12 +78,6 @@ active_tran_server::compute_consensus_lsa ()
 	}
     }
 
-  if (cur_node_cnt < quorum)
-    {
-      quorum_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
-				total_node_cnt, cur_node_cnt, quorum);
-      return NULL_LSA;
-    }
   /*
    * Gather all PS'es saved_lsa and sort it in ascending order.
    * The <cur_node_count - quorum>'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
@@ -92,19 +86,40 @@ active_tran_server::compute_consensus_lsa ()
    * total: 5, cur: 4 - [5, 6, 9, 10] -> "6"
    * total: 3, cur: 2 - [9, 10] -> "9"
    */
-  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
 
-  const auto consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
+  const bool quorum_not_met = cur_node_cnt < quorum;
+
+  LOG_LSA consensus_lsa;
+  if (quorum_not_met)
+    {
+      if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
+	{
+	  // if the quorum is not met, only sort if we're about to log the details (see below); otherwise the sorting is useless
+	  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
+	}
+      consensus_lsa = NULL_LSA; // the quorum is not met.
+    }
+  else
+    {
+      // always do the sort if the quorum is met:
+      std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
+      consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
+    }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
     {
       constexpr int BUF_SIZE = 1024;
       char msg_buf[BUF_SIZE];
       int n = 0;
+
+      n = snprintf (msg_buf, BUF_SIZE, "compute_consensus_lsa - ");
+
+      n += snprintf (msg_buf + n, BUF_SIZE - n, "Quorum %ssatisfied: ", (quorum_not_met ? "un" : ""));
+
       // cppcheck-suppress [wrongPrintfScanfArgNum]
-      n = snprintf (msg_buf, BUF_SIZE,
-		    "compute_consensus_lsa - total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
-		    total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
+      n += snprintf (msg_buf + n, BUF_SIZE - n,
+		     "total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
+		     total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
       n += snprintf (msg_buf + n, BUF_SIZE - n, "Collected saved lsa list = [ ");
       for (const auto &lsa : collected_saved_lsa)
 	{
@@ -212,7 +227,7 @@ active_tran_server::connection_handler::on_connecting ()
   m_prior_sender_sink_hook_func = std::bind (&active_tran_server::connection_handler::prior_sender_sink_hook, this,
 				  std::placeholders::_1);
 
-  auto unsent_lsa = log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
+  auto unsent_lsa = log_Gl.get_log_prior_sender ().add_sink (m_prior_sender_sink_hook_func);
 
   std::string hostname = "N/A";
   int32_t port = -1;
@@ -240,7 +255,7 @@ active_tran_server::connection_handler::on_disconnecting ()
 {
   if (m_prior_sender_sink_hook_func != nullptr)
     {
-      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+      log_Gl.get_log_prior_sender ().remove_sink (m_prior_sender_sink_hook_func);
       m_prior_sender_sink_hook_func = nullptr;
     }
 }

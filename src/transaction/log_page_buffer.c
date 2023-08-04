@@ -3438,7 +3438,13 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list, con
   assert (log_Gl.prior_info.prior_flush_list_header == NULL);
   log_Gl.prior_info.prior_flush_list_header = list;
 
-  log_Gl.m_prior_sender.send_list (list, unsent_lsa);
+#if defined(SERVER_MODE)
+  if (is_active_transaction_server () || is_page_server ())
+    {
+      // the log prior sender is not initialized on a passive transaction server
+      log_Gl.get_log_prior_sender ().send_list (list, unsent_lsa);
+    }
+#endif /* SERVER_MODE */
 
   /* append log buffer */
   while (log_Gl.prior_info.prior_flush_list_header != NULL)

@@ -233,19 +233,12 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER | MASK_GATEWAY},
   {RESET, COMMAND_TYPE_RESET, MASK_BROKER | MASK_GATEWAY},
   {INFO, COMMAND_TYPE_INFO, MASK_BROKER | MASK_GATEWAY},
-  {GET_SHARID, COMMAND_TYPE_GETID, MASK_BROKER},
-  {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
-#if 0
-  /*
-   * In the newHA architecture, the execution of "copylogdb" and "applylogdb" is not supported.
-   * TODO: Once the DR (Disaster Recovery) concept is finalized, the codes related to "copylogdb" and "applylogdb" should be either removed or re-used.
-   */
-
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
+  {GET_SHARID, COMMAND_TYPE_GETID, MASK_BROKER},
+  {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
   {REPLICATION, COMMAND_TYPE_REPLICATION_SHORT, MASK_HEARTBEAT},
-#endif
   {-1, "", MASK_ALL}
 };
 
@@ -273,7 +266,7 @@ static int parse_arg (UTIL_SERVICE_OPTION_MAP_T * option, const char *arg);
 static int process_service (int command_type, bool process_window_service);
 static int process_server (int command_type, int argc, char **argv, bool show_usage, bool check_ha_mode,
 			   bool process_window_service);
-static int process_servers_start_within_node (char *server_name, int command_type, bool ha_mode);
+static int process_server_start_single_node (char *server_name, int command_type);
 static int process_broker (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_gateway (int command_type, int argc, const char **argv, bool process_window_service);
 static int process_manager (int command_type, bool process_window_service);
@@ -341,7 +334,7 @@ static int us_hb_utils_stop (HA_CONF * ha_conf, const char *db_name, const char 
 static int us_hb_server_start (HA_CONF * ha_conf, const char *db_name);
 static int us_hb_server_stop (HA_CONF * ha_conf, const char *db_name);
 
-static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name);
+static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result);
 static int us_hb_process_stop (HA_CONF * ha_conf, const char *db_name);
 
 static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
@@ -1545,8 +1538,7 @@ check_server (const char *type, const char *server_name)
       if (strcmp (type, CHECK_SERVER) == 0)
 	{
 	  if (strcmp (token, CHECK_PAGE_SERVER) != 0 && strcmp (token, CHECK_TRANSACTION_SERVER) != 0
-	      && strcmp (token, CHECK_HA_SERVER) != 0 && strcmp (token, CHECK_HA_PAGE_SERVER) != 0
-	      && strcmp (token, CHECK_HA_TRANSACTION_SERVER) != 0)
+	      && strcmp (token, CHECK_HA_SERVER) != 0)
 	    {
 	      continue;
 	    }
@@ -1771,13 +1763,10 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		{
 		  int pid;
 
-		  if (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF
-		      || server_type_config::SINGLE_NODE ==
+		  if (server_type_config::SINGLE_NODE ==
 		      (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE))
 		    {
-		      status =
-			process_servers_start_within_node (token, command_type,
-							   (util_get_ha_mode_for_sa_utils () != HA_MODE_OFF));
+		      status = process_server_start_single_node (token, command_type);
 		    }
 		  else
 		    {
@@ -1935,18 +1924,11 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 }
 
 /*
- * process_servers_start_within_node -
- *     Start both a page and a transaction server, the page server must be started before transaction server
- *
- * return:
- *     NO_ERROR : success
- *
- *     server_name (in): server name
- *     command_type (in): command type
- *     ha_mode (in): true if HA mode
+ * process_server_start_single_node - start both a page and a transaction server,
+ *                                    the page server must be started before transaction server
  */
 static int
-process_servers_start_within_node (char *server_name, int command_type, bool ha_mode)
+process_server_start_single_node (char *server_name, int command_type)
 {
   int status = NO_ERROR;
   int pid = 0;
@@ -1954,7 +1936,7 @@ process_servers_start_within_node (char *server_name, int command_type, bool ha_
   const char *args_page[] = { UTIL_CUBRID_NAME, "-t", "page", server_name, NULL };
   status = proc_execute (UTIL_CUBRID_NAME, args_page, false, false, false, &pid);
 
-  if (status == NO_ERROR && !is_server_running (ha_mode ? CHECK_HA_PAGE_SERVER : CHECK_PAGE_SERVER, server_name, pid))
+  if (status == NO_ERROR && !is_server_running (CHECK_PAGE_SERVER, server_name, pid))
     {
       status = ER_GENERIC_ERROR;
     }
@@ -1968,8 +1950,7 @@ process_servers_start_within_node (char *server_name, int command_type, bool ha_
   const char *args_transaction[] = { UTIL_CUBRID_NAME, "-t", "transaction", server_name, NULL };
   status = proc_execute (UTIL_CUBRID_NAME, args_transaction, false, false, false, &pid);
 
-  if (status == NO_ERROR
-      && !is_server_running (ha_mode ? CHECK_HA_TRANSACTION_SERVER : CHECK_TRANSACTION_SERVER, server_name, pid))
+  if (status == NO_ERROR && !is_server_running (CHECK_TRANSACTION_SERVER, server_name, pid))
     {
       status = ER_GENERIC_ERROR;
     }
@@ -3960,11 +3941,21 @@ us_hb_server_stop (HA_CONF * ha_conf, const char *db_name)
 }
 
 static int
-us_hb_process_start (HA_CONF * ha_conf, const char *db_name)
+us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
 {
   int status = NO_ERROR;
+  int i;
+  int pid;
+  dynamic_array *pids = NULL;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_START);
+
+  pids = da_create (100, sizeof (int));
+  if (pids == NULL)
+    {
+      status = ER_GENERIC_ERROR;
+      goto ret;
+    }
 
   status = us_hb_server_start (ha_conf, db_name);
   if (status != NO_ERROR)
@@ -3972,7 +3963,37 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name)
       goto ret;
     }
 
+  status = us_hb_copylogdb_start (pids, ha_conf, db_name, NULL, NULL);
+  if (status != NO_ERROR)
+    {
+      goto ret;
+    }
+
+  status = us_hb_applylogdb_start (pids, ha_conf, db_name, NULL, NULL);
+  if (status != NO_ERROR)
+    {
+      goto ret;
+    }
+
+  sleep (HB_START_WAITING_TIME_IN_SECS);
+  if (check_result == true)
+    {
+      for (i = 0; i < da_size (pids); i++)
+	{
+	  da_get (pids, i, &pid);
+	  if (is_terminated_process (pid))
+	    {
+	      status = ER_GENERIC_ERROR;
+	      break;
+	    }
+	}
+    }
+
 ret:
+  if (pids)
+    {
+      da_destroy (pids);
+    }
 
   print_result (PRINT_HA_PROCS_NAME, status, START);
   return status;
@@ -4059,6 +4080,18 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
 
   /* stop javasp server */
   (void) process_javasp (STOP, 1, (const char **) &db_name, false, true, false, true);
+
+  status = us_hb_copylogdb_stop (ha_conf, db_name, NULL, NULL);
+  if (status != NO_ERROR)
+    {
+      goto ret;
+    }
+
+  status = us_hb_applylogdb_stop (ha_conf, db_name, NULL, NULL);
+  if (status != NO_ERROR)
+    {
+      goto ret;
+    }
 
   status = us_hb_server_stop (ha_conf, db_name);
 
@@ -4639,7 +4672,7 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
 	}
     }
 
-  status = us_hb_process_start (ha_conf, db_name);
+  status = us_hb_process_start (ha_conf, db_name, true);
   if (status != NO_ERROR)
     {
       if (db_name == NULL)

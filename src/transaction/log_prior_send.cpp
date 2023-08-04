@@ -25,6 +25,14 @@
 
 namespace cublog
 {
+  prior_sender::~prior_sender ()
+  {
+    // this assert works because an instance of this class is kept inside a unique pointer;
+    // the way the unique pointer implements the reset functions is:
+    // first un-assigns the held pointer and the deletes it
+    assert (is_empty ());
+  }
+
   void
   prior_sender::send_list (const log_prior_node *head, const LOG_LSA *unsent_lsa)
   {
@@ -32,22 +40,39 @@ namespace cublog
       {
 	return;
       }
-    const std::string message = prior_list_serialize (head);
+
+    assert (m_unsent_lsa == head->start_lsa);
+
+    std::string message = prior_list_serialize (head);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
       {
 	const log_prior_node *tail;
 	for (tail = head; tail->next != nullptr; tail = tail->next);
 	_er_log_debug (ARG_FILE_LINE,
-		       "[LOG_PRIOR_TRANSFER] Sending. Head lsa %lld|%d. Tail lsa %lld|%d. Message size = %zu.\n",
+		       "[LOG_PRIOR_TRANSFER] Sending. head_lsa = %lld|%d tail_lsa = %lld|%d. Message size = %zu.\n",
 		       LSA_AS_ARGS (&head->start_lsa), LSA_AS_ARGS (&tail->start_lsa), message.size ());
       }
 
+    send_serialized_message (std::move (message), unsent_lsa);
+  }
+
+  void
+  prior_sender::send_serialized_message (std::string &&message, const LOG_LSA *unsent_lsa)
+  {
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
-    assert (m_unsent_lsa == head->start_lsa);
-    for (auto &sink : m_sink_hooks)
+
+    // copy the message into every sink but the last..
+    for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
       {
-	(*sink) (std::string (message));
+	const sink_hook_t *const sink_p = m_sink_hooks[index];
+	(*sink_p) (std::string (message));
+      }
+    // ..and optimize by moving the message into the last sink, because it is of no use afterwards
+    if (m_sink_hooks.size () > 0)
+      {
+	const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1];
+	(*sink_p) (std::move (message));
       }
     m_unsent_lsa = *unsent_lsa;
   }
@@ -79,5 +104,12 @@ namespace cublog
   prior_sender::reset_unsent_lsa (const LOG_LSA &lsa)
   {
     m_unsent_lsa = lsa;
+  }
+
+  bool
+  prior_sender::is_empty ()
+  {
+    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+    return m_sink_hooks.empty ();
   }
 }

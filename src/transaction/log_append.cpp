@@ -184,7 +184,9 @@ LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
   // todo - concurrency safe-guard
   log_Gl.hdr.append_lsa = *lsa;
   log_Gl.prior_info.prior_lsa = *lsa;
-  log_Gl.m_prior_sender.reset_unsent_lsa (*lsa);
+#if defined (SERVER_MODE)
+  log_Gl.get_log_prior_sender ().reset_unsent_lsa (*lsa);
+#endif /* SERVER_MODE */
   log_Gl.append.set_nxio_lsa (*lsa);
 }
 
@@ -1856,7 +1858,7 @@ prior_list_serialize (const log_prior_node *head)
     }
 
   // calculate size
-  size_t size = prior_list_serialized_size (head);
+  const size_t size = prior_list_serialized_size (head);
 
   std::string serialized;
   serialized.reserve (size);

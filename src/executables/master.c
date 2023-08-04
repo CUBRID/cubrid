@@ -445,7 +445,14 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
   if (exit_code == NO_ERRORS)
     {
       const char first_char = buffer[0];
-      if (first_char == '$' || first_char == '%')
+      if (first_char == '#')
+        {
+          // HA mode on; only transaction servers connect.
+          type = SERVER_TYPE_TRANSACTION;
+          // Include '#' in the dbname; legacy requirement.
+          dbname = std::string (buffer, buffer_length);
+        }
+      else if (first_char == '$' || first_char == '%')
         {
           // not really a server, it is copylogdb or applylogdb
           type = SERVER_TYPE_UNKNOWN;

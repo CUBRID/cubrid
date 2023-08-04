@@ -26,7 +26,6 @@
 #include "log_impl.h"
 #include "page_server.hpp"
 #include "system_parameter.h"
-#include "util_func.h"
 
 #include <string>
 
@@ -39,7 +38,6 @@ passive_tran_server *pts_Gl = nullptr;
 SERVER_TYPE get_server_type_from_config (server_type_config parameter_value);
 transaction_server_type get_transaction_server_type_from_config (transaction_server_type_config parameter_value);
 void setup_tran_server_params_on_single_node_config ();
-int setup_tran_server_params_on_ha_mode ();
 
 static SERVER_TYPE g_server_type = SERVER_TYPE_UNKNOWN;
 static transaction_server_type g_transaction_server_type = transaction_server_type::ACTIVE;
@@ -129,18 +127,9 @@ int init_server_type (const char *db_name)
       g_server_type = get_server_type_from_config (server_type_from_config);
     }
 
-  // if ha_mode, then set page_server_hosts, remote_storage, and transaction_server_type
-  if (g_server_type == SERVER_TYPE_TRANSACTION)
+  if (g_server_type == SERVER_TYPE_TRANSACTION && server_type_from_config == server_type_config::SINGLE_NODE)
     {
-      if (!HA_DISABLED ())
-	{
-	  assert (server_type_from_config != server_type_config::SINGLE_NODE);
-	  er_code = setup_tran_server_params_on_ha_mode ();
-	}
-      else if (server_type_from_config == server_type_config::SINGLE_NODE)
-	{
-	  setup_tran_server_params_on_single_node_config ();
-	}
+      setup_tran_server_params_on_single_node_config ();
     }
 
 #if !defined(NDEBUG)
@@ -152,6 +141,9 @@ int init_server_type (const char *db_name)
 
       if (is_active_transaction_server ())
 	{
+	  // initialize this before ATS; as ATS could do some initialization that involves the sender
+	  log_Gl.initialize_log_prior_sender ();
+
 	  assert (ats_Gl == nullptr);
 	  ats_Gl = new active_tran_server ();
 	  ts_Gl.reset (ats_Gl);
@@ -161,6 +153,7 @@ int init_server_type (const char *db_name)
 	  assert (pts_Gl == nullptr);
 
 	  // passive tran server also needs (a) prior receiver(s) to receive log from page server(s)
+	  // the mechanism is that of a pub sub; a PTS subscribes to receive log from one page server (for now)
 	  log_Gl.initialize_log_prior_receiver ();
 
 	  pts_Gl = new passive_tran_server ();
@@ -174,8 +167,11 @@ int init_server_type (const char *db_name)
     }
   else if (g_server_type == SERVER_TYPE_PAGE)
     {
-      ps_Gl.reset (new page_server());
-      // page server needs a log prior receiver
+      ps_Gl.reset (new page_server ());
+
+      // initialize the sender before the receiver; such that the receiver has the
+      // sender ready, if needed (very unlikely scenario, but principially so)
+      log_Gl.initialize_log_prior_sender ();
       log_Gl.initialize_log_prior_receiver ();
     }
   else
@@ -211,81 +207,6 @@ void setup_tran_server_params_on_single_node_config ()
   sprintf (page_hosts_new_value, "localhost:%d", prm_get_master_port_id ());
   prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_hosts_new_value);
   prm_set_bool_value (PRM_ID_REMOTE_STORAGE, true);
-}
-
-int setup_tran_server_params_on_ha_mode ()
-{
-  char *page_server_host_list = NULL;
-  constexpr size_t MAX_BUFSIZE = 4096;
-  size_t list_size = 0;
-
-  char ha_node_list[MAX_BUFSIZE];
-  char *str, *savep;
-
-  int port_id = prm_get_master_port_id ();
-
-  constexpr const char *localhost_str = "localhost";
-
-  page_server_host_list = (char *) calloc (MAX_BUFSIZE, sizeof (char)); // free is called by sysprm_final()
-  if (page_server_host_list == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, MAX_BUFSIZE);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  list_size = MAX_BUFSIZE;
-
-  strncpy_bufsize (ha_node_list, prm_get_string_value (PRM_ID_HA_NODE_LIST));
-
-  str = strtok_r (ha_node_list, "@", &savep); // dbname@host1:host2:...
-  str = strtok_r (NULL, ",:", &savep);
-  while (str)
-    {
-      char page_server_host[MAX_BUFSIZE] = {0};
-
-      if (util_is_localhost (str))
-	{
-	  sprintf (page_server_host, "%s:%d,", localhost_str, port_id);
-	}
-      else
-	{
-	  sprintf (page_server_host, "%s:%d,", str, port_id);
-	}
-
-      if (strlen (page_server_host) + strlen (page_server_host_list) >= list_size)
-	{
-	  /* Block the overflow */
-	  char *tmp = (char *) realloc (page_server_host_list, list_size + MAX_BUFSIZE);
-	  if (tmp == NULL)
-	    {
-	      free_and_init (page_server_host_list);
-
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, list_size + MAX_BUFSIZE);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  page_server_host_list = tmp;
-	  list_size += MAX_BUFSIZE;
-	}
-
-      strcat (page_server_host_list, page_server_host);
-      str = strtok_r (NULL, ",:", &savep);
-    }
-
-  /* Remove the comma at the end of the page_server_host_list, (eg : "host1:port,host2:port,host3:port,") */
-  page_server_host_list[strlen (page_server_host_list) - 1] = '\0';
-
-  prm_set_string_value (PRM_ID_PAGE_SERVER_HOSTS, page_server_host_list);
-  prm_set_bool_value (PRM_ID_REMOTE_STORAGE, true);
-
-  /* TODO:
-   * *transaction_server_type* has to be determined.
-   * To determine the transaction_server_type, we need to know the node's state,
-   * and to know the node's state, we need to query the cub_master for the node's state.
-   * Therefore, in order to determine the transaction_server_type,
-   * communication with the cub_master must precede the init_server_type() step.
-   */
-
-  return NO_ERROR;
 }
 
 void finalize_server_type ()

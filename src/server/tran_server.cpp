@@ -125,8 +125,12 @@ tran_server::boot (const char *db_name)
       return error_code;
     }
 
-  if (uses_remote_storage ())
+  if (m_page_server_conn_vec.empty () == false)
     {
+      /*
+       * At least one PS is given by the configuration.
+       * Even if uses_remote_storage () == false, the remote storage can exist.
+       */
       error_code = reset_main_connection ();
       if (error_code != NO_ERROR)
 	{
@@ -134,14 +138,17 @@ tran_server::boot (const char *db_name)
 	  return error_code;
 	}
 
+      m_ps_connector.start ();
+    }
+
+  if (uses_remote_storage ())
+    {
       error_code = get_boot_info_from_page_server ();
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
-
-      m_ps_connector.start ();
     }
 
   return NO_ERROR;
