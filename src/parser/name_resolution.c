@@ -1266,7 +1266,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		    {
 		      if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
 			{
-			  return;
+			  goto error_exit;
 			}
 		    }
 		}
@@ -5121,10 +5121,9 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
       if ((dblink_table->cols = pt_mk_attr_def_node (parser, id_node, NULL)) == NULL)
 	{
 	  error = ER_DBLINK;
-	  goto error_exit;
 	}
 
-      return NO_ERROR;
+      goto error_exit;
     }
 
   if (dblink_table->sel_list->node_type == PT_NAME && dblink_table->sel_list->type_enum == PT_TYPE_STAR)
