@@ -933,8 +933,8 @@ enum pt_custom_print
   PT_PRINT_SUPPRESS_SERVER_NAME = (0x1 << 25),
   /* suppress next_value to serial_next_value(...) or current_value to serial_current_value(...) */
   PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
-  /* suppress target-name at 'DELETE target-name FROM' for dblink's other DBMS */
-  PT_PRINT_SUPPRESS_DELETE_TARGET = (0x1 << 27)
+  /* suppress print various generated functions including suppress delete targe for dblink */
+  PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
 };
 
 /* all statement node types should be assigned their API statement enumeration */

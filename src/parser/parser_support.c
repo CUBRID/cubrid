@@ -10785,42 +10785,46 @@ static PT_NODE *
 pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
 {
   PT_SPEC_INFO *class_spec_info = &from_tbl->info.spec;
-  PT_NODE *drived_spec;
+  PT_NODE *derived_spec;
   PT_NODE *new_range_var;
   PT_NODE *dbl_col = NULL;
 
-  if ((drived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
+  if ((derived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
     {
-      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
       return NULL;
     }
 
   if ((new_range_var = parser_new_node (parser, PT_NAME)) == NULL)
     {
-      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
-      parser_free_node (parser, drived_spec);
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      parser_free_node (parser, derived_spec);
       return NULL;
     }
 
+  parser->custom_print |= PT_PRINT_SUPPRESS_FOR_DBLINK;
+
+  derived_spec->info.dblink_table.remote_table_name = NULL;
   if (class_spec_info->entity_name->info.name.resolved)
     {
-      char tmp[1024];
-      snprintf (tmp, sizeof (tmp), "%s.%s", class_spec_info->entity_name->info.name.resolved,
-		class_spec_info->entity_name->info.name.original);
-      drived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, NULL, tmp);
+      derived_spec->info.dblink_table.remote_table_name =
+	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name,
+			  class_spec_info->entity_name->info.name.resolved);
+      derived_spec->info.dblink_table.remote_table_name =
+	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, ".");
     }
-  else
-    {
-      drived_spec->info.dblink_table.remote_table_name =
-	pt_append_string (parser, NULL, class_spec_info->entity_name->info.name.original);
-    }
+  derived_spec->info.dblink_table.remote_table_name =
+    pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name,
+		      class_spec_info->entity_name->info.name.original);
+
+  parser->custom_print &= ~PT_PRINT_SUPPRESS_FOR_DBLINK;
 
   assert (class_spec_info->remote_server_name->node_type == PT_NAME);
-  drived_spec->info.dblink_table.is_name = true;
-  drived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
+  derived_spec->info.dblink_table.is_name = true;
+  derived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
   if (class_spec_info->remote_server_name->next)
     {
-      drived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
+      derived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
       class_spec_info->remote_server_name->next = NULL;
     }
   class_spec_info->remote_server_name = NULL;
@@ -10844,16 +10848,16 @@ pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
   new_range_var->info.name.original = pt_append_string (parser, NULL, (char *) var_buf->bytes);
 
 
-  drived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
+  derived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
   class_spec_info->entity_name = NULL;
 
-  drived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
+  derived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
   class_spec_info->range_var = NULL;
 
-  drived_spec->info.dblink_table.cols = NULL;
+  derived_spec->info.dblink_table.cols = NULL;
 
   from_tbl->info.spec.range_var = new_range_var;
-  from_tbl->info.spec.derived_table = drived_spec;
+  from_tbl->info.spec.derived_table = derived_spec;
   from_tbl->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
 
   return from_tbl;
@@ -11572,6 +11576,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   int i;
   int tmp_local_cnt = snl->local_cnt;
   int tmp_server_cnt = snl->server_cnt;
+  unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
   PT_NODE *list = NULL;		/* for insert select list */
@@ -11653,12 +11658,18 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
+  /*
+   ** the query which has generic function is set flag.cannont_prepare to 1 by parser
+   ** because the generic function might not be executed, 
+   ** However, the dblink DML should be prepared even though it has generic function
+   */
+  node->flag.cannot_prepare = 0;
+
   /*  
    ** The target server must all be the same.
    ** Therefore, even if multiple tables are specified, only the first information is configured as PT_DBLINK_TABLE_DML.
    ** Postpone checking that "user.server" and "server" are the same.
    */
-
   PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
   if (!ct)
     {
@@ -11682,12 +11693,17 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
      It also should set flag not to convert to serial_next_value
      or serial_current_value for ORACLE or other DBMS.
    */
+
+  save_custom_print = parser->custom_print;
+
   parser->custom_print |=
-    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_SUPPRESS_DELETE_TARGET;
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+    PT_PRINT_SUPPRESS_FOR_DBLINK;
   val->info.value.data_value.str = pt_print_bytes (parser, node);
+
+  parser->custom_print = save_custom_print;
+
   PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
-  parser->custom_print &=
-    ~(PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_SUPPRESS_DELETE_TARGET);
 
   if (into_spec)
     {
