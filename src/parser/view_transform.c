@@ -4098,6 +4098,56 @@ mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement,
 #endif
 
 /*
+ * mq_is_dblink_pushable_term () - check if the predicate is pushable for dblink
+ *   return: bool
+ *   parser(in):
+ *   term(in):
+ */
+static bool
+mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
+{
+  if (term->node_type == PT_EXPR)
+    {
+      if (pt_is_operator_logical (term->info.expr.op))
+	{
+	  if (mq_is_dblink_pushable_term (parser, term->info.expr.arg1))
+	    {
+	      if (term->info.expr.arg2)
+		{
+		  if (mq_is_dblink_pushable_term (parser, term->info.expr.arg2))
+		    {
+		      /* every argument is pushable */
+		      return true;
+		    }
+		  /* some argument is not pushable */
+		  return false;
+		}
+	      /* every argument is pushable */
+	      return true;
+	    }
+
+	  /* it's not pushable because the expression may have function-like */
+	  return false;
+	}
+      else
+	{
+	  /* other expression like built-in and stored function and etc. */
+	  return false;
+	}
+    }
+
+  switch (term->node_type)
+    {
+    case PT_NAME:
+    case PT_HOST_VAR:
+    case PT_VALUE:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -4138,7 +4188,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   int push_cnt, push_correlated_cnt, copy_cnt;
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
-  PT_NODE *save_next;
+  PT_NODE *save_next, *in_spec;
   bool is_outer_joined;
 
   /* init */
@@ -4186,8 +4236,18 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   is_outer_joined = mq_is_outer_join_spec (parser, spec);
 
   /* term(predicate) check */
+  in_spec = statement->info.query.q.select.from;
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
+      /* check for dblink's function term */
+      if (in_spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  if (!mq_is_dblink_pushable_term (parser, term))
+	    {
+	      continue;
+	    }
+	}
+
       /* check for on_cond term */
       assert (term->node_type == PT_EXPR || term->node_type == PT_VALUE);
       if ((term->node_type == PT_EXPR && term->info.expr.location > 0)
