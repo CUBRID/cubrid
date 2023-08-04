@@ -1456,25 +1456,11 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	}
       break;
     case DB_TYPE_DOUBLE:
-      DB_VALUE numeric;
-      DB_DATA_STATUS status;
-
-      db_value_domain_init (&numeric, DB_TYPE_NUMERIC, 0, 0);
-
-      numeric_db_value_coerce_to_num (value, &numeric, &status);
-      if (status != DATA_STATUS_OK)
-	{
-
-	  result =
-	    double_to_string (db_get_double (value), default_double_profile.fieldwidth,
-			      default_double_profile.precision, default_double_profile.leadingsign, nullptr, nullptr,
-			      default_double_profile.leadingzeros, trailingzeros, default_double_profile.commas,
-			      double_format);
-	}
-      else
-	{
-	  result = numeric_to_string (&numeric, default_numeric_profile.commas);
-	}
+      result =
+	double_to_string (db_get_double (value), default_double_profile.fieldwidth,
+			  default_double_profile.precision, default_double_profile.leadingsign, nullptr, nullptr,
+			  default_double_profile.leadingzeros, trailingzeros, default_double_profile.commas,
+			  double_format);
       if (result)
 	{
 	  len = strlen (result);
