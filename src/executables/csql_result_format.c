@@ -1330,12 +1330,10 @@ static char *
 conv_double_to_string (double number, int *length)
 {
   char double_str[MAX_DOUBLE_STRING];
-  char return_str[MAX_DOUBLE_STRING] = { '0', '.', '\0', };
-  int exp_num, sign = 1, offset, p;
+  char return_str[MAX_DOUBLE_STRING] = { '-', '0', '.', '\0', };
+  int exp_num, offset, p;
 
-  char *dot, *exp;
-
-  sign = (number < 0) ? -1 : 1;
+  char *dot, *exp, *sp = return_str + 1;
 
   sprintf (double_str, "%.16g", fabs (number));
   dot = strchr (double_str, '.');
@@ -1343,7 +1341,7 @@ conv_double_to_string (double number, int *length)
 
   if (!exp)
     {
-      sprintf (return_str, "%s%s", sign == -1 ? "-" : "", double_str);
+      sprintf (return_str, "%s%s", (number < 0) ? "-" : "", double_str);
       *length = strlen (return_str);
       return strdup (return_str);
     }
@@ -1352,21 +1350,21 @@ conv_double_to_string (double number, int *length)
 
   if (exp_num > 0)
     {
-      memcpy (return_str, double_str, offset = (int) (dot - double_str));
-      memcpy (return_str + offset, dot + 1, p = (int) (exp - dot) - 1);
-      memset (return_str + offset + p, '0', exp_num - (int) (exp - dot) + 1);
-      *length = strlen (return_str);
+      memcpy (sp, double_str, offset = (int) (dot - double_str));
+      memcpy (sp + offset, dot + 1, p = (int) (exp - dot) - 1);
+      memset (sp + offset + p, '0', exp_num - (int) (exp - dot) + 1);
     }
   else
     {
       exp_num = -exp_num;
-      memset (return_str + 2, '0', offset = exp_num - 1);
-      memcpy (return_str + 2 + offset, double_str, p = (int) (dot - double_str));
-      memcpy (return_str + 2 + offset + p, dot + 1, (int) (exp - dot) - 1);
-      *length = strlen (return_str);
+      memset (sp + 2, '0', offset = exp_num - 1);
+      memcpy (sp + 2 + offset, double_str, p = (int) (dot - double_str));
+      memcpy (sp + 2 + offset + p, dot + 1, (int) (exp - dot) - 1);
     }
 
-  return strdup (return_str);
+  *length = (number < 0) ? strlen (return_str) : strlen (return_str + 1);
+
+  return (number < 0) ? strdup (return_str) : strdup (return_str + 1);
 }
 
 /*
