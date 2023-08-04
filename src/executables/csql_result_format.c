@@ -620,18 +620,18 @@ double_to_string (double double_value, int field_width, int precision, const boo
 static char *
 time_as_string (DB_TIME * time_value, const char *conversion)
 {
-  char double_string[TIME_STRING_MAX];
+  char temp_string[TIME_STRING_MAX];
 
   if (time_value == NULL)
     {
       return NULL;
     }
 
-  if (!db_strftime (double_string, (int) TIME_STRING_MAX, conversion, (DB_DATE *) NULL, time_value))
+  if (!db_strftime (temp_string, (int) TIME_STRING_MAX, conversion, (DB_DATE *) NULL, time_value))
     {
       return (NULL);
     }
-  return (duplicate_string (double_string));
+  return (duplicate_string (temp_string));
 
 }
 #endif
@@ -868,13 +868,13 @@ object_to_string (DB_OBJECT * object, int format)
 
   if (format == OBJECT_FORMAT_OID)
     {
-      char double_string[OBJECT_SYMBOL_MAX];
+      char temp_string[OBJECT_SYMBOL_MAX];
 
-      if (!db_print_mop (object, double_string, OBJECT_SYMBOL_MAX))
+      if (!db_print_mop (object, temp_string, OBJECT_SYMBOL_MAX))
 	{
 	  return (NULL);
 	}
-      return (duplicate_string (double_string));
+      return (duplicate_string (temp_string));
     }
   else
     {
@@ -939,7 +939,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
 static char *
 bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
 {
-  char *double_string;
+  char *temp_string;
   char *return_string;
   int max_length;
 
@@ -950,21 +950,21 @@ bit_to_string (DB_VALUE * value, char string_delimiter, bool plain_string)
    * hexadecimal.
    */
   max_length = ((db_get_string_length (value) + 3) / 4) + 4;
-  double_string = (char *) malloc (max_length);
-  if (double_string == NULL)
+  temp_string = (char *) malloc (max_length);
+  if (temp_string == NULL)
     {
       return (NULL);
     }
 
-  if (db_bit_string (value, "%X", double_string, max_length) != CSQL_SUCCESS)
+  if (db_bit_string (value, "%X", temp_string, max_length) != CSQL_SUCCESS)
     {
-      free_and_init (double_string);
+      free_and_init (temp_string);
       return (NULL);		/* Should never get here */
     }
 
   return_string =
-    string_to_string (double_string, string_delimiter, 'X', strlen (double_string), NULL, plain_string, false);
-  free_and_init (double_string);
+    string_to_string (temp_string, string_delimiter, 'X', strlen (temp_string), NULL, plain_string, false);
+  free_and_init (temp_string);
 
   return (return_string);
 }
