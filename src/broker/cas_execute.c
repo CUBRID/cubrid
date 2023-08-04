@@ -1319,6 +1319,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 {
   int err_code = 0;
   int num_bind = 0;
+  SQLLEN row_count = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
   char stmt_type;
   ODBC_BIND_INFO *bind_data_list = NULL;
@@ -1372,7 +1373,7 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       goto execute_error;
     }
 
-  err_code = cgw_execute (srv_handle);
+  err_code = cgw_execute (srv_handle, &row_count);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1387,7 +1388,14 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->num_q_result = 1;
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
-  srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.
+  if (stmt_type == CUBRID_STMT_SELECT)
+    {
+      srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.
+    }
+  else
+    {
+      srv_handle->total_tuple_count = (int) row_count;
+    }
 
   if (do_commit_after_execute (*srv_handle))
     {
@@ -5742,6 +5750,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   int num_tuple_msg_offset;
   int num_tuple = 0;
   int net_buf_size;
+  SQLLEN row_count = 0;
   char fetch_end_flag = 0;
   SQLSMALLINT num_cols;
   SQLLEN total_row_count = 0;
@@ -5755,7 +5764,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   if (srv_handle->is_cursor_open == false)
     {
-      err_code = cgw_execute (srv_handle);
+      err_code = cgw_execute (srv_handle, &row_count);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -5771,7 +5780,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  goto fetch_error;
 	}
 
-      err_code = cgw_execute (srv_handle);
+      err_code = cgw_execute (srv_handle, &row_count);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
