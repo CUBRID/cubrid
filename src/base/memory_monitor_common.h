@@ -25,6 +25,7 @@
 #include "dbtype_def.h"
 
 #include <cstdint>
+#include <vector>
 
 typedef enum mmon_module_id
 {
@@ -57,7 +58,7 @@ typedef struct mmon_comp_info
   char name[DB_MAX_IDENTIFIER_LENGTH];
   MMON_OUTPUT_MEM_STAT stat;
   uint32_t num_subcomp;
-  MMON_SUBCOMP_INFO *subcomp_info;
+    std::vector < MMON_SUBCOMP_INFO > subcomp_info;
 } MMON_COMP_INFO;
 
 typedef struct mmon_module_info
@@ -65,7 +66,7 @@ typedef struct mmon_module_info
   char name[DB_MAX_IDENTIFIER_LENGTH];
   MMON_OUTPUT_MEM_STAT stat;
   uint32_t num_comp;
-  MMON_COMP_INFO *comp_info;
+    std::vector < MMON_COMP_INFO > comp_info;
 } MMON_MODULE_INFO;
 
 typedef struct mmon_tran_stat
@@ -77,7 +78,7 @@ typedef struct mmon_tran_stat
 typedef struct mmon_tran_info
 {
   uint32_t num_tran;
-  MMON_TRAN_STAT *tran_stat;
+    std::vector < MMON_TRAN_STAT > tran_stat;
 } MMON_TRAN_INFO;
 
 #endif // _MEMORY_MONITOR_COMMON_H_
