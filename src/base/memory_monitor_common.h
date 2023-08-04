@@ -58,7 +58,9 @@ typedef struct mmon_comp_info
   char name[DB_MAX_IDENTIFIER_LENGTH];
   MMON_OUTPUT_MEM_STAT stat;
   uint32_t num_subcomp;
-    std::vector < MMON_SUBCOMP_INFO > subcomp_info;
+  // *INDENT-OFF*
+  std::vector < MMON_SUBCOMP_INFO > subcomp_info;
+  // *INDENT-ON*
 } MMON_COMP_INFO;
 
 typedef struct mmon_module_info
@@ -66,7 +68,9 @@ typedef struct mmon_module_info
   char name[DB_MAX_IDENTIFIER_LENGTH];
   MMON_OUTPUT_MEM_STAT stat;
   uint32_t num_comp;
-    std::vector < MMON_COMP_INFO > comp_info;
+  // *INDENT-OFF*
+  std::vector < MMON_COMP_INFO > comp_info;
+  // *INDENT-ON*
 } MMON_MODULE_INFO;
 
 typedef struct mmon_tran_stat
@@ -78,7 +82,9 @@ typedef struct mmon_tran_stat
 typedef struct mmon_tran_info
 {
   uint32_t num_tran;
-    std::vector < MMON_TRAN_STAT > tran_stat;
+  // *INDENT-OFF*
+  std::vector < MMON_TRAN_STAT > tran_stat;
+  // *INDENT-ON*
 } MMON_TRAN_INFO;
 
 #endif // _MEMORY_MONITOR_COMMON_H_
