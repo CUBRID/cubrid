@@ -13692,7 +13692,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  /* for dblink: no need to check xal_is is NULL */
+  /* for dblink: no need to check xasl_id is NULL */
   if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
     {
       if (statement->xasl_id == NULL)
