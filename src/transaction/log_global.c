@@ -154,13 +154,6 @@ log_global::finalize_log_prior_sender ()
   m_prior_sender.reset (nullptr);
 }
 
-cublog::prior_sender &
-log_global::get_log_prior_sender()
-{
-  assert (m_prior_sender != nullptr);
-  return *m_prior_sender;
-}
-
 void
 log_global::initialize_log_prior_receiver ()
 {
