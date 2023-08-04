@@ -3187,6 +3187,12 @@ create_stmt
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
+
+			    assert (PT_SYNONYM_TARGET_NAME (node) != NULL);
+			    if (PT_NAME_INFO_IS_FLAGED (PT_SYNONYM_TARGET_NAME (node), PT_NAME_INFO_SERVER_SPECIFIED))
+			      {
+				PT_SYNONYM_IS_DBLINKED (node) = 1;
+			      }
 			  }
 
 			$$ = node;
@@ -3203,12 +3209,21 @@ class_name_for_synonym
 		  PT_NODE *cname = CONTAINER_AT_0 ($1);
 		  PT_NODE *sname = CONTAINER_AT_1 ($1);
 
-		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, "@");
-		  cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, sname->info.name.original);
-                  parser_free_tree(this_parser, sname);
-                  
-		  // Set automatically assign a user name.
-		  PT_NAME_INFO_SET_FLAG (cname, PT_NAME_INFO_USER_SPECIFIED);
+		  if (cname && sname)
+		    {
+		      if (cname->info.name.resolved)
+			{
+			  cname->info.name.original = pt_append_string (this_parser, ".", cname->info.name.original);
+			  cname->info.name.original = pt_append_string (this_parser, cname->info.name.resolved, cname->info.name.original);
+			  cname->info.name.resolved = NULL;
+			}
+		      cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, "@");
+		      cname->info.name.original = pt_append_string (this_parser, cname->info.name.original, sname->info.name.original);
+
+		      PT_NAME_INFO_SET_FLAG (cname, PT_NAME_INFO_SERVER_SPECIFIED);
+
+		      parser_free_tree(this_parser, sname);
+		    }
 
 		  $$ = cname;
 		}
@@ -4057,6 +4072,14 @@ alter_stmt
 			    if (synonym_access_modifier == PT_PUBLIC)
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
+			      }
+
+			    if (PT_SYNONYM_TARGET_NAME (node) != NULL)
+			      {
+				if (PT_NAME_INFO_IS_FLAGED (PT_SYNONYM_TARGET_NAME (node), PT_NAME_INFO_SERVER_SPECIFIED))
+				  {
+				    PT_SYNONYM_IS_DBLINKED (node) = 1;
+				  }
 			      }
 			  }
 
