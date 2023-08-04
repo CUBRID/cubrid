@@ -1337,7 +1337,7 @@ conv_double_to_string (double number, int *length)
 
   sign = (number < 0) ? -1 : 1;
 
-  sprintf (double_str, "%.17g", fabs (number));
+  sprintf (double_str, "%.16g", fabs (number));
   dot = strchr (double_str, '.');
   exp = strchr (double_str, 'e');
 
@@ -1465,15 +1465,15 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
       if (status != DATA_STATUS_OK)
 	{
 
-          result =
+	  result =
 	    double_to_string (db_get_double (value), default_double_profile.fieldwidth,
-			  default_double_profile.precision, default_double_profile.leadingsign, nullptr, nullptr,
-			  default_double_profile.leadingzeros, trailingzeros, default_double_profile.commas,
-			  double_format);
+			      default_double_profile.precision, default_double_profile.leadingsign, nullptr, nullptr,
+			      default_double_profile.leadingzeros, trailingzeros, default_double_profile.commas,
+			      double_format);
 	}
       else
 	{
-          result = numeric_to_string (&numeric, default_numeric_profile.commas);
+	  result = numeric_to_string (&numeric, default_numeric_profile.commas);
 	}
       if (result)
 	{
