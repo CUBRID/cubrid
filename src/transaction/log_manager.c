@@ -14474,6 +14474,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
   LOG_LSA cur_log_lsa = LSA_INITIALIZER;
 
   LOG_RECORD_HEADER *log_rec_header;
+  LOG_RECTYPE log_type;
   LOG_REC_DONETIME *donetime;
   LOG_REC_HA_SERVER_STATE *dummy;
 
@@ -14572,10 +14573,11 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
+      log_type = log_rec_header->type;
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_pgptr);
 
-      if (log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+      if (log_type == LOG_COMMIT || log_type == LOG_ABORT)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
 	  donetime = (LOG_REC_DONETIME *) (log_pgptr->area + process_lsa.offset);
@@ -14586,7 +14588,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	  return NO_ERROR;
 	}
 
-      if (log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+      if (log_type == LOG_DUMMY_HA_SERVER_STATE)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
 	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_pgptr->area + process_lsa.offset);
@@ -14633,10 +14635,11 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   LOG_LSA process_lsa;
   LOG_LSA current_lsa;
 
-  LOG_RECORD_HEADER *log_rec_header;
   LOG_PAGE *log_page_p = NULL;
   char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
+  LOG_RECORD_HEADER *log_rec_header;
+  LOG_RECTYPE log_type;
   LOG_REC_DONETIME *donetime;
   LOG_REC_HA_SERVER_STATE *dummy;
   time_t at_time;
@@ -14670,10 +14673,11 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 
       LSA_COPY (&current_lsa, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
+      log_type = log_rec_header->type;
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
 
-      if (log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+      if (log_type == LOG_COMMIT || log_type == LOG_ABORT)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	  donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
@@ -14687,7 +14691,7 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 	    }
 	}
 
-      if (log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+      if (log_type == LOG_DUMMY_HA_SERVER_STATE)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
 	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
