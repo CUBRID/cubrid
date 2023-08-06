@@ -47,7 +47,7 @@ tran_server::register_connection_handler (const std::string &host)
 {
   std::string m_ps_hostname;
   auto col_pos = host.find (":");
-  long port = -1;
+  int32_t port = -1;
 
   if (col_pos < 1 || col_pos >= host.length () - 1)
     {
@@ -58,7 +58,7 @@ tran_server::register_connection_handler (const std::string &host)
 
   try
     {
-      port = std::stol (host.substr (col_pos + 1));
+      port = std::stoi (host.substr (col_pos + 1));
     }
   catch (...)
     {
@@ -461,6 +461,23 @@ tran_server::uses_remote_storage () const
   return false;
 }
 
+bool tran_server::get_main_connection_info (std::string &host_out, int32_t &port_out)
+{
+  auto slock = std::shared_lock<std::shared_mutex> { m_main_conn_mtx };
+  if (m_main_conn == nullptr)
+    {
+      host_out = "N/A";
+      port_out = -1;
+      return false;
+    }
+
+  auto &node = m_main_conn->get_node ();
+  host_out = node.get_host ();
+  port_out = node.get_port ();
+
+  return true;
+}
+
 void
 tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 {
@@ -522,8 +539,9 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 
   m_disconn_future = std::async (std::launch::async, [this, with_disc_msg]
   {
-    on_disconnecting (); // server-type specific jobs before disconnect
+    on_disconnecting (); // server-type specific jobs before disconnecting.
     // m_conn is not nullptr since it's only set to nullptr here below once
+
     m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
     auto ulock_conn = std::unique_lock<std::shared_mutex> { m_conn_mtx };
     const std::string channel_id = get_channel_id ();
@@ -672,6 +690,12 @@ tran_server::connection_handler::is_idle ()
 {
   auto slock = std::shared_lock<std::shared_mutex> { m_state_mtx };
   return m_state == state::IDLE;
+}
+
+const cubcomm::node &
+tran_server::connection_handler::get_node () const
+{
+  return m_node;
 }
 
 tran_server::ps_connector::ps_connector (tran_server &ts)

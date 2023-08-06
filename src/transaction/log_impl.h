@@ -737,7 +737,12 @@ public:
   void initialize_log_prior_sender ();
   void finalize_log_prior_sender ();
   // *INDENT-OFF*
-  cublog::prior_sender &get_log_prior_sender ();
+  cublog::prior_sender &
+  get_log_prior_sender()
+  {
+    assert (m_prior_sender != nullptr);
+    return *m_prior_sender;
+  }
   // *INDENT-ON*
   void initialize_log_prior_receiver ();
   void finalize_log_prior_receiver ();

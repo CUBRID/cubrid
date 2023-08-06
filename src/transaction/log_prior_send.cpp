@@ -34,12 +34,15 @@ namespace cublog
   }
 
   void
-  prior_sender::send_list (const log_prior_node *head)
+  prior_sender::send_list (const log_prior_node *head, const LOG_LSA *unsent_lsa)
   {
     if (head == nullptr)
       {
 	return;
       }
+
+    assert (m_unsent_lsa == head->start_lsa);
+
     std::string message = prior_list_serialize (head);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
@@ -51,13 +54,14 @@ namespace cublog
 		       LSA_AS_ARGS (&head->start_lsa), LSA_AS_ARGS (&tail->start_lsa), message.size ());
       }
 
-    send_serialized_message (std::move (message));
+    send_serialized_message (std::move (message), unsent_lsa);
   }
 
   void
-  prior_sender::send_serialized_message (std::string &&message)
+  prior_sender::send_serialized_message (std::string &&message, const LOG_LSA *unsent_lsa)
   {
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+
     // copy the message into every sink but the last..
     for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
       {
@@ -70,15 +74,18 @@ namespace cublog
 	const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1];
 	(*sink_p) (std::move (message));
       }
+    m_unsent_lsa = *unsent_lsa;
   }
 
-  void
+  LOG_LSA
   prior_sender::add_sink (const sink_hook_t &fun)
   {
     assert (fun != nullptr);
 
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     m_sink_hooks.push_back (&fun);
+
+    return m_unsent_lsa;
   }
 
   void
@@ -91,6 +98,12 @@ namespace cublog
     const auto find_it = std::find (m_sink_hooks.begin (), m_sink_hooks.end (), &fun);
     assert (find_it != m_sink_hooks.end ());
     m_sink_hooks.erase (find_it);
+  }
+
+  void
+  prior_sender::reset_unsent_lsa (const LOG_LSA &lsa)
+  {
+    m_unsent_lsa = lsa;
   }
 
   bool

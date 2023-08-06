@@ -139,6 +139,7 @@ class page_server
 	void receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp);
 	void receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &&a_sp);
 	void receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &&a_sp);
+	void receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp);
 
 	void abnormal_tran_server_disconnect (css_error_code error_code, bool &abort_further_processing);
 

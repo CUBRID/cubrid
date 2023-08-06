@@ -21,6 +21,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_lsa_utils.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
 
@@ -191,6 +192,27 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 			    get_channel_id ().c_str ());
 }
 
+void
+active_tran_server::connection_handler::send_start_catch_up_request (std::string &&host, int32_t port,
+    LOG_LSA &&catchup_lsa)
+{
+  cubpacking::packer packer;
+  size_t size = 0;
+
+  size += packer.get_packed_string_size (host, size); // host
+  size += packer.get_packed_int_size (size); // port
+  size += cublog::lsa_utils::get_packed_size (packer, size); // catchup_lsa
+
+  std::unique_ptr < char[] > buffer (new char[size]);
+  packer.set_buffer (buffer.get (), size);
+
+  packer.pack_string (host);
+  packer.pack_int (port);
+  cublog::lsa_utils::pack (packer, catchup_lsa);
+
+  push_request_regardless_of_state (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
+}
+
 log_lsa
 active_tran_server::connection_handler::get_saved_lsa () const
 {
@@ -204,7 +226,28 @@ active_tran_server::connection_handler::on_connecting ()
 
   m_prior_sender_sink_hook_func = std::bind (&active_tran_server::connection_handler::prior_sender_sink_hook, this,
 				  std::placeholders::_1);
-  log_Gl.get_log_prior_sender ().add_sink (m_prior_sender_sink_hook_func);
+
+  auto unsent_lsa = log_Gl.get_log_prior_sender ().add_sink (m_prior_sender_sink_hook_func);
+
+  std::string hostname = "N/A";
+  int32_t port = -1;
+
+  // TODO: We should make two paths to set a connection_handler to CONNECTED:
+  //    - While booting: a target PS is determined after communicating with multiple PSes and
+  //      send the catch-up request based on it.
+  //    - While running: the unsent_lsa from prior_sender is the LSA of the first log records to send.
+  if (!unsent_lsa.is_null ())
+    {
+      auto res = m_ts.get_main_connection_info (hostname, port);
+      assert (res);
+    }
+  else
+    {
+      // It's booting up and before log_initialize (). There is no main connection yet. For now, it just sends NULL_LSA.
+      // TODO: While booting up, the catchup_lsa is not unsent_lsa, but determined by communicating with PSes.
+    }
+
+  send_start_catch_up_request (std::move (hostname), port, std::move (unsent_lsa));
 }
 
 void

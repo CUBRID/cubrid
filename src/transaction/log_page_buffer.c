@@ -369,7 +369,7 @@ static void logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *
 static void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * crumbs);
 static void logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty);
 static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
-static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
+static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list, const LOG_LSA * unsent_lsa);
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
 static int logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr);
@@ -3428,7 +3428,7 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
  *   list(in/out):
  */
 static int
-logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
+logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list, const LOG_LSA * unsent_lsa)
 {
   LOG_PRIOR_NODE *node;
 
@@ -3442,7 +3442,7 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
   if (is_active_transaction_server () || is_page_server ())
     {
       // the log prior sender is not initialized on a passive transaction server
-      log_Gl.get_log_prior_sender ().send_list (list);
+      log_Gl.get_log_prior_sender ().send_list (list, unsent_lsa);
     }
 #endif /* SERVER_MODE */
 
@@ -3506,12 +3506,14 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 {
   LOG_PRIOR_NODE *prior_list;
   INT64 current_size;
+  LOG_LSA unsent_lsa;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   log_Gl.prior_info.prior_lsa_mutex.lock ();
   current_size = log_Gl.prior_info.list_size;
   prior_list = prior_lsa_remove_prior_list (thread_p);
+  LSA_COPY (&unsent_lsa, &log_Gl.prior_info.prior_lsa);
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
   if (prior_list != NULL)
@@ -3519,7 +3521,7 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
       perfmon_add_stat (thread_p, PSTAT_PRIOR_LSA_LIST_SIZE, (unsigned int) current_size / ONE_K);	/* kbytes */
       perfmon_inc_stat (thread_p, PSTAT_PRIOR_LSA_LIST_REMOVED);
 
-      logpb_append_prior_lsa_list (thread_p, prior_list);
+      logpb_append_prior_lsa_list (thread_p, prior_list, &unsent_lsa);
     }
 
   return NO_ERROR;

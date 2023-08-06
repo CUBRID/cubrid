@@ -20,6 +20,7 @@
 #define _LOG_PRIOR_SEND_HPP_
 
 #include "log_append.hpp"
+#include "log_lsa.hpp"
 
 #include <functional>
 #include <mutex>
@@ -38,7 +39,7 @@ namespace cublog
       using sink_hook_t = std::function<void (std::string &&)>;   // messages are passed to sink hooks.
 
     public:
-      prior_sender () = default;
+      prior_sender () : m_unsent_lsa { NULL_LSA } {}
       ~prior_sender ();
 
       prior_sender (const prior_sender &) = delete;
@@ -48,19 +49,22 @@ namespace cublog
       prior_sender &operator = (prior_sender &&) = delete;
 
     public:
-      void send_list (const log_prior_node *head);                // send prior node list to all sinks
+      void send_list (const log_prior_node *head,
+		      const LOG_LSA *unsent_lsa);                // send prior node list to all sinks
 
-      void add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
+      LOG_LSA add_sink (const sink_hook_t &fun);                     // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);                  // add a hook for a new sink
+      void reset_unsent_lsa (const LOG_LSA &lsa);                    // reset only when prior_lsa is reset
 
     private:
-      void send_serialized_message (std::string &&message);
+      void send_serialized_message (std::string &&message, const LOG_LSA *unsent_lsa);
       bool is_empty ();
 
     private:
       // non-owning pointers
       std::vector<const sink_hook_t *> m_sink_hooks;              // hooks for sinks
       std::mutex m_sink_hooks_mutex;                              // protect access on sink hooks
+      LOG_LSA m_unsent_lsa;                                          // lsa log records to send, in other word, unsent
   };
 }
 

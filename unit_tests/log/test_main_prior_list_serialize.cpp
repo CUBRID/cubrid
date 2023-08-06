@@ -464,11 +464,6 @@ namespace cublog
   {
     assert_release (!m_thread.joinable ());
   }
-
-  prior_sender::~prior_sender ()
-  {
-    assert_release (false);
-  }
 }
 
 log_global::log_global ()
