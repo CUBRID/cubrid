@@ -19,10 +19,9 @@
 
 # declare read only variable
 declare -r -a key_titles=(
-    "max_num_ovf_page_a_key"            "Max_num_ovf_page_a_key"
-    "avg_num_ovf_page_per_key"          "Avg_num_ovf_page_per_key"
-    "num_ovf_page"                      "Num_ovf_page"
-    "avg_num_value_per_deduplicate_key" "Avg_num_value_per_deduplicate_key"
+    "Max_num_ovf_page_a_key"
+    "Avg_num_ovf_page_per_key"
+    "Num_ovf_page"    
 )
 
 declare -r sort_option_page=1
@@ -45,6 +44,7 @@ target_table=""
 connection_mode="-C"
 
 match_key="${key_titles[1]}"
+declare -i match_key_idx=1
 declare -i sort_field=${sort_title[2]}
 declare -i threshold_value=1000
 declare -i info_map_st_sz=6
@@ -82,8 +82,11 @@ function show_usage ()
 	echo "  -p, --password=ARG  Set password of databases user name; default NULL"
 	echo "  -o, --owner=ARG     Set target owner ID; default: NULL"
 	echo "  -c, --class=ARG     Set target class name; default: NULL"
-	echo "  -k, --key=ARG       Set the name of the key field to be checked; default: Max_num_ovf_page_a_key"
-        echo "                      Choose from Max_num_ovf_page_a_key, Avg_num_ovf_page_per_key, Num_ovf_page or Avg_num_value_per_deduplicate_key."
+	echo "  -k, --key=ARG       Set the name of the key field to be checked; default: 1 (Max_num_ovf_page_a_key)"
+        echo "                      Choose from number."
+        echo "                        1 : Max_num_ovf_page_a_key (default)"
+        echo "                        2 : Avg_num_ovf_page_per_key"
+        echo "                        3 : Num_ovf_page"        
 	echo "  -t, --threshold=ARG Set the threshold to select the index to be reported; default: 1000"    
 	echo "  -s, --sort=ARG      Set sort filed name(pages, owner, table, index); default pages"
         echo "  -v, --verbose       Set verbose mode; default disable" 
@@ -91,7 +94,7 @@ function show_usage ()
 	echo " EXAMPLES"
 	echo "  $0 -S -o user1 demodb"
 	echo "  $0 -C -c game -t 100 demodb"
-	echo "  $0 -C -o user1 --key=Max_num_ovf_page_a_key --sort=table demodb"
+	echo "  $0 -C -o user1 --key=1 --sort=table demodb"
 	echo ""
 	exit 1
 }
@@ -99,7 +102,7 @@ function show_usage ()
 function get_options()
 {
 	local sa_mode=0
-	local tkey=""
+	local tsort=""
 
 	args=$(getopt -o :u:p:o:c:t:k:s:CSv  -l user:,password:,owner:,class:,threshold:,key:,sort:,--verbose   -- "$@" )
 	eval set -- "$args"
@@ -114,24 +117,19 @@ function get_options()
 			-c | --class) target_table="$2";  shift ;;
 			-t | --threshold) threshold_value=$2; shift ;;
 			-k | --key)
-				tkey=${2,,}  # to lowercase
-				for (( i =0; i < ${#key_titles[@]}; i+=2 ))
-				do
-					if [ x"$tkey" == x"${key_titles[${i}]}" ]; then
-						match_key="${key_titles[${i} + 1]}"
-						break
-					fi
-				done
-				if [ $i -gt ${#key_titles[@]} ]; then
-					show_usage
+                                match_key_idx=$2
+                                if [ $2 -ge 1 ] && [ $2 -le  ${#key_titles[@]} ]; then
+                                   match_key="${key_titles[${match_key_idx} - 1]}"                                    
+                                else
+                                    show_usage
 				fi
 				shift ;;
 				
 			-s | --sort)
-				tkey=${2,,} # to lowercase
+				tsort=${2,,} # to lowercase
 				for (( i =0; i < ${#sort_title[@]}; i+=3 ))
 				do
-					if [ x"$tkey" == x"${sort_title[${i}]}" ] || [ x"$tkey" == x"${sort_title[${i} + 1]}" ]; then
+					if [ x"$tsort" == x"${sort_title[${i}]}" ] || [ x"$tsort" == x"${sort_title[${i} + 1]}" ]; then
 						sort_field=${sort_title[${i} + 2]}
 						break
 					fi
@@ -141,8 +139,7 @@ function get_options()
 				fi
 				shift ;;
                          -v | --verbose)
-                                verbose_mode=1
-                                break ;;				
+                                verbose_mode=1 ;;                               
 			-- ) shift;  break ;;
 			* )  echo "unknown option"; show_usage ;;
 		esac
@@ -167,7 +164,7 @@ function print_args()
 	echo_verbose "pass=${pass}"
 	echo_verbose "owner=${target_owner}"
 	echo_verbose "class=${target_table}"
-	echo_verbose "key=${match_key}"
+	echo_verbose "key=${match_key_idx} (${match_key})"
 	echo_verbose "threshold=${threshold_value}"
 	echo_verbose "sort=${sort_title[${sort_field}-1*3]}"
 	echo_verbose "database=${database}"
@@ -415,6 +412,7 @@ function do_print()
 
 	echo ""
 	echo ""
+        echo "  ----------------------------------------------------------------------------------------------------------------------"
 	echo "  *** Key=${match_key} Threahols=${threshold_value}"
 	echo ""
 
@@ -445,7 +443,9 @@ function do_print()
 
 		printf "%-${format_sz[4]}s\t" "'${partitioned_nm}'"
 		printf "%-${format_sz[4]}s\n" "'$(echo $line | cut -d '.' -f6)'"
-	done < "${1}"
+	done < "${1}"        
+        echo "  ----------------------------------------------------------------------------------------------------------------------"
+        echo ""
 
         IFS_restore
 }
@@ -521,6 +521,6 @@ fi
 #clear temp files
 cleanup
 
-echo "Completed."
+echo_verbose "Completed."
 
 
