@@ -41,6 +41,7 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
+
 // forward definitions
 struct json_t;
 
@@ -806,6 +807,7 @@ struct json_t;
 #define PT_SYNONYM_ACCESS_MODIFIER(n)	((n)->info.synonym.access_modifier)
 #define PT_SYNONYM_OR_REPLACE(n)	((n)->info.synonym.or_replace)
 #define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
+#define PT_SYNONYM_IS_DBLINKED(n)	((n)->info.synonym.is_dblinked)	/* for user.table@server */
 
 /* Check node_type of PT_NODE */
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
@@ -930,7 +932,9 @@ enum pt_custom_print
   /* the '@' sign has to be suppressed during printing remote-table speicification for pure remote query */
   PT_PRINT_SUPPRESS_SERVER_NAME = (0x1 << 25),
   /* suppress next_value to serial_next_value(...) or current_value to serial_current_value(...) */
-  PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26)
+  PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
+  /* suppress print various generated functions including suppress delete targe for dblink */
+  PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -2102,11 +2106,15 @@ struct pt_index_info
   PT_ALTER_CODE code;
 
   int func_pos;			/* the position of the expression in the function index's column list */
-  int func_no_args;		/* number of arguments in the function index expression */
+  int func_no_args;		/* number of arguments in the function index expression
+				 * Appears only in function index expressions, excluding constants.  */
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  short deduplicate_level;	/* -1: Not set yet, 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
+#endif
 };
 
 /* CREATE USER INFO */
@@ -2739,6 +2747,7 @@ struct pt_name_info
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
+#define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
@@ -3258,6 +3267,9 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  short deduplicate_level;	/* 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
+#endif
 };
 
 /* Info for the CONSTRAINT node */
@@ -3453,6 +3465,8 @@ typedef struct pt_dblink_info
   PT_NODE *sel_list;
   PT_NODE *owner_list;
 
+  void *remote_col_list;	/* remote table's column list */
+
 } PT_DBLINK_INFO;
 
 typedef struct pt_create_server_info
@@ -3521,6 +3535,7 @@ struct pt_synonym_info
   PT_NODE *comment;		/* PT_VALUE */
   unsigned or_replace:1;	/* OR REPLACE clause for CREATE SYNONYM */
   unsigned if_exists:1;		/* IF EXISTS clause for DROP SYNONYM */
+  unsigned is_dblinked:1;	/* server name specified */
 };
 
 /* Info field of the basic NODE
@@ -3807,6 +3822,13 @@ typedef struct pt_plan_trace_info
   } trace;
 } PT_PLAN_TRACE_INFO;
 
+/* to save the remote column list for dblink */
+typedef struct remote_cols
+{
+  void *cols;
+  struct remote_cols *next;
+} REMOTE_COLS;
+
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
@@ -3879,6 +3901,8 @@ struct parser_context
   PT_PLAN_TRACE_INFO plan_trace[MAX_NUM_PLAN_TRACE];
 
   int max_print_len;		/* for pt_short_print */
+
+  REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   struct
   {
@@ -4009,6 +4033,7 @@ typedef struct
 } SERVER_NAME_LIST;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
+
 
 #ifdef __cplusplus
 extern "C"
