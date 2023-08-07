@@ -7489,10 +7489,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   int module_count, temp;
   bool sorted_result;
 
-  ptr = or_unpack_int (request, &temp);
   ptr = or_unpack_int (request, &module_count);
-
-  sorted_result = (bool) temp;
 
   module_info = (MMON_MODULE_INFO *) malloc (sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
 
@@ -7504,7 +7501,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
     }
   else
     {
-      error = mmon_aggregate_module_info_summary (module_info, sorted_result);
+      error = mmon_aggregate_module_info_summary (module_info);
 
       if (error == NO_ERROR)
 	{
