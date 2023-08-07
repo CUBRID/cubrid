@@ -49,6 +49,7 @@ declare -i sort_field=${sort_title[2]}
 declare -i threshold_value=1000
 declare -i info_map_st_sz=6
 declare -a info_map  # array ( pages, owner-name, table-name, index-name, partition, invisible )
+declare IFS_backup=$IFS
 
 current_dir=""
 work_dir=""
@@ -236,6 +237,17 @@ function silent_cd ()
 	cd $* > /dev/null
 }
 
+
+function IFS_cleanup() 
+{       
+        IFS=
+}
+
+function IFS_restore()
+{
+        IFS=${IFS_backup}
+}
+
 function do_get_index_name_list()
 {
 	local is_title_line=1
@@ -275,6 +287,8 @@ function do_get_index_name_list()
 	csql_options="${connection_mode} ${user} ${pass} -t"
 	csql ${csql_options} -c "${csql_qry}" $database > "${res_fnm}"
 
+        IFS_cleanup
+
 	# build info_map
 	info_map=()
 	is_title_line=1
@@ -293,7 +307,9 @@ function do_get_index_name_list()
 			info_map+=("$(echo $full_name | cut -d '.' -f5)") # invisible
 		fi
 	done < "${res_fnm}"
-	rm "${res_fnm}"
+        rm "${res_fnm}"
+
+        IFS_restore	
 }
 
 function do_get_capacity()
@@ -329,6 +345,8 @@ function do_sort()
 
 	touch "${tmp_fnm}"
 
+        IFS_cleanup
+
 	for (( i = 0; i < ${#info_map[@]}; i+=${info_map_st_sz} ))
 	do
 		if [ ${info_map[${i}]} -ge ${threshold_value} ]; then
@@ -343,6 +361,8 @@ function do_sort()
 			echo "" >> "${tmp_fnm}"
 		fi
 	done
+
+        IFS_restore
 
 	# sorting
 	if [ ${sort_field} -eq ${sort_option_page} ]; then
@@ -365,6 +385,8 @@ function do_print()
 	do	    
 		format_sz+=(${#title_nm[$i]})
 	done
+
+        IFS_cleanup
 
 	# get formatted size
 	while read line || [ -n "${line}" ]
@@ -412,11 +434,15 @@ function do_print()
 		printf "%-${format_sz[4]}s\t" "'${partitioned_nm}'"
 		printf "%-${format_sz[4]}s\n" "'$(echo $line | cut -d '.' -f6)'"
 	done < "${1}"
+
+        IFS_restore
 }
 
 
 function cleanup()
 {
+        IFS=$IFS_restore # restore IFS
+
 	silent_cd ${current_dir}
 
 	if [ x"$work_dir" != x"" ]; then		
