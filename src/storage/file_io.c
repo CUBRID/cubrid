@@ -10172,9 +10172,6 @@ exit_on_error:
 }
 
 #if !defined(CS_MODE)
-
-using namespace std;
-
 /*
  * fileio_restore_volume () - Restore a volume/file of given database
  *   return:
@@ -10190,7 +10187,7 @@ int
 fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, char *to_vol_label_p,
 		       char *verbose_to_vol_label_p, char *prev_vol_label_p, FILEIO_RESTORE_PAGE_BITMAP * page_bitmap,
 		       bool is_remember_pages, bool & is_prev_vol_header_restored,
-		       FILEIO_UNLINKED_VOLINFO & unlinked_volinfo)
+		       FILEIO_UNLINKED_VOLINFO_MAP & unlinked_volinfo)
 {
   int next_page_id = 0;
   INT64 total_nbytes = 0;
@@ -10399,22 +10396,6 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 	      fileio_dismount (thread_p, prev_vdes);
 	    }
 
-	  // *INDENT-OFF*
-	  auto find_unlinked_vol = [&volid] (const tuple <int, string, string> &unlinked_vol)
-	  {
-	    int unlinked_volid = get<0> (unlinked_vol);
-
-	    if (unlinked_volid == volid)
-	      {
-		return true;
-	      }
-	    else
-	      {
-		return false;
-	      }
-	  };
-	  // *INDENT-ON*
-
 	  if (incremental_includes_volume_header == true)
 	    {
 	      if (volid != LOG_DBFIRST_VOLID && is_prev_vol_header_restored == false)
@@ -10422,12 +10403,11 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 		  _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [FOUND UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
 				 session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
 
-		  auto it_found = find_if (unlinked_volinfo.cbegin (), unlinked_volinfo.cend (), find_unlinked_vol);
-
-		  if (it_found == unlinked_volinfo.cend ())
+		  if (!unlinked_volinfo.count (volid))
 		    {
-		      unlinked_volinfo.push_back (make_tuple
-						  (volid, string (to_vol_label_p), string (prev_vol_label_p)));
+		      unlinked_volinfo[volid] =
+			std::make_pair (std::string (to_vol_label_p), std::string (prev_vol_label_p));
+
 
 		      _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [SAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
 				     session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
@@ -10436,14 +10416,12 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 	    }
 	  else			/* full level */
 	    {
-	      auto it_found = find_if (unlinked_volinfo.cbegin (), unlinked_volinfo.cend (), find_unlinked_vol);
-
-	      if (it_found != unlinked_volinfo.cend ())
+	      if (unlinked_volinfo.count (volid))
 		{
 		  // The volume headers of both previous and current volumes are in the full level backup volume.
 		  // Therefore, the link between the two volumes is naturally established during the restoration process.
 		  // So, there is no need to explicitly set it.
-		  unlinked_volinfo.erase (it_found);
+		  unlinked_volinfo.erase (volid);
 
 		  _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [UNSAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
 				 session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
