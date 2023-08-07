@@ -50,6 +50,7 @@ declare -i threshold_value=1000
 declare -i info_map_st_sz=6
 declare -a info_map  # array ( pages, owner-name, table-name, index-name, partition, invisible )
 declare IFS_backup=$IFS
+declare -i verbose_mode=0
 
 current_dir=""
 work_dir=""
@@ -62,6 +63,13 @@ function echo_stderr()
 #   echo "$@" 1>&2;
 #   cat <<< "$@" 1>2&;
     printf "%s\n" "$*" 1>&2;
+}
+
+function echo_verbose()
+{
+        if [ ${verbose_mode} -eq 1 ]; then
+             printf "%s\n" "$*"
+        fi
 }
 
 function show_usage ()
@@ -78,6 +86,7 @@ function show_usage ()
         echo "                      Choose from Max_num_ovf_page_a_key, Avg_num_ovf_page_per_key, Num_ovf_page or Avg_num_value_per_deduplicate_key."
 	echo "  -t, --threshold=ARG Set the threshold to select the index to be reported; default: 1000"    
 	echo "  -s, --sort=ARG      Set sort filed name(pages, owner, table, index); default pages"
+        echo "  -v, --verbose       Set verbose mode; default disable" 
 	echo ""
 	echo " EXAMPLES"
 	echo "  $0 -S -o user1 demodb"
@@ -92,7 +101,7 @@ function get_options()
 	local sa_mode=0
 	local tkey=""
 
-	args=$(getopt -o :u:p:o:c:t:k:s:CS  -l user:,password:,owner:,class:,threshold:,key:,sort:   -- "$@" )
+	args=$(getopt -o :u:p:o:c:t:k:s:CSv  -l user:,password:,owner:,class:,threshold:,key:,sort:,--verbose   -- "$@" )
 	eval set -- "$args"
 	while true
 	do
@@ -131,7 +140,9 @@ function get_options()
 					show_usage
 				fi
 				shift ;;
-				
+                         -v | --verbose)
+                                verbose_mode=1
+                                break ;;				
 			-- ) shift;  break ;;
 			* )  echo "unknown option"; show_usage ;;
 		esac
@@ -149,19 +160,19 @@ function get_options()
 
 function print_args()
 {
-#    echo arguments to stderr
-	echo_stderr "Args list..."
-	echo_stderr "connection_mode=${connection_mode}"
-	echo_stderr "user=${user}"
-	echo_stderr "pass=${pass}"
-	echo_stderr "owner=${target_owner}"
-	echo_stderr "class=${target_table}"
-	echo_stderr "key=${match_key}"
-	echo_stderr "threshold=${threshold_value}"
-	echo_stderr "sort=${sort_title[${sort_field}-1*3]}"
-	echo_stderr "database=${database}"
-	echo_stderr "***************************************"
-	echo_stderr ""
+#    echo arguments
+	echo_verbose "Args list..."
+	echo_verbose "connection_mode=${connection_mode}"
+	echo_verbose "user=${user}"
+	echo_verbose "pass=${pass}"
+	echo_verbose "owner=${target_owner}"
+	echo_verbose "class=${target_table}"
+	echo_verbose "key=${match_key}"
+	echo_verbose "threshold=${threshold_value}"
+	echo_verbose "sort=${sort_title[${sort_field}-1*3]}"
+	echo_verbose "database=${database}"
+	echo_verbose "***************************************"
+	echo_verbose ""
 }
 
 function get_password ()
@@ -447,7 +458,7 @@ function cleanup()
 	silent_cd ${current_dir}
 
 	if [ x"$work_dir" != x"" ]; then		
-		echo_stderr "delete temp directory...[$work_dir]"
+		echo_verbose "delete temp directory...[$work_dir]"
 		rm -rf ${work_dir}
 	fi
 }
@@ -478,22 +489,22 @@ trap "cleanup; exit 1;" HUP INT TERM
 
 silent_cd ${current_dir}
 work_dir=$(mktemp -u -d tmp_cub_XXXXX)
-echo_stderr "make temp directory...[$work_dir]"
+echo_verbose "make temp directory...[$work_dir]"
 mkdir $work_dir
 silent_cd ${work_dir}
 
 info_map=()
-echo_stderr "get index name list..."
+echo_verbose "get index name list..."
 do_get_index_name_list
 
 if [ ${#info_map[@]} -le 0 ];then
 	echo "There are no suitable indexes to check up."
 else
-	echo_stderr "get capacity info..."
+	echo_verbose "get capacity info..."
 	index_counter=0
 	for (( i=0; i < ${#info_map[@]}; i+=${info_map_st_sz} ))
 	do
-		echo_stderr "    [${info_map[$i + 1]}].[${info_map[$i + 2]}].[${info_map[$i + 3]}]"
+		echo_verbose "    [${info_map[$i + 1]}].[${info_map[$i + 2]}].[${info_map[$i + 3]}]"
 
 		do_get_capacity $index_counter
 		(( index_counter++ ))
