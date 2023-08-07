@@ -4565,6 +4565,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto print_memmon_usage;
     }
 
+  /* error check phase */
   if (check_database_name (database_name))
     {
       goto error_exit;
@@ -4579,7 +4580,9 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   if (tran_count < 0)
     {
-      goto print_memmon_usage;
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NEGATIVE_TRAN_COUNT_NUMBER));
+      goto error_exit;
     }
 
   if (show_all && (transaction || module))
@@ -4589,21 +4592,32 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  module_index = strtol (module, &stop, 10);
-  if (module_index)
+  if (module)
     {
+      module_index = strtol (module, &stop, 10);
       if (module_index < 0 || module_index > MMON_MODULE_LAST)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE), module);
 	  goto error_exit;
 	}
+      else if (module[0] > 'a' && module[0] < 'z')
+	{
+	  /* module option with module name */
+	  // TODO: convert module name to module index
+	  // ex) module_index = memmon_convert_module_name_to_index(module);
+	  if (module_index == -1)
+	    {
+	      PRINT_AND_LOG_ERR_MSG (msgcat_message
+				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
+				     module);
+	      goto error_exit;
+	    }
+	}
     }
-  else
-    {
-      /* module == NULL or module with module name */
-      // TODO: convert module name to module index
-    }
+
+  /* execute phase */
+  // TODO: check condition and execute network function
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
