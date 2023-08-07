@@ -69,7 +69,7 @@ function show_usage ()
 	echo " OPTIONS"
 	echo "  -C client-server mode execution, default"
 	echo "  -S standalone mode execution"
-	echo "  -u, --user=ARG      Set database user name; default dba"
+	echo "  -u, --user=ARG      Set database user name(DBA or DBA group member); default dba"
 	echo "  -p, --password=ARG  Set password of databases user name; default NULL"
 	echo "  -o, --owner=ARG     Set target owner ID; default: NULL"
 	echo "  -c, --class=ARG     Set target class name; default: NULL"
