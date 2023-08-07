@@ -75,7 +75,7 @@ function show_usage ()
 	echo "  -o, --owner=ARG     Set target owner ID; default: NULL"
 	echo "  -c, --class=ARG     Set target class name; default: NULL"
 	echo "  -k, --key=ARG       Set the name of the key field to be checked; default: Max_num_ovf_page_a_key"
-        echo "                      Choose from Max_num_ovf_page_a_key, Avg_num_ovf_page_per_key, Num_ovf_page or Avg_num_value_per_deduplicate_key.
+        echo "                      Choose from Max_num_ovf_page_a_key, Avg_num_ovf_page_per_key, Num_ovf_page or Avg_num_value_per_deduplicate_key."
 	echo "  -t, --threshold=ARG Set the threshold to select the index to be reported; default: 1000"    
 	echo "  -s, --sort=ARG      Set sort filed name(pages, owner, table, index); default pages"
 	echo ""
