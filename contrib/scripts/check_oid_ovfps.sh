@@ -79,7 +79,7 @@ function show_usage ()
 	echo ""
 	echo " EXAMPLES"
 	echo "  $0 -S -o user1 demodb"
-	echo "  $0 -C -t game demodb"
+	echo "  $0 -C -c game -t 100 demodb"
 	echo "  $0 -C -o user1 --key=Max_num_ovf_page_a_key --sort=table demodb"
 	echo ""
 	exit 1
@@ -313,10 +313,11 @@ function do_get_capacity()
 		res=$(csql ${connection_mode} ${user} ${pass} -l -c "${capacity_query}" $database)
 		
 		if [ $? -ne 0 ] || [ x"$res" == x"" ] ; then
-			echo "Error: csql?" ####################################### ctshim
+			info_map[$idx]=0
+			echo "Error: csql query=\"${capacity_query}\"" 
 			return
 		fi
-		info_map[$idx]=$(echo ${res##*${match_key}} | awk '{print $2}')
+		info_map[$idx]=$(echo ${res#*${match_key}} | awk '{print $2}')
 	fi
 }
 
