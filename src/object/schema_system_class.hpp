@@ -21,11 +21,131 @@
  * schema_system_class.h - External definitions for the schema manager
  */
 
-typedef struct system_class_def
-{
-  const char *name;
-  int len;
-} SYSTEM_CLASS_DEF;
+#ifndef _SCHEMA_SYSTEM_CLASS_HPP_
+#define _SCHEMA_SYSTEM_CLASS_HPP_
 
-SYSTEM_CLASS_DEF get_system_class (int idx);
-int get_system_classes_size ();
+#include <algorithm>
+#include <functional>
+#include <unordered_set>
+#include <string>
+
+#include "oid.h"
+#include "transform.h"
+
+namespace cubschema
+{
+  struct system_class_name_equal
+  {
+    // case-insensitive comparision
+    bool operator() (const std::string &l, const std::string &r) const
+    {
+      return l.size() == r.size()
+	     && std::equal ( l.begin(), l.end(), r.begin(),
+			     [] (const auto a, const auto b)
+      {
+	return tolower (a) == tolower (b);
+      }
+			   );
+    }
+  };
+
+  class system_class_name_def
+  {
+    public:
+      bool has_name (const std::string &str)
+      {
+	return names.find (str) != names.end ();
+      }
+
+      inline int get_size ()
+      {
+	return names.size ();
+      }
+
+    private:
+      inline static const std::unordered_set <std::string, std::hash<std::string>, system_class_name_equal> names =
+      {
+	ROOTCLASS_NAME,			// "Rootclass"
+	CT_DUAL_NAME,			// "dual"
+
+	/*
+	 * authorization classes
+	 *
+	 * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
+	 * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
+	 * AU_USER_CLASS_NAME     = CT_USER_NAME
+	 * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
+	 * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
+	 * AU_GRANT_CLASS_NAME
+	 */
+	CT_ROOT_NAME,		// "db_root"
+	CT_USER_NAME,		// "db_user"
+	CT_PASSWORD_NAME,	// "db_password"
+	CT_AUTHORIZATION_NAME,		// "db_authorization"
+	CT_AUTHORIZATIONS_NAME,	// "db_authorizations"
+
+	/* currently, not implemented */
+	// AU_GRANT_CLASS_NAME,		// "db_grant"
+
+	/*
+	 * catalog classes
+	 */
+	CT_CLASS_NAME,			// "_db_class"
+	CT_ATTRIBUTE_NAME, 		// "_db_attribute"
+	CT_DOMAIN_NAME,			// "_db_domain"
+	CT_METHOD_NAME,			// "_db_method"
+	CT_METHSIG_NAME,			// "_db_meth_sig"
+	CT_METHARG_NAME,			// "_db_meth_arg"
+	CT_METHFILE_NAME,		// "_db_meth_file"
+	CT_QUERYSPEC_NAME,		// "_db_query_spec"
+	CT_INDEX_NAME,			// "_db_index"
+	CT_INDEXKEY_NAME,		// "_db_index_key"
+	CT_DATATYPE_NAME,		// "_db_data_type"
+	CT_CLASSAUTH_NAME,		// "_db_auth"
+	CT_PARTITION_NAME,		// "_db_partition"
+	CT_STORED_PROC_NAME,		// "_db_stored_procedure"
+	CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
+	CT_SERIAL_NAME,			// "db_serial"
+	CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
+	CT_COLLATION_NAME,		// "_db_collation"
+	CT_CHARSET_NAME,			// "_db_charset"
+	CT_DB_SERVER_NAME,		// "_db_server"
+	CT_SYNONYM_NAME,			// "_db_synonym"
+
+	CT_TRIGGER_NAME,			// "db_trigger"
+
+	/* currently, not implemented */
+	CT_RESOLUTION_NAME,		// "_db_resolution"
+
+	/*
+	 * catalog vclasses
+	 */
+	CTV_CLASS_NAME,			// "db_class"
+	CTV_SUPER_CLASS_NAME,	// "db_direct_super_class"
+	CTV_VCLASS_NAME,			// "db_vclass"
+	CTV_ATTRIBUTE_NAME,		// "db_attribute"
+	CTV_ATTR_SD_NAME,		// "db_attr_setdomain_elm"
+	CTV_METHOD_NAME,			// "db_method"
+	CTV_METHARG_NAME,		// "db_meth_arg"
+	CTV_METHARG_SD_NAME,		// "db_meth_arg_setdomain_elm"
+	CTV_METHFILE_NAME,		// "db_meth_file"
+	CTV_INDEX_NAME,			// "db_index"
+	CTV_INDEXKEY_NAME,		// "db_index_key"
+	CTV_AUTH_NAME,			// "db_auth"
+	CTV_TRIGGER_NAME,		// "db_trig"
+	CTV_PARTITION_NAME,		// "db_partition"
+	CTV_STORED_PROC_NAME,	// "db_stored_procedure"
+	CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
+	CTV_DB_COLLATION_NAME,	// "db_collation"
+	CTV_DB_CHARSET_NAME,		// "db_charset"
+	CTV_DB_SERVER_NAME,		// "db_server"
+	CTV_SYNONYM_NAME			// "db_synonym"
+      };
+  };
+}
+
+// C API in schema manager
+extern bool sm_check_system_class_by_name (const std::string &class_name);
+extern bool sm_check_system_class_by_name (const char *class_name);
+
+#endif /* _SCHEMA_SYSTEM_CLASS_HPP_ */

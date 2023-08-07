@@ -40,6 +40,7 @@
 #include "string_opfunc.h"
 #include "schema_manager.h"
 #include "schema_class_truncator.hpp"
+#include "schema_system_class.hpp"
 #include "porting.h"
 #include "chartype.h"
 #if !defined(WINDOWS)
@@ -3200,76 +3201,6 @@ int
 sm_is_system_class (MOP op)
 {
   return sm_get_class_flag (op, SM_CLASSFLAG_SYSTEM);
-}
-
-static int
-system_class_def_compare (const void *a, const void *b)
-{
-  const SYSTEM_CLASS_DEF *sa = STATIC_CAST (const SYSTEM_CLASS_DEF *, a);
-  const SYSTEM_CLASS_DEF *sb = STATIC_CAST (const SYSTEM_CLASS_DEF *, b);
-
-  if (sa->len != sb->len)
-    {
-      return sa->len - sb->len;
-    }
-
-  return strcmp (sa->name, sb->name);
-}
-
-/*
- * sm_check_system_class_by_name () - Checks whether the class name is
- *    the same as the system class name.
- * return: true if the system class name, false otherwise
- * name(in): class name
- */
-bool
-sm_check_system_class_by_name (const char *name)
-{
-  static int was_initialized = FALSE;
-  static int count = sizeof (system_classes) / sizeof (system_classes[0]);
-
-  SYSTEM_CLASS_DEF sa;
-  char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
-  int len = 0;
-  int cmp = 0;
-  int i = 0;
-
-  if (name == NULL || name[0] == '\0')
-    {
-      return false;
-    }
-
-  if (!was_initialized)
-    {
-      qsort (system_classes, count, sizeof (system_classes[0]), system_class_def_compare);
-      was_initialized = TRUE;
-    }
-
-  /* The user-specified name is not a system class name. */
-  if (strchr (name, '.') != NULL)
-    {
-      return false;
-    }
-
-  sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-  sa.name = downcase_name;
-  sa.len = strlen (downcase_name);
-
-  if (sa.len > system_classes[count - 1].len)
-    {
-      return false;
-    }
-
-  for (i = 0; i < count; i++)
-    {
-      cmp = system_class_def_compare (&sa, system_classes + i);
-      if (cmp <= 0)
-	{
-	  return (cmp == 0);
-	}
-    }
-
-  return false;
 }
 
 /*
