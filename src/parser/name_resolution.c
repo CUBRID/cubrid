@@ -275,6 +275,7 @@ private:
 
   int m_attr_alloc;
   int m_attr_used;
+  bool m_attr_star;
   S_REMOTE_COL_ATTR *m_attr;
 
 private:
@@ -324,6 +325,7 @@ public:
     m_nm_buf = NULL;
     m_attr_alloc = m_attr_used = 0;
     m_attr = NULL;
+    m_attr_star = false;
   }
 
   ~remote_tbl_cols ()
@@ -380,6 +382,16 @@ public:
   int get_attr_size ()
   {
     return m_attr_used;
+  }
+
+  bool is_select_star ()
+  {
+    return m_attr_star;
+  }
+
+  void set_select_star ()
+  {
+    m_attr_star = true;
   }
 };				/* struct remote_tbl_cols */
 
@@ -1174,6 +1186,9 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
   PT_NODE *spec, *prev_spec = NULL;
   bool save_donot_fold;
 
+  /* for dblink: remote table's columns */
+  S_REMOTE_TBL_COLS *rmt_tbl_cols;
+
   spec = scopes->specs;
   scopes->specs = NULL;
   while (spec)
@@ -1201,73 +1216,81 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  else if (table->node_type == PT_DBLINK_TABLE)
 	    {
 	      assert (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE);
+
+	      int err;
+	      REMOTE_COLS *remote;
+	      PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
+
 	      if (table->info.dblink_table.is_name && table->info.dblink_table.url == NULL)
 		{
-		  int err;
-		  S_REMOTE_TBL_COLS *rmt_tbl_cols;
-		  REMOTE_COLS *remote;
-		  PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
-
 		  if (pt_resolve_dblink_server_name (parser, table, NULL) != NO_ERROR)
 		    {
 		      return;
 		    }
+		}
 
-		  /* remote table's column list */
-		  rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
+	      /* remote table's column list */
+	      rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
+	      if (rmt_tbl_cols == NULL)
+		{
+		  PT_ERRORf (parser, table, "Failed to get column information for memory allocation error", ER_DBLINK);
+		  return;
+		}
 
-		  err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
+	      err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
 
-		  if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
-		    {
-		      /* error from table-name@server */
-		      if (err < 0)
-			{
-			  if (dblink_table->owner_name)
-			    {
-			      PT_ERRORf4 (parser, table,
-					  "Failed to get column information for table [%s] on remote [%s].[%s]. err=%d",
-					  dblink_table->remote_table_name,
-					  dblink_table->owner_name->info.name.original,
-					  dblink_table->conn->info.name.original, err);
-			    }
-			  else
-			    {
-			      PT_ERRORf3 (parser, table,
-					  "Failed to get column information for table [%s] on remote [%s]. err=%d",
-					  dblink_table->remote_table_name, dblink_table->conn->info.name.original, err);
-			    }
-
-			  return;
-			}
-
-		      if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
-			{
-			  return;
-			}
-		    }
-
-		  /* error from dblink(server, 'select ... from ...' */
+	      if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
+		{
+		  /* error from table-name@server */
 		  if (err < 0)
 		    {
-		      return;
+		      if (dblink_table->owner_name)
+			{
+			  PT_ERRORf4 (parser, table,
+				      "Failed to get column information for table [%s] on remote [%s].[%s]. err=%d",
+				      dblink_table->remote_table_name,
+				      dblink_table->owner_name->info.name.original,
+				      dblink_table->conn->info.name.original, err);
+			}
+		      else
+			{
+			  PT_ERRORf3 (parser, table,
+				      "Failed to get column information for table [%s] on remote [%s]. err=%d",
+				      dblink_table->remote_table_name, dblink_table->conn->info.name.original, err);
+			}
+
+		      goto error_exit;
 		    }
 
-		  dblink_table->remote_col_list = (void *) rmt_tbl_cols;
-
-		  /* save the column lists to free at end of parsing */
-		  remote = (REMOTE_COLS *) parser_alloc (parser, sizeof (REMOTE_COLS));
-		  if (remote == NULL)
+		  if (table->info.dblink_table.cols == NULL)
 		    {
-		      PT_INTERNAL_ERROR (parser, "parser_alloc");
-		      return;
+		      if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
+			{
+			  goto error_exit;
+			}
 		    }
-
-		  /* add dblink remote table's column list to Parser */
-		  remote->cols = (void *) rmt_tbl_cols;
-		  remote->next = parser->dblink_remote;
-		  parser->dblink_remote = remote;
 		}
+
+	      /* error from dblink(server, 'select ... from ...' */
+	      if (err < 0)
+		{
+		  goto error_exit;
+		}
+
+	      dblink_table->remote_col_list = (void *) rmt_tbl_cols;
+
+	      /* save the column lists to free at end of parsing */
+	      remote = (REMOTE_COLS *) parser_alloc (parser, sizeof (REMOTE_COLS));
+	      if (remote == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "parser_alloc");
+		  goto error_exit;
+		}
+
+	      /* add dblink remote table's column list to Parser */
+	      remote->cols = (void *) rmt_tbl_cols;
+	      remote->next = parser->dblink_remote;
+	      parser->dblink_remote = remote;
 
 	      table->info.dblink_table.cols =
 		parser_walk_tree (parser, table->info.dblink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
@@ -1319,6 +1342,14 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
       prev_spec = spec;
       spec = prev_spec->next;
       prev_spec->next = NULL;
+    }
+
+  return;
+
+error_exit:
+  if (rmt_tbl_cols)
+    {
+      delete rmt_tbl_cols;
     }
 }
 
@@ -3361,6 +3392,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		{
 		  /* It may be a generic function supported on the server. We put this case last so that user written
 		   * methods will resolve before trying to make it a server function. */
+
 		  if (!pt_type_generic_func (parser, node))
 		    {
 		      PT_NODE *top_node = NULL;
@@ -4836,7 +4868,8 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
   int is_default = 0;
 
   attr_def_node->data_type = NULL;
-  attr_def_node->type_enum = pt_type[attr->type_idx];
+  /* it needs to convert ext type to CCI_U_TYPE */
+  attr_def_node->type_enum = pt_type[(T_CCI_U_TYPE) CCI_GET_COLLECTION_DOMAIN (attr->type_idx)];
   switch (attr_def_node->type_enum)
     {
     case PT_TYPE_JSON:
@@ -5005,10 +5038,6 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
 	{
 	  new_sel_list = new_sel_list ? parser_append_node (col, new_sel_list) : col;
 	}
-      else
-	{
-	  parser_free_node (parser, col);
-	}
     }
 
   dblink_table->sel_list = new_sel_list;
@@ -5022,6 +5051,16 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   PT_NODE *entity_name = dblink_table->qstr;
   PT_NODE *range_var = dblink_table->qstr->next;
 
+  PT_NODE *attr_def_node = NULL;
+  PT_NODE *id_node;
+  PT_NODE *tmp;
+
+  PARSER_VARCHAR *var_buf = 0;
+
+  int error = NO_ERROR;
+
+  parser->custom_print |= PT_PRINT_SUPPRESS_FOR_DBLINK;
+
   assert (dblink_table->qstr != NULL);
   assert (class_spec->range_var != NULL);
   assert (class_spec->only_all == PT_ONLY);
@@ -5033,11 +5072,11 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
   if (val == NULL)
     {
       PT_ERROR (parser, derived_table, er_msg ());
-      return ER_FAILED;
+      error = ER_DBLINK;
+      goto error_exit;
     }
 
   // select * from dblink_t1@remote_srv1;
-  PARSER_VARCHAR *var_buf = 0;
   var_buf = pt_append_nulstring (parser, var_buf, "SELECT ");
   var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_for_dblink (parser, dblink_table->sel_list));
 
@@ -5074,21 +5113,18 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
       PT_NODE *id_node = parser_new_node (parser, PT_NAME);
       if (id_node == NULL)
 	{
-	  return ER_FAILED;
+	  error = ER_DBLINK;
+	  goto error_exit;
 	}
 
       id_node->info.name.original = "c";
       if ((dblink_table->cols = pt_mk_attr_def_node (parser, id_node, NULL)) == NULL)
 	{
-	  return ER_FAILED;
+	  error = ER_DBLINK;
 	}
 
-      return NO_ERROR;
+      goto error_exit;
     }
-
-  PT_NODE *attr_def_node = NULL;
-  PT_NODE *id_node;
-  PT_NODE *tmp;
 
   if (dblink_table->sel_list->node_type == PT_NAME && dblink_table->sel_list->type_enum == PT_TYPE_STAR)
     {
@@ -5098,13 +5134,15 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 	  if ((id_node = parser_new_node (parser, PT_NAME)) == NULL)
 	    {
 	      PT_ERROR (parser, derived_table, er_msg ());
-	      return ER_FAILED;
+	      error = ER_DBLINK;
+	      goto error_exit;
 	    }
 
 	  id_node->info.name.original = pt_append_string (parser, NULL, rmt_cols->get_name (i));
 	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
 	    {
-	      return ER_FAILED;
+	      error = ER_DBLINK;
+	      goto error_exit;
 	    }
 	  attr_def_node = attr_def_node ? parser_append_node (tmp, attr_def_node) : tmp;
 	}
@@ -5119,14 +5157,18 @@ pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec
 
 	  if ((tmp = pt_mk_attr_def_node (parser, id_node, rmt_cols)) == NULL)
 	    {
-	      return ER_FAILED;
+	      error = ER_DBLINK;
+	      goto error_exit;
 	    }
 	  attr_def_node = attr_def_node ? parser_append_node (tmp, attr_def_node) : tmp;
 	}
     }
 
   dblink_table->cols = attr_def_node;
-  return NO_ERROR;
+
+error_exit:
+  parser->custom_print &= ~PT_PRINT_SUPPRESS_FOR_DBLINK;
+  return error;
 }
 
 #define MAX_LEN_CONNECTION_URL	512
@@ -5154,33 +5196,14 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
   if (table_name)
     {
-      /* for collecting column info from "SELECT sel-list FROM table@server WHERE" */
-      int len = strlen (table_name);
-      char table_name_up[DB_MAX_IDENTIFIER_LENGTH * 2 + 1];
-      char user_name[DB_MAX_IDENTIFIER_LENGTH];
-
       PARSER_VARCHAR *var_buf = 0;
 
+      /* all attr's from "SELECT * FROM" */
+      rmt_tbl_cols->set_select_star ();
+
       /* preparing the query to get the column info */
-      var_buf = pt_append_nulstring (parser, var_buf, "SELECT ");
-      var_buf = pt_append_varchar (parser, var_buf, pt_build_select_list_for_dblink (parser, dblink_table->sel_list));
-      var_buf = pt_append_nulstring (parser, var_buf, " FROM ");
-
-      /* make it upper case for Oracle */
-      intl_identifier_upper (table_name, table_name_up);
-
-      /* make "user-name"."table-name" for reserved word */
-      find = strchr (table_name_up, '.');
-      if (find)
-	{
-	  snprintf (user_name, (int) (find - table_name_up) + 1, "%s", table_name_up);
-	  sprintf (t_name, "\"%s\".\"%s\"", user_name, find + 1);
-	}
-      else
-	{
-	  sprintf (t_name, "\"%s\"", table_name_up);
-	}
-      var_buf = pt_append_nulstring (parser, var_buf, t_name);
+      var_buf = pt_append_nulstring (parser, var_buf, "SELECT * FROM ");
+      var_buf = pt_append_nulstring (parser, var_buf, table_name);
       sql = (char *) var_buf->bytes;
     }
   else
@@ -5221,7 +5244,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     {
       /* this can not be reached, something wrong */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
-      res = ER_FAILED;
+      res = ER_DBLINK;
       goto set_parser_error;
     }
 
@@ -5236,11 +5259,6 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   res = NO_ERROR;
 
 set_parser_error:
-  if (res < 0)
-    {
-      delete rmt_tbl_cols;
-    }
-
   if (req >= 0)
     {
       int err;
@@ -11473,6 +11491,7 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	{
 	  check_for_already_exists (parser, plkcol, NULL, node->info.name.original);
 	}
+      plkcol->col_list->info.name.flag = node->info.name.flag;
       break;
 
     case PT_VALUE:
@@ -11609,6 +11628,11 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
     {
       PT_ERRORf (parser, dblink, "internal error, no remote columns", ER_DBLINK);
       return ER_FAILED;
+    }
+
+  if (rmt_tbl_cols->is_select_star ())
+    {
+      return NO_ERROR;
     }
 
   cols = dblink->info.dblink_table.cols;
