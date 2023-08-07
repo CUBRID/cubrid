@@ -568,7 +568,7 @@ int mmon_aggregate_module_info (MMON_MODULE_INFO *&info, int module_index)
   return error;
 }
 
-int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *&info, bool sorted_result)
+int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *&info)
 {
   return NO_ERROR;
 }

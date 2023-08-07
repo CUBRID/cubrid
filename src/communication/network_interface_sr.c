@@ -7317,8 +7317,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     {
       ptr = or_pack_int (reply, size);
       ptr = or_pack_int (ptr, error);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
   db_private_free_and_init (thread_p, buffer);
 }
@@ -7341,8 +7340,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
   MMON_MODULE_INFO *module_info;
-  MMON_COMP_INFO *comp_info;
-  MMON_SUBCOMP_INFO *subcomp_info;
   int module_index, module_count;
 
   ptr = or_unpack_int (request, &module_index);
@@ -7367,7 +7364,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   else
     {
       error = mmon_aggregate_module_info (module_info, module_index);
-
       if (error == NO_ERROR)
 	{
 	  /* before send information 
@@ -7386,16 +7382,14 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	      // and size of num_comp (OR_INT_SIZE)
 	      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
-	      for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
+	    for (const auto & comp_info:module_info[idx].comp_info)
 		{
-		  comp_info = &(module_info[idx].comp_info[i]);
-		  size += or_packed_string_length (comp_info->name, NULL);
+		  size += or_packed_string_length (comp_info.name, NULL);
 		  size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
-		  for (uint32_t j = 0; j < comp_info->num_subcomp; j++)
+		for (const auto & subcomp_info:comp_info.subcomp_info)
 		    {
-		      subcomp_info = &(comp_info->subcomp_info[j]);
-		      size += or_packed_string_length (subcomp_info->name, NULL);
+		      size += or_packed_string_length (subcomp_info.name, NULL);
 		      size += OR_INT64_SIZE;
 		    }
 		}
@@ -7426,22 +7420,20 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 		  ptr = or_pack_int (ptr, module_info[idx].num_comp);
 
-		  for (uint32_t i = 0; i < module_info[idx].num_comp; i++)
+		for (const auto & comp_info:module_info[idx].comp_info)
 		    {
-		      comp_info = &(module_info[idx].comp_info[i]);
-		      ptr = or_pack_string (ptr, comp_info->name);
-		      ptr = or_pack_int64 (ptr, comp_info->stat.init_stat);
-		      ptr = or_pack_int64 (ptr, comp_info->stat.cur_stat);
-		      ptr = or_pack_int64 (ptr, comp_info->stat.peak_stat);
-		      ptr = or_pack_int (ptr, comp_info->stat.expand_count);
+		      ptr = or_pack_string (ptr, comp_info.name);
+		      ptr = or_pack_int64 (ptr, comp_info.stat.init_stat);
+		      ptr = or_pack_int64 (ptr, comp_info.stat.cur_stat);
+		      ptr = or_pack_int64 (ptr, comp_info.stat.peak_stat);
+		      ptr = or_pack_int (ptr, comp_info.stat.expand_count);
 
-		      ptr = or_pack_int (ptr, comp_info->num_subcomp);
+		      ptr = or_pack_int (ptr, comp_info.num_subcomp);
 
-		      for (uint32_t j = 0; j < comp_info->num_subcomp; j++)
+		    for (const auto & subcomp_info:comp_info.subcomp_info)
 			{
-			  subcomp_info = &(comp_info->subcomp_info[j]);
-			  ptr = or_pack_string (ptr, subcomp_info->name);
-			  ptr = or_pack_int64 (ptr, subcomp_info->cur_stat);
+			  ptr = or_pack_string (ptr, subcomp_info.name);
+			  ptr = or_pack_int64 (ptr, subcomp_info.cur_stat);
 			}
 		    }
 		}
@@ -7462,8 +7454,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
     {
       ptr = or_pack_int (reply, size);
       ptr = or_pack_int (ptr, error);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
   db_private_free_and_init (thread_p, buffer);
 }
@@ -7555,8 +7546,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
     {
       ptr = or_pack_int (reply, size);
       ptr = or_pack_int (ptr, error);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
   db_private_free_and_init (thread_p, buffer);
 }
@@ -7639,8 +7629,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       ptr = or_pack_int (reply, size);
       ptr = or_pack_int (ptr, error);
-      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      css_send_data_to_client (thread_p->conn_entry, rid, buffer, size);
+      css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
   db_private_free_and_init (thread_p, buffer);
 }
