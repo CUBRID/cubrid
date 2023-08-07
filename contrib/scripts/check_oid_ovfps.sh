@@ -106,14 +106,14 @@ function get_options()
 			-t | --threshold) threshold_value=$2; shift ;;
 			-k | --key)
 				tkey=${2,,}  # to lowercase
-				for (( i =0; i < ${#key_title[@]}; i+=2 ))
+				for (( i =0; i < ${#key_titles[@]}; i+=2 ))
 				do
-					if [ x"$tkey" == x"${key_title[${i}]}" ]; then
-						match_key="${sort_title[${i} + 1]}"
+					if [ x"$tkey" == x"${key_titles[${i}]}" ]; then
+						match_key="${key_titles[${i} + 1]}"
 						break
 					fi
 				done
-				if [ $i -gt ${#key_title[@]} ]; then
+				if [ $i -gt ${#key_titles[@]} ]; then
 					show_usage
 				fi
 				shift ;;
