@@ -7346,12 +7346,12 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (module_index == 0)
     {
-      module_info = (MMON_MODULE_INFO *) malloc (sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
+      module_info = (MMON_MODULE_INFO *) db_private_alloc (thread_p, sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
       module_count = MMON_MODULE_LAST;
     }
   else
     {
-      module_info = (MMON_MODULE_INFO *) malloc (sizeof (MMON_MODULE_INFO));
+      module_info = (MMON_MODULE_INFO *) db_private_alloc (thread_p, sizeof (MMON_MODULE_INFO));
       module_count = 1;
     }
 
@@ -7444,7 +7444,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	}
 
       /* 4) deallocate memory */
-      free (module_info);
+      db_private_free (thread_p, module_info);
     }
 
   if (error != NO_ERROR)
