@@ -24,7 +24,7 @@
 
 namespace cubschema
 {
-  static const std::vector <std::string> g_system_catalog_names =
+  static const std::vector <std::string> sm_system_catalog_names =
   {
     ROOTCLASS_NAME,			// "Rootclass"
     CT_DUAL_NAME,			// "dual"
@@ -103,10 +103,10 @@ namespace cubschema
     CTV_SYNONYM_NAME			// "db_synonym"
   };
 
-  static const cubbase::identifier_store g_catalog_names (g_system_catalog_names, false);
+  static const cubbase::identifier_store sm_catalog_names (sm_system_catalog_names, false);
 }
 
 bool sm_check_system_class_by_name (const std::string &name)
 {
-  return cubschema::g_catalog_names.is_exists (name);
+  return cubschema::sm_catalog_names.is_exists (name);
 }
