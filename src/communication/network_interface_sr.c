@@ -7382,17 +7382,19 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	      // and size of num_comp (OR_INT_SIZE)
 	      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
-	    for (const auto & comp_info:module_info[idx].comp_info)
-		{
-		  size += or_packed_string_length (comp_info.name, NULL);
-		  size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
+              // *INDENT-OFF*
+              for (const auto &comp_info : module_info[idx].comp_info)
+                {
+                  size += or_packed_string_length (comp_info.name, NULL);
+                  size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
-		for (const auto & subcomp_info:comp_info.subcomp_info)
-		    {
-		      size += or_packed_string_length (subcomp_info.name, NULL);
-		      size += OR_INT64_SIZE;
-		    }
-		}
+                  for (const auto &subcomp_info : comp_info.subcomp_info)
+                    {
+                      size += or_packed_string_length (subcomp_info.name, NULL);
+                      size += OR_INT64_SIZE;
+                    }
+                }
+              // *INDENT-ON*
 	    }
 
 	  /* 2) allocate buffer */
@@ -7420,22 +7422,24 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
 		  ptr = or_pack_int (ptr, module_info[idx].num_comp);
 
-		for (const auto & comp_info:module_info[idx].comp_info)
-		    {
-		      ptr = or_pack_string (ptr, comp_info.name);
-		      ptr = or_pack_int64 (ptr, comp_info.stat.init_stat);
-		      ptr = or_pack_int64 (ptr, comp_info.stat.cur_stat);
-		      ptr = or_pack_int64 (ptr, comp_info.stat.peak_stat);
-		      ptr = or_pack_int (ptr, comp_info.stat.expand_count);
+                  // *INDENT-OFF*
+                  for (const auto &comp_info : module_info[idx].comp_info)
+                    {
+                      ptr = or_pack_string (ptr, comp_info.name);
+                      ptr = or_pack_int64 (ptr, comp_info.stat.init_stat);
+                      ptr = or_pack_int64 (ptr, comp_info.stat.cur_stat);
+                      ptr = or_pack_int64 (ptr, comp_info.stat.peak_stat);
+                      ptr = or_pack_int (ptr, comp_info.stat.expand_count);
 
-		      ptr = or_pack_int (ptr, comp_info.num_subcomp);
+                      ptr = or_pack_int (ptr, comp_info.num_subcomp);
 
-		    for (const auto & subcomp_info:comp_info.subcomp_info)
-			{
-			  ptr = or_pack_string (ptr, subcomp_info.name);
-			  ptr = or_pack_int64 (ptr, subcomp_info.cur_stat);
-			}
-		    }
+                      for (const auto &subcomp_info : comp_info.subcomp_info)
+                        {
+                          ptr = or_pack_string (ptr, subcomp_info.name);
+                          ptr = or_pack_int64 (ptr, subcomp_info.cur_stat);
+                        }
+                    }
+                  // *INDENT-ON*
 		}
 	    }
 	}
@@ -7477,8 +7481,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
   MMON_MODULE_INFO *module_info;
-  int module_count, temp;
-  bool sorted_result;
+  int module_count;
 
   ptr = or_unpack_int (request, &module_count);
 
@@ -7493,7 +7496,6 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   else
     {
       error = mmon_aggregate_module_info_summary (module_info);
-
       if (error == NO_ERROR)
 	{
 	  /* before send information 
