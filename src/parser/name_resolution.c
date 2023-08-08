@@ -1266,6 +1266,10 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		    {
 		      if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
 			{
+			  if (!pt_has_error (parser))
+			    {
+			      PT_ERROR (parser, table, "Failed to make select-list for dblink");
+			    }
 			  goto error_exit;
 			}
 		    }
@@ -11507,7 +11511,6 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	{
 	  check_for_already_exists (parser, plkcol, NULL, node->info.name.original);
 	}
-      plkcol->col_list->info.name.flag = node->info.name.flag;
       break;
 
     case PT_VALUE:
