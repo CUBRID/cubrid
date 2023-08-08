@@ -4109,7 +4109,7 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 {
   if (term->node_type == PT_EXPR)
     {
-      if (pt_is_operator_logical (term->info.expr.op))
+      if (pt_is_operator_logical (term->info.expr.op) || pt_is_operator_arith (term->info.expr.op))
 	{
 	  if (mq_is_dblink_pushable_term (parser, term->info.expr.arg1))
 	    {
