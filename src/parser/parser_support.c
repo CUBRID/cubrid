@@ -8462,6 +8462,30 @@ pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_pa
 }
 
 /*
+ * pt_is_operator_arith() - returns TRUE if the operator has an arithmetic
+ *			      return type (i.e. +, -, *, /) and FALSE
+ *			      otherwise.
+ *
+ *   return: boolean
+ *   op(in): the operator
+ */
+bool
+pt_is_operator_arith (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_TIMES:
+    case PT_DIVIDE:
+    case PT_UNARY_MINUS:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * pt_is_operator_logical() - returns TRUE if the operator has a logical
  *			      return type (i.e. <, >, AND etc.) and FALSE
  *			      otherwise.
