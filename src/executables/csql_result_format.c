@@ -1327,25 +1327,27 @@ string_to_string (const char *string_value, char string_delimiter, char string_i
  * convert double value to string for only oracle_number_compat
  */
 static char *
-conv_double_to_string (double number, int *length)
+conv_double_to_string (char *double_str, int *length)
 {
-  char double_str[MAX_DOUBLE_STRING];
   char return_str[MAX_DOUBLE_STRING] = { '-', '0', '.', '\0', };
-  int exp_num, offset, p;
+  int exp_num, offset, p, sign = 0;
 
   char *dot, *exp, *sp = return_str + 1;
 
-  sprintf (double_str, "%.16g", fabs (number));
   dot = strchr (double_str, '.');
   exp = strchr (double_str, 'e');
 
   if (!exp)
     {
-      sprintf (return_str, "%s%s", (number < 0) ? "-" : "", double_str);
-      *length = strlen (return_str);
-      return strdup (return_str);
+      *length = strlen (double_str);
+      return strdup (double_str);
     }
 
+  if (double_str[0] == '-')
+    {
+      double_str = double_str + 1;	/* for skip the sign */
+      sign = -1;
+    }
   exp_num = atoi (exp + 1);
 
   if (exp_num > 0)
@@ -1362,9 +1364,9 @@ conv_double_to_string (double number, int *length)
       memcpy (sp + 2 + offset + p, dot + 1, (int) (exp - dot) - 1);
     }
 
-  *length = (number < 0) ? strlen (return_str) : strlen (return_str + 1);
+  *length = (sign < 0) ? strlen (return_str) : strlen (return_str + 1);
 
-  return (number < 0) ? strdup (return_str) : strdup (return_str + 1);
+  return (sign < 0) ? strdup (return_str) : strdup (return_str + 1);
 }
 
 /*
@@ -1398,10 +1400,22 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
       /* try to convert numeric */
       if (DB_VALUE_TYPE (value) == DB_TYPE_FLOAT || DB_VALUE_TYPE (value) == DB_TYPE_DOUBLE)
 	{
+	  char double_str[MAX_DOUBLE_STRING];
+
 	  double_format = DOUBLE_FORMAT_GENERAL;
 	  trailingzeros = false;
 
-	  result = conv_double_to_string ((double) db_get_double (value), length);
+	  if (DB_VALUE_TYPE (value) == DB_TYPE_FLOAT)
+	    {
+	      sprintf (double_str, "%g", db_get_float (value));
+	    }
+	  else
+	    {
+	      sprintf (double_str, "%.16g", db_get_double (value));
+	    }
+
+	  result = conv_double_to_string (double_str, length);
+
 	  return result;
 	}
     }
