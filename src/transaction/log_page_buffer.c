@@ -8864,7 +8864,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   // Incremental backup volumes often do not include volume header pages.
   // Accordingly, it is necessary to set unlinked volumes after all volume header pages are restored.
   // *INDENT-OFF*
-  for (const auto &[volid, volnames]:unlinked_volinfo)
+  for (const auto &[volid, volnames] : unlinked_volinfo)
     {
       VOLID prev_volid;
       int prev_vdes;

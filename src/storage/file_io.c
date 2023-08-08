@@ -35,7 +35,6 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <signal.h>
-#include <algorithm>
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -10394,6 +10393,17 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 		}
 
 	      fileio_dismount (thread_p, prev_vdes);
+
+	      if (unlinked_volinfo.count (volid))
+		{
+		  // The volume headers of both previous and current volumes are in the full or big incremental backup volumes.
+		  // Therefore, the link between the two volumes is naturally established during the restoration process.
+		  // So, there is no need to explicitly set it.
+		  unlinked_volinfo.erase (volid);
+
+		  _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [UNSAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
+				 session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
+		}
 	    }
 
 	  if (incremental_includes_volume_header == true)
@@ -10408,23 +10418,9 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 		      unlinked_volinfo[volid] =
 			std::make_pair (std::string (to_vol_label_p), std::string (prev_vol_label_p));
 
-
 		      _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [SAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
 				     session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
 		    }
-		}
-	    }
-	  else			/* full level */
-	    {
-	      if (unlinked_volinfo.count (volid))
-		{
-		  // The volume headers of both previous and current volumes are in the full level backup volume.
-		  // Therefore, the link between the two volumes is naturally established during the restoration process.
-		  // So, there is no need to explicitly set it.
-		  unlinked_volinfo.erase (volid);
-
-		  _er_log_debug (ARG_FILE_LINE, "RESTOREDB: [UNSAVE UNLINK] [lv%d] volid=%d, vol=%s, prev_vol=%s\n",
-				 session_p->dbfile.level, volid, to_vol_label_p, prev_vol_label_p);
 		}
 	    }
 
