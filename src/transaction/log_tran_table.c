@@ -1467,7 +1467,7 @@ xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp)
  */
 // *INDENT-OFF*
 void
-logtb_get_tran_memory_info_nolatch (std::vector<std::pair<int, uint64_t>> &tran_info)
+logtb_get_tran_memory_info_nolatch (LOG_TRAN_MEM_INFO &tran_info)
 // *INDENT-ON*
 {
   LOG_TDES *tdes;

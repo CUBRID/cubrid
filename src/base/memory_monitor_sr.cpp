@@ -116,7 +116,7 @@ namespace cubperf
       mmon_module &operator = (const mmon_module &) = delete;
       mmon_module &operator = (mmon_module &&) = delete;
 
-      virtual void aggregate_stats (bool get_summary, MMON_MODULE_INFO &info) const;
+      virtual void aggregate_stats (bool is_summary, MMON_MODULE_INFO &info) const;
       void add_stat (MMON_STAT_ID stat_id, int64_t size);
       void add_expand_resize_count (MMON_STAT_ID stat_id);
       void end_init_phase ();
@@ -340,13 +340,13 @@ namespace cubperf
       }
   }
 
-  void mmon_module::aggregate_stats (bool get_summary, MMON_MODULE_INFO &info) const
+  void mmon_module::aggregate_stats (bool is_summary, MMON_MODULE_INFO &info) const
   {
     int error = NO_ERROR;
 
     strncpy (info.name, m_module_name.c_str (), m_module_name.size ());
 
-    if (get_summary)
+    if (is_summary)
       {
 	info.stat.cur_stat = m_stat.cur_stat.load ();
       }
@@ -496,7 +496,7 @@ namespace cubperf
 
   void memory_monitor::aggregater::get_transaction_info (int tran_count, MMON_TRAN_INFO &info) const
   {
-    std::vector <std::pair <int, uint64_t>> tran_info;
+    LOG_TRAN_MEM_INFO tran_info;
 
     logtb_get_tran_memory_info_nolatch (tran_info);
 
