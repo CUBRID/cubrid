@@ -30,8 +30,6 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
-#include <string>
-
 #include "language_support.h"	/* for international string functions */
 #include "storage_common.h"	/* for HFID */
 #include "object_domain.h"	/* for TP_DOMAIN */
