@@ -4550,7 +4550,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
-  char *module, *tran_count_str, *stop;
+  char *module, *tran_count_str, *stop = NULL;
   bool transaction, show_all, need_shutdown;
   int tran_count = INT_MAX;
   int module_index = MMON_MODULE_LAST;
@@ -4588,38 +4588,45 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   if (tran_count_str)
     {
-      tran_count = strtol (tran_count_str, &stop, 10);
-      stop = NULL;
+      tran_count = (int) strtol (tran_count_str, &stop, 10);
+
+      if (stop[0] != 0)
+	{
+	  tran_count = -1;
+	  stop = NULL;
+	}
     }
 
   if (tran_count <= 0)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NEGATIVE_TRAN_COUNT_NUMBER));
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_NUMBER));
       goto error_exit;
     }
 
   if (module)
     {
-      module_index = strtol (module, &stop, 10);
+      if (module[0] >= 'a' && module[0] <= 'z')
+	{
+	  /* module option with module name */
+	  // TODO: convert module name to module index
+	  // ex) module_index = memmon_convert_module_name_to_index(module);
+	}
+      else
+	{
+	  module_index = (int) strtol (module, &stop, 10);
+
+	  if (stop[0] != 0)
+	    {
+	      module_index = -1;
+	    }
+	}
+
       if (module_index < 0 || module_index > MMON_MODULE_LAST)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE), module);
 	  goto error_exit;
-	}
-      else if (module[0] > 'a' && module[0] < 'z')
-	{
-	  /* module option with module name */
-	  // TODO: convert module name to module index
-	  // ex) module_index = memmon_convert_module_name_to_index(module);
-	  if (module_index == -1)
-	    {
-	      PRINT_AND_LOG_ERR_MSG (msgcat_message
-				     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
-				     module);
-	      goto error_exit;
-	    }
 	}
     }
 
