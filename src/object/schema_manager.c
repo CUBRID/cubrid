@@ -40,7 +40,6 @@
 #include "string_opfunc.h"
 #include "schema_manager.h"
 #include "schema_class_truncator.hpp"
-#include "schema_system_class.hpp"
 #include "porting.h"
 #include "chartype.h"
 #if !defined(WINDOWS)

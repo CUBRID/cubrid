@@ -38,7 +38,6 @@
 #include "log_writer.h"
 #include "mprec.h"
 #include "system_parameter.h"
-#include "schema_system_class.hpp"
 #include "environment_variable.h"
 #include "heartbeat.h"
 #if defined (WINDOWS)

@@ -35,7 +35,7 @@
 #include "record_descriptor.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
-#include "schema_system_class.hpp"
+#include "schema_system_catalog.hpp"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 

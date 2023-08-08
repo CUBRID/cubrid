@@ -25,6 +25,7 @@
 
 #include <vector>
 
+#include "porting.h"
 #include "string_utility.hpp"
 
 namespace cubbase
@@ -38,7 +39,7 @@ namespace cubbase
   *
   * NOTE: this class is immutable and not thread-safe.
   */
-  class identifier_store
+  class EXPORT_IMPORT identifier_store
   {
     public:
       explicit identifier_store (const std::vector <std::string> &string_vec, const bool check_valid)
