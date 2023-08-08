@@ -27,6 +27,7 @@
 
 #include "porting.h"
 #include "string_utility.hpp"
+#include "language_support.h"
 
 namespace cubbase
 {
@@ -75,9 +76,9 @@ namespace cubbase
 	for (const std::string &elem : m_identifiers)
 	  {
 	    // Check (1)
-	    if ((elem.size() > 1 && std::isalpha (elem.at (0))) == false)
+	    is_valid = lang_check_identifier (elem.data (), elem.size ());
+	    if (is_valid == false)
 	      {
-		is_valid = false;
 		break;
 	      }
 	  }
