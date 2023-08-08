@@ -7582,8 +7582,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       /* Before send information 
        * 1) check size
        * 2) allocate buffer
-       * 3) packing information 
-       * 4) deallocate MMON_TRAN_INFO */
+       * 3) packing information */
 
       /* 1) check size 
        *    - calculate buffer size of packed values of transaction info */
