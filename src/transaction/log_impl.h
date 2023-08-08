@@ -1202,7 +1202,9 @@ extern bool logtb_has_deadlock_priority (int tran_index);
 extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 
 /* For memory monitoring */
-extern void logtb_get_tran_memory_info_nolatch (std::vector < std::pair < int, uint64_t >> &tran_info);
+// *INDENT-OFF*
+extern void logtb_get_tran_memory_info_nolatch (std::vector<std::pair<int, uint64_t>> &tran_info);
+// *INDENT-ON*
 
 extern bool logpb_need_wal (const LOG_LSA * lsa);
 extern char *logpb_backup_level_info_to_string (char *buf, int buf_size, const LOG_HDR_BKUP_LEVEL_INFO * info);

@@ -1465,12 +1465,14 @@ xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp)
  * return: nothing
  *
  */
+// *INDENT-OFF*
 void
-logtb_get_tran_memory_info_nolatch (std::vector < std::pair < int, uint64_t >> &tran_info)
+logtb_get_tran_memory_info_nolatch (std::vector<std::pair<int, uint64_t>> &tran_info)
+// *INDENT-ON*
 {
   LOG_TDES *tdes;
 
-  for (int i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
+  for (int i = LOG_SYSTEM_TRAN_INDEX + 1; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
       if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->state == TRAN_ACTIVE)
