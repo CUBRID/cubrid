@@ -341,6 +341,12 @@ is_active_transaction_server ()
   return true;
 }
 
+bool
+is_page_server ()
+{
+  return false;
+}
+
 PGLENGTH
 db_log_page_size ()
 {
