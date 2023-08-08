@@ -28,30 +28,20 @@
 #include <functional>
 #include <unordered_set>
 #include <string>
+#include <string_view>
 
 #include "oid.h"
 #include "transform.h"
+#include "string_utility.hpp"
 
 namespace cubschema
 {
-  struct system_class_name_equal
-  {
-    // case-insensitive comparision
-    bool operator() (const std::string &l, const std::string &r) const
-    {
-      return l.size() == r.size()
-	     && std::equal ( l.begin(), l.end(), r.begin(),
-			     [] (const auto a, const auto b)
-      {
-	return tolower (a) == tolower (b);
-      }
-			   );
-    }
-  };
-
   class system_class_name_def
   {
     public:
+      system_class_name_def() = default;
+      ~system_class_name_def() = default;
+
       bool has_name (const std::string &str)
       {
 	return names.find (str) != names.end ();
@@ -63,7 +53,7 @@ namespace cubschema
       }
 
     private:
-      inline static const std::unordered_set <std::string, std::hash<std::string>, system_class_name_equal> names =
+      inline static const cubbase::string_set_ci_lower names =
       {
 	ROOTCLASS_NAME,			// "Rootclass"
 	CT_DUAL_NAME,			// "dual"
@@ -146,6 +136,6 @@ namespace cubschema
 
 // C API in schema manager
 extern bool sm_check_system_class_by_name (const std::string &class_name);
-extern bool sm_check_system_class_by_name (const char *class_name);
+// extern bool sm_check_system_class_by_name (const char *class_name);
 
 #endif /* _SCHEMA_SYSTEM_CLASS_HPP_ */

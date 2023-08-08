@@ -21,14 +21,9 @@
 #include <unordered_set>
 #include <string>
 
-static cubschema::system_class_name_def class_name_def;
-
-bool sm_check_system_class_by_name (const char *str)
-{
-  return class_name_def.has_name (std::string (str));
-}
+static cubschema::system_class_name_def g_class_name_def;
 
 bool sm_check_system_class_by_name (const std::string &str)
 {
-  return class_name_def.has_name (str);
+  return g_class_name_def.has_name (str);
 }
