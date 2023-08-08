@@ -1726,9 +1726,12 @@
 
 #define ER_SM_INVALID_FUNCTION_EXPRESSION_LENGTH    -1351
 
-#define ER_CGW_INVALID_COLUMNS_SPECIFIED         -1352
+#define ER_CGW_INVALID_COLUMNS_SPECIFIED            -1352
 
-#define ER_LAST_ERROR                               -1353
+#define ER_SQL_ERROR_LOG_TRACE                      -1353
+#define ER_SQL_ERROR_LOG_MSG_TRACE                  -1354
+
+#define ER_LAST_ERROR                               -1355
 
 /*
  * CAUTION!
