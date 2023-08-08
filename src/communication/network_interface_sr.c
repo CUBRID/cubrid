@@ -7357,13 +7357,12 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (module_info == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MMON_MODULE_INFO) * module_count);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
     }
   else
     {
-      error = mmon_aggregate_module_info (module_info, module_index);
+      error = mmon_aggregate_module_info (module_index, module_info);
       if (error == NO_ERROR)
 	{
 	  /* before send information 
@@ -7575,7 +7574,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   ptr = or_unpack_int (request, &tran_count);
 
-  error = mmon_aggregate_tran_info (info, tran_count);
+  error = mmon_aggregate_tran_info (tran_count, info);
 
   if (error == NO_ERROR)
     {
@@ -7590,12 +7589,9 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       // Size of num_tran
       size += OR_INT_SIZE;
 
-      for (uint32_t i = 0; i < info.num_tran; i++)
-	{
-	  // Size of transaction id (OR_INT_SIZE)
-	  // and current memory usage (OR_INT64_SIZE)
-	  size += OR_INT_SIZE + OR_INT64_SIZE;
-	}
+      // Size of transaction id (OR_INT_SIZE)
+      // and current memory usage (OR_INT64_SIZE)
+      size += ((OR_INT_SIZE + OR_INT64_SIZE) * info.num_tran);
 
       /* 2) allocate buffer */
       buffer = (char *) db_private_alloc (thread_p, size);

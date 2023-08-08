@@ -561,19 +561,19 @@ void mmon_aggregate_server_info (MMON_SERVER_INFO &info)
   return;
 }
 
-int mmon_aggregate_module_info (MMON_MODULE_INFO *&info, int module_index)
+int mmon_aggregate_module_info (int module_index, MMON_MODULE_INFO *info)
 {
   int error = NO_ERROR;
 
   return error;
 }
 
-int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *&info)
+int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *info)
 {
   return NO_ERROR;
 }
 
-int mmon_aggregate_tran_info (MMON_TRAN_INFO &info, int tran_count)
+int mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info)
 {
   int error = NO_ERROR;
 
