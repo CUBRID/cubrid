@@ -1323,13 +1323,13 @@ memmon: Provides memory usage information of a database server process.\n\
 usage: %1$s memmon [OPTION] database-name\n\
 \n\
 valid options:\n\
-    -m, --module=TYPE             display detailed memory usage information of the specified TYPE.\n\
-                                    TYPE of modules\n\
-                                      0 (or all)      all modules\n\
-                                      1 (or heap)     heap module\n\
+    -a, --all                     display summarized memory usage information of all registered modules and active transactions in the server.\n\
+                                  WARNING: This option can only be used alone.\n\
     -t, --transaction             display memory usage of active transactions in descending order of memory usage.\n\
     -c, --tran-count=NUMBER       set how many transactions will be displayed. Using this option, memmon displays memory usage of\n\
                                   the NUMBER of active transactions user entered with descending order of memory usage.\n\
                                   WARNING: This option has to be used with '-t(--transaction)' option.\n\
-    -a, --all                     display summarized memory usage information of all registered modules and active transactions in the server.\n\
-                                  WARNING: This option can only be used alone.\n
+    -m, --module=TYPE             display detailed memory usage information of the specified TYPE.\n\
+                                    TYPE of modules\n\
+                                      0 (or all)      all modules\n\
+                                      1 (or heap)     heap module\n
