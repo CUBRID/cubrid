@@ -1332,8 +1332,10 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1261 Nu se poate găsi cheia în momentul restaurării (index cheie: %1$d, timp creat: %2$s). Setați cheia (index cheie: %3$d) pentru baza de date.
 1262 Fișierul cheie este plin.
 1263 Nu criptează TDE pagina jurnalului (pageid: %1$lld). Nu va mai fi încercat să criptați această pagină.
+1264 Internal CAS error : %1$d 
+1265 Internal CAS error : %1$d, %2$s
 
-1264 Ultima eroare
+1266 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

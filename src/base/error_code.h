@@ -1621,8 +1621,10 @@
 #define ER_TDE_RESTORE_CHANGE_MASTER_KEY            -1261
 #define ER_TDE_MAX_KEY_FILE                         -1262
 #define ER_TDE_ENCRYPTION_LOGPAGE_ERORR_AND_OFF_TDE -1263
+#define ER_SQL_ERROR_LOG_TRACE                      -1264
+#define ER_SQL_ERROR_LOG_MSG_TRACE                  -1265
 
-#define ER_LAST_ERROR                               -1264
+#define ER_LAST_ERROR                               -1266
 
 /*
  * CAUTION!
