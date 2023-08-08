@@ -67,9 +67,6 @@ namespace cubbase
 
   using string_set_ci_lower = std::unordered_set <std::string, lowercase_hash, lowercase_compare>;
 
-
 }
-
-
 
 #endif // _STRING_UTILITY_HPP_
