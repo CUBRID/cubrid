@@ -21,11 +21,11 @@
  * schema_system_class.h - External definitions for the schema manager
  */
 
-#ifndef _SCHEMA_SYSTEM_CLASS_HPP_
-#define _SCHEMA_SYSTEM_CLASS_HPP_
+#ifndef _SCHEMA_SYSTEM_CATALOG_HPP_
+#define _SCHEMA_SYSTEM_CATALOG_HPP_
 
 #include <string>
 
 extern bool sm_check_system_class_by_name (const std::string &class_name);
 
-#endif /* _SCHEMA_SYSTEM_CLASS_HPP_ */
+#endif /* _SCHEMA_SYSTEM_CATALOG_HPP_ */

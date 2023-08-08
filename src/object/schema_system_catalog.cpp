@@ -16,7 +16,7 @@
  *
  */
 
-#include "schema_system_class.hpp"
+#include "schema_system_catalog.hpp"
 
 #include "identifier_store.hpp"
 #include "oid.h"
