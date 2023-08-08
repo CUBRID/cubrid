@@ -22,6 +22,7 @@
 #include "log_append.hpp"
 #include "log_lsa.hpp"
 #include "system_parameter.h"
+#include "server_type.hpp"
 
 namespace cublog
 {
@@ -103,6 +104,7 @@ namespace cublog
   void
   prior_sender::reset_unsent_lsa (const LOG_LSA &lsa)
   {
+    assert (is_active_transaction_server () || is_page_server ());
     m_unsent_lsa = lsa;
   }
 

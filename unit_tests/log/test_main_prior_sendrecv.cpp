@@ -360,3 +360,15 @@ void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
 }
+
+bool
+is_active_transaction_server ()
+{
+  return true;
+}
+
+bool
+is_page_server ()
+{
+  return false;
+}
