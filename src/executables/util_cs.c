@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
 #include <signal.h>
 #include <errno.h>
 #include <assert.h>
@@ -4549,14 +4550,14 @@ memmon (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
-  char *module, *stop;
+  char *module, *tran_count_str, *stop;
   bool transaction, show_all, need_shutdown;
-  int tran_count;
+  int tran_count = INT_MAX;
   int module_index = MMON_MODULE_LAST;
 
   module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
   transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
-  tran_count = utility_get_option_int_value (arg_map, MEMMON_TRAN_COUNT_S);
+  tran_count_str = utility_get_option_string_value (arg_map, MEMMON_TRAN_COUNT_S, 0);
   show_all = utility_get_option_bool_value (arg_map, MEMMON_SHOW_ALL_S);
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
@@ -4566,29 +4567,35 @@ memmon (UTIL_FUNCTION_ARG * arg)
     }
 
   /* error check phase */
+  if (show_all && (transaction || tran_count_str || module))
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
+      goto error_exit;
+    }
+
   if (check_database_name (database_name))
     {
       goto error_exit;
     }
 
-  if ((!transaction) && tran_count)
+  if ((!transaction) && tran_count_str)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_OPTION));
       goto error_exit;
     }
 
-  if (tran_count < 0)
+  if (tran_count_str)
+    {
+      tran_count = strtol (tran_count_str, &stop, 10);
+      stop = NULL;
+    }
+
+  if (tran_count <= 0)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NEGATIVE_TRAN_COUNT_NUMBER));
-      goto error_exit;
-    }
-
-  if (show_all && (transaction || module))
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
       goto error_exit;
     }
 

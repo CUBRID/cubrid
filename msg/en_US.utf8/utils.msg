@@ -1319,7 +1319,7 @@ $set 59 MSGCAT_UTIL_SET_MEMMON
 5 '-c(--tran-count)' option must have positive number.\n
 59 memmon cannot run as standalone mode.\n
 60 \
-memmon: Provides memory usage information of a database server process.\n\
+memmon: Provides memory usage information of a database server.\n\
 usage: %1$s memmon [OPTION] database-name\n\
 \n\
 valid options:\n\
@@ -1327,9 +1327,9 @@ valid options:\n\
                                   WARNING: This option can only be used alone.\n\
     -t, --transaction             display memory usage of active transactions in descending order of memory usage.\n\
     -c, --tran-count=NUMBER       set how many transactions will be displayed. Using this option, memmon displays memory usage of\n\
-                                  the NUMBER of active transactions user entered with descending order of memory usage.\n\
+                                  the NUMBER of active transactions with descending order of memory usage.\n\
                                   WARNING: This option has to be used with '-t(--transaction)' option.\n\
     -m, --module=TYPE             display detailed memory usage information of the specified TYPE.\n\
-                                    TYPE of modules\n\
-                                      0 (or all)      all modules\n\
-                                      1 (or heap)     heap module\n
+                                  TYPE of modules\n\
+                                  0 (or all)      all modules\n\
+                                  1 (or heap)     heap module\n
