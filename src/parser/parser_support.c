@@ -8479,6 +8479,7 @@ pt_is_operator_arith (PT_OP_TYPE op)
     case PT_TIMES:
     case PT_DIVIDE:
     case PT_UNARY_MINUS:
+    case PT_MOD:
       return true;
     default:
       return false;
