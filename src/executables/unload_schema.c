@@ -183,6 +183,7 @@ static int emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 			    char *output_filename_p, const size_t filename_size);
 static int export_server (print_output & output_ctx);
+static void str_tolower (char *str);
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -834,7 +835,7 @@ err:
  *    output_ctx(in/out): output context
  */
 static int
-export_synonym (print_output & output_ctx)
+export_synonym (extract_context & ctxt, print_output & output_ctx)
 {
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
@@ -850,6 +851,9 @@ export_synonym (print_output & output_ctx)
   int i = 0;
   int save = 0;
   int error = NO_ERROR;
+  DB_OBJLIST *cl = NULL;
+  const char *name = NULL;
+  char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
 
   // *INDENT-OFF*
   const char *query = "SELECT [name], "
@@ -953,6 +957,28 @@ export_synonym (print_output & output_ctx)
 	  if (!is_dba_group_member && !ws_is_same_object (Au_user, synonym_owner))
 	    {
 	      continue;
+	    }
+
+	  if (required_class_only == true)
+	    {
+	      int same_schema = 0;
+	      for (cl = ctxt.classes; cl != NULL; cl = cl->next)
+		{
+		  name = db_get_class_name (cl->op);
+
+		  str_tolower ((char *) target_owner_name);
+		  snprintf (temp_schema, DB_MAX_CLASS_LENGTH, "%s%s%s", (target_owner_name), ".", target_name);
+
+		  if (strcmp (temp_schema, name) == 0)
+		    {
+		      same_schema++;
+		    }
+		}
+
+	      if (same_schema == 0)
+		{
+		  continue;
+		}
 	    }
 
 	  if (is_public == 1)
@@ -1081,7 +1107,7 @@ extract_classes (extract_context & ctxt, print_output & schema_output_ctx)
    * Since a synonym is like an alias, it can be created even if the target does not exist.
    * So, unload the synonym before class/vclass.
    */
-  if (required_class_only == false && export_synonym (schema_output_ctx) < 0)
+  if (export_synonym (ctxt, schema_output_ctx) < 0)
     {
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
@@ -3938,4 +3964,19 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
   snprintf (output_filename_p, filename_size - 1, "%s/%s%s", output_dirname, output_prefix, suffix);
 
   return 0;
+}
+
+static void
+str_tolower (char *str)
+{
+  char *p;
+
+  if (str == NULL)
+    return;
+
+  for (p = str; *p; p++)
+    {
+      if (*p >= 'A' && *p <= 'Z')
+	*p = *p - 'A' + 'a';
+    }
 }
