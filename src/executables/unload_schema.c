@@ -241,7 +241,7 @@ static void emit_primary_key (extract_context & ctxt, print_output & output_ctx,
 static int create_schema_info (extract_context & ctxt);
 static int create_filename_schema_info (const char *output_dirname, const char *output_prefix, char *output_filename_p,
 					const size_t filename_size);
-static void char_tolower (char *str);
+static void str_tolower (char *str);
 
 /*
  * CLASS DEPENDENCY ORDERING
@@ -1112,7 +1112,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 		{
 		  name = db_get_class_name (cl->op);
 
-		  char_tolower ((char *) target_owner_name);
+		  str_tolower ((char *) target_owner_name);
 		  snprintf (temp_schema, DB_MAX_CLASS_LENGTH, "%s%s%s", (target_owner_name), ".", target_name);
 
 		  if (strcmp (temp_schema, name) == 0)
@@ -5690,7 +5690,7 @@ create_schema_info (extract_context & ctxt)
 }
 
 static void
-char_tolower (char *str)
+str_tolower (char *str)
 {
   char *p;
 
