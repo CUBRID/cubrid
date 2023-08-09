@@ -241,6 +241,7 @@ static void emit_primary_key (extract_context & ctxt, print_output & output_ctx,
 static int create_schema_info (extract_context & ctxt);
 static int create_filename_schema_info (const char *output_dirname, const char *output_prefix, char *output_filename_p,
 					const size_t filename_size);
+static void str_tolower (char *str);
 
 /*
  * CLASS DEPENDENCY ORDERING
@@ -959,6 +960,9 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   size_t query_size = 0;
   char *query = NULL;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  DB_OBJLIST *cl = NULL;
+  const char *name = NULL;
+  char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
 
   // *INDENT-OFF*
   const char *query_all = "SELECT [name], "
@@ -1099,6 +1103,28 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	  if (!is_dba_group_member && !ws_is_same_object (Au_user, synonym_owner))
 	    {
 	      continue;
+	    }
+
+	  if (required_class_only == true)
+	    {
+	      int same_schema = 0;
+	      for (cl = ctxt.classes; cl != NULL; cl = cl->next)
+		{
+		  name = db_get_class_name (cl->op);
+
+		  str_tolower ((char *) target_owner_name);
+		  snprintf (temp_schema, DB_MAX_CLASS_LENGTH, "%s%s%s", (target_owner_name), ".", target_name);
+
+		  if (strcmp (temp_schema, name) == 0)
+		    {
+		      same_schema++;
+		    }
+		}
+
+	      if (same_schema == 0)
+		{
+		  continue;
+		}
 	    }
 
 	  if (is_public == 1)
@@ -1257,7 +1283,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
    * Since a synonym is like an alias, it can be created even if the target does not exist.
    * So, unload the synonym before class/vclass.
    */
-  if (required_class_only == false && export_synonym (ctxt, schema_output_ctx) < NO_ERROR)
+  if (export_synonym (ctxt, schema_output_ctx) < NO_ERROR)
     {
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
@@ -4743,16 +4769,13 @@ extract_synonym (extract_context & ctxt)
 
   file_print_output output_ctx (output_file);
 
-  if (required_class_only == false)
+  err = export_synonym (ctxt, output_ctx);
+  if (err != NO_ERROR)
     {
-      err = export_synonym (ctxt, output_ctx);
-      if (err != NO_ERROR)
+      fprintf (stderr, "%s", db_error_string (3));
+      if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
 	{
-	  fprintf (stderr, "%s", db_error_string (3));
-	  if (db_error_code () == ER_SYNONYM_INVALID_VALUE)
-	    {
-	      fprintf (stderr, " Check the value of _db_synonym object.\n");
-	    }
+	  fprintf (stderr, " Check the value of _db_synonym object.\n");
 	}
     }
 
@@ -5664,4 +5687,19 @@ create_schema_info (extract_context & ctxt)
   ctxt.schema_file_list.clear ();
 
   return err;
+}
+
+static void
+str_tolower (char *str)
+{
+  char *p;
+
+  if (str == NULL)
+    return;
+
+  for (p = str; *p; p++)
+    {
+      if (*p >= 'A' && *p <= 'Z')
+	*p = *p - 'A' + 'a';
+    }
 }
