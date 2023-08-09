@@ -7993,8 +7993,6 @@ logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_
   return NO_ERROR;
 }
 
-using namespace std;
-
 /*
  * logpb_restore - Restore volume from its backup
  *
