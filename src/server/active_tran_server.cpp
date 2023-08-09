@@ -21,6 +21,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_lsa_utils.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
 
@@ -77,12 +78,6 @@ active_tran_server::compute_consensus_lsa ()
 	}
     }
 
-  if (cur_node_cnt < quorum)
-    {
-      quorum_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
-				total_node_cnt, cur_node_cnt, quorum);
-      return NULL_LSA;
-    }
   /*
    * Gather all PS'es saved_lsa and sort it in ascending order.
    * The <cur_node_count - quorum>'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
@@ -91,19 +86,40 @@ active_tran_server::compute_consensus_lsa ()
    * total: 5, cur: 4 - [5, 6, 9, 10] -> "6"
    * total: 3, cur: 2 - [9, 10] -> "9"
    */
-  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
 
-  const auto consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
+  const bool quorum_not_met = cur_node_cnt < quorum;
+
+  LOG_LSA consensus_lsa;
+  if (quorum_not_met)
+    {
+      if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
+	{
+	  // if the quorum is not met, only sort if we're about to log the details (see below); otherwise the sorting is useless
+	  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
+	}
+      consensus_lsa = NULL_LSA; // the quorum is not met.
+    }
+  else
+    {
+      // always do the sort if the quorum is met:
+      std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
+      consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
+    }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
     {
       constexpr int BUF_SIZE = 1024;
       char msg_buf[BUF_SIZE];
       int n = 0;
+
+      n = snprintf (msg_buf, BUF_SIZE, "compute_consensus_lsa - ");
+
+      n += snprintf (msg_buf + n, BUF_SIZE - n, "Quorum %ssatisfied: ", (quorum_not_met ? "un" : ""));
+
       // cppcheck-suppress [wrongPrintfScanfArgNum]
-      n = snprintf (msg_buf, BUF_SIZE,
-		    "compute_consensus_lsa - total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
-		    total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
+      n += snprintf (msg_buf + n, BUF_SIZE - n,
+		     "total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
+		     total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
       n += snprintf (msg_buf + n, BUF_SIZE - n, "Collected saved lsa list = [ ");
       for (const auto &lsa : collected_saved_lsa)
 	{
@@ -176,6 +192,27 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 			    get_channel_id ().c_str ());
 }
 
+void
+active_tran_server::connection_handler::send_start_catch_up_request (std::string &&host, int32_t port,
+    LOG_LSA &&catchup_lsa)
+{
+  cubpacking::packer packer;
+  size_t size = 0;
+
+  size += packer.get_packed_string_size (host, size); // host
+  size += packer.get_packed_int_size (size); // port
+  size += cublog::lsa_utils::get_packed_size (packer, size); // catchup_lsa
+
+  std::unique_ptr < char[] > buffer (new char[size]);
+  packer.set_buffer (buffer.get (), size);
+
+  packer.pack_string (host);
+  packer.pack_int (port);
+  cublog::lsa_utils::pack (packer, catchup_lsa);
+
+  push_request_regardless_of_state (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
+}
+
 log_lsa
 active_tran_server::connection_handler::get_saved_lsa () const
 {
@@ -189,7 +226,28 @@ active_tran_server::connection_handler::on_connecting ()
 
   m_prior_sender_sink_hook_func = std::bind (&active_tran_server::connection_handler::prior_sender_sink_hook, this,
 				  std::placeholders::_1);
-  log_Gl.get_log_prior_sender ().add_sink (m_prior_sender_sink_hook_func);
+
+  auto unsent_lsa = log_Gl.get_log_prior_sender ().add_sink (m_prior_sender_sink_hook_func);
+
+  std::string hostname = "N/A";
+  int32_t port = -1;
+
+  // TODO: We should make two paths to set a connection_handler to CONNECTED:
+  //    - While booting: a target PS is determined after communicating with multiple PSes and
+  //      send the catch-up request based on it.
+  //    - While running: the unsent_lsa from prior_sender is the LSA of the first log records to send.
+  if (!unsent_lsa.is_null ())
+    {
+      auto res = m_ts.get_main_connection_info (hostname, port);
+      assert (res);
+    }
+  else
+    {
+      // It's booting up and before log_initialize (). There is no main connection yet. For now, it just sends NULL_LSA.
+      // TODO: While booting up, the catchup_lsa is not unsent_lsa, but determined by communicating with PSes.
+    }
+
+  send_start_catch_up_request (std::move (hostname), port, std::move (unsent_lsa));
 }
 
 void

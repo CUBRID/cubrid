@@ -111,6 +111,8 @@ test_env::test_env (size_t receivers_count)
   // affirmative answers for debug parameters used in the context of this test
   prm_set_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER, true);
 
+  m_sender.reset_unsent_lsa (m_source_prior_info.prior_lsa);
+
   // For each receiver, three steps must be done:
   //	1. creating a prior info, where log is transferred
   //	2. creating the log receiver
@@ -185,7 +187,7 @@ test_env::flush_and_transfer_log ()
 {
   // simulate "flush", when log is transferred to receivers
 
-  m_sender.send_list (m_source_prior_info.prior_list_header);
+  m_sender.send_list (m_source_prior_info.prior_list_header, &m_source_prior_info.prior_lsa);
 
   if (m_source_prior_info.prior_list_header != nullptr)
     {
@@ -357,4 +359,16 @@ log_wakeup_log_flush_daemon ()
 void
 _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
+}
+
+bool
+is_active_transaction_server ()
+{
+  return true;
+}
+
+bool
+is_page_server ()
+{
+  return false;
 }

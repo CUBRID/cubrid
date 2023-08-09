@@ -341,6 +341,12 @@ is_active_transaction_server ()
   return true;
 }
 
+bool
+is_page_server ()
+{
+  return false;
+}
+
 PGLENGTH
 db_log_page_size ()
 {
@@ -463,11 +469,6 @@ namespace cublog
   prior_recver::~prior_recver ()
   {
     assert_release (!m_thread.joinable ());
-  }
-
-  prior_sender::~prior_sender ()
-  {
-    assert_release (false);
   }
 }
 

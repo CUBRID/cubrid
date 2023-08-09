@@ -90,6 +90,10 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, tran
       tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID,
       std::bind (&page_server::connection_handler::handle_oldest_active_mvccid_request, std::ref (*this), std::placeholders::_1)
     },
+    {
+      tran_to_page_request::SEND_START_CATCH_UP,
+      std::bind (&page_server::connection_handler::receive_start_catch_up, std::ref (*this), std::placeholders::_1)
+    },
     // passive only
     {
       tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH,
@@ -156,7 +160,7 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
   log_Gl.get_log_prior_receiver ().push_message (std::string (payload));
 
   // move the payload into the dispatcher
-  log_Gl.get_log_prior_sender ().send_serialized_message (std::move (payload));
+  log_Gl.get_log_prior_sender ().send_serialized_message (std::move (payload), &NULL_LSA);
 }
 
 template<class F, class ... Args>
@@ -193,6 +197,26 @@ page_server::connection_handler::handle_oldest_active_mvccid_request (tran_serve
   a_sp.push_payload (std::move (response_message));
   m_conn->respond (std::move (a_sp));
 }
+
+
+void
+page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
+{
+  auto payload = a_sp.pull_payload ();
+  cubpacking::unpacker unpacker { payload.c_str (), payload.size ()};
+
+  std::string host;
+  int32_t port;
+  LOG_LSA catchup_lsa;
+
+  unpacker.unpack_string (host);
+  unpacker.unpack_int (port);
+  cublog::lsa_utils::unpack (unpacker, catchup_lsa);
+
+  er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname = %s, port = %d, LSA = (%lld|%d)\n", host.c_str (), port,
+		LSA_AS_ARGS (&catchup_lsa));
+}
+
 
 void
 page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp)

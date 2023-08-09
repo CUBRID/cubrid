@@ -22,10 +22,12 @@
 #include "log_append.hpp"
 #include "log_lsa.hpp"
 #include "system_parameter.h"
+#include "server_type.hpp"
 
 namespace cublog
 {
   prior_sender::prior_sender ()
+    : m_unsent_lsa { NULL_LSA }
   {
     m_thread = std::thread (&prior_sender::loop_dispatch, std::ref (*this));
   }
@@ -47,7 +49,7 @@ namespace cublog
   }
 
   void
-  prior_sender::send_list (const log_prior_node *head)
+  prior_sender::send_list (const log_prior_node *head, const LOG_LSA *unsent_lsa)
   {
     // NOTE: this functions does 2 things:
     //  - packs the log prior nodes in a stream of bytes that can be sent over the network (currently: string)
@@ -63,6 +65,9 @@ namespace cublog
       {
 	return;
       }
+
+    assert (m_unsent_lsa == head->start_lsa);
+
     std::string message = prior_list_serialize (head);
 
     if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
@@ -74,11 +79,11 @@ namespace cublog
 		       LSA_AS_ARGS (&head->start_lsa), LSA_AS_ARGS (&tail->start_lsa), message.size ());
       }
 
-    send_serialized_message (std::move (message));
+    send_serialized_message (std::move (message), unsent_lsa);
   }
 
   void
-  prior_sender::send_serialized_message (std::string &&message)
+  prior_sender::send_serialized_message (std::string &&message, const LOG_LSA *unsent_lsa)
   {
     // TODO: when this function is called from page server's log prior handler - to dispatch messages
     // asynchronously to subscribed passive transaction servers, there is no logging;
@@ -90,6 +95,12 @@ namespace cublog
       std::lock_guard<std::mutex> lockg { m_messages_mtx };
       m_messages.push_back (std::move (message));
     }
+
+    // TODO: m_sink_hooks_mutex locked?
+    // TODO: setting this is actually out of sink with what is/has been sent over to the sinks; because
+    //    actually pushing to the sinks happens in a thread
+    m_unsent_lsa = *unsent_lsa;
+
     m_messages_cv.notify_one ();
   }
 
@@ -143,13 +154,15 @@ namespace cublog
       }
   }
 
-  void
+  LOG_LSA
   prior_sender::add_sink (const sink_hook_t &fun)
   {
     assert (fun != nullptr);
 
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     m_sink_hooks.push_back (&fun);
+
+    return m_unsent_lsa;
   }
 
   void
@@ -162,6 +175,13 @@ namespace cublog
     const auto find_it = std::find (m_sink_hooks.begin (), m_sink_hooks.end (), &fun);
     assert (find_it != m_sink_hooks.end ());
     m_sink_hooks.erase (find_it);
+  }
+
+  void
+  prior_sender::reset_unsent_lsa (const LOG_LSA &lsa)
+  {
+    assert (is_active_transaction_server () || is_page_server ());
+    m_unsent_lsa = lsa;
   }
 
   bool

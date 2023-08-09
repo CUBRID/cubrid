@@ -95,6 +95,9 @@ set(TEST_PRIOR_LIST_SERIALIZE_SOURCES
   # What is tested
   ${TRANSACTION_DIR}/log_append.cpp
 
+  # dependency
+  ${TRANSACTION_DIR}/log_prior_send.cpp
+
   # Test
   test_main_prior_list_serialize.cpp
   )

@@ -20,6 +20,7 @@
 #define _LOG_PRIOR_SEND_HPP_
 
 #include "log_append.hpp"
+#include "log_lsa.hpp"
 
 #include <condition_variable>
 #include <deque>
@@ -35,6 +36,7 @@ namespace cublog
   class prior_sender
   {
     public:
+      // messages are passed to sink hooks
       using sink_hook_t = std::function<void (std::string &&)>;
 
     public:
@@ -49,13 +51,15 @@ namespace cublog
 
     public:
       // send prior node list to all sinks
-      void send_list (const log_prior_node *head);
-      void send_serialized_message (std::string &&message);
+      void send_list (const log_prior_node *head, const LOG_LSA *unsent_lsa);
+      void send_serialized_message (std::string &&message, const LOG_LSA *unsent_lsa);
 
       // add a hook for a new sink
-      void add_sink (const sink_hook_t &fun);
+      LOG_LSA add_sink (const sink_hook_t &fun);
       // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);
+      // reset only when prior_lsa is reset
+      void reset_unsent_lsa (const LOG_LSA &lsa);
 
     private:
       void loop_dispatch ();
@@ -75,6 +79,8 @@ namespace cublog
       std::thread m_thread;
       // this variable is guarded by messages mutex
       bool m_shutdown = false;
+      // lsa log records to send, in other word, unsent
+      LOG_LSA m_unsent_lsa;
   };
 }
 
