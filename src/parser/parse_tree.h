@@ -807,6 +807,7 @@ struct json_t;
 #define PT_SYNONYM_ACCESS_MODIFIER(n)	((n)->info.synonym.access_modifier)
 #define PT_SYNONYM_OR_REPLACE(n)	((n)->info.synonym.or_replace)
 #define PT_SYNONYM_IF_EXISTS(n)		((n)->info.synonym.if_exists)
+#define PT_SYNONYM_IS_DBLINKED(n)	((n)->info.synonym.is_dblinked)	/* for user.table@server */
 
 /* Check node_type of PT_NODE */
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
@@ -932,8 +933,8 @@ enum pt_custom_print
   PT_PRINT_SUPPRESS_SERVER_NAME = (0x1 << 25),
   /* suppress next_value to serial_next_value(...) or current_value to serial_current_value(...) */
   PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
-  /* suppress target-name at 'DELETE target-name FROM' for dblink's other DBMS */
-  PT_PRINT_SUPPRESS_DELETE_TARGET = (0x1 << 27)
+  /* suppress print various generated functions including suppress delete targe for dblink */
+  PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
 };
 
 /* all statement node types should be assigned their API statement enumeration */
@@ -2746,6 +2747,7 @@ struct pt_name_info
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
+#define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
@@ -3533,6 +3535,7 @@ struct pt_synonym_info
   PT_NODE *comment;		/* PT_VALUE */
   unsigned or_replace:1;	/* OR REPLACE clause for CREATE SYNONYM */
   unsigned if_exists:1;		/* IF EXISTS clause for DROP SYNONYM */
+  unsigned is_dblinked:1;	/* server name specified */
 };
 
 /* Info field of the basic NODE

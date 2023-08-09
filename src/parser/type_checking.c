@@ -18917,6 +18917,34 @@ error_zerodate:
 }
 
 /*
+ * pt_check_dblink_related_expr () - check dblinke-related expression
+ *   return: dblink_related = true if successful,
+ *           dblink_related = false if not successful.
+ *   parser(in): parser global context info for reentrancy
+ *   p(in): a parse tree representation of a constant expression
+ */
+
+static PT_NODE *
+pt_check_dblink_related_expr (PARSER_CONTEXT * parser, PT_NODE * p, void *arg, int *continue_walk)
+{
+  bool *dblink_related = (bool *) arg;
+
+  if (p->node_type == PT_NAME && p->info.name.spec_id)
+    {
+      PT_NODE *spec;
+
+      spec = (PT_NODE *) (p->info.name.spec_id);
+      if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  *dblink_related = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return p;
+}
+
+/*
  * pt_fold_const_expr () - evaluate constant expression
  *   return: the evaluated expression, if successful,
  *           unchanged expr, if not successful.
@@ -18956,6 +18984,19 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   if (expr->flag.do_not_fold)
     {
       return expr;
+    }
+
+  /* if dblink query, do not constant fold */
+  if (parser->dblink_remote)
+    {
+      bool dblink_related = false;
+
+      parser_walk_tree (parser, expr, pt_check_dblink_related_expr, &dblink_related, NULL, NULL);
+
+      if (dblink_related)
+	{
+	  return expr;
+	}
     }
 
   location = expr->info.expr.location;
