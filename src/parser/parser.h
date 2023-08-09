@@ -612,6 +612,7 @@ extern "C"
   extern PT_NODE *pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_parens_inside,
 					      bool use_parens_outside);
   extern bool pt_is_operator_logical (PT_OP_TYPE op);
+  extern bool pt_is_operator_arith (PT_OP_TYPE op);
   extern bool pt_list_has_logical_nodes (PT_NODE * list);
   extern bool pt_is_pseudo_const (PT_NODE * expr);
   extern bool pt_is_op_hv_late_bind (PT_OP_TYPE op);

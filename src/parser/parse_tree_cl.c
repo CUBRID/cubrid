@@ -11792,7 +11792,15 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
 
       q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, pt_show_binopcode (p->info.expr.op));
+      if ((parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK) && p->info.expr.op == PT_MOD)
+	{
+	  /* '%' instead of 'mod' for other DBMS */
+	  q = pt_append_nulstring (parser, q, " % ");
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, pt_show_binopcode (p->info.expr.op));
+	}
       if (r2 && (r2->bytes[0] == '-') && q && (q->bytes[q->length - 1] == '-'))
 	{
 	  q = pt_append_nulstring (parser, q, "(");
