@@ -28,7 +28,7 @@ declare -r sort_option_page=1
 declare -r sort_option_owner=2
 declare -r sort_option_table=3
 declare -r sort_option_index=4
-declare -r -a  sort_title=(
+declare -r -a  sort_titles=(
     "pages" "pages"       $sort_option_page
     "owner" "owner-name"  $sort_option_owner
     "table" "table-name"  $sort_option_table
@@ -45,7 +45,7 @@ connection_mode="-C"
 
 match_key="${key_titles[1]}"
 declare -i match_key_idx=1
-declare -i sort_field=${sort_title[2]}
+declare -i sort_field=${sort_titles[2]}
 declare -i threshold_value=1000
 declare -i info_map_st_sz=6
 declare -a info_map  # array ( pages, owner-name, table-name, index-name, partition, invisible )
@@ -78,17 +78,17 @@ function show_usage ()
 	echo " OPTIONS"
 	echo "  -C client-server mode execution, default"
 	echo "  -S standalone mode execution"
-	echo "  -u, --user=ARG      Set database user name(DBA or DBA group member); default dba"
+	echo "  -u, --user=ARG      Set database user name(only DBA or DBA group member); default dba"
 	echo "  -p, --password=ARG  Set password of databases user name; default NULL"
-	echo "  -o, --owner=ARG     Set target owner ID; default: NULL"
+	echo "  -o, --owner=ARG     Set target owner name; default: NULL"
 	echo "  -c, --class=ARG     Set target class name; default: NULL"
 	echo "  -k, --key=ARG       Set the name of the key field to be checked; default: 1 (Max_num_ovf_page_a_key)"
-        echo "                      Choose from number."
+        echo "                      Choose one of the following numbers."
         echo "                        1 : Max_num_ovf_page_a_key (default)"
         echo "                        2 : Avg_num_ovf_page_per_key"
         echo "                        3 : Num_ovf_page"        
-	echo "  -t, --threshold=ARG Set the threshold to select the index to be reported; default: 1000"    
-	echo "  -s, --sort=ARG      Set sort filed name(pages, owner, table, index); default pages"
+	echo "  -t, --threshold=ARG Set threshold (show only indexes exceed this value); default: 1000"    
+	echo "  -s, --sort=ARG      Set sort field name(pages, owner, table, index); default pages"
         echo "  -v, --verbose       Set verbose mode; default disable" 
 	echo ""
 	echo " EXAMPLES"
@@ -127,14 +127,14 @@ function get_options()
 				
 			-s | --sort)
 				tsort=${2,,} # to lowercase
-				for (( i =0; i < ${#sort_title[@]}; i+=3 ))
+				for (( i =0; i < ${#sort_titles[@]}; i+=3 ))
 				do
-					if [ x"$tsort" == x"${sort_title[${i}]}" ] || [ x"$tsort" == x"${sort_title[${i} + 1]}" ]; then
-						sort_field=${sort_title[${i} + 2]}
+					if [ x"$tsort" == x"${sort_titles[${i}]}" ] || [ x"$tsort" == x"${sort_titles[${i} + 1]}" ]; then
+						sort_field=${sort_titles[${i} + 2]}
 						break
 					fi
 				done
-				if [ $i -gt ${#sort_title[@]} ]; then
+				if [ $i -gt ${#sort_titles[@]} ]; then
 					show_usage
 				fi
 				shift ;;
@@ -166,7 +166,7 @@ function print_args()
 	echo_verbose "class=${target_table}"
 	echo_verbose "key=${match_key_idx} (${match_key})"
 	echo_verbose "threshold=${threshold_value}"
-	echo_verbose "sort=${sort_title[${sort_field}-1*3]}"
+	echo_verbose "sort=${sort_titles[${sort_field}-1*3]}"
 	echo_verbose "database=${database}"
 	echo_verbose "***************************************"
 	echo_verbose ""
