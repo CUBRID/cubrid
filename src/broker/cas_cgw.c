@@ -1093,7 +1093,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
       if (col_unsigned_type)
 	{
-	  bind_col_size = col_size + 1;
+	  bind_col_size = col_size + 10;
 	}
       else
 	{
