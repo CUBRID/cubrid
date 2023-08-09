@@ -26,6 +26,8 @@
 
 #include <string>
 
-extern bool sm_check_system_class_by_name (const std::string &class_name);
+#include "porting.h"
+
+extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string &class_name);
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_HPP_ */
