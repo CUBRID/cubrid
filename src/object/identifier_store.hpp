@@ -27,7 +27,6 @@
 
 #include "porting.h"
 #include "string_utility.hpp"
-#include "language_support.h"
 
 namespace cubbase
 {
@@ -43,55 +42,21 @@ namespace cubbase
   class EXPORT_IMPORT identifier_store
   {
     public:
-      explicit identifier_store (const std::vector <std::string> &string_vec, const bool check_valid)
-	: m_identifiers (string_vec.begin(), string_vec.end ()), m_size (m_identifiers.size ())
-      {
-	// this routine checks whether the conditions in the above comment are satisfied and set the m_is_valid variable.
-	// If check_valid is false, it is assumed to be valid without checking whether the conditions of the comment are satisfied.
-	// Currently only (1) is able to be checked.
-	m_is_valid = (check_valid) ? check_identifier_condition () : true;
-      }
+      explicit identifier_store (const std::vector <std::string> &string_vec, const bool check_valid);
+      ~identifier_store();
 
-      ~identifier_store() = default;
+      bool is_exists (const std::string &str) const;
+      bool is_valid () const;
 
-      bool is_exists (const std::string &str) const
-      {
-	return m_identifiers.find (str) != m_identifiers.end ();
-      }
-
-      bool is_valid () const
-      {
-	return m_is_valid;
-      }
-
-      int get_size () const
-      {
-	return m_size;
-      }
+      int get_size () const;
 
     private:
-      // TODO: check_identifier_condition () is not considering the following yet.
-      // * Checking unicode letters
-      // * Checking reserved keywords
-      // * Checking enclosing in Double quotes, Square brackets, or Backtick symobls
-      bool check_identifier_condition ()
-      {
-	bool is_valid = true;
-	for (const std::string &elem : m_identifiers)
-	  {
-	    // Check (1)
-	    is_valid = lang_check_identifier (elem.data (), elem.size ());
-	    if (is_valid == false)
-	      {
-		break;
-	      }
-	  }
-	return is_valid;
-      }
+
+      bool check_identifier_condition () const;
 
       /* see string_utility.hpp */
-      const cubbase::string_set_ci_lower m_identifiers;
-      const int m_size;
+      cubbase::string_set_ci_lower m_identifiers;
+      int m_size;
 
       bool m_is_valid;
   };
