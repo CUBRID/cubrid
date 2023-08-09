@@ -260,7 +260,7 @@ function IFS_restore()
 function do_get_index_name_list()
 {
 	local is_title_line=1
-	local res_fnm="ti.res"
+	local res_buf=""
 	local csql_options=""
 	local i_qry=""
 	local csql_qry=""
@@ -294,7 +294,7 @@ function do_get_index_name_list()
 
     # send query
 	csql_options="${connection_mode} ${user} ${pass} -t"
-	csql ${csql_options} -c "${csql_qry}" $database > "${res_fnm}"
+	res_buf=$(csql ${csql_options} -c "${csql_qry}" $database)
 
         IFS_cleanup
 
@@ -315,9 +315,8 @@ function do_get_index_name_list()
 			info_map+=("$(echo $full_name | cut -d '.' -f4)") # partitioned
 			info_map+=("$(echo $full_name | cut -d '.' -f5)") # invisible
 		fi
-	done < "${res_fnm}"
-        rm "${res_fnm}"
-
+	done <<< ${res_buf}
+        
         IFS_restore	
 }
 
@@ -333,8 +332,7 @@ function do_get_capacity()
 
 	if [ x"${info_map[${idx} + 4]}" == x"P" ]; then
 		info_map[$idx]=0  # partition table
-	else
-		local capacity_query="SHOW INDEX CAPACITY OF [${info_map[${idx} + 1]}].[${info_map[${idx} + 2]}].[${info_map[${idx} + 3]}]"
+	else		
 		res=$(csql ${connection_mode} ${user} ${pass} -l -c "${capacity_query}" $database)
 		
 		if [ $? -ne 0 ] || [ x"$res" == x"" ] ; then
