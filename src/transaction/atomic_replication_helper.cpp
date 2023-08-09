@@ -54,6 +54,34 @@ namespace cublog
       }
   }
 
+#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+  bool
+  atomic_replication_helper::check_and_force_enque_as_part_of_existing_sequence (TRANID tranid, LOG_LSA lsa,
+      LOG_RCVINDEX rcvindex, VPID vpid)
+  {
+    TRANID existing_sequence_trid = NULL_TRANID;
+    if (!m_vpid_bk.is_vpid_part_of_any_sequence (vpid, existing_sequence_trid))
+      {
+	assert (existing_sequence_trid == NULL_TRANID);
+	// not part of any atomic replication, must be handled independently
+	return false;
+      }
+    // part of another existing atomic sequence
+    assert (existing_sequence_trid != NULL_TRANID);
+    assert (tranid != existing_sequence_trid);
+
+    const auto sequence_it = m_sequences_map.find (existing_sequence_trid);
+    atomic_log_sequence &sequence = sequence_it->second;
+    sequence.append_log (lsa, rcvindex, vpid, m_vpid_bk);
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+      {
+	dump ("helper::check_and_force_enque_as_part_of_existing_sequence");
+      }
+
+    return true;
+  }
+#endif
+
   void
   atomic_replication_helper::start_sequence_internal (TRANID trid, LOG_LSA start_lsa,
       const log_rv_redo_context &redo_context)
@@ -251,12 +279,12 @@ namespace cublog
 #endif
   }
 
-#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
-  void atomic_replication_helper::check_vpid_not_part_of_any_sequence (VPID vpid)
-  {
-    m_vpid_bk.check_vpid_not_part_of_any_sequence (vpid);
-  }
-#endif
+//#ifdef ATOMIC_REPL_PAGE_BELONGS_TO_SINGLE_ATOMIC_SEQUENCE_CHECK
+//  void atomic_replication_helper::check_vpid_not_part_of_any_sequence (VPID vpid)
+//  {
+//    m_vpid_bk.check_vpid_not_part_of_any_sequence (vpid);
+//  }
+//#endif
 
   void
   atomic_replication_helper::dump (const char *message) const
@@ -330,13 +358,28 @@ namespace cublog
     assert (m_usage_map.find (trid) == m_usage_map.cend ());
   }
 
-  void atomic_replication_helper::vpid_bookeeping::check_vpid_not_part_of_any_sequence (VPID vpid) const
+//  void atomic_replication_helper::vpid_bookeeping::check_vpid_not_part_of_any_sequence (VPID vpid) const
+//  {
+//    for (const std::pair<TRANID, vpid_map_type> &tran_pair : m_usage_map)
+//      {
+//	const vpid_map_type &tran_vpids = tran_pair.second;
+//	assert_release (tran_vpids.find (vpid) == tran_vpids.cend ());
+//      }
+//  }
+
+  bool atomic_replication_helper::vpid_bookeeping::is_vpid_part_of_any_sequence (VPID vpid, TRANID &trid) const
   {
+    // TODO: could return the interator here to save another search when effectively adding bookkeeping for the vpid
     for (const std::pair<TRANID, vpid_map_type> &tran_pair : m_usage_map)
       {
 	const vpid_map_type &tran_vpids = tran_pair.second;
-	assert_release (tran_vpids.find (vpid) == tran_vpids.cend ());
+	if (tran_vpids.find (vpid) != tran_vpids.cend ())
+	  {
+	    trid = tran_pair.first;
+	    return true;
+	  }
       }
+    return false;
   }
 #endif
 

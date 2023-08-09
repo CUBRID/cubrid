@@ -30,6 +30,31 @@
 #include "system_parameter.h"
 #include "type_helper.hpp"
 
+#if !defined (NDEBUG)
+class vpid_lsa_consistency_check
+{
+  public:
+    vpid_lsa_consistency_check () = default;
+    ~vpid_lsa_consistency_check () = default;
+
+    vpid_lsa_consistency_check (const vpid_lsa_consistency_check &) = delete;
+    vpid_lsa_consistency_check (vpid_lsa_consistency_check &&) = delete;
+
+    vpid_lsa_consistency_check &operator= (const vpid_lsa_consistency_check &) = delete;
+    vpid_lsa_consistency_check &operator= (vpid_lsa_consistency_check &&) = delete;
+
+    void check (const struct vpid &a_vpid, const struct log_lsa &a_log_lsa);
+    void cleanup ();
+
+  private:
+    using vpid_key_t = std::pair<short, int32_t>;
+    using vpid_log_lsa_map_t = std::map<vpid_key_t, struct log_lsa>;
+
+    std::mutex mtx;
+    vpid_log_lsa_map_t consistency_check_map;
+};
+#endif
+
 struct log_rv_redo_context
 {
   log_reader m_reader { LOG_CS_SAFE_READER };
@@ -41,7 +66,11 @@ struct log_rv_redo_context
 
   log_rv_redo_context () = delete;
   log_rv_redo_context (const log_lsa &end_redo_lsa, PAGE_FETCH_MODE page_fetch_mode,
-		       log_reader::fetch_mode reader_fetch_page_mode);
+		       log_reader::fetch_mode reader_fetch_page_mode
+#if !defined(NDEBUG)
+		       , vpid_lsa_consistency_check *const vpid_lsa_consistency_checker_ptr
+#endif
+		      );
   ~log_rv_redo_context ();
 
   log_rv_redo_context (const log_rv_redo_context &that);
@@ -49,6 +78,10 @@ struct log_rv_redo_context
 
   log_rv_redo_context &operator= (const log_rv_redo_context &) = delete;
   log_rv_redo_context &operator= (log_rv_redo_context &&) = delete;
+
+#if !defined (NDEBUG)
+  vpid_lsa_consistency_check *m_vpid_lsa_consistency_checker_ptr;
+#endif
 };
 
 template <typename T>
@@ -576,35 +609,6 @@ log_rv_get_log_rec_redo_data<LOG_REC_COMPENSATE> (THREAD_ENTRY *thread_p, log_rv
 	 redo_context.m_redo_zip);
 }
 
-#if !defined(NDEBUG)
-class vpid_lsa_consistency_check
-{
-  public:
-    vpid_lsa_consistency_check () = default;
-    ~vpid_lsa_consistency_check () = default;
-
-    vpid_lsa_consistency_check (const vpid_lsa_consistency_check &) = delete;
-    vpid_lsa_consistency_check (vpid_lsa_consistency_check &&) = delete;
-
-    vpid_lsa_consistency_check &operator= (const vpid_lsa_consistency_check &) = delete;
-    vpid_lsa_consistency_check &operator= (vpid_lsa_consistency_check &&) = delete;
-
-    void check (const struct vpid &a_vpid, const struct log_lsa &a_log_lsa);
-    void cleanup ();
-
-  private:
-    using vpid_key_t = std::pair<short, int32_t>;
-    using vpid_log_lsa_map_t = std::map<vpid_key_t, struct log_lsa>;
-
-    std::mutex mtx;
-    vpid_log_lsa_map_t consistency_check_map;
-};
-#endif
-
-#if !defined(NDEBUG)
-extern vpid_lsa_consistency_check log_Gl_recovery_redo_consistency_check;
-#endif
-
 template <typename T>
 void log_rv_redo_record_sync_apply (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
 				    const log_rv_redo_rec_info<T> &record_info, const VPID &rcv_vpid, LOG_RCV &rcv)
@@ -623,6 +627,15 @@ void log_rv_redo_record_sync_apply (THREAD_ENTRY *thread_p, log_rv_redo_context 
       // rcv pgptr will be automatically unfixed
       return;
     }
+
+#if !defined(NDEBUG)
+  if (redo_context.m_vpid_lsa_consistency_checker_ptr != nullptr)
+    {
+      // bit of debug code to ensure that, should this code be executed asynchronously, within the same page,
+      // the lsa is ever-increasing, thus, not altering the order in which it has been added to the log in the first place
+      redo_context.m_vpid_lsa_consistency_checker_ptr->check (rcv_vpid, record_info.m_start_lsa);
+    }
+#endif
 
   rvfun::fun_t redofunc = log_rv_get_fun<T> (record_info.m_logrec, log_data.rcvindex);
   assert (redofunc != nullptr);
@@ -655,15 +668,6 @@ template <typename T>
 void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_context,
 			      const log_rv_redo_rec_info<T> &record_info, const VPID &rcv_vpid)
 {
-#if !defined(NDEBUG)
-  if (log_Gl.rcv_phase != LOG_RESTARTED)
-    {
-      // bit of debug code to ensure that, should this code be executed asynchronously, within the same page,
-      // the lsa is ever-increasing, thus, not altering the order in which it has been added to the log in the first place
-      log_Gl_recovery_redo_consistency_check.check (rcv_vpid, record_info.m_start_lsa);
-    }
-#endif
-
   LOG_RCV rcv;
   /* will take care of unfixing the page, will be correctly de-allocated as it is the same
    * storage class as 'rcv' and allocated on the stack after 'rcv' */
