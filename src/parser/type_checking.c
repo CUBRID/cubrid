@@ -18929,7 +18929,16 @@ pt_check_dblink_related_expr (PARSER_CONTEXT * parser, PT_NODE * p, void *arg, i
 {
   bool *dblink_related = (bool *) arg;
 
-  if (p->node_type == PT_NAME && p->info.name.spec_id)
+  if (p->node_type == PT_EXPR)
+    {
+      /* the wrapped cast op do not constant-fold for predicate pushing */
+      if (p->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (p, PT_EXPR_INFO_CAST_WRAP))
+	{
+	  *dblink_related = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+  else if (p->node_type == PT_NAME && p->info.name.spec_id)
     {
       PT_NODE *spec;
 
