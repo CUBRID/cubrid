@@ -70,6 +70,10 @@ namespace cubbase
       }
 
     private:
+      // TODO: check_identifier_condition () is not considering the following yet.
+      // * Checking unicode letters
+      // * Checking reserved keywords
+      // * Checking enclosing in Double quotes, Square brackets, or Backtick symobls
       bool check_identifier_condition ()
       {
 	bool is_valid = true;
