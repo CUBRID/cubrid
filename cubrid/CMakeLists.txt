@@ -261,6 +261,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/transform.c
   )
 set(OBJECT_HEADERS
+  ${OBJECT_DIR}/identifier_store.hpp
   ${OBJECT_DIR}/lob_locator.hpp
 )
 
