@@ -52,7 +52,7 @@ namespace cublog
     public:
       // send prior node list to all sinks
       void send_list (const log_prior_node *head, const LOG_LSA *unsent_lsa);
-      void send_serialized_message (std::string &&message, const LOG_LSA *unsent_lsa);
+      void send_serialized_message (std::string &&message);
 
       // add a hook for a new sink
       LOG_LSA add_sink (const sink_hook_t &fun);
@@ -73,12 +73,13 @@ namespace cublog
       std::mutex m_sink_hooks_mutex;
 
       message_container_t m_messages;
-      std::mutex m_messages_mtx;
+      // variable is guarded by messages mutex
+      bool m_shutdown;
+      // mutex protects both the messages container and the shutdown flag
+      std::mutex m_messages_shutdown_mtx;
       std::condition_variable m_messages_cv;
 
       std::thread m_thread;
-      // this variable is guarded by messages mutex
-      bool m_shutdown = false;
       // lsa log records to send, in other word, unsent
       LOG_LSA m_unsent_lsa;
   };

@@ -160,7 +160,7 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
   log_Gl.get_log_prior_receiver ().push_message (std::string (payload));
 
   // move the payload into the dispatcher
-  log_Gl.get_log_prior_sender ().send_serialized_message (std::move (payload), &NULL_LSA);
+  log_Gl.get_log_prior_sender ().send_serialized_message (std::move (payload));
 }
 
 template<class F, class ... Args>

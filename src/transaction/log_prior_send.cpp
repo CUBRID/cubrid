@@ -27,7 +27,8 @@
 namespace cublog
 {
   prior_sender::prior_sender ()
-    : m_unsent_lsa { NULL_LSA }
+    : m_shutdown { false }
+    , m_unsent_lsa { NULL_LSA }
   {
     m_thread = std::thread (&prior_sender::loop_dispatch, std::ref (*this));
   }
@@ -40,7 +41,7 @@ namespace cublog
     assert (is_empty ());
 
     {
-      std::lock_guard<std::mutex> lockg { m_messages_mtx };
+      std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
       m_shutdown = true;
     }
     m_messages_cv.notify_one ();
@@ -51,15 +52,18 @@ namespace cublog
   void
   prior_sender::send_list (const log_prior_node *head, const LOG_LSA *unsent_lsa)
   {
+    // TODO: assert is active transaction server, because, on page server, the log prior messages are
+    //  routed directly without unpackage/repackage
+
     // NOTE: this functions does 2 things:
     //  - packs the log prior nodes in a stream of bytes that can be sent over the network (currently: string)
     //    - this can be thought of as a constly operation
     //  - dispatches the packed message over to the sinks
     //    - this can be considered a cheap operation because it is - as of now - just "throwing" the message
     //      of to a separate thread
-    // with the above description, one might think that it is more important to execute the packing
-    // in an async manner; however, with the way these log prior nodes are structured, it is not possible
-    // to dispatch the packing to a separate thread without copying the entire chain
+    // one might think that it is more performant to also execute the packing in an async manner;
+    // however, with the way these log prior nodes are structured, it is not possible
+    // to dispatch the packing to a separate thread without copying the entire chain (which defeats the purpose)
 
     if (head == nullptr)
       {
@@ -75,32 +79,41 @@ namespace cublog
 	const log_prior_node *tail;
 	for (tail = head; tail->next != nullptr; tail = tail->next);
 	_er_log_debug (ARG_FILE_LINE,
-		       "[LOG_PRIOR_TRANSFER] Sending. head_lsa = %lld|%d tail_lsa = %lld|%d. Message size = %zu.\n",
-		       LSA_AS_ARGS (&head->start_lsa), LSA_AS_ARGS (&tail->start_lsa), message.size ());
+		       "[LOG_PRIOR_TRANSFER] Sending. head_lsa = %lld|%d tail_lsa = %lld|%d message_size = %zu"
+		       " unsent_lsa= %lld|%d\n",
+		       LSA_AS_ARGS (&head->start_lsa), LSA_AS_ARGS (&tail->start_lsa), message.size (),
+		       LSA_AS_ARGS (unsent_lsa));
       }
 
-    send_serialized_message (std::move (message), unsent_lsa);
+    {
+      std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
+      m_messages.push_back (std::move (message));
+
+      // TODO: m_sink_hooks_mutex locked?
+      // TODO: setting this is actually out of sink with what is/has been sent over to the sinks; because
+      //    pushing to the sinks happens in a thread
+      m_unsent_lsa = *unsent_lsa;
+    }
+    m_messages_cv.notify_one ();
   }
 
   void
-  prior_sender::send_serialized_message (std::string &&message, const LOG_LSA *unsent_lsa)
+  prior_sender::send_serialized_message (std::string &&message)
   {
-    // TODO: when this function is called from page server's log prior handler - to dispatch messages
-    // asynchronously to subscribed passive transaction servers, there is no logging;
-    // if needed, logging must be added here; however, because the message is already packed, there is
-    // not much info to be logged except the length of the message (additional information - lsa - is
-    // already packed as part of the message)
+    // TODO: assert is page server
+    // TODO: on Page Server, assert (m_unsent_lsa.is_null ());
+
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+      {
+	_er_log_debug (ARG_FILE_LINE,
+		       "[LOG_PRIOR_TRANSFER] Dispatch serialized message_size = %zu\n",
+		       message.size ());
+      }
 
     {
-      std::lock_guard<std::mutex> lockg { m_messages_mtx };
+      std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
       m_messages.push_back (std::move (message));
     }
-
-    // TODO: m_sink_hooks_mutex locked?
-    // TODO: setting this is actually out of sink with what is/has been sent over to the sinks; because
-    //    actually pushing to the sinks happens in a thread
-    m_unsent_lsa = *unsent_lsa;
-
     m_messages_cv.notify_one ();
   }
 
@@ -108,49 +121,107 @@ namespace cublog
   prior_sender::loop_dispatch ()
   {
     message_container_t to_dispatch_messages;
-    std::unique_lock<std::mutex> ulock { m_messages_mtx };
+    std::unique_lock<std::mutex> messages_ulock { m_messages_shutdown_mtx };
     while (!m_shutdown)
       {
-	m_messages_cv.wait (ulock, [this]
+	m_messages_cv.wait (messages_ulock, [this]
 	{
 	  return m_shutdown || !m_messages.empty ();
 	});
 
-	// messages locked here
+	// messages and flag are locked from here on
 	if (m_shutdown)
 	  {
+	    messages_ulock.unlock ();
 	    break;
 	  }
 
-	assert (to_dispatch_messages.empty ());
 	to_dispatch_messages.swap (m_messages);
-	ulock.unlock ();
+	messages_ulock.unlock ();
+	// messages and shutdown flag are unlocked from here on
 
 	// NOTE: on a page server,
 	//  right between when the list of messages are acquired and are about to be dispatched
 	//  wait for a certain amount of time such as to introduce a delay for replication on the
 	//  receiving side - passive transaction servers - that is consistent across each of them
 
-	// messages unlocked here
 	for (auto iter = to_dispatch_messages.begin (); iter != to_dispatch_messages.end (); ++iter)
 	  {
-	    std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
+	    std::unique_lock<std::mutex> hink_hooks_ulock (m_sink_hooks_mutex);
+
+	    log_prior_node *dbg_list_head = nullptr;
+	    log_prior_node *dbg_list_tail = nullptr;
+	    int dbg_sink_index = 0;
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+	      {
+		prior_list_deserialize (std::cref (*iter), dbg_list_head, dbg_list_tail);
+		assert (dbg_list_head != nullptr);
+		assert (dbg_list_tail != nullptr);
+		size_t dbg_list_node_count = 0;
+		const log_prior_node *tail;
+		for (tail = dbg_list_head; tail != nullptr; tail = tail->next, ++dbg_list_node_count);
+
+		_er_log_debug (ARG_FILE_LINE,
+			       "[LOG_PRIOR_TRANSFER] Send serialized head_lsa = %lld|%d tail_lsa = %lld|%d."
+			       " message_size = %zu. node_count = %zu\n",
+			       LSA_AS_ARGS (&dbg_list_head->start_lsa), LSA_AS_ARGS (&dbg_list_tail->start_lsa), (*iter).size (),
+			       dbg_list_node_count);
+	      }
+
 	    // "copy" the message into every sink but the last..
 	    for (int index = 0; index < ((int)m_sink_hooks.size () - 1); ++index)
 	      {
+		if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+		  {
+		    ++dbg_sink_index;
+		    _er_log_debug (ARG_FILE_LINE,
+				   "[LOG_PRIOR_TRANSFER] Send serialized sink_index=%d\n", dbg_sink_index);
+		  }
 		const sink_hook_t *const sink_p = m_sink_hooks[index];
 		(*sink_p) (std::string (*iter));
 	      }
 	    // ..and optimize by "moving" the message into the last sink, because it is of no use afterwards
 	    if (m_sink_hooks.size () > 0)
 	      {
+		if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+		  {
+		    ++dbg_sink_index;
+		    _er_log_debug (ARG_FILE_LINE,
+				   "[LOG_PRIOR_TRANSFER] Send serialized sink_index=%d\n", dbg_sink_index);
+		  }
 		const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1];
 		(*sink_p) (std::move (*iter));
 	      }
+
+	    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+	      {
+		for (log_prior_node *nodep = dbg_list_head; nodep != nullptr;)
+		  {
+		    log_prior_node *nodep_next = nodep->next;
+
+		    if (nodep->data_header != nullptr)
+		      {
+			free_and_init (nodep->data_header);
+		      }
+		    if (nodep->udata != nullptr)
+		      {
+			free_and_init (nodep->udata);
+		      }
+		    if (nodep->rdata != nullptr)
+		      {
+			free_and_init (nodep->rdata);
+		      }
+		    free_and_init (nodep);
+
+		    nodep = nodep_next;
+		  }
+	      }
+
 	  }
 	to_dispatch_messages.clear ();
 
-	ulock.lock ();
+	// messages and flag are locked from here on, for the next iteration
+	messages_ulock.lock ();
       }
   }
 
