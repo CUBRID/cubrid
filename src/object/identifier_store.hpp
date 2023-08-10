@@ -31,6 +31,9 @@
 
 namespace cubbase
 {
+  // an exceptional case out of identifier rule for system classes
+  const std::string SYSTEM_CLASS_PREFIX = "_db";
+
   /*
   * Table name, index name, view name, column name, user name etc. are included in identifier.
   * Identifiers are defined as follows:
@@ -43,9 +46,6 @@ namespace cubbase
   class EXPORT_IMPORT identifier_store
   {
     public:
-      // an exceptional case out of identifier rule for system classes
-      const static std::string SYSTEM_CLASS_PREFIX;
-
       explicit identifier_store (const std::vector <std::string> &string_vec, const bool check_valid);
       ~identifier_store();
 
