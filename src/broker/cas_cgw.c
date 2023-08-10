@@ -1123,7 +1123,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 	  this_col_binding_buff->next = NULL;
 	  this_col_binding_buff->is_exist_col_data = false;
 
-	  this_col_binding->data_buffer = MALLOC (bind_col_size);
+	  this_col_binding->data_buffer = (wchar_t *) MALLOC (bind_col_size);
 	  if (!(this_col_binding->data_buffer))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);

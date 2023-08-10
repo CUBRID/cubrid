@@ -1082,10 +1082,6 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "close_req_handle srv_h_id %d", srv_h_id);
 
-#if defined(CAS_FOR_CGW)
-  cgw_free_stmt (srv_handle);
-#endif
-
   hm_srv_handle_free (srv_h_id);
 
   net_buf_cp_int (net_buf, 0, NULL);	/* res code */
