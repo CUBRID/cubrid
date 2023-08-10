@@ -192,19 +192,27 @@ function verify_user_pass ()
 	dbuser=$(echo ${user} | cut -d' ' -f2-2)
 	USERNAME=$(echo ${dbuser} | tr [:lower:] [:upper:])
 
-	# Try with NULL password
-	passwd=$(csql ${connection_mode} ${user} --password="" -c "SELECT 1" $database 2> /dev/null)
-
-	if [ $? -ne 0 ];then
-		passwd=$(get_password)
-		pass="-p $passwd"
-
-		passwd=$(csql ${connection_mode} ${user} ${pass} -c "SELECT 1" $database 2> /dev/null)
-		if [ $? -ne 0 ];then
+       if [ x"${pass}" != x"" ]; then
+		 passwd=$(csql ${connection_mode} ${user} ${pass} -c "SELECT 1" $database 2> /dev/null)
+		 if [ $? -ne 0 ];then
 			echo "$dbuser: Incorrect or missing password"
 			exit 1
+		 fi 
+       else 
+		# Try with NULL password
+		passwd=$(csql ${connection_mode} ${user} --password="" -c "SELECT 1" $database 2> /dev/null)
+
+		if [ $? -ne 0 ];then
+			passwd=$(get_password)
+			pass="-p $passwd"
+
+			passwd=$(csql ${connection_mode} ${user} ${pass} -c "SELECT 1" $database 2> /dev/null)
+			if [ $? -ne 0 ];then
+				echo "$dbuser: Incorrect or missing password"
+				exit 1
+			fi
 		fi
-	fi
+        fi
 
 	# check whether this user is a member of DBA groups
 	#
