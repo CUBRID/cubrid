@@ -22,6 +22,8 @@
 #include "oid.h"
 #include "transform.h"
 
+using namespace cubbase;
+
 namespace cubschema
 {
   static const std::vector <std::string> sm_system_catalog_names =
@@ -103,10 +105,11 @@ namespace cubschema
     CTV_SYNONYM_NAME			// "db_synonym"
   };
 
-  static const cubbase::identifier_store sm_catalog_names (sm_system_catalog_names, false);
+  static const identifier_store sm_catalog_names (sm_system_catalog_names, false);
 }
 
 bool sm_check_system_class_by_name (const std::string &name)
 {
-  return cubschema::sm_catalog_names.is_exists (name);
+  return identifier_store::check_identifier_is_valid (name, false)
+	 && cubschema::sm_catalog_names.is_exists (name);
 }

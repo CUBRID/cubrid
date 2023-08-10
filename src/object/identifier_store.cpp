@@ -36,37 +36,63 @@ namespace cubbase
     m_identifiers.clear ();
   }
 
-  bool identifier_store::is_exists (const std::string &str) const
+  bool
+  identifier_store::is_exists (const std::string &str) const
   {
     return m_identifiers.find (str) != m_identifiers.end ();
   }
 
-  bool identifier_store::is_valid () const
+  bool
+  identifier_store::is_valid () const
   {
     return m_is_valid;
   }
 
-  int identifier_store::get_size () const
+  int
+  identifier_store::get_size () const
   {
     return m_size;
   }
 
-  bool identifier_store::check_identifier_condition () const
+  bool
+  identifier_store::check_identifier_condition () const
   {
     // TODO: check_identifier_condition () is not considering the following yet.
     // * Checking unicode letters
     // * Checking reserved keywords
     // * Checking enclosing in Double quotes, Square brackets, or Backtick symobls
     bool is_valid = true;
-    for (const std::string &elem : m_identifiers)
+    for (const std::string_view elem : m_identifiers)
       {
 	// Check (1)
-	is_valid = lang_check_identifier (elem.data (), elem.size ());
+	is_valid = check_identifier_is_valid (elem, false);
 	if (is_valid == false)
 	  {
 	    break;
 	  }
       }
     return is_valid;
+  }
+
+  bool
+  identifier_store::check_identifier_is_valid (const std::string_view i, bool is_enclosed)
+  {
+    if (is_enclosed)
+      {
+	// enclosed in Double Quotes, Square Brackets, or Backtick Symbol
+	for (const char &c: i)
+	  {
+	    if (c == '.' || c == '[' || c == ']')
+	      {
+		return false;
+	      }
+	  }
+      }
+    else
+      {
+	return lang_check_identifier (i.data (), i.size ());
+      }
+
+    return true;
   }
 }

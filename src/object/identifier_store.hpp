@@ -50,6 +50,8 @@ namespace cubbase
 
       int get_size () const;
 
+      static bool check_identifier_is_valid (const std::string_view i, bool is_enclosed);
+
     private:
 
       bool check_identifier_condition () const;
