@@ -5230,7 +5230,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   if (col_info == NULL || col_cnt <= 0)
     {
       /* this can not be reached, something wrong */
-      sprintf (cci_error.err_msg, "Unknown Error");
+      sprintf (cci_error.err_msg, "unknown error: cannot fetch the column info from remote server");
       goto set_parser_error;
     }
 
@@ -5263,6 +5263,11 @@ set_parser_error:
 
   if (err < 0)
     {
+      if (cci_error.err_msg[0] == '\0')
+	{
+	  sprintf (cci_error.err_msg, "unknown error: there's no error message from remote server");
+	}
+
       if (table_name)
 	{
 	  PT_ERRORf3 (parser, dblink,
