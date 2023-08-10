@@ -151,6 +151,16 @@ cgw_cleanup ()
   cgw_cleanup_handle (local_odbc_handle);
 }
 
+void
+cgw_free_stmt (T_SRV_HANDLE * srv_handle)
+{
+  if (srv_handle->cgw_handle->hstmt)
+    {
+      SQLFreeHandle (SQL_HANDLE_STMT, local_odbc_handle->hstmt);
+      local_odbc_handle->hstmt = NULL;
+    }
+}
+
 int
 cgw_get_handle (T_CGW_HANDLE ** cgw_handle)
 {
