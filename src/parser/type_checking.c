@@ -301,6 +301,9 @@ static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * 
 static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
+static PT_NODE *pt_do_not_fold_dblink_related_cast (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg,
+						    int *continue_walk);
+static bool pt_is_dblink_related (PT_NODE * p);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -7806,6 +7809,12 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  *continue_walk = PT_LIST_WALK;
 	}
       break;
+    case PT_EXPR:
+      if (parser->dblink_remote && pt_is_dblink_related (node))
+	{
+	  // do not fold for dblink-related expr
+	  parser_walk_tree (parser, node, pt_do_not_fold_dblink_related_cast, NULL, NULL, NULL);
+	}
     default:
       // nope
       break;
@@ -18917,17 +18926,45 @@ error_zerodate:
 }
 
 /*
- * pt_check_dblink_related_expr () - check dblinke-related expression
- *   return: dblink_related = true if successful,
- *           dblink_related = false if not successful.
- *   parser(in): parser global context info for reentrancy
- *   p(in): a parse tree representation of a constant expression
+ * set flag of the node not to do constant folding for dblink-related cast
  */
-
 static PT_NODE *
-pt_check_dblink_related_expr (PARSER_CONTEXT * parser, PT_NODE * p, void *arg, int *continue_walk)
+pt_do_not_fold_dblink_related_cast (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg, int *continue_walk)
 {
-  bool *dblink_related = (bool *) arg;
+  if (expr->node_type == PT_EXPR && expr->info.expr.op == PT_CAST)
+    {
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP))
+	{
+	  expr->flag.do_not_fold = true;
+	}
+    }
+
+  return expr;
+}
+
+/*
+ * check if the expr node has any dblink-related term
+ */
+static bool
+pt_is_dblink_related (PT_NODE * p)
+{
+  if (p->node_type == PT_EXPR)
+    {
+      if (p->info.expr.arg1 && pt_is_dblink_related (p->info.expr.arg1))
+	{
+	  return true;
+	}
+      if (p->info.expr.arg2 && pt_is_dblink_related (p->info.expr.arg2))
+	{
+	  return true;
+	}
+      if (p->info.expr.arg3 && pt_is_dblink_related (p->info.expr.arg3))
+	{
+	  return true;
+	}
+
+      return false;
+    }
 
   if (p->node_type == PT_NAME && p->info.name.spec_id)
     {
@@ -18936,12 +18973,11 @@ pt_check_dblink_related_expr (PARSER_CONTEXT * parser, PT_NODE * p, void *arg, i
       spec = (PT_NODE *) (p->info.name.spec_id);
       if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
-	  *dblink_related = true;
-	  *continue_walk = PT_STOP_WALK;
+	  return true;
 	}
     }
 
-  return p;
+  return false;
 }
 
 /*
@@ -18984,19 +19020,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   if (expr->flag.do_not_fold)
     {
       return expr;
-    }
-
-  /* if dblink query, do not constant fold */
-  if (parser->dblink_remote)
-    {
-      bool dblink_related = false;
-
-      parser_walk_tree (parser, expr, pt_check_dblink_related_expr, &dblink_related, NULL, NULL);
-
-      if (dblink_related)
-	{
-	  return expr;
-	}
     }
 
   location = expr->info.expr.location;
