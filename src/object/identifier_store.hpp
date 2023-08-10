@@ -24,6 +24,7 @@
 #define _IDENTIFIER_STORE_HPP_
 
 #include <vector>
+#include <string_view>
 
 #include "porting.h"
 #include "string_utility.hpp"
@@ -42,15 +43,19 @@ namespace cubbase
   class EXPORT_IMPORT identifier_store
   {
     public:
+      // an exceptional case out of identifier rule for system classes
+      inline const static std::string SYSTEM_CLASS_PREFIX = "_db";
+
       explicit identifier_store (const std::vector <std::string> &string_vec, const bool check_valid);
       ~identifier_store();
 
-      bool is_exists (const std::string &str) const;
+      bool is_exists (const std::string_view str) const;
       bool is_valid () const;
 
       int get_size () const;
 
       static bool check_identifier_is_valid (const std::string_view i, bool is_enclosed);
+      static bool is_enclosed (const std::string_view i);
 
     private:
 

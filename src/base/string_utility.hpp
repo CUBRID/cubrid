@@ -66,7 +66,7 @@ namespace cubbase
   /* ALIAS DEFINITIONS */
   /* ========================================================================== */
 
-  using string_set_ci_lower = std::unordered_set <std::string, lowercase_hash, lowercase_compare>;
+  using string_set_ci_lower = std::unordered_set <std::string_view, lowercase_hash, lowercase_compare>;
 
 }
 

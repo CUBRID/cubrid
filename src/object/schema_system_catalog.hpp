@@ -24,10 +24,10 @@
 #ifndef _SCHEMA_SYSTEM_CATALOG_HPP_
 #define _SCHEMA_SYSTEM_CATALOG_HPP_
 
-#include <string>
+#include <string_view>
 
 #include "porting.h"
 
-extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string &class_name);
+extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string_view class_name);
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_HPP_ */

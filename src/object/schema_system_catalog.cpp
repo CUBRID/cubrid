@@ -108,8 +108,8 @@ namespace cubschema
   static const identifier_store sm_catalog_names (sm_system_catalog_names, false);
 }
 
-bool sm_check_system_class_by_name (const std::string &name)
+bool sm_check_system_class_by_name (const std::string_view name)
 {
-  return identifier_store::check_identifier_is_valid (name, false)
-	 && cubschema::sm_catalog_names.is_exists (name);
+  // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
+  return identifier_store::check_identifier_is_valid (name, false) && cubschema::sm_catalog_names.is_exists (name);
 }

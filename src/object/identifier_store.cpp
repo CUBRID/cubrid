@@ -19,6 +19,7 @@
 #include "identifier_store.hpp"
 
 #include "language_support.h"
+#include "chartype.h"
 
 namespace cubbase
 {
@@ -37,7 +38,7 @@ namespace cubbase
   }
 
   bool
-  identifier_store::is_exists (const std::string &str) const
+  identifier_store::is_exists (const std::string_view str) const
   {
     return m_identifiers.find (str) != m_identifiers.end ();
   }
@@ -75,24 +76,48 @@ namespace cubbase
   }
 
   bool
-  identifier_store::check_identifier_is_valid (const std::string_view i, bool is_enclosed)
+  identifier_store::is_enclosed (const std::string_view i)
+  {
+    int size = i.size ();
+    if (size >= 2)
+      {
+	return ((i[0] == '"' || i[0] == '[' || i[0] == '`')
+		&& (i[size - 1] == '"' || i[size - 1] == ']' || i[size - 1] == '`'));
+      }
+    return false;
+  }
+
+  bool
+  identifier_store::check_identifier_is_valid (const std::string_view str, bool is_enclosed)
   {
     if (is_enclosed)
       {
 	// enclosed in Double Quotes, Square Brackets, or Backtick Symbol
-	for (const char &c: i)
-	  {
-	    if (c == '.' || c == '[' || c == ']')
-	      {
-		return false;
-	      }
-	  }
+	if (std::any_of (str.begin(), str.end(), [] (char c)
+	{
+	  return (c == '.' || c == '[' || c == ']');
+	  }))
+	{
+	  return false;
+	}
       }
     else
       {
-	return lang_check_identifier (i.data (), i.size ());
-      }
+	// check _db
+	if (str.rfind (SYSTEM_CLASS_PREFIX, 0) != 0)
+	  {
+	    int size = str.size ();
+	    for (int i = 0; i < size; i++)
+	      {
+		if ((i == 0 && !char_isalpha (str[0])) || (i >= 1 && (!char_isalnum (str[i]) && str[i] != '_')))
+		  {
+		    return false;
+		  }
+	      }
+	  }
 
+
+      }
     return true;
   }
 }
