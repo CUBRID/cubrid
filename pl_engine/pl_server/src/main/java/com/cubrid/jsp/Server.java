@@ -50,48 +50,29 @@ import org.newsclub.net.unix.AFUNIXSocketAddress;
 
 public class Server {
     private static final Logger logger = Logger.getLogger("com.cubrid.jsp");
-    private static final String LOG_DIR = "log";
 
-    private static String serverName;
-    private static String spPath;
-    private static String rootPath;
-    private static String udsPath;
+    private static final int UDS_PORT_NUMBER = -1;
+
+    private ServerConfig config = null;
+    private AtomicBoolean shutdown = new AtomicBoolean(false);
 
     private static List<String> jvmArguments = null;
 
-    private static final int udsPortNumber = -1;
     private int portNumber = 0;
     private Thread socketListener = null;
-    private AtomicBoolean shutdown;
 
     private static Server serverInstance = null;
-
     private static LoggingThread loggingThread = null;
 
-    private Server(
-            String name, String path, String version, String rPath, String uPath, String port)
-            throws IOException, ClassNotFoundException {
-        serverName = name;
-        spPath = path;
-        rootPath = rPath;
-        udsPath = uPath;
-        shutdown = new AtomicBoolean(false);
+    private Server(ServerConfig config) throws IOException, ClassNotFoundException {
 
         ServerSocket serverSocket = null;
-        int port_number = Integer.parseInt(port);
         try {
-            String logFilePath =
-                    rootPath
-                            + File.separatorChar
-                            + LOG_DIR
-                            + File.separatorChar
-                            + serverName
-                            + "_java.log";
-            loggingThread = new LoggingThread(logFilePath);
+            loggingThread = new LoggingThread(config.getLogPath());
             loggingThread.start();
 
-            if (OSValidator.IS_UNIX && port_number == -1) {
-                final File socketFile = new File(udsPath);
+            if (config.getSocketType().equals("UDS")) {
+                final File socketFile = new File(config.getSocketInfo());
                 if (socketFile.exists()) {
                     socketFile.delete();
                 }
@@ -101,12 +82,11 @@ public class Server {
                 if (!socketDir.exists()) {
                     socketDir.mkdirs();
                 }
-
                 AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
                 serverSocket = AFUNIXServerSocket.bindOn(sockAddr);
-                portNumber = udsPortNumber;
+                portNumber = UDS_PORT_NUMBER;
             } else {
-                serverSocket = new ServerSocket(port_number);
+                serverSocket = new ServerSocket(Integer.parseInt(config.getSocketInfo()));
                 portNumber = serverSocket.getLocalPort();
             }
         } catch (Exception e) {
@@ -119,7 +99,7 @@ public class Server {
             socketListener = new ListenerThread(serverSocket);
 
             System.setSecurityManager(new SpSecurityManager());
-            System.setProperty("cubrid.server.version", version);
+            System.setProperty("cubrid.server.version", config.getVersion());
             Class.forName("com.cubrid.jsp.jdbc.CUBRIDServerSideDriver");
 
             getJVMArguments(); /* store jvm options */
@@ -145,31 +125,41 @@ public class Server {
     }
 
     public int getPortNumber() {
-        return portNumber;
+        return config.getSocketType().equals("UDS")
+                ? UDS_PORT_NUMBER
+                : Integer.parseInt(config.getSocketInfo());
     }
 
     public static Server getServer() {
         return serverInstance;
     }
 
-    public static String getServerName() {
-        return serverName;
+    public String getServerName() {
+        return config.getName();
     }
 
-    public static int getServerPort() {
+    public int getServerPort() {
         try {
-            return getServer().getPortNumber();
+            return getPortNumber();
         } catch (Exception e) {
             return -1;
         }
     }
 
-    public static Path getRootPath() {
-        return Paths.get(rootPath);
+    public Path getRootPath() {
+        if (getServer() != null) {
+            return Paths.get(config.getRootPath());
+        } else {
+            return null;
+        }
     }
 
-    public static String getSpPath() {
-        return spPath;
+    public Path getDatabasePath() {
+        if (getServer() != null) {
+            return Paths.get(config.getDatabasePath());
+        } else {
+            return null;
+        }
     }
 
     public static List<String> getJVMArguments() {
@@ -183,9 +173,25 @@ public class Server {
 
     public static int start(String[] args) {
         try {
-            serverInstance = new Server(args[0], args[1], args[2], args[3], args[4], args[5]);
+            String name = args[0];
+            String dbPath = args[1];
+            String version = args[2];
+            String envRoot = args[3];
+            String udsPath = args[4];
+            String port = args[5];
+
+            String socketInfo = null;
+            int port_number = Integer.parseInt(port);
+            if (OSValidator.IS_UNIX && port_number == -1) {
+                socketInfo = udsPath;
+            } else {
+                socketInfo = port;
+            }
+
+            ServerConfig config = new ServerConfig(name, version, envRoot, dbPath, socketInfo);
+            serverInstance = new Server(config);
             serverInstance.startSocketListener();
-            return getServerPort();
+            return serverInstance.getServerPort();
         } catch (Exception e) {
             e.printStackTrace();
         }

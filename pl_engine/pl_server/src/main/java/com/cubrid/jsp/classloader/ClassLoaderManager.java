@@ -35,7 +35,6 @@ import com.cubrid.jsp.Server;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.Hashtable;
@@ -49,8 +48,7 @@ public class ClassLoaderManager {
 
     public static Path getRootPath() {
         if (root == null) {
-            String rootPath = Server.getSpPath() + "/java/";
-            root = Paths.get(rootPath);
+            root = Server.getServer().getDatabasePath().resolve("java/");
             createDirIfNotExists(root);
         }
         return root;
