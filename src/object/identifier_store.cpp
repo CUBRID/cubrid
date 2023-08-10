@@ -37,6 +37,8 @@ namespace cubbase
     m_identifiers.clear ();
   }
 
+  const std::string identifier_store::SYSTEM_CLASS_PREFIX = "_db";
+
   bool
   identifier_store::is_exists (const std::string_view str) const
   {

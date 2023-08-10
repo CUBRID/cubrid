@@ -44,7 +44,7 @@ namespace cubbase
   {
     public:
       // an exceptional case out of identifier rule for system classes
-      inline const static std::string SYSTEM_CLASS_PREFIX = "_db";
+      const static std::string SYSTEM_CLASS_PREFIX;
 
       explicit identifier_store (const std::vector <std::string> &string_vec, const bool check_valid);
       ~identifier_store();
