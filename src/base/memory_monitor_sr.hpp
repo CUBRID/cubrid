@@ -45,13 +45,13 @@ typedef enum
 int mmon_initialize (const char *server_name);
 void mmon_notify_server_start ();
 void mmon_finalize ();
-void mmon_add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size);
-void mmon_sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t size);
-void mmon_move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, uint64_t size);
-void mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, uint64_t old_size, uint64_t new_size);
+void mmon_add_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t size);
+void mmon_sub_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t size);
+void mmon_move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size);
+void mmon_resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size, int64_t new_size);
 void mmon_aggregate_server_info (MMON_SERVER_INFO &info);
-int mmon_aggregate_module_info (int module_index, MMON_MODULE_INFO *info);
-int mmon_aggregate_module_info_summary (MMON_MODULE_INFO *info);
-int mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info);
+void mmon_aggregate_module_info (int module_index, MMON_MODULE_INFO *info);
+void mmon_aggregate_module_info_summary (MMON_MODULE_INFO *info);
+void mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info);
 
 #endif /* _MEMORY_MONITOR_SR_HPP_ */

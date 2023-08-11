@@ -76,6 +76,7 @@ $       54      delvoldb
 $       56      checksumdb
 $       57      tde
 $       58      flashback
+$       59      memmon
 
 $set 1 MSGCAT_UTIL_SET_GENERIC
 1 Invalid length or character '%1$c' in database name '%2$s'\n
@@ -1309,3 +1310,25 @@ valid options:\n\
                                   for flashback; default: outputs only SQL statements for flashback\n\
     --oldest                      flashback is performed in chronological order for SQL statements executed from start time to end time;\n\
                                   default: latest\n
+
+$set 59 MSGCAT_UTIL_SET_MEMMON
+1 '-a(--all)' option cannot be used with other options.\n
+2 Please set the system parameter 'memory_monitoring' in 'cubrid.conf' and restart the database server.\n
+3 Invalid argument '%1$s' is set to '-m(--module)' option.\n
+4 '-c(--tran-count)' option must be used with '-t(--transaction)' option.\n
+5 '-c(--tran-count)' option must have positive number.\n
+59 memmon cannot run as standalone mode.\n
+60 \
+memmon: Provides memory usage information of a database server.\n\
+usage: %1$s memmon [OPTION] database-name\n\
+\n\
+valid options:\n\
+    -a, --all                     display summarized memory usage information of all registered modules and active transactions in the server.\n\
+                                  WARNING: This option can only be used alone.\n\
+    -t, --transaction             display memory usage of active transactions in descending order of memory usage.\n\
+    -c, --tran-count=NUMBER       set how many transactions will be displayed.\n\
+                                  WARNING: This option has to be used with '-t(--transaction)' option.\n\
+    -m, --module=TYPE             display detailed memory usage information of the specified TYPE.\n\
+                                  TYPE of modules\n\
+                                  0 (or all)      all modules\n\
+                                  1 (or heap)     heap module\n
