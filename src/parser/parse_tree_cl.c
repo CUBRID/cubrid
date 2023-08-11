@@ -2207,6 +2207,10 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
   node = parser_create_node (parser);
   if (node)
     {
+      if (node_type == PT_CAST)
+	{
+	  printf ("=== pt cast create\n");
+	}
       parser_init_node (node, node_type);
       pt_parser_line_col (node);
       node->sql_user_text = g_query_string;
