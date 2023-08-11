@@ -897,7 +897,7 @@ static UTIL_ARG_MAP ua_Memmon_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {MEMMON_MODULE_S, {ARG_STRING}, {0}},
   {MEMMON_TRANSACTION_S, {ARG_BOOLEAN}, {0}},
-  {MEMMON_TRAN_COUNT_S, {ARG_INTEGER}, {0}},
+  {MEMMON_TRAN_COUNT_S, {ARG_STRING}, {0}},
   {MEMMON_SHOW_ALL_S, {ARG_BOOLEAN}, {0}},
   {0, {0}, {0}}
 };

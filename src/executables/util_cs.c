@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
 #include <signal.h>
 #include <errno.h>
 #include <assert.h>
@@ -65,6 +66,7 @@
 #include "heartbeat.h"
 #endif
 #include "network_histogram.hpp"
+#include "memory_monitor_cl.hpp"
 
 #define PASSBUF_SIZE 12
 #define SPACEDB_NUM_VOL_PURPOSE 2
@@ -4544,18 +4546,138 @@ error_exit:
 int
 memmon (UTIL_FUNCTION_ARG * arg)
 {
+#if defined(CS_MODE)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
-  char *module;
-  bool transaction, show_all;
-  int tran_count;
+  char er_msg_file[PATH_MAX];
+  const char *database_name;
+  char *module, *tran_count_str, *stop = NULL;
+  bool transaction, show_all, need_shutdown;
+  int tran_count = INT_MAX;
+  int module_index = MMON_MODULE_LAST;
 
   module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
   transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
-  tran_count = utility_get_option_int_value (arg_map, MEMMON_TRAN_COUNT_S);
+  tran_count_str = utility_get_option_string_value (arg_map, MEMMON_TRAN_COUNT_S, 0);
   show_all = utility_get_option_bool_value (arg_map, MEMMON_SHOW_ALL_S);
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  if (database_name == NULL)
+    {
+      goto print_memmon_usage;
+    }
+
+  /* error check phase */
+  if (show_all && (transaction || tran_count_str || module))
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
+      goto error_exit;
+    }
+
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  if ((!transaction) && tran_count_str)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_OPTION));
+      goto error_exit;
+    }
+
+  if (tran_count_str)
+    {
+      tran_count = (int) strtol (tran_count_str, &stop, 10);
+
+      if (stop[0] != 0)
+	{
+	  tran_count = -1;
+	}
+
+      if (tran_count <= 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_NUMBER));
+	  goto error_exit;
+	}
+    }
+
+  if (module)
+    {
+      if (module[0] >= 'a' && module[0] <= 'z')
+	{
+	  /* module option with module name */
+	  // TODO: convert module name to module index
+	  // ex) module_index = memmon_convert_module_name_to_index(module);
+	}
+      else
+	{
+	  module_index = (int) strtol (module, &stop, 10);
+
+	  if (stop[0] != 0)
+	    {
+	      module_index = -1;
+	    }
+	}
+
+      if (module_index < 0 || module_index > MMON_MODULE_LAST)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE), module);
+	  goto error_exit;
+	}
+    }
+
+  /* execute phase */
+  // TODO: check condition and execute network function
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+
+  if (db_restart (arg->command_name, TRUE, database_name))
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s: %s. \n\n", arg->command_name, db_error_string (3));
+      goto error_exit;
+    }
+  need_shutdown = true;
+
+  if (!prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
+      goto error_exit;
+    }
 
   // XXX: for test, it will removed at main implementation
   fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (module ? module : "NULL"),
 	   (transaction ? "true" : "false"), tran_count, (show_all ? "true" : "false"));
+
+  db_shutdown ();
+
+  // XXX: for test, it will removed at main implementation
+  fprintf (stdout, "EXIT SUCCESS\n");
   return EXIT_SUCCESS;
+
+print_memmon_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+error_exit:
+  // XXX: for test, it will removed at main implementation
+  fprintf (stdout, "EXIT FAILURE\n");
+
+  if (need_shutdown)
+    {
+      db_shutdown ();
+    }
+
+  return EXIT_FAILURE;
+
+#else /* CS_MODE */
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
+  return EXIT_FAILURE;
+#endif /* CS_MODE */
 }

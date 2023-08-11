@@ -28,6 +28,6 @@
 
 constexpr char *module_names[] =
 {
-  ""				/* It will be changed to "heap" */
+  "all"
 };
 #endif // _MEMORY_MONITOR_CL_HPP_
