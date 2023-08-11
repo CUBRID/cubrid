@@ -737,8 +737,7 @@ public:
   void initialize_log_prior_sender ();
   void finalize_log_prior_sender ();
   // *INDENT-OFF*
-  cublog::prior_sender &
-  get_log_prior_sender()
+  cublog::prior_sender &get_log_prior_sender()
   {
     assert (m_prior_sender != nullptr);
     return *m_prior_sender;
@@ -747,7 +746,11 @@ public:
   void initialize_log_prior_receiver ();
   void finalize_log_prior_receiver ();
   // *INDENT-OFF*
-  cublog::prior_recver &get_log_prior_receiver ();
+  cublog::prior_recver &get_log_prior_receiver ()
+  {
+    assert (m_prior_recver != nullptr);
+    return *m_prior_recver;
+  }
   // *INDENT-ON*
 
   void wait_for_ps_flushed_lsa (const log_lsa & flush_lsa);

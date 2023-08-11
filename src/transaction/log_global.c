@@ -167,12 +167,5 @@ log_global::finalize_log_prior_receiver ()
   assert (m_prior_recver != nullptr);
   m_prior_recver.reset (nullptr);
 }
-
-cublog::prior_recver &
-log_global::get_log_prior_receiver ()
-{
-  assert (m_prior_recver != nullptr);
-  return *m_prior_recver;
-}
 #endif // SERVER_MODE
 // *INDENT-ON*
