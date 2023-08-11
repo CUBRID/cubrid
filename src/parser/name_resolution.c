@@ -11643,7 +11643,7 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
     {
       assert (cols_idx < rmt_tbl_cols->get_attr_size ());
       col_name = (char *) cols->info.attr_def.attr_name->info.name.original;
-      if (intl_identifier_casecmp (rmt_tbl_cols->get_name (cols_idx), col_name) != 0)
+      if (intl_identifier_casecmp_with_quote (rmt_tbl_cols->get_name (cols_idx), col_name) != 0)
 	{
 	  PT_ERRORf3 (parser, dblink, "\"%s\" not matched column or alias \"%s\"",
 		      cols->info.attr_def.attr_name->info.name.original, rmt_tbl_cols->get_name (cols_idx), ER_DBLINK);

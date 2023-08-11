@@ -2728,13 +2728,13 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet, unsigned char *str1
 
 /*
  * intl_identifier_casecmp_with_quote() - compares two identifiers strings
- *			       case insensitive
+ *			       case insensitive excluding double-quote
  *   return: 0 if strings are equal, -1 if str1 < str2 , 1 if str1 > str2
  *   str1(in):
  *   str2(in):
  *
- * NOTE: identifier comparison is special, see intl_identifier_casecmp_w_size
- *	 for details on comparing identifiers of different length.
+ * NOTE: this routine is the same as intl_identifier_casecmp_with
+ *       but the identifier starting with double quote(")
  */
 int
 intl_identifier_casecmp_with_quote (const char *str1, const char *str2)
