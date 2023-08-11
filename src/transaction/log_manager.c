@@ -3508,6 +3508,8 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
     //  - and, as each PTS has the list of available page servers (PS) it can connect to
     //  - it is the PTS's responsibility to register itself as a log prior consumer with all/some/one of the
     //    connected PS's
+
+    log_Gl.get_log_prior_sender ().resume ();
   }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))

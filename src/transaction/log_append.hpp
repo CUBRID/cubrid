@@ -122,6 +122,7 @@ struct log_prior_lsa_info
   INT64 list_size = 0;		/* bytes */
 
   /* flush list */
+  /* TODO: this member has no purpose here; it is used in one local function only */
   LOG_PRIOR_NODE *prior_flush_list_header = nullptr;
 
   std::mutex prior_lsa_mutex;

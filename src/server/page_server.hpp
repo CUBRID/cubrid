@@ -168,7 +168,7 @@ class page_server
 
 	// exclusive lock between the hook function that executes the dispatch and the
 	// function that will, at some moment, remove that hook
-	mutable std::mutex m_prior_sender_sink_removal_mtx;
+	//mutable std::mutex m_prior_sender_sink_removal_mtx;
 
 	std::mutex m_abnormal_tran_server_disconnect_mtx;
 	bool m_abnormal_tran_server_disconnect;

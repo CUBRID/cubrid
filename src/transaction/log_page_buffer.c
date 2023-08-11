@@ -3446,6 +3446,10 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list, con
       //    server directly (see page server's handler for incoming log prior messages)
       log_Gl.get_log_prior_sender ().send_list (list, unsent_lsa);
     }
+//  else if (is_page_server ())
+//    {
+//      log_Gl.get_log_prior_sender ().dispatch_up_to_start_lsa (list->start_lsa);
+//    }
 #endif /* SERVER_MODE */
 
   /* append log buffer */

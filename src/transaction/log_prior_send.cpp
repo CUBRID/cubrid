@@ -28,7 +28,9 @@ namespace cublog
 {
   prior_sender::prior_sender ()
     : m_shutdown { false }
-      //, m_pause { false }
+    , m_pause { false }
+      //, m_use_dispatch_lsa { is_page_server () }
+      //, m_dispatch_lsa { NULL_LSA }
     , m_unsent_lsa { NULL_LSA }
   {
     m_thread = std::thread (&prior_sender::loop_dispatch, std::ref (*this));
@@ -43,7 +45,7 @@ namespace cublog
 
     {
       std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
-      //assert (!m_pause);
+      assert (!m_pause);
       m_shutdown = true;
     }
     m_messages_cv.notify_one ();
@@ -89,7 +91,7 @@ namespace cublog
 
     {
       std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
-      m_messages.push_back (std::move (message));
+      m_messages.push_back ({ head->start_lsa, std::move (message) });
 
       // TODO: m_sink_hooks_mutex locked?
       // TODO: setting this is actually out of sink with what is/has been sent over to the sinks; because
@@ -100,7 +102,7 @@ namespace cublog
   }
 
   void
-  prior_sender::send_serialized_message (std::string &&message)
+  prior_sender::send_serialized_message (const LOG_LSA &start_lsa, std::string &&message)
   {
     // TODO: assert is page server
     // TODO: on Page Server, assert (m_unsent_lsa.is_null ());
@@ -114,7 +116,7 @@ namespace cublog
 
     {
       std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
-      m_messages.push_back (std::move (message));
+      m_messages.push_back ({ start_lsa, std::move (message) });
     }
     m_messages_cv.notify_one ();
   }
@@ -133,15 +135,15 @@ namespace cublog
 	      // shutdown takes precedence over pausing
 	      return true;
 	    }
-	  //if (m_pause)
-	  //  {
-	  //    // even if messages are enqued, dispatching is paused
-	  //    return false;
-	  //  }
+	  if (m_pause)
+	    {
+	      // even if messages are enqued, dispatching is paused
+	      return false;
+	    }
 	  return !m_messages.empty ();
 	});
 
-	// messages and flag are locked from here on
+	// messages, shutdown flag - locked from here on
 	if (m_shutdown)
 	  {
 	    messages_ulock.unlock ();
@@ -150,7 +152,7 @@ namespace cublog
 
 	to_dispatch_messages.swap (m_messages);
 	messages_ulock.unlock ();
-	// messages and shutdown flag are unlocked from here on
+	// messages, shutdown flag - unlocked from here on
 
 	// NOTE: on a page server,
 	//  right between when the list of messages are acquired and are about to be dispatched
@@ -161,12 +163,14 @@ namespace cublog
 	  {
 	    std::unique_lock<std::mutex> hink_hooks_ulock (m_sink_hooks_mutex);
 
+	    message_t &message_info = *iter;
+
 	    log_prior_node *dbg_list_head = nullptr;
 	    log_prior_node *dbg_list_tail = nullptr;
 	    int dbg_sink_index = 0;
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
 	      {
-		prior_list_deserialize (std::cref (*iter), dbg_list_head, dbg_list_tail);
+		prior_list_deserialize (std::cref ((*iter).m_message), dbg_list_head, dbg_list_tail);
 		assert (dbg_list_head != nullptr);
 		assert (dbg_list_tail != nullptr);
 		size_t dbg_list_node_count = 0;
@@ -176,8 +180,8 @@ namespace cublog
 		_er_log_debug (ARG_FILE_LINE,
 			       "[LOG_PRIOR_TRANSFER] Send serialized head_lsa = %lld|%d tail_lsa = %lld|%d."
 			       " message_size = %zu. node_count = %zu\n",
-			       LSA_AS_ARGS (&dbg_list_head->start_lsa), LSA_AS_ARGS (&dbg_list_tail->start_lsa), (*iter).size (),
-			       dbg_list_node_count);
+			       LSA_AS_ARGS (&dbg_list_head->start_lsa), LSA_AS_ARGS (&dbg_list_tail->start_lsa),
+			       (*iter).m_message.size (), dbg_list_node_count);
 	      }
 
 	    // "copy" the message into every sink but the last..
@@ -189,8 +193,30 @@ namespace cublog
 		    _er_log_debug (ARG_FILE_LINE,
 				   "[LOG_PRIOR_TRANSFER] Send serialized sink_index=%d\n", dbg_sink_index);
 		  }
-		const sink_hook_t *const sink_p = m_sink_hooks[index].m_sink_hook_ptr;
-		(*sink_p) (std::string (*iter));
+
+		sink_hook_entry_t &sink_hook_entry = m_sink_hooks[index];
+		//const sink_hook_t *const sink_p = sink_hook_entry.m_sink_hook_ptr;
+		if (sink_hook_entry.m_start_dispatch_lsa.is_null ())
+		  {
+		    // active transaction server dispatch, regular page server dispatch
+		    (*sink_hook_entry.m_sink_hook_ptr) (std::string ((*iter).m_message));
+		  }
+		else if (message_info.m_start_lsa < sink_hook_entry.m_start_dispatch_lsa)
+		  {
+		    // message will not be dispatched
+		  }
+		else if (message_info.m_start_lsa == sink_hook_entry.m_start_dispatch_lsa)
+		  {
+		    (*sink_hook_entry.m_sink_hook_ptr) (std::string ((*iter).m_message));
+		    sink_hook_entry.m_start_dispatch_lsa.set_null ();
+		  }
+		else
+		  {
+		    assert_release (false);
+		    //assert_release (!message_info.m_start_lsa.is_null ());
+		    //assert_release (!sink_hook_entry.m_start_dispatch_lsa.is_null());
+		    //assert_release (message_info.m_start_lsa < sink_hook_entry.m_start_dispatch_lsa);
+		  }
 	      }
 	    // ..and optimize by "moving" the message into the last sink, because it is of no use afterwards
 	    if (m_sink_hooks.size () > 0)
@@ -201,8 +227,26 @@ namespace cublog
 		    _er_log_debug (ARG_FILE_LINE,
 				   "[LOG_PRIOR_TRANSFER] Send serialized sink_index=%d\n", dbg_sink_index);
 		  }
-		const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1].m_sink_hook_ptr;
-		(*sink_p) (std::move (*iter));
+
+		sink_hook_entry_t &sink_hook_entry = m_sink_hooks[m_sink_hooks.size () - 1];
+		//const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1].m_sink_hook_ptr;
+		if (sink_hook_entry.m_start_dispatch_lsa.is_null ())
+		  {
+		    (*sink_hook_entry.m_sink_hook_ptr) (std::move ((*iter).m_message));
+		  }
+		else if (message_info.m_start_lsa < sink_hook_entry.m_start_dispatch_lsa)
+		  {
+		    // message will not be dispatched
+		  }
+		else if (message_info.m_start_lsa == sink_hook_entry.m_start_dispatch_lsa)
+		  {
+		    (*sink_hook_entry.m_sink_hook_ptr) (std::move ((*iter).m_message));
+		    sink_hook_entry.m_start_dispatch_lsa.set_null ();
+		  }
+		else
+		  {
+		    assert_release (false);
+		  }
 	      }
 
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
@@ -232,18 +276,18 @@ namespace cublog
 	  }
 	to_dispatch_messages.clear ();
 
-	// messages and flag are locked from here on, for the next iteration
+	// messages, shutdown flag - locked from here on, for the next iteration
 	messages_ulock.lock ();
       }
   }
 
   LOG_LSA
-  prior_sender::add_sink (const LOG_LSA &start_append_lsa, const sink_hook_t &fun)
+  prior_sender::add_sink (const LOG_LSA &start_dispatch_lsa, const sink_hook_t &fun)
   {
     assert (fun != nullptr);
 
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
-    m_sink_hooks.push_back ({ start_append_lsa, &fun });
+    m_sink_hooks.push_back ({ start_dispatch_lsa, &fun });
 
     return m_unsent_lsa;
   }
@@ -256,11 +300,12 @@ namespace cublog
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
 
     const auto find_it = std::find_if (m_sink_hooks.begin (), m_sink_hooks.end (),
-                                    [&fun] (const sink_hook_entry_t &entry)
+				       [&fun] (const sink_hook_entry_t &entry)
     {
       return (entry.m_sink_hook_ptr == &fun);
     });
     assert (find_it != m_sink_hooks.end ());
+    assert ((*find_it).m_start_dispatch_lsa.is_null ());
     m_sink_hooks.erase (find_it);
   }
 
@@ -271,6 +316,16 @@ namespace cublog
     m_unsent_lsa = lsa;
   }
 
+  //void
+  //prior_sender::dispatch_up_to_start_lsa (const LOG_LSA &dispatch_lsa)
+  //{
+  //  {
+  //    std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
+  //    m_dispatch_lsa = dispatch_lsa;
+  //  }
+  //  m_messages_cv.notify_one ();
+  //}
+
   bool
   prior_sender::is_empty ()
   {
@@ -278,23 +333,23 @@ namespace cublog
     return m_sink_hooks.empty ();
   }
 
-  //void
-  //prior_sender::pause ()
-  //{
-  //  {
-  //    std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
-  //    m_pause = true;
-  //  }
-  //  m_messages_cv.notify_one ();
-  //}
+  void
+  prior_sender::pause ()
+  {
+    {
+      std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
+      m_pause = true;
+    }
+    m_messages_cv.notify_one ();
+  }
 
-  //void
-  //prior_sender::resume ()
-  //{
-  //  {
-  //    std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
-  //    m_pause = false;
-  //  }
-  //  m_messages_cv.notify_one ();
-  //}
+  void
+  prior_sender::resume ()
+  {
+    {
+      std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
+      m_pause = false;
+    }
+    m_messages_cv.notify_one ();
+  }
 }

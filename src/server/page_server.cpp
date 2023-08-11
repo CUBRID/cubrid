@@ -221,17 +221,14 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 void
 page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
+  log_Gl.get_log_prior_sender ().pause ();
+  // after this, messages are only enqueud on the prior sender but not dispatched anymore until
+  // the sender is resumed after the connection sequence with the PTS concludes
+
   m_prior_sender_sink_hook_func =
 	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
 
   push_async_response (log_pack_log_boot_info, std::move (a_sp), std::ref (m_prior_sender_sink_hook_func));
-  // while this call is executed in the PTSs connection thread (either synch or asynch)
-  //  the ATS's connection thread can already dispatch a lot of log prior messages which
-  //  are being lost because PTS's log send infrastructure is not yet alive
-  // IDEA:
-  //   - make this call synch (but first try the below without making this call async)
-  //   - while setting up PTS infrastructure, pause the log prior sender (pause by making the push thread NOT notify the consumption thread)
-  //   -
 }
 
 void
@@ -344,7 +341,14 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
   assert (m_conn != nullptr);
   assert (message.size () > 0);
 
-  std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
+  //std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
+  //
+  // NOTE:
+  //  - with the extension of prior sender with an internal thread; this mutex is obsolete and
+  //    only causes deadlocks with (sender::m_sink_hooks_mutex)
+  //  - the removal of the sinks here is actually guarder very well by the exclusion provided by
+  //    sender::m_sink_hooks_mutex between ::loop_dispatch and ::remove_sink functions
+  //
   m_conn->push (page_to_tran_request::SEND_TO_PTS_LOG_PRIOR_LIST, std::move (message));
 }
 
@@ -362,7 +366,7 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
 void
 page_server::connection_handler::remove_prior_sender_sink ()
 {
-  std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
+  //std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
 
   if (static_cast<bool> (m_prior_sender_sink_hook_func))
     {

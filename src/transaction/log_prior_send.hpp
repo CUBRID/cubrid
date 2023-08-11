@@ -57,24 +57,42 @@ namespace cublog
     public:
       // send prior node list to all sinks
       void send_list (const log_prior_node *head, const LOG_LSA *unsent_lsa);
-      void send_serialized_message (std::string &&message);
+      void send_serialized_message (const LOG_LSA &start_lsa, std::string &&message);
 
       // add a hook for a new sink
-      LOG_LSA add_sink (const LOG_LSA &start_append_lsa, const sink_hook_t &fun);
+      LOG_LSA add_sink (const LOG_LSA &start_dispatch_lsa, const sink_hook_t &fun);
       // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);
       // reset only when prior_lsa is reset
       void reset_unsent_lsa (const LOG_LSA &lsa);
 
-      //void pause ();
-      //void resume ();
+      //void dispatch_up_to_start_lsa (const LOG_LSA &dispatch_lsa);
+
+      void pause ();
+      void resume ();
+
+      //
+      // NOTE:
+      //  - the pause/resume idea does not work
+      //  - the coordination between message::m_start_lsa and sink_hook_entry::m_start_dispatch_lsa does not work
+      //      - because it can happen that messages are dispatched from prior_recver::loop_message_to_prior_info to
+      //        the sender much too early
+      //
+      //  - the only idea left is to make a synch between accumulating messages in the sender and a threshold
+      //    LSA send from within the PS's onw logpb_append_prior_lsa_list
+      //
 
     private:
       void loop_dispatch ();
       bool is_empty ();
 
     private:
-      using message_container_t = std::deque<std::string>;
+      struct message_t
+      {
+	LOG_LSA m_start_lsa;
+	std::string m_message;
+      };
+      using message_container_t = std::deque<message_t>;
 
       // non-owning pointers to sink hooks; messages are passed to these
       std::vector<sink_hook_entry_t> m_sink_hooks;
@@ -83,10 +101,14 @@ namespace cublog
       message_container_t m_messages;
       // variable is guarded by messages mutex
       bool m_shutdown;
-      //bool m_pause;
+      bool m_pause;
       // mutex protects both the messages container and the shutdown flag
       std::mutex m_messages_shutdown_mtx;
       std::condition_variable m_messages_cv;
+
+      // TODO: description
+      //const bool m_use_dispatch_lsa;
+      //LOG_LSA m_dispatch_lsa;
 
       std::thread m_thread;
       // lsa log records to send, in other word, unsent
