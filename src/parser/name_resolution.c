@@ -1244,21 +1244,6 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		  /* error from table-name@server */
 		  if (err < 0)
 		    {
-		      if (dblink_table->owner_name)
-			{
-			  PT_ERRORf4 (parser, table,
-				      "Failed to get column information for table [%s] on remote [%s].[%s]. err=%d",
-				      dblink_table->remote_table_name,
-				      dblink_table->owner_name->info.name.original,
-				      dblink_table->conn->info.name.original, err);
-			}
-		      else
-			{
-			  PT_ERRORf3 (parser, table,
-				      "Failed to get column information for table [%s] on remote [%s]. err=%d",
-				      dblink_table->remote_table_name, dblink_table->conn->info.name.original, err);
-			}
-
 		      goto error_exit;
 		    }
 
@@ -1278,21 +1263,6 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      /* error from dblink(server, 'select ... from ...' */
 	      if (err < 0)
 		{
-		  char *server;
-
-		  assert (dblink_table->conn || dblink_table->url);
-		  if (dblink_table->conn)
-		    {
-		      server = (char *) dblink_table->conn->info.name.original;
-		    }
-		  else
-		    {
-		      server = (char *) dblink_table->url->info.value.data_value.str->bytes;
-		    }
-
-		  PT_ERRORf3 (parser, table,
-			      "Failed to get column information for query [%s] on remote [%s]. err=%d",
-			      (char *) dblink_table->qstr->info.value.data_value.str->bytes, server, err);
 		  goto error_exit;
 		}
 
@@ -5196,22 +5166,24 @@ error_exit:
 static int
 pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_REMOTE_TBL_COLS * rmt_tbl_cols)
 {
-  int req = -1, conn = -1, col_cnt, res, i;
+  int req = -1, conn = -1, col_cnt, err = ER_DBLINK, i;
   T_CCI_ERROR cci_error;
   T_CCI_COL_INFO *col_info;
   T_CCI_CUBRID_STMT stmt_type;
 
   PT_DBLINK_INFO *dblink_table = &dblink->info.dblink_table;
-  char *table_name = dblink_table->remote_table_name;
   char *find;
   char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
 
+  char *table_name = dblink_table->remote_table_name;
   char *url = (char *) dblink_table->url->info.value.data_value.str->bytes;
   char *user = (char *) dblink_table->user->info.value.data_value.str->bytes;
   char *passwd = (char *) dblink_table->pwd->info.value.data_value.str->bytes;
-  char t_name[SQL_MAX_TEXT_LEN], *sql;
+  char *sql, *server_name;
 
   S_REMOTE_COL_ATTR *rmt_attr;
+
+  server_name = (dblink_table->conn) ? (char *) dblink_table->conn->info.name.original : url;
 
   if (table_name)
     {
@@ -5245,16 +5217,12 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   conn = cci_connect_with_url_ex (conn_url, user, passwd, &cci_error);
   if (conn < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
-      res = conn;
       goto set_parser_error;
     }
 
   req = cci_prepare (conn, sql, 0, &cci_error);
   if (req < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
-      res = req;
       goto set_parser_error;
     }
 
@@ -5262,8 +5230,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   if (col_info == NULL || col_cnt <= 0)
     {
       /* this can not be reached, something wrong */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
-      res = ER_DBLINK;
+      sprintf (cci_error.err_msg, "unknown error: cannot fetch the column info from remote server");
       goto set_parser_error;
     }
 
@@ -5275,30 +5242,47 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       rmt_attr->precision = col_info[i].precision;
     }
 
-  res = NO_ERROR;
+  err = NO_ERROR;
 
 set_parser_error:
   if (req >= 0)
     {
-      if ((res = cci_close_req_handle (req)) < 0)
+      if ((err = cci_close_req_handle (req)) < 0)
 	{
-	  cci_get_err_msg (res, cci_error.err_msg, sizeof (cci_error.err_msg));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
-	  return ER_DBLINK;
+	  cci_get_err_msg (err, cci_error.err_msg, sizeof (cci_error.err_msg));
 	}
     }
 
-  if (conn >= 0)
+  if (err >= 0 && conn >= 0)
     {
-      if ((res = cci_disconnect (conn, &cci_error)) < 0)
+      if ((err = cci_disconnect (conn, &cci_error)) < 0)
 	{
-	  cci_get_err_msg (res, cci_error.err_msg, sizeof (cci_error.err_msg));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, cci_error.err_msg);
-	  return ER_DBLINK;
+	  cci_get_err_msg (err, cci_error.err_msg, sizeof (cci_error.err_msg));
 	}
     }
 
-  return res;
+  if (err < 0)
+    {
+      if (cci_error.err_msg[0] == '\0')
+	{
+	  sprintf (cci_error.err_msg, "unknown error: there's no error message from remote server");
+	}
+
+      if (table_name)
+	{
+	  PT_ERRORf3 (parser, dblink,
+		      "Failed to get column information for table [%s] on remote [%s]\n%s",
+		      table_name, server_name, cci_error.err_msg);
+	}
+      else
+	{
+	  PT_ERRORf3 (parser, dblink,
+		      "Failed to get column information for query [%s] on remote [%s]\n%s",
+		      sql, server_name, cci_error.err_msg);
+	}
+    }
+
+  return err;
 }
 
 static PT_NODE *
