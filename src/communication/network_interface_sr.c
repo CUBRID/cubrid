@@ -7359,8 +7359,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   /* before send information 
    * 1) check size
    * 2) allocate buffer
-   * 3) packing information 
-   * 4) deallocate MMON_MODULE_INFO */
+   * 3) packing information */
 
   /* 1) check size 
    *    - calculate buffer size of packed values
@@ -7478,8 +7477,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   /* before send information 
    * 1) check size
    * 2) allocate buffer
-   * 3) packing information 
-   * 4) deallocate MMON_MODULE_INFO */
+   * 3) packing information */
 
   /* 1) check size 
    *    - calculate buffer size of packed values of module info */
