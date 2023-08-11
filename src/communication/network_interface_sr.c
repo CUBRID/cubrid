@@ -7295,7 +7295,6 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   size += OR_INT64_SIZE;
 
   buffer = (char *) db_private_alloc (thread_p, size);
-
   if (buffer == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
@@ -7339,112 +7338,99 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
-  MMON_MODULE_INFO *module_info;
-  int module_index, module_count;
+  // *INDENT-OFF*
+  std::vector<MMON_MODULE_INFO> module_info;
+  // *INDENT-ON*
+  int module_index;
 
   ptr = or_unpack_int (request, &module_index);
 
   if (module_index == 0)
     {
-      module_info = (MMON_MODULE_INFO *) db_private_alloc (thread_p, sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
-      module_count = MMON_MODULE_LAST;
+      module_info.resize (MMON_MODULE_LAST);
     }
   else
     {
-      module_info = (MMON_MODULE_INFO *) db_private_alloc (thread_p, sizeof (MMON_MODULE_INFO));
-      module_count = 1;
+      module_info.resize (1);
     }
 
-  if (module_info == NULL)
+  mmon_aggregate_module_info (module_index, module_info);
+
+  /* before send information 
+   * 1) check size
+   * 2) allocate buffer
+   * 3) packing information 
+   * 4) deallocate MMON_MODULE_INFO */
+
+  /* 1) check size 
+   *    - calculate buffer size of packed values
+   *    - module info -> component info w/ subcomponent info */
+  // *INDENT-OFF*
+  for (const auto &m_info : module_info)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (MMON_MODULE_INFO) * module_count);
+      size += or_packed_string_length (m_info.name, NULL);
+      // Size of stat information (OR_INT64_SIZE * 3 + OR_INT_SIZE)
+      // and size of num_comp (OR_INT_SIZE)
+      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
+
+      for (const auto &comp_info : m_info.comp_info)
+        {
+          size += or_packed_string_length (comp_info.name, NULL);
+          size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
+
+          for (const auto &subcomp_info : comp_info.subcomp_info)
+            {
+              size += or_packed_string_length (subcomp_info.name, NULL);
+              size += OR_INT64_SIZE;
+            }
+        }
+    }
+  // *INDENT-ON*
+
+  /* 2) allocate buffer */
+  buffer = (char *) db_private_alloc (thread_p, size);
+  if (buffer == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
     }
   else
     {
-      error = mmon_aggregate_module_info (module_index, module_info);
-      if (error == NO_ERROR)
-	{
-	  /* before send information 
-	   * 1) check size
-	   * 2) allocate buffer
-	   * 3) packing information 
-	   * 4) deallocate MMON_MODULE_INFO */
+      /* 3) packing information
+       *    - packing information with sequence of
+       *      module info -> component info w/ subcomponent info */
+      ptr = buffer;
 
-	  /* 1) check size 
-	   *    - calculate buffer size of packed values
-	   *    - module info -> component info w/ subcomponent info */
-	  for (int idx = 0; idx < module_count; idx++)
-	    {
-	      size += or_packed_string_length (module_info[idx].name, NULL);
-	      // Size of stat information (OR_INT64_SIZE * 3 + OR_INT_SIZE)
-	      // and size of num_comp (OR_INT_SIZE)
-	      size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
+      // *INDENT-OFF*
+      for (const auto &m_info : module_info)
+        {
+          ptr = or_pack_string (ptr, m_info.name);
+          ptr = or_pack_int64 (ptr, m_info.stat.init_stat);
+          ptr = or_pack_int64 (ptr, m_info.stat.cur_stat);
+          ptr = or_pack_int64 (ptr, m_info.stat.peak_stat);
+          ptr = or_pack_int (ptr, m_info.stat.expand_resize_count);
 
-              // *INDENT-OFF*
-              for (const auto &comp_info : module_info[idx].comp_info)
+          ptr = or_pack_int (ptr, m_info.num_comp);
+
+          // *INDENT-OFF*
+          for (const auto &comp_info : m_info.comp_info)
+            {
+              ptr = or_pack_string (ptr, comp_info.name);
+              ptr = or_pack_int64 (ptr, comp_info.stat.init_stat);
+              ptr = or_pack_int64 (ptr, comp_info.stat.cur_stat);
+              ptr = or_pack_int64 (ptr, comp_info.stat.peak_stat);
+              ptr = or_pack_int (ptr, comp_info.stat.expand_resize_count);
+
+              ptr = or_pack_int (ptr, comp_info.num_subcomp);
+
+              for (const auto &subcomp_info : comp_info.subcomp_info)
                 {
-                  size += or_packed_string_length (comp_info.name, NULL);
-                  size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
-
-                  for (const auto &subcomp_info : comp_info.subcomp_info)
-                    {
-                      size += or_packed_string_length (subcomp_info.name, NULL);
-                      size += OR_INT64_SIZE;
-                    }
+                  ptr = or_pack_string (ptr, subcomp_info.name);
+                  ptr = or_pack_int64 (ptr, subcomp_info.cur_stat);
                 }
-              // *INDENT-ON*
-	    }
-
-	  /* 2) allocate buffer */
-	  buffer = (char *) db_private_alloc (thread_p, size);
-
-	  if (buffer == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-	  else
-	    {
-	      /* 3) packing information
-	       *    - packing information with sequence of
-	       *      module info -> component info w/ subcomponent info */
-	      ptr = buffer;
-
-	      for (int idx = 0; idx < module_count; idx++)
-		{
-		  ptr = or_pack_string (ptr, module_info[idx].name);
-		  ptr = or_pack_int64 (ptr, module_info[idx].stat.init_stat);
-		  ptr = or_pack_int64 (ptr, module_info[idx].stat.cur_stat);
-		  ptr = or_pack_int64 (ptr, module_info[idx].stat.peak_stat);
-		  ptr = or_pack_int (ptr, module_info[idx].stat.expand_count);
-
-		  ptr = or_pack_int (ptr, module_info[idx].num_comp);
-
-                  // *INDENT-OFF*
-                  for (const auto &comp_info : module_info[idx].comp_info)
-                    {
-                      ptr = or_pack_string (ptr, comp_info.name);
-                      ptr = or_pack_int64 (ptr, comp_info.stat.init_stat);
-                      ptr = or_pack_int64 (ptr, comp_info.stat.cur_stat);
-                      ptr = or_pack_int64 (ptr, comp_info.stat.peak_stat);
-                      ptr = or_pack_int (ptr, comp_info.stat.expand_count);
-
-                      ptr = or_pack_int (ptr, comp_info.num_subcomp);
-
-                      for (const auto &subcomp_info : comp_info.subcomp_info)
-                        {
-                          ptr = or_pack_string (ptr, subcomp_info.name);
-                          ptr = or_pack_int64 (ptr, subcomp_info.cur_stat);
-                        }
-                    }
-                  // *INDENT-ON*
-		}
-	    }
-	}
-
-      /* 4) deallocate memory */
-      db_private_free (thread_p, module_info);
+            }
+        }
+      // *INDENT-ON*
     }
 
   if (error != NO_ERROR)
@@ -7479,62 +7465,53 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
-  MMON_MODULE_INFO *module_info;
+  // *INDENT-OFF*
+  std::vector<MMON_MODULE_INFO> module_info;
+  // *INDENT-ON*
   int module_count;
 
   ptr = or_unpack_int (request, &module_count);
 
-  module_info = (MMON_MODULE_INFO *) malloc (sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
+  module_info.resize (MMON_MODULE_LAST);
 
-  if (module_info == NULL)
+  mmon_aggregate_module_info_summary (module_info);
+
+  /* before send information 
+   * 1) check size
+   * 2) allocate buffer
+   * 3) packing information 
+   * 4) deallocate MMON_MODULE_INFO */
+
+  /* 1) check size 
+   *    - calculate buffer size of packed values of module info */
+  // *INDENT-OFF*
+  for (const auto &m_info : module_info)
+  // *INDENT-ON*
+  {
+    size += or_packed_string_length (m_info.name, NULL);
+    size += OR_INT64_SIZE;
+  }
+
+  /* 2) allocate buffer */
+  buffer = (char *) db_private_alloc (thread_p, size);
+  if (buffer == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (MMON_MODULE_INFO) * MMON_MODULE_LAST);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
     }
   else
     {
-      error = mmon_aggregate_module_info_summary (module_info);
-      if (error == NO_ERROR)
-	{
-	  /* before send information 
-	   * 1) check size
-	   * 2) allocate buffer
-	   * 3) packing information 
-	   * 4) deallocate MMON_MODULE_INFO */
+      /* 3) packing information
+       *    - packing information with sequence of module info */
+      ptr = buffer;
 
-	  /* 1) check size 
-	   *    - calculate buffer size of packed values of module info */
-	  for (int idx = 0; idx < module_count; idx++)
-	    {
-	      size += or_packed_string_length (module_info[idx].name, NULL);
-	      size += OR_INT64_SIZE;
-	    }
-
-	  /* 2) allocate buffer */
-	  buffer = (char *) db_private_alloc (thread_p, size);
-
-	  if (buffer == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-	  else
-	    {
-	      /* 3) packing information
-	       *    - packing information with sequence of module info */
-	      ptr = buffer;
-
-	      for (int idx = 0; idx < module_count; idx++)
-		{
-		  ptr = or_pack_string (ptr, module_info[idx].name);
-		  ptr = or_pack_int64 (ptr, module_info[idx].stat.cur_stat);
-		}
-	    }
-	}
-
-      /* 4) deallocate memory */
-      free (module_info);
+      // *INDENT-OFF*
+      for (const auto &m_info : module_info)
+      // *INDENT-ON*
+      {
+	ptr = or_pack_string (ptr, m_info.name);
+	ptr = or_pack_int64 (ptr, m_info.stat.cur_stat);
+      }
     }
 
   if (error != NO_ERROR)
@@ -7574,46 +7551,44 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   ptr = or_unpack_int (request, &tran_count);
 
-  error = mmon_aggregate_tran_info (tran_count, info);
+  mmon_aggregate_tran_info (tran_count, info);
 
-  if (error == NO_ERROR)
+  /* Before send information 
+   * 1) check size
+   * 2) allocate buffer
+   * 3) packing information */
+
+  /* 1) check size 
+   *    - calculate buffer size of packed values of transaction info */
+
+  // Size of num_tran
+  size += OR_INT_SIZE;
+
+  // Size of transaction id (OR_INT_SIZE)
+  // and current memory usage (OR_INT64_SIZE)
+  size += ((OR_INT_SIZE + OR_INT64_SIZE) * info.num_tran);
+
+  /* 2) allocate buffer */
+  buffer = (char *) db_private_alloc (thread_p, size);
+  if (buffer == NULL)
     {
-      /* Before send information 
-       * 1) check size
-       * 2) allocate buffer
-       * 3) packing information */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  else
+    {
+      /* 3) packing information
+       *    - packing information with sequence of
+       *      server info -> transaction info */
+      ptr = or_pack_int (buffer, info.num_tran);
 
-      /* 1) check size 
-       *    - calculate buffer size of packed values of transaction info */
-
-      // Size of num_tran
-      size += OR_INT_SIZE;
-
-      // Size of transaction id (OR_INT_SIZE)
-      // and current memory usage (OR_INT64_SIZE)
-      size += ((OR_INT_SIZE + OR_INT64_SIZE) * info.num_tran);
-
-      /* 2) allocate buffer */
-      buffer = (char *) db_private_alloc (thread_p, size);
-
-      if (buffer == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      else
-	{
-	  /* 3) packing information
-	   *    - packing information with sequence of
-	   *      server info -> transaction info */
-	  ptr = or_pack_int (buffer, info.num_tran);
-
-	  for (uint32_t i = 0; i < info.num_tran; i++)
-	    {
-	      ptr = or_pack_int (ptr, info.tran_stat[i].tranid);
-	      ptr = or_pack_int64 (ptr, info.tran_stat[i].cur_stat);
-	    }
-	}
+      // *INDENT-OFF*
+      for (const auto &t_stat : info.tran_stat)
+      // *INDENT-ON*
+      {
+	ptr = or_pack_int (ptr, t_stat.tranid);
+	ptr = or_pack_int64 (ptr, t_stat.cur_stat);
+      }
     }
 
   if (error != NO_ERROR)

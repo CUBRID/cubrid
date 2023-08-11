@@ -156,8 +156,8 @@ namespace cubperf
       void move_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size);
       void end_init_phase ();
       void aggregate_server_info (MMON_SERVER_INFO &info) const;
-      void aggregate_module_info (int module_index, MMON_MODULE_INFO *info) const;
-      void aggregate_module_info_summary (MMON_MODULE_INFO *info) const;
+      void aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const;
+      void aggregate_module_info_summary (std::vector<MMON_MODULE_INFO> &info) const;
       void aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info) const;
 
     private:
@@ -177,8 +177,8 @@ namespace cubperf
 	  aggregater &operator = (aggregater &&) = delete;
 
 	  void get_server_info (MMON_SERVER_INFO &info) const;
-	  void get_module_info (int module_index, MMON_MODULE_INFO *info) const;
-	  void get_module_info_summary (MMON_MODULE_INFO *info) const;
+	  void get_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const;
+	  void get_module_info_summary (std::vector<MMON_MODULE_INFO> &info) const;
 	  void get_transaction_info (int tran_count, MMON_TRAN_INFO &info) const;
 
 	private:
@@ -458,7 +458,7 @@ namespace cubperf
     info.total_mem_usage = m_mmon->m_total_mem_usage.load ();
   }
 
-  void memory_monitor::aggregater::get_module_info (int module_index, MMON_MODULE_INFO *info) const
+  void memory_monitor::aggregater::get_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const
   {
     if (module_index == -1)
       {
@@ -472,7 +472,7 @@ namespace cubperf
 	{
 	  return module_info1.stat.cur_stat > module_info2.stat.cur_stat;
 	};
-	std::sort (info, info + MMON_MODULE_LAST, comp);
+	std::sort (info.begin (), info.end (), comp);
       }
     else
       {
@@ -480,7 +480,7 @@ namespace cubperf
       }
   }
 
-  void memory_monitor::aggregater::get_module_info_summary (MMON_MODULE_INFO *info) const
+  void memory_monitor::aggregater::get_module_info_summary (std::vector<MMON_MODULE_INFO> &info) const
   {
     for (int i = 0; i < MMON_MODULE_LAST; i++)
       {
@@ -491,7 +491,7 @@ namespace cubperf
     {
       return module_info1.stat.cur_stat > module_info2.stat.cur_stat;
     };
-    std::sort (info, info + MMON_MODULE_LAST, comp);
+    std::sort (info.begin (), info.end (), comp);
   }
 
   void memory_monitor::aggregater::get_transaction_info (int tran_count, MMON_TRAN_INFO &info) const
@@ -572,7 +572,7 @@ namespace cubperf
     m_aggregater.get_server_info (info);
   }
 
-  void memory_monitor::aggregate_module_info (int module_index, MMON_MODULE_INFO *info) const
+  void memory_monitor::aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const
   {
     // Convert utility module index(1 ~) to server module index(0 ~).
     // If utility module index == 0, it means -a option.
@@ -580,7 +580,7 @@ namespace cubperf
     m_aggregater.get_module_info (module_index - 1, info);
   }
 
-  void memory_monitor::aggregate_module_info_summary (MMON_MODULE_INFO *info) const
+  void memory_monitor::aggregate_module_info_summary (std::vector<MMON_MODULE_INFO> &info) const
   {
     m_aggregater.get_module_info_summary (info);
   }
@@ -671,7 +671,7 @@ void mmon_aggregate_server_info (MMON_SERVER_INFO &info)
   mmon_Gl->aggregate_server_info (info);
 }
 
-void mmon_aggregate_module_info (int module_index, MMON_MODULE_INFO *info)
+void mmon_aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info)
 {
   assert (mmon_Gl != nullptr);
   assert (module_index < (int)MMON_MODULE_LAST && module_index >= 0);
@@ -679,7 +679,7 @@ void mmon_aggregate_module_info (int module_index, MMON_MODULE_INFO *info)
   mmon_Gl->aggregate_module_info (module_index, info);
 }
 
-void mmon_aggregate_module_info_summary (MMON_MODULE_INFO *info)
+void mmon_aggregate_module_info_summary (std::vector<MMON_MODULE_INFO> &info)
 {
   assert (mmon_Gl != nullptr);
 
