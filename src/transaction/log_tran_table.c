@@ -1465,7 +1465,6 @@ xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp)
  * return: nothing
  *
  */
-// *INDENT-OFF*
 void
 logtb_get_tran_memory_info_nolatch (LOG_TRAN_MEM_INFO &tran_info)
 // *INDENT-ON*
