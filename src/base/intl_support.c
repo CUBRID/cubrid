@@ -2727,6 +2727,37 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet, unsigned char *str1
 }
 
 /*
+ * intl_identifier_casecmp_with_quote() - compares two identifiers strings
+ *			       case insensitive
+ *   return: 0 if strings are equal, -1 if str1 < str2 , 1 if str1 > str2
+ *   str1(in):
+ *   str2(in):
+ *
+ * NOTE: identifier comparison is special, see intl_identifier_casecmp_w_size
+ *	 for details on comparing identifiers of different length.
+ */
+int
+intl_identifier_casecmp_with_quote (const char *str1, const char *str2)
+{
+  int str1_size;
+  int str2_size;
+  int str1_offset;
+  int str2_offset;
+
+  assert (str1 != NULL);
+  assert (str2 != NULL);
+
+  str1_size = (*str1 == '\"') ? strlen (str1) - 2 : strlen (str1);
+  str2_size = (*str2 == '\"') ? strlen (str2) - 2 : strlen (str2);
+
+  str1_offset = (*str1 == '\"') ? 1 : 0;
+  str2_offset = (*str2 == '\"') ? 1 : 0;
+
+  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) str1 + str1_offset,
+					 (unsigned char *) str2 + str2_offset, str1_size, str2_size);
+}
+
+/*
  * intl_identifier_casecmp() - compares two identifiers strings
  *			       case insensitive
  *   return: 0 if strings are equal, -1 if str1 < str2 , 1 if str1 > str2
