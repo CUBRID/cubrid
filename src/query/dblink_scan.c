@@ -859,12 +859,12 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  if (utype == CCI_U_TYPE_BIT)
 	    {
 	      /* bit_val.size * 8 : bit length for the value */
-	      (void) db_make_bit (&cci_value, bit_val.size * 8, bit_val.buf, prec);
+	      (void) db_make_bit (&cci_value, prec, bit_val.buf, bit_val.size * 8);
 	    }
 	  else
 	    {
 	      /* bit_val.size * 8 : bit length for the value */
-	      (void) db_make_varbit (&cci_value, bit_val.size * 8, bit_val.buf, prec);
+	      (void) db_make_varbit (&cci_value, prec, bit_val.buf, bit_val.size * 8);
 	    }
 	  break;
 
