@@ -1326,8 +1326,7 @@ valid options:\n\
     -a, --all                     display summarized memory usage information of all registered modules and active transactions in the server.\n\
                                   WARNING: This option can only be used alone.\n\
     -t, --transaction             display memory usage of active transactions in descending order of memory usage.\n\
-    -c, --tran-count=NUMBER       set how many transactions will be displayed. Using this option, memmon displays memory usage of\n\
-                                  the NUMBER of active transactions in descending order of memory usage.\n\
+    -c, --tran-count=NUMBER       set how many transactions will be displayed.\n\
                                   WARNING: This option has to be used with '-t(--transaction)' option.\n\
     -m, --module=TYPE             display detailed memory usage information of the specified TYPE.\n\
                                   TYPE of modules\n\

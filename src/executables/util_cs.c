@@ -4593,15 +4593,14 @@ memmon (UTIL_FUNCTION_ARG * arg)
       if (stop[0] != 0)
 	{
 	  tran_count = -1;
-	  stop = NULL;
 	}
-    }
 
-  if (tran_count <= 0)
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_NUMBER));
-      goto error_exit;
+      if (tran_count <= 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_NUMBER));
+	  goto error_exit;
+	}
     }
 
   if (module)
