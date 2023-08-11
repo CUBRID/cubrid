@@ -7412,7 +7412,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
           ptr = or_pack_int (ptr, m_info.num_comp);
 
-          // *INDENT-OFF*
           for (const auto &comp_info : m_info.comp_info)
             {
               ptr = or_pack_string (ptr, comp_info.name);
