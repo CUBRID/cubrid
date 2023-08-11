@@ -1853,7 +1853,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
-  double sel, sel_limit, objects, height, leaves, opages;
+  double sel, sel_limit, objects, height, leaves, opages, filter_sel;
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
@@ -1967,6 +1967,14 @@ qo_iscan_cost (QO_PLAN * planp)
   /* check lower bound */
   sel = MAX (sel, sel_limit);
 
+  /* selectivity of the index key filter terms */
+  filter_sel = 1.0;
+  for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+      filter_sel *= QO_TERM_SELECTIVITY (termp);
+    }
+
   /* number of objects to be selected */
   objects = sel * (double) QO_NODE_NCARD (nodep);
   /* height of the B+tree */
@@ -2004,7 +2012,7 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   else
     {
-      object_IO = opages * sel;
+      object_IO = opages * sel * filter_sel;
     }
 
   object_IO = MAX (1.0, object_IO);
