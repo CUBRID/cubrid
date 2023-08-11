@@ -151,7 +151,7 @@ log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list
 
   std::unique_lock<std::mutex> ulock (log_Gl.prior_info.prior_lsa_mutex);
 
-  assert (list_head->start_lsa == prior_lsa);
+  assert_release (list_head->start_lsa == prior_lsa);
   assert (list_head->log_header.back_lsa == prev_lsa);
 
   if (prior_list_header == nullptr)

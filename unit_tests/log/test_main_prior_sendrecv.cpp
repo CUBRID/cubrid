@@ -134,7 +134,7 @@ test_env::test_env (size_t receivers_count)
   for (const auto &sink : m_prior_sender_sinks)
     {
       // hooks sinks on the sender
-      m_sender.add_sink (sink);
+      m_sender.add_sink (NULL_LSA, sink);
     }
 }
 
@@ -265,8 +265,6 @@ test_env::require_prior_list_match () const
 
 PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
 PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
-
-log_prior_lsa_info::log_prior_lsa_info () = default;
 
 void
 log_prior_lsa_info::push_list (log_prior_node *&list_head, log_prior_node *&list_tail)

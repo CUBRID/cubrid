@@ -21,6 +21,7 @@
 #include "error_manager.h"
 #include "log_append.hpp"
 #include "log_manager.h"
+#include "server_type.hpp"
 #include "system_parameter.h"
 
 namespace cublog
@@ -89,6 +90,8 @@ namespace cublog
 	    log_prior_node *list_head = nullptr;
 	    log_prior_node *list_tail = nullptr;
 	    prior_list_deserialize (backbuffer.front (), list_head, list_tail);
+	    assert (list_head != nullptr);
+	    assert (list_tail != nullptr);
 
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
 	      {
@@ -96,6 +99,11 @@ namespace cublog
 			       "[LOG_PRIOR_TRANSFER] Received. Head lsa %lld|%d. Tail lsa %lld|%d. Message size = %d.\n",
 			       LSA_AS_ARGS (&list_head->start_lsa), LSA_AS_ARGS (&list_tail->start_lsa),
 			       backbuffer.front ().size ());
+	      }
+	    if (is_page_server ())
+	      {
+		log_Gl.get_log_prior_sender ().send_serialized_message (std::move (backbuffer.front ()));
+		assert_release (backbuffer.front ().empty ());
 	      }
 
 	    m_prior_lsa_info.push_list (list_head, list_tail);

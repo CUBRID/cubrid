@@ -3468,9 +3468,19 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
   log_lsa most_recent_trantable_snapshot_lsa;
 
   {
+    // lock the log
     LOG_CS_ENTER_READ_MODE (&thread_r);
     scope_exit log_cs_exit_ftor ([&thread_r] { LOG_CS_EXIT (&thread_r); });
+
+    // lock appending log prior lists (to the page server's replication mechanism)
     std::lock_guard<std::mutex> { log_Gl.prior_info.prior_lsa_mutex };
+
+    // lock dispatching log prior lists from the page server to whichever server is subscribed)
+    //log_Gl.get_log_prior_sender ().pause ();
+    //scope_exit log_prior_sender_ftor ([]
+    //  {
+    //    log_Gl.get_log_prior_sender ().resume ();
+    //  });
 
     // log header
     payload_in_out = "";
@@ -3492,7 +3502,7 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
 			  sizeof (log_lsa));
 
     // within the same locks, initialize log prior dispatch to the newly connected passive transaction server
-    (void) log_Gl.get_log_prior_sender ().add_sink (log_prior_sender_sink);
+    (void) log_Gl.get_log_prior_sender ().add_sink (append_lsa, log_prior_sender_sink);
     // TODO: in the future, this needs to be made explicit:
     //  - as passive transaction servers (PTS) go on/off-line at a random pace
     //  - and, as each PTS has the list of available page servers (PS) it can connect to

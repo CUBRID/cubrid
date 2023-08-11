@@ -28,6 +28,7 @@ namespace cublog
 {
   prior_sender::prior_sender ()
     : m_shutdown { false }
+      //, m_pause { false }
     , m_unsent_lsa { NULL_LSA }
   {
     m_thread = std::thread (&prior_sender::loop_dispatch, std::ref (*this));
@@ -42,6 +43,7 @@ namespace cublog
 
     {
       std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
+      //assert (!m_pause);
       m_shutdown = true;
     }
     m_messages_cv.notify_one ();
@@ -126,7 +128,17 @@ namespace cublog
       {
 	m_messages_cv.wait (messages_ulock, [this]
 	{
-	  return m_shutdown || !m_messages.empty ();
+	  if (m_shutdown)
+	    {
+	      // shutdown takes precedence over pausing
+	      return true;
+	    }
+	  //if (m_pause)
+	  //  {
+	  //    // even if messages are enqued, dispatching is paused
+	  //    return false;
+	  //  }
+	  return !m_messages.empty ();
 	});
 
 	// messages and flag are locked from here on
@@ -177,7 +189,7 @@ namespace cublog
 		    _er_log_debug (ARG_FILE_LINE,
 				   "[LOG_PRIOR_TRANSFER] Send serialized sink_index=%d\n", dbg_sink_index);
 		  }
-		const sink_hook_t *const sink_p = m_sink_hooks[index];
+		const sink_hook_t *const sink_p = m_sink_hooks[index].m_sink_hook_ptr;
 		(*sink_p) (std::string (*iter));
 	      }
 	    // ..and optimize by "moving" the message into the last sink, because it is of no use afterwards
@@ -189,7 +201,7 @@ namespace cublog
 		    _er_log_debug (ARG_FILE_LINE,
 				   "[LOG_PRIOR_TRANSFER] Send serialized sink_index=%d\n", dbg_sink_index);
 		  }
-		const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1];
+		const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1].m_sink_hook_ptr;
 		(*sink_p) (std::move (*iter));
 	      }
 
@@ -226,12 +238,12 @@ namespace cublog
   }
 
   LOG_LSA
-  prior_sender::add_sink (const sink_hook_t &fun)
+  prior_sender::add_sink (const LOG_LSA &start_append_lsa, const sink_hook_t &fun)
   {
     assert (fun != nullptr);
 
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
-    m_sink_hooks.push_back (&fun);
+    m_sink_hooks.push_back ({ start_append_lsa, &fun });
 
     return m_unsent_lsa;
   }
@@ -243,7 +255,11 @@ namespace cublog
 
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
 
-    const auto find_it = std::find (m_sink_hooks.begin (), m_sink_hooks.end (), &fun);
+    const auto find_it = std::find_if (m_sink_hooks.begin (), m_sink_hooks.end (),
+                                    [&fun] (const sink_hook_entry_t &entry)
+    {
+      return (entry.m_sink_hook_ptr == &fun);
+    });
     assert (find_it != m_sink_hooks.end ());
     m_sink_hooks.erase (find_it);
   }
@@ -261,4 +277,24 @@ namespace cublog
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
     return m_sink_hooks.empty ();
   }
+
+  //void
+  //prior_sender::pause ()
+  //{
+  //  {
+  //    std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
+  //    m_pause = true;
+  //  }
+  //  m_messages_cv.notify_one ();
+  //}
+
+  //void
+  //prior_sender::resume ()
+  //{
+  //  {
+  //    std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
+  //    m_pause = false;
+  //  }
+  //  m_messages_cv.notify_one ();
+  //}
 }

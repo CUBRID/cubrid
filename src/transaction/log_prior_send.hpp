@@ -38,6 +38,11 @@ namespace cublog
     public:
       // messages are passed to sink hooks
       using sink_hook_t = std::function<void (std::string &&)>;
+      struct sink_hook_entry_t
+      {
+	LOG_LSA m_start_dispatch_lsa;
+	const sink_hook_t *m_sink_hook_ptr;
+      };
 
     public:
       prior_sender ();
@@ -55,11 +60,14 @@ namespace cublog
       void send_serialized_message (std::string &&message);
 
       // add a hook for a new sink
-      LOG_LSA add_sink (const sink_hook_t &fun);
+      LOG_LSA add_sink (const LOG_LSA &start_append_lsa, const sink_hook_t &fun);
       // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);
       // reset only when prior_lsa is reset
       void reset_unsent_lsa (const LOG_LSA &lsa);
+
+      //void pause ();
+      //void resume ();
 
     private:
       void loop_dispatch ();
@@ -69,12 +77,13 @@ namespace cublog
       using message_container_t = std::deque<std::string>;
 
       // non-owning pointers to sink hooks; messages are passed to these
-      std::vector<const sink_hook_t *> m_sink_hooks;
+      std::vector<sink_hook_entry_t> m_sink_hooks;
       std::mutex m_sink_hooks_mutex;
 
       message_container_t m_messages;
       // variable is guarded by messages mutex
       bool m_shutdown;
+      //bool m_pause;
       // mutex protects both the messages container and the shutdown flag
       std::mutex m_messages_shutdown_mtx;
       std::condition_variable m_messages_cv;

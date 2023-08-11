@@ -153,14 +153,14 @@ page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::seq
   // ensure correct sequenced message type is relayed here
   assert (a_sp.get_response_sequence_number () == cubcomm::NO_RESPONSE_SEQUENCE_NUMBER);
 
-  std::string payload = a_sp.pull_payload ();
+  //std::string payload = a_sp.pull_payload ();
+
+  // copy the payload into the dispatcher, asynchronously
+  //log_Gl.get_log_prior_sender ().send_serialized_message (std::string (payload));
 
   // execute these synchronously to feed contiguous log prior entries to the page-server's replication
-  // copy the payload for page server's use
-  log_Gl.get_log_prior_receiver ().push_message (std::string (payload));
-
-  // move the payload into the dispatcher
-  log_Gl.get_log_prior_sender ().send_serialized_message (std::move (payload));
+  // move the payload for page server's use
+  log_Gl.get_log_prior_receiver ().push_message (std::move (a_sp.pull_payload ()));
 }
 
 template<class F, class ... Args>
@@ -225,6 +225,13 @@ page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t
 	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
 
   push_async_response (log_pack_log_boot_info, std::move (a_sp), std::ref (m_prior_sender_sink_hook_func));
+  // while this call is executed in the PTSs connection thread (either synch or asynch)
+  //  the ATS's connection thread can already dispatch a lot of log prior messages which
+  //  are being lost because PTS's log send infrastructure is not yet alive
+  // IDEA:
+  //   - make this call synch (but first try the below without making this call async)
+  //   - while setting up PTS infrastructure, pause the log prior sender (pause by making the push thread NOT notify the consumption thread)
+  //   -
 }
 
 void

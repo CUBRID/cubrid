@@ -21,9 +21,10 @@
 
 #include "fake_packable_object.hpp"
 
-log_prior_lsa_info g_log_prior_lsa_info;
+//log_prior_lsa_info g_log_prior_lsa_info;
 log_global::log_global ()
-  : m_prior_recver (g_log_prior_lsa_info)
+  : m_prior_sender { nullptr }
+  , m_prior_recver { nullptr }
 {
 };
 log_global::~log_global () = default;
@@ -39,6 +40,7 @@ mvcc_trans_status::mvcc_trans_status () = default;
 mvcc_trans_status::~mvcc_trans_status () = default;
 
 mvcc_active_tran::mvcc_active_tran () = default;
+mvcc_active_tran::~mvcc_active_tran () = default;
 
 mvcc_snapshot::mvcc_snapshot () = default;
 
@@ -48,9 +50,8 @@ log_does_allow_replication (void)
   return false;
 }
 
-cublog::prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
-  : m_prior_lsa_info (prior_lsa_info)
+namespace cublog
 {
+  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (meta)
+  EXPAND_PACKABLE_OBJECT_EMPTY_DEF (checkpoint_info)
 }
-
-EXPAND_PACKABLE_OBJECT_EMPTY_DEF (meta)

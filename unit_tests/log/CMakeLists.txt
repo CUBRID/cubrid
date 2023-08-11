@@ -129,6 +129,7 @@ add_dependencies(test_prior_list_serialize
 #
 set(TEST_PRIOR_SENDRECV_SOURCES
   ${TEST_FAKE_DIR}/fake_system_parameter.cpp
+  ${TEST_FAKE_DIR}/fake_log_impl.cpp
   ${TRANSACTION_DIR}/log_prior_send.cpp
   ${TRANSACTION_DIR}/log_prior_recv.cpp
   test_main_prior_sendrecv.cpp
