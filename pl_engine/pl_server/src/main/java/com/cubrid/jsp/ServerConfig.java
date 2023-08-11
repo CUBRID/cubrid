@@ -7,17 +7,17 @@ public class ServerConfig {
 
     private static final String LOG_DIR = "log";
 
-    private String name;
-    private String version;
+    private final String name;
+    private final String version;
 
     /* Paths */
-    private String rootPath; // $CUBRID
-    private String dbPath; // $CUBRID_DATABASES
+    private final String rootPath; // $CUBRID
+    private final String dbPath; // $CUBRID_DATABASES
 
-    private String logPath;
+    private final String logPath;
 
-    private String socketType; // TCP or UDS
-    private String socketInfo; // port number or socket file path
+    private final String socketType; // TCP or UDS
+    private final String socketInfo; // port number or socket file path
 
     public ServerConfig(
             String name, String version, String rPath, String dbPath, String socketInfo) {

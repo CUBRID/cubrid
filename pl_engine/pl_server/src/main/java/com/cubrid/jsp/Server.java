@@ -32,7 +32,6 @@
 package com.cubrid.jsp;
 
 import com.cubrid.jsp.classloader.ClassLoaderManager;
-import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -51,63 +50,91 @@ import org.newsclub.net.unix.AFUNIXSocketAddress;
 public class Server {
     private static final Logger logger = Logger.getLogger("com.cubrid.jsp");
 
-    private static final int UDS_PORT_NUMBER = -1;
+    public static final int PORT_NUMBER_UNKNOWN = -2;
+    public static final int PORT_NUMBER_UDS = -1;
 
-    private ServerConfig config = null;
-    private AtomicBoolean shutdown = new AtomicBoolean(false);
+    private static AtomicBoolean shutdown = new AtomicBoolean(false);
+
+    private static ServerConfig config = null;
 
     private static List<String> jvmArguments = null;
-
-    private int portNumber = 0;
-    private Thread socketListener = null;
+    private static int portNumber = PORT_NUMBER_UNKNOWN;
 
     private static Server serverInstance = null;
+
+    private static Thread socketListener = null;
     private static LoggingThread loggingThread = null;
 
-    private Server(ServerConfig config) throws IOException, ClassNotFoundException {
-
-        ServerSocket serverSocket = null;
-        try {
-            loggingThread = new LoggingThread(config.getLogPath());
-            loggingThread.start();
-
-            if (config.getSocketType().equals("UDS")) {
-                final File socketFile = new File(config.getSocketInfo());
-                if (socketFile.exists()) {
-                    socketFile.delete();
-                }
-
-                /* check parent directory */
-                File socketDir = socketFile.getParentFile();
-                if (!socketDir.exists()) {
-                    socketDir.mkdirs();
-                }
-                AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
-                serverSocket = AFUNIXServerSocket.bindOn(sockAddr);
-                portNumber = UDS_PORT_NUMBER;
-            } else {
-                serverSocket = new ServerSocket(Integer.parseInt(config.getSocketInfo()));
-                portNumber = serverSocket.getLocalPort();
-            }
-        } catch (Exception e) {
-            log(e);
-            e.printStackTrace();
-            System.exit(1);
+    private Server(ServerConfig conf) throws IOException, ClassNotFoundException {
+        if (conf == null) {
+            throw new IllegalArgumentException("ServerConfig is null");
         }
+        Server.config = conf;
 
-        if (serverSocket != null) {
-            socketListener = new ListenerThread(serverSocket);
+        // Server's security manager should be set first
+        System.setSecurityManager(new SpSecurityManager());
 
-            System.setSecurityManager(new SpSecurityManager());
+        try {
+            // initialize logger
+            initializeLogger(config);
+
+            // initialize class loader
+            Files.createDirectories(ClassLoaderManager.getRootPath());
+
+            // initialize socket
+            initializeSocket(config);
+
             System.setProperty("cubrid.server.version", config.getVersion());
             Class.forName("com.cubrid.jsp.jdbc.CUBRIDServerSideDriver");
 
-            getJVMArguments(); /* store jvm options */
-            Files.createDirectories(ClassLoaderManager.getRootPath());
-        } else {
+            // store JVM options
+            getJVMArguments();
+        } catch (Exception e) {
             /* error, serverSocket is not properly initialized */
-            System.exit(1);
+            shutdown.set(true);
+            if (loggingThread != null && loggingThread.isRunning()) {
+                log(e);
+                loggingThread.interrupt();
+            }
+            e.printStackTrace();
         }
+    }
+
+    private synchronized void initializeLogger(ServerConfig config)
+            throws SecurityException, IOException {
+        Path logPath = Paths.get(config.getLogPath());
+        if (Files.notExists(logPath)) {
+            Files.createDirectories(logPath.getParent());
+            Files.createFile(logPath);
+        }
+
+        loggingThread = new LoggingThread(logPath);
+        loggingThread.start();
+    }
+
+    private synchronized void initializeSocket(ServerConfig config) throws IOException {
+        ServerSocket serverSocket = null;
+        if (config.getSocketType().equals("UDS")) {
+            final Path socketFile = Paths.get(config.getSocketInfo());
+
+            // create parent directory if exists
+            if (Files.exists(socketFile.getParent())) {
+                Files.createDirectories(socketFile.getParent());
+            }
+
+            // remove previous socket file
+            Files.deleteIfExists(socketFile);
+
+            AFUNIXSocketAddress sockAddr = AFUNIXSocketAddress.of(socketFile);
+            serverSocket = AFUNIXServerSocket.bindOn(sockAddr);
+            portNumber = PORT_NUMBER_UDS;
+        } else {
+            portNumber = Integer.parseInt(config.getSocketInfo());
+            serverSocket = new ServerSocket(portNumber);
+            portNumber = serverSocket.getLocalPort();
+        }
+
+        socketListener = new ListenerThread(serverSocket);
     }
 
     private void startSocketListener() {
@@ -124,14 +151,12 @@ public class Server {
         }
     }
 
-    public int getPortNumber() {
-        return config.getSocketType().equals("UDS")
-                ? UDS_PORT_NUMBER
-                : Integer.parseInt(config.getSocketInfo());
-    }
-
     public static Server getServer() {
         return serverInstance;
+    }
+
+    public static ServerConfig getServerConfig() {
+        return config;
     }
 
     public String getServerName() {
@@ -139,11 +164,7 @@ public class Server {
     }
 
     public int getServerPort() {
-        try {
-            return getPortNumber();
-        } catch (Exception e) {
-            return -1;
-        }
+        return portNumber;
     }
 
     public Path getRootPath() {
@@ -182,28 +203,36 @@ public class Server {
 
             String socketInfo = null;
             int port_number = Integer.parseInt(port);
-            if (OSValidator.IS_UNIX && port_number == -1) {
+            if (OSValidator.IS_UNIX && port_number == PORT_NUMBER_UDS) {
                 socketInfo = udsPath;
             } else {
                 socketInfo = port;
             }
 
             ServerConfig config = new ServerConfig(name, version, envRoot, dbPath, socketInfo);
-            serverInstance = new Server(config);
-            serverInstance.startSocketListener();
-            return serverInstance.getServerPort();
+
+            startWithConfig(config);
+            return Server.getServer().getServerPort();
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        return -1;
+        return PORT_NUMBER_UNKNOWN;
+    }
+
+    public static void startWithConfig(ServerConfig config) throws Exception {
+        serverInstance = new Server(config);
+        serverInstance.startSocketListener();
     }
 
     public static void stop(int status) {
-        getServer().setShutdown();
-        getServer().stopSocketListener();
-        loggingThread.interrupt();
-        System.exit(status);
+        if (serverInstance != null) {
+            serverInstance.setShutdown();
+            serverInstance.stopSocketListener();
+            loggingThread.interrupt();
+        }
+        serverInstance = null;
+        // System.exit(status);
     }
 
     public static void main(String[] args) {

@@ -91,8 +91,8 @@ tasks.test {
 
             showExceptions = true
             showCauses = true
-            showStackTraces = false
-            showStandardStreams = false
+            showStackTraces = true
+            showStandardStreams = true
         }
         info.events = lifecycle.events
         info.exceptionFormat = lifecycle.exceptionFormat
