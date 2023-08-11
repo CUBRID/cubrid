@@ -5336,7 +5336,7 @@ pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 PARSER_VARCHAR *
 pt_append_name (const PARSER_CONTEXT * parser, PARSER_VARCHAR * string, const char *name)
 {
-  if ((!(parser->custom_print & PT_SUPPRESS_QUOTES)
+  if ((!(parser->custom_print & (PT_SUPPRESS_QUOTES | PT_PRINT_SUPPRESS_FOR_DBLINK))
        && (pt_is_keyword (name) || lang_check_identifier (name, strlen (name)) != true))
       || parser->custom_print & PT_PRINT_QUOTES)
     {
@@ -6598,7 +6598,8 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->data_type)
 	{
 	  /* only show non-default parameter */
-	  if (p->data_type->info.data_type.precision != 15 || p->data_type->info.data_type.dec_precision != 0)
+	  if (p->data_type->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION
+	      || p->data_type->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE)
 	    {
 	      sprintf (s, "(%d,%d)", p->data_type->info.data_type.precision,
 		       p->data_type->info.data_type.dec_precision);
@@ -7324,6 +7325,45 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r4);
     }
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  if (p->info.index.unique == false)
+    {
+      char buf[64] = { 0x00, };
+      if (p->info.index.deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+	{
+	  /* Do not print level */ ;
+	}
+      else if (p->info.index.deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
+	{
+	  dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.deduplicate_level);
+	}
+      if (buf[0])
+	{
+	  b = pt_append_nulstring (parser, b, " WITH ");
+	  b = pt_append_nulstring (parser, b, buf);
+	  if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	    {
+	      b = pt_append_nulstring (parser, b, ", ONLINE ");
+	    }
+	}
+      else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
+	}
+    }
+  else
+    {
+      if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
+	}
+    }
+
+  if (p->info.index.index_status == SM_INVISIBLE_INDEX)
+    {
+      b = pt_append_nulstring (parser, b, " INVISIBLE ");
+    }
+#else // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
     {
       b = pt_append_nulstring (parser, b, " INVISIBLE ");
@@ -7332,6 +7372,7 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, " WITH ONLINE ");
     }
+#endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
   if (p->info.index.comment != NULL)
     {
@@ -8427,7 +8468,8 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_TYPE_NUMERIC:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-      if (p->info.data_type.precision != 15 || p->info.data_type.dec_precision != 0)
+      if (p->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION
+	  || p->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE)
 	{
 	  sprintf (buf, "(%d,%d)", p->info.data_type.precision, p->info.data_type.dec_precision);
 	  q = pt_append_nulstring (parser, q, buf);
@@ -8724,8 +8766,20 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   if (r1)
     {
-      q = pt_append_nulstring (parser, q, " ");
-      q = pt_append_varchar (parser, q, r1);
+      /* DELETE without target FROM ... for dblink's other DBMS */
+      if (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK)
+	{
+	  if (p->info.delete_.spec->next)
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, " ");
+	  q = pt_append_varchar (parser, q, r1);
+	}
     }
   q = pt_append_nulstring (parser, q, " from ");
   q = pt_append_varchar (parser, q, r2);
@@ -11816,7 +11870,15 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
 
       q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, pt_show_binopcode (p->info.expr.op));
+      if ((parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK) && p->info.expr.op == PT_MOD)
+	{
+	  /* '%' instead of 'mod' for other DBMS */
+	  q = pt_append_nulstring (parser, q, " % ");
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, pt_show_binopcode (p->info.expr.op));
+	}
       if (r2 && (r2->bytes[0] == '-') && q && (q->bytes[q->length - 1] == '-'))
 	{
 	  q = pt_append_nulstring (parser, q, "(");
@@ -15935,7 +15997,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
     case PT_TYPE_SEQUENCE:
-      if (p->spec_ident)
+      if (p->spec_ident || (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
 	  /* this is tagged as an "in" clause right hand side Print it as a parenthesized list */
 	  r1 = pt_print_bytes_l (parser, p->info.value.data_value.set);
@@ -18811,7 +18873,9 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_bytes (parser, q, ", ", 2);
   if (p->info.dblink_table.rewritten)
     {
-      q = pt_append_varchar (parser, q, p->info.dblink_table.rewritten);
+      q =
+	pt_append_quoted_string (parser, q, (char *) p->info.dblink_table.rewritten->bytes,
+				 p->info.dblink_table.rewritten->length);
     }
   else if (p->info.dblink_table.qstr)
     {

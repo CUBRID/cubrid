@@ -30,6 +30,7 @@
 #include "system_catalog.h"
 
 #include "btree.h"		// for single/multi ops
+#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "heap_file.h"
 #include "transform.h"
@@ -863,10 +864,28 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	{
 	  key_atts = keys[j].sub.value;
 
-	  if (!DB_IS_NULL (&key_atts[1].value))
+	  if (DB_IS_NULL (&key_atts[1].value))
 	    {
-	      id = db_get_int (&key_atts[1].value);
+	      continue;
+	    }
 
+	  id = db_get_int (&key_atts[1].value);
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (id))
+	    {
+	      DB_VALUE tmp_val;
+
+	      db_make_string (&tmp_val, dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (id)));
+	      pr_clear_value (&key_atts[1].value);
+	      pr_clone_value (&tmp_val, &key_atts[1].value);
+	      if (tmp_val.need_clear)
+		{
+		  pr_clear_value (&tmp_val);
+		}
+	    }
+	  else
+#endif
+	    {
 	      for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
 		{
 		  id_atts = ids[k].sub.value;

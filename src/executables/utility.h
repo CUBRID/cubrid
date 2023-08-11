@@ -1366,6 +1366,10 @@ typedef struct _ha_config
 #define UNLOAD_SPLIT_SCHEMA_FILES_L             "split-schema-files"
 #define UNLOAD_AS_DBA_S                         11921
 #define UNLOAD_AS_DBA_L                         "as-dba"
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+#define UNLOAD_SKIP_INDEX_DETAIL_S              11922
+#define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"
+#endif
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
