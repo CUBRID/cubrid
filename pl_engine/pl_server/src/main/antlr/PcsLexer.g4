@@ -136,7 +136,7 @@ VARYING:                      V A R Y I N G ;
 PERIOD2:  '..';
 PERIOD:   '.';
 
-FLOATING_POINT_NUM: BASIC_UINT? '.' [0-9]+ ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
+FLOATING_POINT_NUM: BASIC_UINT? '.' [0-9]+ ([eE] ('+'|'-')? BASIC_UINT)?;
 UNSIGNED_INTEGER:    BASIC_UINT ([eE] ('+'|'-')? BASIC_UINT)?;
 
 DELIMITED_ID: ('"' | '[' | '`') REGULAR_ID ('"' | ']' | '`') ;
@@ -226,7 +226,6 @@ SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ ;
 fragment BASIC_UINT     : '0'|[1-9][0-9]*;
 fragment NEWLINE_EOF    : NEWLINE | EOF;
 fragment SIMPLE_LETTER  : [A-Za-z] | [\uAC00-\uD7A3];   // English letters and Korean letters
-fragment FLOAT_FRAGMENT : UNSIGNED_INTEGER* '.'? UNSIGNED_INTEGER+;
 fragment NEWLINE        : '\r'? '\n';
 fragment SPACE          : [ \t];
 
