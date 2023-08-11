@@ -7810,18 +7810,21 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	}
       break;
     case PT_EXPR:
-      switch (node->info.expr.op)
+      if (parser->dblink_remote)
 	{
-	case PT_AND:
-	case PT_OR:
-	case PT_XOR:
-	case PT_NOT:
-	  break;
-	default:
-	  if (parser->dblink_remote && !node->flag.do_not_fold && pt_is_dblink_related (node))
+	  switch (node->info.expr.op)
 	    {
-	      // do not fold for dblink-related expr
-	      parser_walk_tree (parser, node, pt_do_not_fold_dblink_related_cast, NULL, NULL, NULL);
+	    case PT_AND:
+	    case PT_OR:
+	    case PT_XOR:
+	    case PT_NOT:
+	      break;
+	    default:
+	      if (!node->flag.do_not_fold && pt_is_dblink_related (node))
+		{
+		  // do not fold for dblink-related expr
+		  parser_walk_tree (parser, node, pt_do_not_fold_dblink_related_cast, NULL, NULL, NULL);
+		}
 	    }
 	}
     default:
