@@ -14513,8 +14513,10 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
   LOG_LSA process_lsa = LSA_INITIALIZER;
   LOG_LSA forw_lsa = LSA_INITIALIZER;
+  LOG_LSA cur_log_lsa = LSA_INITIALIZER;
 
   LOG_RECORD_HEADER *log_rec_header;
+  LOG_RECTYPE log_type;
   LOG_REC_DONETIME *donetime;
   LOG_REC_HA_SERVER_STATE *dummy;
 
@@ -14609,31 +14611,33 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
   while (!LSA_ISNULL (&process_lsa))
     {
+      LSA_COPY (&cur_log_lsa, &process_lsa);	// save the current log record lsa
+
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
+      log_type = log_rec_header->type;
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_pgptr);
 
-      if (log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+      if (log_type == LOG_COMMIT || log_type == LOG_ABORT)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
 	  donetime = (LOG_REC_DONETIME *) (log_pgptr->area + process_lsa.offset);
 
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
-	  LSA_COPY (ret_lsa, &process_lsa);
-
+	  LSA_COPY (ret_lsa, &cur_log_lsa);
 	  *time = donetime->at_time;
+
 	  return NO_ERROR;
 	}
 
-      if (log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+      if (log_type == LOG_DUMMY_HA_SERVER_STATE)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
 	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_pgptr->area + process_lsa.offset);
 
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
-	  LSA_COPY (ret_lsa, &process_lsa);
+	  LSA_COPY (ret_lsa, &cur_log_lsa);
 	  *time = dummy->at_time;
+
 	  return NO_ERROR;
 	}
 
@@ -14652,6 +14656,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	      return error_code;
 	    }
 	}
+
       LSA_COPY (&process_lsa, &forw_lsa);
     }
 
@@ -14672,10 +14677,11 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   LOG_LSA process_lsa;
   LOG_LSA current_lsa;
 
-  LOG_RECORD_HEADER *log_rec_header;
   LOG_PAGE *log_page_p = NULL;
   char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
+  LOG_RECORD_HEADER *log_rec_header;
+  LOG_RECTYPE log_type;
   LOG_REC_DONETIME *donetime;
   LOG_REC_HA_SERVER_STATE *dummy;
   time_t at_time;
@@ -14685,15 +14691,12 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
-  bool is_active = false;
 
   char ctime_buf[CTIME_MAX];
   int error = NO_ERROR;
 
-  if (LSA_ISNULL (start_lsa))
-    {
-      is_active = true;
-    }
+  assert (!LSA_ISNULL (start_lsa));
+  cdc_log ("%s : start point LSA = %3lld|%3d", __func__, LSA_AS_ARGS (start_lsa));
 
   LSA_COPY (&process_lsa, start_lsa);
 
@@ -14709,10 +14712,11 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 
       LSA_COPY (&current_lsa, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
+      log_type = log_rec_header->type;
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
 
-      if (log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+      if (log_type == LOG_COMMIT || log_type == LOG_ABORT)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	  donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
@@ -14724,11 +14728,9 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 
 	      return NO_ERROR;
 	    }
-
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	}
 
-      if (log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+      if (log_type == LOG_DUMMY_HA_SERVER_STATE)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
 	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
@@ -14741,8 +14743,6 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 
 	      return NO_ERROR;
 	    }
-
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
 	}
 
       if (process_lsa.pageid != forw_lsa.pageid)
