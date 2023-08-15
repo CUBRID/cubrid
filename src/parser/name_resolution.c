@@ -4930,7 +4930,7 @@ pt_mk_attr_def_node (PARSER_CONTEXT * parser, PT_NODE * name_node, S_REMOTE_TBL_
   const char *col_name = name_node->info.name.original;
   for (int i = 0; i < rmt_cols->get_attr_size (); i++)
     {
-      if (intl_identifier_casecmp (col_name, rmt_cols->get_name (i)) == 0)
+      if (intl_identifier_casecmp_with_quote (col_name, rmt_cols->get_name (i)) == 0)
 	{
 	  if (pt_dblink_table_fill_attr_def (parser, def_node, rmt_cols->get_attr (i)))
 	    {
@@ -5010,13 +5010,13 @@ pt_check_column_list (PARSER_CONTEXT * parser, const char *tbl_alias_nm, PT_DBLI
       col_name = col->info.name.original;
       for (i = 0; i < rmt_cols->get_attr_size (); i++)
 	{
-	  if (intl_identifier_casecmp (col_name, rmt_cols->get_name (i)) == 0)
+	  if (intl_identifier_casecmp_with_quote (col_name, rmt_cols->get_name (i)) == 0)
 	    {
 	      if (col->info.name.resolved == NULL)
 		{
 		  break;
 		}
-	      else if (intl_identifier_casecmp (tbl_alias_nm, col->info.name.resolved) == 0)
+	      else if (intl_identifier_casecmp_with_quote (tbl_alias_nm, col->info.name.resolved) == 0)
 		{
 		  break;
 		}
@@ -11643,7 +11643,7 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
     {
       assert (cols_idx < rmt_tbl_cols->get_attr_size ());
       col_name = (char *) cols->info.attr_def.attr_name->info.name.original;
-      if (intl_identifier_casecmp (rmt_tbl_cols->get_name (cols_idx), col_name) != 0)
+      if (intl_identifier_casecmp_with_quote (rmt_tbl_cols->get_name (cols_idx), col_name) != 0)
 	{
 	  PT_ERRORf3 (parser, dblink, "\"%s\" not matched column or alias \"%s\"",
 		      cols->info.attr_def.attr_name->info.name.original, rmt_tbl_cols->get_name (cols_idx), ER_DBLINK);
