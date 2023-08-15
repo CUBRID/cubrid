@@ -11746,3 +11746,11 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
 
   return err_code;
 }
+
+#if defined(CAS_FOR_CGW)
+void
+ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle)
+{
+  cgw_free_stmt (srv_handle);
+}
+#endif

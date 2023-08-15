@@ -149,6 +149,7 @@ union odbc_bind_info
 
 extern int cgw_init ();
 extern void cgw_cleanup ();
+extern void cgw_free_stmt (T_SRV_HANDLE * srv_handle);
 extern int cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding,
 			     T_COL_BINDER ** col_binding_buff);
 extern void cgw_cleanup_binder (T_COL_BINDER * first_col_binding);
