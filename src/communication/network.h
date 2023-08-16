@@ -270,6 +270,12 @@ enum net_server_request
   NET_SERVER_FLASHBACK_GET_SUMMARY,
   NET_SERVER_FLASHBACK_GET_LOGINFO,
 
+  /* memory monitoring */
+  NET_SERVER_MMON_GET_SERVER_INFO,
+  NET_SERVER_MMON_GET_MODULE_INFO,
+  NET_SERVER_MMON_GET_MODULE_INFO_SUMMARY,
+  NET_SERVER_MMON_GET_TRAN_INFO,
+
   /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
