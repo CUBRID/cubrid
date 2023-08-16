@@ -4554,6 +4554,12 @@ memmon (UTIL_FUNCTION_ARG * arg)
   bool transaction, show_all, need_shutdown;
   int tran_count = INT_MAX;
   int module_index = MMON_MODULE_LAST;
+  int error_code;
+  MMON_SERVER_INFO server_info;
+  // *INDENT-OFF*
+  std::vector<MMON_MODULE_INFO> module_info;
+  // *INDENT-ON*
+  MMON_TRAN_INFO tran_info;
 
   module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
   transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
@@ -4566,7 +4572,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto print_memmon_usage;
     }
 
-  /* error check phase */
+  /* input error check phase */
   if (show_all && (transaction || tran_count_str || module))
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
@@ -4608,8 +4614,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
       if (module[0] >= 'a' && module[0] <= 'z')
 	{
 	  /* module option with module name */
-	  // TODO: convert module name to module index
-	  // ex) module_index = memmon_convert_module_name_to_index(module);
+	  module_index = mmon_convert_module_name_to_index (module);
 	}
       else
 	{
@@ -4629,9 +4634,6 @@ memmon (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  /* execute phase */
-  // TODO: check condition and execute network function
-
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
@@ -4649,9 +4651,71 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* execute phase */
+  error_code = mmon_get_server_info (server_info);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  // TODO: mmon_print_server_info (server_info);
+
+  if (module_index >= 0)
+    {
+      error_code = mmon_get_module_info (module_index, module_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      // TODO: mmon_print_module_info (module_info);
+    }
+
+  if (!transaction && !module)
+    {
+      /* default case */
+      // *INDENT-OFF*
+      error_code = mmon_get_module_info_summary (std::min(MMON_MODULE_LAST, 5), module_info);
+      // *INDENT-ON*
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      // TODO: mmon_print_module_info_summary (module_info);
+
+      transaction = true;
+      tran_count = 5;
+    }
+
+  if (show_all)
+    {
+      error_code = mmon_get_module_info_summary (MMON_MODULE_LAST, module_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      // TODO: mmon_print_module_info_summary (module_info);
+
+      transaction = true;
+    }
+
+  if (transaction)
+    {
+      error_code = mmon_get_tran_info (tran_count, tran_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      // TODO: mmon_print_tran_info (tran_info);
+    }
+
   // XXX: for test, it will removed at main implementation
   fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (module ? module : "NULL"),
 	   (transaction ? "true" : "false"), tran_count, (show_all ? "true" : "false"));
+  fprintf (stdout, "server network communicate success\n");
 
   db_shutdown ();
 

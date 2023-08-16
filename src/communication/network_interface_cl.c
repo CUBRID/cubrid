@@ -40,6 +40,7 @@
 #include "server_interface.h"
 #include "boot_cl.h"
 #include "schema_manager.h"
+#include "memory_monitor_cl.hpp"
 #else /* !defined (CS_MODE) == defined (SA_MODE) */
 #include "xserver_interface.h"
 #include "boot_sr.h"
@@ -8122,6 +8123,256 @@ logtb_dump_trantable (FILE * outfp)
 
   exit_server (*thread_p);
 #endif /* !CS_MODE */
+}
+
+/*
+ * mmon_get_server_info -
+ *
+ * return: cubrid error
+ *
+ *   server_info(in/out): save memory usage information of the server
+ */
+int
+mmon_get_server_info (MMON_SERVER_INFO & server_info)
+{
+  char *buffer, *ptr;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, ival;
+  int error = NO_ERROR;
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_GET_SERVER_INFO, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &ival);
+      ptr = or_unpack_int (ptr, &ival);
+      error = (int) ival;
+    }
+
+  if (error == NO_ERROR)
+    {
+      ptr = or_unpack_string (buffer, &(server_info.name));
+      ptr = or_unpack_int64 (ptr, &(server_info.total_mem_usage));
+    }
+
+  return error;
+}
+
+/*
+ * mmon_get_module_info -
+ *
+ * return: cubrid error
+ *
+ *   module_index(in): index of module registered in memory_monitor
+ *   module_info(in/out): save memory usage information of the module
+ */
+// *INDENT-OFF*
+int
+mmon_get_module_info (int module_index, vector<MMON_MODULE_INFO> &module_info)
+// *INDENT-ON*
+{
+  char *buffer, *ptr;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, ival, module_count;
+  int error = NO_ERROR;
+
+  ptr = or_pack_int (request, module_index);
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO, request, OR_ALIGNED_BUF_SIZE (a_request)
+			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &ival);
+      ptr = or_unpack_int (ptr, &ival);
+      error = (int) ival;
+    }
+
+  if (error == NO_ERROR)
+    {
+      if (module_index == 0)
+	{
+	  module_count = MMON_MODULE_LAST;
+	}
+      else
+	{
+	  module_count = 1;
+	}
+
+      module_info.resize (module_count);
+
+      ptr = buffer;
+
+    for (auto & m_info:module_info)
+	{
+	  ptr = or_unpack_string (ptr, &(m_info.name));
+	  ptr = or_unpack_int64 (ptr, &(m_info.stat.init_stat));
+	  ptr = or_unpack_int64 (ptr, &(m_info.stat.cur_stat));
+	  ptr = or_unpack_int64 (ptr, &(m_info.stat.peak_stat));
+	  ptr = or_unpack_int (ptr, &(m_info.stat.expand_count));
+
+	  ptr = or_unpack_int (ptr, &(m_info.num_comp));
+
+	  m_info.comp_info.resize (m_info.num_comp);
+
+          // *INDENT-OFF*
+          for (auto &comp_info : m_info.comp_info)
+            {
+              ptr = or_unpack_string (ptr, &(comp_info.name));
+              ptr = or_unpack_int64 (ptr, &(comp_info.stat.init_stat));
+              ptr = or_unpack_int64 (ptr, &(comp_info.stat.cur_stat));
+              ptr = or_unpack_int64 (ptr, &(comp_info.stat.peak_stat));
+              ptr = or_unpack_int (ptr, &(comp_info.stat.expand_count));
+
+              ptr = or_unpack_int (ptr, &(comp_info.num_subcomp));
+
+              comp_info.subcomp_info.resize (comp_info.num_subcomp);
+
+              for (auto &subcomp_info : comp_info.subcomp_info)
+                {
+                  ptr = or_unpack_string (ptr, &(subcomp_info.name));
+                  ptr = or_unpack_int64 (ptr, &(subcomp_info.cur_stat));
+                }
+            }
+          // *INDENT-ON*
+	}
+    }
+
+  return error;
+}
+
+/*
+ * mmon_get_module_info_summary -
+ *
+ * return: cubrid error
+ *
+ *   module_count(in): the number of modules to print information
+ *   module_info(in/out): save memory usage information of the modules
+ */
+// *INDENT-OFF*
+int
+mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> &module_info)
+// *INDENT-ON*
+{
+  char *buffer, *ptr;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, ival;
+  int error = NO_ERROR;
+
+  ptr = or_pack_int (request, module_count);
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO_SUMMARY, request, OR_ALIGNED_BUF_SIZE (a_request)
+			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &ival);
+      ptr = or_unpack_int (ptr, &ival);
+      error = (int) ival;
+    }
+
+  if (error == NO_ERROR)
+    {
+      module_info.resize (module_count);
+
+      ptr = buffer;
+
+      // *INDENT-OFF*
+      for (auto &m_info : module_info)
+      // *INDENT-ON*
+      {
+	ptr = or_unpack_string (ptr, &(m_info.name));
+	ptr = or_unpack_int64 (ptr, &(m_info.stat.cur_stat));
+      }
+    }
+
+  return error;
+}
+
+/*
+ * mmon_get_tran_info -
+ *
+ * return: cubrid error
+ *
+ *   tran_count(in): the number of active transactions to print information
+ *   tran_info(in/out): save memory usage information of the active transactions
+ */
+int
+mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info)
+{
+  char *buffer, *ptr;
+  int bufsize = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error, ival;
+  int error = NO_ERROR;
+
+  ptr = or_pack_int (request, module_count);
+
+  req_error =
+    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO_SUMMARY, request, OR_ALIGNED_BUF_SIZE (a_request)
+			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+  if (req_error)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+  else
+    {
+      ptr = reply;
+      ptr = or_unpack_int (ptr, &ival);
+      ptr = or_unpack_int (ptr, &ival);
+      error = (int) ival;
+    }
+
+  if (error == NO_ERROR)
+    {
+      ptr = buffer;
+      ptr = or_unpack_int (buffer, tran_info.num_tran);
+
+      tran_info.tran_stat.resize (tran_info.num_tran);
+
+      // *INDENT-OFF*
+      for (auto &tran_stat : tran_info.tran_stat)
+      // *INDENT-ON*
+      {
+	ptr = or_unpack_int (ptr, &(tran_stat.tranid));
+	ptr = or_unpack_int64 (ptr, &(tran_stat.cur_stat));
+      }
+    }
+
+  return error;
 }
 
 /*

@@ -17,21 +17,20 @@
  */
 
 /*
- * memory_monitor_cl.hpp - client structures and functions
- *                         for memory monitoring module
+ * memory_monitor_cl.cpp - implementation of memory monitoring manager client
  */
 
-#ifndef _MEMORY_MONITOR_CL_HPP_
-#define _MEMORY_MONITOR_CL_HPP_
+#include "memory_monitor_cl.hpp"
 
-#include <altorithm>
-
-#include "memory_monitor_common.h"
-
-constexpr char module_names[MMON_MODULE_LAST + 1][DB_MAX_IDENTIFIER_LENGTH] =
+int mmon_convert_module_name_to_index (char *module_name)
 {
-  "all"
-};
+  for (int i = 0; i < MMON_MODULE_LAST; i++)
+    {
+      if (!strcmp (module_name, module_names[i]))
+	{
+	  return i;
+	}
+    }
 
-int mmon_convert_module_name_to_index (char *module_name);
-#endif // _MEMORY_MONITOR_CL_HPP_
+  return -1;
+}
