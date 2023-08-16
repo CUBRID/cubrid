@@ -53,6 +53,7 @@ namespace cubcomm
       class sequenced_payload;
 
       using incoming_request_handler_t = std::function<void (sequenced_payload &&)>;
+      using recv_error_handler_t = typename request_client_server_t::server_error_handler;
 
     public:
       request_sync_client_server (cubcomm::channel &&a_channel,
@@ -60,7 +61,8 @@ namespace cubcomm
 				  T_OUTGOING_MSG_ID a_outgoing_response_msgid,
 				  T_INCOMING_MSG_ID a_incoming_response_msgid,
 				  size_t response_partition_count,
-				  send_queue_error_handler &&req_error_handler);
+				  send_queue_error_handler &&req_error_handler,
+				  recv_error_handler_t &&recv_error_handler);
       ~request_sync_client_server ();
       request_sync_client_server (const request_sync_client_server &) = delete;
       request_sync_client_server (request_sync_client_server &&) = delete;
@@ -149,7 +151,8 @@ namespace cubcomm
 	  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
 	  T_OUTGOING_MSG_ID a_outgoing_response_msgid, T_INCOMING_MSG_ID a_incoming_response_msgid,
 	  size_t response_partition_count,
-	  send_queue_error_handler &&req_error_handler)
+	  send_queue_error_handler &&req_error_handler,
+	  recv_error_handler_t &&recv_error_handler)
     : m_conn { new request_client_server_t (std::move (a_channel)) }
   , m_queue { new request_sync_send_queue_t (*m_conn, std::move (req_error_handler)) }
   , m_queue_autosend { new request_queue_autosend_t (*m_queue) }
@@ -168,12 +171,7 @@ namespace cubcomm
 	    std::bind (&request_sync_client_server::handle_response, this, std::placeholders::_1);
     register_handler (m_incoming_response_msgid, bound_response_handler);
 
-    auto recv_error_handler = [this] (css_error_code error)
-    {
-      return;
-    };
-
-    m_conn->register_error_handler (recv_error_handler);
+    m_conn->register_error_handler (std::move (recv_error_handler));
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>

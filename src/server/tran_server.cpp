@@ -492,7 +492,7 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
   assert (m_conn == nullptr);
   m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
-					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (error_handler)));
+					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (error_handler), nullptr));
 
   m_conn->start ();
 }
