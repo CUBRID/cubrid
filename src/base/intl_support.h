@@ -254,7 +254,7 @@ extern "C"
   extern int intl_case_match_tok (const INTL_LANG lang_id, const INTL_CODESET codeset, unsigned char *tok,
 				  unsigned char *src, const int size_tok, const int size_src, int *matched_size_src);
   extern int intl_identifier_casecmp (const char *str1, const char *str2);
-  extern int intl_identifier_casecmp_with_quote (const char *str1, const char *str2);
+  extern int intl_identifier_casecmp_for_dblink (const char *str1, const char *str2);
   extern int intl_identifier_ncasecmp (const char *str1, const char *str2, const int len);
   extern int intl_identifier_cmp (const char *str1, const char *str2);
 #if defined(ENABLE_UNUSED_FUNCTION)
