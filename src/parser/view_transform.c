@@ -3510,11 +3510,11 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 		cinfo.method_found = true;	/* not pushable */
 		break;
 
-              case PT_EXPR:
+	      case PT_EXPR:
 		if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (list))
 		  {
 		    cinfo.method_found = true;
-                    break;
+		    break;
 		  }
 
 	      default:		/* do traverse */
