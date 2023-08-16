@@ -20,6 +20,8 @@
  * memory_monitor_cl.cpp - implementation of memory monitoring manager client
  */
 
+#include <cstring>
+
 #include "memory_monitor_cl.hpp"
 
 int mmon_convert_module_name_to_index (char *module_name)

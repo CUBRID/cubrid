@@ -54,6 +54,7 @@
 #include "method_def.hpp"
 #include "dynamic_array.h"
 #include "flashback_cl.h"
+#include "memory_monitor_cl.hpp"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -283,6 +284,13 @@ extern int logtb_get_pack_tran_table (char **buffer_p, int *size_p, bool include
 extern void logtb_free_trans_info (TRANS_INFO * info);
 extern TRANS_INFO *logtb_get_trans_info (bool include_query_exec_info);
 extern void logtb_dump_trantable (FILE * outfp);
+
+extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
+// *INDENT-OFF*
+extern int mmon_get_module_info (int module_index, std::vector<MMON_MODULE_INFO> &module_info);
+extern int mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> &module_info);
+// *INDENT-ON*
+extern int mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info);
 
 extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages);
 

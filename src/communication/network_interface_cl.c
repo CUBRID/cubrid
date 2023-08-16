@@ -40,7 +40,6 @@
 #include "server_interface.h"
 #include "boot_cl.h"
 #include "schema_manager.h"
-#include "memory_monitor_cl.hpp"
 #else /* !defined (CS_MODE) == defined (SA_MODE) */
 #include "xserver_interface.h"
 #include "boot_sr.h"
@@ -8135,7 +8134,8 @@ logtb_dump_trantable (FILE * outfp)
 int
 mmon_get_server_info (MMON_SERVER_INFO & server_info)
 {
-  char *buffer, *ptr;
+#if defined(CS_MODE)
+  char *buffer, *ptr, *temp_str;
   int bufsize = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -8160,11 +8160,17 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
 
   if (error == NO_ERROR)
     {
-      ptr = or_unpack_string (buffer, &(server_info.name));
-      ptr = or_unpack_int64 (ptr, &(server_info.total_mem_usage));
+      ptr = or_unpack_string_nocopy (buffer, &temp_str);
+      memcpy (server_info.name, temp_str, strlen (temp_str) + 1);
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_mem_usage));
     }
+  free_and_init (buffer);
 
   return error;
+#else /* CS_MODE */
+  er_log_debug (ARG_FILE_LINE, "mmon_get_server_info: THIS IS ONLY a C/S function");
+  return ER_FAILED;
+#endif /* !CS_MODE */
 }
 
 /*
@@ -8177,10 +8183,11 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
  */
 // *INDENT-OFF*
 int
-mmon_get_module_info (int module_index, vector<MMON_MODULE_INFO> &module_info)
+mmon_get_module_info (int module_index, std::vector<MMON_MODULE_INFO> & module_info)
 // *INDENT-ON*
 {
-  char *buffer, *ptr;
+#if defined(CS_MODE)
+  char *buffer, *ptr, *temp_str;
   int bufsize = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
@@ -8192,7 +8199,7 @@ mmon_get_module_info (int module_index, vector<MMON_MODULE_INFO> &module_info)
   ptr = or_pack_int (request, module_index);
 
   req_error =
-    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO, request, OR_ALIGNED_BUF_SIZE (a_request)
+    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO, request, OR_ALIGNED_BUF_SIZE (a_request),
 			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
   if (req_error)
     {
@@ -8222,42 +8229,50 @@ mmon_get_module_info (int module_index, vector<MMON_MODULE_INFO> &module_info)
 
       ptr = buffer;
 
-    for (auto & m_info:module_info)
+      // *INDENT-OFF*
+      for (auto & m_info:module_info)
 	{
-	  ptr = or_unpack_string (ptr, &(m_info.name));
-	  ptr = or_unpack_int64 (ptr, &(m_info.stat.init_stat));
-	  ptr = or_unpack_int64 (ptr, &(m_info.stat.cur_stat));
-	  ptr = or_unpack_int64 (ptr, &(m_info.stat.peak_stat));
-	  ptr = or_unpack_int (ptr, &(m_info.stat.expand_count));
+	  ptr = or_unpack_string_nocopy (ptr, &temp_str);
+          memcpy (m_info.name, temp_str, strlen (temp_str) + 1);
+	  ptr = or_unpack_int64 (ptr, (int64_t *) &(m_info.stat.init_stat));
+	  ptr = or_unpack_int64 (ptr, (int64_t *) &(m_info.stat.cur_stat));
+	  ptr = or_unpack_int64 (ptr, (int64_t *) &(m_info.stat.peak_stat));
+	  ptr = or_unpack_int (ptr, (int32_t *) &(m_info.stat.expand_resize_count));
 
-	  ptr = or_unpack_int (ptr, &(m_info.num_comp));
+	  ptr = or_unpack_int (ptr, (int32_t *) &(m_info.num_comp));
 
 	  m_info.comp_info.resize (m_info.num_comp);
 
-          // *INDENT-OFF*
           for (auto &comp_info : m_info.comp_info)
             {
-              ptr = or_unpack_string (ptr, &(comp_info.name));
-              ptr = or_unpack_int64 (ptr, &(comp_info.stat.init_stat));
-              ptr = or_unpack_int64 (ptr, &(comp_info.stat.cur_stat));
-              ptr = or_unpack_int64 (ptr, &(comp_info.stat.peak_stat));
-              ptr = or_unpack_int (ptr, &(comp_info.stat.expand_count));
+              ptr = or_unpack_string_nocopy (ptr, &temp_str);
+              memcpy (comp_info.name, temp_str, strlen (temp_str) + 1);
+              ptr = or_unpack_int64 (ptr, (int64_t *) &(comp_info.stat.init_stat));
+              ptr = or_unpack_int64 (ptr, (int64_t *) &(comp_info.stat.cur_stat));
+              ptr = or_unpack_int64 (ptr, (int64_t *) &(comp_info.stat.peak_stat));
+              ptr = or_unpack_int (ptr, (int32_t *) &(comp_info.stat.expand_resize_count));
 
-              ptr = or_unpack_int (ptr, &(comp_info.num_subcomp));
+              ptr = or_unpack_int (ptr, (int32_t *) &(comp_info.num_subcomp));
 
               comp_info.subcomp_info.resize (comp_info.num_subcomp);
 
               for (auto &subcomp_info : comp_info.subcomp_info)
                 {
-                  ptr = or_unpack_string (ptr, &(subcomp_info.name));
-                  ptr = or_unpack_int64 (ptr, &(subcomp_info.cur_stat));
+                  ptr = or_unpack_string_nocopy (ptr, &temp_str);
+                  memcpy (subcomp_info.name, temp_str, strlen (temp_str) + 1);
+                  ptr = or_unpack_int64 (ptr, (int64_t *) &(subcomp_info.cur_stat));
                 }
             }
-          // *INDENT-ON*
 	}
+      // *INDENT-ON*
     }
+  free_and_init (buffer);
 
   return error;
+#else /* CS_MODE */
+  er_log_debug (ARG_FILE_LINE, "mmon_get_module_info: THIS IS ONLY a C/S function");
+  return ER_FAILED;
+#endif /* !CS_MODE */
 }
 
 /*
@@ -8270,10 +8285,11 @@ mmon_get_module_info (int module_index, vector<MMON_MODULE_INFO> &module_info)
  */
 // *INDENT-OFF*
 int
-mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> &module_info)
+mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> & module_info)
 // *INDENT-ON*
 {
-  char *buffer, *ptr;
+#if defined(CS_MODE)
+  char *buffer, *ptr, *temp_str;
   int bufsize = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
@@ -8285,7 +8301,7 @@ mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> &m
   ptr = or_pack_int (request, module_count);
 
   req_error =
-    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO_SUMMARY, request, OR_ALIGNED_BUF_SIZE (a_request)
+    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO_SUMMARY, request, OR_ALIGNED_BUF_SIZE (a_request),
 			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
   if (req_error)
     {
@@ -8308,14 +8324,19 @@ mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> &m
 
       // *INDENT-OFF*
       for (auto &m_info : module_info)
+        {
+          ptr = or_unpack_string (ptr, &temp_str);
+          memcpy (m_info.name, temp_str, strlen (temp_str) + 1);
+          ptr = or_unpack_int64 (ptr, (int64_t *) &(m_info.stat.cur_stat));
+        }
       // *INDENT-ON*
-      {
-	ptr = or_unpack_string (ptr, &(m_info.name));
-	ptr = or_unpack_int64 (ptr, &(m_info.stat.cur_stat));
-      }
     }
 
   return error;
+#else /* CS_MODE */
+  er_log_debug (ARG_FILE_LINE, "mmon_get_module_info_summary: THIS IS ONLY a C/S function");
+  return ER_FAILED;
+#endif /* !CS_MODE */
 }
 
 /*
@@ -8329,6 +8350,7 @@ mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> &m
 int
 mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info)
 {
+#if defined(CS_MODE)
   char *buffer, *ptr;
   int bufsize = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
@@ -8338,10 +8360,10 @@ mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info)
   int req_error, ival;
   int error = NO_ERROR;
 
-  ptr = or_pack_int (request, module_count);
+  ptr = or_pack_int (request, tran_count);
 
   req_error =
-    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO_SUMMARY, request, OR_ALIGNED_BUF_SIZE (a_request)
+    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO_SUMMARY, request, OR_ALIGNED_BUF_SIZE (a_request),
 			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
   if (req_error)
     {
@@ -8359,20 +8381,24 @@ mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info)
   if (error == NO_ERROR)
     {
       ptr = buffer;
-      ptr = or_unpack_int (buffer, tran_info.num_tran);
+      ptr = or_unpack_int (buffer, (int32_t *) & (tran_info.num_tran));
 
       tran_info.tran_stat.resize (tran_info.num_tran);
 
       // *INDENT-OFF*
       for (auto &tran_stat : tran_info.tran_stat)
+        {
+          ptr = or_unpack_int (ptr, (int32_t *) &(tran_stat.tranid));
+          ptr = or_unpack_int64 (ptr, (int64_t *) &(tran_stat.cur_stat));
+        }
       // *INDENT-ON*
-      {
-	ptr = or_unpack_int (ptr, &(tran_stat.tranid));
-	ptr = or_unpack_int64 (ptr, &(tran_stat.cur_stat));
-      }
     }
 
   return error;
+#else /* CS_MODE */
+  er_log_debug (ARG_FILE_LINE, "mmon_get_tran_info: THIS IS ONLY a C/S function");
+  return ER_FAILED;
+#endif /* !CS_MODE */
 }
 
 /*

@@ -141,7 +141,7 @@ namespace cubperf
   {
     public:
       memory_monitor (const char *server_name)
-	: m_server_name (server_name), m_aggregater (this) {}
+	: m_server_name (server_name), m_total_mem_usage (0), m_aggregater (this) {}
       memory_monitor (const memory_monitor &) = delete;
       memory_monitor (memory_monitor &&) = delete;
 
@@ -674,7 +674,7 @@ void mmon_aggregate_server_info (MMON_SERVER_INFO &info)
 void mmon_aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info)
 {
   assert (mmon_Gl != nullptr);
-  assert (module_index < (int)MMON_MODULE_LAST && module_index >= 0);
+  assert (module_index <= (int)MMON_MODULE_LAST && module_index >= 0);
 
   mmon_Gl->aggregate_module_info (module_index, info);
 }

@@ -4675,7 +4675,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
     {
       /* default case */
       // *INDENT-OFF*
-      error_code = mmon_get_module_info_summary (std::min(MMON_MODULE_LAST, 5), module_info);
+      error_code = mmon_get_module_info_summary (std::min ((int) MMON_MODULE_LAST, 5), module_info);
       // *INDENT-ON*
       if (error_code != NO_ERROR)
 	{
@@ -4713,9 +4713,9 @@ memmon (UTIL_FUNCTION_ARG * arg)
     }
 
   // XXX: for test, it will removed at main implementation
+  fprintf (stdout, "server network communicate success\n");
   fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (module ? module : "NULL"),
 	   (transaction ? "true" : "false"), tran_count, (show_all ? "true" : "false"));
-  fprintf (stdout, "server network communicate success\n");
 
   db_shutdown ();
 

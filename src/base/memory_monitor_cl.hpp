@@ -24,7 +24,7 @@
 #ifndef _MEMORY_MONITOR_CL_HPP_
 #define _MEMORY_MONITOR_CL_HPP_
 
-#include <altorithm>
+#include <algorithm>
 
 #include "memory_monitor_common.h"
 
