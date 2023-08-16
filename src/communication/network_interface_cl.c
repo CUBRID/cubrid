@@ -8331,6 +8331,7 @@ mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> & 
         }
       // *INDENT-ON*
     }
+  free_and_init (buffer);
 
   return error;
 #else /* CS_MODE */
@@ -8393,6 +8394,7 @@ mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info)
         }
       // *INDENT-ON*
     }
+  free_and_init (buffer);
 
   return error;
 #else /* CS_MODE */
