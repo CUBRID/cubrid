@@ -302,7 +302,7 @@ static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
 static PT_NODE *pt_do_not_fold_dblink_related_function (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg,
-						    int *continue_walk);
+							int *continue_walk);
 static bool pt_is_dblink_related (PT_NODE * p);
 
 /*
