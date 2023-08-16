@@ -301,8 +301,6 @@ static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * 
 static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
-static PT_NODE *pt_do_not_fold_dblink_related_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg,
-							int *continue_walk);
 static bool pt_is_dblink_related (PT_NODE * p);
 
 /*
@@ -7807,25 +7805,6 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	{
 	  // we want to test full execution of sub-tree; don't fold it!
 	  *continue_walk = PT_LIST_WALK;
-	}
-      break;
-    case PT_EXPR:
-      if (parser->dblink_remote)
-	{
-	  switch (node->info.expr.op)
-	    {
-	    case PT_AND:
-	    case PT_OR:
-	    case PT_XOR:
-	    case PT_NOT:
-	      break;
-	    default:
-	      if (!node->flag.do_not_fold && pt_is_dblink_related (node))
-		{
-		  // do not fold for dblink-related expr
-		  parser_walk_tree (parser, node, pt_do_not_fold_dblink_related_expr, NULL, NULL, NULL);
-		}
-	    }
 	}
     default:
       // nope
@@ -18935,20 +18914,6 @@ overflow:
 error_zerodate:
   PT_ERRORc (parser, o1, er_msg ());
   return 0;
-}
-
-/*
- * set flag of the node not to do constant folding for dblink-related cast
- */
-static PT_NODE *
-pt_do_not_fold_dblink_related_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg, int *continue_walk)
-{
-  if (expr->node_type == PT_EXPR)
-    {
-      expr->flag.do_not_fold = true;
-    }
-
-  return expr;
 }
 
 /*
