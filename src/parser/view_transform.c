@@ -3762,10 +3762,13 @@ pt_remove_cast_wrap_for_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, voi
 
   if (old_node->node_type == PT_EXPR)
     {
-      if (old_node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (old_node, PT_EXPR_INFO_CAST_WRAP))
+      if (old_node->info.expr.op == PT_CAST)
 	{
-	  new_node = old_node->info.expr.arg1;
-	  parser_free_node (parser, old_node);
+	  if (PT_EXPR_INFO_IS_FLAGED (old_node, PT_EXPR_INFO_CAST_WRAP | PT_EXPR_INFO_CAST_SHOULD_FOLD))
+	    {
+	      new_node = old_node->info.expr.arg1;
+	      parser_free_node (parser, old_node);
+	    }
 	}
     }
 
@@ -4133,7 +4136,8 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
       else
 	{
 	  /* wrapped cast should be pushed and it will be removed while rewriting the dblink query */
-	  if (term->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_CAST_WRAP))
+	  if (term->info.expr.op == PT_CAST
+	      && PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_CAST_WRAP | PT_EXPR_INFO_CAST_SHOULD_FOLD))
 	    {
 	      return true;
 	    }
