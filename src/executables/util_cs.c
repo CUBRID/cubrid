@@ -4574,16 +4574,16 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto print_memmon_usage;
     }
 
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
   /* input error check phase */
   if (print_show_all && (print_transaction || tran_count_str || print_module))
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
-      goto error_exit;
-    }
-
-  if (check_database_name (database_name))
-    {
       goto error_exit;
     }
 
@@ -4668,7 +4668,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   // TODO: mmon_print_server_info (server_info);
 
-  if (module_index >= 0)
+  if (print_module)
     {
       error_code = mmon_get_module_info (module_index, module_info);
       if (error_code != NO_ERROR)
