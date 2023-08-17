@@ -4550,9 +4550,9 @@ memmon (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
-  char *module, *tran_count_str, *stop = NULL;
-  bool transaction, show_all, need_shutdown;
-  int tran_count = INT_MAX;
+  char *print_module, *tran_count_str, *stop = NULL;
+  bool print_transaction, print_show_all, need_shutdown;
+  int tran_count = INT_MAX, module_count;
   int module_index = MMON_MODULE_LAST;
   int error_code;
   MMON_SERVER_INFO server_info;
@@ -4561,10 +4561,10 @@ memmon (UTIL_FUNCTION_ARG * arg)
   // *INDENT-ON*
   MMON_TRAN_INFO tran_info;
 
-  module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
-  transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
+  print_module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
+  print_transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
   tran_count_str = utility_get_option_string_value (arg_map, MEMMON_TRAN_COUNT_S, 0);
-  show_all = utility_get_option_bool_value (arg_map, MEMMON_SHOW_ALL_S);
+  print_show_all = utility_get_option_bool_value (arg_map, MEMMON_SHOW_ALL_S);
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -4573,7 +4573,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
     }
 
   /* input error check phase */
-  if (show_all && (transaction || tran_count_str || module))
+  if (print_show_all && (print_transaction || tran_count_str || print_module))
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
@@ -4585,7 +4585,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if ((!transaction) && tran_count_str)
+  if ((!print_transaction) && tran_count_str)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_OPTION));
@@ -4609,16 +4609,16 @@ memmon (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (module)
+  if (print_module)
     {
-      if (module[0] >= 'a' && module[0] <= 'z')
+      if (print_module[0] >= 'a' && print_module[0] <= 'z')
 	{
 	  /* module option with module name */
-	  module_index = mmon_convert_module_name_to_index (module);
+	  module_index = mmon_convert_module_name_to_index (print_module);
 	}
       else
 	{
-	  module_index = (int) strtol (module, &stop, 10);
+	  module_index = (int) strtol (print_module, &stop, 10);
 
 	  if (stop[0] != 0)
 	    {
@@ -4629,7 +4629,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
       if (module_index < 0 || module_index > MMON_MODULE_LAST)
 	{
 	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE), module);
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
+				 print_module);
 	  goto error_exit;
 	}
     }
@@ -4670,38 +4671,38 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
       // TODO: mmon_print_module_info (module_info);
     }
-
-  if (!transaction && !module)
+  else
     {
-      /* default case */
-      // *INDENT-OFF*
-      error_code = mmon_get_module_info_summary (std::min ((int) MMON_MODULE_LAST, 5), module_info);
-      // *INDENT-ON*
+      if (print_show_all)
+	{
+	  module_count = MMON_MODULE_LAST;
+	  print_transaction = true;
+	}
+      else if (!print_transaction && !print_module)
+	{
+	  /* default case */
+          // *INDENT-OFF*
+          module_count = std::min ((int) MMON_MODULE_LAST, DEFAULT_OPTION_PRINT_CNT);
+          // *INDENT-ON*
+	  print_transaction = true;
+	  tran_count = DEFAULT_OPTION_PRINT_CNT;
+	}
+      else
+	{
+	  /* code protection. unreachable. */
+	  assert (false);
+	}
+
+      error_code = mmon_get_module_info_summary (module_count, module_info);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
 	}
 
       // TODO: mmon_print_module_info_summary (module_info);
-
-      transaction = true;
-      tran_count = 5;
     }
 
-  if (show_all)
-    {
-      error_code = mmon_get_module_info_summary (MMON_MODULE_LAST, module_info);
-      if (error_code != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      // TODO: mmon_print_module_info_summary (module_info);
-
-      transaction = true;
-    }
-
-  if (transaction)
+  if (print_transaction)
     {
       error_code = mmon_get_tran_info (tran_count, tran_info);
       if (error_code != NO_ERROR)
@@ -4714,8 +4715,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   // XXX: for test, it will removed at main implementation
   fprintf (stdout, "server network communicate success\n");
-  fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (module ? module : "NULL"),
-	   (transaction ? "true" : "false"), tran_count, (show_all ? "true" : "false"));
+  fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (print_module ? print_module : "NULL"),
+	   (print_transaction ? "true" : "false"), tran_count, (print_show_all ? "true" : "false"));
 
   db_shutdown ();
 

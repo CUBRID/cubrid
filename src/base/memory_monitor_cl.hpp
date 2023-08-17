@@ -28,6 +28,7 @@
 
 #include "memory_monitor_common.h"
 
+constexpr int DEFAULT_OPTION_PRINT_CNT = 5;
 constexpr char module_names[MMON_MODULE_LAST + 1][DB_MAX_IDENTIFIER_LENGTH] =
 {
   "all"

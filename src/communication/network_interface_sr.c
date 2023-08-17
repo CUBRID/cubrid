@@ -7579,7 +7579,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   // Size of transaction id (OR_INT_SIZE)
   // and current memory usage (OR_INT64_SIZE)
   size += ((OR_INT_SIZE + OR_INT64_SIZE) * info.num_tran);
-  if (size != 0)
+  if (size == 0)
     {
       goto reply_send;
     }

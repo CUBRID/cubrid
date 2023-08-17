@@ -8168,8 +8168,8 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
 
   return error;
 #else /* CS_MODE */
-  er_log_debug (ARG_FILE_LINE, "mmon_get_server_info: THIS IS ONLY a C/S function");
-  return ER_FAILED;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -8230,7 +8230,7 @@ mmon_get_module_info (int module_index, std::vector<MMON_MODULE_INFO> & module_i
       ptr = buffer;
 
       // *INDENT-OFF*
-      for (auto & m_info:module_info)
+      for (auto &m_info : module_info)
 	{
 	  ptr = or_unpack_string_nocopy (ptr, &temp_str);
           memcpy (m_info.name, temp_str, strlen (temp_str) + 1);
@@ -8270,8 +8270,8 @@ mmon_get_module_info (int module_index, std::vector<MMON_MODULE_INFO> & module_i
 
   return error;
 #else /* CS_MODE */
-  er_log_debug (ARG_FILE_LINE, "mmon_get_module_info: THIS IS ONLY a C/S function");
-  return ER_FAILED;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -8335,8 +8335,8 @@ mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> & 
 
   return error;
 #else /* CS_MODE */
-  er_log_debug (ARG_FILE_LINE, "mmon_get_module_info_summary: THIS IS ONLY a C/S function");
-  return ER_FAILED;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -8398,8 +8398,8 @@ mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info)
 
   return error;
 #else /* CS_MODE */
-  er_log_debug (ARG_FILE_LINE, "mmon_get_tran_info: THIS IS ONLY a C/S function");
-  return ER_FAILED;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "memmon");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
