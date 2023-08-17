@@ -8139,7 +8139,7 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
   int bufsize = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int req_error, ival;
+  int req_error, dummy;
   int error = NO_ERROR;
 
   req_error =
@@ -8153,9 +8153,8 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
   else
     {
       ptr = reply;
-      ptr = or_unpack_int (ptr, &ival);
-      ptr = or_unpack_int (ptr, &ival);
-      error = (int) ival;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
     }
 
   if (error == NO_ERROR)
@@ -8193,7 +8192,7 @@ mmon_get_module_info (int module_index, std::vector<MMON_MODULE_INFO> & module_i
   char *request = OR_ALIGNED_BUF_START (a_request);
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int req_error, ival, module_count;
+  int req_error, dummy, module_count;
   int error = NO_ERROR;
 
   ptr = or_pack_int (request, module_index);
@@ -8209,9 +8208,8 @@ mmon_get_module_info (int module_index, std::vector<MMON_MODULE_INFO> & module_i
   else
     {
       ptr = reply;
-      ptr = or_unpack_int (ptr, &ival);
-      ptr = or_unpack_int (ptr, &ival);
-      error = (int) ival;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
     }
 
   if (error == NO_ERROR)
@@ -8295,7 +8293,7 @@ mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> & 
   char *request = OR_ALIGNED_BUF_START (a_request);
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int req_error, ival;
+  int req_error, dummy;
   int error = NO_ERROR;
 
   ptr = or_pack_int (request, module_count);
@@ -8311,9 +8309,8 @@ mmon_get_module_info_summary (int module_count, std::vector<MMON_MODULE_INFO> & 
   else
     {
       ptr = reply;
-      ptr = or_unpack_int (ptr, &ival);
-      ptr = or_unpack_int (ptr, &ival);
-      error = (int) ival;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
     }
 
   if (error == NO_ERROR)
@@ -8358,7 +8355,7 @@ mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info)
   char *request = OR_ALIGNED_BUF_START (a_request);
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int req_error, ival;
+  int req_error, dummy;
   int error = NO_ERROR;
 
   ptr = or_pack_int (request, tran_count);
@@ -8374,9 +8371,8 @@ mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info)
   else
     {
       ptr = reply;
-      ptr = or_unpack_int (ptr, &ival);
-      ptr = or_unpack_int (ptr, &ival);
-      error = (int) ival;
+      ptr = or_unpack_int (ptr, &dummy);
+      ptr = or_unpack_int (ptr, &error);
     }
 
   if (error == NO_ERROR)
