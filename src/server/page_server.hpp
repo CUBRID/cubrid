@@ -19,6 +19,7 @@
 #ifndef _PAGE_SERVER_HPP_
 #define _PAGE_SERVER_HPP_
 
+#include "communication_node.hpp"
 #include "log_replication.hpp"
 #include "log_storage.hpp"
 #include "request_sync_client_server.hpp"
@@ -95,7 +96,11 @@ class page_server
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
+    void set_follower_page_server_connection (cubcomm::channel &&chn);
     void disconnect_all_tran_servers ();
+
+    int connect_to_leader_page_server (cubcomm::node &&node);
+
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
     cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);

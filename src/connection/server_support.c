@@ -2645,6 +2645,15 @@ css_process_server_server_connect (SOCKET master_fd)
       // *INDENT-ON*
       ps_Gl->set_passive_tran_server_connection (std::move (chn));
       break;
+    case cubcomm::server_server::CONNECT_PAGE_TO_PAGE_SERVER:
+      // *INDENT-OFF*
+      if (chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_PAGE_TO_PAGE_SERVER)) != NO_ERRORS)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_TRANSACTION_SERVER_CONNECTION, 0);
+          break;
+        }
+      // *INDENT-ON*
+      ps_Gl->set_follower_page_server_connection (std::move (chn));
     default:
       assert (false);
     }
