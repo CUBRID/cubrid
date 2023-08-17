@@ -82,7 +82,9 @@
 class page_server
 {
   public:
-    page_server () = default;
+    page_server (const char *db_name)
+      : m_server_name { db_name }
+    { }
     page_server (const page_server &) = delete;
     page_server (page_server &&) = delete;
 
@@ -213,6 +215,8 @@ class page_server
     responder_t &get_responder ();
 
   private: // members
+    std::string m_server_name;
+
     connection_handler_uptr_t m_active_tran_server_conn;
     std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
     std::mutex m_conn_mutex; // for the thread-safe connection and disconnection
