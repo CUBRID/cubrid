@@ -5193,14 +5193,14 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       rmt_tbl_cols->set_select_star ();
 
       /* preparing the query to get the column info */
-      var_buf = pt_append_nulstring (parser, var_buf, "SELECT * FROM ");
-      var_buf = pt_append_nulstring (parser, var_buf, table_name);
-      sql = (char *) var_buf->bytes;
+      sql = pt_append_string (parser, "/* DBLINK SELECT */ SELECT * FROM ", table_name);
     }
   else
     {
       /* for collecting column info from "SELECT sel-list form dblink(server, 'SELECT ...') */
-      sql = (char *) dblink_table->qstr->info.value.data_value.str->bytes;
+      sql =
+	pt_append_string (parser, "/* DBLINK SELECT */ ",
+			  (char *) dblink_table->qstr->info.value.data_value.str->bytes);
     }
 
   find = strstr (url, ":?");
