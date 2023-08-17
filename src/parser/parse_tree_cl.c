@@ -15940,12 +15940,10 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_INTEGER:
     case PT_TYPE_BIGINT:
     case PT_TYPE_SMALLINT:
-      if (p->info.value.text != NULL)
+      if (p->info.value.text != NULL
+	  && !(parser->custom_print & (PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_BIGINT_CAST)))
 	{
-	  if (!(parser->custom_print & (PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_BIGINT_CAST)))
-	    {
-	      r = p->info.value.text;
-	    }
+	  r = p->info.value.text;
 	}
       else
 	{
