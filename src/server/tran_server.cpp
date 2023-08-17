@@ -487,12 +487,16 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
 
   auto error_handler = std::bind (&tran_server::connection_handler::default_error_handler, this,
 				  std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = [this] (css_error_code err)
+  {
+    disconnect_async (false);
+  };
 
   auto lockg_conn = std::lock_guard<std::shared_mutex> { m_conn_mtx };
 
   assert (m_conn == nullptr);
   m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
-					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (error_handler), nullptr));
+					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (error_handler), recv_error_handler));
 
   m_conn->start ();
 }
