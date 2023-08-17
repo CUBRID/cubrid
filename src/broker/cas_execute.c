@@ -344,6 +344,9 @@ static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
+#if defined(CAS_FOR_CGW)
+static char ux_cgw_get_stmt_type (char *stmt);
+#endif
 
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
@@ -1047,7 +1050,6 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   int srv_h_id = -1;
   int err_code;
   int num_markers;
-  char stmt_type;
   T_BROKER_VERSION client_version = req_info->client_version;
   int result_cache_lifetime;
 
@@ -1119,12 +1121,20 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   result_cache_lifetime = -1;
   net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
-  stmt_type = get_stmt_type (sql_stmt);
-  net_buf_cp_byte (net_buf, stmt_type);
+  srv_handle->stmt_type = (int) ux_cgw_get_stmt_type (sql_stmt);
+  if (srv_handle->stmt_type == CUBRID_STMT_NONE)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
+  net_buf_cp_byte (net_buf, srv_handle->stmt_type);
 
   net_buf_cp_int (net_buf, num_markers, NULL);
 
-  err_code = cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, stmt_type, client_version, net_buf);
+  err_code =
+    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, srv_handle->stmt_type, client_version,
+				      net_buf);
 
   if (err_code < 0)
     {
@@ -1324,7 +1334,6 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   int num_bind = 0;
   SQLLEN row_count = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
-  char stmt_type;
   ODBC_BIND_INFO *bind_data_list = NULL;
 
   if (srv_handle->is_prepared == FALSE)
@@ -1383,15 +1392,13 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       goto execute_error;
     }
 
-  stmt_type = get_stmt_type (srv_handle->sql_stmt);
-  srv_handle->stmt_type = stmt_type;
-  update_query_execution_count (as_info, stmt_type);
+  update_query_execution_count (as_info, srv_handle->stmt_type);
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
-  if (stmt_type == CUBRID_STMT_SELECT)
+  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
     {
       srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.
     }
@@ -1439,7 +1446,8 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
 
 	  err_code =
-	    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, stmt_type, client_version, net_buf);
+	    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, srv_handle->stmt_type,
+					      client_version, net_buf);
 	  if (err_code != NO_ERROR)
 	    {
 	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -5963,7 +5971,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
     }
 
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
-
+  srv_handle->total_tuple_count = num_tuple;
   srv_handle->cursor_pos = cursor_pos;
 
   return 0;
@@ -7712,6 +7720,10 @@ get_stmt_type (char *stmt)
   else if (strncasecmp (stmt, "select", 6) == 0)
     {
       return CUBRID_STMT_SELECT;
+    }
+  else if (strncasecmp (stmt, "merge", 5) == 0)
+    {
+      return CUBRID_STMT_MERGE;
     }
   else
     {
@@ -11752,5 +11764,37 @@ void
 ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle)
 {
   cgw_free_stmt (srv_handle);
+}
+
+static char
+ux_cgw_get_stmt_type (char *stmt)
+{
+  char stmt_type = CUBRID_STMT_NONE;
+  const char *comment_start = strstr (stmt, "/*");
+  if (comment_start)
+    {
+      const char *comment_end = strstr (comment_start, "*/");
+      if (comment_end)
+	{
+	  char type_name[30] = { 0, };
+	  const char *dblink_start = strstr (comment_start, "DBLINK");
+	  if (dblink_start)
+	    {
+	      strncpy (type_name, dblink_start + strlen ("DBLINK"), comment_end - dblink_start - strlen ("DBLINK"));
+	      type_name[comment_end - dblink_start - strlen ("DBLINK")] = '\0';
+
+	      ut_trim (type_name);
+	      ut_tolower (type_name);
+
+	      stmt_type = get_stmt_type (type_name);
+	    }
+	}
+    }
+
+  if (stmt_type == CUBRID_STMT_NONE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_NO_STMT_TYPE_COMMENT, 0);
+    }
+  return stmt_type;
 }
 #endif

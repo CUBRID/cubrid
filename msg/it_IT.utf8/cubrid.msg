@@ -1439,8 +1439,9 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 
 1355 Il file "%1$s" non è stato trovato.
+1356 Non è presente alcun commento per il controllo del tipo di istruzione nella query DBLink.
 
-1356 Ultimo errore
+1357 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

@@ -1440,8 +1440,9 @@ $ LOADDB
 
 
 1355 找不到文件"%1$s"。
+1356 DBLink查询中没有检查Statment类型的注释。
 
-1356 最后一个错误.
+1357 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

@@ -1770,6 +1770,12 @@ cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols)
 
   SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_cols));
 
+  if (*num_cols == 0)
+    {
+      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (hstmt));
+      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_cols));
+    }
+
   return (int) err_code;
 
 ODBC_ERROR:
