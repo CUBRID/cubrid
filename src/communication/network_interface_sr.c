@@ -7347,7 +7347,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (module_index == 0)
     {
-      /* If there is no modules that registered in memory monitoring manager module,
+      /* If there is no modules that registered in memory monitoring manager,
        * just return */
       if (MMON_MODULE_LAST == 0)
 	{
@@ -7477,7 +7477,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
 
   ptr = or_unpack_int (request, &module_count);
 
-  /* If there is no modules that registered in memory monitoring manager module,
+  /* If there is no modules that registered in memory monitoring manager,
    * just return */
   if (MMON_MODULE_LAST == 0)
     {

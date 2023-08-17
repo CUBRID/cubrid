@@ -8361,7 +8361,7 @@ mmon_get_tran_info (int tran_count, MMON_TRAN_INFO & tran_info)
   ptr = or_pack_int (request, tran_count);
 
   req_error =
-    net_client_request2 (NET_SERVER_MMON_GET_MODULE_INFO_SUMMARY, request, OR_ALIGNED_BUF_SIZE (a_request),
+    net_client_request2 (NET_SERVER_MMON_GET_TRAN_INFO, request, OR_ALIGNED_BUF_SIZE (a_request),
 			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
   if (req_error)
     {

@@ -4547,13 +4547,15 @@ int
 memmon (UTIL_FUNCTION_ARG * arg)
 {
 #if defined(CS_MODE)
+  const int DEFAULT_OPTION_PRINT_CNT = 5;
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
   char *print_module, *tran_count_str, *stop = NULL;
   bool print_transaction, print_show_all, need_shutdown;
+  bool print_default = false;
   int tran_count = INT_MAX, module_count;
-  int module_index = MMON_MODULE_LAST;
+  int module_index = -1;
   int error_code;
   MMON_SERVER_INFO server_info;
   // *INDENT-OFF*
@@ -4652,6 +4654,11 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  if (!print_transaction && !print_module && !print_show_all)
+    {
+      print_default = true;
+    }
+
   /* execute phase */
   error_code = mmon_get_server_info (server_info);
   if (error_code != NO_ERROR)
@@ -4676,15 +4683,13 @@ memmon (UTIL_FUNCTION_ARG * arg)
       if (print_show_all)
 	{
 	  module_count = MMON_MODULE_LAST;
-	  print_transaction = true;
 	}
-      else if (!print_transaction && !print_module)
+      else if (print_default)
 	{
 	  /* default case */
           // *INDENT-OFF*
           module_count = std::min ((int) MMON_MODULE_LAST, DEFAULT_OPTION_PRINT_CNT);
           // *INDENT-ON*
-	  print_transaction = true;
 	  tran_count = DEFAULT_OPTION_PRINT_CNT;
 	}
       else
@@ -4700,6 +4705,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 	}
 
       // TODO: mmon_print_module_info_summary (module_info);
+      print_transaction = true;
     }
 
   if (print_transaction)
