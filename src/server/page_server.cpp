@@ -206,6 +206,10 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 
   er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname = %s, port = %d, LSA = (%lld|%d)\n", host.c_str (), port,
 		LSA_AS_ARGS (&catchup_lsa));
+  if (port == -1)
+    {
+      return; // TODO ATS is booting up, it's set after ATS recovery is implemented.
+    }
 
   m_ps.connect_to_leader_page_server (std::move (host), port);
 }
