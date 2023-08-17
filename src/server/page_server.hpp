@@ -19,7 +19,6 @@
 #ifndef _PAGE_SERVER_HPP_
 #define _PAGE_SERVER_HPP_
 
-#include "communication_node.hpp"
 #include "log_replication.hpp"
 #include "log_storage.hpp"
 #include "request_sync_client_server.hpp"

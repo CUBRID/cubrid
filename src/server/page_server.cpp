@@ -504,14 +504,13 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
 void
 page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
 {
-  assert (is_page_server ());
-
   chn.set_channel_name ("PS_PS_catchup_comm");
 
   assert (chn.is_connection_alive ());
   const auto channel_id = chn.get_channel_id ();
 
-  er_log_debug (ARG_FILE_LINE, "A page server connected to this page server. Channel id: %s.\n",
+  er_log_debug (ARG_FILE_LINE,
+		"A follower page server connected to this page server as a leader to catch up. Channel id: %s.\n",
 		channel_id.c_str ());
 
   // TODO add a connection_handler for this will be registered
@@ -553,6 +552,10 @@ page_server::connect_to_leader_page_server (std::string &&hostname, int32_t port
     {
       return ps_conn_error_lambda ();
     }
+
+  er_log_debug (ARG_FILE_LINE,
+		"This page server successfully connected to the leader page server to catch up. Channel id: %s.\n",
+		srv_chn.get_channel_id ().c_str ());
 
   return NO_ERROR;
 }
