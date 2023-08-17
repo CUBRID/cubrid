@@ -206,6 +206,8 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 
   er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname = %s, port = %d, LSA = (%lld|%d)\n", host.c_str (), port,
 		LSA_AS_ARGS (&catchup_lsa));
+
+  m_ps.connect_to_leader_page_server (std::move (host), port);
 }
 
 
@@ -512,11 +514,11 @@ page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
 }
 
 int
-page_server::connect_to_leader_page_server (cubcomm::node &&node)
+page_server::connect_to_leader_page_server (std::string &&hostname, int32_t port)
 {
-  auto ps_conn_error_lambda = [&node] ()
+  auto ps_conn_error_lambda = [&hostname] ()
   {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, node.get_host ().c_str ());
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, hostname.c_str ());
     return ER_NET_PAGESERVER_CONNECTION;
   };
 
@@ -526,8 +528,7 @@ page_server::connect_to_leader_page_server (cubcomm::node &&node)
 
   srv_chn.set_channel_name ("PS_PS_catchup_comm");
 
-  auto comm_error_code = srv_chn.connect (node.get_host ().c_str (), node.get_port (),
-					  CMD_SERVER_SERVER_CONNECT);
+  auto comm_error_code = srv_chn.connect (hostname.c_str (), port, CMD_SERVER_SERVER_CONNECT);
   if (comm_error_code != css_error_code::NO_ERRORS)
     {
       return ps_conn_error_lambda ();
@@ -548,6 +549,8 @@ page_server::connect_to_leader_page_server (cubcomm::node &&node)
     {
       return ps_conn_error_lambda ();
     }
+
+  return NO_ERROR;
 }
 
 void
