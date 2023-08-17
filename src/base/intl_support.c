@@ -2749,11 +2749,12 @@ intl_identifier_casecmp_for_dblink (const char *dblink_col_name, const char *rem
   assert (str1 != NULL);
   assert (str2 != NULL);
 
-  str1_size = (*str1 == '\"') ? strlen (str1) - 2 : strlen (str1);
+  str1_size = strlen (str1);
   str2_size = strlen (str2);
 
   if (*str1 == '\"')
     {
+      str1_size = str1_size - 2;
       str1 = str1 + 1;
     }
 
