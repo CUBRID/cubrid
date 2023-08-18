@@ -208,9 +208,10 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 		LSA_AS_ARGS (&catchup_lsa));
   if (port == -1)
     {
-      return; // TODO ATS is booting up, it's set after ATS recovery is implemented.
+      return; // TODO: It means that the ATS is booting up, it will be set properly after ATS recovery is implemented.
     }
 
+  // TODO: A thread will take the catch-up including establishing connection to avoid blocking ATS->PS reqeusts.
   m_ps.connect_to_leader_page_server (std::move (host), port);
 }
 
