@@ -514,7 +514,7 @@ page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
 		"A follower page server connected to this page server as a leader to catch up. Channel id: %s.\n",
 		channel_id.c_str ());
 
-  // TODO add a connection_handler for this will be registered
+  // TODO Create a connection_handler for this.
 }
 
 int
