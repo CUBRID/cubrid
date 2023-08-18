@@ -5231,6 +5231,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     {
       /* this can not be reached, something wrong */
       sprintf (cci_error.err_msg, "unknown error: cannot fetch the column info from remote server");
+      err = ER_FAILED;
       goto set_parser_error;
     }
 
