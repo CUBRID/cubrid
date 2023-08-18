@@ -485,24 +485,23 @@ tran_server::connection_handler::set_connection (cubcomm::channel &&chn)
   // TODO: to reduce contention as much as possible, should be equal to the maximum number
   // of active transactions that the system allows (PRM_ID_CSS_MAX_CLIENTS) + 1
 
-  auto error_handler = std::bind (&tran_server::connection_handler::default_error_handler, this,
-				  std::placeholders::_1, std::placeholders::_2);
-  auto recv_error_handler = [this] (css_error_code err)
-  {
-    disconnect_async (false);
-  };
+  auto send_error_handler = std::bind (&tran_server::connection_handler::send_error_handler, this,
+				       std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = std::bind (&tran_server::connection_handler::recv_error_handler, this,
+				       std::placeholders::_1);
 
   auto lockg_conn = std::lock_guard<std::shared_mutex> { m_conn_mtx };
 
   assert (m_conn == nullptr);
   m_conn.reset (new page_server_conn_t (std::move (chn), get_request_handlers (), tran_to_page_request::RESPOND,
-					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (error_handler), recv_error_handler));
+					page_to_tran_request::RESPOND, RESPONSE_PARTITIONING_SIZE, std::move (send_error_handler),
+					std::move (recv_error_handler)));
 
   m_conn->start ();
 }
 
 void
-tran_server::connection_handler::default_error_handler (css_error_code error_code, bool &abort_further_processing)
+tran_server::connection_handler::send_error_handler (css_error_code error_code, bool &abort_further_processing)
 {
   abort_further_processing = false;
 
@@ -511,16 +510,25 @@ tran_server::connection_handler::default_error_handler (css_error_code error_cod
     {
       abort_further_processing = true;
       er_log_debug (ARG_FILE_LINE,
-		    "default_error_handler: an abnormal disconnection has been detected. channel id: %s.\n", get_channel_id ().c_str ());
+		    "send_error_handler: an abnormal disconnection has been detected. channel id: %s.\n", get_channel_id ().c_str ());
 
       constexpr auto with_disc_msg = false;
       disconnect_async (with_disc_msg);
     }
   else
     {
-      er_log_debug (ARG_FILE_LINE, "default_error_handler: error code: %d, channel id: %s.\n", error_code,
+      er_log_debug (ARG_FILE_LINE, "send_error_handler: error code: %d, channel id: %s.\n", error_code,
 		    get_channel_id ().c_str ());
     }
+}
+
+void
+tran_server::connection_handler::recv_error_handler (css_error_code error_code)
+{
+  constexpr auto with_disc_msg = false;
+  disconnect_async (with_disc_msg);
+  er_log_debug (ARG_FILE_LINE,
+		"recv_error_handler: an abnormal disconnection has been detected. channel id: %s.\n", get_channel_id ().c_str ());
 }
 
 tran_server::connection_handler::~connection_handler ()
