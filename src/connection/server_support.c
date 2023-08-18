@@ -2654,6 +2654,7 @@ css_process_server_server_connect (SOCKET master_fd)
         }
       // *INDENT-ON*
       ps_Gl->set_follower_page_server_connection (std::move (chn));
+      break;
     default:
       assert (false);
     }
