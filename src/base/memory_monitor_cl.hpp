@@ -33,5 +33,5 @@ constexpr char module_names[MMON_MODULE_LAST + 1][DB_MAX_IDENTIFIER_LENGTH] =
   "all"
 };
 
-int mmon_convert_module_name_to_index (char *module_name);
+int mmon_convert_module_name_to_index (const char *module_name);
 #endif // _MEMORY_MONITOR_CL_HPP_

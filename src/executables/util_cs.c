@@ -4547,7 +4547,7 @@ int
 memmon (UTIL_FUNCTION_ARG * arg)
 {
 #if defined(CS_MODE)
-  const int DEFAULT_OPTION_PRINT_CNT = 5;
+  constexpr int DEFAULT_OPTION_PRINT_CNT = 5;
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
@@ -4556,7 +4556,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
   bool print_default = false;
   int tran_count = INT_MAX, module_count;
   int module_index = -1;
-  int error_code;
+  int error_code = NO_ERROR;
   MMON_SERVER_INFO server_info;
   // *INDENT-OFF*
   std::vector<MMON_MODULE_INFO> module_info;
@@ -4670,13 +4670,17 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   if (print_module)
     {
-      error_code = mmon_get_module_info (module_index, module_info);
-      if (error_code != NO_ERROR)
+      /* XXX: This condition can be removed when a module is registered */
+      if (MMON_MODULE_LAST != 0)
 	{
-	  goto error_exit;
-	}
+	  error_code = mmon_get_module_info (module_index, module_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 
-      // TODO: mmon_print_module_info (module_info);
+	  // TODO: mmon_print_module_info (module_info);
+	}
     }
   else
     {
@@ -4697,14 +4701,17 @@ memmon (UTIL_FUNCTION_ARG * arg)
 	  /* code protection. unreachable. */
 	  assert (false);
 	}
-
-      error_code = mmon_get_module_info_summary (module_count, module_info);
-      if (error_code != NO_ERROR)
+      /* XXX: This condition can be removed when a module is registered */
+      if (MMON_MODULE_LAST != 0)
 	{
-	  goto error_exit;
-	}
+	  error_code = mmon_get_module_info_summary (module_count, module_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 
-      // TODO: mmon_print_module_info_summary (module_info);
+	  // TODO: mmon_print_module_info_summary (module_info);
+	}
       print_transaction = true;
     }
 

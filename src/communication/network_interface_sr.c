@@ -7347,12 +7347,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   if (module_index == 0)
     {
-      /* If there is no modules that registered in memory monitoring manager,
-       * just return */
-      if (MMON_MODULE_LAST == 0)
-	{
-	  goto reply_send;
-	}
       module_info.resize (MMON_MODULE_LAST);
     }
   else
@@ -7437,7 +7431,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       // *INDENT-ON*
     }
 
-reply_send:
   if (error != NO_ERROR)
     {
       ptr = or_pack_int (reply, 0);
@@ -7476,13 +7469,6 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   int module_count;
 
   ptr = or_unpack_int (request, &module_count);
-
-  /* If there is no modules that registered in memory monitoring manager,
-   * just return */
-  if (MMON_MODULE_LAST == 0)
-    {
-      goto reply_send;
-    }
 
   module_info.resize (MMON_MODULE_LAST);
 
@@ -7525,7 +7511,6 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
       // *INDENT-ON*
     }
 
-reply_send:
   if (error != NO_ERROR)
     {
       ptr = or_pack_int (reply, 0);
