@@ -526,7 +526,6 @@ page_server::connect_to_leader_page_server (std::string &&hostname, int32_t port
     return ER_NET_PAGESERVER_CONNECTION;
   };
 
-  // connect to leader page server
   constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
   cubcomm::server_channel srv_chn (m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
 
