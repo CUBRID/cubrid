@@ -659,23 +659,11 @@ tran_server::connection_handler::send_receive (tran_to_page_request reqid, std::
 
   // state::CONNECTED guarantees that the internal m_node is not nullptr.
   auto slock_conn = std::shared_lock<std::shared_mutex> { m_conn_mtx };
-  slock_state.unlock (); // to allow disconnect_async ()
+  slock_state.unlock (); // to allow to disconnect while waiting for its reply
 
   const css_error_code error_code = m_conn->send_recv (reqid, std::move (payload_in), payload_out);
   if (error_code != NO_ERRORS)
     {
-      if (error_code == CONNECTION_CLOSED)
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"send_receive: an abnormal disconnection has been detected. error code: %d, channel id: %s.\n", error_code,
-			get_channel_id ().c_str ());
-
-	  slock_conn.unlock (); /* disconnect_async requires that m_conn_mtx and m_state_mtx are unlocked */
-
-	  constexpr auto with_disc_msg = false;
-	  disconnect_async (with_disc_msg);
-	}
-
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
       return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
     }
