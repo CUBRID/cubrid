@@ -24,7 +24,7 @@
 
 #include "memory_monitor_cl.hpp"
 
-int mmon_convert_module_name_to_index (char *module_name)
+int mmon_convert_module_name_to_index (const char *module_name)
 {
   for (int i = 0; i < MMON_MODULE_LAST; i++)
     {
