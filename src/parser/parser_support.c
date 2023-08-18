@@ -11607,6 +11607,8 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *list = NULL;		/* for insert select list */
   PT_NODE *spec, *into_spec = NULL, *upd_spec = NULL, *server;
 
+  PARSER_VARCHAR *comment, *dml;
+
   switch (node->node_type)
     {
     case PT_INSERT:
@@ -11721,10 +11723,32 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   save_custom_print = parser->custom_print;
 
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK INSERT */ ", 20);
+      break;
+    case PT_UPDATE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK UPDATE */ ", 20);
+      break;
+    case PT_DELETE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK DELETE */ ", 20);
+      break;
+    case PT_MERGE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK MERGE */ ", 19);
+      break;
+    default:
+      /* must not reach here */
+      assert (false);
+    }
+
   parser->custom_print |=
     PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
     PT_PRINT_SUPPRESS_FOR_DBLINK;
-  val->info.value.data_value.str = pt_print_bytes (parser, node);
+
+  dml = pt_print_bytes (parser, node);
+
+  val->info.value.data_value.str = pt_append_bytes (parser, comment, (const char *) dml->bytes, dml->length);
 
   parser->custom_print = save_custom_print;
 
