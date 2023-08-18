@@ -2752,7 +2752,7 @@ intl_identifier_casecmp_for_dblink (const char *dblink_col_name, const char *rem
   str1_size = strlen (str1);
   str2_size = strlen (str2);
 
-  if (*str1 == '\"')
+  if (*str1 == '\"' || *str1 == '`')
     {
       str1_size = str1_size - 2;
       str1 = str1 + 1;
