@@ -5255,7 +5255,7 @@ set_parser_error:
 
   if (conn >= 0)
     {
-      if ((cci_disconnect (conn, &cci_error)) < 0 && cci_error.err_msg[0] == '\0')
+      if ((cci_disconnect (conn, &cci_error)) < 0)
 	{
 	  cci_get_err_msg (err, cci_error.err_msg, sizeof (cci_error.err_msg));
 	}
