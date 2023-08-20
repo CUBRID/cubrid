@@ -106,6 +106,8 @@ struct log_prior_node
   int rlength;
   char *rdata;
 
+  std::string *serialized_message;
+
   LOG_PRIOR_NODE *next;
 };
 

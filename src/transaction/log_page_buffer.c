@@ -3446,10 +3446,28 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list, con
       //    server directly (see page server's handler for incoming log prior messages)
       log_Gl.get_log_prior_sender ().send_list (list, unsent_lsa);
     }
-//  else if (is_page_server ())
-//    {
-//      log_Gl.get_log_prior_sender ().dispatch_up_to_start_lsa (list->start_lsa);
-//    }
+  else if (is_page_server ())
+    {
+      // TODO:
+      //  - if, for one of the PTS log prior sinks a m_start_dispatch_lsa is non-null
+      //  - interate and dispatch unpackaged lists up to that lsa and only for that PTS
+      //  - in order to ensure continuity of log prior lists in the PTS
+      //log_Gl.get_log_prior_sender ().dispatch_up_to_start_lsa (list->start_lsa);
+
+      // iterate and re-dispatch already serialized messages
+      // this avoids having to re-serialize what the page server already receives
+      // serialized from the active transaction server
+      LOG_PRIOR_NODE *prior_node_p;
+      for (prior_node_p = list; prior_node_p->next != nullptr; prior_node_p = prior_node_p->next)
+	{
+	  if (prior_node_p->serialized_message != nullptr)
+	    {
+	      log_Gl.get_log_prior_sender ().send_serialized_message (std::move (*prior_node_p->serialized_message));
+	      delete prior_node_p->serialized_message;
+	      prior_node_p->serialized_message = nullptr;
+	    }
+	}
+    }
 #endif /* SERVER_MODE */
 
   /* append log buffer */

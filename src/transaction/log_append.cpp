@@ -75,6 +75,8 @@ static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR
 static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
 static bool log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length);
+static LOG_PRIOR_NODE *prior_lsa_alloc ();
+
 
 log_data_addr::log_data_addr (const VFID *vfid_arg, PAGE_PTR pgptr_arg, PGLENGTH offset_arg)
   : vfid (vfid_arg)
@@ -316,6 +318,37 @@ log_append_final_zip ()
 #endif
 }
 
+static LOG_PRIOR_NODE *
+prior_lsa_alloc ()
+{
+  LOG_PRIOR_NODE *node;
+
+  node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
+  if (node == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_PRIOR_NODE));
+      return NULL;
+    }
+
+  node->log_header.type = LOG_SMALLER_LOGREC_TYPE;
+  node->start_lsa = NULL_LSA;
+
+  node->tde_encrypted = false;
+
+  node->data_header_length = 0;
+  node->data_header = nullptr;
+  node->ulength = 0;
+  node->udata = nullptr;
+  node->rlength = 0;
+  node->rdata = nullptr;
+
+  node->serialized_message = nullptr;
+
+  node->next = nullptr;
+
+  return node;
+}
+
 /*
  * prior_lsa_alloc_and_copy_data -
  *
@@ -336,24 +369,33 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
   LOG_PRIOR_NODE *node;
   int error_code = NO_ERROR;
 
-  node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
-  if (node == NULL)
+//  node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
+//  if (node == NULL)
+//    {
+//      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_PRIOR_NODE));
+//      return NULL;
+//    }
+
+//  node->log_header.type = rec_type;
+
+//  node->tde_encrypted = false;
+
+//  node->data_header_length = 0;
+//  node->data_header = NULL;
+//  node->ulength = 0;
+//  node->udata = NULL;
+//  node->rlength = 0;
+//  node->rdata = NULL;
+//  node->serialized_message = nullptr;
+//  node->next = NULL;
+  node = prior_lsa_alloc ();
+  if (node == nullptr)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_PRIOR_NODE));
-      return NULL;
+      ASSERT_ERROR ();
+      return nullptr;
     }
 
   node->log_header.type = rec_type;
-
-  node->tde_encrypted = false;
-
-  node->data_header_length = 0;
-  node->data_header = NULL;
-  node->ulength = 0;
-  node->udata = NULL;
-  node->rlength = 0;
-  node->rdata = NULL;
-  node->next = NULL;
 
   switch (rec_type)
     {
@@ -473,24 +515,33 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
   LOG_PRIOR_NODE *node;
   int error = NO_ERROR;
 
-  node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
-  if (node == NULL)
+//  node = (LOG_PRIOR_NODE *) malloc (sizeof (LOG_PRIOR_NODE));
+//  if (node == NULL)
+//    {
+//      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_PRIOR_NODE));
+//      return NULL;
+//    }
+
+//  node->log_header.type = rec_type;
+
+//  node->tde_encrypted = false;
+
+//  node->data_header_length = 0;
+//  node->data_header = NULL;
+//  node->ulength = 0;
+//  node->udata = NULL;
+//  node->rlength = 0;
+//  node->rdata = NULL;
+//  node->serialized_message = nullptr;
+//  node->next = NULL;
+  node = prior_lsa_alloc ();
+  if (node == nullptr)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_PRIOR_NODE));
-      return NULL;
+      ASSERT_ERROR ();
+      return nullptr;
     }
 
   node->log_header.type = rec_type;
-
-  node->tde_encrypted = false;
-
-  node->data_header_length = 0;
-  node->data_header = NULL;
-  node->ulength = 0;
-  node->udata = NULL;
-  node->rlength = 0;
-  node->rdata = NULL;
-  node->next = NULL;
 
   switch (rec_type)
     {
@@ -1893,7 +1944,7 @@ prior_list_deserialize (const std::string &str, log_prior_node *&head, log_prior
 
   while (ptr < str.c_str () + str.size ())
     {
-      log_prior_node *nodep = (log_prior_node *) malloc (sizeof (log_prior_node));
+      log_prior_node *const nodep = prior_lsa_alloc (); // (log_prior_node *) malloc (sizeof (log_prior_node));
       assert (nodep != nullptr);
       ptr = prior_node_deserialize (ptr, *nodep);
 
