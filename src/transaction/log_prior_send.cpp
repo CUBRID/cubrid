@@ -195,28 +195,31 @@ namespace cublog
 		  }
 
 		sink_hook_entry_t &sink_hook_entry = m_sink_hooks[index];
-		//const sink_hook_t *const sink_p = sink_hook_entry.m_sink_hook_ptr;
-		if (sink_hook_entry.m_start_dispatch_lsa.is_null ())
-		  {
-		    // active transaction server dispatch, regular page server dispatch
-		    (*sink_hook_entry.m_sink_hook_ptr) (std::string ((*iter).m_message));
-		  }
-		else if (message_info.m_start_lsa < sink_hook_entry.m_start_dispatch_lsa)
-		  {
-		    // message will not be dispatched
-		  }
-		else if (message_info.m_start_lsa == sink_hook_entry.m_start_dispatch_lsa)
-		  {
-		    (*sink_hook_entry.m_sink_hook_ptr) (std::string ((*iter).m_message));
-		    sink_hook_entry.m_start_dispatch_lsa.set_null ();
-		  }
-		else
-		  {
-		    assert_release (false);
-		    //assert_release (!message_info.m_start_lsa.is_null ());
-		    //assert_release (!sink_hook_entry.m_start_dispatch_lsa.is_null());
-		    //assert_release (message_info.m_start_lsa < sink_hook_entry.m_start_dispatch_lsa);
-		  }
+
+		const sink_hook_t *const sink_p = sink_hook_entry.m_sink_hook_ptr;
+		(*sink_p) (std::string (message_info.m_message));
+
+		//if (sink_hook_entry.m_start_dispatch_lsa.is_null ())
+		//  {
+		//    // active transaction server dispatch, regular page server dispatch
+		//    (*sink_hook_entry.m_sink_hook_ptr) (std::string ((*iter).m_message));
+		//  }
+		//else if (message_info.m_start_lsa < sink_hook_entry.m_start_dispatch_lsa)
+		//  {
+		//    // message will not be dispatched
+		//  }
+		//else if (message_info.m_start_lsa == sink_hook_entry.m_start_dispatch_lsa)
+		//  {
+		//    (*sink_hook_entry.m_sink_hook_ptr) (std::string ((*iter).m_message));
+		//    sink_hook_entry.m_start_dispatch_lsa.set_null ();
+		//  }
+		//else
+		//  {
+		//    assert_release (false);
+		//    //assert_release (!message_info.m_start_lsa.is_null ());
+		//    //assert_release (!sink_hook_entry.m_start_dispatch_lsa.is_null());
+		//    //assert_release (message_info.m_start_lsa < sink_hook_entry.m_start_dispatch_lsa);
+		//  }
 	      }
 	    // ..and optimize by "moving" the message into the last sink, because it is of no use afterwards
 	    if (m_sink_hooks.size () > 0)
@@ -229,24 +232,27 @@ namespace cublog
 		  }
 
 		sink_hook_entry_t &sink_hook_entry = m_sink_hooks[m_sink_hooks.size () - 1];
-		//const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1].m_sink_hook_ptr;
-		if (sink_hook_entry.m_start_dispatch_lsa.is_null ())
-		  {
-		    (*sink_hook_entry.m_sink_hook_ptr) (std::move ((*iter).m_message));
-		  }
-		else if (message_info.m_start_lsa < sink_hook_entry.m_start_dispatch_lsa)
-		  {
-		    // message will not be dispatched
-		  }
-		else if (message_info.m_start_lsa == sink_hook_entry.m_start_dispatch_lsa)
-		  {
-		    (*sink_hook_entry.m_sink_hook_ptr) (std::move ((*iter).m_message));
-		    sink_hook_entry.m_start_dispatch_lsa.set_null ();
-		  }
-		else
-		  {
-		    assert_release (false);
-		  }
+
+		const sink_hook_t *const sink_p = m_sink_hooks[m_sink_hooks.size () - 1].m_sink_hook_ptr;
+		(*sink_p) (std::move (message_info.m_message));
+
+		//if (sink_hook_entry.m_start_dispatch_lsa.is_null ())
+		//  {
+		//    (*sink_hook_entry.m_sink_hook_ptr) (std::move ((*iter).m_message));
+		//  }
+		//else if (message_info.m_start_lsa < sink_hook_entry.m_start_dispatch_lsa)
+		//  {
+		//    // message will not be dispatched
+		//  }
+		//else if (message_info.m_start_lsa == sink_hook_entry.m_start_dispatch_lsa)
+		//  {
+		//    (*sink_hook_entry.m_sink_hook_ptr) (std::move ((*iter).m_message));
+		//    sink_hook_entry.m_start_dispatch_lsa.set_null ();
+		//  }
+		//else
+		//  {
+		//    assert_release (false);
+		//  }
 	      }
 
 	    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
@@ -282,12 +288,12 @@ namespace cublog
   }
 
   LOG_LSA
-  prior_sender::add_sink (const LOG_LSA &start_dispatch_lsa, const sink_hook_t &fun)
+  prior_sender::add_sink (/*const LOG_LSA &start_dispatch_lsa,*/ const sink_hook_t &fun)
   {
     assert (fun != nullptr);
 
     std::unique_lock<std::mutex> ulock (m_sink_hooks_mutex);
-    m_sink_hooks.push_back ({ start_dispatch_lsa, &fun });
+    m_sink_hooks.push_back ({ /*start_dispatch_lsa,*/ &fun });
 
     return m_unsent_lsa;
   }
@@ -305,7 +311,7 @@ namespace cublog
       return (entry.m_sink_hook_ptr == &fun);
     });
     assert (find_it != m_sink_hooks.end ());
-    assert ((*find_it).m_start_dispatch_lsa.is_null ());
+    //assert ((*find_it).m_start_dispatch_lsa.is_null ());
     m_sink_hooks.erase (find_it);
   }
 

@@ -40,7 +40,7 @@ namespace cublog
       using sink_hook_t = std::function<void (std::string &&)>;
       struct sink_hook_entry_t
       {
-	LOG_LSA m_start_dispatch_lsa;
+	//LOG_LSA m_start_dispatch_lsa;
 	const sink_hook_t *m_sink_hook_ptr;
       };
 
@@ -60,7 +60,7 @@ namespace cublog
       void send_serialized_message (const LOG_LSA &start_lsa, std::string &&message);
 
       // add a hook for a new sink
-      LOG_LSA add_sink (const LOG_LSA &start_dispatch_lsa, const sink_hook_t &fun);
+      LOG_LSA add_sink (/*const LOG_LSA &start_dispatch_lsa,*/ const sink_hook_t &fun);
       // add a hook for a new sink
       void remove_sink (const sink_hook_t &fun);
       // reset only when prior_lsa is reset

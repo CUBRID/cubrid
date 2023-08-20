@@ -227,7 +227,7 @@ active_tran_server::connection_handler::on_connecting ()
   m_prior_sender_sink_hook_func = std::bind (&active_tran_server::connection_handler::prior_sender_sink_hook, this,
 				  std::placeholders::_1);
 
-  auto unsent_lsa = log_Gl.get_log_prior_sender ().add_sink (NULL_LSA, m_prior_sender_sink_hook_func);
+  auto unsent_lsa = log_Gl.get_log_prior_sender ().add_sink (/*NULL_LSA,*/ m_prior_sender_sink_hook_func);
 
   std::string hostname = "N/A";
   int32_t port = -1;

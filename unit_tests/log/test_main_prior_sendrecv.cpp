@@ -134,7 +134,7 @@ test_env::test_env (size_t receivers_count)
   for (const auto &sink : m_prior_sender_sinks)
     {
       // hooks sinks on the sender
-      m_sender.add_sink (NULL_LSA, sink);
+      m_sender.add_sink (/*NULL_LSA,*/ sink);
     }
 }
 
