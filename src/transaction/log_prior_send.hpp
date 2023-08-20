@@ -57,7 +57,7 @@ namespace cublog
     public:
       // send prior node list to all sinks
       void send_list (const log_prior_node *head, const LOG_LSA *unsent_lsa);
-      void send_serialized_message (const LOG_LSA &start_lsa, std::string &&message);
+      void send_serialized_message (/*const LOG_LSA &start_lsa,*/ std::string &&message);
 
       // add a hook for a new sink
       LOG_LSA add_sink (/*const LOG_LSA &start_dispatch_lsa,*/ const sink_hook_t &fun);
@@ -89,7 +89,7 @@ namespace cublog
     private:
       struct message_t
       {
-	LOG_LSA m_start_lsa;
+	//LOG_LSA m_start_lsa;
 	std::string m_message;
       };
       using message_container_t = std::deque<message_t>;

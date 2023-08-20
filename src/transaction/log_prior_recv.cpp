@@ -103,7 +103,7 @@ namespace cublog
 	    if (is_page_server ())
 	      {
 		log_Gl.get_log_prior_sender ().send_serialized_message (
-			list_head->start_lsa, std::move (backbuffer.front ()));
+			/*list_head->start_lsa,*/ std::move (backbuffer.front ()));
 		assert_release (backbuffer.front ().empty ());
 	      }
 

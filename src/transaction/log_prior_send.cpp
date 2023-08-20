@@ -91,7 +91,7 @@ namespace cublog
 
     {
       std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
-      m_messages.push_back ({ head->start_lsa, std::move (message) });
+      m_messages.push_back ({ /*head->start_lsa,*/ std::move (message) });
 
       // TODO: m_sink_hooks_mutex locked?
       // TODO: setting this is actually out of sink with what is/has been sent over to the sinks; because
@@ -102,7 +102,7 @@ namespace cublog
   }
 
   void
-  prior_sender::send_serialized_message (const LOG_LSA &start_lsa, std::string &&message)
+  prior_sender::send_serialized_message (/*const LOG_LSA &start_lsa,*/ std::string &&message)
   {
     // TODO: assert is page server
     // TODO: on Page Server, assert (m_unsent_lsa.is_null ());
@@ -116,7 +116,7 @@ namespace cublog
 
     {
       std::lock_guard<std::mutex> lockg { m_messages_shutdown_mtx };
-      m_messages.push_back ({ start_lsa, std::move (message) });
+      m_messages.push_back ({ /*start_lsa,*/ std::move (message) });
     }
     m_messages_cv.notify_one ();
   }
