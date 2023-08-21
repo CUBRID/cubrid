@@ -15940,7 +15940,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_INTEGER:
     case PT_TYPE_BIGINT:
     case PT_TYPE_SMALLINT:
-      if ((p->info.value.text != NULL) && !(parser->custom_print & PT_SUPPRESS_BIGINT_CAST))
+      if (p->info.value.text != NULL
+	  && !(parser->custom_print & (PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_BIGINT_CAST)))
 	{
 	  r = p->info.value.text;
 	}
@@ -15993,10 +15994,13 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_DATETIME:
     case PT_TYPE_DATETIMETZ:
     case PT_TYPE_DATETIMELTZ:
-      if (p->info.value.text)
+      if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
-	  q = pt_append_nulstring (parser, q, p->info.value.text);
-	  break;
+	  if (p->info.value.text)
+	    {
+	      q = pt_append_nulstring (parser, q, p->info.value.text);
+	      break;
+	    }
 	}
       r = (char *) p->info.value.data_value.str->bytes;
 
@@ -16037,17 +16041,20 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_CHAR:
     case PT_TYPE_NCHAR:
     case PT_TYPE_BIT:
-      if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
+      if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
-	  if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+	  if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
 	    {
-	      parser->flag.long_string_skipped = 1;
+	      if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+		{
+		  parser->flag.long_string_skipped = 1;
+		  break;
+		}
+
+	      q = pt_append_nulstring (parser, q, p->info.value.text);
+
 	      break;
 	    }
-
-	  q = pt_append_nulstring (parser, q, p->info.value.text);
-
-	  break;
 	}
       r1 = p->info.value.data_value.str;
       if (parser->flag.dont_prt_long_string)
@@ -16111,17 +16118,20 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_VARCHAR:	/* have to check for embedded quotes */
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_VARBIT:
-      if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
+      if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
-	  if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+	  if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
 	    {
-	      parser->flag.long_string_skipped = 1;
+	      if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+		{
+		  parser->flag.long_string_skipped = 1;
+		  break;
+		}
+
+	      q = pt_append_nulstring (parser, q, p->info.value.text);
+
 	      break;
 	    }
-
-	  q = pt_append_nulstring (parser, q, p->info.value.text);
-
-	  break;
 	}
       r1 = p->info.value.data_value.str;
       if (parser->flag.dont_prt_long_string)

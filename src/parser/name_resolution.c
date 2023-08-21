@@ -5193,14 +5193,14 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       rmt_tbl_cols->set_select_star ();
 
       /* preparing the query to get the column info */
-      var_buf = pt_append_nulstring (parser, var_buf, "SELECT * FROM ");
-      var_buf = pt_append_nulstring (parser, var_buf, table_name);
-      sql = (char *) var_buf->bytes;
+      sql = pt_append_string (parser, "/* DBLINK SELECT */ SELECT * FROM ", table_name);
     }
   else
     {
       /* for collecting column info from "SELECT sel-list form dblink(server, 'SELECT ...') */
-      sql = (char *) dblink_table->qstr->info.value.data_value.str->bytes;
+      sql =
+	pt_append_string (parser, "/* DBLINK SELECT */ ",
+			  (char *) dblink_table->qstr->info.value.data_value.str->bytes);
     }
 
   find = strstr (url, ":?");
@@ -5245,22 +5245,6 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   err = NO_ERROR;
 
 set_parser_error:
-  if (req >= 0)
-    {
-      if ((err = cci_close_req_handle (req)) < 0)
-	{
-	  cci_get_err_msg (err, cci_error.err_msg, sizeof (cci_error.err_msg));
-	}
-    }
-
-  if (err >= 0 && conn >= 0)
-    {
-      if ((err = cci_disconnect (conn, &cci_error)) < 0)
-	{
-	  cci_get_err_msg (err, cci_error.err_msg, sizeof (cci_error.err_msg));
-	}
-    }
-
   if (err < 0)
     {
       if (cci_error.err_msg[0] == '\0')
@@ -5280,6 +5264,16 @@ set_parser_error:
 		      "Failed to get column information for query [%s] on remote [%s]\n%s",
 		      sql, server_name, cci_error.err_msg);
 	}
+    }
+
+  if (req >= 0)
+    {
+      cci_close_req_handle (req);
+    }
+
+  if (conn >= 0)
+    {
+      cci_disconnect (conn, &cci_error);
     }
 
   return err;
