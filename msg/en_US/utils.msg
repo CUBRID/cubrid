@@ -1330,5 +1330,4 @@ valid options:\n\
                                   WARNING: This option has to be used with '-t(--transaction)' option.\n\
     -m, --module=TYPE             display detailed memory usage information of the specified TYPE.\n\
                                   TYPE of modules\n\
-                                  -1      all modules\n\
-                                   0      heap module\n
+                                  -1      all modules\n
