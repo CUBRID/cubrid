@@ -1439,7 +1439,7 @@ $ LOADDB
 
 
 1355 파일 "%1$s"을(를) 찾을 수 없습니다.
-1356 DBLink 쿼리에 Statement type 확인을 위한 comment가 없습니다.
+1356 DBLink 쿼리에 Hint가 없거나, Statement type 이 잘못되었습니다. : %1$s
 
 1357 마지막 에러
 

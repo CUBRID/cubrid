@@ -1439,7 +1439,7 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 
 
 1355 Le fichier "%1$s" est introuvable.
-1356 Il n'y a pas de commentaire pour vérifier le type de déclaration dans la requête DBLink.
+1356 Il n'y a pas d'indication dans la requête DBLink ou le type d'instruction est incorrect. %1$s
 
 1357 Dernière erreur
 

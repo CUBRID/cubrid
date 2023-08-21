@@ -1439,7 +1439,7 @@ $ LOADDB
 
 
 1355 Datei "%1$s" wurde nicht gefunden.
-1356 Es gibt keinen Kommentar zur Überprüfung des Anweisungstyps in der DBLink-Abfrage.
+1356 Die DBLink-Abfrage enthält keinen Hinweis oder der Anweisungstyp ist falsch. %1$s
 
 1357 Letzter Fehler
 

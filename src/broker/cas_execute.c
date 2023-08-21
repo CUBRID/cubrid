@@ -93,6 +93,7 @@
 
 #define FK_INFO_SORT_BY_PKTABLE_NAME	1
 #define FK_INFO_SORT_BY_FKTABLE_NAME	2
+#define DBLINK_HINT                     "DBLINK"
 
 typedef enum
 {
@@ -1122,7 +1123,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
   srv_handle->stmt_type = (int) ux_cgw_get_stmt_type (sql_stmt);
-  if (srv_handle->stmt_type == CUBRID_STMT_NONE)
+  if (srv_handle->stmt_type == CUBRID_STMT_NONE || srv_handle->stmt_type == CUBRID_MAX_STMT_TYPE)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto prepare_error;
@@ -11771,29 +11772,64 @@ ux_cgw_get_stmt_type (char *stmt)
 {
   char stmt_type = CUBRID_STMT_NONE;
   const char *comment_start = strstr (stmt, "/*");
-  if (comment_start)
+  const char *comment_end = NULL;
+
+  while (comment_start)
     {
       const char *comment_end = strstr (comment_start, "*/");
       if (comment_end)
 	{
-	  char type_name[30] = { 0, };
-	  const char *dblink_start = strstr (comment_start, "DBLINK");
+	  char *comment_str = NULL;
+	  const char *dblink_start = NULL;
+
+	  comment_str = (char *) MALLOC ((comment_end - comment_start) + 1);
+	  if (comment_str == NULL)
+	    {
+	      ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	      return CUBRID_STMT_NONE;
+	    }
+
+	  strncpy (comment_str, comment_start + 2, comment_end - comment_start - 2);
+	  comment_str[comment_end - comment_start - 2] = '\0';
+
+	  dblink_start = strstr (comment_str, DBLINK_HINT);
 	  if (dblink_start)
 	    {
-	      strncpy (type_name, dblink_start + strlen ("DBLINK"), comment_end - dblink_start - strlen ("DBLINK"));
-	      type_name[comment_end - dblink_start - strlen ("DBLINK")] = '\0';
+	      char *type_name = NULL;
+	      size_t dblink_hint_len = 0;
+
+	      dblink_hint_len = (strlen (dblink_start) - strlen (DBLINK_HINT));
+
+	      type_name = (char *) MALLOC (dblink_hint_len + 1);
+	      if (type_name == NULL)
+		{
+		  ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+		  FREE_MEM (comment_str);
+		  return CUBRID_STMT_NONE;
+		}
+
+	      strncpy (type_name, dblink_start + strlen (DBLINK_HINT), dblink_hint_len);
+	      type_name[dblink_hint_len] = '\0';
 
 	      ut_trim (type_name);
 	      ut_tolower (type_name);
 
 	      stmt_type = get_stmt_type (type_name);
+
+	      FREE_MEM (comment_str);
+	      FREE_MEM (type_name);
+	      break;
 	    }
+
+	  FREE_MEM (comment_str);
+
+	  comment_start = strstr (comment_end, "/*");
 	}
     }
 
-  if (stmt_type == CUBRID_STMT_NONE)
+  if (stmt_type == CUBRID_STMT_NONE || stmt_type == CUBRID_MAX_STMT_TYPE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_NO_STMT_TYPE_COMMENT, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_DBLINT_HINT, 1, stmt);
     }
   return stmt_type;
 }

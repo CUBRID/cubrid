@@ -1439,7 +1439,7 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 
 
 1355 "%1$s" dosyası bulunamadı.
-1356 DBLink sorgusunda Statment tipini kontrol etmek için yorum yok.
+1356 DBLink sorgusunda ipucu yok veya ifade türü yanlış. %1$s
 
 1357 Son Hata
 

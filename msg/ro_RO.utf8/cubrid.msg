@@ -1439,7 +1439,7 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 
 1355 Fișierul "%1$s" nu a fost găsit.
-1356 Nu există niciun comentariu pentru verificarea tipului de declarație în interogarea DBLink.
+1356 Nu există niciun indiciu în interogarea DBLink sau tipul de instrucțiune este incorect. %1$s
 
 1357 Ultima eroare
 

@@ -1446,7 +1446,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 
 1355 File "%1$s" was not found.
-1356 There is no comment for checking the Statment type in the DBLink query.
+1356 There is no hint in the DBLink query, or the statement type is incorrect. %1$s
 
 1357 Last Error
 

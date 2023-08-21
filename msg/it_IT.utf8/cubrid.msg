@@ -1439,7 +1439,7 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 
 1355 Il file "%1$s" non è stato trovato.
-1356 Non è presente alcun commento per il controllo del tipo di istruzione nella query DBLink.
+1356 Non c'è alcun suggerimento nella query DBLink o il tipo di istruzione non è corretto. %1$s
 
 1357 Ultimo errore
 
