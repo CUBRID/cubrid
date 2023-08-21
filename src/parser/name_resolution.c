@@ -5167,7 +5167,7 @@ static int
 pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_REMOTE_TBL_COLS * rmt_tbl_cols)
 {
   int req = -1, conn = -1, col_cnt, err = ER_DBLINK, i;
-  T_CCI_ERROR cci_error = { 0, };
+  T_CCI_ERROR cci_error;
   T_CCI_COL_INFO *col_info;
   T_CCI_CUBRID_STMT stmt_type;
 
@@ -5245,22 +5245,6 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   err = NO_ERROR;
 
 set_parser_error:
-  if (req >= 0)
-    {
-      if ((cci_close_req_handle (req)) < 0 && cci_error.err_msg[0] == '\0')
-	{
-	  cci_get_err_msg (err, cci_error.err_msg, sizeof (cci_error.err_msg));
-	}
-    }
-
-  if (conn >= 0)
-    {
-      if ((cci_disconnect (conn, &cci_error)) < 0)
-	{
-	  cci_get_err_msg (err, cci_error.err_msg, sizeof (cci_error.err_msg));
-	}
-    }
-
   if (err < 0)
     {
       if (cci_error.err_msg[0] == '\0')
@@ -5280,6 +5264,16 @@ set_parser_error:
 		      "Failed to get column information for query [%s] on remote [%s]\n%s",
 		      sql, server_name, cci_error.err_msg);
 	}
+    }
+
+  if (req >= 0)
+    {
+      cci_close_req_handle (req);
+    }
+
+  if (conn >= 0)
+    {
+      cci_disconnect (conn, &cci_error);
     }
 
   return err;
