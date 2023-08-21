@@ -1029,7 +1029,6 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
-      output_ctx ("\n");
       do
 	{
 	  for (i = 0; i < SYNONYM_VALUE_INDEX_MAX; i++)
@@ -1126,6 +1125,8 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 		  continue;
 		}
 	    }
+
+	  output_ctx ("\n");
 
 	  if (is_public == 1)
 	    {
