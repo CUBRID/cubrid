@@ -4581,7 +4581,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   /* input error check phase */
 
-  if (module_index >= -1 && module_index < MMON_MODULE_LAST)
+  if (module_index >= MMON_MODULE_ALL && module_index < MMON_MODULE_LAST)
     {
       print_module = true;
     }
@@ -4622,7 +4622,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (module_index < -1 || module_index >= MMON_MODULE_LAST)
+  if (module_index < MMON_MODULE_ALL || module_index >= MMON_MODULE_LAST)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),

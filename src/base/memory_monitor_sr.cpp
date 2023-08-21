@@ -460,7 +460,7 @@ namespace cubperf
 
   void memory_monitor::aggregater::get_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const
   {
-    if (module_index == -1)
+    if (module_index == MMON_MODULE_ALL)
       {
 	// aggregate all detail memory information of modules
 	for (int idx = 0; idx < MMON_MODULE_LAST; idx++)
@@ -574,7 +574,7 @@ namespace cubperf
 
   void memory_monitor::aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const
   {
-    // If utility module index == -1, it means show all detailed info of module.
+    // If utility module index == MMON_MODULE_ALL, it means show all detailed info of module.
     m_aggregater.get_module_info (module_index, info);
   }
 
@@ -672,7 +672,7 @@ void mmon_aggregate_server_info (MMON_SERVER_INFO &info)
 void mmon_aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info)
 {
   assert (mmon_Gl != nullptr);
-  assert (module_index < (int)MMON_MODULE_LAST && module_index >= -1);
+  assert (module_index < (int)MMON_MODULE_LAST && module_index >= (int)MMON_MODULE_ALL);
 
   mmon_Gl->aggregate_module_info (module_index, info);
 }

@@ -7345,7 +7345,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_unpack_int (request, &module_index);
 
-  if (module_index == -1)
+  if (module_index == MMON_MODULE_ALL)
     {
       module_info.resize (MMON_MODULE_LAST);
     }
@@ -7564,10 +7564,6 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   // Size of transaction id (OR_INT_SIZE)
   // and current memory usage (OR_INT64_SIZE)
   size += ((OR_INT_SIZE + OR_INT64_SIZE) * info.num_tran);
-  if (size == 0)
-    {
-      goto reply_send;
-    }
 
   /* 2) allocate buffer */
   buffer = (char *) db_private_alloc (thread_p, size);
@@ -7592,7 +7588,6 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       // *INDENT-ON*
     }
 
-reply_send:
   if (error != NO_ERROR)
     {
       ptr = or_pack_int (reply, 0);

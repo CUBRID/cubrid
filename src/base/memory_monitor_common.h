@@ -29,7 +29,7 @@
 
 typedef enum mmon_module_id
 {
-  //MMON_MODULE_HEAP = 1,
+  MMON_MODULE_ALL = -1,
   MMON_MODULE_LAST
 } MMON_MODULE_ID;
 
