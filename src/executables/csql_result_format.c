@@ -1352,16 +1352,31 @@ conv_double_to_string (char *double_str, int *length)
 
   if (exp_num > 0)
     {
-      memcpy (sp, double_str, offset = (int) (dot - double_str));
-      memcpy (sp + offset, dot + 1, p = (int) (exp - dot) - 1);
-      memset (sp + offset + p, '0', exp_num - (int) (exp - dot) + 1);
+      if (dot)
+	{
+          memcpy (sp, double_str, offset = (int) (dot - double_str));
+          memcpy (sp + offset, dot + 1, p = (int) (exp - dot) - 1);
+          memset (sp + offset + p, '0', exp_num - (int) (exp - dot) + 1);
+	}
+      else
+	{
+          memcpy (sp, double_str, p = (int) (exp - double_str));
+          memset (sp + p, '0', exp_num);
+	}
     }
   else
     {
       exp_num = -exp_num;
       memset (sp + 2, '0', offset = exp_num - 1);
-      memcpy (sp + 2 + offset, double_str, p = (int) (dot - double_str));
-      memcpy (sp + 2 + offset + p, dot + 1, (int) (exp - dot) - 1);
+      if (dot)
+	{
+          memcpy (sp + 2 + offset, double_str, p = (int) (dot - double_str));
+          memcpy (sp + 2 + offset + p, dot + 1, (int) (exp - dot) - 1);
+	}
+      else
+	{
+	  memcpy (sp + 2 + offset, double_str, (int) (exp - double_str));
+	}
     }
 
   *length = (sign < 0) ? strlen (return_str) : strlen (return_str + 1);
