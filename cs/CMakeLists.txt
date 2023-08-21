@@ -267,6 +267,9 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/schema_class_truncator.cpp
   ${OBJECT_DIR}/schema_manager.c
   ${OBJECT_DIR}/schema_system_catalog.cpp
+  ${OBJECT_DIR}/schema_system_catalog_builder.cpp
+  ${OBJECT_DIR}/schema_system_catalog_definition.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install.cpp
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c

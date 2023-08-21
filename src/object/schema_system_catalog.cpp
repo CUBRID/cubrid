@@ -18,6 +18,8 @@
 
 #include "schema_system_catalog.hpp"
 
+#include "db.h"
+#include "dbtype_function.h"
 #include "identifier_store.hpp"
 #include "oid.h"
 #include "transform.h"
