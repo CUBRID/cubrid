@@ -3083,7 +3083,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
   if (btree_glean_root_header_info
-      (thread_p, root_header, &BTS->btid_int, BTS->btid_int.key_type == NULL ? true : false) != NO_ERROR)
+      (thread_p, root_header, &BTS->btid_int, (BTS->btid_int.key_type == NULL)) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, Root);
       goto exit_on_error;
@@ -7730,9 +7730,42 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 
       if (scan_id->type == S_HEAP_SCAN)
 	{
-	  if (scan_id->scan_stats.agg_optimized_scan)
+	  if (scan_id->scan_stats.agl)
 	    {
-	      json_object_set_new (scan_stats, "aggregate optimized,", scan);
+	      SCAN_AGL *agl;
+	      char *agl_index;
+	      int len = 0;
+
+	      for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
+		{
+		  len += strlen (agl->agg_index_name) + 2;	/* for ", " */
+		}
+
+	      agl_index = (char *) malloc (len);
+	      if (agl_index == NULL)
+		{
+		  return;
+		}
+
+	      *agl_index = '\0';
+	      for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
+		{
+		  if (*agl_index)
+		    {
+		      sprintf (agl_index + strlen (agl_index), ", %s", agl->agg_index_name);
+		    }
+		  else
+		    {
+		      sprintf (agl_index, "%s", agl->agg_index_name);
+		    }
+		}
+	      json_object_set_new (scan, "agl", json_string (agl_index));
+	      free (agl_index);
+	    }
+
+	  if (scan_id->scan_stats.noscan)
+	    {
+	      json_object_set_new (scan_stats, "noscan", scan);
 	    }
 	  else
 	    {
@@ -7821,9 +7854,9 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-      if (scan_id->scan_stats.agg_optimized_scan)
+      if (scan_id->scan_stats.noscan)
 	{
-	  fprintf (fp, "(aggregate optimized,");
+	  fprintf (fp, "(noscan");	/* aggregate optimization is not a scan */
 	}
       else
 	{
@@ -7887,8 +7920,23 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
-      fprintf (fp, ", readrows: %llu, rows: %llu)", (unsigned long long int) scan_id->scan_stats.read_rows,
+      fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
+      if (scan_id->scan_stats.agl)
+	{
+	  SCAN_AGL *agl;
+
+	  fprintf (fp, ", agl: ");
+	  for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
+	    {
+	      fprintf (fp, "%s", agl->agg_index_name);
+	      if (agl->next)
+		{
+		  fprintf (fp, ", ");
+		}
+	    }
+	}
+      fprintf (fp, ")");
       break;
 
     case S_INDX_SCAN:

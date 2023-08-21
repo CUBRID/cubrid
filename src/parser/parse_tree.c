@@ -1249,6 +1249,9 @@ parser_free_parser (PARSER_CONTEXT * parser)
 
   QUIT_PASSWORD_OFFSET (parser->pwd_offset, parser->pwd_offset_ptr, DEFAULT_PWD_OFFSET_CNT);
 
+  /* free remote dblink cols */
+  pt_free_dblink_remote_cols (parser);
+
   /* free string blocks */
   pt_free_string_blocks (parser);
   /* free node blocks */

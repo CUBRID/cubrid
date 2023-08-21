@@ -497,14 +497,14 @@ usage: %1$s loaddb [OPTION] database-name[@host]\n\
 valid options:\n\
   -S, --SA-mode                  standalone mode execution\n\
   -C, --CS-mode                  client-server mode execution\n\
-                                 WARNING: In client-server mode, only data file(-d, --data-file=FILE) can be loaded.\n\
+                                 WARNING: When in HA Mode, only data files (-d, --data-file=FILE) can be loaded in client-server mode.\n\
   -u, --user=ID                  user ID for database access; default: "public"\n\
   -p, --password=PASS            user password; default: none\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    estimated NUMBER of instances; default: 5000\n\
   -v, --verbose                  enable verbose status messages; default: disabled\n\
-  -c, --periodic-commit=COUNT    insertion COUNT for periodic commit; default: no commit during loading\n\
+  -c, --periodic-commit=COUNT    insertion COUNT for periodic commit; default: 10240\n\
       --no-oid                   don't use OID\n\
       --no-statistics            do not update the statistics while loading\n\
   -s, --schema-file=FILE[:LINE]  create schema from LINE with FILE\n\
@@ -560,6 +560,7 @@ valid options:\n\
   -C, --CS-mode               client-server mode execution\n\
       --datafile-per-class    create a object file for each class; default: disabled\n\
       --split-schema-files    split schema information by object and generate each file; Default: generate one schema file with all objects\n\
+      --skip-index-detail     Không in các tùy chọn mệnh đề VỚI được chỉ định khi tạo chỉ mục; mặc định: bị vô hiệu hóa \n\
       --as-dba                If the login user is a member of the DBA group, extract the same schema file as the DBA.\n
 
 

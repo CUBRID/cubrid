@@ -160,4 +160,6 @@ extern char *proxy_get_driver_info_by_fd (T_SOCKET_IO * sock_io_p);
 extern void proxy_available_cas_wait_timer (void);
 extern int proxy_convert_error_code (int error_ind, int error_code, char *driver_info, T_BROKER_VERSION client_version,
 				     bool to_new);
+
+extern int proxy_context_direct_send_error (T_PROXY_CONTEXT * ctx_p);
 #endif /* _SHARD_PROXY_IO_H_ */

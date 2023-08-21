@@ -194,6 +194,7 @@ set(MONITOR_SOURCES
   ${MONITOR_DIR}/monitor_registration.cpp
   ${MONITOR_DIR}/monitor_statistic.cpp
   ${MONITOR_DIR}/monitor_transaction.cpp
+  ${MONITOR_DIR}/monitor_vacuum_ovfp_threshold.cpp
 )
 
 set(MONITOR_HEADERS
@@ -202,6 +203,7 @@ set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_registration.hpp
   ${MONITOR_DIR}/monitor_statistic.hpp
   ${MONITOR_DIR}/monitor_transaction.hpp
+  ${MONITOR_DIR}/monitor_vacuum_ovfp_threshold.hpp
 )
 
 set(QUERY_SOURCES
@@ -233,7 +235,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
-  ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/vacuum.c  
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
@@ -246,6 +248,7 @@ set(QUERY_HEADERS
   )
 
 set(OBJECT_SOURCES
+  ${OBJECT_DIR}/deduplicate_key.c
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_domain.c
@@ -528,7 +531,7 @@ endif(WIN32)
 target_include_directories(cubrid PRIVATE ${JAVA_INC} ${EP_INCLUDES} ${FLEX_INCLUDE_DIRS})
 if(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE -Wl,-whole-archive ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubrid LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})

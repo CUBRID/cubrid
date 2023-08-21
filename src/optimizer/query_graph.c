@@ -581,9 +581,6 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
-  get_local_subqueries (env, tree);
-  get_rank (env);
-
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
@@ -593,6 +590,8 @@ qo_optimize_helper (QO_ENV * env)
    */
   qo_assign_eq_classes (env);
 
+  get_local_subqueries (env, tree);
+  get_rank (env);
   qo_discover_indexes (env);
   qo_discover_partitions (env);
   qo_discover_sort_limit_nodes (env);
@@ -5048,6 +5047,14 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	      && !intl_identifier_casecmp (expr_str, consp->func_index_info->expr_str))
 	    {
 	      attr_id = consp->attributes[0]->id;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
+		{
+		  // If a function index is defined in the first position, the second position is the actual column.
+		  // ex) create index idx on tbl(abs(val));
+		  attr_id = consp->attributes[1]->id;
+		}
+#endif
 
 	      for (j = 0; j < n_attrs; j++, attr_statsp++)
 		{
@@ -5499,6 +5506,12 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    {
 	      /* function index with the function expression as the first attribute */
 	      attr_id = index_entryp->constraints->attributes[0]->id;
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
+		{
+		  attr_id = index_entryp->constraints->attributes[1]->id;
+		}
+#endif
 	    }
 
 	  for (k = 0; k < n_attrs; k++, attr_statsp++)
@@ -6069,7 +6082,7 @@ qo_discover_edges (QO_ENV * env)
 	    }
 	}
     }
-  /* sort sarg-term on pred_order desc, selectivity asc, rank asc */
+  /* sort sarg-term on pred_order desc, selectivity asc */
   for (t1 = i; t1 < env->nterms - 1; t1++)
     {
       term1 = QO_ENV_TERM (env, t1);
@@ -6083,12 +6096,6 @@ qo_discover_edges (QO_ENV * env)
 	    }
 	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2))
 		   && (QO_TERM_SELECTIVITY (term1) > QO_TERM_SELECTIVITY (term2)))
-	    {
-	      qo_exchange (term1, term2);
-	    }
-	  else if ((QO_TERM_PRED_ORDER (term1) == QO_TERM_PRED_ORDER (term2))
-		   && (QO_TERM_SELECTIVITY (term1) == QO_TERM_SELECTIVITY (term2))
-		   && QO_TERM_RANK (term1) > QO_TERM_RANK (term2))
 	    {
 	      qo_exchange (term1, term2);
 	    }
@@ -7391,13 +7398,16 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	  nseg_idx = 0;
 
 	  /* count the number of columns on this constraint */
-	  for (col_num = 0; consp->attributes[col_num]; col_num++)
-	    {
-	      ;
-	    }
 	  if (consp->func_index_info)
 	    {
 	      col_num = consp->func_index_info->attr_index_start + 1;
+	    }
+	  else
+	    {
+	      for (col_num = 0; consp->attributes[col_num]; col_num++)
+		{
+		  ;
+		}
 	    }
 
 	  if (col_num <= NELEMENTS)
@@ -8567,6 +8577,7 @@ qo_term_clear (QO_ENV * env, int idx)
   QO_TERM_JOIN_TYPE (term) = NO_JOIN;
   QO_TERM_MULTI_COL_SEGS (term) = NULL;
   QO_TERM_MULTI_COL_CNT (term) = 0;
+  QO_TERM_PRED_ORDER (term) = 0;
 
   bitset_init (&(QO_TERM_NODES (term)), env);
   bitset_init (&(QO_TERM_SEGS (term)), env);

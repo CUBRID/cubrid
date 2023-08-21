@@ -496,14 +496,14 @@ loaddb: 将对象和结构导入到数据库.\n\
 可用选项:\n\
   -S, --SA-mode                  单机模式执行\n\
   -C, --CS-mode                  客户端-服务器模式执行\n\
-                                 警告：在客户端-服务器模式下，只能加载数据文件(-d, --data-file=FILE)。\n\
+                                 警告：在 HA 模式下，只能以客户端-服务器模式加载数据文件 (-d, --data-file=FILE)。\n\
   -u, --user=ID                  用于访问数据库的用户ID; 默认: "public"\n\
   -p, --password=PASS            用户密码; 默认: 空\n\
       --data-file-check-only     对数据文件只进行语法检查不加载数据; 默认: disabled\n\
   -l, --load-only                加载数据不检查语法; 仅在SA_MODE模式下使用\n\
       --estimated-size=NUMBER    用NUMBER作为估计的实例数目; 默认: 5000\n\
   -v, --verbose                  开启详细状态信息; 默认: 关闭\n\
-  -c, --periodic-commit=COUNT    每插入COUNT个实例进行周期性的提交; 默认: 在读取时不提交\n\
+  -c, --periodic-commit=COUNT    每插入COUNT个实例进行周期性的提交; 默认: 10240\n\
       --no-oid                   不使用 OID\n\
       --no-statistics            在读取时不更新统计信息\n\
   -s, --schema-file=FILE[:LINE]  从文件 FILE 的第 LINE 行创建结构(schema)\n\
@@ -558,6 +558,7 @@ unloaddb: 从数据库导出对象和结构.\n\
   -C, --CS-mode                客户端-服务器模式执行\n\
       --datafile-per-class     为每个表创建一个对象文件; 默认: 禁止\n\
       --split-schema-files     按对象拆分模式信息并生成每个文件； 默认：生成一个包含所有对象的模式文件\n\
+      --skip-index-detail      创建索引时不打印指定的WITH子句选项； 默认值：禁用\n\
       --as-dba                 如果登录用户是 DBA 组的成员，则提取与 DBA 相同的架构文件。\n
 
 

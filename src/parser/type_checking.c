@@ -301,6 +301,7 @@ static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * 
 static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
+static bool pt_is_dblink_related (PT_NODE * p);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -4820,15 +4821,27 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       break;
 
     case PT_TYPE_NUMERIC:
-      if (PT_IS_DISCRETE_NUMBER_TYPE (node->type_enum))
+      switch (node->type_enum)
 	{
-	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	case PT_TYPE_SMALLINT:
+	  precision = DB_SMALLINT_PRECISION;
 	  scale = 0;
-	}
-      else
-	{
+	  break;
+
+	case PT_TYPE_INTEGER:
+	  precision = DB_INTEGER_PRECISION;
+	  scale = 0;
+	  break;
+
+	case PT_TYPE_BIGINT:
+	  precision = DB_BIGINT_PRECISION;
+	  scale = 0;
+	  break;
+
+	default:
 	  precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE;
+	  break;
 	}
       break;
 
@@ -6797,7 +6810,6 @@ pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, D
   return (!pt_has_error (parser));
 }
 
-
 /*
  * pt_where_type () - Test for constant folded where clause,
  * 		      and fold as necessary
@@ -7794,7 +7806,6 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  // we want to test full execution of sub-tree; don't fold it!
 	  *continue_walk = PT_LIST_WALK;
 	}
-      break;
     default:
       // nope
       break;
@@ -11261,6 +11272,8 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 {
   PT_TYPE_ENUM result_type;
 
+  static bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+
   if (pt_is_op_hv_late_bind (op) && (t1 == PT_TYPE_MAYBE || t2 == PT_TYPE_MAYBE))
     {
       result_type = PT_TYPE_MAYBE;
@@ -11272,6 +11285,12 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 
   switch (op)
     {
+    case PT_DIVIDE:
+      if (oracle_compat_number && PT_IS_DISCRETE_NUMBER_TYPE (t1) && PT_IS_DISCRETE_NUMBER_TYPE (t2))
+	{
+	  result_type = PT_TYPE_NUMERIC;
+	}
+      break;
     case PT_MINUS:
     case PT_TIMES:
       if (result_type == PT_TYPE_SEQUENCE)
@@ -12081,8 +12100,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       switch (common_type)
 	{
 	case PT_TYPE_CHAR:
+	  /* this setting refers to db_value_domain_init function
+	     and see also CBRD-24828 and CBRD-24734 for setting precision to DB_DEFAULT_PRECISION
+	   */
 	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_CHAR_PRECISION)
-					  ? DB_MAX_CHAR_PRECISION : dt->info.data_type.precision);
+					  ? DB_DEFAULT_PRECISION : dt->info.data_type.precision);
 	  break;
 
 	case PT_TYPE_VARCHAR:
@@ -12092,7 +12114,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 
 	case PT_TYPE_NCHAR:
 	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_NCHAR_PRECISION)
-					  ? DB_MAX_NCHAR_PRECISION : dt->info.data_type.precision);
+					  ? DB_DEFAULT_PRECISION : dt->info.data_type.precision);
 	  break;
 
 	case PT_TYPE_VARNCHAR:
@@ -18892,6 +18914,44 @@ overflow:
 error_zerodate:
   PT_ERRORc (parser, o1, er_msg ());
   return 0;
+}
+
+/*
+ * check if the expr node has any dblink-related term
+ */
+static bool
+pt_is_dblink_related (PT_NODE * p)
+{
+  if (p->node_type == PT_EXPR)
+    {
+      if (p->info.expr.arg1 && pt_is_dblink_related (p->info.expr.arg1))
+	{
+	  return true;
+	}
+      if (p->info.expr.arg2 && pt_is_dblink_related (p->info.expr.arg2))
+	{
+	  return true;
+	}
+      if (p->info.expr.arg3 && pt_is_dblink_related (p->info.expr.arg3))
+	{
+	  return true;
+	}
+
+      return false;
+    }
+
+  if (p->node_type == PT_NAME && p->info.name.spec_id)
+    {
+      PT_NODE *spec;
+
+      spec = (PT_NODE *) (p->info.name.spec_id);
+      if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*

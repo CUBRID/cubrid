@@ -2727,6 +2727,42 @@ intl_strcasecmp_utf8_one_cp (const ALPHABET_DATA * alphabet, unsigned char *str1
 }
 
 /*
+ * intl_identifier_casecmp_for_dblinke() - compares two identifiers strings
+ *			       case insensitive excluding double quote for dblink
+ *
+ *   return: 0 if dblink_col_name equals to remote_col_name
+ *   dblink_col_name(in):
+ *   remote_col_name(in):
+ *
+ * NOTE: this routine is the same as intl_identifier_casecmp
+ *       the first argument dblink_col_name may start with double quote
+ *       but the remote_col_name never
+ */
+int
+intl_identifier_casecmp_for_dblink (const char *dblink_col_name, const char *remote_col_name)
+{
+  int str1_size;
+  int str2_size;
+  char *str1 = (char *) dblink_col_name;
+  char *str2 = (char *) remote_col_name;
+
+  assert (str1 != NULL);
+  assert (str2 != NULL);
+
+  str1_size = strlen (str1);
+  str2_size = strlen (str2);
+
+  if (*str1 == '\"' || *str1 == '`')
+    {
+      str1_size = str1_size - 2;
+      str1 = str1 + 1;
+    }
+
+  return intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) str1, (unsigned char *) str2, str1_size,
+					 str2_size);
+}
+
+/*
  * intl_identifier_casecmp() - compares two identifiers strings
  *			       case insensitive
  *   return: 0 if strings are equal, -1 if str1 < str2 , 1 if str1 > str2

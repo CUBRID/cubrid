@@ -137,6 +137,7 @@ main (int argc, char *argv[])
     {CSQL_NO_PAGER_L, 0, 0, CSQL_NO_PAGER_S},
     {CSQL_NO_SINGLE_LINE_L, 0, 0, CSQL_NO_SINGLE_LINE_S},
     {CSQL_SYSADM_L, 0, 0, CSQL_SYSADM_S},
+    {CSQL_SYSADM_REBUILD_CATALOG_L, 0, 0, CSQL_SYSADM_REBUILD_CATALOG_S},
     {CSQL_WRITE_ON_STANDBY_L, 0, 0, CSQL_WRITE_ON_STANDBY_S},
     {CSQL_STRING_WIDTH_L, 1, 0, CSQL_STRING_WIDTH_S},
     {CSQL_NO_TRIGGER_ACTION_L, 0, 0, CSQL_NO_TRIGGER_ACTION_S},
@@ -257,6 +258,10 @@ main (int argc, char *argv[])
 	  csql_arg.sysadm = true;
 	  break;
 
+	case CSQL_SYSADM_REBUILD_CATALOG_S:
+	  csql_arg.sysadm_rebuild_catalog = true;
+	  break;
+
 	case CSQL_WRITE_ON_STANDBY_S:
 	  csql_arg.write_on_standby = true;
 	  break;
@@ -352,7 +357,7 @@ main (int argc, char *argv[])
 
   if (argc - optind == 1)
     {
-      csql_arg.db_name = strdup (argv[optind]);
+      csql_arg.db_name = argv[optind];
     }
   else if (argc > optind)
     {
@@ -410,7 +415,21 @@ main (int argc, char *argv[])
       goto print_usage;
     }
 
-  if (csql_arg.sysadm && (csql_arg.user_name == NULL || strcasecmp (csql_arg.user_name, "DBA")))
+  if (csql_arg.sysadm_rebuild_catalog)
+    {
+      if (!csql_arg.sa_mode)
+	{
+	  goto print_usage;
+	}
+
+      if (csql_arg.in_file_name == NULL && csql_arg.command == NULL)
+	{
+	  goto print_usage;
+	}
+    }
+
+  if ((csql_arg.sysadm || csql_arg.sysadm_rebuild_catalog)
+      && (csql_arg.user_name == NULL || strcasecmp (csql_arg.user_name, "DBA")))
     {
       /* sysadm is allowed only to DBA */
       goto print_usage;

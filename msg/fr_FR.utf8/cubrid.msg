@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Base de données "%1$s" est inconnu, ou le fichier "databases.txt" n'est pas accessible.
 117 Nom de chemin absolu pour la base de données est trop long. La longueur totale de le chemin "%1$s" et le nom "%2$s" est %3$d; la longueur combinée doit être inférieur à %4$d.
 118 Impossible de localiser le répertoire de travail courant.
-119 Impossible de trouver ("%1$s") dans /etc/hosts. Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
+119 Impossible de trouver ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 120 Le nombre maximal de volumes (%1$d) a été dépassé.
 121 Tentative de supprimer "%1$s" un volume permanente de la base de données.
 122 Impossible d'accéder au catalogue de messages du système.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Impossible de créer un pipe vers le serveur maître.
 348 Doit spécifier un service ou un identificateur de port.
 349 Service inconnu pour TCP: %1$s.
-350 Impossible de trouver ("%1$s") dans /etc/hosts. Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
+350 Impossible de trouver ("%1$s") dans "%2$s". Veuillez vérifier les autorisations du fichier ou s'il existe le nom d'hôte.
 351 Impossible de créer un socket TCP.
 352 tcp_open: ne peut pas obtenir un port TCP réservé.
 353 Impossible d'établir la connexion au serveur maître sur l'hôte "%1$s".
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Le chargement de l'index a été abandonné après une erreur
 1244 Le chargement de mises à jour d'attributs partagés à partir de fichiers objet n'est pas pris en charge en mode CS.
 1245 Le chargement de mises à jour d'attributs de classe à partir de fichiers objets n'est pas pris en charge en mode CS.
-1246 Impossible d'obtenir l'adresse et le nom canonique de ("%1$s") dans /etc/hosts. Veuillez vérifier l'autorisation du fichier ou s'il existe le nom d'hôte.
+1246 Impossible d'obtenir l'adresse et le nom canonique de ("%1$s") dans "%2$s". Veuillez vérifier l'autorisation du fichier ou s'il existe le nom d'hôte.
 1247 Le temps (%1$s) spécifié doit être postérieure à l'heure (%2$s) de la sauvegarde spécifiée.
 1248 Fichier de clé non valide: %1$s
 1249 Impossible de trouver la clé (index: %1$d).
@@ -1437,16 +1437,10 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" est un format invalide à la ligne %3$d du fichier "%4$s".
-1356 Le nom d'hôte "%1$s" est trop long, il doit être inférieur ou égal à 256 à la ligne %2$d du fichier "%3$s".
-1357 Le nom d'hôte "%1$s" existe déjà, un nom d'hôte ne peut pas être dupliqué avec d'autres adresses IP à la ligne %2$d du fichier "%3$s".
-1358 L'adresse IP et le nom d'hôte doivent être écrits entièrement à la ligne %1$d du fichier "%2$s".
-1359 Impossible de rechercher "%1$s" dans cubrid_hosts.conf.
-1360 Une erreur s'est produite lors de l'utilisation de l'hôte défini par l'utilisateur.
 
-1361 Le fichier "%1$s" est introuvable.
+1355 Le fichier "%1$s" est introuvable.
 
-1362 Dernière erreur
+1356 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1612,6 +1606,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 Aucune option spécifiée pour ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.

@@ -496,14 +496,14 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
 オプション:\n\
   -S, --SA-mode                  独立モードで実行\n\
   -C, --CS-mode                  クライアントーサーバモードで実行\n\
-                                 警告: クライアント サーバー モードでは、データ ファイル (-d、--data-file=FILE) のみをロードできます。\n\
+                                 警告: HA モードの場合、クライアント/サーバー モードではデータ ファイル (-d、--data-file=FILE) のみをロードできます。\n\
   -u, --user=ID                  データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
   -p, --password=PASS            ユーザーパスワード; デフォルト: なし\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBER    インスタンスの予測数; デフォルト: 5000\n\
   -v, --verbose                  多様な進行情報を出力; デフォルト: 出力しない\n\
-  -c, --periodic-commit=COUNT    周期的なコミットに関するカウント; デフォルト: ロード中にコミットしない\n\
+  -c, --periodic-commit=COUNT    周期的なコミットに関するカウント; デフォルト: 10240\n\
       --no-oid                   OIDを未使用\n\
       --no-statistics            ロードの後、スタティスティックス情報を更新しない。\n\
   -s, --schema-file=FILE[:LINE]  ファイル[:ライン]情報でスキーマ生成\n\
@@ -559,6 +559,7 @@ unloaddb: データベースからスキーマとオブジェクトをアンロ�
   -C, --CS-mode               クライアントーサーバモードで実行\n\
       --datafile-per-class    格クラス別にオブジェクトファイル生成; デフォルト:　ひとつのオブジェクトファイルを生成\n\
       --split-schema-files    オブジェクトごとにスキーマ情報を分割し、各ファイルを生成します。 デフォルト: すべてのオブジェクトを含む 1 つのスキーマ ファイルを生成する\n\
+      --skip-index-detail     インデックスの作成時に、指定された WITH 句のオプションを出力しません。 デフォルト: 無効 \n\
       --as-dba                ログイン ユーザーが DBA グループのメンバーである場合、DBA と同じスキーマ ファイルを抽出します。\n
 
 

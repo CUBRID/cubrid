@@ -496,14 +496,14 @@ uso: %1$s loaddb [OPZIONE] nome-database[@host]\n\
 opzioni valide:\n\
   -S, --SA-mode                  modalità di esecuzione autonoma\n\
   -C, --CS-mode                  modalità di esecuzione client-server\n\
-                                 ATTENZIONE: In modalità client-server, è possibile caricare solo file di dati (-d, --data-file=FILE).\n\
+                                 ATTENZIONE: In modalità HA, solo i file di dati (-d, --data-file=FILE) possono essere caricati in modalità client-server.\n\
   -u, --user=ID                  user ID per l'accesso al database; predefinito: "public"\n\
   -p, --password=PASS            password utente; predefinito: nessuno\n\
       --data-file-check-only     check syntax for data file without load; default: disabled\n\
   -l, --load-only                load data file without prior syntax checking; SA_MODE only\n\
       --estimated-size=NUMBERO   Stima del NUMERO di instanze; predefinito: 5000\n\
   -v, --verbose                  attivare i messaggi dettagliati di stato; predefinito: non attivo\n\
-  -c, --periodic-commit=COUNT    inserimento COUNT per periodico commit; predefinito: no commit durante il caricamento\n\
+  -c, --periodic-commit=COUNT    inserimento COUNT per periodico commit; predefinito: 10240\n\
       --no-oid                   non usare OID\n\
       --no-statistics            non aggiornare le statistiche durante il caricamento\n\
   -s, --schema-file=FILE[:LINE]  creare schema da LINE con FILE\n\
@@ -559,6 +559,7 @@ opzioni valide:\n\
   -C, --CS-mode               modalità di esecuzione client-server\n\
       --datafile-per-class    creare un file oggetto per ogni classe; predefinito: non attivo\n\
       --split-schema-files    dividere le informazioni sullo schema per oggetto e generare ciascun file; Predefinito: genera un file schema con tutti gli oggetti\n\
+      --skip-index-detail     Non stampare le opzioni della clausola WITH specificate durante la creazione dell'indice; predefinito: disabilitato\n\
       --as-dba                Se l'utente di accesso è un membro del gruppo DBA, estrai lo stesso file di schema del DBA.\n
 
 

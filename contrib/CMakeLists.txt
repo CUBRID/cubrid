@@ -89,6 +89,14 @@ if(WIN32)
     DESTINATION ${CUBRID_DATADIR}/windows_scripts/)
 endif(WIN32)
 
+# msi scripts for windows
+if(WIN32)
+  install(FILES
+    ${CMAKE_SOURCE_DIR}/contrib/scripts_for_msi/make_demo_msi.bat
+    ${CMAKE_SOURCE_DIR}/contrib/scripts_for_msi/create_for_databases.bat
+    DESTINATION ${CUBRID_DATADIR}/scripts_for_msi/)
+endif(WIN32)
+
 # scripts for setup
 if(UNIX)
   install(PROGRAMS
@@ -102,5 +110,6 @@ if(UNIX)
     ${CMAKE_SOURCE_DIR}/contrib/scripts/cubrid.sh
     ${CMAKE_SOURCE_DIR}/contrib/scripts/cubrid.csh
     ${CMAKE_SOURCE_DIR}/contrib/scripts/unloaddb.sh
+    ${CMAKE_SOURCE_DIR}/contrib/scripts/check_index_ovfps.sh
     DESTINATION ${CUBRID_DATADIR}/scripts/)
 endif(UNIX)

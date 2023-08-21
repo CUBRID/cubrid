@@ -35,6 +35,7 @@
 #include <assert.h>
 
 #include "area_alloc.h"
+#include "deduplicate_key.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -667,6 +668,10 @@ tp_init (void)
     }
 
   tp_Initialized = true;
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  dk_deduplicate_key_attribute_initialized ();
+#endif
 
   return NO_ERROR;
 }
@@ -5044,7 +5049,9 @@ tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_sta
 	}
     }
 
-  if (!is_hex)
+  /* See CBRD-24780.
+   * For backwards compatibility, casting from empty string to bigint is allowed. */
+  if (!is_hex && *strp != '\0')
     {
       /* check whether is scientific format */
       p = strp;
