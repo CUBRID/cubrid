@@ -4630,12 +4630,6 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  /* converting index for server in condition 'all' */
-  if (module_index == -1)
-    {
-      module_index = MMON_MODULE_LAST;
-    }
-
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);

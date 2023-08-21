@@ -7345,7 +7345,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_unpack_int (request, &module_index);
 
-  if (module_index == MMON_MODULE_LAST)
+  if (module_index == -1)
     {
       module_info.resize (MMON_MODULE_LAST);
     }

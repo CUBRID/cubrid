@@ -8214,7 +8214,7 @@ mmon_get_module_info (int module_index, std::vector<MMON_MODULE_INFO> & module_i
 
   if (error == NO_ERROR)
     {
-      if (module_index == MMON_MODULE_LAST)
+      if (module_index == -1)
 	{
 	  module_count = MMON_MODULE_LAST;
 	}
