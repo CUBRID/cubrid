@@ -28,10 +28,6 @@
 
 #include "memory_monitor_common.h"
 
-constexpr char module_names[MMON_MODULE_LAST + 1][DB_MAX_IDENTIFIER_LENGTH] =
-{
-  "all"
-};
+// XXX: will be added print function
 
-int mmon_convert_module_name_to_index (const char *module_name);
 #endif // _MEMORY_MONITOR_CL_HPP_

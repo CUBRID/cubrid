@@ -4551,11 +4551,11 @@ memmon (UTIL_FUNCTION_ARG * arg)
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
-  char *print_module, *tran_count_str, *stop = NULL;
+  char *tran_count_str, *stop = NULL;
   bool print_transaction, print_show_all, need_shutdown;
-  bool print_default = false;
+  bool print_default = false, print_module = false;
   int tran_count = INT_MAX, module_count;
-  int module_index = -1;
+  int module_index = INT_MIN;
   int error_code = NO_ERROR;
   MMON_SERVER_INFO server_info;
   // *INDENT-OFF*
@@ -4563,7 +4563,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
   // *INDENT-ON*
   MMON_TRAN_INFO tran_info;
 
-  print_module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
+  module_index = utility_get_option_int_value (arg_map, MEMMON_MODULE_S);
   print_transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
   tran_count_str = utility_get_option_string_value (arg_map, MEMMON_TRAN_COUNT_S, 0);
   print_show_all = utility_get_option_bool_value (arg_map, MEMMON_SHOW_ALL_S);
@@ -4580,6 +4580,17 @@ memmon (UTIL_FUNCTION_ARG * arg)
     }
 
   /* input error check phase */
+
+  if (module_index >= -1 && module_index < MMON_MODULE_LAST)
+    {
+      print_module = true;
+    }
+
+  if (!print_transaction && !print_module && !print_show_all)
+    {
+      print_default = true;
+    }
+
   if (print_show_all && (print_transaction || tran_count_str || print_module))
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
@@ -4611,30 +4622,18 @@ memmon (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (print_module)
+  if (module_index < -1 || module_index >= MMON_MODULE_LAST)
     {
-      if (print_module[0] >= 'a' && print_module[0] <= 'z')
-	{
-	  /* module option with module name */
-	  module_index = mmon_convert_module_name_to_index (print_module);
-	}
-      else
-	{
-	  module_index = (int) strtol (print_module, &stop, 10);
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
+			     module_index);
+      goto error_exit;
+    }
 
-	  if (stop[0] != 0)
-	    {
-	      module_index = -1;
-	    }
-	}
-
-      if (module_index < 0 || module_index > MMON_MODULE_LAST)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
-				 print_module);
-	  goto error_exit;
-	}
+  /* converting index for server in condition 'all' */
+  if (module_index == -1)
+    {
+      module_index = MMON_MODULE_LAST;
     }
 
   /* error message log file */
@@ -4652,11 +4651,6 @@ memmon (UTIL_FUNCTION_ARG * arg)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
       goto error_exit;
-    }
-
-  if (!print_transaction && !print_module && !print_show_all)
-    {
-      print_default = true;
     }
 
   /* execute phase */
@@ -4712,6 +4706,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
 	  // TODO: mmon_print_module_info_summary (module_info);
 	}
+
       print_transaction = true;
     }
 
@@ -4728,7 +4723,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   // XXX: for test, it will removed at main implementation
   fprintf (stdout, "server network communicate success\n");
-  fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (print_module ? print_module : "NULL"),
+  fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (print_module ? "true" : "false"),
 	   (print_transaction ? "true" : "false"), tran_count, (print_show_all ? "true" : "false"));
 
   db_shutdown ();

@@ -1314,7 +1314,7 @@ valid options:\n\
 $set 59 MSGCAT_UTIL_SET_MEMMON
 1 '-a(--all)' option cannot be used with other options.\n
 2 Please set the system parameter 'memory_monitoring' in 'cubrid.conf' and restart the database server.\n
-3 Invalid argument '%1$s' is set to '-m(--module)' option.\n
+3 Invalid argument '%1$d' is set to '-m(--module)' option.\n
 4 '-c(--tran-count)' option must be used with '-t(--transaction)' option.\n
 5 '-c(--tran-count)' option must have positive number.\n
 59 memmon cannot run as standalone mode.\n
@@ -1330,5 +1330,5 @@ valid options:\n\
                                   WARNING: This option has to be used with '-t(--transaction)' option.\n\
     -m, --module=TYPE             display detailed memory usage information of the specified TYPE.\n\
                                   TYPE of modules\n\
-                                  0 (or heap)     heap module\n\
-                                  1 (or all)      all modules\n
+                                  -1      all modules\n\
+                                   0      heap module\n
