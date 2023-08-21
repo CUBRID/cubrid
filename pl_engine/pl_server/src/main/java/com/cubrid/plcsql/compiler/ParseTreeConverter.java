@@ -1180,7 +1180,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return new ExprId(ctx, name, scope, (DeclId) decl);
         } else if (decl instanceof DeclFunc) {
             Scope scope = symbolStack.getCurrentScope();
-            return new ExprLocalFuncCall(ctx, name, null, scope, (DeclFunc) decl);
+            return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
         }
 
         assert false : "unreachable";
