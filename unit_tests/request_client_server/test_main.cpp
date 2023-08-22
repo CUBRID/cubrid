@@ -635,42 +635,42 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
 
   constexpr int MESSAGE_COUNT = 4200;
 
-#define BIND_ENV_FUNC(foo) \
-  std::bind (&(test_two_request_sync_client_server_env::foo), std::ref (env), std::placeholders::_1, std::placeholders::_2)
-
 #define REPEAT_REQUEST_WITH_MSGID(req_foo, msgid) \
   for (int i = 0; i < MESSAGE_COUNT; ++i) req_foo (msgid, i)
 
-  std::vector<std::thread> threads;
-  threads.emplace_back ([&] ()
+  SECTION ("Push and send requests and confirm they are handled")
   {
-    REPEAT_REQUEST_WITH_MSGID (env.send_recv_request_on_scs_one, reqids_1_to_2::_0);
-  });
-  threads.emplace_back ([&] ()
-  {
-    REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_one, reqids_1_to_2::_1);
-  });
-  threads.emplace_back ([&] ()
-  {
-    REPEAT_REQUEST_WITH_MSGID (env.send_recv_request_on_scs_two, reqids_2_to_1::_0);
-  });
-  threads.emplace_back ([&] ()
-  {
-    REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_two, reqids_2_to_1::_1);
-  });
-  threads.emplace_back ([&] ()
-  {
-    REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_two, reqids_2_to_1::_1);
-  });
-
-  for (auto &th : threads)
+    std::vector<std::thread> threads;
+    threads.emplace_back ([&] ()
     {
-      th.join ();
-    }
+      REPEAT_REQUEST_WITH_MSGID (env.send_recv_request_on_scs_one, reqids_1_to_2::_0);
+    });
+    threads.emplace_back ([&] ()
+    {
+      REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_one, reqids_1_to_2::_1);
+    });
+    threads.emplace_back ([&] ()
+    {
+      REPEAT_REQUEST_WITH_MSGID (env.send_recv_request_on_scs_two, reqids_2_to_1::_0);
+    });
+    threads.emplace_back ([&] ()
+    {
+      REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_two, reqids_2_to_1::_1);
+    });
+    threads.emplace_back ([&] ()
+    {
+      REPEAT_REQUEST_WITH_MSGID (env.push_request_on_scs_two, reqids_2_to_1::_1);
+    });
 
-  env.wait_for_all_messages ();
+    for (auto &th : threads)
+      {
+	th.join ();
+      }
 
-  require_all_sent_requests_are_handled ();
+    env.wait_for_all_messages ();
+
+    require_all_sent_requests_are_handled ();
+  }
 }
 
 TEST_CASE ("Test response sequence number generator", "")
