@@ -739,8 +739,8 @@
 #define ER_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED       -614
 
 #define ER_CSS_WINSOCK_STARTUP			    -615
-#define ER_CSS_WINSOCK_HOSTNAME			    -616
-#define ER_CSS_WINSOCK_HOSTID			    -617
+#define ER_CSS_WIN_HOSTNAME			    -616
+#define ER_CSS_WIN_HOSTID			    -617
 
 #define ER_IT_ATTR_NOT_UPDATABLE                    -618
 
