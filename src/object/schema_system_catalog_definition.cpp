@@ -23,21 +23,16 @@
 
 namespace cubschema
 {
-  column::column ()
-    : name {}, type {}
-  {
-    column ({}, {});
-  }
-
-  column::column (const std::string_view n, const std::string_view t)
+  column::column (const std::string &n, const std::string &t)
     : name {n}, type {t}
   {
+    db_make_null (&default_value);
     db_value_clear (&default_value);
   }
 
   constraint::constraint (const DB_CONSTRAINT_TYPE &t, const std::string_view n,
-			  const std::vector<std::string_view> &attrs, bool is_class_attr)
-    : type {t}, name {n}, attribute_names {attrs}, is_class_attributes {is_class_attr}
+			  const std::vector<char *> &attrs, bool is_class_attr)
+    : type {t}, name {n.begin(), n.end ()}, attribute_names {attrs}, is_class_attributes {is_class_attr}
   {
     //
   }

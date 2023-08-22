@@ -26,39 +26,32 @@
 
 #include <string_view>
 #include <vector>
+#include <optional>
 
 #include "work_space.h" // struct db_object
 
 namespace cubschema
 {
+  using nullable_string = std::optional<std::string>;
+
   struct column
   {
-    std::string_view name;
-    std::string_view type;
+    std::string name;
+    std::string type;
     DB_VALUE default_value;
 
-    column ();
-    column (const std::string_view n, const std::string_view t);
-    /*
-    column (const std::string_view name, const std::string_view type, const DB_VALUE &default_val)
-    : name {}, type {}
-    {
-      if (d)
-      db_value_move
-      db_value_clear (&default_value);
-    }
-    */
+    column (const std::string &n, const std::string &t);
+    // column (const std::string &name, const std::string &type, const DB_VALUE &default_val);
   };
 
   struct constraint
   {
     DB_CONSTRAINT_TYPE type;
-    std::string_view name;
-    std::vector<std::string_view> attribute_names;
+    std::string name;
+    std::vector<char *> attribute_names;
     bool is_class_attributes;
 
-    constraint (const DB_CONSTRAINT_TYPE &t, const std::string_view n, const std::vector<std::string_view> &attrs,
-		bool is_class_attr);
+    constraint (const DB_CONSTRAINT_TYPE &t, std::string_view n, const std::vector<char *> &attrs, bool is_class_attr);
   };
 
   struct grant
@@ -81,7 +74,7 @@ namespace cubschema
 
   struct system_catalog_definition
   {
-    const std::string_view name;
+    const std::string name;
     const std::vector <column> attributes;
     const std::vector <constraint> constraints;
     const authorization auth;

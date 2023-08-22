@@ -52,12 +52,15 @@ namespace cubschema
 
   class system_catalog_builder
   {
-    public:
-      system_catalog_builder ();
-      ~system_catalog_builder ();
+    private:
+      MOP class_mop;
 
+    public:
+      system_catalog_builder () = default;
+      ~system_catalog_builder () = default;
+
+      int create_class (const system_catalog_definition &def);
       int build_class (const system_catalog_definition &def);
-      int build_legacy ();
   };
 }
 

@@ -32,12 +32,12 @@
 namespace cubschema
 {
   int
-  system_catalog_builder::build_class (const system_catalog_definition &catalog_def)
+  system_catalog_builder::create_class (const system_catalog_definition &def)
   {
     int error_code = NO_ERROR;
 
     // class_mop
-    MOP class_mop = db_create_class (catalog_def.name.data ());
+    class_mop = db_create_class (def.name.data ());
     if (class_mop == NULL)
       {
 	assert (er_errid () != NO_ERROR);
@@ -45,6 +45,14 @@ namespace cubschema
 	return error_code;
       }
     sm_mark_system_class (class_mop, 1);
+
+    return error_code;
+  }
+
+  int
+  system_catalog_builder::build_class (const system_catalog_definition &catalog_def)
+  {
+    int error_code = NO_ERROR;
 
     // define
     SM_TEMPLATE *def = smt_edit_class_mop (class_mop, AU_ALTER);
@@ -80,11 +88,12 @@ namespace cubschema
     for (const auto &c: constraints)
       {
 	DB_CONSTRAINT_TYPE type = c.type;
-	const char *name = c.name.data ();
+
+	const char *name = c.name.data();
 	int is_class_attribute = c.is_class_attributes ? 1 : 0;
 	if (type == DB_CONSTRAINT_INDEX)
 	  {
-	    error_code = db_add_constraint (class_mop, type, name, (const char **) c.attribute_names.data (),
+	    error_code = db_add_constraint (class_mop, type, name, (const char **) c.attribute_names.data(),
 					    is_class_attribute);
 	  }
 	else if (type == DB_CONSTRAINT_NOT_NULL)
@@ -93,7 +102,8 @@ namespace cubschema
 	  }
 	else
 	  {
-	    // TODO
+	    // TODO: error handling, there is no such a cases in the legacy code
+	    assert (false);
 	    error_code = ER_GENERIC_ERROR;
 	  }
 

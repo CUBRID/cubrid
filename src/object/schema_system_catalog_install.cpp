@@ -85,7 +85,7 @@ using COLUMN = cubschema::column;
 
 static cubschema::catcls_function clist[] =
 {
-  {CT_CLASS_NAME, boot_define_class},
+  // {CT_CLASS_NAME, boot_define_class},
   {CT_ATTRIBUTE_NAME, boot_define_attribute},
   {CT_DOMAIN_NAME, boot_define_domain},
   {CT_METHOD_NAME, boot_define_method},
@@ -133,6 +133,99 @@ static cubschema::catcls_function vclist[] =
   {CTV_SYNONYM_NAME,boot_define_view_synonym}
 };
 
+/* ========================================================================== */
+/* NEW DEFINITION */
+/* ========================================================================== */
+
+namespace cubschema
+{
+// TODO: find right place
+// TODO: implement formatting utility function for std::string (like fmt library)
+  const inline std::string format_varchar (const int size)
+  {
+    std::string s ("varchar(");
+    s += std::to_string (size);
+    s += ")";
+    return s;
+  }
+
+  const inline std::string format_sequence (const std::string_view type)
+  {
+    std::string s ("sequence of ");
+    s.append (type);
+    return s;
+  }
+
+  const std::string OBJECT {"object"};
+  const std::string INTEGER {"integer"};
+  const std::string VARCHAR_255 {format_varchar (255)};
+  const std::string VARCHAR_2048 {format_varchar (2048)}; // for comment
+
+// _db_class
+  system_catalog_definition sm_define_class (
+	  // name
+	  CT_CLASS_NAME,
+	  // columns
+  {
+    {"class_of", OBJECT},
+    {"unique_name", VARCHAR_255},
+    {"class_name", VARCHAR_255},
+    {"class_type", INTEGER},
+    {"is_system_class", INTEGER},
+    {"owner", AU_USER_CLASS_NAME},
+    {"inst_attr_count", INTEGER},
+    {"class_attr_count", INTEGER},
+    {"shared_attr_count", INTEGER},
+    {"inst_meth_count", INTEGER},
+    {"class_meth_count", INTEGER},
+    {"collation_id", INTEGER},
+    {"tde_algorithm", INTEGER},
+    {"sub_classes", format_sequence (CT_CLASS_NAME)},
+    {"super_classes", format_sequence (CT_CLASS_NAME)},
+    {"inst_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
+    {"class_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
+    {"shared_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
+    {"inst_meths", format_sequence (CT_METHOD_NAME)},
+    {"class_meths", format_sequence (CT_METHOD_NAME)},
+    {"meth_files", format_sequence (CT_METHFILE_NAME)},
+    {"query_specs", format_sequence (CT_QUERYSPEC_NAME)},
+    {"indexes", format_sequence (CT_INDEX_NAME)},
+    {"comment", VARCHAR_2048},
+    {"partition", format_sequence (CT_PARTITION_NAME)}
+  },
+// constraints
+  {
+    /*
+    *  Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
+    *  in src/storage/catalog_class.c.
+    *
+    *  _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
+    *  in src/storage/btree.c, it becomes assert (false) in the code below.
+    *
+    *    CREATE TABLE t1 (c1 INT);
+    *    RENAME CLASS t1 AS t2;
+    *
+    *    assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
+    *            || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
+    *
+    *  All others should be false, and !BTREE_IS_UNIQUE (btid_int->unique_pk) should be true. However,
+    *  if there is a primary key or a unique index, !BTREE_IS_UNIQUE (btid_int->unique_pk) also becomes false,
+    *  and all are false. In the btree_key_insert_new_key function, analysis should be added to the operation
+    *  of the primary key and unique index.
+    *
+    *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
+    */
+    {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}, false},
+    {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false}
+  },
+// authorization
+  {
+    // owner, grants
+    Au_dba_user, {}
+  }
+  );
+}
+
 int
 catcls_install_class (void)
 {
@@ -141,8 +234,19 @@ catcls_install_class (void)
   int error_code = NO_ERROR;
   int num_classes = sizeof (clist) / sizeof (clist[0]);
 
+  cubschema::system_catalog_builder builder;
   AU_DISABLE (save);
 
+  {
+    // new routine
+    error_code = builder.create_class (cubschema::sm_define_class);
+    if (error_code != NO_ERROR)
+      {
+	goto end;
+      }
+  }
+
+  // old routine
   for (i = 0; i < num_classes; i++)
     {
       class_mop[i] = db_create_class (clist[i].name);
@@ -154,6 +258,15 @@ catcls_install_class (void)
 	}
       sm_mark_system_class (class_mop[i], 1);
     }
+
+  {
+    // new routine
+    error_code = builder.build_class (cubschema::sm_define_class);
+    if (error_code != NO_ERROR)
+      {
+	goto end;
+      }
+  }
 
   for (i = 0; i < num_classes; i++)
     {
@@ -200,111 +313,6 @@ end:
   AU_ENABLE (save);
 
   return error_code;
-}
-
-/* ========================================================================== */
-/* NEW DEFINITION */
-/* ========================================================================== */
-
-// TODO: find right place
-namespace cubschema
-{
-  // TODO: temporal implementation
-  template<typename... Args>
-  std::string format (const std::string_view fmt, Args &&... args)
-  {
-    if (fmt.size() == 0 || sizeof... (args) == 0)
-      {
-	return "";
-      }
-
-    int size = std::snprintf (nullptr, 0, fmt.data (), args...);
-    if (size <= 0)
-      {
-	return "";
-      }
-
-    std::string ret (size, 0);
-    std::snprintf (ret.data(), size, fmt.data (), args ...);
-    return ret;
-  }
-
-  const inline std::string_view format_varchar (const int size)
-  {
-    return format ("varchar(%d)", size).data ();
-  }
-
-  const inline std::string_view format_sequence (const std::string_view type)
-  {
-    return format ("sequence of %s", type.data()).data ();
-  }
-
-  const std::string_view OBJECT {"object"};
-  const std::string_view INTEGER {"integer"};
-  const std::string_view VARCHAR_255 {format_varchar (255)};
-
-  // _db_class
-  system_catalog_definition sm_define_class (
-	  // name
-	  CT_CLASS_NAME,
-	  // columns
-  {
-    {"class_of", OBJECT},
-    {"unique_name", VARCHAR_255},
-    {"class_name", VARCHAR_255},
-    {"class_type", INTEGER},
-    {"is_system_class", INTEGER},
-    {"owner", AU_USER_CLASS_NAME},
-    {"inst_attr_count", INTEGER},
-    {"class_attr_count", INTEGER},
-    {"shared_attr_count", INTEGER},
-    {"inst_meth_count", INTEGER},
-    {"class_meth_count", INTEGER},
-    {"collation_id", INTEGER},
-    {"tde_algorithm", INTEGER},
-    {"sub_classes", format_sequence (CT_CLASS_NAME)},
-    {"super_classes", format_sequence (CT_CLASS_NAME)},
-    {"inst_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
-    {"class_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
-    {"shared_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
-    {"inst_meths", format_sequence (CT_METHOD_NAME)},
-    {"class_meths", format_sequence (CT_METHOD_NAME)},
-    {"meth_files", format_sequence (CT_METHFILE_NAME)},
-    {"query_specs", format_sequence (CT_QUERYSPEC_NAME)},
-    {"indexes", format_sequence (CT_INDEX_NAME)},
-    {"comment", format_varchar (2048)},
-    {"partition", format_sequence (CT_PARTITION_NAME)}
-  },
-  // constraints
-  {
-    /*
-    *  Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
-    *  in src/storage/catalog_class.c.
-    *
-    *  _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
-    *  in src/storage/btree.c, it becomes assert (false) in the code below.
-    *
-    *    CREATE TABLE t1 (c1 INT);
-    *    RENAME CLASS t1 AS t2;
-    *
-    *    assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
-    *            || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
-    *
-    *  All others should be false, and !BTREE_IS_UNIQUE (btid_int->unique_pk) should be true. However,
-    *  if there is a primary key or a unique index, !BTREE_IS_UNIQUE (btid_int->unique_pk) also becomes false,
-    *  and all are false. In the btree_key_insert_new_key function, analysis should be added to the operation
-    *  of the primary key and unique index.
-    *
-    *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
-    */
-    {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", NULL}, 0},
-    {DB_CONSTRAINT_INDEX, NULL, {"class_name", "owner", NULL}, 0}
-  },
-  // authorization
-  {
-    Au_dba_user, {}
-  }
-  );
 }
 
 /* ========================================================================== */
