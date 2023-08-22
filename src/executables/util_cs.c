@@ -4585,6 +4585,13 @@ memmon (UTIL_FUNCTION_ARG * arg)
     {
       print_module = true;
     }
+  else
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
+			     module_index);
+      goto error_exit;
+    }
 
   if (!print_transaction && !print_module && !print_show_all)
     {
@@ -4620,14 +4627,6 @@ memmon (UTIL_FUNCTION_ARG * arg)
 				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_NUMBER));
 	  goto error_exit;
 	}
-    }
-
-  if (module_index < MMON_MODULE_ALL || module_index >= MMON_MODULE_LAST)
-    {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
-			     module_index);
-      goto error_exit;
     }
 
   /* error message log file */
