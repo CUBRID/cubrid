@@ -1003,6 +1003,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitCursor_definition(Cursor_definitionContext ctx) {
 
+        connectionRequired = true;
+        addToImports("java.sql.*");
+
         String name = Misc.getNormalizedText(ctx.identifier());
 
         symbolStack.pushSymbolTable("cursor_def", null);
@@ -1704,6 +1707,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitClose_statement(Close_statementContext ctx) {
 
+        connectionRequired = true;
+        addToImports("java.sql.*");
+
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
         ExprId cursor = visitNonFuncIdentifier(idCtx); // s032: undeclared id ...
@@ -1763,6 +1769,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitFetch_statement(Fetch_statementContext ctx) {
+
+        connectionRequired = true;
+        addToImports("java.sql.*");
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
         ExprId cursor = visitNonFuncIdentifier(idCtx); // s037: undeclared id ...
