@@ -24,10 +24,10 @@
 #ifndef _MEMORY_MONITOR_CL_HPP_
 #define _MEMORY_MONITOR_CL_HPP_
 
+#include <algorithm>
+
 #include "memory_monitor_common.h"
 
-constexpr char module_names[MMON_MODULE_LAST + 1][DB_MAX_IDENTIFIER_LENGTH] =
-{
-  "all"
-};
+// XXX: will be added print function
+
 #endif // _MEMORY_MONITOR_CL_HPP_

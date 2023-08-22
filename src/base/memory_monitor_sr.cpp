@@ -141,7 +141,7 @@ namespace cubperf
   {
     public:
       memory_monitor (const char *server_name)
-	: m_server_name (server_name), m_aggregater (this) {}
+	: m_server_name (server_name), m_total_mem_usage (0), m_aggregater (this) {}
       memory_monitor (const memory_monitor &) = delete;
       memory_monitor (memory_monitor &&) = delete;
 
@@ -460,7 +460,7 @@ namespace cubperf
 
   void memory_monitor::aggregater::get_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const
   {
-    if (module_index == -1)
+    if (module_index == MMON_MODULE_ALL)
       {
 	// aggregate all detail memory information of modules
 	for (int idx = 0; idx < MMON_MODULE_LAST; idx++)
@@ -574,10 +574,8 @@ namespace cubperf
 
   void memory_monitor::aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const
   {
-    // Convert utility module index(1 ~) to server module index(0 ~).
-    // If utility module index == 0, it means -a option.
-    // It will convert -1 in this case.
-    m_aggregater.get_module_info (module_index - 1, info);
+    // If utility module index == MMON_MODULE_ALL, it means show all detailed info of module.
+    m_aggregater.get_module_info (module_index, info);
   }
 
   void memory_monitor::aggregate_module_info_summary (std::vector<MMON_MODULE_INFO> &info) const
@@ -674,7 +672,7 @@ void mmon_aggregate_server_info (MMON_SERVER_INFO &info)
 void mmon_aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info)
 {
   assert (mmon_Gl != nullptr);
-  assert (module_index < (int)MMON_MODULE_LAST && module_index >= 0);
+  assert (module_index < (int)MMON_MODULE_LAST && module_index >= (int)MMON_MODULE_ALL);
 
   mmon_Gl->aggregate_module_info (module_index, info);
 }

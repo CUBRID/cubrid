@@ -4547,18 +4547,26 @@ int
 memmon (UTIL_FUNCTION_ARG * arg)
 {
 #if defined(CS_MODE)
+  constexpr int DEFAULT_OPTION_PRINT_CNT = 5;
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
-  char *module, *tran_count_str, *stop = NULL;
-  bool transaction, show_all, need_shutdown;
-  int tran_count = INT_MAX;
-  int module_index = MMON_MODULE_LAST;
+  char *tran_count_str, *stop = NULL;
+  bool print_transaction, print_show_all, need_shutdown;
+  bool print_default = false, print_module = false;
+  int tran_count = INT_MAX, module_count;
+  int module_index = INT_MIN;
+  int error_code = NO_ERROR;
+  MMON_SERVER_INFO server_info;
+  // *INDENT-OFF*
+  std::vector<MMON_MODULE_INFO> module_info;
+  // *INDENT-ON*
+  MMON_TRAN_INFO tran_info;
 
-  module = utility_get_option_string_value (arg_map, MEMMON_MODULE_S, 0);
-  transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
+  module_index = utility_get_option_int_value (arg_map, MEMMON_MODULE_S);
+  print_transaction = utility_get_option_bool_value (arg_map, MEMMON_TRANSACTION_S);
   tran_count_str = utility_get_option_string_value (arg_map, MEMMON_TRAN_COUNT_S, 0);
-  show_all = utility_get_option_bool_value (arg_map, MEMMON_SHOW_ALL_S);
+  print_show_all = utility_get_option_bool_value (arg_map, MEMMON_SHOW_ALL_S);
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (database_name == NULL)
@@ -4566,20 +4574,38 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto print_memmon_usage;
     }
 
-  /* error check phase */
-  if (show_all && (transaction || tran_count_str || module))
+  if (check_database_name (database_name))
+    {
+      goto error_exit;
+    }
+
+  /* input error check phase */
+
+  if (module_index >= MMON_MODULE_ALL && module_index < MMON_MODULE_LAST)
+    {
+      print_module = true;
+    }
+  else
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
+			     module_index);
+      goto error_exit;
+    }
+
+  if (!print_transaction && !print_module && !print_show_all)
+    {
+      print_default = true;
+    }
+
+  if (print_show_all && (print_transaction || tran_count_str || print_module))
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_EXCLUSIVE_OPTION));
       goto error_exit;
     }
 
-  if (check_database_name (database_name))
-    {
-      goto error_exit;
-    }
-
-  if ((!transaction) && tran_count_str)
+  if ((!print_transaction) && tran_count_str)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_INVALID_TRAN_COUNT_OPTION));
@@ -4603,35 +4629,6 @@ memmon (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  if (module)
-    {
-      if (module[0] >= 'a' && module[0] <= 'z')
-	{
-	  /* module option with module name */
-	  // TODO: convert module name to module index
-	  // ex) module_index = memmon_convert_module_name_to_index(module);
-	}
-      else
-	{
-	  module_index = (int) strtol (module, &stop, 10);
-
-	  if (stop[0] != 0)
-	    {
-	      module_index = -1;
-	    }
-	}
-
-      if (module_index < 0 || module_index > MMON_MODULE_LAST)
-	{
-	  PRINT_AND_LOG_ERR_MSG (msgcat_message
-				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE), module);
-	  goto error_exit;
-	}
-    }
-
-  /* execute phase */
-  // TODO: check condition and execute network function
-
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
@@ -4649,9 +4646,78 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  /* execute phase */
+  error_code = mmon_get_server_info (server_info);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  // TODO: mmon_print_server_info (server_info);
+
+  if (print_module)
+    {
+      /* XXX: This condition can be removed when a module is registered */
+      if (MMON_MODULE_LAST != 0)
+	{
+	  error_code = mmon_get_module_info (module_index, module_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  // TODO: mmon_print_module_info (module_info);
+	}
+    }
+  else
+    {
+      if (print_show_all)
+	{
+	  module_count = MMON_MODULE_LAST;
+	}
+      else if (print_default)
+	{
+	  /* default case */
+          // *INDENT-OFF*
+          module_count = std::min ((int) MMON_MODULE_LAST, DEFAULT_OPTION_PRINT_CNT);
+          // *INDENT-ON*
+	  tran_count = DEFAULT_OPTION_PRINT_CNT;
+	}
+      else
+	{
+	  /* code protection. unreachable. */
+	  assert (false);
+	}
+      /* XXX: This condition can be removed when a module is registered */
+      if (MMON_MODULE_LAST != 0)
+	{
+	  error_code = mmon_get_module_info_summary (module_count, module_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  // TODO: mmon_print_module_info_summary (module_info);
+	}
+
+      print_transaction = true;
+    }
+
+  if (print_transaction)
+    {
+      error_code = mmon_get_tran_info (tran_count, tran_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      // TODO: mmon_print_tran_info (tran_info);
+    }
+
   // XXX: for test, it will removed at main implementation
-  fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (module ? module : "NULL"),
-	   (transaction ? "true" : "false"), tran_count, (show_all ? "true" : "false"));
+  fprintf (stdout, "server network communicate success\n");
+  fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (print_module ? "true" : "false"),
+	   (print_transaction ? "true" : "false"), tran_count, (print_show_all ? "true" : "false"));
 
   db_shutdown ();
 

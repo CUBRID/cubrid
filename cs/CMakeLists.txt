@@ -143,6 +143,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/locale_helper.hpp
   ${BASE_DIR}/lockfree_bitmap.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_monitor_cl.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/msgcat_set_log.hpp

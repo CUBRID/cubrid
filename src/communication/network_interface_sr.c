@@ -7281,7 +7281,7 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer, *ptr;
+  char *buffer = NULL, *ptr;
   int size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7333,7 +7333,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer, *ptr;
+  char *buffer = NULL, *ptr;
   int size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7345,7 +7345,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = or_unpack_int (request, &module_index);
 
-  if (module_index == 0)
+  if (module_index == MMON_MODULE_ALL)
     {
       module_info.resize (MMON_MODULE_LAST);
     }
@@ -7458,7 +7458,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer, *ptr;
+  char *buffer = NULL, *ptr;
   int size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7483,11 +7483,11 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
    *    - calculate buffer size of packed values of module info */
   // *INDENT-OFF*
   for (const auto &m_info : module_info)
+    {
+      size += or_packed_string_length (m_info.name, NULL);
+      size += OR_INT64_SIZE;
+    }
   // *INDENT-ON*
-  {
-    size += or_packed_string_length (m_info.name, NULL);
-    size += OR_INT64_SIZE;
-  }
 
   /* 2) allocate buffer */
   buffer = (char *) db_private_alloc (thread_p, size);
@@ -7504,11 +7504,11 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
 
       // *INDENT-OFF*
       for (const auto &m_info : module_info)
+        {
+          ptr = or_pack_string (ptr, m_info.name);
+          ptr = or_pack_int64 (ptr, m_info.stat.cur_stat);
+        }
       // *INDENT-ON*
-      {
-	ptr = or_pack_string (ptr, m_info.name);
-	ptr = or_pack_int64 (ptr, m_info.stat.cur_stat);
-      }
     }
 
   if (error != NO_ERROR)
@@ -7538,7 +7538,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
 void
 smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer, *ptr;
+  char *buffer = NULL, *ptr;
   int size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7581,11 +7581,11 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
       // *INDENT-OFF*
       for (const auto &t_stat : info.tran_stat)
+        {
+          ptr = or_pack_int (ptr, t_stat.tranid);
+          ptr = or_pack_int64 (ptr, t_stat.cur_stat);
+        }
       // *INDENT-ON*
-      {
-	ptr = or_pack_int (ptr, t_stat.tranid);
-	ptr = or_pack_int64 (ptr, t_stat.cur_stat);
-      }
     }
 
   if (error != NO_ERROR)
