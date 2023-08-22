@@ -90,7 +90,7 @@ IS:                           I S ;
 LANGUAGE:                     L A N G U A G E ;
 LIKE:                         L I K E ;
 LOOP:                         L O O P ;
-MOD:                          M O D ;
+MOD:                          ( M O D | '%' ) ;
 NOT:                          N O T ;
 NULL_:                        N U L L ;
 NUMERIC:                      N U M E R I C ;
