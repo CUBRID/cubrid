@@ -264,6 +264,9 @@ class test_two_request_sync_client_server_env
     template<reqids_1_to_2 T_VAL>
     void handle_req_and_respond_on_scs_two (test_request_sync_client_server_two_t::sequenced_payload &&sp);
 
+    void send_error_handler (css_error_code error_code, bool &abort_further_processing);
+    void recv_error_handler (css_error_code error_code);
+
     uq_test_request_sync_client_server_one_t create_request_sync_client_server_one ();
     uq_test_request_sync_client_server_two_t create_request_sync_client_server_two ();
 
@@ -1324,6 +1327,18 @@ test_two_request_sync_client_server_env::handle_req_and_respond_on_scs_two (
   handle_req_and_respond<reqids_1_to_2, T_VAL> (get_scs_two (), std::move (sp), m_total_2_to_1_message_count);
 }
 
+void
+test_two_request_sync_client_server_env::send_error_handler (css_error_code error_code, bool &abort_further_processing)
+{
+  assert (false);
+}
+
+void
+test_two_request_sync_client_server_env::recv_error_handler (css_error_code error_code)
+{
+  assert (false);
+}
+
 uq_test_request_sync_client_server_one_t
 test_two_request_sync_client_server_env::create_request_sync_client_server_one ()
 {
@@ -1352,6 +1367,11 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
     mock_check_expected_id_sync<reqids_2_to_1, reqids_2_to_1::_2, actual_payload_t> (a_sp.pull_payload ());
   };
 
+  auto send_error_handler = std::bind (&test_two_request_sync_client_server_env::send_error_handler, this,
+				       std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = std::bind (&test_two_request_sync_client_server_env::recv_error_handler, this,
+				       std::placeholders::_1);
+
   uq_test_request_sync_client_server_one_t scs_one
   {
     new test_request_sync_client_server_one_t (std::move (chn),
@@ -1359,7 +1379,8 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_one (
       { reqids_2_to_1::_0, req_handler_0 },
       { reqids_2_to_1::_1, req_handler_1 },
       { reqids_2_to_1::_2, req_handler_2 }
-    }, reqids_1_to_2::RESPOND, reqids_2_to_1::RESPOND, 10, nullptr, nullptr)
+    }, reqids_1_to_2::RESPOND, reqids_2_to_1::RESPOND, 10
+    , std::move (send_error_handler), std::move (recv_error_handler))
   };
   scs_one->start ();
 
