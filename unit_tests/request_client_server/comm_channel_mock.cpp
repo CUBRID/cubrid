@@ -155,6 +155,27 @@ add_socket_direction (const std::string &sender_id, const std::string &receiver_
 }
 
 void
+disconnect_sender_socket_direction (const std::string &sender_id)
+{
+  const auto it = global_sender_sockdirs.find (sender_id);
+  if (it != global_sender_sockdirs.cend())
+    {
+      it->second->disconnect ();
+    }
+}
+
+void
+disconnect_receiver_socket_direction (const std::string &receiver_id)
+{
+  const auto it = global_receiver_sockdirs.find (receiver_id);
+
+  if (it != global_receiver_sockdirs.cend())
+    {
+      it->second->disconnect ();
+    }
+}
+
+void
 clear_socket_directions ()
 {
   global_sender_sockdirs.clear ();
@@ -328,20 +349,8 @@ namespace cubcomm
 
   void channel::close_connection ()
   {
-    for (auto &it : global_sender_sockdirs)
-      {
-	if (it.first == get_channel_id ())
-	  {
-	    it.second->disconnect ();
-	  }
-      }
-    for (auto &it : global_receiver_sockdirs)
-      {
-	if (it.first == get_channel_id ())
-	  {
-	    it.second->disconnect ();
-	  }
-      }
+    disconnect_sender_socket_direction (get_channel_id ());
+    disconnect_receiver_socket_direction (get_channel_id ());
   }
 
   int channel::get_max_timeout_in_ms () const

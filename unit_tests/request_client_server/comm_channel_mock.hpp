@@ -76,6 +76,8 @@ class mock_socket_direction
 
 void add_socket_direction (const std::string &sender_id, const std::string &receiver_id,
 			   mock_socket_direction &sockdir, bool last_one_to_be_initialized);
+void disconnect_sender_socket_direction (const std::string &sender_id);
+void disconnect_receiver_socket_direction (const std::string &receiver_id);
 void clear_socket_directions ();
 
 #endif // _COMM_CHANNEL_MOCK_HPP_
