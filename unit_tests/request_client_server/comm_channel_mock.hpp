@@ -66,7 +66,7 @@ class mock_socket_direction
     void wait_for_all_messages ();              // wait until all messages are pulled and the message queue is empty
     void wait_until_message_count (size_t count);
 
-    void freeze ();                             // Block to read a meessage to simulate a communication delay
+    void freeze ();                             // Block to read a message to simulate a communication delay
     void unfreeze ();                           // Unblock to read a message to simulate a coomunication delay
 
   private:

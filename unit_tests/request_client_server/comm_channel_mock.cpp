@@ -407,7 +407,6 @@ namespace cubcomm
   int channel::wait_for (unsigned short int, unsigned short int &revents) const
   {
     std::string chnid = get_channel_id ();
-
     if (global_sockdirs_initialized.load () == false)
       {
 	revents = 0;

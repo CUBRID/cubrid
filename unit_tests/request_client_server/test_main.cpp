@@ -647,7 +647,7 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
 
   test_two_request_sync_client_server_env env;
 
-  SECTION ("Push and send requests and confirm they are handled")
+  SECTION ("Send and handle requests")
   {
     constexpr int MESSAGE_COUNT = 4200;
 
@@ -686,7 +686,7 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
     require_all_sent_requests_are_handled ();
   }
 
-  SECTION ("Detect a failure while push request")
+  SECTION ("Detect errors on push_request")
   {
     {
       // Ensure no failure is detected.
@@ -709,7 +709,7 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
     }
   }
 
-  SECTION ("Detect a failure while send_recv request")
+  SECTION ("Detect errors on send_recv_request")
   {
     {
       // Ensure no failure is detected.
