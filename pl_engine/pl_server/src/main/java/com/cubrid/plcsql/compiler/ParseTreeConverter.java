@@ -2063,7 +2063,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private static final BigInteger UINT_LITERAL_MAX =
             new BigInteger("99999999999999999999999999999999999999");
     private static final BigInteger BIGINT_MAX = new BigInteger("9223372036854775807");
-    private static final BigInteger INT_MAX = new BigInteger("2147483648");
+    private static final BigInteger INT_MAX = new BigInteger("2147483647");
 
     private static final String SYMBOL_TABLE_TOP = "%predefined";
     private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
