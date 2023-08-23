@@ -74,6 +74,7 @@ namespace cubcomm
       void stop_response_broker ();
       void stop_incoming_communication_thread ();
       void stop_outgoing_communication_thread ();
+      void wait_until_all_requests_sent ();
 
       /* only used by unit tests
        */
@@ -233,6 +234,13 @@ namespace cubcomm
 
     // terminate receiving messages
     m_conn.reset (nullptr);
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::wait_until_all_requests_sent ()
+  {
+    m_queue->wait_until_empty ();
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>

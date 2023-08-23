@@ -252,6 +252,9 @@ class test_two_request_sync_client_server_env
 
     void wait_for_all_messages ();
 
+    void wait_until_all_requests_sent_on_scs_one ();
+    void wait_until_all_requests_sent_on_scs_two ();
+
     std::pair<bool, bool> get_request_errors_on_scs_one ();
     std::pair<bool, bool> get_request_errors_on_scs_two ();
 
@@ -689,6 +692,7 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
       // Ensure no failure is detected.
       env.push_request_on_scs_one (reqids_1_to_2::_1, 0);
       env.wait_for_all_messages ();
+
       const auto [send_error, recv_error] = env.get_request_errors_on_scs_one ();
       REQUIRE (send_error == false);
       REQUIRE (recv_error == false);
@@ -697,8 +701,8 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
       // Confirm that a send error is detected when it tries to send on a disconnected internal socket.
       disconnect_sender_socket_direction (env.get_scs_one ().get_underlying_channel_id ());
       env.push_request_on_scs_one (reqids_1_to_2::_1, 1);
-      env.wait_for_all_messages ();
-      sleep (1);
+      env.wait_until_all_requests_sent_on_scs_one ();
+
       const auto [send_error, recv_error] = env.get_request_errors_on_scs_one ();
       REQUIRE (send_error == true);
       REQUIRE (recv_error == false);
@@ -710,6 +714,7 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
     {
       // Ensure no failure is detected.
       env.send_recv_request_on_scs_one (reqids_1_to_2::_0, 0);
+
       const auto [send_error, recv_error] = env.get_request_errors_on_scs_one ();
       REQUIRE (send_error == false);
       REQUIRE (recv_error == false);
@@ -723,7 +728,7 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
       auto disconnecter = std::thread ([&] ()
       {
 	// Wait until a request is pushed and disconnect the socket.
-	// This has to be done another thread since the send_recv() is a blocking call.
+	// This has to be done by another thread since the send_recv() is a blocking call.
 	while (!does_receiver_socket_direction_have_message (receiver_id))
 	  {
 	    std::this_thread::sleep_for (std::chrono::milliseconds (10));
@@ -1305,6 +1310,16 @@ void test_two_request_sync_client_server_env::wait_for_all_messages ()
 
   m_sockdir_1_to_2.wait_for_all_messages ();
   m_sockdir_2_to_1.wait_for_all_messages ();
+}
+
+void test_two_request_sync_client_server_env::wait_until_all_requests_sent_on_scs_one ()
+{
+  m_scs_one->wait_until_all_requests_sent ();
+}
+
+void test_two_request_sync_client_server_env::wait_until_all_requests_sent_on_scs_two ()
+{
+  m_scs_two->wait_until_all_requests_sent ();
 }
 
 std::pair <bool, bool>
