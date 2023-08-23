@@ -553,6 +553,10 @@ page_server::connect_to_leader_page_server (std::string &&hostname, int32_t port
       return ps_conn_error_lambda ();
     }
 
+  // TODO
+  // For now, the srv_chn is destroyed here and it will close the connection.
+  // We will create a connection handler to keep this channel and handle requests for them.
+
   er_log_debug (ARG_FILE_LINE,
 		"This page server successfully connected to the leader page server to catch up. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
