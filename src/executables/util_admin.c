@@ -895,7 +895,7 @@ static GETOPT_LONG ua_Flashback_Option[] = {
 
 static UTIL_ARG_MAP ua_Memmon_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
-  {MEMMON_MODULE_S, {ARG_INTEGER}, {(void *) -2}},
+  {MEMMON_MODULE_S, {ARG_INTEGER}, {(void *) -2097573308}},
   {MEMMON_TRANSACTION_S, {ARG_BOOLEAN}, {0}},
   {MEMMON_TRAN_COUNT_S, {ARG_STRING}, {0}},
   {MEMMON_SHOW_ALL_S, {ARG_BOOLEAN}, {0}},

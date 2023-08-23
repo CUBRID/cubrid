@@ -7281,27 +7281,40 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer = NULL, *ptr;
+  char *buffer_a = NULL, *ptr, *buffer;
   int size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
   MMON_SERVER_INFO server_info;
+  int string_len;
 
   mmon_aggregate_server_info (server_info);
 
-  size += or_packed_string_length (server_info.name, NULL);
+  string_len = or_packed_string_length (server_info.name, NULL);
+  if (string_len % MAX_ALIGNMENT)
+    {
+      size += string_len + OR_INT_SIZE;
+    }
+  else
+    {
+      size += string_len;
+    }
+  //size += or_packed_string_length (server_info.name, NULL);
   // Size of total_mem_usage
   size += OR_INT64_SIZE;
 
-  buffer = (char *) db_private_alloc (thread_p, size);
-  if (buffer == NULL)
+  buffer_a = (char *) db_private_alloc (thread_p, size + MAX_ALIGNMENT);
+  if (buffer_a == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
     }
   else
     {
+      buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
+      size -= buffer - buffer_a;
+
       ptr = or_pack_string (buffer, server_info.name);
       ptr = or_pack_int64 (ptr, server_info.total_mem_usage);
     }
@@ -7318,7 +7331,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       ptr = or_pack_int (ptr, error);
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
-  db_private_free_and_init (thread_p, buffer);
+  db_private_free_and_init (thread_p, buffer_a);
 }
 
 /*
@@ -7333,7 +7346,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer = NULL, *ptr;
+  char *buffer_a = NULL, *ptr, *buffer;
   int size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7342,6 +7355,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   std::vector<MMON_MODULE_INFO> module_info;
   // *INDENT-ON*
   int module_index;
+  int string_len;
 
   ptr = or_unpack_int (request, &module_index);
 
@@ -7367,19 +7381,46 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   // *INDENT-OFF*
   for (const auto &m_info : module_info)
     {
-      size += or_packed_string_length (m_info.name, NULL);
+      string_len = or_packed_string_length (m_info.name, NULL);
+      if (string_len % MAX_ALIGNMENT)
+        {
+          size += string_len + OR_INT_SIZE;
+        }
+      else
+        {
+          size += string_len;
+        }
+      //size += or_packed_string_length (m_info.name, NULL);
       // Size of stat information (OR_INT64_SIZE * 3 + OR_INT_SIZE)
       // and size of num_comp (OR_INT_SIZE)
       size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
       for (const auto &comp_info : m_info.comp_info)
         {
-          size += or_packed_string_length (comp_info.name, NULL);
+          string_len = or_packed_string_length (comp_info.name, NULL);
+          if (string_len % MAX_ALIGNMENT)
+            {
+              size += string_len + OR_INT_SIZE;
+            }
+          else
+            {
+              size += string_len;
+            }
+          //size += or_packed_string_length (comp_info.name, NULL);
           size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
           for (const auto &subcomp_info : comp_info.subcomp_info)
             {
-              size += or_packed_string_length (subcomp_info.name, NULL);
+              string_len = or_packed_string_length (subcomp_info.name, NULL);
+              if (string_len % MAX_ALIGNMENT)
+                {
+                  size += string_len + OR_INT_SIZE;
+                }
+              else
+                {
+                  size += string_len;
+                }
+              //size += or_packed_string_length (subcomp_info.name, NULL);
               size += OR_INT64_SIZE;
             }
         }
@@ -7387,8 +7428,8 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   // *INDENT-ON*
 
   /* 2) allocate buffer */
-  buffer = (char *) db_private_alloc (thread_p, size);
-  if (buffer == NULL)
+  buffer_a = (char *) db_private_alloc (thread_p, size + MAX_ALIGNMENT);
+  if (buffer_a == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -7398,6 +7439,9 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       /* 3) packing information
        *    - packing information with sequence of
        *      module info -> component info w/ subcomponent info */
+      buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
+      size -= buffer - buffer_a;
+
       ptr = buffer;
 
       // *INDENT-OFF*
@@ -7443,7 +7487,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       ptr = or_pack_int (ptr, error);
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
-  db_private_free_and_init (thread_p, buffer);
+  db_private_free_and_init (thread_p, buffer_a);
 }
 
 /*
@@ -7458,7 +7502,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer = NULL, *ptr;
+  char *buffer_a = NULL, *ptr, *buffer;
   int size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7467,6 +7511,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   std::vector<MMON_MODULE_INFO> module_info;
   // *INDENT-ON*
   int module_count;
+  int string_len;
 
   ptr = or_unpack_int (request, &module_count);
 
@@ -7484,14 +7529,23 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   // *INDENT-OFF*
   for (const auto &m_info : module_info)
     {
-      size += or_packed_string_length (m_info.name, NULL);
+      string_len = or_packed_string_length (m_info.name, NULL);
+      if (string_len % MAX_ALIGNMENT)
+        {
+          size += string_len + OR_INT_SIZE;
+        }
+      else
+        {
+          size += string_len;
+        }
+      //size += or_packed_string_length (m_info.name, NULL);
       size += OR_INT64_SIZE;
     }
   // *INDENT-ON*
 
   /* 2) allocate buffer */
-  buffer = (char *) db_private_alloc (thread_p, size);
-  if (buffer == NULL)
+  buffer_a = (char *) db_private_alloc (thread_p, size + MAX_ALIGNMENT);
+  if (buffer_a == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -7500,6 +7554,9 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
     {
       /* 3) packing information
        *    - packing information with sequence of module info */
+      buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
+      size -= buffer - buffer_a;
+
       ptr = buffer;
 
       // *INDENT-OFF*
@@ -7523,7 +7580,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
       ptr = or_pack_int (ptr, error);
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
-  db_private_free_and_init (thread_p, buffer);
+  db_private_free_and_init (thread_p, buffer_a);
 }
 
 /*
@@ -7538,7 +7595,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
 void
 smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *buffer = NULL, *ptr;
+  char *buffer_a = NULL, *ptr, *buffer;
   int size = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -7564,10 +7621,15 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   // Size of transaction id (OR_INT_SIZE)
   // and current memory usage (OR_INT64_SIZE)
   size += ((OR_INT_SIZE + OR_INT64_SIZE) * info.num_tran);
+  if (info.num_tran != 0)
+    {
+      // for alignment
+      size += OR_INT_SIZE * (info.num_tran - 1);
+    }
 
   /* 2) allocate buffer */
-  buffer = (char *) db_private_alloc (thread_p, size);
-  if (buffer == NULL)
+  buffer_a = (char *) db_private_alloc (thread_p, size + MAX_ALIGNMENT);
+  if (buffer_a == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -7577,6 +7639,9 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       /* 3) packing information
        *    - packing information with sequence of
        *      server info -> transaction info */
+      buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
+      size -= buffer - buffer_a;
+
       ptr = or_pack_int (buffer, info.num_tran);
 
       // *INDENT-OFF*
@@ -7600,7 +7665,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       ptr = or_pack_int (ptr, error);
       css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, size);
     }
-  db_private_free_and_init (thread_p, buffer);
+  db_private_free_and_init (thread_p, buffer_a);
 }
 
 /*
