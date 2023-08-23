@@ -81,58 +81,6 @@ static int boot_define_view_db_charset (void);
 static int boot_define_view_db_server (void);
 static int boot_define_view_synonym (void);
 
-using COLUMN = cubschema::column;
-
-static cubschema::catcls_function clist[] =
-{
-  // {CT_CLASS_NAME, boot_define_class},
-  {CT_ATTRIBUTE_NAME, boot_define_attribute},
-  {CT_DOMAIN_NAME, boot_define_domain},
-  {CT_METHOD_NAME, boot_define_method},
-  {CT_METHSIG_NAME, boot_define_meth_sig},
-  {CT_METHARG_NAME, boot_define_meth_argument},
-  {CT_METHFILE_NAME, boot_define_meth_file},
-  {CT_QUERYSPEC_NAME, boot_define_query_spec},
-  {CT_INDEX_NAME, boot_define_index},
-  {CT_INDEXKEY_NAME, boot_define_index_key},
-  {CT_DATATYPE_NAME, boot_define_data_type},
-  {CT_CLASSAUTH_NAME, boot_define_class_authorization},
-  {CT_PARTITION_NAME, boot_define_partition},
-  {CT_STORED_PROC_NAME, boot_define_stored_procedure},
-  {CT_STORED_PROC_ARGS_NAME, boot_define_stored_procedure_arguments},
-  {CT_SERIAL_NAME, boot_define_serial},
-  {CT_HA_APPLY_INFO_NAME, boot_define_ha_apply_info},
-  {CT_COLLATION_NAME, boot_define_collations},
-  {CT_CHARSET_NAME, boot_define_charsets},
-  {CT_DUAL_NAME, boot_define_dual},
-  {CT_DB_SERVER_NAME, boot_define_db_server},
-  {CT_SYNONYM_NAME, boot_define_synonym}
-};
-
-static cubschema::catcls_function vclist[] =
-{
-  {CTV_CLASS_NAME, boot_define_view_class},
-  {CTV_SUPER_CLASS_NAME, boot_define_view_super_class},
-  {CTV_VCLASS_NAME, boot_define_view_vclass},
-  {CTV_ATTRIBUTE_NAME, boot_define_view_attribute},
-  {CTV_ATTR_SD_NAME, boot_define_view_attribute_set_domain},
-  {CTV_METHOD_NAME, boot_define_view_method},
-  {CTV_METHARG_NAME, boot_define_view_method_argument},
-  {CTV_METHARG_SD_NAME, boot_define_view_method_argument_set_domain},
-  {CTV_METHFILE_NAME, boot_define_view_method_file},
-  {CTV_INDEX_NAME, boot_define_view_index},
-  {CTV_INDEXKEY_NAME, boot_define_view_index_key},
-  {CTV_AUTH_NAME, boot_define_view_authorization},
-  {CTV_TRIGGER_NAME, boot_define_view_trigger},
-  {CTV_PARTITION_NAME, boot_define_view_partition},
-  {CTV_STORED_PROC_NAME, boot_define_view_stored_procedure},
-  {CTV_STORED_PROC_ARGS_NAME, boot_define_view_stored_procedure_arguments},
-  {CTV_DB_COLLATION_NAME, boot_define_view_db_collation},
-  {CTV_DB_CHARSET_NAME, boot_define_view_db_charset},
-  {CTV_DB_SERVER_NAME, boot_define_view_db_server},
-  {CTV_SYNONYM_NAME,boot_define_view_synonym}
-};
-
 /* ========================================================================== */
 /* NEW DEFINITION */
 /* ========================================================================== */
@@ -226,51 +174,120 @@ namespace cubschema
   );
 }
 
+// for backward compatibility
+using COLUMN = cubschema::column;
+
+/* ========================================================================== */
+/* MAIN APIS */
+/* ========================================================================== */
+
+static cubschema::catcls_function clist[] =
+{
+  // {CT_CLASS_NAME, boot_define_class},
+  {CT_ATTRIBUTE_NAME, boot_define_attribute},
+  {CT_DOMAIN_NAME, boot_define_domain},
+  {CT_METHOD_NAME, boot_define_method},
+  {CT_METHSIG_NAME, boot_define_meth_sig},
+  {CT_METHARG_NAME, boot_define_meth_argument},
+  {CT_METHFILE_NAME, boot_define_meth_file},
+  {CT_QUERYSPEC_NAME, boot_define_query_spec},
+  {CT_INDEX_NAME, boot_define_index},
+  {CT_INDEXKEY_NAME, boot_define_index_key},
+  {CT_DATATYPE_NAME, boot_define_data_type},
+  {CT_CLASSAUTH_NAME, boot_define_class_authorization},
+  {CT_PARTITION_NAME, boot_define_partition},
+  {CT_STORED_PROC_NAME, boot_define_stored_procedure},
+  {CT_STORED_PROC_ARGS_NAME, boot_define_stored_procedure_arguments},
+  {CT_SERIAL_NAME, boot_define_serial},
+  {CT_HA_APPLY_INFO_NAME, boot_define_ha_apply_info},
+  {CT_COLLATION_NAME, boot_define_collations},
+  {CT_CHARSET_NAME, boot_define_charsets},
+  {CT_DUAL_NAME, boot_define_dual},
+  {CT_DB_SERVER_NAME, boot_define_db_server},
+  {CT_SYNONYM_NAME, boot_define_synonym}
+};
+
+static cubschema::catcls_function_ng clist_new [] =
+{
+  {CT_CLASS_NAME, cubschema::sm_define_class}
+};
+
+static cubschema::catcls_function vclist[] =
+{
+  {CTV_CLASS_NAME, boot_define_view_class},
+  {CTV_SUPER_CLASS_NAME, boot_define_view_super_class},
+  {CTV_VCLASS_NAME, boot_define_view_vclass},
+  {CTV_ATTRIBUTE_NAME, boot_define_view_attribute},
+  {CTV_ATTR_SD_NAME, boot_define_view_attribute_set_domain},
+  {CTV_METHOD_NAME, boot_define_view_method},
+  {CTV_METHARG_NAME, boot_define_view_method_argument},
+  {CTV_METHARG_SD_NAME, boot_define_view_method_argument_set_domain},
+  {CTV_METHFILE_NAME, boot_define_view_method_file},
+  {CTV_INDEX_NAME, boot_define_view_index},
+  {CTV_INDEXKEY_NAME, boot_define_view_index_key},
+  {CTV_AUTH_NAME, boot_define_view_authorization},
+  {CTV_TRIGGER_NAME, boot_define_view_trigger},
+  {CTV_PARTITION_NAME, boot_define_view_partition},
+  {CTV_STORED_PROC_NAME, boot_define_view_stored_procedure},
+  {CTV_STORED_PROC_ARGS_NAME, boot_define_view_stored_procedure_arguments},
+  {CTV_DB_COLLATION_NAME, boot_define_view_db_collation},
+  {CTV_DB_CHARSET_NAME, boot_define_view_db_charset},
+  {CTV_DB_SERVER_NAME, boot_define_view_db_server},
+  {CTV_SYNONYM_NAME,boot_define_view_synonym}
+};
+
 int
 catcls_install_class (void)
 {
-  MOP class_mop[sizeof (clist) / sizeof (clist[0])];
-  int i, save;
   int error_code = NO_ERROR;
-  int num_classes = sizeof (clist) / sizeof (clist[0]);
 
-  cubschema::system_catalog_builder builder;
+  int num_classes_old = sizeof (clist) / sizeof (clist[0]);
+  int num_classes_new = sizeof (clist_new) / sizeof (clist_new[0]);
+  int num_classes_total = num_classes_old + num_classes_new;
+
+  MOP class_mop[num_classes_total];
+  int i, save;
   AU_DISABLE (save);
 
-  {
-    // new routine
-    error_code = builder.create_class (cubschema::sm_define_class);
-    if (error_code != NO_ERROR)
-      {
-	goto end;
-      }
-  }
+  using catalog_builder = cubschema::system_catalog_builder;
 
-  // old routine
-  for (i = 0; i < num_classes; i++)
+  for (i = 0; i < num_classes_total; i++)
     {
-      class_mop[i] = db_create_class (clist[i].name);
-      if (class_mop[i] == NULL)
+      MOP mop = nullptr;
+      if (i < num_classes_new)
+	{
+	  // new routine
+	  mop = class_mop[i] = catalog_builder::create_and_mark_system_class (clist_new[i].name);
+	}
+      else
+	{
+	  // old routine
+	  int idx = i - num_classes_new;
+	  mop = class_mop[i] = db_create_class (clist[idx].name);
+	}
+      if (mop == nullptr)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto end;
 	}
-      sm_mark_system_class (class_mop[i], 1);
+      sm_mark_system_class (mop, 1);
     }
 
-  {
-    // new routine
-    error_code = builder.build_class (cubschema::sm_define_class);
-    if (error_code != NO_ERROR)
-      {
-	goto end;
-      }
-  }
-
-  for (i = 0; i < num_classes; i++)
+  for (i = 0; i < num_classes_total; i++)
     {
-      error_code = (clist[i].class_func) (class_mop[i]);
+      if (i < num_classes_new)
+	{
+	  // new routine
+	  error_code = catalog_builder::build_class (class_mop[i], clist_new[i].definition);
+	}
+      else
+	{
+	  // old routine
+	  int idx = i - num_classes_new;
+	  error_code = (clist[idx].class_func) (class_mop[i]);
+	}
+
       if (error_code != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);

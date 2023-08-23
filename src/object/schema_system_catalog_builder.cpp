@@ -31,28 +31,39 @@
 
 namespace cubschema
 {
-  int
-  system_catalog_builder::create_class (const system_catalog_definition &def)
+  MOP
+  system_catalog_builder::create_and_mark_system_class (std::string_view name)
   {
-    int error_code = NO_ERROR;
+    if (name.empty ())
+      {
+	// should not happen
+	assert (false);
+	return nullptr;
+      }
 
     // class_mop
-    class_mop = db_create_class (def.name.data ());
-    if (class_mop == NULL)
+    MOP class_mop = db_create_class (name.data ());
+    if (class_mop == nullptr)
       {
 	assert (er_errid () != NO_ERROR);
-	error_code = er_errid ();
-	return error_code;
+	return nullptr;
       }
-    sm_mark_system_class (class_mop, 1);
+    // sm_mark_system_class (class_mop, 1);
 
-    return error_code;
+    return class_mop;
   }
 
   int
-  system_catalog_builder::build_class (const system_catalog_definition &catalog_def)
+  system_catalog_builder::build_class (const MOP class_mop, const system_catalog_definition &catalog_def)
   {
     int error_code = NO_ERROR;
+
+    if (class_mop == nullptr)
+      {
+	// should not happen
+	assert (false);
+	return ER_FAILED;
+      }
 
     // define
     SM_TEMPLATE *def = smt_edit_class_mop (class_mop, AU_ALTER);

@@ -33,6 +33,8 @@ namespace cubschema
   typedef int (*DEF_CLASS_FUNCTION) (MOP);
   typedef int (*DEF_VCLASS_FUNCTION) ();
 
+  class system_catalog_builder;
+
   struct catcls_function
   {
     const char *name;
@@ -50,17 +52,25 @@ namespace cubschema
     {}
   };
 
+  struct catcls_function_ng
+  {
+    const std::string_view name;
+    const system_catalog_definition &definition;
+
+    constexpr catcls_function_ng (const std::string_view n, const system_catalog_definition &def)
+      : name {n}, definition {def}
+    {}
+  };
+
   class system_catalog_builder
   {
     private:
-      MOP class_mop;
-
-    public:
       system_catalog_builder () = default;
       ~system_catalog_builder () = default;
 
-      int create_class (const system_catalog_definition &def);
-      int build_class (const system_catalog_definition &def);
+    public:
+      static MOP create_and_mark_system_class (std::string_view name);
+      static int build_class (const MOP class_mop, const system_catalog_definition &def);
   };
 }
 
