@@ -9472,6 +9472,12 @@ qo_classify (PT_NODE * attr)
 	  return PC_OTHER;
 	}
 
+    case PT_EXPR:
+      if (pt_is_function_index_expression (attr))
+	{
+	  return PC_ATTR;
+	}
+
     default:
       return PC_OTHER;
     }
@@ -9496,7 +9502,7 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
       attr = attr->info.dot.arg2;
     }
 
-  QO_ASSERT (env, attr->node_type == PT_NAME);
+  QO_ASSERT (env, (attr->node_type == PT_NAME || pt_is_function_index_expression (attr)));
 
   nodep = lookup_node (attr, env, &dummy);
   if (nodep == NULL)
