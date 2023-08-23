@@ -48,7 +48,7 @@ namespace cubschema
 	assert (er_errid () != NO_ERROR);
 	return nullptr;
       }
-    // sm_mark_system_class (class_mop, 1);
+    sm_mark_system_class (class_mop, 1);
 
     return class_mop;
   }

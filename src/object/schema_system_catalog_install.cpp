@@ -253,25 +253,23 @@ catcls_install_class (void)
 
   for (i = 0; i < num_classes_total; i++)
     {
-      MOP mop = nullptr;
       if (i < num_classes_new)
 	{
 	  // new routine
-	  mop = class_mop[i] = catalog_builder::create_and_mark_system_class (clist_new[i].name);
+	  class_mop[i] = catalog_builder::create_and_mark_system_class (clist_new[i].name);
 	}
       else
 	{
 	  // old routine
 	  int idx = i - num_classes_new;
-	  mop = class_mop[i] = db_create_class (clist[idx].name);
+	  class_mop[i] = catalog_builder::create_and_mark_system_class (clist[idx].name);
 	}
-      if (mop == nullptr)
+      if (class_mop[i] == nullptr)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
 	  goto end;
 	}
-      sm_mark_system_class (mop, 1);
     }
 
   for (i = 0; i < num_classes_total; i++)
