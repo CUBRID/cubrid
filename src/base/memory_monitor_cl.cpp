@@ -17,7 +17,7 @@
  */
 
 /*
- * memory_monitor_cl.hpp - client structures and functions
+ * memory_monitor_cl.cpp - definitions of client functions
  *                         for memory monitoring module
  */
 
@@ -158,4 +158,3 @@ mmon_print_tran_info (MMON_TRAN_INFO &tran_info)
     }
   fprintf (stdout, "\n-----------------------------------------------------\n\n");
 }
-
