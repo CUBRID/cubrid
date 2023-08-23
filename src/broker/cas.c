@@ -872,6 +872,8 @@ cas_main (void)
   char tmp_passwd[SRV_CON_DBPASSWD_SIZE] = { 0, };
   SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;
   char *find_gateway = NULL;
+  char errplog_path[BROKER_PATH_MAX] = { 0, };
+  char errlog_file[BROKER_PATH_MAX] = { 0, };
 #endif
 
 #if defined(CAS_FOR_ORACLE)
@@ -943,6 +945,12 @@ cas_main (void)
   logddl_init (APP_NAME_CAS);
 
 #if defined(CAS_FOR_CGW)
+  sprintf (errlog_file, "%s%s_%d.err",
+	   get_cubrid_file (FID_CUBRID_ERR_DIR, errplog_path, BROKER_PATH_MAX), shm_appl->broker_name,
+	   shm_as_index + 1);
+
+  er_init (errlog_file, ER_NEVER_EXIT);
+
   if (cgw_init () < 0)
     {
       return -1;

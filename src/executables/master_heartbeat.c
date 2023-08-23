@@ -1889,7 +1889,8 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &hp, &herr) != 0 || hp == NULL)
 	{
-	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host,
+				      HOSTS_FILE);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
@@ -1900,7 +1901,8 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 
       if (gethostbyname_r_uhost (host, &hent, buf, sizeof (buf), &herr) == NULL)
 	{
-	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host,
+				      HOSTS_FILE);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
@@ -1910,7 +1912,8 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 
       if (gethostbyname_r_uhost (host, &hent, &ht_data) == -1)
 	{
-	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host,
+				      HOSTS_FILE);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hent.h_addr, hent.h_length);
@@ -1926,7 +1929,8 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
       if (hp == NULL)
 	{
 	  pthread_mutex_unlock (&gethostbyname_lock);
-	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 1, host);
+	  MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_HOST_NAME_ERROR, 2, host,
+				      HOSTS_FILE);
 	  return ERR_CSS_TCP_HOST_NAME_ERROR;
 	}
       memcpy ((void *) addr, (void *) hp->h_addr, hp->h_length);
@@ -4853,7 +4857,8 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
 
   if (GETHOSTNAME (host_name, sizeof (host_name)))
     {
-      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 1, host_name);
+      MASTER_ER_SET_WITH_OSERROR (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNABLE_TO_FIND_HOSTNAME, 2, host_name,
+				  HOSTS_FILE);
       return ER_BO_UNABLE_TO_FIND_HOSTNAME;
     }
 

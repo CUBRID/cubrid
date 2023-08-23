@@ -181,7 +181,7 @@ hm_srv_handle_free (int h_id)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if defined (CAS_FOR_CGW)
-  srv_handle->cgw_handle = NULL;
+  ux_cgw_free_stmt (srv_handle);
 #endif
 
   FREE_MEM (srv_handle);
@@ -282,7 +282,8 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
       if (srv_handle->schema_type < 0 || srv_handle->schema_type == CCI_SCH_CLASS
 	  || srv_handle->schema_type == CCI_SCH_VCLASS || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
 	  || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
-	  || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
+	  || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY
+	  || srv_handle->schema_type == CCI_SCH_ATTR_WITH_SYNONYM)
 	{
 	  hm_qresult_end (srv_handle, FALSE);
 	}
@@ -423,7 +424,8 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
   if (srv_handle->schema_type < 0 || srv_handle->schema_type == CCI_SCH_CLASS
       || srv_handle->schema_type == CCI_SCH_VCLASS || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
       || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
-      || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY)
+      || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY
+      || srv_handle->schema_type == CCI_SCH_ATTR_WITH_SYNONYM)
     {
       hm_qresult_end (srv_handle, TRUE);
       hm_session_free (srv_handle);
