@@ -219,7 +219,7 @@ class page_server
     responder_t &get_responder ();
 
   private: // members
-    std::string m_server_name;
+    const std::string m_server_name;
 
     connection_handler_uptr_t m_active_tran_server_conn;
     std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
