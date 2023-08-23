@@ -31,6 +31,7 @@
 #include <array>
 #include <atomic>
 #include <functional>
+#include <chrono>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // common declarations
@@ -251,6 +252,8 @@ class test_two_request_sync_client_server_env
 
     void wait_for_all_messages ();
 
+    std::pair<bool, bool> get_request_errors ();
+
   private:
     template<typename T_SCS, typename T_MSGID>
     void push_request_and_increment_msg_count (T_SCS &scs, T_MSGID msgid, int i, std::atomic<size_t> &msg_count_inout);
@@ -283,6 +286,9 @@ class test_two_request_sync_client_server_env
 
     std::atomic<size_t> m_total_response_requested = 0;
     std::atomic<size_t> m_total_response_sent = 0;
+
+    bool m_send_error_happen = false;
+    bool m_receive_error_happen = false;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -633,13 +639,13 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
 
   test_two_request_sync_client_server_env env;
 
-  constexpr int MESSAGE_COUNT = 4200;
+  SECTION ("Push and send requests and confirm they are handled")
+  {
+    constexpr int MESSAGE_COUNT = 4200;
 
 #define REPEAT_REQUEST_WITH_MSGID(req_foo, msgid) \
   for (int i = 0; i < MESSAGE_COUNT; ++i) req_foo (msgid, i)
 
-  SECTION ("Push and send requests and confirm they are handled")
-  {
     std::vector<std::thread> threads;
     threads.emplace_back ([&] ()
     {
@@ -670,6 +676,59 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
     env.wait_for_all_messages ();
 
     require_all_sent_requests_are_handled ();
+  }
+
+  SECTION ("Detect a failure while push request")
+  {
+    {
+      env.push_request_on_scs_one (reqids_1_to_2::_1, 0);
+      env.wait_for_all_messages ();
+      const auto [send_error, recv_error] = env.get_request_errors ();
+      REQUIRE (send_error == false);
+      REQUIRE (recv_error == false);
+    }
+    {
+      disconnect_sender_socket_direction (env.get_scs_one ().get_underlying_channel_id ());
+      env.push_request_on_scs_one (reqids_1_to_2::_1, 1);
+      env.wait_for_all_messages ();
+      sleep (1);
+      const auto [send_error, recv_error] = env.get_request_errors ();
+      REQUIRE (send_error == true);
+      REQUIRE (recv_error == false);
+    }
+  }
+
+  SECTION ("Detect a failure while send_recv request")
+  {
+    {
+      // Ensure no failure is detected.
+      env.send_recv_request_on_scs_one (reqids_1_to_2::_0, 0);
+      const auto [send_error, recv_error] = env.get_request_errors ();
+      REQUIRE (send_error == false);
+      REQUIRE (recv_error == false);
+    }
+    {
+      const auto receiver_id = env.get_scs_two ().get_underlying_channel_id ();
+      freeze_receiver_socket_direction (receiver_id);
+
+      auto disconnecter = std::thread ([&] ()
+      {
+	while (!does_receiver_socket_direction_have_message (receiver_id))
+	  {
+	    std::this_thread::sleep_for (std::chrono::milliseconds (10));
+	  } // Wait until a request is pushed.
+	disconnect_receiver_socket_direction (receiver_id);
+      });
+
+      env.send_recv_request_on_scs_one (reqids_1_to_2::_0, 1);
+
+      disconnecter.join ();
+
+      const auto [send_error, recv_error] =
+	      env.get_request_errors (); // TODO: 에러 sce1, sce2 에 따라 다르게 박아야 함.
+      REQUIRE (send_error == false);
+      REQUIRE (recv_error == true);
+    }
   }
 }
 
@@ -1238,6 +1297,12 @@ void test_two_request_sync_client_server_env::wait_for_all_messages ()
   m_sockdir_2_to_1.wait_for_all_messages ();
 }
 
+std::pair <bool, bool>
+test_two_request_sync_client_server_env::get_request_errors ()
+{
+  return { m_send_error_happen, m_receive_error_happen };
+}
+
 template<typename T_SCS, typename T_MSGID>
 void
 test_two_request_sync_client_server_env::push_request_and_increment_msg_count (
@@ -1262,9 +1327,11 @@ test_two_request_sync_client_server_env::send_recv_and_increment_msg_count (
   payload_with_op_count response_payload;
 
   const css_error_code error_code = scs.send_recv (msgid, std::move (request_payload), response_payload);
-  REQUIRE (error_code == NO_ERRORS);
-  REQUIRE (response_payload.val == static_cast<int> (msgid));
-  REQUIRE (response_payload.op_count == i + 1);	  // it is incremented by response handler
+  if (error_code == NO_ERRORS)
+    {
+      REQUIRE (response_payload.val == static_cast<int> (msgid));
+      REQUIRE (response_payload.op_count == i + 1);	  // it is incremented by response handler
+    }
 
   ++global_sent_request_count;
 }
@@ -1330,13 +1397,22 @@ test_two_request_sync_client_server_env::handle_req_and_respond_on_scs_two (
 void
 test_two_request_sync_client_server_env::send_error_handler (css_error_code error_code, bool &abort_further_processing)
 {
-  assert (false);
+  std::cout << "send_error_handler" << std::endl;
+  m_send_error_happen = true;
 }
 
 void
 test_two_request_sync_client_server_env::recv_error_handler (css_error_code error_code)
 {
-  assert (false);
+  std::cout << "recv_error_handler" << std::endl;
+  m_receive_error_happen = true;
+  m_scs_one->stop_response_broker ();
+
+  // TODO: 이거 1,2 따로 구현해야함.
+
+  // 이런다고 여기서 종료되지 않는다는게 큰 문제군.
+  // 1. 어떻게 종료하지?
+  // 2. 종료를 여기서 구현해버리면 의미 있나? ㅇ의미 있긴하지. 핸들러는 잘 불린다는 것을 알 수 있으니..
 }
 
 uq_test_request_sync_client_server_one_t
@@ -1408,13 +1484,18 @@ test_two_request_sync_client_server_env::create_request_sync_client_server_two (
     mock_check_expected_id_sync<reqids_1_to_2, reqids_1_to_2::_1, actual_payload_t> (a_sp.pull_payload ());
   };
 
+  auto send_error_handler = std::bind (&test_two_request_sync_client_server_env::send_error_handler, this,
+				       std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = std::bind (&test_two_request_sync_client_server_env::recv_error_handler, this,
+				       std::placeholders::_1);
+
   uq_test_request_sync_client_server_two_t scs_two
   {
     new test_request_sync_client_server_two_t (std::move (chn),
     {
       { reqids_1_to_2::_0, req_handler_0 },
       { reqids_1_to_2::_1, req_handler_1 }
-    }, reqids_2_to_1::RESPOND, reqids_1_to_2::RESPOND, 10, nullptr, nullptr)
+    }, reqids_2_to_1::RESPOND, reqids_1_to_2::RESPOND, 10, send_error_handler, recv_error_handler)
   };
   scs_two->start ();
 

@@ -66,18 +66,25 @@ class mock_socket_direction
     void wait_for_all_messages ();              // wait until all messages are pulled and the message queue is empty
     void wait_until_message_count (size_t count);
 
+    void freeze ();                             // Block to read a meessage to simulate a communication delay
+    void unfreeze ();                           // Unblock to read a message to simulate a coomunication delay
+
   private:
     std::queue<std::string> m_messages;
     std::mutex m_mutex;
     std::condition_variable m_condvar;
     bool m_disconnect = false;
     size_t m_message_count = 0;
+    bool m_frozen = false;
 };
 
 void add_socket_direction (const std::string &sender_id, const std::string &receiver_id,
 			   mock_socket_direction &sockdir, bool last_one_to_be_initialized);
 void disconnect_sender_socket_direction (const std::string &sender_id);
 void disconnect_receiver_socket_direction (const std::string &receiver_id);
+void freeze_receiver_socket_direction (const std::string &receiver_id);
+void unfreeze_receiver_socket_direction (const std::string &receiver_id);
+bool does_receiver_socket_direction_have_message (const std::string &receiver_id);
 void clear_socket_directions ();
 
 #endif // _COMM_CHANNEL_MOCK_HPP_

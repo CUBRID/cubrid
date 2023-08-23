@@ -62,7 +62,7 @@ mock_socket_direction::peek_message (std::string &str)
   std::unique_lock<std::mutex> ulock (m_mutex);
   m_condvar.wait (ulock, [this]
   {
-    return !m_messages.empty () || m_disconnect;
+    return m_disconnect || (!m_frozen && !m_messages.empty ());
   });
 
   if (m_disconnect)
@@ -85,7 +85,7 @@ mock_socket_direction::pull_message (std::string &str)
   std::unique_lock<std::mutex> ulock (m_mutex);
   m_condvar.wait (ulock, [this]
   {
-    return !m_messages.empty () || m_disconnect;
+    return m_disconnect || (!m_frozen && !m_messages.empty ());
   });
 
   if (m_disconnect)
@@ -139,6 +139,22 @@ mock_socket_direction::wait_until_message_count (size_t count)
 }
 
 void
+mock_socket_direction::freeze ()
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_frozen = true;
+}
+
+void
+mock_socket_direction::unfreeze ()
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_frozen = false;
+  ulock.unlock ();
+  m_condvar.notify_all ();
+}
+
+void
 add_socket_direction (const std::string &sender_id, const std::string &receiver_id,
 		      mock_socket_direction &sockdir, bool last_one_to_be_initialized)
 {
@@ -173,6 +189,33 @@ disconnect_receiver_socket_direction (const std::string &receiver_id)
     {
       it->second->disconnect ();
     }
+}
+
+void
+freeze_receiver_socket_direction (const std::string &receiver_id)
+{
+  const auto it = global_receiver_sockdirs.find (receiver_id);
+  assert (it != global_receiver_sockdirs.cend());
+
+  it->second->freeze ();
+}
+
+void
+unfreeze_receiver_socket_direction (const std::string &receiver_id)
+{
+  const auto it = global_receiver_sockdirs.find (receiver_id);
+  assert (it != global_receiver_sockdirs.cend());
+
+  it->second->unfreeze ();
+}
+
+bool
+does_receiver_socket_direction_have_message (const std::string &receiver_id)
+{
+  const auto it = global_receiver_sockdirs.find (receiver_id);
+  assert (it != global_receiver_sockdirs.cend());
+
+  return it->second->has_message ();
 }
 
 void
@@ -319,7 +362,10 @@ namespace cubcomm
     const std::string channel_id = get_channel_id ();
     assert (global_sender_sockdirs.find (channel_id) != global_sender_sockdirs.cend ());
 
-    global_sender_sockdirs[channel_id]->push_message (std::string (buffer, length));
+    if (!global_sender_sockdirs[channel_id]->push_message (std::string (buffer, length)))
+      {
+	return ERROR_ON_WRITE;
+      }
     return NO_ERRORS;
   }
 
@@ -361,6 +407,7 @@ namespace cubcomm
   int channel::wait_for (unsigned short int, unsigned short int &revents) const
   {
     std::string chnid = get_channel_id ();
+
     if (global_sockdirs_initialized.load () == false)
       {
 	revents = 0;
