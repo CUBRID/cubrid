@@ -232,10 +232,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (ofTopLevel) {
             for (ParameterContext pc : ctx.parameter()) {
                 DeclParam dp = (DeclParam) visit(pc);
-                if (dp.typeSpec == TypeSpecSimple.BOOLEAN || dp.typeSpec == TypeSpecSimple.SYS_REFCURSOR) {
+                if (dp.typeSpec == TypeSpecSimple.BOOLEAN
+                        || dp.typeSpec == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(pc), // s064
-                            "type " + dp.typeSpec.pcsName + " cannot be used as a paramter type of stored procedures");
+                            "type "
+                                    + dp.typeSpec.pcsName
+                                    + " cannot be used as a paramter type of stored procedures");
                 }
                 ret.addNode(dp);
             }
@@ -2205,11 +2208,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         "function " + name + " must specify its return type");
             }
             TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-            if (symbolStack.getCurrentScope().level == 1) {     // at top level
+            if (symbolStack.getCurrentScope().level == 1) { // at top level
                 if (retType == TypeSpecSimple.BOOLEAN || retType == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.type_spec()), // s065
-                            "type " + retType.pcsName + " cannot be used as a return type of stored functions");
+                            "type "
+                                    + retType.pcsName
+                                    + " cannot be used as a return type of stored functions");
                 }
             }
             DeclFunc ret = new DeclFunc(ctx, name, paramList, retType);
