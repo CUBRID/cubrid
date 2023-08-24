@@ -3745,6 +3745,32 @@ pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * 
 }
 
 /*
+ * pt_remove_cast_wrap_for_dblink () - copies exactly a term node excluding cast node for dblink,
+      and returns a pointer to the copy. It is eligible for a walk "pre" function
+ *   return:
+ *   parser(in):
+ *   old_node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_remove_cast_wrap_for_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk)
+{
+  PT_NODE *new_node = old_node;
+
+  if (old_node->node_type == PT_EXPR)
+    {
+      if (old_node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (old_node, PT_EXPR_INFO_CAST_WRAP))
+	{
+	  new_node = old_node->info.expr.arg1;
+	  parser_free_node (parser, old_node);
+	}
+    }
+
+  return new_node;
+}
+
+/*
  * pt_copypush_terms() - push sargable term into the derived subquery
  *   return:
  *   parser(in):
@@ -3808,6 +3834,11 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       /* copy terms */
       query->info.dblink_table.pushed_pred = parser_copy_tree_list (parser, term_list);
+
+      /* remove the cast wrap from pushed predicate */
+      query->info.dblink_table.pushed_pred =
+	parser_walk_tree (parser, query->info.dblink_table.pushed_pred, pt_remove_cast_wrap_for_dblink, NULL, NULL,
+			  NULL);
 
       /* print the pushed predicates */
       save_custom = parser->custom_print;
@@ -4102,6 +4133,12 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 	}
       else
 	{
+	  /* wrapped cast should be pushed and it will be removed while rewriting the dblink query */
+	  if (term->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_CAST_WRAP))
+	    {
+	      return true;
+	    }
+
 	  /* other expression like built-in and stored function and etc. */
 	  return false;
 	}
