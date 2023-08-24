@@ -7355,7 +7355,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   std::vector<MMON_MODULE_INFO> module_info;
   // *INDENT-ON*
   int module_index;
-  int string_len;
 
   ptr = or_unpack_int (request, &module_index);
 
@@ -7381,46 +7380,26 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   // *INDENT-OFF*
   for (const auto &m_info : module_info)
     {
-      string_len = or_packed_string_length (m_info.name, NULL);
-      if (string_len % MAX_ALIGNMENT)
-        {
-          size += string_len + OR_INT_SIZE;
-        }
-      else
-        {
-          size += string_len;
-        }
-      //size += or_packed_string_length (m_info.name, NULL);
+      size += or_packed_string_length (m_info.name, NULL);
+      /* (CBRD-24943) Alignment size check is needed because or_pack_int64() use different alignment unit(8 byte)
+       * to other packing function(4 byte). And it occurs to use more 4 bytes for alignment. */
+      size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
+
       // Size of stat information (OR_INT64_SIZE * 3 + OR_INT_SIZE)
       // and size of num_comp (OR_INT_SIZE)
       size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
       for (const auto &comp_info : m_info.comp_info)
         {
-          string_len = or_packed_string_length (comp_info.name, NULL);
-          if (string_len % MAX_ALIGNMENT)
-            {
-              size += string_len + OR_INT_SIZE;
-            }
-          else
-            {
-              size += string_len;
-            }
-          //size += or_packed_string_length (comp_info.name, NULL);
+          size += or_packed_string_length (comp_info.name, NULL);
+          size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
+
           size += OR_INT64_SIZE * 3 + OR_INT_SIZE * 2;
 
           for (const auto &subcomp_info : comp_info.subcomp_info)
             {
-              string_len = or_packed_string_length (subcomp_info.name, NULL);
-              if (string_len % MAX_ALIGNMENT)
-                {
-                  size += string_len + OR_INT_SIZE;
-                }
-              else
-                {
-                  size += string_len;
-                }
-              //size += or_packed_string_length (subcomp_info.name, NULL);
+              size += or_packed_string_length (subcomp_info.name, NULL);
+              size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
               size += OR_INT64_SIZE;
             }
         }
@@ -7511,7 +7490,6 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   std::vector<MMON_MODULE_INFO> module_info;
   // *INDENT-ON*
   int module_count;
-  int string_len;
 
   ptr = or_unpack_int (request, &module_count);
 
@@ -7529,16 +7507,10 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
   // *INDENT-OFF*
   for (const auto &m_info : module_info)
     {
-      string_len = or_packed_string_length (m_info.name, NULL);
-      if (string_len % MAX_ALIGNMENT)
-        {
-          size += string_len + OR_INT_SIZE;
-        }
-      else
-        {
-          size += string_len;
-        }
-      //size += or_packed_string_length (m_info.name, NULL);
+      size += or_packed_string_length (m_info.name, NULL);
+      /* (CBRD-24943) Alignment size check is needed because or_pack_int64() use different alignment unit(8 byte)
+       * to other packing function(4 byte). And it occurs to use more 4 bytes for alignment. */
+      size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
       size += OR_INT64_SIZE;
     }
   // *INDENT-ON*
@@ -7623,8 +7595,9 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   size += ((OR_INT_SIZE + OR_INT64_SIZE) * info.num_tran);
   if (info.num_tran != 0)
     {
-      // for alignment
-      size += OR_INT_SIZE * (info.num_tran - 1);
+      /* (CBRD-24943) Alignment size check is needed because or_pack_int64() use different alignment unit(8 byte)
+       * to other packing function(4 byte). And it occurs to use more 4 bytes for alignment. */
+      size += INT_ALIGNMENT * (info.num_tran - 1);
     }
 
   /* 2) allocate buffer */

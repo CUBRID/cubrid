@@ -50,7 +50,7 @@ namespace cubperf
     std::atomic<uint32_t> expand_resize_count;
   } MMON_MEM_STAT;
 
-  /* XXX: this dummy modules will be changed when heap module is registered */
+  /* TODO: this dummy modules will be changed when heap module is registered */
   MMON_STAT_INFO dummy_stat_info[] =
   {
     {MMON_STAT_DUMMY_1, NULL, NULL},
@@ -69,7 +69,7 @@ namespace cubperf
   {
     public:
       mmon_subcomponent (const char *subcomp_name)
-	: m_subcomp_name (subcomp_name), m_cur_stat (0) {}
+	: m_subcomp_name {subcomp_name}, m_cur_stat {0} {}
       mmon_subcomponent (const mmon_subcomponent &) = delete;
       mmon_subcomponent (mmon_subcomponent &&) = delete;
 
@@ -91,7 +91,7 @@ namespace cubperf
   {
     public:
       mmon_component (const char *comp_name)
-	: m_comp_name (comp_name), m_stat {0, 0, 0, 0} {}
+	: m_comp_name {comp_name}, m_stat {0, 0, 0, 0} {}
       mmon_component (const mmon_component &) = delete;
       mmon_component (mmon_component &&) = delete;
 
@@ -320,7 +320,7 @@ namespace cubperf
   }
 
   mmon_module::mmon_module (const char *module_name, const MMON_STAT_INFO *info)
-    : m_module_name (module_name), m_stat {0, 0, 0, 0}
+    : m_module_name {module_name}, m_stat {0, 0, 0, 0}
   {
     /* register component and subcomponent information
      * add component and subcomponent */
@@ -533,9 +533,9 @@ namespace cubperf
   }
 
   memory_monitor::memory_monitor (const char *server_name)
-    : m_server_name (server_name), m_total_mem_usage (0), m_aggregater (this)
+    : m_server_name {server_name}, m_total_mem_usage {0}, m_aggregater {this}
   {
-    /* XXX: this dummy modules will be changed when heap module is registered */
+    /* TODO: this dummy modules will be changed when heap module is registered */
     m_module[0] = std::make_unique<mmon_module> ("dummy", dummy_stat_info);
     m_module[1] = std::make_unique<mmon_module> ("long dummy", long_dummy_stat_info);
   }

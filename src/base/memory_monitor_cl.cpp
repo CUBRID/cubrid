@@ -21,9 +21,10 @@
  *                         for memory monitoring module
  */
 
+#include <stdio.h>
 #include <cstring>
 #include <string>
-#include <stdio.h>
+#include <cassert>
 
 #include "memory_monitor_cl.hpp"
 
@@ -46,6 +47,7 @@ mmon_convert_module_name_to_index (const char *module_name)
     }
 
   /* for code protection. unreachable */
+  assert (false);
   return -1;
 }
 
@@ -61,7 +63,7 @@ mmon_print_server_info (MMON_SERVER_INFO &server_info)
 {
   fprintf (stdout, "====================Cubrid Memmon====================\n");
   fprintf (stdout, "Server Name: %s\n", server_info.name);
-  fprintf (stdout, "Total Memory Usage(KB): %lu\n\n", CONVERT_TO_KB_SIZE (server_info.total_mem_usage));
+  fprintf (stdout, "Total Memory Usage(KB): %lu\n\n", MMON_CONVERT_TO_KB_SIZE (server_info.total_mem_usage));
   fprintf (stdout, "-----------------------------------------------------\n");
 }
 
@@ -75,32 +77,32 @@ mmon_print_server_info (MMON_SERVER_INFO &server_info)
 void
 mmon_print_module_info (std::vector<MMON_MODULE_INFO> &module_info)
 {
-  const std::string init_size_str ("Init Size(KB)");
-  const std::string cur_size_str ("Cur Size(KB)");
-  const std::string peak_size_str ("Peak Size(KB)");
-  const std::string resize_expand_str ("Resize Expand");
+  const auto init_size_str = std::string {"Init Size(KB)"};
+  const auto cur_size_str = std::string {"Cur Size(KB)"};
+  const auto peak_size_str = std::string {"Peak Size(KB)"};
+  const auto resize_expand_str = std::string {"Resize Expand"};
 
   for (const auto &m_info : module_info)
     {
       fprintf (stdout, "Module Name: %s\n\n", m_info.name);
-      fprintf (stdout, "%-13s\t: %17lu\n", init_size_str.c_str (), CONVERT_TO_KB_SIZE (m_info.stat.init_stat));
-      fprintf (stdout, "%-13s\t: %17lu\n", cur_size_str.c_str (), CONVERT_TO_KB_SIZE (m_info.stat.cur_stat));
-      fprintf (stdout, "%-13s\t: %17lu\n", peak_size_str.c_str (), CONVERT_TO_KB_SIZE (m_info.stat.peak_stat));
+      fprintf (stdout, "%-13s\t: %17lu\n", init_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.init_stat));
+      fprintf (stdout, "%-13s\t: %17lu\n", cur_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.cur_stat));
+      fprintf (stdout, "%-13s\t: %17lu\n", peak_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.peak_stat));
       fprintf (stdout, "%-13s\t: %17u\n\n", resize_expand_str.c_str (), m_info.stat.expand_resize_count);
 
       for (const auto &comp_info : m_info.comp_info)
 	{
 	  fprintf (stdout, "%s\n", comp_info.name);
-	  fprintf (stdout, "\t%-17s\t: %17lu\n", init_size_str.c_str (), CONVERT_TO_KB_SIZE (comp_info.stat.init_stat));
-	  fprintf (stdout, "\t%-17s\t: %17lu\n", cur_size_str.c_str (), CONVERT_TO_KB_SIZE (comp_info.stat.cur_stat));
+	  fprintf (stdout, "\t%-17s\t: %17lu\n", init_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (comp_info.stat.init_stat));
+	  fprintf (stdout, "\t%-17s\t: %17lu\n", cur_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (comp_info.stat.cur_stat));
 
 	  for (const auto &subcomp_info : comp_info.subcomp_info)
 	    {
-	      std::string out_name (subcomp_info.name);
+	      auto out_name = std::string {subcomp_info.name};
 	      out_name += "(KB)";
-	      fprintf (stdout, "\t  %-15s\t: %17lu\n", out_name.c_str (), CONVERT_TO_KB_SIZE (subcomp_info.cur_stat));
+	      fprintf (stdout, "\t  %-15s\t: %17lu\n", out_name.c_str (), MMON_CONVERT_TO_KB_SIZE (subcomp_info.cur_stat));
 	    }
-	  fprintf (stdout, "\t%-17s\t: %17lu\n", peak_size_str.c_str (), CONVERT_TO_KB_SIZE (comp_info.stat.peak_stat));
+	  fprintf (stdout, "\t%-17s\t: %17lu\n", peak_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (comp_info.stat.peak_stat));
 	  fprintf (stdout, "\t%-17s\t: %17u\n\n", resize_expand_str.c_str (), comp_info.stat.expand_resize_count);
 	}
       fprintf (stdout, "\n-----------------------------------------------------\n\n");
@@ -117,7 +119,7 @@ mmon_print_module_info (std::vector<MMON_MODULE_INFO> &module_info)
 void
 mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODULE_INFO> &module_info)
 {
-  double percent = 0.0;
+  double cur_stat_ratio = 0.0;
 
   fprintf (stdout, "Per Module Memory Usage (KB)\n");
   fprintf (stdout, "\tModule\t\tModule\t\t\tModule\n");
@@ -125,13 +127,13 @@ mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODU
 
   for (const auto &m_info : module_info)
     {
-      if (m_info.stat.cur_stat != 0)
+      if (server_mem_usage != 0)
 	{
-	  percent = (double) m_info.stat.cur_stat / (double) server_mem_usage;
+	  cur_stat_ratio = m_info.stat.cur_stat / (double) server_mem_usage;
 	}
 
       fprintf (stdout, "\t%5d\t%-20s\t: %17lu(%3d%%)\n", mmon_convert_module_name_to_index (m_info.name),
-	       m_info.name, CONVERT_TO_KB_SIZE (m_info.stat.cur_stat), (int)percent);
+	       m_info.name, MMON_CONVERT_TO_KB_SIZE (m_info.stat.cur_stat), (int)cur_stat_ratio);
     }
   fprintf (stdout, "\n-----------------------------------------------------\n\n");
 }
@@ -146,8 +148,8 @@ mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODU
 void
 mmon_print_tran_info (MMON_TRAN_INFO &tran_info)
 {
-  const std::string tran_id_str ("Transaction ID");
-  const std::string mem_usage_str ("Memory Usage");
+  const auto tran_id_str = std::string {"Transaction ID"};
+  const auto mem_usage_str = std::string {"Memory Usage"};
 
   fprintf (stdout, "Transaction Memory Usage Info (KB)\n");
   fprintf (stdout, "\t%14s | %12s\n", tran_id_str.c_str (), mem_usage_str.c_str ());

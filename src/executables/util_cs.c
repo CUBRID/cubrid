@@ -4548,6 +4548,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
 {
 #if defined(CS_MODE)
   constexpr int DEFAULT_OPTION_PRINT_CNT = 5;
+  /* Getting integer option value can't differentiate about user input value or default value.
+   * It can make some error use case. So set it to default value with magic number to pass this case. */
   constexpr int MODULE_INDEX_MAGIC_NUMBER = -2097573308;	/* INT_MIN + 49910340 */
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];

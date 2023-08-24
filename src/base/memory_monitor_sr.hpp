@@ -38,7 +38,7 @@
 
 typedef enum
 {
-  /* XXX: this dummy modules will be changed when heap module is registered */
+  /* TODO: this dummy modules will be changed when heap module is registered */
   MMON_STAT_DUMMY_1 = MMON_MAKE_STAT_ID (MMON_MODULE_DUMMY),
   MMON_STAT_DUMMY_2,
   MMON_STAT_LONG_DUMMY_1 = MMON_MAKE_STAT_ID (MMON_MODULE_LONG_DUMMY),

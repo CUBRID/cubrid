@@ -28,11 +28,11 @@
 
 #include "memory_monitor_common.h"
 
-#define CONVERT_TO_KB_SIZE(size) ((size) / 1024)
+#define MMON_CONVERT_TO_KB_SIZE(size) ((size) / 1024)
 
 constexpr char module_names[MMON_MODULE_LAST][DB_MAX_IDENTIFIER_LENGTH] =
 {
-  /* XXX: this dummy modules will be changed when heap module is registered */
+  /* TODO: this dummy modules will be changed when heap module is registered */
   "dummy",
   "long dummy"
 };

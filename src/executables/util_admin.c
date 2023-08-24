@@ -895,6 +895,8 @@ static GETOPT_LONG ua_Flashback_Option[] = {
 
 static UTIL_ARG_MAP ua_Memmon_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
+  /* Getting integer option value can't differentiate about user input value or default value.
+   * It can make some error use case. So set it to default value with magic number to pass this case. */
   {MEMMON_MODULE_S, {ARG_INTEGER}, {(void *) -2097573308}},
   {MEMMON_TRANSACTION_S, {ARG_BOOLEAN}, {0}},
   {MEMMON_TRAN_COUNT_S, {ARG_STRING}, {0}},

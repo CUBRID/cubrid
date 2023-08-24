@@ -29,7 +29,7 @@
 
 typedef enum mmon_module_id
 {
-  /* XXX: this dummy modules will be changed when heap module is registered */
+  /* TODO: this dummy modules will be changed when heap module is registered */
   MMON_MODULE_ALL = -1,
   MMON_MODULE_DUMMY,
   MMON_MODULE_LONG_DUMMY,
