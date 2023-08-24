@@ -98,7 +98,7 @@ class page_server
     void set_follower_page_server_connection (cubcomm::channel &&chn);
     void disconnect_all_tran_servers ();
 
-    int connect_to_leader_page_server (std::string &&hostname, int32_t port);
+    int connect_to_followee_page_server (std::string &&hostname, int32_t port);
 
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
     cublog::replicator &get_replicator ();

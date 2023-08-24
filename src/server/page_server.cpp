@@ -212,7 +212,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
     }
 
   // TODO: A thread will take the catch-up including establishing connection to avoid blocking ATS->PS reqeusts.
-  m_ps.connect_to_leader_page_server (std::move (host), port);
+  m_ps.connect_to_followee_page_server (std::move (host), port);
 }
 
 
@@ -511,14 +511,14 @@ page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
   const auto channel_id = chn.get_channel_id ();
 
   er_log_debug (ARG_FILE_LINE,
-		"A follower page server connected to this page server as a leader to catch up. Channel id: %s.\n",
+		"A follower page server connected to this page server to catch up. Channel id: %s.\n",
 		channel_id.c_str ());
 
   // TODO Create a connection_handler for this.
 }
 
 int
-page_server::connect_to_leader_page_server (std::string &&hostname, int32_t port)
+page_server::connect_to_followee_page_server (std::string &&hostname, int32_t port)
 {
   auto ps_conn_error_lambda = [&hostname] ()
   {
@@ -558,7 +558,7 @@ page_server::connect_to_leader_page_server (std::string &&hostname, int32_t port
   // We will create a connection handler to keep this channel and handle requests for them.
 
   er_log_debug (ARG_FILE_LINE,
-		"This page server successfully connected to the leader page server to catch up. Channel id: %s.\n",
+		"This page server successfully connected to the followee page server to catch up. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
   return NO_ERROR;
