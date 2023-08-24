@@ -110,7 +110,7 @@ class page_server
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
 	connection_handler () = delete;
-	connection_handler (cubcomm::channel &chn, transaction_server_type server_type, page_server &ps);
+	connection_handler (cubcomm::channel &&chn, transaction_server_type server_type, page_server &ps);
 
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
@@ -188,15 +188,19 @@ class page_server
 		cubcomm::request_sync_client_server<followee_to_follower_request, follower_to_followee_request, std::string>;
 
 	follower_connection_handler () = delete;
-	follower_connection_handler (cubcomm::channel &chn);
+	follower_connection_handler (cubcomm::channel &&chn, page_server &ps);
 
 	follower_connection_handler (const connection_handler &) = delete;
 	follower_connection_handler (connection_handler &&) = delete;
 
-	~follower_connection_handler ();
-
 	follower_connection_handler &operator= (const connection_handler &) = delete;
 	follower_connection_handler &operator= (connection_handler &&) = delete;
+
+	void push_request (page_to_tran_request id, std::string msg);
+	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
+
+      private:
+	page_server &m_ps;
     };
 
     class followee_connection_handler
@@ -206,15 +210,16 @@ class page_server
 		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
 
 	followee_connection_handler () = delete;
-	followee_connection_handler (cubcomm::channel &chn);
+	followee_connection_handler (cubcomm::channel &&chn, page_server &ps);
 
 	followee_connection_handler (const connection_handler &) = delete;
 	followee_connection_handler (connection_handler &&) = delete;
 
-	~followee_connection_handler ();
-
 	followee_connection_handler &operator= (const connection_handler &) = delete;
 	followee_connection_handler &operator= (connection_handler &&) = delete;
+
+      private:
+	page_server &m_ps;
     };
 
     /*

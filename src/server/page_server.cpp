@@ -49,7 +49,7 @@ page_server::~page_server ()
   m_async_disconnect_handler.terminate ();
 }
 
-page_server::connection_handler::connection_handler (cubcomm::channel &chn, transaction_server_type server_type,
+page_server::connection_handler::connection_handler (cubcomm::channel &&chn, transaction_server_type server_type,
     page_server &ps)
   : m_server_type { server_type }
   , m_connection_id { chn.get_channel_id () }
@@ -360,6 +360,30 @@ page_server::connection_handler::push_disconnection_request ()
   push_request (page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG, std::string ());
 }
 
+page_server::follower_connection_handler::follower_connection_handler (cubcomm::channel &&chn, page_server &ps)
+  : m_ps { ps }
+{
+
+}
+
+void
+page_server::follower_connection_handler::push_request (page_to_tran_request id, std::string msg)
+{
+}
+
+int
+page_server::follower_connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
+    std::string &payload_out)
+{
+  return NO_ERROR;
+}
+
+page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
+  : m_ps { ps }
+{
+
+}
+
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)
 {
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
@@ -465,7 +489,7 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_active_tran_server ();
     }
 
-  m_active_tran_server_conn.reset (new connection_handler (chn, transaction_server_type::ACTIVE, *this));
+  m_active_tran_server_conn.reset (new connection_handler (std::move (chn), transaction_server_type::ACTIVE, *this));
 }
 
 void
@@ -488,7 +512,8 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
     // handler's connection threads (inbound or outbound).
     std::lock_guard lk_guard { m_conn_mutex };
 
-    m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
+    m_passive_tran_server_conn.emplace_back (new connection_handler (std::move (chn), transaction_server_type::PASSIVE,
+	*this));
   }
 
   m_pts_mvcc_tracker.init_oldest_active_mvccid (channel_id);
