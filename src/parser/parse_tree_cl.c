@@ -15908,9 +15908,10 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
     case PT_TYPE_SEQUENCE:
-      if (p->spec_ident || (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
+      if (p->spec_ident || (p->flag.print_in_value_for_dblink && parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
 	  /* this is tagged as an "in" clause right hand side Print it as a parenthesized list */
+	  /* print_in_value_for_dblink is a flag as same meaning for dblink */
 	  r1 = pt_print_bytes_l (parser, p->info.value.data_value.set);
 	  q = pt_append_nulstring (parser, q, "(");
 	  q = pt_append_varchar (parser, q, r1);
@@ -15918,7 +15919,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
-	  if (p->type_enum != PT_TYPE_SEQUENCE)
+	  if (p->type_enum != PT_TYPE_SEQUENCE && !(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	    {
 	      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
 	    }
@@ -15940,8 +15941,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_INTEGER:
     case PT_TYPE_BIGINT:
     case PT_TYPE_SMALLINT:
-      if (p->info.value.text != NULL
-	  && !(parser->custom_print & (PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_BIGINT_CAST)))
+      if (p->info.value.text != NULL && !(parser->custom_print & PT_SUPPRESS_BIGINT_CAST))
 	{
 	  r = p->info.value.text;
 	}
