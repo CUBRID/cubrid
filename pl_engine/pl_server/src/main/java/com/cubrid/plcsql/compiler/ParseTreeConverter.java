@@ -227,9 +227,25 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return EMPTY_PARAMS;
         }
 
+        boolean ofTopLevel = symbolStack.getCurrentScope().level == 2;
         NodeList<DeclParam> ret = new NodeList<>();
-        for (ParameterContext pc : ctx.parameter()) {
-            ret.addNode((DeclParam) visit(pc));
+        if (ofTopLevel) {
+            for (ParameterContext pc : ctx.parameter()) {
+                DeclParam dp = (DeclParam) visit(pc);
+                if (dp.typeSpec == TypeSpecSimple.BOOLEAN
+                        || dp.typeSpec == TypeSpecSimple.SYS_REFCURSOR) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(pc), // s064
+                            "type "
+                                    + dp.typeSpec.pcsName
+                                    + " cannot be used as a paramter type of stored procedures");
+                }
+                ret.addNode(dp);
+            }
+        } else {
+            for (ParameterContext pc : ctx.parameter()) {
+                ret.addNode((DeclParam) visit(pc));
+            }
         }
 
         return ret;
@@ -990,6 +1006,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitCursor_definition(Cursor_definitionContext ctx) {
 
+        connectionRequired = true;
+        addToImports("java.sql.*");
+
         String name = Misc.getNormalizedText(ctx.identifier());
 
         symbolStack.pushSymbolTable("cursor_def", null);
@@ -1167,7 +1186,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return new ExprId(ctx, name, scope, (DeclId) decl);
         } else if (decl instanceof DeclFunc) {
             Scope scope = symbolStack.getCurrentScope();
-            return new ExprLocalFuncCall(ctx, name, null, scope, (DeclFunc) decl);
+            return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
         }
 
         assert false : "unreachable";
@@ -1231,7 +1250,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         if (ctx.expression() == null) {
-            controlFlowBlocked = true; // s107-3
+            controlFlowBlocked = true; // s107-9
             return new StmtExit(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
@@ -1691,6 +1710,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitClose_statement(Close_statementContext ctx) {
 
+        connectionRequired = true;
+        addToImports("java.sql.*");
+
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
         ExprId cursor = visitNonFuncIdentifier(idCtx); // s032: undeclared id ...
@@ -1750,6 +1772,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitFetch_statement(Fetch_statementContext ctx) {
+
+        connectionRequired = true;
+        addToImports("java.sql.*");
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
         ExprId cursor = visitNonFuncIdentifier(idCtx); // s037: undeclared id ...
@@ -2041,7 +2066,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private static final BigInteger UINT_LITERAL_MAX =
             new BigInteger("99999999999999999999999999999999999999");
     private static final BigInteger BIGINT_MAX = new BigInteger("9223372036854775807");
-    private static final BigInteger INT_MAX = new BigInteger("2147483648");
+    private static final BigInteger INT_MAX = new BigInteger("2147483647");
 
     private static final String SYMBOL_TABLE_TOP = "%predefined";
     private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
@@ -2183,6 +2208,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         "function " + name + " must specify its return type");
             }
             TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
+            if (symbolStack.getCurrentScope().level == 1) { // at top level
+                if (retType == TypeSpecSimple.BOOLEAN || retType == TypeSpecSimple.SYS_REFCURSOR) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.type_spec()), // s065
+                            "type "
+                                    + retType.pcsName
+                                    + " cannot be used as a return type of stored functions");
+                }
+            }
             DeclFunc ret = new DeclFunc(ctx, name, paramList, retType);
             symbolStack.putDecl(name, ret);
         } else {
