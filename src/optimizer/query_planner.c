@@ -67,10 +67,11 @@
 #define VALID_INNER(plan)	(plan->well_rooted || \
 				 (plan->plan_type == QO_PLANTYPE_SORT))
 
-#define ISCAN_OVERHEAD_FACTOR   1.2
+#define ISCAN_OVERHEAD_FACTOR   1.1
 #define TEMP_SETUP_COST 5.0
+#define MJ_CPU_WEIGHT   0.025
 
-#define RBO_CHECK_COST 10
+#define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
 
 #define	qo_scan_walk	qo_generic_walk
@@ -2513,34 +2514,10 @@ qo_sort_cost (QO_PLAN * planp)
 
 	  if (objects > 1.0)
 	    {
-	      if (pages < (double) prm_get_integer_value (PRM_ID_SR_NBUFFERS))
-		{
-		  /* We can sort the result in memory without any additional io costs. Assume cpu costs are n*log(n) in
-		   * number of recors.
-		   */
-		  sort_io = (double) QO_CPU_WEIGHT *objects * log2 (objects);
-		}
-	      else
-		{
-		  /* There are too many records to permit an in-memory sort, so io costs will be increased.  Assume
-		   * that the io costs increase by the number of pages required to hold the intermediate result.  CPU
-		   * costs increase as above. Model courtesy of Ender.
-		   */
-		  sort_io = pages * log3 (pages / 4.0);
-
-		  /* guess: apply IO caching for big size sort list. Disk IO cost cannot be greater than the 10% number
-		   * of the requested IO pages
-		   */
-		  if (subplanp->plan_type == QO_PLANTYPE_SCAN)
-		    {
-		      tcard = (double) QO_NODE_TCARD (subplanp->plan_un.scan.node);
-		      tcard *= 0.1;
-		      if (pages >= tcard)
-			{	/* big size sort list */
-			  sort_io *= 0.1;
-			}
-		    }
-		}
+	      /* We can sort the result in memory without any additional io costs. Assume cpu costs are n*log(n) in
+	       * number of recors.
+	       */
+	      sort_io = (double) QO_CPU_WEIGHT *objects * log2 (objects);
 	    }
 
 	  planp->fixed_io_cost += sort_io;
@@ -3082,7 +3059,7 @@ qo_mjoin_cost (QO_PLAN * planp)
   planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
   /* CPU and IO costs which are variable according to the join plan */
   planp->variable_cpu_cost = outer->variable_cpu_cost + inner->variable_cpu_cost;
-  planp->variable_cpu_cost += (outer_cardinality / 2) * (inner_cardinality / 2) * (double) QO_CPU_WEIGHT;
+  planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * (double) MJ_CPU_WEIGHT;
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
 }

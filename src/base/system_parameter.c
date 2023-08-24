@@ -1846,8 +1846,8 @@ static float prm_pb_aout_ratio_upper = 3.0;
 static float prm_pb_aout_ratio_lower = 0;
 static unsigned int prm_pb_aout_ratio_flag = 0;
 
-bool PRM_OPTIMIZER_ENABLE_MERGE_JOIN = false;
-static bool prm_optimizer_enable_merge_join_default = false;
+bool PRM_OPTIMIZER_ENABLE_MERGE_JOIN = true;
+static bool prm_optimizer_enable_merge_join_default = true;
 static unsigned int prm_optimizer_enable_merge_join_flag = 0;
 
 UINT64 PRM_MAX_HASH_LIST_SCAN_SIZE = 8 * 1024 * 1024;	/* 8 MB */
@@ -3465,7 +3465,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MAX_OUTER_CARD_OF_IDXJOIN,
    PRM_NAME_MAX_OUTER_CARD_OF_IDXJOIN,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_DEPRECATED),
    PRM_INTEGER,
    &prm_max_outer_card_of_idxjoin_flag,
    (void *) &prm_max_outer_card_of_idxjoin_default,
@@ -6029,9 +6029,9 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_USE_STAT_ESTIMATION,	/* not deleted for compatibility. */
+  {PRM_ID_USE_STAT_ESTIMATION,
    PRM_NAME_USE_STAT_ESTIMATION,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_DEPRECATED),
    PRM_BOOLEAN,
    &prm_use_stat_estimation_flag,
    (void *) &prm_use_stat_estimation_default,
