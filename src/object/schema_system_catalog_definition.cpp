@@ -31,7 +31,7 @@ namespace cubschema
   }
 
   constraint::constraint (const DB_CONSTRAINT_TYPE &t, const std::string_view n,
-			  const std::vector<char *> &attrs, bool is_class_attr)
+			  const std::vector<const char *> &attrs, bool is_class_attr)
     : type {t}, name {n.begin(), n.end ()}, attribute_names {attrs}, is_class_attributes {is_class_attr}
   {
     //

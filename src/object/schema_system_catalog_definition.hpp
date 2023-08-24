@@ -48,10 +48,11 @@ namespace cubschema
   {
     DB_CONSTRAINT_TYPE type;
     std::string name;
-    std::vector<char *> attribute_names;
+    std::vector<const char *> attribute_names;
     bool is_class_attributes;
 
-    constraint (const DB_CONSTRAINT_TYPE &t, std::string_view n, const std::vector<char *> &attrs, bool is_class_attr);
+    constraint (const DB_CONSTRAINT_TYPE &t, std::string_view n, const std::vector<const char *> &attrs,
+		bool is_class_attr);
   };
 
   struct grant

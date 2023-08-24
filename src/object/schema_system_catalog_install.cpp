@@ -241,11 +241,11 @@ catcls_install_class (void)
 {
   int error_code = NO_ERROR;
 
-  int num_classes_old = sizeof (clist) / sizeof (clist[0]);
-  int num_classes_new = sizeof (clist_new) / sizeof (clist_new[0]);
-  int num_classes_total = num_classes_old + num_classes_new;
+  const int num_classes_old = sizeof (clist) / sizeof (clist[0]);
+  const int num_classes_new = sizeof (clist_new) / sizeof (clist_new[0]);
+  const int num_classes_total = num_classes_old + num_classes_new;
 
-  MOP class_mop[num_classes_total];
+  MOP class_mop[num_classes_total] = {nullptr};
   int i, save;
   AU_DISABLE (save);
 
