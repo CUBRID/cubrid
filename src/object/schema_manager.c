@@ -5933,8 +5933,8 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 	      continue;
 	    }
 
-	  /* exclude filter or function index */
-	  if (con->filter_predicate || con->func_index_info)
+	  /* exclude filter or function index(If the first key part of index is a function) */
+	  if (con->filter_predicate || (con->func_index_info && con->func_index_info->col_id < num_atts))
 	    {
 	      continue;
 	    }
