@@ -18,6 +18,7 @@
 
 #include "page_server.hpp"
 
+#include "communication_server_channel.hpp"
 #include "disk_manager.h"
 #include "error_manager.h"
 #include "log_impl.h"
@@ -205,6 +206,13 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 
   er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname = %s, port = %d, LSA = (%lld|%d)\n", host.c_str (), port,
 		LSA_AS_ARGS (&catchup_lsa));
+  if (port == -1)
+    {
+      return; // TODO: It means that the ATS is booting up, it will be set properly after ATS recovery is implemented.
+    }
+
+  // TODO: A thread will take the catch-up including establishing connection to avoid blocking ATS->PS reqeusts.
+  m_ps.connect_to_followee_page_server (std::move (host), port);
 }
 
 
@@ -492,6 +500,68 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
   }
 
   m_pts_mvcc_tracker.init_oldest_active_mvccid (channel_id);
+}
+
+void
+page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
+{
+  chn.set_channel_name ("PS_PS_catchup_comm");
+
+  assert (chn.is_connection_alive ());
+  const auto channel_id = chn.get_channel_id ();
+
+  er_log_debug (ARG_FILE_LINE,
+		"A follower page server connected to this page server to catch up. Channel id: %s.\n",
+		channel_id.c_str ());
+
+  // TODO Create a connection_handler for this.
+}
+
+int
+page_server::connect_to_followee_page_server (std::string &&hostname, int32_t port)
+{
+  auto ps_conn_error_lambda = [&hostname] ()
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, hostname.c_str ());
+    return ER_NET_PAGESERVER_CONNECTION;
+  };
+
+  constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
+  cubcomm::server_channel srv_chn (m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
+
+  srv_chn.set_channel_name ("PS_PS_catchup_comm");
+
+  auto comm_error_code = srv_chn.connect (hostname.c_str (), port, CMD_SERVER_SERVER_CONNECT);
+  if (comm_error_code != css_error_code::NO_ERRORS)
+    {
+      return ps_conn_error_lambda ();
+    }
+
+  constexpr auto conn_type = cubcomm::server_server::CONNECT_PAGE_TO_PAGE_SERVER;
+  if (srv_chn.send_int (static_cast<int> (conn_type)) != NO_ERRORS)
+    {
+      return ps_conn_error_lambda ();
+    }
+
+  int returned_code;
+  if (srv_chn.recv_int (returned_code) != css_error_code::NO_ERRORS)
+    {
+      return ps_conn_error_lambda ();
+    }
+  if (returned_code != static_cast<int> (conn_type))
+    {
+      return ps_conn_error_lambda ();
+    }
+
+  // TODO
+  // For now, the srv_chn is destroyed here and it will close the connection.
+  // We will create a connection handler to keep this channel and handle requests for them.
+
+  er_log_debug (ARG_FILE_LINE,
+		"This page server successfully connected to the followee page server to catch up. Channel id: %s.\n",
+		srv_chn.get_channel_id ().c_str ());
+
+  return NO_ERROR;
 }
 
 void

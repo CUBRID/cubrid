@@ -167,7 +167,7 @@ int init_server_type (const char *db_name)
     }
   else if (g_server_type == SERVER_TYPE_PAGE)
     {
-      ps_Gl.reset (new page_server ());
+      ps_Gl.reset (new page_server (db_name));
 
       // initialize the sender before the receiver; such that the receiver has the
       // sender ready, if needed (very unlikely scenario, but principially so)
