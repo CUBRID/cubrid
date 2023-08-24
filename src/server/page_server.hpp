@@ -176,6 +176,48 @@ class page_server
     using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
 
     /*
+     * TODO
+     * 1. catchup diagram and explaination.
+     * 2. take it out of page_server? then I think we should take all connection_handlers out of servers and put them together.
+     *
+     */
+    class follower_connection_handler
+    {
+      public:
+	using followee_server_conn_t =
+		cubcomm::request_sync_client_server<followee_to_follower_request, follower_to_followee_request, std::string>;
+
+	follower_connection_handler () = delete;
+	follower_connection_handler (cubcomm::channel &chn);
+
+	follower_connection_handler (const connection_handler &) = delete;
+	follower_connection_handler (connection_handler &&) = delete;
+
+	~follower_connection_handler ();
+
+	follower_connection_handler &operator= (const connection_handler &) = delete;
+	follower_connection_handler &operator= (connection_handler &&) = delete;
+    };
+
+    class followee_connection_handler
+    {
+      public:
+	using follower_server_conn_t =
+		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
+
+	followee_connection_handler () = delete;
+	followee_connection_handler (cubcomm::channel &chn);
+
+	followee_connection_handler (const connection_handler &) = delete;
+	followee_connection_handler (connection_handler &&) = delete;
+
+	~followee_connection_handler ();
+
+	followee_connection_handler &operator= (const connection_handler &) = delete;
+	followee_connection_handler &operator= (connection_handler &&) = delete;
+    };
+
+    /*
      * helper class to track the active oldest mvccids of each Page Transaction Server.
      * This provides the globally oldest active mvcc id to the vacuum on ATS.
      * The vacuum has to take mvcc status of all PTSes into considerations,

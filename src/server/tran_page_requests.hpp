@@ -56,16 +56,26 @@ enum class page_to_tran_request
   SEND_TO_PTS_LOG_PRIOR_LIST, /* response-less */
 };
 
-enum class page_to_page_catchup_request
+// to catch up from PS to PS
+enum class follower_to_followee_request
 {
   // Reserve for responses
   RESPOND,
 
-  SEND_DUMMY_REQUEST,
+  SEND_DUMMY_PUSH_REQUEST,
+  SEND_DUMMY_SEND_RECV_REQUEST,
 
-  // followee only
   // TODO SEND_DISCONNECT, /* response-less */
   // TODO SEND_LOG_PAGES_FETCH, /* synchronously waiting for response */
+};
+
+// to catch up from PS to PS
+enum class followee_to_follower_request
+{
+  // Reserve for responses
+  RESPOND,
+
+  // followee doesn't request
 };
 
 #endif // !_TRAN_PAGE_REQUESTS_HPP_
