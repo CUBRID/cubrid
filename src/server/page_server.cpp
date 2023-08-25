@@ -143,7 +143,7 @@ page_server::connection_handler::get_connection_id () const
 }
 
 void
-page_server::connection_handler::push_request (page_to_tran_request id, std::string msg)
+page_server::connection_handler::push_request (page_to_tran_request id, std::string &&msg)
 {
   m_conn->push (id, std::move (msg));
 }
@@ -374,14 +374,42 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
 
   m_conn.reset (new follower_server_conn_t (std::move (chn),
-		{}, // request handler
-		followee_to_follower_request::RESPOND,
-		follower_to_followee_request::RESPOND,
-		RESPONSE_PARTITIONING_SIZE,
-		nullptr));
+  {
+    {
+      follower_to_followee_request::SEND_DISCONNECT,
+      std::bind (&page_server::follower_connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      follower_to_followee_request::SEND_LOG_PAGES_FETCH,
+      std::bind (&page_server::follower_connection_handler::receive_log_pages_fetch, std::ref (*this), std::placeholders::_1)
+    }
+  },
+  followee_to_follower_request::RESPOND,
+  follower_to_followee_request::RESPOND,
+  RESPONSE_PARTITIONING_SIZE,
+  nullptr)); // TODO handle abnormal disconnection.
 
   m_conn->start ();
 }
+
+void page_server::follower_connection_handler::receive_disconnect_request (follower_server_conn_t::sequenced_payload
+    &&a_sp)
+{
+  // TODO release the resouce of this connection_handler
+  er_log_debug (ARG_FILE_LINE, "A follower has requested to disconnect.");
+}
+
+void page_server::follower_connection_handler::receive_log_pages_fetch (follower_server_conn_t::sequenced_payload
+    &&a_sp)
+{
+  follower_server_conn_t::sequenced_payload payload;
+  // TODO serve requeste log pages
+  er_log_debug (ARG_FILE_LINE, "A follower have requested some log pages.");
+
+  payload.push_payload ("Dummy reseponse");
+  m_conn->respond (std::move (payload));
+}
+
 
 page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
   : m_ps { ps }
@@ -389,25 +417,26 @@ page_server::followee_connection_handler::followee_connection_handler (cubcomm::
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
 
   m_conn.reset (new followee_server_conn_t (std::move (chn),
-		{}, // request handler
+		{}, // followee doesn't request anything
 		follower_to_followee_request::RESPOND,
 		followee_to_follower_request::RESPOND,
 		RESPONSE_PARTITIONING_SIZE,
-		nullptr));
+		nullptr)); // TODO handle abnormal disconnection.
 
   m_conn->start ();
 }
 
 void
-page_server::followee_connection_handler::push_request (page_to_tran_request id, std::string msg)
+page_server::followee_connection_handler::push_request (follower_to_followee_request reqid, std::string &&msg)
 {
+  m_conn->push (reqid, std::move (msg));
 }
 
 int
-page_server::followee_connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
+page_server::followee_connection_handler::send_receive (follower_to_followee_request reqid, std::string &&payload_in,
     std::string &payload_out)
 {
-  return NO_ERROR;
+  return m_conn->send_recv (reqid, std::move (payload_in), payload_out);
 }
 
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)
