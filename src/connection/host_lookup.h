@@ -29,7 +29,16 @@ extern int getnameinfo_uhost (struct sockaddr *addr, socklen_t addrlen, char *ho
 			      char *serv, size_t servlen, int flags);
 extern int getaddrinfo_uhost (char *node, char *service, struct addrinfo *hints, struct addrinfo **res);
 
-//extern int gethostbyname_r_uhost (const char *hostname, struct hostent *out_hp);
+#if defined(WINDOWS)
+#define ETC_HOSTS "C:\Windows\System32\drivers\etc\hosts"
+#define CUBRID_HOSTS "%CUBRID%/conf/cubrid_hosts.conf"
+#else /* LINUX */
+#define ETC_HOSTS "/etc/hosts"
+#define CUBRID_HOSTS "$CUBRID/conf/cubrid_hosts.conf"
+#endif
+
+#define HOSTS_FILE prm_get_bool_value (PRM_ID_USE_USER_HOSTS) ? CUBRID_HOSTS : ETC_HOSTS
+
 #ifdef HAVE_GETHOSTBYNAME_R
 #if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
 extern int

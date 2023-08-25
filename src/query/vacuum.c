@@ -49,6 +49,7 @@
 #include "thread_manager.hpp"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
+#include "monitor_vacuum_ovfp_threshold.hpp"
 #endif // SERVER_MODE
 #include "util_func.h"
 
@@ -650,6 +651,9 @@ struct vacuum_dropped_files_rcv_data
 };
 
 bool vacuum_Is_booted = false;
+#if defined (SERVER_MODE)
+class ovfp_threshold_mgr g_ovfp_threshold_mgr;
+#endif
 
 /* Logging */
 #define VACUUM_LOG_DATA_ENTRY_MSG(name) \
@@ -1145,6 +1149,9 @@ xvacuum_dump (THREAD_ENTRY * thread_p, FILE * outfp)
     {
       fprintf (outfp, "(in %s)\n", fileio_get_base_file_name (log_Name_active));
     }
+#if defined (SERVER_MODE)
+  g_ovfp_threshold_mgr.dump (thread_p, outfp);
+#endif
 }
 
 /*
@@ -1232,6 +1239,10 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
   vacuum_Master.prefetch_first_pageid = NULL_PAGEID;
   vacuum_Master.prefetch_last_pageid = NULL_PAGEID;
   vacuum_Master.allocated_resources = false;
+  vacuum_Master.idx = -1;
+#if defined (SERVER_MODE)
+  g_ovfp_threshold_mgr.init ();
+#endif
 
   /* Initialize workers */
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
@@ -1248,6 +1259,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].prefetch_first_pageid = NULL_PAGEID;
       vacuum_Workers[i].prefetch_last_pageid = NULL_PAGEID;
       vacuum_Workers[i].allocated_resources = false;
+      vacuum_Workers[i].idx = i;
     }
 
   return NO_ERROR;
@@ -3379,6 +3391,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	    }
 	  assert (!OID_ISNULL (&oid));
 
+	  thread_p->read_ovfl_pages_count = 0;
+
 	  /* Vacuum based on rcvindex. */
 	  if (log_record_data.rcvindex == RVBT_MVCC_NOTIFY_VACUUM)
 	    {
@@ -3445,6 +3459,15 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	      /* Unexpected. */
 	      assert_release (false);
 	    }
+
+#if defined (SERVER_MODE)
+	  if (thread_p->read_ovfl_pages_count >= g_ovfp_threshold_mgr.get_threshold_page_cnt ())
+	    {
+	      g_ovfp_threshold_mgr.add_read_pages_count (thread_p, worker->idx, btid_int.sys_btid,
+							 thread_p->read_ovfl_pages_count);
+	    }
+#endif
+
 	  /* Did we have any errors? */
 	  if (error_code != NO_ERROR)
 	    {
