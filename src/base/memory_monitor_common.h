@@ -27,12 +27,6 @@
 #include <cstdint>
 #include <vector>
 
-constexpr char module_names[MMON_MODULE_LAST][DB_MAX_IDENTIFIER_LENGTH] = {
-  /* TODO: this dummy modules will be changed when heap module is registered */
-  "dummy",
-  "long dummy"
-};
-
 typedef enum mmon_module_id
 {
   /* TODO: this dummy modules will be changed when heap module is registered */
@@ -41,6 +35,14 @@ typedef enum mmon_module_id
   MMON_MODULE_LONG_DUMMY,
   MMON_MODULE_LAST
 } MMON_MODULE_ID;
+
+// The order of module name MUST be the same with MMON_MODULE_ID
+// starting from MMON_MODULE_ALL + 1
+constexpr char module_names[MMON_MODULE_LAST][DB_MAX_IDENTIFIER_LENGTH] = {
+  /* TODO: this dummy modules will be changed when heap module is registered */
+  "dummy",
+  "long dummy"
+};
 
 typedef struct mmon_output_mem_stat
 {
