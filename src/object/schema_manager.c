@@ -484,9 +484,11 @@ static const char *sm_locate_method_file (SM_CLASS * class_, const char *functio
 static void sm_method_final (void);
 #endif
 
+#if 0				// defined(UNCALLED_FUNCTION)
 static int sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 				 const char *constraint_name, const char **att_names, const int *asc_desc,
 				 const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * func_info);
+#endif
 
 static void sm_reset_descriptors (MOP class_);
 
@@ -5934,8 +5936,8 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 	      continue;
 	    }
 
-	  /* exclude filter or function index */
-	  if (con->filter_predicate || con->func_index_info)
+	  /* exclude filter or function index(If the first key part of index is a function) */
+	  if (con->filter_predicate || (con->func_index_info && con->func_index_info->col_id < num_atts))
 	    {
 	      continue;
 	    }
@@ -9621,6 +9623,13 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	      /*
 	       * Try to find a corresponding attribute in the flattened template
 	       */
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[i]->id))
+		{
+		  assert (attrs[i + 1] == NULL);
+		  continue;
+		}
+#endif
 	      for (att = flat->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 		{
 		  if (SM_COMPARE_NAMES (attrs[i]->header.name, att->header.name) == 0)
@@ -10049,6 +10058,7 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	  /* if the ids are the same, use it without looking at the name, this is how rename works */
 	  if (new_att->id != -1)
 	    {
+	      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (new_att->id));
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;
@@ -10822,7 +10832,11 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   // TODO: optimize has_instances case
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
+      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+			       , dk_sm_deduplicate_key_position (n_attrs, attrs, function_index)
+#endif
+	);
     }
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else
@@ -10953,6 +10967,14 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
   if (!HFID_IS_NULL (hfid) && heap_has_instance (hfid, cls_oid, 0))
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      // We cannot make a PK with a function. Therefore, only the last member is checked.
+      if (n_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (key_attrs[n_attrs - 1]->id))
+	{
+	  n_attrs--;
+	}
+#endif
 
       domain = construct_index_key_domain (n_attrs, key_attrs, asc_desc, NULL, -1, NULL);
       if (domain == NULL)
@@ -14196,10 +14218,13 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
   else
     {
       const char *prefix;
-      int i, k;
+      int i;
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      bool is_fk = false;
+#endif
 
       switch (type)
 	{
@@ -14214,6 +14239,9 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  is_fk = true;
+#endif
 	  break;
 	case DB_CONSTRAINT_NOT_NULL:
 	  prefix = "n_";
@@ -14245,7 +14273,14 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  if (is_fk && IS_DEDUPLICATE_KEY_ATTR_NAME (*ptr))
+	    {
+	      n_attrs--;	/* Do not include deduplicate_key_attr name in the FK name */
+	      assert (i == n_attrs);
+	      break;
+	    }
+#endif
 	  do_desc = false;	/* init */
 	  if (asc_desc)
 	    {
@@ -14349,10 +14384,9 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  strncat (name, class_name_only, class_name_prefix_size);
 
 	  /* separated list of attribute names */
-	  k = 0;
 	  i = 0;
 	  /* n_attrs is already limited to MAX_ATTR_IN_AUTO_GEN_NAME here */
-	  for (ptr = att_names; k < n_attrs; ptr++, i++)
+	  for (ptr = att_names; i < n_attrs; ptr++, i++)
 	    {
 	      do_desc = false;	/* init */
 	      if (asc_desc)
@@ -14411,7 +14445,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 
 		  strcat (name, att_name_trunc);
 		}
-	      k++;
 	    }
 
 	  if (att_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH || class_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH)
@@ -14520,6 +14553,7 @@ sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl, DB_CONSTRAINT_TYPE constrai
   return sm_produce_constraint_name (template_classname (tmpl), constraint_type, att_names, asc_desc, given_name);
 }
 
+#if 0				// defined(UNCALLED_FUNCTION)
 /*
  * sm_check_index_exist() - Check index is duplicated.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -14555,6 +14589,7 @@ sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TY
   return classobj_check_index_exist (class_->constraints, out_shared_cons_name, sm_ch_name ((MOBJ) class_),
 				     constraint_type, constraint_name, att_names, asc_desc, filter_index, func_info);
 }
+#endif
 
 static int
 sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
@@ -16316,7 +16351,6 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   size_t attr_ids_size;
   OID *oids = NULL;
   HFID *hfids = NULL;
-  int reverse;
   int unique_pk = 0;
   int not_null = 0;
 
@@ -16459,15 +16493,6 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
       HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) subclass_));
 
       subclass_ = NULL;
-    }
-
-  if (con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
-    {
-      reverse = 1;
-    }
-  else
-    {
-      reverse = 0;
     }
 
   if (con->type == SM_CONSTRAINT_UNIQUE || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)

@@ -6748,6 +6748,7 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 				  PT_NODE * args)
 {
   int i;
+  char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *arg, *id_string;
   PT_NODE *prev = NULL, *head = NULL;
 
@@ -6776,8 +6777,10 @@ pt_resolve_showstmt_args_unnamed (PARSER_CONTEXT * parser, const SHOWSTMT_NAMED_
 	      goto error;
 	    }
 
+	  intl_identifier_lower (arg->info.name.original, lower_table_name);
+
 	  /* replace identifier node with string value node */
-	  id_string = pt_make_string_value (parser, arg->info.name.original);
+	  id_string = pt_make_string_value (parser, lower_table_name);
 	  if (id_string == NULL)
 	    {
 	      goto error;
@@ -8456,6 +8459,31 @@ pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_pa
     }
 
   return expr;
+}
+
+/*
+ * pt_is_operator_arith() - returns TRUE if the operator has an arithmetic
+ *			      return type (i.e. +, -, *, /) and FALSE
+ *			      otherwise.
+ *
+ *   return: boolean
+ *   op(in): the operator
+ */
+bool
+pt_is_operator_arith (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_TIMES:
+    case PT_DIVIDE:
+    case PT_UNARY_MINUS:
+    case PT_MOD:
+      return true;
+    default:
+      return false;
+    }
 }
 
 /*
@@ -10448,9 +10476,17 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  {
 	    const char *target_owner_name = NULL;
 
+	    if (PT_SYNONYM_IS_DBLINKED (node))
+	      {
+		target_owner_name = synonym_owner_name;
+	      }
+	    else
+	      {
+		target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	      }
+
 	    /* When processing PT_NAME, resolved_name is prefixed to original_name.
 	     * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
-	    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
 	    if (target_owner_name == NULL
 		&& sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
 	      {
@@ -10478,9 +10514,17 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	assert (synonym_owner_name != NULL);
 	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
 
+	if (PT_SYNONYM_IS_DBLINKED (node))
+	  {
+	    target_owner_name = synonym_owner_name;
+	  }
+	else
+	  {
+	    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	  }
+
 	/* When processing PT_NAME, resolved_name is prefixed to original_name.
 	 * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
-	target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
 	if (target_owner_name == NULL
 	    && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
 	  {
@@ -10766,42 +10810,46 @@ static PT_NODE *
 pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
 {
   PT_SPEC_INFO *class_spec_info = &from_tbl->info.spec;
-  PT_NODE *drived_spec;
+  PT_NODE *derived_spec;
   PT_NODE *new_range_var;
   PT_NODE *dbl_col = NULL;
 
-  if ((drived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
+  if ((derived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
     {
-      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
       return NULL;
     }
 
   if ((new_range_var = parser_new_node (parser, PT_NAME)) == NULL)
     {
-      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
-      parser_free_node (parser, drived_spec);
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      parser_free_node (parser, derived_spec);
       return NULL;
     }
 
+  parser->custom_print |= PT_PRINT_SUPPRESS_FOR_DBLINK;
+
+  derived_spec->info.dblink_table.remote_table_name = NULL;
   if (class_spec_info->entity_name->info.name.resolved)
     {
-      char tmp[1024];
-      snprintf (tmp, sizeof (tmp), "%s.%s", class_spec_info->entity_name->info.name.resolved,
-		class_spec_info->entity_name->info.name.original);
-      drived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, NULL, tmp);
+      derived_spec->info.dblink_table.remote_table_name =
+	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name,
+			  class_spec_info->entity_name->info.name.resolved);
+      derived_spec->info.dblink_table.remote_table_name =
+	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, ".");
     }
-  else
-    {
-      drived_spec->info.dblink_table.remote_table_name =
-	pt_append_string (parser, NULL, class_spec_info->entity_name->info.name.original);
-    }
+  derived_spec->info.dblink_table.remote_table_name =
+    pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name,
+		      class_spec_info->entity_name->info.name.original);
+
+  parser->custom_print &= ~PT_PRINT_SUPPRESS_FOR_DBLINK;
 
   assert (class_spec_info->remote_server_name->node_type == PT_NAME);
-  drived_spec->info.dblink_table.is_name = true;
-  drived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
+  derived_spec->info.dblink_table.is_name = true;
+  derived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
   if (class_spec_info->remote_server_name->next)
     {
-      drived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
+      derived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
       class_spec_info->remote_server_name->next = NULL;
     }
   class_spec_info->remote_server_name = NULL;
@@ -10825,16 +10873,16 @@ pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
   new_range_var->info.name.original = pt_append_string (parser, NULL, (char *) var_buf->bytes);
 
 
-  drived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
+  derived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
   class_spec_info->entity_name = NULL;
 
-  drived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
+  derived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
   class_spec_info->range_var = NULL;
 
-  drived_spec->info.dblink_table.cols = NULL;
+  derived_spec->info.dblink_table.cols = NULL;
 
   from_tbl->info.spec.range_var = new_range_var;
-  from_tbl->info.spec.derived_table = drived_spec;
+  from_tbl->info.spec.derived_table = derived_spec;
   from_tbl->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
 
   return from_tbl;
@@ -10849,7 +10897,6 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
   PT_NODE *new_name, *new_owner;
 
-  //*continue_walk = PT_STOP_WALK;
   *continue_walk = PT_CONTINUE_WALK;
   assert (continue_walk != NULL);
 
@@ -11202,190 +11249,81 @@ pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_
 #endif
 
 static int
-pt_init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
-		     int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data)
+pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_upd, int *remote_upd)
 {
   int error = NO_ERROR;
-  int assign_cnt = 0, upd_cls_cnt = 0;
-  int idx, idx2;
+  int upd_cls_cnt = 0;
+  int remote = 0, local = 0;
 
   PT_ASSIGNMENTS_HELPER ea;
-  PT_NODE *node = NULL, *assignments, *spec, *class_spec;
-  CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls_info_tmp = NULL;
-  CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL, *assign2 = NULL;
+  PT_NODE *node = NULL, *assignments, *spec;
 
-  assign_cnt = 0;
-  assignments =
-    statement->node_type == PT_MERGE ? statement->info.merge.update.assignment : statement->info.update.assignment;
-  spec = statement->node_type == PT_MERGE ? statement->info.merge.into : statement->info.update.spec;
-  class_spec = statement->node_type == PT_MERGE ? NULL : statement->info.update.class_specs;
+  assignments = statement->info.update.assignment;
+  spec = statement->info.update.spec;
+
+  while (spec)
+    {
+      upd_cls_cnt++;
+      spec = spec->next;
+    }
+
+  spec = statement->info.update.spec;
 
   pt_init_assignments_helper (parser, &ea, assignments);
+
   while (pt_get_next_assignment (&ea))
     {
-      /* count number of assignments */
-      assign_cnt++;
-    }
-
-  /* allocate memory for assignment structures */
-  assigns = (CLIENT_UPDATE_INFO *) malloc (assign_cnt * sizeof (CLIENT_UPDATE_INFO));
-  if (assigns == NULL)
-    {
-      error = ER_REGU_NO_SPACE;
-      goto error_return;
-    }
-  memset (assigns, 0, assign_cnt * sizeof (CLIENT_UPDATE_INFO));
-
-  node = spec;
-  while (node)
-    {
-      /* count classes that will be updated */
-      upd_cls_cnt++;
-      node = node->next;
-    }
-
-  node = class_spec;
-  while (node)
-    {
-      /* count classes that will be updated */
-      upd_cls_cnt++;
-      node = node->next;
-    }
-
-  /* allocate array of classes information structures */
-  cls_info = (CLIENT_UPDATE_CLASS_INFO *) malloc (upd_cls_cnt * sizeof (CLIENT_UPDATE_CLASS_INFO));
-  if (cls_info == NULL)
-    {
-      error = ER_REGU_NO_SPACE;
-      goto error_return;
-    }
-
-  memset (cls_info, 0, upd_cls_cnt * sizeof (CLIENT_UPDATE_CLASS_INFO));
-
-  /* initialize classes info array */
-  idx = 0;
-  node = spec;
-  while (node)
-    {
-      cls_info_tmp = &cls_info[idx++];
-      cls_info_tmp->spec = node;
-      cls_info_tmp->first_assign = NULL;
-
-      node = node->next;
-    }
-
-  /* initialize classes info array */
-  idx = 0;
-  node = class_spec;
-  while (node)
-    {
-      cls_info_tmp = &cls_info[idx++];
-      cls_info_tmp->spec = node;
-      cls_info_tmp->first_assign = NULL;
-
-      node = node->next;
-    }
-
-  /* Fill assignment structures */
-  pt_init_assignments_helper (parser, &ea, assignments);
-  for (assign = assigns; pt_get_next_assignment (&ea); assign++)
-    {
-      PT_NODE *tbl_spec = NULL;
-      PT_NODE *entity_spec;
       char *tbl_name;
       char *tbl_alias = NULL;
       char *lhs_name;
       bool found = false;
 
-      for (idx = 0; idx < upd_cls_cnt; idx++)
+      lhs_name = (char *) ea.lhs->info.name.original;
+      while (spec && !found)
 	{
-	  if (cls_info[idx].spec->info.spec.entity_name)
+	  if (spec->info.spec.entity_name)
 	    {
-	      if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_NAME)
+	      tbl_name = (char *) spec->info.spec.entity_name->info.name.original;
+	      if (spec->info.spec.range_var)
 		{
-		  tbl_spec = cls_info[idx].spec;
-		}
-	      else if (cls_info[idx].spec->info.spec.entity_name->node_type == PT_SPEC)
-		{
-		  tbl_spec = cls_info[idx].spec->info.spec.entity_name;
-		}
-	    }
-
-	  lhs_name = (char *) ea.lhs->info.name.original;
-	  while (tbl_spec && !found)
-	    {
-	      if (tbl_spec->info.spec.range_var)
-		{
-		  tbl_name = (char *) tbl_spec->info.spec.range_var->info.name.original;
-		  tbl_alias = (char *) tbl_spec->info.spec.range_var->info.name.original;
-		  entity_spec = NULL;
-		}
-	      else
-		{
-		  entity_spec = tbl_spec->info.spec.entity_name;
+		  tbl_alias = (char *) spec->info.spec.range_var->info.name.original;
 		}
 
-	      while (entity_spec)
+	      if ((tbl_name && strcmp (tbl_name, lhs_name) == 0) || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0)
+		  || upd_cls_cnt == 1)
 		{
-		  if (entity_spec->node_type == PT_NAME)
+		  found = true;
+		  if (spec->info.spec.remote_server_name)
 		    {
-		      tbl_name = (char *) entity_spec->info.name.original;
-		      break;
-		    }
-		  entity_spec = entity_spec->info.spec.entity_name;
-		}
-
-	      assign->cls_info = NULL;
-	      if (strcmp (tbl_name, lhs_name) == 0 || (tbl_alias && strcmp (tbl_alias, lhs_name) == 0))
-		{
-		  assign->cls_info = &cls_info[idx];
-		  /* link assignment to its class info */
-		  if (cls_info[idx].first_assign)
-		    {
-		      assign2 = cls_info[idx].first_assign;
-		      while (assign2->next)
-			{
-			  assign2 = assign2->next;
-			}
-		      assign2->next = assign;
+		      remote++;
 		    }
 		  else
 		    {
-		      cls_info[idx].first_assign = assign;
+		      local++;
 		    }
-		  assign->next = NULL;
-		  found = true;
-		  break;
 		}
-	      tbl_spec = tbl_spec->next;
 	    }
+	  spec = spec->next;
+	}
+
+      if (!found && remote > 0 && local > 0)
+	{
+	  /* remote & local updates are mixed */
+	  /* the update would be ambiguous */
+	  PT_ERRORmf (parser, assignments, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO, lhs_name);
+	  error = ER_FAILED;
+	  break;
 	}
     }
 
-  *assigns_data = assigns;
-  *assigns_count = assign_cnt;
-  *cls_data = cls_info;
-
-  return error;
-
-error_return:
-  /* free class information array */
-  if (cls_info)
-    {
-      free (cls_info);
-    }
-
-  /* free assignments information */
-  if (assigns != NULL)
-    {
-      free (assigns);
-    }
+  *remote_upd = remote;
+  *local_upd = local;
 
   return error;
 }
 
 static PT_NODE *
-pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy, int *continue_walk)
+pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_insert, int *continue_walk)
 {
   char *class_name;
   char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -11426,7 +11364,9 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy,
 	  spec->info.spec.entity_name->info.name.original = pt_append_string (parser, NULL, class_name);
 	  spec->info.spec.remote_server_name = parser_new_node (parser, PT_NAME);
 	  spec->info.spec.remote_server_name->info.name.original = pt_append_string (parser, NULL, r + 1);
-	  if (spec->info.spec.range_var == NULL)
+
+	  /* it's not necessary to alias name for INSERT statement's table name */
+	  if (!is_insert && spec->info.spec.range_var == NULL)
 	    {
 	      spec->info.spec.range_var = parser_new_node (parser, PT_NAME);
 	      spec->info.spec.range_var->info.name.original = pt_append_string (parser, NULL, synonym_name);
@@ -11435,7 +11375,7 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *dummy,
     }
   else
     {
-/* synonym_mop == NULL */
+      /* synonym_mop == NULL */
       ASSERT_ERROR_AND_SET (error);
       if (error == ER_SYNONYM_NOT_EXIST)
 	{
@@ -11490,8 +11430,9 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 {
   PT_NODE *insert, *spec;
   int remote_ins = 0;
+  bool is_insert = true;
 
-  parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
+  parser_walk_tree (parser, node, pt_convert_dblink_synonym, &is_insert, NULL, NULL);
   if (pt_has_error (parser))
     {
       return;
@@ -11578,13 +11519,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 static void
 pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
-  int idx, local_upd = 0, assigns_count = 0;
-  int error, remote_upd = 0, upd_cls_cnt, vals_cnt, multi_assign_cnt;
-  PT_NODE *assignments = NULL, *rhs, *tbl_spec;
-  PT_ASSIGNMENTS_HELPER ea;
-  CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
-  CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls = NULL;
-  DB_VALUE *dbvals = NULL;
+  int local_upd = 0, remote_upd = 0;
+  int error;
 
   parser_walk_tree (parser, node, pt_convert_dblink_synonym, NULL, NULL, NULL);
   if (pt_has_error (parser))
@@ -11592,51 +11528,11 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       return;
     }
 
-  assignments = node->info.update.assignment;
-  tbl_spec = node->info.update.spec;
+  error = pt_check_update_set (parser, node, &local_upd, &remote_upd);
 
-  error = pt_init_update_data (parser, node, &assigns, &assigns_count, &cls_info);
-
-  pt_init_assignments_helper (parser, &ea, assignments);
-  for (idx = 0; idx < assigns_count && error == NO_ERROR; idx += multi_assign_cnt)
+  if (error != NO_ERROR)
     {
-      multi_assign_cnt = 1;
-      assign = &assigns[idx];
-      cls = assign->cls_info;
-      if (cls == NULL)
-	{
-	  continue;
-	}
-      if (cls->spec->info.spec.remote_server_name == NULL)
-	{
-	  local_upd++;
-	}
-      else
-	{
-	  remote_upd++;
-	}
-
-      pt_get_next_assignment (&ea);
-      rhs = ea.rhs;
-      if (ea.is_n_column)
-	{
-	  while (pt_get_next_assignment (&ea) && rhs == ea.rhs)
-	    {
-	      multi_assign_cnt++;
-	    }
-	}
-    }
-
-  /* free assignments array */
-  if (assigns != NULL)
-    {
-      free (assigns);
-    }
-
-  /* free classes info array */
-  if (cls_info != NULL)
-    {
-      free (cls_info);
+      return;
     }
 
   pt_convert_dblink_dml_query (parser, node, local_upd, remote_upd, snl);
@@ -11705,10 +11601,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   int i;
   int tmp_local_cnt = snl->local_cnt;
   int tmp_server_cnt = snl->server_cnt;
+  unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
   PT_NODE *list = NULL;		/* for insert select list */
   PT_NODE *spec, *into_spec = NULL, *upd_spec = NULL, *server;
+
+  PARSER_VARCHAR *comment, *dml;
 
   switch (node->node_type)
     {
@@ -11744,7 +11643,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (local_upd > 0 && upd_spec)
     {
-      pt_check_sub_query_spec (parser, upd_spec, snl, NULL);
+      parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
     }
 
   if (into_spec)
@@ -11786,12 +11685,18 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
+  /*
+   ** the query which has generic function is set flag.cannont_prepare to 1 by parser
+   ** because the generic function might not be executed, 
+   ** However, the dblink DML should be prepared even though it has generic function
+   */
+  node->flag.cannot_prepare = 0;
+
   /*  
    ** The target server must all be the same.
    ** Therefore, even if multiple tables are specified, only the first information is configured as PT_DBLINK_TABLE_DML.
    ** Postpone checking that "user.server" and "server" are the same.
    */
-
   PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
   if (!ct)
     {
@@ -11815,10 +11720,39 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
      It also should set flag not to convert to serial_next_value
      or serial_current_value for ORACLE or other DBMS.
    */
-  parser->custom_print |= PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV;
-  val->info.value.data_value.str = pt_print_bytes (parser, node);
+
+  save_custom_print = parser->custom_print;
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK INSERT */ ", 20);
+      break;
+    case PT_UPDATE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK UPDATE */ ", 20);
+      break;
+    case PT_DELETE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK DELETE */ ", 20);
+      break;
+    case PT_MERGE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK MERGE */ ", 19);
+      break;
+    default:
+      /* must not reach here */
+      assert (false);
+    }
+
+  parser->custom_print |=
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+    PT_PRINT_SUPPRESS_FOR_DBLINK;
+
+  dml = pt_print_bytes (parser, node);
+
+  val->info.value.data_value.str = pt_append_bytes (parser, comment, (const char *) dml->bytes, dml->length);
+
+  parser->custom_print = save_custom_print;
+
   PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
-  parser->custom_print &= ~(PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV);
 
   if (into_spec)
     {
@@ -11886,10 +11820,9 @@ pt_convert_dblink_select_query (PARSER_CONTEXT * parser, PT_NODE * query_stmt, S
 
   parser_walk_tree (parser, query_stmt, pt_convert_dblink_synonym, NULL, NULL, NULL);
 
+  parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
   while (from_tbl)
     {
-      parser_walk_tree (parser, from_tbl, pt_get_server_name_list, snl, NULL, NULL);
-
       if (from_tbl->info.spec.entity_name && from_tbl->info.spec.remote_server_name)
 	{
 	  assert (from_tbl->info.spec.entity_name->node_type == PT_NAME);
@@ -11966,12 +11899,27 @@ pt_convert_dml (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
         } while(0)
 // *INDENT-ON*     
 
+static PT_NODE *
+pt_set_print_in_value_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = (PT_NODE *) arg;
+
+  if (node->node_type == PT_EXPR && (node->info.expr.op == PT_IS_IN || node->info.expr.op == PT_IS_NOT_IN))
+    {
+      node->info.expr.arg2->flag.print_in_value_for_dblink = 1;
+    }
+
+  return node;
+}
+
 void
 pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   SERVER_NAME_LIST snl;
 
   memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
+
+  parser_walk_tree (parser, stmt, pt_set_print_in_value_for_dblink, NULL, NULL, NULL);
 
   switch (stmt->node_type)
     {
