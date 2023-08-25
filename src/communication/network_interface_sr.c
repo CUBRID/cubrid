@@ -7313,10 +7313,11 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   else
     {
       buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
-      size -= buffer - buffer_a;
 
       ptr = or_pack_string (buffer, server_info.name);
       ptr = or_pack_int64 (ptr, server_info.total_mem_usage);
+
+      assert (size == (ptr - buffer));
     }
 
   if (error != NO_ERROR)
@@ -7419,7 +7420,6 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
        *    - packing information with sequence of
        *      module info -> component info w/ subcomponent info */
       buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
-      size -= buffer - buffer_a;
 
       ptr = buffer;
 
@@ -7452,6 +7452,7 @@ smmon_get_module_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
             }
         }
       // *INDENT-ON*
+      assert (size == (ptr - buffer));
     }
 
   if (error != NO_ERROR)
@@ -7527,7 +7528,6 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
       /* 3) packing information
        *    - packing information with sequence of module info */
       buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
-      size -= buffer - buffer_a;
 
       ptr = buffer;
 
@@ -7538,6 +7538,7 @@ smmon_get_module_info_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *
           ptr = or_pack_int64 (ptr, m_info.stat.cur_stat);
         }
       // *INDENT-ON*
+      assert (size == (ptr - buffer));
     }
 
   if (error != NO_ERROR)
@@ -7613,7 +7614,6 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
        *    - packing information with sequence of
        *      server info -> transaction info */
       buffer = PTR_ALIGN (buffer_a, MAX_ALIGNMENT);
-      size -= buffer - buffer_a;
 
       ptr = or_pack_int (buffer, info.num_tran);
 
@@ -7624,6 +7624,7 @@ smmon_get_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
           ptr = or_pack_int64 (ptr, t_stat.cur_stat);
         }
       // *INDENT-ON*
+      assert (size == (ptr - buffer));
     }
 
   if (error != NO_ERROR)

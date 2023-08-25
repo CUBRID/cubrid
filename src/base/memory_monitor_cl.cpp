@@ -47,8 +47,7 @@ mmon_convert_module_name_to_index (const char *module_name)
     }
 
   /* for code protection. unreachable */
-  assert (false);
-  return -1;
+  assert (false && "module index matching failed");
 }
 
 /*

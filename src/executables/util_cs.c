@@ -4671,36 +4671,38 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
       mmon_print_module_info (module_info);
     }
-
-  if (print_show_all)
+  else
     {
-      module_count = MMON_MODULE_LAST;
-      error_code = mmon_get_module_info_summary (module_count, module_info);
-      if (error_code != NO_ERROR)
+      if (print_show_all)
 	{
-	  goto error_exit;
+	  module_count = MMON_MODULE_LAST;
+	  error_code = mmon_get_module_info_summary (module_count, module_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  mmon_print_module_info_summary (server_info.total_mem_usage, module_info);
+
+	  print_transaction = true;
 	}
-
-      mmon_print_module_info_summary (server_info.total_mem_usage, module_info);
-
-      print_transaction = true;
-    }
-  else if (print_default)
-    {
-      /* default case */
-      // *INDENT-OFF*
-      module_count = std::min ((int) MMON_MODULE_LAST, DEFAULT_OPTION_PRINT_CNT);
-      // *INDENT-ON*
-      error_code = mmon_get_module_info_summary (module_count, module_info);
-      if (error_code != NO_ERROR)
+      else if (print_default)
 	{
-	  goto error_exit;
+	  /* default case */
+          // *INDENT-OFF*
+          module_count = std::min ((int) MMON_MODULE_LAST, DEFAULT_OPTION_PRINT_CNT);
+          // *INDENT-ON*
+	  error_code = mmon_get_module_info_summary (module_count, module_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  mmon_print_module_info_summary (server_info.total_mem_usage, module_info);
+
+	  print_transaction = true;
+	  tran_count = DEFAULT_OPTION_PRINT_CNT;
 	}
-
-      mmon_print_module_info_summary (server_info.total_mem_usage, module_info);
-
-      print_transaction = true;
-      tran_count = DEFAULT_OPTION_PRINT_CNT;
     }
 
   if (print_transaction)
