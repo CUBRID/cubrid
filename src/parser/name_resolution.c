@@ -5270,7 +5270,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       rmt_attr->type_idx = col_info[i].ext_type;
       rmt_attr->dec_precision = col_info[i].scale;
       rmt_attr->precision = col_info[i].precision;
-      rmt_attr->precision = col_info[i].charset;
+      rmt_attr->charset = col_info[i].charset;
     }
 
   err = NO_ERROR;
