@@ -5062,7 +5062,7 @@ extract_vclass (extract_context & ctxt)
     }
 
   emit_schema (ctxt, output_ctx, EXTRACT_VCLASS);
-  err = (er_errid () == NO_ERROR) ? ER_FAILED : NO_ERROR;
+  err = (er_errid () == NO_ERROR) ? NO_ERROR : ER_FAILED;
 
   fflush (output_file);
 
