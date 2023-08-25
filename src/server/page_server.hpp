@@ -189,7 +189,7 @@ class page_server
     class follower_connection_handler
     {
       public:
-	using followee_server_conn_t =
+	using follower_server_conn_t =
 		cubcomm::request_sync_client_server<followee_to_follower_request, follower_to_followee_request, std::string>;
 
 	follower_connection_handler () = delete;
@@ -201,17 +201,15 @@ class page_server
 	follower_connection_handler &operator= (const connection_handler &) = delete;
 	follower_connection_handler &operator= (connection_handler &&) = delete;
 
-	void push_request (page_to_tran_request id, std::string msg);
-	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
-
       private:
 	page_server &m_ps;
+	std::unique_ptr<follower_server_conn_t> m_conn;
     };
 
     class followee_connection_handler
     {
       public:
-	using follower_server_conn_t =
+	using followee_server_conn_t =
 		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
 
 	followee_connection_handler () = delete;
@@ -223,8 +221,12 @@ class page_server
 	followee_connection_handler &operator= (const connection_handler &) = delete;
 	followee_connection_handler &operator= (connection_handler &&) = delete;
 
+	void push_request (page_to_tran_request id, std::string msg);
+	int send_receive (tran_to_page_request reqid, std::string &&payload_in, std::string &payload_out);
+
       private:
 	page_server &m_ps;
+	std::unique_ptr<followee_server_conn_t> m_conn;
     };
 
     /*
@@ -283,8 +285,8 @@ class page_server
     async_disconnect_handler<connection_handler> m_async_disconnect_handler;
     pts_mvcc_tracker m_pts_mvcc_tracker;
 
-    follower_connection_handler_uptr_t m_follower_conn;
-    std::vector<followee_connection_handler_uptr_t> m_followee_conn_vec;
+    followee_connection_handler_uptr_t m_followee_conn;
+    std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
 };
 
 #endif // !_PAGE_SERVER_HPP_

@@ -371,25 +371,43 @@ page_server::connection_handler::push_disconnection_request ()
 page_server::follower_connection_handler::follower_connection_handler (cubcomm::channel &&chn, page_server &ps)
   : m_ps { ps }
 {
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
 
-}
+  m_conn.reset (new follower_server_conn_t (std::move (chn),
+		{}, // request handler
+		followee_to_follower_request::RESPOND,
+		follower_to_followee_request::RESPOND,
+		RESPONSE_PARTITIONING_SIZE,
+		nullptr));
 
-void
-page_server::follower_connection_handler::push_request (page_to_tran_request id, std::string msg)
-{
-}
-
-int
-page_server::follower_connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
-    std::string &payload_out)
-{
-  return NO_ERROR;
+  m_conn->start ();
 }
 
 page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
   : m_ps { ps }
 {
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
 
+  m_conn.reset (new followee_server_conn_t (std::move (chn),
+		{}, // request handler
+		follower_to_followee_request::RESPOND,
+		followee_to_follower_request::RESPOND,
+		RESPONSE_PARTITIONING_SIZE,
+		nullptr));
+
+  m_conn->start ();
+}
+
+void
+page_server::followee_connection_handler::push_request (page_to_tran_request id, std::string msg)
+{
+}
+
+int
+page_server::followee_connection_handler::send_receive (tran_to_page_request reqid, std::string &&payload_in,
+    std::string &payload_out)
+{
+  return NO_ERROR;
 }
 
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)
@@ -535,11 +553,11 @@ page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
   assert (chn.is_connection_alive ());
   const auto channel_id = chn.get_channel_id ();
 
+  m_follower_conn_vec.emplace_back (new follower_connection_handler (std::move (chn), *this));
+
   er_log_debug (ARG_FILE_LINE,
 		"A follower page server connected to this page server to catch up. Channel id: %s.\n",
 		channel_id.c_str ());
-
-  // TODO Create a connection_handler for this.
 }
 
 int
@@ -578,9 +596,8 @@ page_server::connect_to_followee_page_server (std::string &&hostname, int32_t po
       return ps_conn_error_lambda ();
     }
 
-  // TODO
-  // For now, the srv_chn is destroyed here and it will close the connection.
-  // We will create a connection handler to keep this channel and handle requests for them.
+  assert (m_followee_conn == nullptr);
+  m_followee_conn.reset (new followee_connection_handler (std::move (srv_chn), *this));
 
   er_log_debug (ARG_FILE_LINE,
 		"This page server successfully connected to the followee page server to catch up. Channel id: %s.\n",
