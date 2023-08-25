@@ -301,6 +301,7 @@ static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * 
 static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
+static bool pt_is_dblink_related (PT_NODE * p);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -6810,45 +6811,6 @@ pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, D
 }
 
 /*
- * pt_do_where_type () -
- *   return:
- *   parser(in):
- *   node(in):
- *   arg(in):
- *   continue_walk(in):
- */
-PT_NODE *
-pt_do_where_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_NODE *spec = NULL;
-
-  if (node == NULL)
-    {
-      return NULL;
-    }
-
-  switch (node->node_type)
-    {
-    case PT_SELECT:
-      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
-	{
-	  if (spec->node_type == PT_SPEC && spec->info.spec.on_cond)
-	    {
-	      spec->info.spec.on_cond = pt_where_type (parser, spec->info.spec.on_cond);
-	    }
-	}
-
-      node->info.query.q.select.where = pt_where_type (parser, node->info.query.q.select.where);
-      break;
-
-    default:
-      break;
-    }
-
-  return node;
-}
-
-/*
  * pt_where_type () - Test for constant folded where clause,
  * 		      and fold as necessary
  *   return:
@@ -7844,7 +7806,6 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  // we want to test full execution of sub-tree; don't fold it!
 	  *continue_walk = PT_LIST_WALK;
 	}
-      break;
     default:
       // nope
       break;
@@ -11311,7 +11272,8 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 {
   PT_TYPE_ENUM result_type;
 
-  static bool oracle_style_divide = prm_get_bool_value (PRM_ID_ORACLE_STYLE_DIVIDE);
+  /* it should not be static because the parameter could be changed without broker restart */
+  bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
 
   if (pt_is_op_hv_late_bind (op) && (t1 == PT_TYPE_MAYBE || t2 == PT_TYPE_MAYBE))
     {
@@ -11325,7 +11287,7 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
   switch (op)
     {
     case PT_DIVIDE:
-      if (oracle_style_divide && PT_IS_DISCRETE_NUMBER_TYPE (t1) && PT_IS_DISCRETE_NUMBER_TYPE (t2))
+      if (oracle_compat_number && PT_IS_DISCRETE_NUMBER_TYPE (t1) && PT_IS_DISCRETE_NUMBER_TYPE (t2))
 	{
 	  result_type = PT_TYPE_NUMERIC;
 	}
@@ -18956,6 +18918,44 @@ error_zerodate:
 }
 
 /*
+ * check if the expr node has any dblink-related term
+ */
+static bool
+pt_is_dblink_related (PT_NODE * p)
+{
+  if (p->node_type == PT_EXPR)
+    {
+      if (p->info.expr.arg1 && pt_is_dblink_related (p->info.expr.arg1))
+	{
+	  return true;
+	}
+      if (p->info.expr.arg2 && pt_is_dblink_related (p->info.expr.arg2))
+	{
+	  return true;
+	}
+      if (p->info.expr.arg3 && pt_is_dblink_related (p->info.expr.arg3))
+	{
+	  return true;
+	}
+
+      return false;
+    }
+
+  if (p->node_type == PT_NAME && p->info.name.spec_id)
+    {
+      PT_NODE *spec;
+
+      spec = (PT_NODE *) (p->info.name.spec_id);
+      if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * pt_fold_const_expr () - evaluate constant expression
  *   return: the evaluated expression, if successful,
  *           unchanged expr, if not successful.
@@ -20419,20 +20419,6 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   /* do constant folding */
   tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
-  if (pt_has_error (parser))
-    {
-      tree = NULL;
-    }
-
-  /* When qo_reduce_equality_terms is executed in mq_optimize, a removable predicate like '1=1' is generated.
-   * This predicate is removed by executing pt_where_type after pt_fold_const_expr has executed.
-   * 
-   * If this predicate remains without being removed, it becomes a data filter and MRO (Multiple Key Ranges
-   * Optimization) cannot be performed.
-   *
-   * See CBRD-24735 for the details.
-   */
-  tree = parser_walk_tree (parser, tree, NULL, NULL, pt_do_where_type, NULL);
   if (pt_has_error (parser))
     {
       tree = NULL;

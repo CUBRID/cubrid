@@ -12987,11 +12987,11 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
 
   if (pdblink->rewritten)
     {
-      sql = (char *) pdblink->rewritten->bytes;
+      sql = pt_append_string (parser, "/* DBLINK SELECT */ ", (char *) pdblink->rewritten->bytes);
     }
   else
     {
-      sql = (char *) pdblink->qstr->info.value.data_value.str->bytes;
+      sql = pt_append_string (parser, "/* DBLINK SELECT */ ", (char *) pdblink->qstr->info.value.data_value.str->bytes);
     }
 
   if (pdblink->pushed_pred)
