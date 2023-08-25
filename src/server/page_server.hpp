@@ -223,10 +223,10 @@ class page_server
 	followee_connection_handler &operator= (const connection_handler &) = delete;
 	followee_connection_handler &operator= (connection_handler &&) = delete;
 
-      private:
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
 
+      private:
 	page_server &m_ps;
 	std::unique_ptr<followee_server_conn_t> m_conn;
     };

@@ -616,6 +616,10 @@ page_server::connect_to_followee_page_server (std::string &&hostname, int32_t po
 		"This page server successfully connected to the followee page server to catch up. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
+
+  // TODO remove it. Just a test to make sure the connection works.
+  m_followee_conn->push_request (follower_to_followee_request::SEND_DUMMY, std::string (""));
+
   return NO_ERROR;
 }
 
