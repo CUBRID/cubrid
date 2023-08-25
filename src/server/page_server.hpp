@@ -173,7 +173,6 @@ class page_server
 	std::mutex m_abnormal_tran_server_disconnect_mtx;
 	bool m_abnormal_tran_server_disconnect;
     };
-    using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
 
     /*
      * TODO
@@ -250,6 +249,10 @@ class page_server
 	std::unordered_map<std::string, MVCCID> m_pts_oldest_active_mvccids;
 	std::mutex m_pts_oldest_active_mvccids_mtx;
     };
+  private:
+    using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
+    using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
+    using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
 
     using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
 
@@ -271,6 +274,9 @@ class page_server
 
     async_disconnect_handler<connection_handler> m_async_disconnect_handler;
     pts_mvcc_tracker m_pts_mvcc_tracker;
+
+    follower_connection_handler_uptr_t m_follower_conn;
+    std::vector<followee_connection_handler_uptr_t> m_followee_conn_vec;
 };
 
 #endif // !_PAGE_SERVER_HPP_
