@@ -30,13 +30,6 @@
 
 #define MMON_CONVERT_TO_KB_SIZE(size) ((size) / 1024)
 
-constexpr char module_names[MMON_MODULE_LAST][DB_MAX_IDENTIFIER_LENGTH] =
-{
-  /* TODO: this dummy modules will be changed when heap module is registered */
-  "dummy",
-  "long dummy"
-};
-
 void mmon_print_server_info (MMON_SERVER_INFO &server_info);
 void mmon_print_module_info (std::vector<MMON_MODULE_INFO> &module_info);
 void mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODULE_INFO> &module_info);

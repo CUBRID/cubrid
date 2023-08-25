@@ -27,6 +27,12 @@
 #include <cstdint>
 #include <vector>
 
+constexpr char module_names[MMON_MODULE_LAST][DB_MAX_IDENTIFIER_LENGTH] = {
+  /* TODO: this dummy modules will be changed when heap module is registered */
+  "dummy",
+  "long dummy"
+};
+
 typedef enum mmon_module_id
 {
   /* TODO: this dummy modules will be changed when heap module is registered */

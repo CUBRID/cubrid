@@ -60,7 +60,7 @@ mmon_convert_module_name_to_index (const char *module_name)
 void
 mmon_print_server_info (MMON_SERVER_INFO &server_info)
 {
-  fprintf (stdout, "====================Cubrid Memmon====================\n");
+  fprintf (stdout, "====================cubrid memmon====================\n");
   fprintf (stdout, "Server Name: %s\n", server_info.name);
   fprintf (stdout, "Total Memory Usage(KB): %lu\n\n", MMON_CONVERT_TO_KB_SIZE (server_info.total_mem_usage));
   fprintf (stdout, "-----------------------------------------------------\n");
@@ -76,33 +76,33 @@ mmon_print_server_info (MMON_SERVER_INFO &server_info)
 void
 mmon_print_module_info (std::vector<MMON_MODULE_INFO> &module_info)
 {
-  const auto init_size_str = std::string {"Init Size(KB)"};
-  const auto cur_size_str = std::string {"Cur Size(KB)"};
+  const auto init_size_str = std::string {"Initial Size(KB)"};
+  const auto cur_size_str = std::string {"Current Size(KB)"};
   const auto peak_size_str = std::string {"Peak Size(KB)"};
-  const auto resize_expand_str = std::string {"Resize Expand"};
+  const auto resize_expand_str = std::string {"Resize Expand Count"};
 
   for (const auto &m_info : module_info)
     {
       fprintf (stdout, "Module Name: %s\n\n", m_info.name);
-      fprintf (stdout, "%-13s\t: %17lu\n", init_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.init_stat));
-      fprintf (stdout, "%-13s\t: %17lu\n", cur_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.cur_stat));
-      fprintf (stdout, "%-13s\t: %17lu\n", peak_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.peak_stat));
-      fprintf (stdout, "%-13s\t: %17u\n\n", resize_expand_str.c_str (), m_info.stat.expand_resize_count);
+      fprintf (stdout, "%-19s\t: %17lu\n", init_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.init_stat));
+      fprintf (stdout, "%-19s\t: %17lu\n", cur_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.cur_stat));
+      fprintf (stdout, "%-19s\t: %17lu\n", peak_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.peak_stat));
+      fprintf (stdout, "%-19s\t: %17u\n\n", resize_expand_str.c_str (), m_info.stat.expand_resize_count);
 
       for (const auto &comp_info : m_info.comp_info)
 	{
 	  fprintf (stdout, "%s\n", comp_info.name);
-	  fprintf (stdout, "\t%-17s\t: %17lu\n", init_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (comp_info.stat.init_stat));
-	  fprintf (stdout, "\t%-17s\t: %17lu\n", cur_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (comp_info.stat.cur_stat));
+	  fprintf (stdout, "\t%-23s\t: %17lu\n", init_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (comp_info.stat.init_stat));
+	  fprintf (stdout, "\t%-23s\t: %17lu\n", cur_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (comp_info.stat.cur_stat));
 
 	  for (const auto &subcomp_info : comp_info.subcomp_info)
 	    {
 	      auto out_name = std::string {subcomp_info.name};
 	      out_name += "(KB)";
-	      fprintf (stdout, "\t  %-15s\t: %17lu\n", out_name.c_str (), MMON_CONVERT_TO_KB_SIZE (subcomp_info.cur_stat));
+	      fprintf (stdout, "\t  %-20s\t: %17lu\n", out_name.c_str (), MMON_CONVERT_TO_KB_SIZE (subcomp_info.cur_stat));
 	    }
-	  fprintf (stdout, "\t%-17s\t: %17lu\n", peak_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (comp_info.stat.peak_stat));
-	  fprintf (stdout, "\t%-17s\t: %17u\n\n", resize_expand_str.c_str (), comp_info.stat.expand_resize_count);
+	  fprintf (stdout, "\t%-23s\t: %17lu\n", peak_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (comp_info.stat.peak_stat));
+	  fprintf (stdout, "\t%-23s\t: %17u\n\n", resize_expand_str.c_str (), comp_info.stat.expand_resize_count);
 	}
       fprintf (stdout, "\n-----------------------------------------------------\n\n");
     }
@@ -147,11 +147,8 @@ mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODU
 void
 mmon_print_tran_info (MMON_TRAN_INFO &tran_info)
 {
-  const auto tran_id_str = std::string {"Transaction ID"};
-  const auto mem_usage_str = std::string {"Memory Usage"};
-
   fprintf (stdout, "Transaction Memory Usage Info (KB)\n");
-  fprintf (stdout, "\t%14s | %12s\n", tran_id_str.c_str (), mem_usage_str.c_str ());
+  fprintf (stdout, "\t%14s | %12s\n", "Transaction ID", "Memory Usage");
 
   for (const auto &t_stat : tran_info.tran_stat)
     {
