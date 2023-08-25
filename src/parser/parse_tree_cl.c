@@ -15908,7 +15908,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
     case PT_TYPE_SEQUENCE:
-      if (p->spec_ident || (p->flag.print_in_value_for_dblink && parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
+      if (p->spec_ident || ((parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK) && p->flag.print_in_value_for_dblink))
 	{
 	  /* this is tagged as an "in" clause right hand side Print it as a parenthesized list */
 	  /* print_in_value_for_dblink is a flag as same meaning for dblink */
