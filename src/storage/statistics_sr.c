@@ -241,16 +241,8 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   assert (npages > 0);
   cls_info_p->ci_tot_pages = MAX (npages, 0);
 
-  estimated_nobjs = heap_estimate_num_objects (thread_p, &(cls_info_p->ci_hfid));
-  if (estimated_nobjs == -1)
-    {
-      /* cannot get estimates from the heap, use old info */
-      assert (cls_info_p->ci_tot_objects >= 0);
-    }
-  else
-    {
-      cls_info_p->ci_tot_objects = estimated_nobjs;
-    }
+  /* use value from "select --+ sampling count(*) ..." */
+  cls_info_p->ci_tot_objects = class_attr_ndv->attr_ndv[class_attr_ndv->attr_cnt].ndv;
 
   /* update the index statistics for each attribute */
 
@@ -376,13 +368,11 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   DISK_ATTR *disk_attr_p;
   BTREE_STATS *btree_stats_p;
   OID dir_oid;
-  int npages, estimated_nobjs, max_unique_keys;
   int i, j, k, size, n_attrs, tot_n_btstats, tot_key_info_size;
   char *buf_p, *start_p;
   int key_size;
   int lk_grant_code;
   CATALOG_ACCESS_INFO catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
-  bool use_stat_estimation = prm_get_bool_value (PRM_ID_USE_STAT_ESTIMATION);
 
   /* init */
   cls_info_p = NULL;
@@ -496,8 +486,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 
   size += tot_key_info_size;	/* key_type, pkeys[] of BTREE_STATS */
 
-  size += OR_INT_SIZE;		/* max_unique_keys */
-
   start_p = buf_p = (char *) malloc (size);
   if (buf_p == NULL)
     {
@@ -508,66 +496,15 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   OR_PUT_INT (buf_p, cls_info_p->ci_time_stamp);
   buf_p += OR_INT_SIZE;
 
-  npages = estimated_nobjs = max_unique_keys = -1;
-
   assert (cls_info_p->ci_tot_objects >= 0);
   assert (cls_info_p->ci_tot_pages >= 0);
 
-  if (HFID_IS_NULL (&cls_info_p->ci_hfid))
-    {
-      /* The class does not have a heap file (i.e. it has no instances); so no statistics can be obtained for this
-       * class */
-      OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
-      buf_p += OR_INT_SIZE;
+  /* use statistics info */
+  OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
+  buf_p += OR_INT_SIZE;
 
-      OR_PUT_INT (buf_p, cls_info_p->ci_tot_pages);	/* #pages */
-      buf_p += OR_INT_SIZE;
-    }
-  else if (!use_stat_estimation)
-    {
-      /* use statistics info */
-      OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
-      buf_p += OR_INT_SIZE;
-
-      OR_PUT_INT (buf_p, MAX (cls_info_p->ci_tot_pages, 1));	/* #pages */
-      buf_p += OR_INT_SIZE;
-    }
-  else
-    {
-      /* use estimates from the heap since it is likely that its estimates are more accurate than the ones gathered at
-       * update statistics time */
-      estimated_nobjs = heap_estimate_num_objects (thread_p, &(cls_info_p->ci_hfid));
-      if (estimated_nobjs < 0)
-	{
-	  /* cannot get estimates from the heap, use ones from the catalog */
-	  estimated_nobjs = cls_info_p->ci_tot_objects;
-	}
-      else
-	{
-	  /* heuristic is that big nobjs is better than small */
-	  estimated_nobjs = MAX (estimated_nobjs, cls_info_p->ci_tot_objects);
-	}
-
-      OR_PUT_INT (buf_p, estimated_nobjs);	/* #objects */
-      buf_p += OR_INT_SIZE;
-
-      /* do not use estimated npages, get correct info */
-      assert (!VFID_ISNULL (&cls_info_p->ci_hfid.vfid));
-      if (file_get_num_user_pages (thread_p, &cls_info_p->ci_hfid.vfid, &npages) != NO_ERROR)
-	{
-	  int err;
-
-	  ASSERT_ERROR_AND_SET (err);
-	  /* cannot get #pages from the heap, use ones from the catalog */
-	  npages = cls_info_p->ci_tot_pages;
-	  assert (0 < npages || err == ER_INTERRUPTED);
-	  npages = MAX (npages, 1);	/* safe-guard */
-	}
-      assert (npages > 0);
-
-      OR_PUT_INT (buf_p, npages);	/* #pages */
-      buf_p += OR_INT_SIZE;
-    }
+  OR_PUT_INT (buf_p, MAX (cls_info_p->ci_tot_pages, 1));	/* #pages */
+  buf_p += OR_INT_SIZE;
 
   OR_PUT_INT (buf_p, n_attrs);
   buf_p += OR_INT_SIZE;
@@ -598,12 +535,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
-	  /* collect maximum unique keys info */
-	  if (xbtree_get_unique_pk (thread_p, &btree_stats_p->btid))
-	    {
-	      max_unique_keys = MAX (max_unique_keys, btree_stats_p->keys);
-	    }
-
 	  OR_PUT_BTID (buf_p, &btree_stats_p->btid);
 	  buf_p += OR_BTID_ALIGNED_SIZE;
 
@@ -612,56 +543,17 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  btree_stats_p->pages = MAX (1, btree_stats_p->pages);
 	  btree_stats_p->height = MAX (1, btree_stats_p->height);
 
-	  /* If the btree file has currently more pages than when we gathered statistics, assume that all growth happen
-	   * at the leaf level. If the btree is smaller, we use the gathered statistics since the btree may have an
-	   * external file (unknown at this level) to keep overflow keys. */
-	  if (file_get_num_user_pages (thread_p, &btree_stats_p->btid.vfid, &npages) != NO_ERROR)
-	    {
-	      int err;
+	  OR_PUT_INT (buf_p, btree_stats_p->leafs);
+	  buf_p += OR_INT_SIZE;
 
-	      /* what to do here? */
-	      ASSERT_ERROR_AND_SET (err);
-	      npages = btree_stats_p->pages;
-	      assert (0 < npages || err == ER_INTERRUPTED);
-	      npages = MAX (npages, 1);	/* safe-guard */
-	    }
-	  assert (npages > 0);
-	  if (npages > btree_stats_p->pages && use_stat_estimation)
-	    {
-	      OR_PUT_INT (buf_p, (btree_stats_p->leafs + (npages - btree_stats_p->pages)));
-	      buf_p += OR_INT_SIZE;
-
-	      OR_PUT_INT (buf_p, npages);
-	      buf_p += OR_INT_SIZE;
-	    }
-	  else
-	    {
-	      OR_PUT_INT (buf_p, btree_stats_p->leafs);
-	      buf_p += OR_INT_SIZE;
-
-	      OR_PUT_INT (buf_p, btree_stats_p->pages);
-	      buf_p += OR_INT_SIZE;
-	    }
+	  OR_PUT_INT (buf_p, btree_stats_p->pages);
+	  buf_p += OR_INT_SIZE;
 
 	  OR_PUT_INT (buf_p, btree_stats_p->height);
 	  buf_p += OR_INT_SIZE;
 
 	  OR_PUT_INT (buf_p, btree_stats_p->has_function);
 	  buf_p += OR_INT_SIZE;
-
-	  /* check and handle with estimation, since pkeys[] is not gathered before update stats */
-	  if (estimated_nobjs > 0 && use_stat_estimation)
-	    {
-	      /* is non-empty index */
-	      btree_stats_p->keys = MAX (btree_stats_p->keys, 1);
-
-	      /* If the estimated objects from heap manager is greater than the estimate when the statistics were
-	       * gathered, assume that the difference is in distinct keys. */
-	      if (cls_info_p->ci_tot_objects > 0 && estimated_nobjs > cls_info_p->ci_tot_objects)
-		{
-		  btree_stats_p->keys += (estimated_nobjs - cls_info_p->ci_tot_objects);
-		}
-	    }
 
 	  OR_PUT_INT (buf_p, btree_stats_p->keys);
 	  buf_p += OR_INT_SIZE;
@@ -687,13 +579,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
 	    {
-	      /* check and handle with estimation, since pkeys[] is not gathered before update stats */
-	      if (estimated_nobjs > 0 && use_stat_estimation)
-		{
-		  /* is non-empty index */
-		  btree_stats_p->pkeys[k] = MAX (btree_stats_p->pkeys[k], 1);
-		}
-
 	      if (k + 1 == key_size)
 		{
 		  /* this last pkeys must be equal to keys */
@@ -705,9 +590,6 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	    }
 	}			/* for (j = 0, ...) */
     }
-
-  OR_PUT_INT (buf_p, max_unique_keys);
-  buf_p += OR_INT_SIZE;
 
   catalog_free_representation_and_init (disk_repr_p);
   catalog_free_class_info_and_init (cls_info_p);

@@ -2547,6 +2547,7 @@ catalog_copy_disk_attributes (DISK_ATTR * new_attrs_p, int new_attr_count, DISK_
 	      continue;
 	    }
 
+	  new_attr_p->ndv = pre_attr_p->ndv;
 	  catalog_copy_btree_statistic (new_attr_p->bt_stats, new_attr_p->n_btstats, pre_attr_p->bt_stats,
 					pre_attr_p->n_btstats);
 	}
