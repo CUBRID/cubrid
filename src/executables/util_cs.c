@@ -4548,6 +4548,9 @@ memmon (UTIL_FUNCTION_ARG * arg)
 {
 #if defined(CS_MODE)
   constexpr int DEFAULT_OPTION_PRINT_CNT = 5;
+  /* Getting integer option value can't differentiate about user input value or default value.
+   * It can make some error use case. So set it to default value with magic number to pass this case. */
+  constexpr int MODULE_INDEX_MAGIC_NUMBER = -2097573308;	/* INT_MIN + 49910340 */
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
   const char *database_name;
@@ -4587,10 +4590,13 @@ memmon (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      PRINT_AND_LOG_ERR_MSG (msgcat_message
-			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
-			     module_index);
-      goto error_exit;
+      if (module_index != MODULE_INDEX_MAGIC_NUMBER)
+	{
+	  PRINT_AND_LOG_ERR_MSG (msgcat_message
+				 (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NO_MATCHING_MODULE),
+				 module_index);
+	  goto error_exit;
+	}
     }
 
   if (!print_transaction && !print_module && !print_show_all)
@@ -4653,27 +4659,32 @@ memmon (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  // TODO: mmon_print_server_info (server_info);
+  mmon_print_server_info (server_info);
 
   if (print_module)
     {
-      /* XXX: This condition can be removed when a module is registered */
-      if (MMON_MODULE_LAST != 0)
+      error_code = mmon_get_module_info (module_index, module_info);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = mmon_get_module_info (module_index, module_info);
-	  if (error_code != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-
-	  // TODO: mmon_print_module_info (module_info);
+	  goto error_exit;
 	}
+
+      mmon_print_module_info (module_info);
     }
   else
     {
       if (print_show_all)
 	{
 	  module_count = MMON_MODULE_LAST;
+	  error_code = mmon_get_module_info_summary (module_count, module_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  mmon_print_module_info_summary (server_info.total_mem_usage, module_info);
+
+	  print_transaction = true;
 	}
       else if (print_default)
 	{
@@ -4681,26 +4692,17 @@ memmon (UTIL_FUNCTION_ARG * arg)
           // *INDENT-OFF*
           module_count = std::min ((int) MMON_MODULE_LAST, DEFAULT_OPTION_PRINT_CNT);
           // *INDENT-ON*
-	  tran_count = DEFAULT_OPTION_PRINT_CNT;
-	}
-      else
-	{
-	  /* code protection. unreachable. */
-	  assert (false);
-	}
-      /* XXX: This condition can be removed when a module is registered */
-      if (MMON_MODULE_LAST != 0)
-	{
 	  error_code = mmon_get_module_info_summary (module_count, module_info);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
 
-	  // TODO: mmon_print_module_info_summary (module_info);
-	}
+	  mmon_print_module_info_summary (server_info.total_mem_usage, module_info);
 
-      print_transaction = true;
+	  print_transaction = true;
+	  tran_count = DEFAULT_OPTION_PRINT_CNT;
+	}
     }
 
   if (print_transaction)
@@ -4711,7 +4713,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 	  goto error_exit;
 	}
 
-      // TODO: mmon_print_tran_info (tran_info);
+      mmon_print_tran_info (tran_info);
     }
 
   // XXX: for test, it will removed at main implementation

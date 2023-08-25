@@ -104,6 +104,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_monitor_cl.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c

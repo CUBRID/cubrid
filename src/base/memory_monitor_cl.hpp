@@ -28,6 +28,10 @@
 
 #include "memory_monitor_common.h"
 
-// XXX: will be added print function
+#define MMON_CONVERT_TO_KB_SIZE(size) ((size) / 1024)
 
+void mmon_print_server_info (MMON_SERVER_INFO &server_info);
+void mmon_print_module_info (std::vector<MMON_MODULE_INFO> &module_info);
+void mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODULE_INFO> &module_info);
+void mmon_print_tran_info (MMON_TRAN_INFO &tran_info);
 #endif // _MEMORY_MONITOR_CL_HPP_
