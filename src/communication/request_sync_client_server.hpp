@@ -157,7 +157,6 @@ namespace cubcomm
   , m_incoming_response_msgid { a_incoming_response_msgid }
   , m_response_broker { response_partition_count, NO_ERRORS, ERROR_ON_WRITE }
   {
-    assert (a_incoming_request_handlers.size () > 0);
     for (const auto &pair: a_incoming_request_handlers)
       {
 	assert (static_cast<bool> (pair.second));

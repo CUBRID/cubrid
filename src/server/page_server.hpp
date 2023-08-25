@@ -181,10 +181,7 @@ class page_server
     };
 
     /*
-     * TODO
-     * 1. catchup diagram and explaination.
-     * 2. take it out of page_server? then I think we should take all connection_handlers out of servers and put them together.
-     *
+     *  TODO add some explanation and diagrams for this.
      */
     class follower_connection_handler
     {

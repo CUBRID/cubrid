@@ -391,7 +391,6 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
 void page_server::follower_connection_handler::receive_dummy_request (follower_server_conn_t::sequenced_payload
     &&a_sp)
 {
-  // TODO release the resouce of this connection_handler
   er_log_debug (ARG_FILE_LINE, "A follower has requested a duumy request");
 }
 
@@ -615,7 +614,6 @@ page_server::connect_to_followee_page_server (std::string &&hostname, int32_t po
   er_log_debug (ARG_FILE_LINE,
 		"This page server successfully connected to the followee page server to catch up. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
-
 
   // TODO remove it. Just a test to make sure the connection works.
   m_followee_conn->push_request (follower_to_followee_request::SEND_DUMMY, std::string (""));
