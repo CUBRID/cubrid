@@ -263,6 +263,7 @@ typedef struct
   int type_idx;
   int dec_precision;
   int precision;
+  int charset;
 } S_REMOTE_COL_ATTR;
 
 typedef struct remote_tbl_cols S_REMOTE_TBL_COLS;
@@ -4875,7 +4876,7 @@ static bool
 pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node, const S_REMOTE_COL_ATTR * attr)
 {
   PT_NODE *dt = NULL;
-  int is_default = 0;
+  bool need_precision = true;
 
   attr_def_node->data_type = NULL;
   /* it needs to convert ext type to CCI_U_TYPE */
@@ -4887,8 +4888,12 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
     case PT_TYPE_VARCHAR:
     case PT_TYPE_CHAR:
+    case PT_TYPE_VARNCHAR:
+    case PT_TYPE_NCHAR:
+    case PT_TYPE_BIT:
+    case PT_TYPE_VARBIT:
     case PT_TYPE_NUMERIC:
-    case PT_TYPE_FLOAT:
+    case PT_TYPE_MONETARY:
       break;
 
     case PT_TYPE_BLOB:
@@ -4903,11 +4908,11 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
       return false;
 
     default:
-      is_default = 1;
+      need_precision = false;
       break;
     }
 
-  if (is_default == 0)
+  if (need_precision)
     {
       attr_def_node->data_type = dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -4920,6 +4925,7 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
+      dt->info.data_type.units = attr->charset;
     }
 
   attr_def_node->data_type = dt;
@@ -5264,6 +5270,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       rmt_attr->type_idx = col_info[i].ext_type;
       rmt_attr->dec_precision = col_info[i].scale;
       rmt_attr->precision = col_info[i].precision;
+      rmt_attr->precision = col_info[i].charset;
     }
 
   err = NO_ERROR;
