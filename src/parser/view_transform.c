@@ -3381,6 +3381,14 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 	  cinfop->method_found = true;	/* not pushable */
 	}
       break;
+
+    case PT_EXPR:
+      if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (tree))
+	{
+	  cinfop->method_found = true;
+	}
+      break;
+
     default:
       break;
     }				/* switch (tree->node_type) */
@@ -3499,6 +3507,13 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 	      case PT_METHOD_CALL:
 		cinfo.method_found = true;	/* not pushable */
 		break;
+
+	      case PT_EXPR:
+		if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (list))
+		  {
+		    cinfo.method_found = true;
+		    break;
+		  }
 
 	      default:		/* do traverse */
 		parser_walk_leaves (parser, list, pt_check_pushable, &cinfo, NULL, NULL);

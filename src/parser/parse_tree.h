@@ -479,6 +479,14 @@ struct json_t;
            (n)->info.expr.op == PT_LT_INF || \
            (n)->info.expr.op == PT_RANGE ))
 
+#define PT_IS_EXPR_NODE_WITH_NON_PUSHABLE(n) \
+        ( (PT_IS_EXPR_NODE (n)) && \
+          ((n)->info.expr.op == PT_DRANDOM || \
+           (n)->info.expr.op == PT_DRAND || \
+           (n)->info.expr.op == PT_RANDOM || \
+           (n)->info.expr.op == PT_RAND || \
+           (n)->info.expr.op == PT_SYS_GUID ))
+
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
 
