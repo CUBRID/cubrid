@@ -621,7 +621,6 @@ namespace cubperf
 } // namespace cubperf
 
 /* APIs */
-// TODO: API parameter check (after error code setting)
 using namespace cubperf;
 
 int mmon_initialize (const char *server_name)
