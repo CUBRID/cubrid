@@ -376,13 +376,9 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   m_conn.reset (new follower_server_conn_t (std::move (chn),
   {
     {
-      follower_to_followee_request::SEND_DISCONNECT,
-      std::bind (&page_server::follower_connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+      follower_to_followee_request::SEND_DUMMY,
+      std::bind (&page_server::follower_connection_handler::receive_dummy_request, std::ref (*this), std::placeholders::_1)
     },
-    {
-      follower_to_followee_request::SEND_LOG_PAGES_FETCH,
-      std::bind (&page_server::follower_connection_handler::receive_log_pages_fetch, std::ref (*this), std::placeholders::_1)
-    }
   },
   followee_to_follower_request::RESPOND,
   follower_to_followee_request::RESPOND,
@@ -392,24 +388,12 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   m_conn->start ();
 }
 
-void page_server::follower_connection_handler::receive_disconnect_request (follower_server_conn_t::sequenced_payload
+void page_server::follower_connection_handler::receive_dummy_request (follower_server_conn_t::sequenced_payload
     &&a_sp)
 {
   // TODO release the resouce of this connection_handler
-  er_log_debug (ARG_FILE_LINE, "A follower has requested to disconnect.");
+  er_log_debug (ARG_FILE_LINE, "A follower has requested a duumy request");
 }
-
-void page_server::follower_connection_handler::receive_log_pages_fetch (follower_server_conn_t::sequenced_payload
-    &&a_sp)
-{
-  follower_server_conn_t::sequenced_payload payload;
-  // TODO serve requeste log pages
-  er_log_debug (ARG_FILE_LINE, "A follower have requested some log pages.");
-
-  payload.push_payload ("Dummy reseponse");
-  m_conn->respond (std::move (payload));
-}
-
 
 page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
   : m_ps { ps }

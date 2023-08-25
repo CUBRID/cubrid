@@ -202,8 +202,7 @@ class page_server
 	follower_connection_handler &operator= (connection_handler &&) = delete;
 
       private:
-	void receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp);
-	void receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp);
+	void receive_dummy_request (follower_server_conn_t::sequenced_payload &&a_sp);  // TODO remove it
 
 	page_server &m_ps;
 	std::unique_ptr<follower_server_conn_t> m_conn;

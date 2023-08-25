@@ -62,8 +62,10 @@ enum class follower_to_followee_request
   // Reserve for responses
   RESPOND,
 
-  SEND_DISCONNECT, /* response-less */
-  SEND_LOG_PAGES_FETCH, /* synchronously waiting for response */
+  SEND_DUMMY, // TODO for test. remove it.
+
+  // TODO SEND_DISCONNECT, /* response-less */
+  // TODO SEND_LOG_PAGES_FETCH, /* synchronously waiting for response */
 };
 
 // to catch up from PS to PS
