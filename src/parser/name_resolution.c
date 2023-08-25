@@ -4850,6 +4850,27 @@ PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_JSON
 };
 
+static T_CCI_U_TYPE
+pt_dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
+{
+  if (CCI_IS_SET_TYPE (u_ext_type))
+    {
+      return CCI_U_TYPE_SET;
+    }
+  else if (CCI_IS_MULTISET_TYPE (u_ext_type))
+    {
+      return CCI_U_TYPE_MULTISET;
+    }
+  else if (CCI_IS_SEQUENCE_TYPE (u_ext_type))
+    {
+      return CCI_U_TYPE_SEQUENCE;
+    }
+  else
+    {
+      return (T_CCI_U_TYPE) CCI_GET_COLLECTION_DOMAIN (u_ext_type);
+    }
+}
+
 static bool
 pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node, const S_REMOTE_COL_ATTR * attr)
 {
@@ -4858,7 +4879,7 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
   attr_def_node->data_type = NULL;
   /* it needs to convert ext type to CCI_U_TYPE */
-  attr_def_node->type_enum = pt_type[(T_CCI_U_TYPE) CCI_GET_COLLECTION_DOMAIN (attr->type_idx)];
+  attr_def_node->type_enum = pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
   switch (attr_def_node->type_enum)
     {
     case PT_TYPE_JSON:
@@ -4874,6 +4895,9 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
     case PT_TYPE_CLOB:
     case PT_TYPE_OBJECT:
     case PT_TYPE_ENUMERATION:
+    case PT_TYPE_SET:
+    case PT_TYPE_MULTISET:
+    case PT_TYPE_SEQUENCE:
       PT_ERRORmf (parser, attr_def_node, MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
       return false;
