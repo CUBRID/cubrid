@@ -82,7 +82,9 @@
 class page_server
 {
   public:
-    page_server () = default;
+    page_server (const char *db_name)
+      : m_server_name { db_name }
+    { }
     page_server (const page_server &) = delete;
     page_server (page_server &&) = delete;
 
@@ -93,7 +95,11 @@ class page_server
 
     void set_active_tran_server_connection (cubcomm::channel &&chn);
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
+    void set_follower_page_server_connection (cubcomm::channel &&chn);
     void disconnect_all_tran_servers ();
+
+    int connect_to_followee_page_server (std::string &&hostname, int32_t port);
+
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
     cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);
@@ -263,6 +269,8 @@ class page_server
     responder_t &get_responder ();
 
   private: // members
+    const std::string m_server_name;
+
     connection_handler_uptr_t m_active_tran_server_conn;
     std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
     std::mutex m_conn_mutex; // for the thread-safe connection and disconnection
