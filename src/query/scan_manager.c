@@ -1588,17 +1588,12 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       idx_type_id = TP_DOMAIN_TYPE (idx_dom);
       val_type_id = DB_VALUE_DOMAIN_TYPE (val);
 
-#if 0
-      /* 1st solution: use tp_valid_indextype (). tp_valid_indextype () should always be up to date. */
       if (!tp_valid_indextype (val_type_id))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (idx_type_id),
 		  pr_type_name (val_type_id));
 	  goto err_exit;
 	}
-#endif
-
-
 
       if (TP_IS_STRING_TYPE (val_type_id))
 	{
@@ -1742,18 +1737,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-#if 1
-      /* 2st solution: Check whether the index type is valid by pr_type.However, tp_domain_resolve_value () must be called first. */
-      if (!dom->type->is_indexable ())
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (TP_DOMAIN_TYPE (idx_dom)),
-		  pr_type_name (TP_DOMAIN_TYPE (val_dom)));
-	  goto err_exit;
-	}
-
       buf_size += dom->type->get_index_size_of_value (val);
     }
-#endif
 
   /* add more domain to setdomain for partial key */
   if (need_new_setdomain == true)
