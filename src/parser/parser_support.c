@@ -11763,6 +11763,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       server = upd_spec->info.spec.remote_server_name;
     }
 
+  if (server == NULL)
+    {
+      /* the subquery target in update query is not allowed */
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+      return;
+    }
+
   assert (server->node_type == PT_NAME);
 
   ct->info.dblink_table.is_name = true;
