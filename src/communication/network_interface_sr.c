@@ -10462,7 +10462,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	{
 	  if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
 	    {
-        // send null (see dummy_null above)
+	      // send null (see dummy_null above)
 	      continue;
 	    }
 
