@@ -4716,15 +4716,8 @@ memmon (UTIL_FUNCTION_ARG * arg)
       mmon_print_tran_info (tran_info);
     }
 
-  // XXX: for test, it will removed at main implementation
-  fprintf (stdout, "server network communicate success\n");
-  fprintf (stdout, "memmon utility: -m %s, -t %s, -c %d, -a %s\n", (print_module ? "true" : "false"),
-	   (print_transaction ? "true" : "false"), tran_count, (print_show_all ? "true" : "false"));
-
   db_shutdown ();
 
-  // XXX: for test, it will removed at main implementation
-  fprintf (stdout, "EXIT SUCCESS\n");
   return EXIT_SUCCESS;
 
 print_memmon_usage:
@@ -4733,16 +4726,12 @@ print_memmon_usage:
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
 error_exit:
-  // XXX: for test, it will removed at main implementation
-  fprintf (stdout, "EXIT FAILURE\n");
-
   if (need_shutdown)
     {
       db_shutdown ();
     }
 
   return EXIT_FAILURE;
-
 #else /* CS_MODE */
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_IN_STANDALONE),
 	   basename (arg->argv0));
