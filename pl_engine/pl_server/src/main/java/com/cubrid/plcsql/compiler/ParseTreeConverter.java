@@ -955,7 +955,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         // currently, only the Autonomous Transaction is
         // allowed only in the top-level declarations
-        if (symbolStack.getCurrentScope().level != 2) {
+        if (symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx), // s013
                     "AUTONOMOUS_TRANSACTION can only be declared at the top level");
@@ -2208,7 +2208,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         "function " + name + " must specify its return type");
             }
             TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-            if (symbolStack.getCurrentScope().level == 1) { // at top level
+            if (symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN) { // at top level
                 if (retType == TypeSpecSimple.BOOLEAN || retType == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.type_spec()), // s065

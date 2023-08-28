@@ -46,6 +46,9 @@ import java.util.stream.Collectors;
 
 public class SymbolStack {
 
+    public static final int LEVEL_PREDEFINED = 0;
+    public static final int LEVEL_MAIN = 1;
+
     // -------------------------------------------------------
     // Static area - common to all symbol stack instances
     //
@@ -67,7 +70,7 @@ public class SymbolStack {
     private static final Map<String, FuncOverloads> operators = new HashMap<>();
     private static final Map<String, FuncOverloads> cubridFuncs = new HashMap<>();
     private static SymbolTable predefinedSymbols =
-            new SymbolTable(new Scope(null, null, "%predefined_0", 0));
+            new SymbolTable(new Scope(null, null, "%predefined_0", LEVEL_PREDEFINED));
 
     static {
 
@@ -202,7 +205,7 @@ public class SymbolStack {
         symbolTableStack.addFirst(predefinedSymbols);
         currSymbolTable =
                 new SymbolTable(
-                        new Scope(null, null, "unit_1", 1)); // for the main procedure/function
+                        new Scope(null, null, "unit_1", LEVEL_MAIN)); // for the main procedure/function
         symbolTableStack.addFirst(currSymbolTable);
     }
 
