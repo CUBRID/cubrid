@@ -142,6 +142,8 @@ typedef struct pr_type
     inline bool is_always_variable () const;
     inline bool is_size_computed () const;
 
+    inline bool is_indexable () const;
+
     // size functions
     inline int get_mem_size_of_mem (const void *mem, const tp_domain * domain = NULL) const;
     inline int get_disk_size_of_mem (const void *mem, const tp_domain * domain = NULL) const;
@@ -443,6 +445,13 @@ pr_type::is_size_computed () const
 {
   assert ((f_data_lengthmem == NULL) == (f_data_lengthval == NULL));
   return f_data_lengthmem != NULL && f_data_lengthval != NULL;
+}
+
+bool
+pr_type::is_indexable () const
+{
+  assert ((f_index_writeval == NULL) == (f_index_readval == NULL) == (f_index_cmpdisk == NULL));
+  return f_index_cmpdisk != NULL;
 }
 
 int
