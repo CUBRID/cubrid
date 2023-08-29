@@ -9529,6 +9529,31 @@ au_is_server_authorized_user (DB_VALUE * owner_val)
   return (au_check_owner (owner_val) == NO_ERROR);
 }
 
+int
+au_check_synonym_authorization (MOP synonym_object)
+{
+  DB_VALUE creator_val;
+  MOP creator;
+  int ret_val;
+
+  ret_val = db_get (synonym_object, "owner", &creator_val);
+  if (ret_val != NO_ERROR)
+    {
+      return ret_val;
+    }
+
+  assert (!DB_IS_NULL (&creator_val));
+
+  creator = db_get_object (&creator_val);
+  if (!ws_is_same_object (creator, Au_user))
+    {
+      ret_val = ER_FAILED;
+    }
+
+  pr_clear_value (&creator_val);
+  return ret_val;
+}
+
 const char *
 au_get_public_user_name (void)
 {

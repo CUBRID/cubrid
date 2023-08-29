@@ -5492,9 +5492,17 @@ sm_find_class_with_purpose (const char *name, bool for_update)
       synonym_mop = sm_find_synonym (realname);
       if (synonym_mop)
 	{
-	  char target_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
-	  sm_get_synonym_target_name (synonym_mop, target_name, SM_MAX_IDENTIFIER_LENGTH);
-	  class_mop = locator_find_class_with_purpose (target_name, for_update);
+	  if (au_check_synonym_authorization (synonym_mop) == NO_ERROR)
+	    {
+	      char target_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	      sm_get_synonym_target_name (synonym_mop, target_name, SM_MAX_IDENTIFIER_LENGTH);
+	      class_mop = locator_find_class_with_purpose (target_name, for_update);
+	    }
+	  else
+	    {
+	      /* Not owned by the current user. */
+	      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, realname);
+	    }
 	}
       else
 	{

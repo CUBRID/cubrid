@@ -746,11 +746,18 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
   synonym_mop = db_find_synonym (class_name);
   if (synonym_mop != NULL)
     {
-      class_name = db_get_synonym_target_name (synonym_mop, target_name, DB_MAX_IDENTIFIER_LENGTH);
-      if (class_name == NULL)
+      if (au_check_synonym_authorization (synonym_mop) == NO_ERROR)
 	{
-	  ASSERT_ERROR_AND_SET (error);
-	  return error;
+	  class_name = db_get_synonym_target_name (synonym_mop, target_name, DB_MAX_IDENTIFIER_LENGTH);
+	  if (class_name == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	}
+      else
+	{
+	  /* Not owned by the current user. */
 	}
     }
   else
