@@ -9534,9 +9534,12 @@ au_check_synonym_authorization (MOP synonym_object)
 {
   DB_VALUE creator_val;
   MOP creator;
+  int save = 0;
   int ret_val;
 
+  AU_DISABLE (save);
   ret_val = db_get (synonym_object, "owner", &creator_val);
+  AU_ENABLE (save);
   if (ret_val != NO_ERROR)
     {
       return ret_val;
