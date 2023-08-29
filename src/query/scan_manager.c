@@ -1971,12 +1971,14 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	    {
 	      db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key1);
 
-	      if (!tp_valid_indextype (db_type))
+#if 1
+	      if (!DB_IS_NULL (&key_val_range->key1) && !tp_valid_indextype (db_type))
 		{
 		  ret = ER_FAILED;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 			  pr_type_name (TP_DOMAIN_TYPE (btree_domainp)), pr_type_name (db_type));
 		}
+#endif
 
 	      if (curr_key_prefix_length > 0)
 		{
@@ -2027,12 +2029,14 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	    {
 	      db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key2);
 
-	      if (!tp_valid_indextype (db_type))
+#if 0
+	      if (!DB_IS_NULL (&key_val_range->key1) && !tp_valid_indextype (db_type))
 		{
 		  ret = ER_FAILED;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
 			  pr_type_name (TP_DOMAIN_TYPE (btree_domainp)), pr_type_name (db_type));
 		}
+#endif
 
 	      if (curr_key_prefix_length > 0)
 		{
