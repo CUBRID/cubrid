@@ -53,7 +53,114 @@ public class SymbolStack {
     // Static area - common to all symbol stack instances
     //
 
-    private static List<String> predefinedExceptions =
+    private static final Map<String, FuncOverloads> operators = new HashMap<>();
+    private static SymbolTable predefinedSymbols =
+            new SymbolTable(new Scope(null, null, "%predefined_0", LEVEL_PREDEFINED));
+
+    private static void addOperatorDecls() {
+
+        // add SpLib staic methods corresponding to operators
+
+        Class c = null;
+        try {
+            c = Class.forName("com.cubrid.plcsql.predefined.sp.SpLib");
+        } catch (ClassNotFoundException e) {
+            assert false : "SpLib class not found";
+        }
+
+        Method[] methods = c.getMethods();
+        for (Method m : methods) {
+            if ((m.getModifiers() & Modifier.STATIC) > 0) {
+                String name = m.getName();
+                if (name.startsWith("op")) {
+                    // System.out.println("temp: " + m.getName());
+
+                    Operator opAnnot = m.getAnnotation(Operator.class);
+                    assert opAnnot != null;
+
+                    // parameter types
+                    Class[] paramTypes = m.getParameterTypes();
+                    NodeList<DeclParam> params = new NodeList<>();
+
+                    int i = 0;
+                    for (Class pt : paramTypes) {
+                        String typeName = pt.getTypeName();
+                        // System.out.println("  " + typeName);
+                        TypeSpec paramType = TypeSpec.ofJavaName(typeName);
+                        assert paramType != null;
+
+                        DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
+                        params.addNode(p);
+                        i++;
+                    }
+
+                    // return type
+                    String typeName = m.getReturnType().getTypeName();
+                    // System.out.println("  =>" + typeName);
+                    TypeSpec retType = TypeSpec.ofJavaName(typeName);
+                    assert retType != null;
+
+                    // add op
+                    DeclFunc op = new DeclFunc(null, name, params, retType);
+                    putOperator(name, op, opAnnot.coercionScheme());
+                }
+            }
+        }
+    }
+
+    private static void addDbmsOutputProcedures() {
+
+        DeclProc dp;
+
+        // disable
+        dp = new DeclProc(null, "DBMS_OUTPUT$DISABLE", new NodeList<DeclParam>());
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$DISABLE", dp);
+
+        // enable
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$ENABLE",
+                        new NodeList<DeclParam>()
+                                .addNode(new DeclParamIn(null, "size", TypeSpecSimple.INT)));
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
+
+        // get_line
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$GET_LINE",
+                        new NodeList<DeclParam>()
+                                .addNode(new DeclParamOut(null, "line", TypeSpecSimple.STRING))
+                                .addNode(new DeclParamOut(null, "status", TypeSpecSimple.INT)));
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
+
+        // new_line
+        dp = new DeclProc(null, "DBMS_OUTPUT$NEW_LINE", new NodeList<DeclParam>());
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$NEW_LINE", dp);
+
+        // put_line
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$PUT_LINE",
+                        new NodeList<DeclParam>()
+                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
+
+        // put
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$PUT",
+                        new NodeList<DeclParam>()
+                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
+    }
+
+    private static void addPredefinedExceptions(){
+
+        List<String> predefinedExceptions =
             Arrays.asList(
                     "$APP_ERROR", // for raise_application_error
                     "CASE_NOT_FOUND",
@@ -67,122 +174,18 @@ public class SymbolStack {
                     "VALUE_ERROR",
                     "ZERO_DIVIDE");
 
-    private static final Map<String, FuncOverloads> operators = new HashMap<>();
-    private static final Map<String, FuncOverloads> cubridFuncs = new HashMap<>();
-    private static SymbolTable predefinedSymbols =
-            new SymbolTable(new Scope(null, null, "%predefined_0", LEVEL_PREDEFINED));
+        DeclException de;
+        for (String s : predefinedExceptions) {
+            de = new DeclException(null, s);
+            putDeclTo(predefinedSymbols, de.name, de);
+        }
+    }
 
     static {
 
-        // add SpLib staic methods corresponding to operators
-        {
-            Class c = null;
-            try {
-                c = Class.forName("com.cubrid.plcsql.predefined.sp.SpLib");
-            } catch (ClassNotFoundException e) {
-                assert false : "SpLib class not found";
-            }
-
-            Method[] methods = c.getMethods();
-            for (Method m : methods) {
-                if ((m.getModifiers() & Modifier.STATIC) > 0) {
-                    String name = m.getName();
-                    if (name.startsWith("op")) {
-                        // System.out.println("temp: " + m.getName());
-
-                        Operator opAnnot = m.getAnnotation(Operator.class);
-                        assert opAnnot != null;
-
-                        // parameter types
-                        Class[] paramTypes = m.getParameterTypes();
-                        NodeList<DeclParam> params = new NodeList<>();
-
-                        int i = 0;
-                        for (Class pt : paramTypes) {
-                            String typeName = pt.getTypeName();
-                            // System.out.println("  " + typeName);
-                            TypeSpec paramType = TypeSpec.ofJavaName(typeName);
-                            assert paramType != null;
-
-                            DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
-                            params.addNode(p);
-                            i++;
-                        }
-
-                        // return type
-                        String typeName = m.getReturnType().getTypeName();
-                        // System.out.println("  =>" + typeName);
-                        TypeSpec retType = TypeSpec.ofJavaName(typeName);
-                        assert retType != null;
-
-                        // add op
-                        DeclFunc op = new DeclFunc(null, name, params, retType);
-                        putOperator(name, op, opAnnot.coercionScheme());
-                    }
-                }
-            }
-
-            // add exceptions
-            DeclException de;
-            for (String s : predefinedExceptions) {
-                de = new DeclException(null, s);
-                putDeclTo(predefinedSymbols, de.name, de);
-            }
-
-            // add procedures
-            DeclProc dp;
-
-            dp = new DeclProc(null, "DBMS_OUTPUT$DISABLE", new NodeList<DeclParam>());
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$DISABLE", dp);
-
-            dp =
-                    new DeclProc(
-                            null,
-                            "DBMS_OUTPUT$ENABLE",
-                            new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn(null, "size", TypeSpecSimple.INT)));
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
-
-            dp =
-                    new DeclProc(
-                            null,
-                            "DBMS_OUTPUT$GET_LINE",
-                            new NodeList<DeclParam>()
-                                    .addNode(new DeclParamOut(null, "line", TypeSpecSimple.STRING))
-                                    .addNode(new DeclParamOut(null, "status", TypeSpecSimple.INT)));
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
-
-            dp = new DeclProc(null, "DBMS_OUTPUT$NEW_LINE", new NodeList<DeclParam>());
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$NEW_LINE", dp);
-
-            dp =
-                    new DeclProc(
-                            null,
-                            "DBMS_OUTPUT$PUT_LINE",
-                            new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
-
-            dp =
-                    new DeclProc(
-                            null,
-                            "DBMS_OUTPUT$PUT",
-                            new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
-
-            // add constants TODO implement SQLERRM and SQLCODE properly
-            DeclConst dc =
-                    new DeclConst(
-                            null, "SQLERRM", TypeSpecSimple.STRING, false, new ExprNull(null));
-            putDeclTo(predefinedSymbols, "SQLERRM", dc);
-
-            dc = new DeclConst(null, "SQLCODE", TypeSpecSimple.INT, false, new ExprNull(null));
-            putDeclTo(predefinedSymbols, "SQLCODE", dc);
-
-            dc = new DeclConst(null, "SYSDATE", TypeSpecSimple.DATE, false, new ExprNull(null));
-            putDeclTo(predefinedSymbols, "SYSDATE", dc);
-        }
+        addOperatorDecls();
+        addDbmsOutputProcedures();
+        addPredefinedExceptions();
     }
 
     public static DeclFunc getOperator(
@@ -190,16 +193,9 @@ public class SymbolStack {
         return getFuncOverload(outCoercions, operators, name, argTypes);
     }
 
-    /*
-    public static DeclFunc
-    getCubridFunc(List<Coercion> outCoercions, String name, TypeSpec... argTypes) {
-        return getFuncOverload(outCoercions, cubridFuncs, name, argTypes);
-    }
-     */
-
-    // -----------------------------------------------------------------------------
-    // end of Static
     //
+    // end of Static
+    // -----------------------------------------------------------------------------
 
     SymbolStack() {
         symbolTableStack.addFirst(predefinedSymbols);
@@ -260,7 +256,7 @@ public class SymbolStack {
         putDeclTo(currSymbolTable, name, decl);
     }
 
-    static <D extends Decl> void putDeclTo(SymbolTable symbolTable, String name, D decl) {
+    private static <D extends Decl> void putDeclTo(SymbolTable symbolTable, String name, D decl) {
         assert decl != null;
 
         Map<String, D> map = symbolTable.<D>map((Class<D>) decl.getClass());
@@ -286,7 +282,7 @@ public class SymbolStack {
 
                 assert map == symbolTable.procs
                         || map == symbolTable.funcs; // top-level procedure/function
-                if (cubridFuncs.containsKey(name)) {
+                if (predefinedSymbols.funcs.containsKey(name)) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(decl.ctx), // s063
                             "procedure/function cannot be created with the same name as a built-in function");
@@ -313,45 +309,6 @@ public class SymbolStack {
     DeclFunc getDeclFunc(String name) {
         DeclFunc ret = getDecl(DeclFunc.class, name);
         return ret;
-        /* TODO: restore
-        if (ret == null) {
-            // search the predefined functions too
-            FuncOverloads overloaded = cubridFuncs.get(name);
-            if (overloaded == null) {
-                return null;
-            } else {
-                assert overloaded.overloads.size() == 1
-                        : "getting an overloaded function "
-                                + name
-                                + " only by its name is ambiguous";
-                return overloaded.overloads.values().iterator().next();
-            }
-        } else {
-            return ret;
-        }
-         */
-    }
-
-    DeclFunc getDeclFunc(String name, List<TypeSpec> argTypes) {
-        DeclFunc ret = getDecl(DeclFunc.class, name);
-        return ret;
-        /* TODO: restore
-        if (ret == null) {
-            // search the predefined functions too
-            FuncOverloads overloaded = cubridFuncs.get(name);
-            if (overloaded == null) {
-                return null;
-            } else {
-                return overloaded.get(argTypes);
-            }
-        } else {
-            if (argTypes.equals(ret.getParamTypes())) {
-                return ret;
-            } else {
-                return null;
-            }
-        }
-         */
     }
 
     DeclException getDeclException(String name) {
@@ -365,7 +322,7 @@ public class SymbolStack {
     // return DeclId or DeclFunc for an identifier expression
     Decl getDeclForIdExpr(String name) {
         DeclId declId = getDeclId(name);
-        DeclFunc declFunc = getDeclFunc(name, EMPTY_TYPE_SPEC); // one with no parameters
+        DeclFunc declFunc = getDeclFunc(name);
 
         if (declFunc == null) {
             return declId;
@@ -386,8 +343,6 @@ public class SymbolStack {
     // Private
     // ----------------------------------------------------
 
-    private static final List<TypeSpec> EMPTY_TYPE_SPEC = new ArrayList<TypeSpec>();
-
     private SymbolTable currSymbolTable;
 
     private LinkedList<SymbolTable> symbolTableStack = new LinkedList<>();
@@ -395,12 +350,6 @@ public class SymbolStack {
     private static void putOperator(String name, DeclFunc df, CoercionScheme cs) {
         putFuncOverload(operators, name, df, cs);
     }
-
-    /*
-    private static void putCubridFunc(String name, DeclFunc df) {
-        putFuncOverload(cubridFuncs, name, df, CoercionScheme.Individual);
-    }
-     */
 
     private static DeclFunc getFuncOverload(
             List<Coercion> outCoercions,
