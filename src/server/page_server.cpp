@@ -213,6 +213,13 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 
   // TODO: A thread will take the catch-up including establishing connection to avoid blocking ATS->PS reqeusts.
   m_ps.connect_to_followee_page_server (std::move (host), port);
+
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char *const aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  LOG_PAGE *const log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+  std::vector<LOG_PAGE *> log_pgptrs;
+  log_pgptrs.emplace_back (log_pgptr);
+  m_ps.m_followee_conn->request_log_pages (catchup_lsa.pageid, 1, log_pgptrs);
 }
 
 
@@ -379,6 +386,10 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
       follower_to_followee_request::SEND_DUMMY,
       std::bind (&page_server::follower_connection_handler::receive_dummy_request, std::ref (*this), std::placeholders::_1)
     },
+    {
+      follower_to_followee_request::SEND_LOG_PAGES_FETCH,
+      std::bind (&page_server::follower_connection_handler::receive_log_pages_fetch, std::ref (*this), std::placeholders::_1)
+    },
   },
   followee_to_follower_request::RESPOND,
   follower_to_followee_request::RESPOND,
@@ -388,10 +399,55 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   m_conn->start ();
 }
 
-void page_server::follower_connection_handler::receive_dummy_request (follower_server_conn_t::sequenced_payload
+void
+page_server::follower_connection_handler::receive_dummy_request (follower_server_conn_t::sequenced_payload
     &&a_sp)
 {
   er_log_debug (ARG_FILE_LINE, "A follower has requested a duumy request");
+}
+
+void
+page_server::follower_connection_handler::receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp)
+{
+  // Unpack the message data
+  auto payload = a_sp.pull_payload ();
+  cubpacking::unpacker unpacker {payload.c_str (), payload.size ()};
+  LOG_PAGEID start_pageid;
+  int cnt;
+
+  assert (payload.size () == (sizeof (LOG_PAGEID) + OR_INT_SIZE));
+  unpacker.unpack_bigint (start_pageid);
+  unpacker.unpack_int (cnt);
+
+  er_log_debug (ARG_FILE_LINE, "receive_log_pages_fetch: start pageid = %ld, cnt = %d\n", start_pageid, cnt);
+
+  // Pack the requested log pages
+  follower_server_conn_t::sequenced_payload sp_out;
+  int error = NO_ERROR;
+  std::string payload_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+  log_reader lr { LOG_CS_SAFE_READER };
+
+  for (int i = 0; i < cnt; i++)
+    {
+      const LOG_PAGEID log_pageid = start_pageid + i;
+      const log_lsa fetch_lsa { log_pageid, 0 };
+
+      assert (log_pageid != LOGPB_HEADER_PAGE_ID);
+
+      int error = lr.set_lsa_and_fetch_page (fetch_lsa);
+
+      if (error != NO_ERROR)
+	{
+	  std::string error_payload_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+	  sp_out.push_payload (std::move (error_payload_out));
+	  return;
+	}
+      else
+	{
+	  payload_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
+	}
+    }
+  sp_out.push_payload (std::move (payload_out));
 }
 
 page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
@@ -420,6 +476,43 @@ page_server::followee_connection_handler::send_receive (follower_to_followee_req
     std::string &payload_out)
 {
   return m_conn->send_recv (reqid, std::move (payload_in), payload_out);
+}
+
+int
+page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pageid, int count,
+    std::vector<LOG_PAGE *> log_pages_out)
+{
+  std::string payload_out;
+  cubpacking::packer packer;
+  size_t size = 0;
+
+  size += packer.get_packed_bigint_size (size); // start_pageid
+  size += packer.get_packed_int_size (size); // count
+
+  std::unique_ptr < char[] > buffer (new char[size]);
+  packer.set_buffer (buffer.get (), size);
+
+  packer.pack_bigint (start_pageid);
+  packer.pack_int (count);
+
+  send_receive (follower_to_followee_request::SEND_LOG_PAGES_FETCH, std::string (buffer.get (), size), payload_out);
+
+  int error = NO_ERROR;
+  cubpacking::unpacker unpacker {payload_out.c_str (), payload_out.size ()};
+  unpacker.unpack_int (error);
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (int i = 0; i < count; i++)
+    {
+      unpacker.unpack_c_string (reinterpret_cast<char *> (log_pages_out[i]), LOG_PAGESIZE);
+      assert (log_pages_out[i]->hdr.logical_pageid == start_pageid + i);
+    }
+
+  return NO_ERROR;
 }
 
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)

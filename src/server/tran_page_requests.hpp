@@ -65,7 +65,7 @@ enum class follower_to_followee_request
   SEND_DUMMY, // TODO for test. remove it.
 
   // TODO SEND_DISCONNECT, /* response-less */
-  // TODO SEND_LOG_PAGES_FETCH, /* synchronously waiting for response */
+  SEND_LOG_PAGES_FETCH, /* synchronously waiting for response */
 };
 
 // requets from page server to page server to catchup

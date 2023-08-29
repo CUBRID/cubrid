@@ -101,6 +101,7 @@ class page_server
     int connect_to_followee_page_server (std::string &&hostname, int32_t port);
 
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
+
     cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);
@@ -201,6 +202,8 @@ class page_server
       private:
 	void receive_dummy_request (follower_server_conn_t::sequenced_payload &&a_sp);  // TODO remove it
 
+	void receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp);
+
 	page_server &m_ps;
 	std::unique_ptr<follower_server_conn_t> m_conn;
     };
@@ -222,6 +225,8 @@ class page_server
 
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
+
+	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> log_pages_out);
 
       private:
 	page_server &m_ps;
