@@ -222,7 +222,6 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
   m_ps.m_followee_conn->request_log_pages (catchup_lsa.pageid, 1, log_pgptrs);
 }
 
-
 void
 page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
@@ -448,6 +447,17 @@ page_server::follower_connection_handler::receive_log_pages_fetch (follower_serv
 	}
     }
   sp_out.push_payload (std::move (payload_out));
+}
+
+template<class F, class ... Args>
+void
+page_server::follower_connection_handler::push_async_response (F &&a_func,
+    follower_server_conn_t::sequenced_payload &&a_sp,
+    Args &&... args)
+{
+  auto handler_func = std::bind (std::forward<F> (a_func), std::placeholders::_1, std::placeholders::_2,
+				 std::forward<Args> (args)...);
+  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
 }
 
 page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
