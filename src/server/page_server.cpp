@@ -114,7 +114,7 @@ page_server::connection_handler::connection_handler (cubcomm::channel &&chn, tra
   tran_to_page_request::RESPOND,
   RESPONSE_PARTITIONING_SIZE,
   std::bind (&page_server::connection_handler::abnormal_tran_server_disconnect,
-	     std::ref (*this), std::placeholders::_1, std::placeholders::_2)));
+	     std::ref (*this), std::placeholders::_1, std::placeholders::_2), nullptr));
   m_ps.get_responder ().register_connection (m_conn.get ());
 
   assert (m_conn != nullptr);

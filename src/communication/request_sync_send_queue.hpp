@@ -96,6 +96,8 @@ namespace cubcomm
       template <typename Duration>
       void wait_not_empty_and_send_all (queue_type &backbuffer, const Duration &timeout);
 
+      void wait_until_empty ();
+
     private:
       void send_queue (queue_type &q); // Send queued requests to the server
 
@@ -294,6 +296,18 @@ namespace cubcomm
 
     send_queue (backbuffer);
     assert (backbuffer.empty ());
+  }
+
+  template <typename ReqClient, typename ReqPayload>
+  void
+  request_sync_send_queue<ReqClient, ReqPayload>::wait_until_empty ()
+  {
+    constexpr auto ten_millis = std::chrono::milliseconds (10);
+    std::unique_lock<std::mutex> ulock (m_queue_mutex);
+    while (!m_queue_condvar.wait_for (ulock, ten_millis, [this]
+    {
+      return m_request_queue.empty ();
+      }));
   }
 
   //

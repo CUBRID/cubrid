@@ -53,6 +53,7 @@ namespace cubcomm
       class sequenced_payload;
 
       using incoming_request_handler_t = std::function<void (sequenced_payload &&)>;
+      using recv_error_handler_t = typename request_client_server_t::server_error_handler;
 
     public:
       request_sync_client_server (cubcomm::channel &&a_channel,
@@ -60,7 +61,8 @@ namespace cubcomm
 				  T_OUTGOING_MSG_ID a_outgoing_response_msgid,
 				  T_INCOMING_MSG_ID a_incoming_response_msgid,
 				  size_t response_partition_count,
-				  send_queue_error_handler &&error_handler);
+				  send_queue_error_handler &&req_error_handler,
+				  recv_error_handler_t &&recv_error_handler);
       ~request_sync_client_server ();
       request_sync_client_server (const request_sync_client_server &) = delete;
       request_sync_client_server (request_sync_client_server &&) = delete;
@@ -72,6 +74,7 @@ namespace cubcomm
       void stop_response_broker ();
       void stop_incoming_communication_thread ();
       void stop_outgoing_communication_thread ();
+      void wait_until_all_requests_sent ();
 
       /* only used by unit tests
        */
@@ -149,9 +152,10 @@ namespace cubcomm
 	  std::map<T_INCOMING_MSG_ID, incoming_request_handler_t> &&a_incoming_request_handlers,
 	  T_OUTGOING_MSG_ID a_outgoing_response_msgid, T_INCOMING_MSG_ID a_incoming_response_msgid,
 	  size_t response_partition_count,
-	  send_queue_error_handler &&error_handler)
+	  send_queue_error_handler &&req_error_handler,
+	  recv_error_handler_t &&recv_error_handler)
     : m_conn { new request_client_server_t (std::move (a_channel)) }
-  , m_queue { new request_sync_send_queue_t (*m_conn, std::move (error_handler)) }
+  , m_queue { new request_sync_send_queue_t (*m_conn, std::move (req_error_handler)) }
   , m_queue_autosend { new request_queue_autosend_t (*m_queue) }
   , m_outgoing_response_msgid { a_outgoing_response_msgid }
   , m_incoming_response_msgid { a_incoming_response_msgid }
@@ -166,6 +170,8 @@ namespace cubcomm
     incoming_request_handler_t bound_response_handler =
 	    std::bind (&request_sync_client_server::handle_response, this, std::placeholders::_1);
     register_handler (m_incoming_response_msgid, bound_response_handler);
+
+    m_conn->register_error_handler (std::move (recv_error_handler));
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
@@ -227,6 +233,13 @@ namespace cubcomm
 
     // terminate receiving messages
     m_conn.reset (nullptr);
+  }
+
+  template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
+  void
+  request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::wait_until_all_requests_sent ()
+  {
+    m_queue->wait_until_empty ();
   }
 
   template <typename T_OUTGOING_MSG_ID, typename T_INCOMING_MSG_ID, typename T_PAYLOAD>
