@@ -837,6 +837,13 @@ page_server::get_responder ()
   return *m_responder;
 }
 
+page_server::follower_responder_t &
+page_server::get_follower_responder ()
+{
+  assert (m_follower_responder);
+  return *m_follower_responder;
+}
+
 void
 page_server::push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload)
 {
@@ -885,10 +892,12 @@ void
 page_server::init_request_responder ()
 {
   m_responder = std::make_unique<responder_t> ();
+  m_follower_responder = std::make_unique<follower_responder_t> ();
 }
 
 void
 page_server::finalize_request_responder ()
 {
   m_responder.reset (nullptr);
+  m_follower_responder.reset (nullptr);
 }

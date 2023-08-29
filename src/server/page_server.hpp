@@ -266,12 +266,14 @@ class page_server
     using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
 
     using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
+    using follower_responder_t = server_request_responder<follower_connection_handler::follower_server_conn_t>;
 
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const connection_handler *conn);
     bool is_active_tran_server_connected () const;
     responder_t &get_responder ();
+    follower_responder_t &get_follower_responder ();
 
   private: // members
     const std::string m_server_name;
@@ -284,6 +286,7 @@ class page_server
     std::unique_ptr<cublog::replicator> m_replicator;
 
     std::unique_ptr<responder_t> m_responder;
+    std::unique_ptr<follower_responder_t> m_follower_responder;
 
     async_disconnect_handler<connection_handler> m_async_disconnect_handler;
     pts_mvcc_tracker m_pts_mvcc_tracker;
