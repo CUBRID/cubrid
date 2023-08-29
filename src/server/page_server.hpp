@@ -199,6 +199,8 @@ class page_server
 	follower_connection_handler &operator= (const connection_handler &) = delete;
 	follower_connection_handler &operator= (connection_handler &&) = delete;
 
+	~follower_connection_handler ();
+
       private:
 	void receive_dummy_request (follower_server_conn_t::sequenced_payload &&a_sp);  // TODO remove it
 	void receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp);

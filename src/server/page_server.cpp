@@ -395,6 +395,8 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   RESPONSE_PARTITIONING_SIZE,
   nullptr)); // TODO handle abnormal disconnection.
 
+  m_ps.get_follower_responder ().register_connection (m_conn.get ());
+
   m_conn->start ();
 }
 
@@ -458,6 +460,19 @@ page_server::follower_connection_handler::push_async_response (F &&a_func,
   auto handler_func = std::bind (std::forward<F> (a_func), std::placeholders::_1, std::placeholders::_2,
 				 std::forward<Args> (args)...);
   m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
+}
+
+page_server::follower_connection_handler::~follower_connection_handler ()
+{
+  // blocking call
+  // internally, this will also wait pending outgoing roundtrip (send-receive) requests
+  m_conn->stop_incoming_communication_thread ();
+
+  // blocking call
+  // wait async responder to finish processing in-flight incoming roundtrip requests
+  m_ps.get_follower_responder ().wait_connection_to_become_idle (m_conn.get ());
+
+  m_conn->stop_outgoing_communication_thread ();
 }
 
 page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
