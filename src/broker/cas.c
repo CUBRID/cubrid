@@ -1417,6 +1417,11 @@ cas_main (void)
 	      }
 	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
 
+	    if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version, PROTOCOL_V12))
+	      {
+		cas_bi_set_oracle_compat_number_behavior (prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR));
+	      }
+
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 	    /* todo: casting T_BROKER_VERSION to T_CAS_PROTOCOL */
 	    cas_send_connect_reply_to_driver ((T_CAS_PROTOCOL) req_info.client_version, client_sock_fd, cas_info);

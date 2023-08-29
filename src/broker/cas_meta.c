@@ -121,6 +121,21 @@ cas_bi_get_cci_pconnect (void)
 }
 
 void
+cas_bi_set_oracle_compat_number_behavior (char oracle_compat_number_behavior)
+{
+  assert (oracle_compat_number_behavior == 0 || oracle_compat_number_behavior == 1);
+
+  if (oracle_compat_number_behavior)
+    {
+      SET_BIT (broker_info[BROKER_INFO_SYSTEM_PARAM], MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+    }
+  else
+    {
+      CLEAR_BIT (broker_info[BROKER_INFO_SYSTEM_PARAM], MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+    }
+}
+
+void
 cas_bi_set_protocol_version (const char protocol_version)
 {
   broker_info[BROKER_INFO_PROTO_VERSION] = protocol_version;

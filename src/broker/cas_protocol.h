@@ -150,6 +150,12 @@ extern "C"
 #define CCI_PCONNECT_OFF                        0
 #define CCI_PCONNECT_ON                         1
 
+#define ORACLE_COMPAT_NUMBER_BEHAVIOR_NO        0
+#define ORACLE_COMPAT_NUMBER_BEHAVIOR_YES       1
+
+/* BITMASK for System Parameter */
+#define MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR      0x01    // oracle_compat_number_behavior
+
 #define CAS_REQ_HEADER_JDBC	"JDBC"
 #define CAS_REQ_HEADER_ODBC	"ODBC"
 #define CAS_REQ_HEADER_PHP	"PHP"
@@ -233,7 +239,8 @@ extern "C"
     PROTOCOL_V9 = 9,		/* cas health check: get function status */
     PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
     PROTOCOL_V11 = 11,		/* make out resultset */
-    CURRENT_PROTOCOL = PROTOCOL_V11
+    PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
+    CURRENT_PROTOCOL = PROTOCOL_V12
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
@@ -245,7 +252,7 @@ extern "C"
     BROKER_INFO_CCI_PCONNECT,
     BROKER_INFO_PROTO_VERSION,
     BROKER_INFO_FUNCTION_FLAG,
-    BROKER_INFO_RESERVED2,
+    BROKER_INFO_SYSTEM_PARAM,
     BROKER_INFO_RESERVED3
   };
   typedef enum t_broker_info_pos T_BROKER_INFO_POS;
@@ -358,6 +365,7 @@ extern "C"
   extern char cas_bi_get_statement_pooling (void);
   extern void cas_bi_set_cci_pconnect (const char cci_pconnect);
   extern char cas_bi_get_cci_pconnect (void);
+  extern void cas_bi_set_oracle_compat_number_behavior ( char oracle_compat_number_behavior);
   extern void cas_bi_set_protocol_version (const char protocol_version);
   extern char cas_bi_get_protocol_version (void);
   extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
