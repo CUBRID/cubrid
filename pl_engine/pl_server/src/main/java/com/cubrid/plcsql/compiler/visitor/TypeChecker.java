@@ -30,16 +30,21 @@
 
 package com.cubrid.plcsql.compiler.visitor;
 
+import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
+import com.cubrid.plcsql.compiler.DBTypeAdapter;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
+import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Arrays;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
@@ -538,6 +543,40 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         return TypeSpecSimple.LIST;
     }
      */
+
+    @Override
+    public TypeSpec visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
+
+        String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
+        String sql = String.format("select %s(%s) from dual", node.name, tvStr);
+        System.out.println("[temp] " + sql);
+
+        List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(sql));
+        assert sqlSemantics.size() == 1;
+        SqlSemantics ss = sqlSemantics.get(0);
+        assert ss.seqNo == 0;
+
+        if (ss.errCode == 0) {
+            assert ss.selectList.size() == 1;
+            ColumnInfo ci = ss.selectList.get(0);
+            if (!DBTypeAdapter.isSupported(ci.type)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(node.ctx), // s231
+                        "type of the function " + node.name + " call is an unsupported type "
+                                + DBTypeAdapter.getSqlTypeName(ci.type));
+            }
+
+            TypeSpecSimple ret = DBTypeAdapter.getTypeSpec(ci.type);
+            assert !ret.equals(TypeSpecSimple.NULL);
+            node.setResultType(ret);
+
+            return ret;
+        } else {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(node.ctx), // s230
+                    "typing function " + node.name + " call failed: " + ss.errMsg);
+        }
+    }
 
     @Override
     public TypeSpec visitExprLocalFuncCall(ExprLocalFuncCall node) {
@@ -1074,6 +1113,30 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert node.body != null; // syntactically guaranteed
         visitBody(node.body);
         return null;
+    }
+
+    private String checkArgsAndConvertToTypicalValuesStr(List<Expr> args, String funcName) {
+        StringBuilder sb = new StringBuilder();
+
+        int len = args.size();
+        for (int i = 0; i < len; i++) {
+            Expr arg = args.get(i);
+            TypeSpec argType = visit(arg);
+
+            String typicalValueStr = argType.getTypicalValueStr();
+            if (typicalValueStr == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(arg.ctx), // s229
+                        String.format("argument %d to the built-in function %s has an invalid type", i + 1, funcName));
+            }
+
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(typicalValueStr);
+        }
+
+        return sb.toString();
     }
 
     private void checkRoutineCall(DeclRoutine decl, List<Expr> args) {

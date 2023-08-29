@@ -158,7 +158,62 @@ public class SymbolStack {
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 
-    private static void addPredefinedExceptions(){
+    private static void addBuiltinFunctions() {
+
+        List<String> funcNames =
+            Arrays.asList(
+                // bit
+                "BIT_COUNT",
+
+                // string
+                "ASCII", "BIN", "BIT_LENGTH", "CHAR_LENGTH", "CHARACTER_LENGTH", "LENGTHB", "LENGTH", "CHR", "CONCAT",
+                "CONCAT_WS", "ELT", "FIELD", "FIND_IN_SET", "FROM_BASE64", "INSERT", "INSTR", "LCASE", "LOWER", "LEFT",
+                "LOCATE", "LPAD", "LTRIM", "MID", "OCTET_LENGTH", "REPEAT", "REPLACE", "REVERSE", "RIGHT", "RPAD",
+                "RTRIM", "SPACE", "STRCMP", "SUBSTR", "SUBSTRING", "SUBSTRING_INDEX", "TO_BASE64", "TRANSLATE", "TRIM",
+                "UCASE", "UPPER",
+
+                // regular expression
+                "REGEXP_COUNT", "REGEXP_INSTR", "REGEXP_LIKE", "REGEXP_REPLACE", "REGEXP_SUBSTR",
+
+                // numeric/mathematical
+                "ABS", "ACOS", "ASIN", "ATAN", "ATAN2", "CEIL", "CONV", "COS", "COT", "CRC32", "DEGREES", "DRANDOM",
+                "DRAND", "EXP", "FLOOR", "HEX", "LN", "LOG2", "LOG10", "MOD", "PI", "POW", "POWER", "RADIANS",
+                "RANDOM", "RAND", "ROUND", "SIGN", "SIN", "SQRT", "TAN", "TRUNC", "TRUNCATE", "WIDTH_BUCKET",
+
+                // date/time
+                "CURRENT_TIMESTAMP", "LOCALTIME", "LOCALTIMESTAMP", "DATE", "DATEDIFF", "DATE_SUB", "SUBDATE", "DAY",
+                "DAYOFMONTH", "DAYOFWEEK", "DAYOFYEAR", "FROM_DAYS", "FROM_UNIXTIME", "HOUR", "LAST_DAY", "MAKEDATE",
+                "MAKETIME", "MINUTE", "MONTH", "MONTHS_BETWEEN", "NEW_TIME", "QUARTER", /* "ROUND" dup, */ "SEC_TO_TIME",
+                "SECOND", "SYS_DATE", "SYSDATE", "SYS_DATETIME", "SYSDATETIME", "SYS_TIME", "SYSTIME", "SYS_TIMESTAMP",
+                "SYSTIMESTAMP", "TIME", "TIME_TO_SEC", "TIMEDIFF", "TIMESTAMP", "TO_DAYS", /* "TRUNC", dup */ "TZ_OFFSET",
+                "UNIX_TIMESTAMP", "UTC_DATE", "UTC_TIME", "WEEK", "WEEKDAY", "YEAR",
+
+                // data type casting
+                "DATE_FORMAT", "FORMAT", "STR_TO_DATE", "TIME_FORMAT", "TO_CHAR", "TO_DATE", "TO_DATETIME", "TO_NUMBER",
+                "TO_TIME", "TO_TIMESTAMP",
+
+                // information
+                "CHARSET", "COERCIBILITY", "COLLATION", "CURRENT_USER", "USER", "DATABASE", "SCHEMA", "DBTIMEZONE",
+                "DISK_SIZE", "INDEX_CARDINALITY", "INET_ATON", "INET_NTOA", "LAST_INSERT_ID", "LIST_DBS", "ROW_COUNT",
+                "SESSIONTIMEZONE", /* "USER", dup */ "SYSTEM_USER", "VERSION",
+
+                // encryption
+                "MD5", "SHA1", "SHA2",
+
+                // comparison
+                "COALESCE", "DECODE", "GREATEST", "IFNULL", "NVL", "LEAST", "NULLIF", "NVL2",
+
+                // others
+                "SLEEP", "SYS_GUID"
+            );
+
+        for (String s: funcNames) {
+            DeclFunc df = new DeclFunc(null, s, null, null);    // only name is used for builtin functions
+            putDeclTo(predefinedSymbols, df.name, df);
+        }
+    }
+
+    private static void addPredefinedExceptions() {
 
         List<String> predefinedExceptions =
             Arrays.asList(
@@ -174,9 +229,8 @@ public class SymbolStack {
                     "VALUE_ERROR",
                     "ZERO_DIVIDE");
 
-        DeclException de;
         for (String s : predefinedExceptions) {
-            de = new DeclException(null, s);
+            DeclException de = new DeclException(null, s);
             putDeclTo(predefinedSymbols, de.name, de);
         }
     }
@@ -185,6 +239,7 @@ public class SymbolStack {
 
         addOperatorDecls();
         addDbmsOutputProcedures();
+        addBuiltinFunctions();
         addPredefinedExceptions();
     }
 

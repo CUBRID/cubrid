@@ -53,6 +53,10 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static Object invokeBuiltinFunc(Connection conn, String name, Object... args) {
+        return null;    // TODO
+    }
+
     // builtin exceptions
     public static class CASE_NOT_FOUND extends PlcsqlRuntimeError {
         public CASE_NOT_FOUND() {

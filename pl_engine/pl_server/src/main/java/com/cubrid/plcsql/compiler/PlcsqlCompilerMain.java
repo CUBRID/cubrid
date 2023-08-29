@@ -192,7 +192,7 @@ public class PlcsqlCompilerMain {
 
         List<String> sqlTexts = new ArrayList(ssc.staticSqlTexts.values());
         List<SqlSemantics> sqlSemantics =
-                ServerAPI.getSqlSemantics(sqlTexts); // server interaction  may take a long time
+                ServerAPI.getSqlSemantics(sqlTexts); // server interaction may take a long time
 
         int seqNo = -1;
         Iterator<ParserRuleContext> iterCtx = ssc.staticSqlTexts.keySet().iterator();

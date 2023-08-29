@@ -35,6 +35,7 @@ import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import com.cubrid.plcsql.compiler.DBTypeAdapter;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
@@ -60,36 +61,7 @@ public class ExprAutoParam extends Expr {
     }
 
     public TypeSpecSimple getTypeSpec() {
-        switch (ty) {
-            case DBType.DB_NULL:
-                return TypeSpecSimple.NULL;
-            case DBType.DB_CHAR:
-            case DBType.DB_STRING:
-                return TypeSpecSimple.STRING;
-            case DBType.DB_SHORT:
-                return TypeSpecSimple.SHORT;
-            case DBType.DB_INT:
-                return TypeSpecSimple.INT;
-            case DBType.DB_BIGINT:
-                return TypeSpecSimple.BIGINT;
-            case DBType.DB_NUMERIC:
-                return TypeSpecSimple.NUMERIC;
-            case DBType.DB_FLOAT:
-                return TypeSpecSimple.FLOAT;
-            case DBType.DB_DOUBLE:
-                return TypeSpecSimple.DOUBLE;
-            case DBType.DB_DATE:
-                return TypeSpecSimple.DATE;
-            case DBType.DB_TIME:
-                return TypeSpecSimple.TIME;
-            case DBType.DB_DATETIME:
-                return TypeSpecSimple.DATETIME;
-            case DBType.DB_TIMESTAMP:
-                return TypeSpecSimple.TIMESTAMP;
-            default:
-                assert false : "unreachable";
-                throw new RuntimeException("unreachable");
-        }
+        return DBTypeAdapter.getTypeSpec(ty);
     }
 
     @Override
