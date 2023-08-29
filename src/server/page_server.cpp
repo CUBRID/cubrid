@@ -50,7 +50,7 @@ page_server::~page_server ()
   m_async_disconnect_handler.terminate ();
 }
 
-page_server::connection_handler::connection_handler (cubcomm::channel &chn, transaction_server_type server_type,
+page_server::connection_handler::connection_handler (cubcomm::channel &&chn, transaction_server_type server_type,
     page_server &ps)
   : m_server_type { server_type }
   , m_connection_id { chn.get_channel_id () }
@@ -143,7 +143,7 @@ page_server::connection_handler::get_connection_id () const
 }
 
 void
-page_server::connection_handler::push_request (page_to_tran_request id, std::string msg)
+page_server::connection_handler::push_request (page_to_tran_request id, std::string &&msg)
 {
   m_conn->push (id, std::move (msg));
 }
@@ -368,6 +368,60 @@ page_server::connection_handler::push_disconnection_request ()
   push_request (page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG, std::string ());
 }
 
+page_server::follower_connection_handler::follower_connection_handler (cubcomm::channel &&chn, page_server &ps)
+  : m_ps { ps }
+{
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
+
+  m_conn.reset (new follower_server_conn_t (std::move (chn),
+  {
+    {
+      follower_to_followee_request::SEND_DUMMY,
+      std::bind (&page_server::follower_connection_handler::receive_dummy_request, std::ref (*this), std::placeholders::_1)
+    },
+  },
+  followee_to_follower_request::RESPOND,
+  follower_to_followee_request::RESPOND,
+  RESPONSE_PARTITIONING_SIZE,
+  nullptr)); // TODO handle abnormal disconnection.
+
+  m_conn->start ();
+}
+
+void page_server::follower_connection_handler::receive_dummy_request (follower_server_conn_t::sequenced_payload
+    &&a_sp)
+{
+  er_log_debug (ARG_FILE_LINE, "A follower has requested a duumy request");
+}
+
+page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
+  : m_ps { ps }
+{
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
+
+  m_conn.reset (new followee_server_conn_t (std::move (chn),
+		{}, // followee doesn't request anything
+		follower_to_followee_request::RESPOND,
+		followee_to_follower_request::RESPOND,
+		RESPONSE_PARTITIONING_SIZE,
+		nullptr)); // TODO handle abnormal disconnection.
+
+  m_conn->start ();
+}
+
+void
+page_server::followee_connection_handler::push_request (follower_to_followee_request reqid, std::string &&msg)
+{
+  m_conn->push (reqid, std::move (msg));
+}
+
+int
+page_server::followee_connection_handler::send_receive (follower_to_followee_request reqid, std::string &&payload_in,
+    std::string &payload_out)
+{
+  return m_conn->send_recv (reqid, std::move (payload_in), payload_out);
+}
+
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)
 {
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
@@ -473,7 +527,7 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_active_tran_server ();
     }
 
-  m_active_tran_server_conn.reset (new connection_handler (chn, transaction_server_type::ACTIVE, *this));
+  m_active_tran_server_conn.reset (new connection_handler (std::move (chn), transaction_server_type::ACTIVE, *this));
 }
 
 void
@@ -496,7 +550,8 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
     // handler's connection threads (inbound or outbound).
     std::lock_guard lk_guard { m_conn_mutex };
 
-    m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
+    m_passive_tran_server_conn.emplace_back (new connection_handler (std::move (chn), transaction_server_type::PASSIVE,
+	*this));
   }
 
   m_pts_mvcc_tracker.init_oldest_active_mvccid (channel_id);
@@ -510,11 +565,11 @@ page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
   assert (chn.is_connection_alive ());
   const auto channel_id = chn.get_channel_id ();
 
+  m_follower_conn_vec.emplace_back (new follower_connection_handler (std::move (chn), *this));
+
   er_log_debug (ARG_FILE_LINE,
 		"A follower page server connected to this page server to catch up. Channel id: %s.\n",
 		channel_id.c_str ());
-
-  // TODO Create a connection_handler for this.
 }
 
 int
@@ -553,13 +608,15 @@ page_server::connect_to_followee_page_server (std::string &&hostname, int32_t po
       return ps_conn_error_lambda ();
     }
 
-  // TODO
-  // For now, the srv_chn is destroyed here and it will close the connection.
-  // We will create a connection handler to keep this channel and handle requests for them.
+  assert (m_followee_conn == nullptr);
+  m_followee_conn.reset (new followee_connection_handler (std::move (srv_chn), *this));
 
   er_log_debug (ARG_FILE_LINE,
 		"This page server successfully connected to the followee page server to catch up. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
+
+  // TODO remove it. Just a test to make sure the connection works.
+  m_followee_conn->push_request (follower_to_followee_request::SEND_DUMMY, std::string (""));
 
   return NO_ERROR;
 }

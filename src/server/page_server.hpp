@@ -116,7 +116,7 @@ class page_server
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
 	connection_handler () = delete;
-	connection_handler (cubcomm::channel &chn, transaction_server_type server_type, page_server &ps);
+	connection_handler (cubcomm::channel &&chn, transaction_server_type server_type, page_server &ps);
 
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
@@ -126,7 +126,7 @@ class page_server
 	connection_handler &operator= (const connection_handler &) = delete;
 	connection_handler &operator= (connection_handler &&) = delete;
 
-	void push_request (page_to_tran_request id, std::string msg);
+	void push_request (page_to_tran_request id, std::string &&msg);
 	const std::string &get_connection_id () const;
 
 	void remove_prior_sender_sink ();
@@ -179,7 +179,54 @@ class page_server
 	std::mutex m_abnormal_tran_server_disconnect_mtx;
 	bool m_abnormal_tran_server_disconnect;
     };
-    using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
+
+    /*
+     *  TODO add some explanation and diagrams for this.
+     */
+    class follower_connection_handler
+    {
+      public:
+	using follower_server_conn_t =
+		cubcomm::request_sync_client_server<followee_to_follower_request, follower_to_followee_request, std::string>;
+
+	follower_connection_handler () = delete;
+	follower_connection_handler (cubcomm::channel &&chn, page_server &ps);
+
+	follower_connection_handler (const connection_handler &) = delete;
+	follower_connection_handler (connection_handler &&) = delete;
+
+	follower_connection_handler &operator= (const connection_handler &) = delete;
+	follower_connection_handler &operator= (connection_handler &&) = delete;
+
+      private:
+	void receive_dummy_request (follower_server_conn_t::sequenced_payload &&a_sp);  // TODO remove it
+
+	page_server &m_ps;
+	std::unique_ptr<follower_server_conn_t> m_conn;
+    };
+
+    class followee_connection_handler
+    {
+      public:
+	using followee_server_conn_t =
+		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
+
+	followee_connection_handler () = delete;
+	followee_connection_handler (cubcomm::channel &&chn, page_server &ps);
+
+	followee_connection_handler (const connection_handler &) = delete;
+	followee_connection_handler (connection_handler &&) = delete;
+
+	followee_connection_handler &operator= (const connection_handler &) = delete;
+	followee_connection_handler &operator= (connection_handler &&) = delete;
+
+	void push_request (follower_to_followee_request reqid, std::string &&msg);
+	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
+
+      private:
+	page_server &m_ps;
+	std::unique_ptr<followee_server_conn_t> m_conn;
+    };
 
     /*
      * helper class to track the active oldest mvccids of each Page Transaction Server.
@@ -209,6 +256,10 @@ class page_server
 	std::unordered_map<std::string, MVCCID> m_pts_oldest_active_mvccids;
 	std::mutex m_pts_oldest_active_mvccids_mtx;
     };
+  private:
+    using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
+    using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
+    using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
 
     using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
 
@@ -232,6 +283,9 @@ class page_server
 
     async_disconnect_handler<connection_handler> m_async_disconnect_handler;
     pts_mvcc_tracker m_pts_mvcc_tracker;
+
+    followee_connection_handler_uptr_t m_followee_conn;
+    std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
 };
 
 #endif // !_PAGE_SERVER_HPP_
