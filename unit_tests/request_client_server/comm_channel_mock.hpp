@@ -67,7 +67,7 @@ class mock_socket_direction
     void wait_until_message_count (size_t count);
 
     void freeze ();                             // Block to read a message to simulate a communication delay
-    void unfreeze ();                           // Unblock to read a message to simulate a coomunication delay
+    void unfreeze ();                           // Unblock to read a message to simulate a communication delay
 
   private:
     std::queue<std::string> m_messages;

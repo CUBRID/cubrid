@@ -721,13 +721,13 @@ TEST_CASE ("Two request_sync_client_server communicate with each other", "")
     }
     {
       // Send a send_recv request from the scs1 to the scs2 while the internal socket is frozen.
-      // Then, disconnect the ineternal socket and confirm this disconnection is dectected on scs1.
+      // Then, disconnect the internal socket and confirm this disconnection is detected on scs1.
       const auto receiver_id = env.get_scs_one ().get_underlying_channel_id ();
       freeze_receiver_socket_direction (receiver_id);
 
       auto disconnecter = std::thread ([&] ()
       {
-	// Wait until a request is pushed and disconnect the socket.
+	// Wait until a request is pushed and the socket is disconnected.
 	// This has to be done by another thread since the send_recv() is a blocking call.
 	while (!does_receiver_socket_direction_have_message (receiver_id))
 	  {
