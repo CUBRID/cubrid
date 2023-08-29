@@ -201,7 +201,6 @@ class page_server
 
       private:
 	void receive_dummy_request (follower_server_conn_t::sequenced_payload &&a_sp);  // TODO remove it
-
 	void receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp);
 
 	page_server &m_ps;
