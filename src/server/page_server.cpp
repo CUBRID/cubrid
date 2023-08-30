@@ -219,7 +219,20 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
   LOG_PAGE *const log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
   std::vector<LOG_PAGE *> log_pgptrs;
   log_pgptrs.emplace_back (log_pgptr);
-  m_ps.m_followee_conn->request_log_pages (catchup_lsa.pageid, 1, log_pgptrs);
+  const int error_code = m_ps.m_followee_conn->request_log_pages (catchup_lsa.pageid, 1, log_pgptrs);
+  if (error_code != NO_ERROR)
+    {
+      /* There are two kinds of erorrs either from client-side or server-side.
+       * client-side error: it fails to send or receive.
+       * server-side error: the follwee fails to fetch log pages. For example, due to
+       *  - the followee PS amy truncate some log pages requested.
+       *  - some requested pages are corrupted
+       *  - or something
+       * TODO We has to handle them. Probably, we should change the followee to catch up with through ATS.
+       */
+      assert_release (false);
+    }
+
 }
 
 void
@@ -427,7 +440,7 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
   unpacker.unpack_bigint (start_pageid);
   unpacker.unpack_int (cnt);
 
-  er_log_debug (ARG_FILE_LINE, "receive_log_pages_fetch: start pageid = %ld, cnt = %d\n", start_pageid, cnt);
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
 
   // Pack the requested log pages
   int error = NO_ERROR;
@@ -441,17 +454,24 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
 
       assert (log_pageid != LOGPB_HEADER_PAGE_ID);
 
-      int error = lr.set_lsa_and_fetch_page (fetch_lsa);
+      error = lr.set_lsa_and_fetch_page (fetch_lsa);
 
       if (error != NO_ERROR)
 	{
 	  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
-	  return;
+	  break;
 	}
       else
 	{
 	  payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
 	}
+    }
+
+  if (perform_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "[READ LOG] Sending log pageg to the pager server (%s). Page Id from %lld to %lld, Error code: %d\n",
+		     m_conn->get_underlying_channel_id (), start_pageid, start_pageid + cnt, error);
     }
 }
 
@@ -505,12 +525,14 @@ page_server::followee_connection_handler::send_receive (follower_to_followee_req
 
 int
 page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pageid, int count,
-    std::vector<LOG_PAGE *> log_pages_out)
+    std::vector<LOG_PAGE *> &log_pages_out)
 {
   int error_code = NO_ERROR;
   std::string response_message;
   cubpacking::packer packer;
   size_t size = 0;
+
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
 
   size += packer.get_packed_bigint_size (size); // start_pageid
   size += packer.get_packed_int_size (size); // count
@@ -521,13 +543,23 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
   packer.pack_bigint (start_pageid);
   packer.pack_int (count);
 
+  if (perform_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to the page server (%s). Page ID from %lld to %lld\n",
+		     m_conn->get_underlying_channel_id (), start_pageid, start_pageid + count);
+    }
+
   error_code = send_receive (follower_to_followee_request::SEND_LOG_PAGES_FETCH, std::string (buffer.get (), size),
 			     response_message);
-
-  // client-side error (from follower)
   if (error_code != NO_ERROR)
     {
-      _er_log_debug (ARG_FILE_LINE, "client-side error from follower, error_code: %d\n", error_code);
+      /* client-side error: it fails to send or receive.
+       */
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from the page server (%s). Error code: %d\n",
+			 m_conn->get_underlying_channel_id (), error_code);
+	}
       return error_code;
     }
 
@@ -537,10 +569,18 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
   std::memcpy (&error_code, message_ptr, sizeof (error_code));
   message_ptr += sizeof (error_code);
 
-  // client-side error (from followee)
   if (error_code != NO_ERROR)
     {
-      _er_log_debug (ARG_FILE_LINE, "server-side error from follower, error_code: %d\n", error_code);
+      /*  server-side error from followee: the follwee fails to fetch log pages. For example,
+       *  - the followee PS amy truncate some log pages requested.
+       *  - some requested pages are corrupted
+       *  - or something
+       */
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from the page server (%s). Error code: %d\n",
+			 m_conn->get_underlying_channel_id (), error_code);
+	}
       return error_code;
     }
 
@@ -550,8 +590,11 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
       message_ptr += LOG_PAGESIZE;
 
       assert (log_pages_out[i]->hdr.logical_pageid == start_pageid + i);
-      _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from Page Server. Page ID: %lld\n",
-		     log_pages_out[i]->hdr.logical_pageid);
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from the page server (%s). Page ID: %lld\n",
+			 m_conn->get_underlying_channel_id (), start_pageid + i);
+	}
     }
 
   return error_code;

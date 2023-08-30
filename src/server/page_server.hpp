@@ -229,7 +229,7 @@ class page_server
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
 
-	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> log_pages_out);
+	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> &log_pages_out);
 
       private:
 	page_server &m_ps;

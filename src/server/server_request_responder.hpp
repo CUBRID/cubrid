@@ -163,7 +163,7 @@ template<typename T_CONN>
 server_request_responder<T_CONN>::server_request_responder ()
   : m_threads_context_manager (std::make_unique<cubthread::system_worker_entry_manager> (TT_SYSTEM_WORKER))
 {
-  const auto THREAD_COUNT = std::thread::hardware_concurrency ();
+  const auto THREAD_COUNT = 4;// std::thread::hardware_concurrency ();
   const auto TASK_MAX_COUNT = THREAD_COUNT * 4;
 
   m_threads = cubthread::get_manager ()->create_worker_pool (THREAD_COUNT, TASK_MAX_COUNT, "server_request_responder",
