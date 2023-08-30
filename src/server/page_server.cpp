@@ -410,22 +410,28 @@ page_server::follower_connection_handler::receive_dummy_request (follower_server
 void
 page_server::follower_connection_handler::receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp)
 {
+  auto log_serving_func = std::bind (&page_server::follower_connection_handler::serve_log_pages, this,
+				     std::placeholders::_1, std::placeholders::_2);
+  push_async_response (log_serving_func, std::move (a_sp));
+}
+
+void
+page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out)
+{
   // Unpack the message data
-  auto payload = a_sp.pull_payload ();
-  cubpacking::unpacker unpacker {payload.c_str (), payload.size ()};
+  cubpacking::unpacker unpacker {payload_in_out.c_str (), payload_in_out.size ()};
   LOG_PAGEID start_pageid;
   int cnt;
 
-  assert (payload.size () == (sizeof (LOG_PAGEID) + OR_INT_SIZE));
+  assert (payload_in_out.size () == (sizeof (LOG_PAGEID) + OR_INT_SIZE));
   unpacker.unpack_bigint (start_pageid);
   unpacker.unpack_int (cnt);
 
   er_log_debug (ARG_FILE_LINE, "receive_log_pages_fetch: start pageid = %ld, cnt = %d\n", start_pageid, cnt);
 
   // Pack the requested log pages
-  follower_server_conn_t::sequenced_payload sp_out;
   int error = NO_ERROR;
-  std::string payload_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
   log_reader lr { LOG_CS_SAFE_READER };
 
   for (int i = 0; i < cnt; i++)
@@ -439,16 +445,14 @@ page_server::follower_connection_handler::receive_log_pages_fetch (follower_serv
 
       if (error != NO_ERROR)
 	{
-	  std::string error_payload_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
-	  sp_out.push_payload (std::move (error_payload_out));
+	  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
 	  return;
 	}
       else
 	{
-	  payload_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
+	  payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
 	}
     }
-  sp_out.push_payload (std::move (payload_out));
 }
 
 template<class F, class ... Args>
@@ -459,7 +463,7 @@ page_server::follower_connection_handler::push_async_response (F &&a_func,
 {
   auto handler_func = std::bind (std::forward<F> (a_func), std::placeholders::_1, std::placeholders::_2,
 				 std::forward<Args> (args)...);
-  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
+  m_ps.get_follower_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
 }
 
 page_server::follower_connection_handler::~follower_connection_handler ()

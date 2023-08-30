@@ -205,6 +205,8 @@ class page_server
 	void receive_dummy_request (follower_server_conn_t::sequenced_payload &&a_sp);  // TODO remove it
 	void receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp);
 
+	void serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out);
+
 	// Helper function to convert above functions into responder specific tasks.
 	template<class F, class ... Args>
 	void push_async_response (F &&, follower_server_conn_t::sequenced_payload &&a_sp, Args &&...args);
