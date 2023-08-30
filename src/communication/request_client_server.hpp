@@ -161,6 +161,7 @@ namespace cubcomm
   {
     public:
       using server_request_handler = std::function<void (cubpacking::unpacker &upk)>;
+      using server_error_handler = std::function<void (css_error_code error)>;
       using server_request_id = MsgId;
 
       request_server () = delete;
@@ -176,6 +177,7 @@ namespace cubcomm
       void stop_thread ();	  // stop the thread
 
       void register_request_handler (MsgId msgid, const server_request_handler &handler);	  // register a handler
+      void register_error_handler (server_error_handler &&error_handler);	  // register an error handler
 
       inline const channel &get_channel () const;						  // get underlying channel
 
@@ -198,6 +200,7 @@ namespace cubcomm
       std::thread m_thread;				// thread that loops and handles requests
       bool m_shutdown = true;				// set to true when thread must stop
       request_handlers_container m_request_handlers;	// request handler map
+      server_error_handler m_error_handler;
       cubmem::extensible_block m_recv_extensible_block;
   };
 
@@ -265,6 +268,7 @@ namespace cubcomm
   template <typename MsgId>
   request_server<MsgId>::request_server (channel &&chn)
     : m_channel (std::move (chn))
+    , m_error_handler (nullptr)
     , m_recv_extensible_block { cubmem::CSTYLE_BLOCK_ALLOCATOR }
   {
     // arbitrary initial size; will be grown upon need
@@ -285,6 +289,13 @@ namespace cubcomm
       {
 	m_request_handlers[msgid] = handler;
       }
+  }
+
+  template <typename MsgId>
+  void request_server<MsgId>::register_error_handler (server_error_handler &&handler)
+  {
+    assert (m_error_handler == nullptr);
+    m_error_handler = std::move (handler);
   }
 
   template <typename MsgId>
@@ -323,16 +334,25 @@ namespace cubcomm
   void request_server<MsgId>::loop_handle_requests ()
   {
     size_t message_size = 0;
+    css_error_code error = NO_ERRORS;
+
     while (!m_shutdown)
       {
 	if (!has_request_on_channel ())
 	  {
 	    continue;
 	  }
-	if (receive_request_buffer (message_size) != NO_ERRORS)
+
+	error = receive_request_buffer (message_size);
+	if (error != NO_ERRORS)
 	  {
+	    if (m_error_handler != nullptr)
+	      {
+		m_error_handler (error);
+	      }
 	    break;
 	  }
+
 	handle_request (message_size);
       }
     er_log_thread_finished (this, &m_thread, m_thread.get_id ());
