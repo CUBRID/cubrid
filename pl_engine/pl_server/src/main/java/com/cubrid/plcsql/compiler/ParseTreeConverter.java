@@ -33,7 +33,6 @@ package com.cubrid.plcsql.compiler;
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
 import com.cubrid.jsp.data.ColumnInfo;
-import com.cubrid.jsp.data.DBType;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
@@ -2345,7 +2344,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (!DBTypeAdapter.isSupported(ci.type)) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s426
-                            "the SELECT statement contains a column " + colName + " of an unsupported type "
+                            "the SELECT statement contains a column "
+                                    + colName
+                                    + " of an unsupported type "
                                     + DBTypeAdapter.getSqlTypeName(ci.type));
                 }
                 TypeSpec typeSpec = DBTypeAdapter.getTypeSpec(ci.type);

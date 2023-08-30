@@ -74,7 +74,8 @@ public class TypeSpecSimple extends TypeSpec {
 
     // the following two are not actual Java types but only for internal type checking
     public static TypeSpecSimple NULL = new TypeSpecSimple("Null", "Null", null, IDX_NULL, "null");
-    public static TypeSpecSimple CURSOR = new TypeSpecSimple("Cursor", "Cursor", null, IDX_CURSOR, null);
+    public static TypeSpecSimple CURSOR =
+            new TypeSpecSimple("Cursor", "Cursor", null, IDX_CURSOR, null);
 
     // (1) used as an argument type of some operators in SpLib
     // (2) used as an expression type when a specific Java type cannot be given
@@ -84,34 +85,54 @@ public class TypeSpecSimple extends TypeSpec {
     public static TypeSpecSimple BOOLEAN =
             new TypeSpecSimple("Boolean", "java.lang.Boolean", "getBoolean", IDX_BOOLEAN, null);
     public static TypeSpecSimple STRING =
-            new TypeSpecSimple("String", "java.lang.String", "getString", IDX_STRING, "cast(? as string)");
+            new TypeSpecSimple(
+                    "String", "java.lang.String", "getString", IDX_STRING, "cast(? as string)");
     public static TypeSpecSimple NUMERIC =
-            new TypeSpecSimple("Numeric", "java.math.BigDecimal", "getBigDecimal", IDX_NUMERIC, "cast(? as numeric)");
+            new TypeSpecSimple(
+                    "Numeric",
+                    "java.math.BigDecimal",
+                    "getBigDecimal",
+                    IDX_NUMERIC,
+                    "cast(? as numeric)");
     public static TypeSpecSimple SHORT =
-            new TypeSpecSimple("Short", "java.lang.Short", "getShort", IDX_SHORT, "cast(? as short)");
+            new TypeSpecSimple(
+                    "Short", "java.lang.Short", "getShort", IDX_SHORT, "cast(? as short)");
     public static TypeSpecSimple INT =
             new TypeSpecSimple("Int", "java.lang.Integer", "getInt", IDX_INT, "cast(? as int)");
     public static TypeSpecSimple BIGINT =
-            new TypeSpecSimple("Bigint", "java.lang.Long", "getLong", IDX_BIGINT, "cast(? as bigint)");
+            new TypeSpecSimple(
+                    "Bigint", "java.lang.Long", "getLong", IDX_BIGINT, "cast(? as bigint)");
     public static TypeSpecSimple FLOAT =
-            new TypeSpecSimple("Float", "java.lang.Float", "getFloat", IDX_FLOAT, "cast(? as float)");
+            new TypeSpecSimple(
+                    "Float", "java.lang.Float", "getFloat", IDX_FLOAT, "cast(? as float)");
     public static TypeSpecSimple DOUBLE =
-            new TypeSpecSimple("Double", "java.lang.Double", "getDouble", IDX_DOUBLE, "cast(? as double)");
+            new TypeSpecSimple(
+                    "Double", "java.lang.Double", "getDouble", IDX_DOUBLE, "cast(? as double)");
     public static TypeSpecSimple DATE =
             new TypeSpecSimple("Date", "java.sql.Date", "getDate", IDX_DATE, "cast(? as date)");
     public static TypeSpecSimple TIME =
             new TypeSpecSimple("Time", "java.sql.Time", "getTime", IDX_TIME, "cast(? as time)");
     public static TypeSpecSimple TIMESTAMP =
-            new TypeSpecSimple("Timestamp", "java.sql.Timestamp", "getTimestamp", IDX_TIMESTAMP,
-                "cast(? as timestamp)");
+            new TypeSpecSimple(
+                    "Timestamp",
+                    "java.sql.Timestamp",
+                    "getTimestamp",
+                    IDX_TIMESTAMP,
+                    "cast(? as timestamp)");
     public static TypeSpecSimple DATETIME =
-            new TypeSpecSimple("Datetime", "java.sql.Timestamp", "getTimestamp", IDX_DATETIME, "cast(? as datetime)");
+            new TypeSpecSimple(
+                    "Datetime",
+                    "java.sql.Timestamp",
+                    "getTimestamp",
+                    IDX_DATETIME,
+                    "cast(? as datetime)");
     public static TypeSpecSimple SYS_REFCURSOR =
             new TypeSpecSimple(
                     "Sys_refcursor",
                     "com.cubrid.plcsql.predefined.sp.SpLib.Query",
                     null,
-                    IDX_SYS_REFCURSOR, null);
+                    IDX_SYS_REFCURSOR,
+                    null);
 
     /* TODO: restore later
     public static TypeSpecSimple SET = of("java.util.Set");
@@ -144,7 +165,11 @@ public class TypeSpecSimple extends TypeSpec {
     // ------------------------------------------------------------------
 
     private TypeSpecSimple(
-            String pcsName, String fullJavaType, String nameOfGetMethod, int simpleTypeIdx, String typicalValueStr) {
+            String pcsName,
+            String fullJavaType,
+            String nameOfGetMethod,
+            int simpleTypeIdx,
+            String typicalValueStr) {
         super(pcsName, getJavaCode(fullJavaType), nameOfGetMethod, simpleTypeIdx, typicalValueStr);
         this.fullJavaType = fullJavaType;
     }

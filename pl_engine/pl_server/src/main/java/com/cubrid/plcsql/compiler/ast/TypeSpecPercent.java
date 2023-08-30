@@ -98,5 +98,4 @@ public class TypeSpecPercent extends TypeSpec {
             return resolvedType.getTypicalValueStr();
         }
     }
-
 }

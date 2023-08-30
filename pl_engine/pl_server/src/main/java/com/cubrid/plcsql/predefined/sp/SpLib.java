@@ -49,8 +49,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.regex.PatternSyntaxException;
 import java.util.Arrays;
+import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
@@ -67,7 +67,7 @@ public class SpLib {
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 Object ret = rs.getObject(1);
-                assert !rs.next();  // it must have only one record
+                assert !rs.next(); // it must have only one record
 
                 Statement stmt = rs.getStatement();
                 if (stmt != null) {

@@ -35,7 +35,7 @@ import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 
 public class DBTypeAdapter {
 
-     public static boolean isSupported(int dbType) {
+    public static boolean isSupported(int dbType) {
         switch (dbType) {
             case DBType.DB_NULL:
             case DBType.DB_CHAR:
@@ -91,7 +91,7 @@ public class DBTypeAdapter {
 
     public static String getSqlTypeName(int dbType) {
 
-        switch (dbType) {       // got from com.cubrid.jsp.data.DBType
+        switch (dbType) { // got from com.cubrid.jsp.data.DBType
             case DBType.DB_NULL:
                 return "NULL";
             case DBType.DB_INT:
@@ -154,5 +154,4 @@ public class DBTypeAdapter {
                 return "<Unknown>";
         }
     }
-
 }

@@ -33,18 +33,18 @@ package com.cubrid.plcsql.compiler.visitor;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.CoercionScheme;
+import com.cubrid.plcsql.compiler.DBTypeAdapter;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
-import com.cubrid.plcsql.compiler.DBTypeAdapter;
 import com.cubrid.plcsql.compiler.ast.*;
-import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
+import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Arrays;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
@@ -561,7 +561,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (!DBTypeAdapter.isSupported(ci.type)) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.ctx), // s231
-                        "type of the function " + node.name + " call is an unsupported type "
+                        "type of the function "
+                                + node.name
+                                + " call is an unsupported type "
                                 + DBTypeAdapter.getSqlTypeName(ci.type));
             }
 
@@ -1126,7 +1128,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (typicalValueStr == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(arg.ctx), // s229
-                        String.format("argument %d to the built-in function %s has an invalid type", i + 1, funcName));
+                        String.format(
+                                "argument %d to the built-in function %s has an invalid type",
+                                i + 1, funcName));
             }
 
             if (i > 0) {

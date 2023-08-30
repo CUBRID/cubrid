@@ -32,17 +32,10 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.ParseTreeConverter;
-import com.cubrid.plcsql.compiler.ParseTreePrinter;
-import com.cubrid.plcsql.compiler.PcsLexerEx;
-import com.cubrid.plcsql.compiler.SemanticError;
-import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
-import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
-import com.cubrid.plcsql.compiler.StaticSqlCollector;
-import com.cubrid.plcsql.compiler.SyntaxError;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
+import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
+import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -123,8 +116,12 @@ public class PlcsqlCompilerMain {
     private static PrintStream getParseTreePrinterOutStream(int seq) {
 
         // create a output stream to print parse tree
-        String outfile = Server.getRootPath().toString() +
-            File.separatorChar + "log" + File.separatorChar + "PL-parse-tree.txt";
+        String outfile =
+                Server.getRootPath().toString()
+                        + File.separatorChar
+                        + "log"
+                        + File.separatorChar
+                        + "PL-parse-tree.txt";
         File g = new File(outfile);
         try {
             return new PrintStream(g);
