@@ -7806,6 +7806,12 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  // we want to test full execution of sub-tree; don't fold it!
 	  *continue_walk = PT_LIST_WALK;
 	}
+    case PT_EXPR:
+      if (!node->flag.do_not_fold && pt_is_dblink_related (node))
+	{
+	  node->flag.do_not_fold = 1;
+	  *continue_walk = PT_STOP_WALK;
+	}
     default:
       // nope
       break;
@@ -18923,8 +18929,18 @@ error_zerodate:
 static bool
 pt_is_dblink_related (PT_NODE * p)
 {
+  PT_OP_TYPE op;
+
   if (p->node_type == PT_EXPR)
     {
+      op = p->info.expr.op;
+
+      /* for and, or, xor operator do not check */
+      if (op == PT_AND || op == PT_OR || op == PT_XOR)
+	{
+	  return false;
+	}
+
       if (p->info.expr.arg1 && pt_is_dblink_related (p->info.expr.arg1))
 	{
 	  return true;

@@ -16004,38 +16004,34 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       r = (char *) p->info.value.data_value.str->bytes;
 
-
-      if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
+      switch (p->type_enum)
 	{
-	  switch (p->type_enum)
-	    {
-	    case PT_TYPE_DATE:
-	      q = pt_append_nulstring (parser, q, "date ");
-	      break;
-	    case PT_TYPE_TIME:
-	      q = pt_append_nulstring (parser, q, "time ");
-	      break;
-	    case PT_TYPE_TIMESTAMP:
-	      q = pt_append_nulstring (parser, q, "timestamp ");
-	      break;
-	    case PT_TYPE_TIMESTAMPTZ:
-	      q = pt_append_nulstring (parser, q, "timestamptz ");
-	      break;
-	    case PT_TYPE_TIMESTAMPLTZ:
-	      q = pt_append_nulstring (parser, q, "timestampltz ");
-	      break;
-	    case PT_TYPE_DATETIME:
-	      q = pt_append_nulstring (parser, q, "datetime ");
-	      break;
-	    case PT_TYPE_DATETIMETZ:
-	      q = pt_append_nulstring (parser, q, "datetimetz ");
-	      break;
-	    case PT_TYPE_DATETIMELTZ:
-	      q = pt_append_nulstring (parser, q, "datetimeltz ");
-	      break;
-	    default:
-	      break;
-	    }
+	case PT_TYPE_DATE:
+	  q = pt_append_nulstring (parser, q, "date ");
+	  break;
+	case PT_TYPE_TIME:
+	  q = pt_append_nulstring (parser, q, "time ");
+	  break;
+	case PT_TYPE_TIMESTAMP:
+	  q = pt_append_nulstring (parser, q, "timestamp ");
+	  break;
+	case PT_TYPE_TIMESTAMPTZ:
+	  q = pt_append_nulstring (parser, q, "timestamptz ");
+	  break;
+	case PT_TYPE_TIMESTAMPLTZ:
+	  q = pt_append_nulstring (parser, q, "timestampltz ");
+	  break;
+	case PT_TYPE_DATETIME:
+	  q = pt_append_nulstring (parser, q, "datetime ");
+	  break;
+	case PT_TYPE_DATETIMETZ:
+	  q = pt_append_nulstring (parser, q, "datetimetz ");
+	  break;
+	case PT_TYPE_DATETIMELTZ:
+	  q = pt_append_nulstring (parser, q, "datetimeltz ");
+	  break;
+	default:
+	  break;
 	}
 
       q = pt_append_string_prefix (parser, q, p);
