@@ -776,6 +776,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return ret;
         } else {
             if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
+                connectionRequired = true;
+                addToImports("java.sql.*");
                 return new ExprBuiltinFuncCall(ctx, name, args);
             } else {
                 if (decl.paramList.nodes.size() != args.nodes.size()) {

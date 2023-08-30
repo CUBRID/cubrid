@@ -50,11 +50,39 @@ import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.regex.PatternSyntaxException;
+import java.util.Arrays;
 
 public class SpLib {
 
     public static Object invokeBuiltinFunc(Connection conn, String name, Object... args) {
-        return null;    // TODO
+
+        int argsLen = args.length;
+        String hostVars = getHostVarsStr(argsLen);
+        String query = String.format("select %s(%s) from dual", name, hostVars);
+        try {
+            PreparedStatement pstmt = conn.prepareStatement(query);
+            for (int i = 0; i < argsLen; i++) {
+                pstmt.setObject(i + 1, args[i]);
+            }
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                Object ret = rs.getObject(1);
+                assert !rs.next();  // it must have only one record
+
+                Statement stmt = rs.getStatement();
+                if (stmt != null) {
+                    stmt.close();
+                }
+
+                return ret;
+            } else {
+                // no data?
+                throw new PROGRAM_ERROR();
+            }
+        } catch (SQLException e) {
+            Server.log(e);
+            throw new PROGRAM_ERROR();
+        }
     }
 
     // builtin exceptions
@@ -3278,5 +3306,11 @@ public class SpLib {
             assert rConv != null;
             return lConv.compareTo(rConv);
         }
+    }
+
+    private static String getHostVarsStr(int len) {
+        String[] arr = new String[len];
+        Arrays.fill(arr, "?");
+        return String.join(", ", arr);
     }
 }
