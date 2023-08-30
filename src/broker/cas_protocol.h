@@ -129,7 +129,7 @@ extern "C"
 /* For backward compatibility */
 #define BROKER_INFO_MAJOR_VERSION               (BROKER_INFO_PROTO_VERSION)
 #define BROKER_INFO_MINOR_VERSION               (BROKER_INFO_FUNCTION_FLAG)
-#define BROKER_INFO_PATCH_VERSION               (BROKER_INFO_RESERVED2)
+#define BROKER_INFO_PATCH_VERSION               (BROKER_INFO_SYSTEM_PARAM)
 #define BROKER_INFO_RESERVED                    (BROKER_INFO_RESERVED3)
 
 #define CAS_PID_SIZE                            4
@@ -150,11 +150,8 @@ extern "C"
 #define CCI_PCONNECT_OFF                        0
 #define CCI_PCONNECT_ON                         1
 
-#define ORACLE_COMPAT_NUMBER_BEHAVIOR_NO        0
-#define ORACLE_COMPAT_NUMBER_BEHAVIOR_YES       1
-
 /* BITMASK for System Parameter */
-#define MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR      0x01    // oracle_compat_number_behavior
+#define MASK_ORACLE_COMPAT_NUMBER_BEHAVIOR      0x01	// oracle_compat_number_behavior
 
 #define CAS_REQ_HEADER_JDBC	"JDBC"
 #define CAS_REQ_HEADER_ODBC	"ODBC"
@@ -365,7 +362,7 @@ extern "C"
   extern char cas_bi_get_statement_pooling (void);
   extern void cas_bi_set_cci_pconnect (const char cci_pconnect);
   extern char cas_bi_get_cci_pconnect (void);
-  extern void cas_bi_set_oracle_compat_number_behavior ( char oracle_compat_number_behavior);
+  extern void cas_bi_set_oracle_compat_number_behavior (char oracle_compat_number_behavior);
   extern void cas_bi_set_protocol_version (const char protocol_version);
   extern char cas_bi_get_protocol_version (void);
   extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);

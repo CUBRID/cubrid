@@ -242,6 +242,6 @@ cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooli
 
   broker_info[BROKER_INFO_PROTO_VERSION] = CAS_PROTO_PACK_CURRENT_NET_VER;
   broker_info[BROKER_INFO_FUNCTION_FLAG] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
-  broker_info[BROKER_INFO_RESERVED2] = 0;
+  broker_info[BROKER_INFO_SYSTEM_PARAM] = 0;
   broker_info[BROKER_INFO_RESERVED3] = 0;
 }
