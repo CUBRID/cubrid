@@ -410,9 +410,9 @@ page_server::follower_connection_handler::receive_dummy_request (follower_server
 void
 page_server::follower_connection_handler::receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp)
 {
-  auto log_serving_func = std::bind (&page_server::follower_connection_handler::serve_log_pages, this,
+  auto log_serving_func = std::bind (&page_server::follower_connection_handler::serve_log_pages, std::ref (*this),
 				     std::placeholders::_1, std::placeholders::_2);
-  push_async_response (log_serving_func, std::move (a_sp));
+  m_ps.get_follower_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (log_serving_func));
 }
 
 void
@@ -455,17 +455,6 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
     }
 }
 
-template<class F, class ... Args>
-void
-page_server::follower_connection_handler::push_async_response (F &&a_func,
-    follower_server_conn_t::sequenced_payload &&a_sp,
-    Args &&... args)
-{
-  auto handler_func = std::bind (std::forward<F> (a_func), std::placeholders::_1, std::placeholders::_2,
-				 std::forward<Args> (args)...);
-  m_ps.get_follower_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
-}
-
 page_server::follower_connection_handler::~follower_connection_handler ()
 {
   // blocking call
@@ -504,14 +493,22 @@ int
 page_server::followee_connection_handler::send_receive (follower_to_followee_request reqid, std::string &&payload_in,
     std::string &payload_out)
 {
-  return m_conn->send_recv (reqid, std::move (payload_in), payload_out);
+  const css_error_code error_code =  m_conn->send_recv (reqid, std::move (payload_in), payload_out);
+  if (error_code != NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
+  return NO_ERROR;
 }
 
 int
 page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pageid, int count,
     std::vector<LOG_PAGE *> log_pages_out)
 {
-  std::string payload_out;
+  int error_code = NO_ERROR;
+  std::string response_message;
   cubpacking::packer packer;
   size_t size = 0;
 
@@ -524,24 +521,40 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
   packer.pack_bigint (start_pageid);
   packer.pack_int (count);
 
-  send_receive (follower_to_followee_request::SEND_LOG_PAGES_FETCH, std::string (buffer.get (), size), payload_out);
+  error_code = send_receive (follower_to_followee_request::SEND_LOG_PAGES_FETCH, std::string (buffer.get (), size),
+			     response_message);
 
-  int error = NO_ERROR;
-  cubpacking::unpacker unpacker {payload_out.c_str (), payload_out.size ()};
-  unpacker.unpack_int (error);
-
-  if (error != NO_ERROR)
+  // client-side error (from follower)
+  if (error_code != NO_ERROR)
     {
-      return error;
+      _er_log_debug (ARG_FILE_LINE, "client-side error from follower, error_code: %d\n", error_code);
+      return error_code;
+    }
+
+  assert (response_message.size () > 0);
+
+  const char *message_ptr = response_message.c_str ();
+  std::memcpy (&error_code, message_ptr, sizeof (error_code));
+  message_ptr += sizeof (error_code);
+
+  // client-side error (from followee)
+  if (error_code != NO_ERROR)
+    {
+      _er_log_debug (ARG_FILE_LINE, "server-side error from follower, error_code: %d\n", error_code);
+      return error_code;
     }
 
   for (int i = 0; i < count; i++)
     {
-      unpacker.unpack_c_string (reinterpret_cast<char *> (log_pages_out[i]), LOG_PAGESIZE);
+      std::memcpy (log_pages_out[i], message_ptr, LOG_PAGESIZE);
+      message_ptr += LOG_PAGESIZE;
+
       assert (log_pages_out[i]->hdr.logical_pageid == start_pageid + i);
+      _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from Page Server. Page ID: %lld\n",
+		     log_pages_out[i]->hdr.logical_pageid);
     }
 
-  return NO_ERROR;
+  return error_code;
 }
 
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)

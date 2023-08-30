@@ -207,10 +207,6 @@ class page_server
 
 	void serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out);
 
-	// Helper function to convert above functions into responder specific tasks.
-	template<class F, class ... Args>
-	void push_async_response (F &&, follower_server_conn_t::sequenced_payload &&a_sp, Args &&...args);
-
 	page_server &m_ps;
 	std::unique_ptr<follower_server_conn_t> m_conn;
     };
