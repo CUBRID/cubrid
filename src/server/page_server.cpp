@@ -212,14 +212,23 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
     }
 
   // TODO: A thread will take the catch-up including establishing connection to avoid blocking ATS->PS reqeusts.
+  // All the below here will be taken up.
   m_ps.connect_to_followee_page_server (std::move (host), port);
 
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char *const aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-  LOG_PAGE *const log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
-  std::vector<LOG_PAGE *> log_pgptrs;
-  log_pgptrs.emplace_back (log_pgptr);
-  const int error_code = m_ps.m_followee_conn->request_log_pages (catchup_lsa.pageid, 1, log_pgptrs);
+  const int start_pageid = catchup_lsa.pageid - 1; // TODO log_Gl.hdr.append_lsa.pageid
+  const int page_count = 2; // TODO catchup_lsa.pageid - start_pageid + 1
+
+  auto log_pgbuf_buffer = std::unique_ptr<char []> { new char[LOG_PAGESIZE * page_count + MAX_ALIGNMENT] };
+  char *const aligned_log_pgbuf = PTR_ALIGN (log_pgbuf_buffer.get (), MAX_ALIGNMENT);
+
+  std::vector<LOG_PAGE *> log_pgptr_vec;
+  char *log_pgptr = aligned_log_pgbuf;
+  for (int i = 0; i < page_count; i++)
+    {
+      log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf + i * LOG_PAGESIZE));
+    }
+
+  const int error_code = m_ps.m_followee_conn->request_log_pages (start_pageid, page_count, log_pgptr_vec);
   if (error_code != NO_ERROR)
     {
       /* There are two kinds of erorrs either from client-side or server-side.
@@ -228,7 +237,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
        *  - the followee PS amy truncate some log pages requested.
        *  - some requested pages are corrupted
        *  - or something
-       * TODO We has to handle them. Probably, we should change the followee to catch up with through ATS.
+       * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
        */
       assert_release (false);
     }
@@ -470,8 +479,8 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
   if (perform_logging)
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "[READ LOG] Sending log pageg to the pager server (%s). Page Id from %lld to %lld, Error code: %d\n",
-		     m_conn->get_underlying_channel_id (), start_pageid, start_pageid + cnt, error);
+		     "[READ LOG] Sending log pages to the pager server (%s). Page Id from %lld to %lld, Error code: %d\n",
+		     m_conn->get_underlying_channel_id ().c_str (), start_pageid, start_pageid + cnt - 1, error);
     }
 }
 
@@ -546,7 +555,7 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
   if (perform_logging)
     {
       _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to the page server (%s). Page ID from %lld to %lld\n",
-		     m_conn->get_underlying_channel_id (), start_pageid, start_pageid + count);
+		     m_conn->get_underlying_channel_id ().c_str (), start_pageid, start_pageid + count - 1);
     }
 
   error_code = send_receive (follower_to_followee_request::SEND_LOG_PAGES_FETCH, std::string (buffer.get (), size),
@@ -558,7 +567,7 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
       if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from the page server (%s). Error code: %d\n",
-			 m_conn->get_underlying_channel_id (), error_code);
+			 m_conn->get_underlying_channel_id ().c_str (), error_code);
 	}
       return error_code;
     }
@@ -579,7 +588,7 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
       if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from the page server (%s). Error code: %d\n",
-			 m_conn->get_underlying_channel_id (), error_code);
+			 m_conn->get_underlying_channel_id ().c_str (), error_code);
 	}
       return error_code;
     }
@@ -593,7 +602,7 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
       if (perform_logging)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from the page server (%s). Page ID: %lld\n",
-			 m_conn->get_underlying_channel_id (), start_pageid + i);
+			 m_conn->get_underlying_channel_id ().c_str (), start_pageid + i);
 	}
     }
 
