@@ -1967,30 +1967,18 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
       else
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key1, vd, NULL, NULL, NULL, &key_val_range->key1);
-	  if (ret == NO_ERROR)
+	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key1);
+
+	  if (ret == NO_ERROR && curr_key_prefix_length > 0)
 	    {
-	      if (!DB_IS_NULL (&key_val_range->key1))
+	      if (TP_IS_CHAR_TYPE (db_type) || TP_IS_BIT_TYPE (db_type))
 		{
-		  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key1);
+		  key_len = db_get_string_length (&key_val_range->key1);
 
-		  if (!tp_valid_indextype (db_type))
+		  if (key_len > curr_key_prefix_length)
 		    {
-		      ret = ER_FAILED;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-			      pr_type_name (TP_DOMAIN_TYPE (btree_domainp)), pr_type_name (db_type));
-		    }
-
-		  if (curr_key_prefix_length > 0)
-		    {
-		      if (TP_IS_CHAR_TYPE (db_type) || TP_IS_BIT_TYPE (db_type))
-			{
-			  key_len = db_get_string_length (&key_val_range->key1);
-			  if (key_len > curr_key_prefix_length)
-			    {
-			      ret = db_string_truncate (&key_val_range->key1, curr_key_prefix_length);
-			      key_val_range->is_truncated = true;
-			    }
-			}
+		      ret = db_string_truncate (&key_val_range->key1, curr_key_prefix_length);
+		      key_val_range->is_truncated = true;
 		    }
 		}
 	    }
@@ -2026,30 +2014,19 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
       else
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key2, vd, NULL, NULL, NULL, &key_val_range->key2);
-	  if (ret == NO_ERROR)
+
+	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key2);
+
+	  if (ret == NO_ERROR && curr_key_prefix_length > 0)
 	    {
-	      if (!DB_IS_NULL (&key_val_range->key1))
+	      if (TP_IS_CHAR_TYPE (db_type) || TP_IS_BIT_TYPE (db_type))
 		{
-		  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key2);
+		  key_len = db_get_string_length (&key_val_range->key2);
 
-		  if (!DB_IS_NULL (&key_val_range->key1) && !tp_valid_indextype (db_type))
+		  if (key_len > curr_key_prefix_length)
 		    {
-		      ret = ER_FAILED;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-			      pr_type_name (TP_DOMAIN_TYPE (btree_domainp)), pr_type_name (db_type));
-		    }
-
-		  if (curr_key_prefix_length > 0)
-		    {
-		      if (TP_IS_CHAR_TYPE (db_type) || TP_IS_BIT_TYPE (db_type))
-			{
-			  key_len = db_get_string_length (&key_val_range->key2);
-			  if (key_len > curr_key_prefix_length)
-			    {
-			      ret = db_string_truncate (&key_val_range->key2, curr_key_prefix_length);
-			      key_val_range->is_truncated = true;
-			    }
-			}
+		      ret = db_string_truncate (&key_val_range->key2, curr_key_prefix_length);
+		      key_val_range->is_truncated = true;
 		    }
 		}
 	    }
