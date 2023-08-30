@@ -419,13 +419,6 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
 }
 
 void
-page_server::follower_connection_handler::receive_dummy_request (follower_server_conn_t::sequenced_payload
-    &&a_sp)
-{
-  er_log_debug (ARG_FILE_LINE, "A follower has requested a duumy request");
-}
-
-void
 page_server::follower_connection_handler::receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp)
 {
   auto log_serving_func = std::bind (&page_server::follower_connection_handler::serve_log_pages, std::ref (*this),
@@ -437,13 +430,13 @@ void
 page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out)
 {
   // Unpack the message data
-  cubpacking::unpacker unpacker {payload_in_out.c_str (), payload_in_out.size ()};
+  cubpacking::unpacker payload_unpacker { payload_in_out.c_str (), payload_in_out.size () };
   LOG_PAGEID start_pageid;
   int cnt;
 
   assert (payload_in_out.size () == (sizeof (LOG_PAGEID) + OR_INT_SIZE));
-  unpacker.unpack_bigint (start_pageid);
-  unpacker.unpack_int (cnt);
+  payload_unpacker.unpack_bigint (start_pageid);
+  payload_unpacker.unpack_int (cnt);
 
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
 
@@ -534,19 +527,19 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
 {
   int error_code = NO_ERROR;
   std::string response_message;
-  cubpacking::packer packer;
+  cubpacking::packer payload_packer;
   size_t size = 0;
 
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
 
-  size += packer.get_packed_bigint_size (size); // start_pageid
-  size += packer.get_packed_int_size (size); // count
+  size += payload_packer.get_packed_bigint_size (size); // start_pageid
+  size += payload_packer.get_packed_int_size (size); // count
 
   std::unique_ptr < char[] > buffer (new char[size]);
-  packer.set_buffer (buffer.get (), size);
+  payload_packer.set_buffer (buffer.get (), size);
 
-  packer.pack_bigint (start_pageid);
-  packer.pack_int (count);
+  payload_packer.pack_bigint (start_pageid);
+  payload_packer.pack_int (count);
 
   if (perform_logging)
     {
