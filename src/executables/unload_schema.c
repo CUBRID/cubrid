@@ -1493,6 +1493,7 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
   const char *name = NULL;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
   const char *tde_algo_name = NULL;
   int is_partitioned = 0;
   SM_CLASS *class_ = NULL;
@@ -1510,6 +1511,10 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	  continue;
 	}
 
+      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
       if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
 	{
 	  class_ = NULL;
@@ -1518,18 +1523,18 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	{
 	  if (extract_class == EXTRACT_CLASS_ALL)
 	    {
-	      output_ctx ("\nCREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS",
-			  PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+	      output_ctx ("\nCREATE %s %s%s%s%s", is_vclass ? "VCLASS" : "CLASS", output_owner,
+			  PRINT_IDENTIFIER (class_name));
 	    }
 	  else
 	    {
 	      if (is_vclass == TRUE && extract_class == EXTRACT_VCLASS)
 		{
-		  output_ctx ("\nCREATE VCLASS %s%s%s", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+		  output_ctx ("\nCREATE VCLASS %s%s%s%s", output_owner, PRINT_IDENTIFIER (class_name));
 		}
 	      else if (is_vclass == FALSE && extract_class == EXTRACT_CLASS)
 		{
-		  output_ctx ("\nCREATE CLASS %s%s%s", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+		  output_ctx ("\nCREATE CLASS %s%s%s%s", output_owner, PRINT_IDENTIFIER (class_name));
 		}
 	      else
 		{
@@ -1611,10 +1616,12 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
        * with the same name. This is because a DBA cannot own multiple classes with the same name at the same time.
        * Therefore, the owner must be changed immediately after class creation.
        */
+#if 0
       if (ctxt.do_auth)
 	{
 	  emit_class_owner (ctxt, output_ctx, cl->op);
 	}
+#endif
     }
 }
 
