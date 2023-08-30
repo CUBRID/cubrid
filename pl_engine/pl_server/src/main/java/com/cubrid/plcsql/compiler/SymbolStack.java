@@ -162,46 +162,71 @@ public class SymbolStack {
 
         List<String> funcNames =
             Arrays.asList(
+
                 // bit
-                "BIT_COUNT",
+                "BIT_AND", "BIT_COUNT", "BIT_OR", "BIT_XOR",
 
                 // string
                 "ASCII", "BIN", "BIT_LENGTH", "CHAR_LENGTH", "CHARACTER_LENGTH", "LENGTHB", "LENGTH", "CHR", "CONCAT",
                 "CONCAT_WS", "ELT", "FIELD", "FIND_IN_SET", "FROM_BASE64", "INSERT", "INSTR", "LCASE", "LOWER", "LEFT",
-                "LOCATE", "LPAD", "LTRIM", "MID", "OCTET_LENGTH", "REPEAT", "REPLACE", "REVERSE", "RIGHT", "RPAD",
-                "RTRIM", "SPACE", "STRCMP", "SUBSTR", "SUBSTRING", "SUBSTRING_INDEX", "TO_BASE64", "TRANSLATE", "TRIM",
-                "UCASE", "UPPER",
+                "LOCATE", "LPAD", "LTRIM", "MID", "OCTET_LENGTH", "POSITION", "REPEAT", "REPLACE", "REVERSE", "RIGHT",
+                "RPAD", "RTRIM", "SPACE", "STRCMP", "SUBSTR", "SUBSTRING", "SUBSTRING_INDEX", "TO_BASE64", "TRANSLATE",
+                "TRIM", "UCASE", "UPPER",
 
                 // regular expression
                 "REGEXP_COUNT", "REGEXP_INSTR", "REGEXP_LIKE", "REGEXP_REPLACE", "REGEXP_SUBSTR",
 
                 // numeric/mathematical
                 "ABS", "ACOS", "ASIN", "ATAN", "ATAN2", "CEIL", "CONV", "COS", "COT", "CRC32", "DEGREES", "DRANDOM",
-                "DRAND", "EXP", "FLOOR", "HEX", "LN", "LOG2", "LOG10", "MOD", "PI", "POW", "POWER", "RADIANS",
-                "RANDOM", "RAND", "ROUND", "SIGN", "SIN", "SQRT", "TAN", "TRUNC", "TRUNCATE", "WIDTH_BUCKET",
+                "DRAND", "EXP", "FLOOR", "HEX", "LN", "LOG2", "LOG10", "MOD", "PI", "POW", "POWER", "RADIANS", "RANDOM",
+                "RAND", "ROUND", "SIGN", "SIN", "SQRT", "TAN", "TRUNC", "TRUNCATE", "WIDTH_BUCKET",
 
                 // date/time
-                "CURRENT_TIMESTAMP", "LOCALTIME", "LOCALTIMESTAMP", "DATE", "DATEDIFF", "DATE_SUB", "SUBDATE", "DAY",
-                "DAYOFMONTH", "DAYOFWEEK", "DAYOFYEAR", "FROM_DAYS", "FROM_UNIXTIME", "HOUR", "LAST_DAY", "MAKEDATE",
-                "MAKETIME", "MINUTE", "MONTH", "MONTHS_BETWEEN", "NEW_TIME", "QUARTER", /* "ROUND" dup, */ "SEC_TO_TIME",
-                "SECOND", "SYS_DATE", "SYSDATE", "SYS_DATETIME", "SYSDATETIME", "SYS_TIME", "SYSTIME", "SYS_TIMESTAMP",
-                "SYSTIMESTAMP", "TIME", "TIME_TO_SEC", "TIMEDIFF", "TIMESTAMP", "TO_DAYS", /* "TRUNC", dup */ "TZ_OFFSET",
-                "UNIX_TIMESTAMP", "UTC_DATE", "UTC_TIME", "WEEK", "WEEKDAY", "YEAR",
+                "ADD_MONTHS", "ADDDATE", "ADDTIME", "CURDATE", "CURRENT_DATE", "CURRENT_DATETIME", "CURRENT_TIME",
+                "CURRENT_TIMESTAMP", "CURTIME", "DATE", "DATE_ADD", "DATE_SUB", "DATEDIFF", "DAY", "DAYOFMONTH",
+                "DAYOFWEEK", "DAYOFYEAR", "EXTRACT", "FROM_DAYS", "FROM_TZ", "FROM_UNIXTIME", "HOUR", "LAST_DAY",
+                "LOCALTIME", "LOCALTIMESTAMP", "MAKEDATE", "MAKETIME", "MINUTE", "MONTH", "MONTHS_BETWEEN", "NEW_TIME",
+                "NOW", "QUARTER", /* "ROUND", dup */ "SEC_TO_TIME", "SECOND", "SUBDATE", "SYS_DATE", "SYS_DATETIME", "SYS_TIME",
+                "SYS_TIMESTAMP", "SYSDATE", "SYSDATETIME", "SYSTIME", "SYSTIMESTAMP", "TIME", "TIME_TO_SEC", "TIMEDIFF",
+                "TIMESTAMP", "TO_DAYS", /* "TRUNC", dup */ "TZ_OFFSET", "UNIX_TIMESTAMP", "UTC_DATE", "UTC_TIME", "WEEK", "WEEKDAY",
+                "YEAR",
+
+                // json
+                "JSON_ARRAY", "JSON_ARRAY_APPEND", "JSON_ARRAY_INSERT", "JSON_CONTAINS", "JSON_CONTAINS_PATH",
+                "JSON_DEPTH", "JSON_EXTRACT", "JSON_INSERT", "JSON_KEYS", "JSON_LENGTH", "JSON_MERGE", "JSON_MERGE_PATCH",
+                "JSON_MERGE_PRESERVE", "JSON_OBJECT", "JSON_PRETTY", "JSON_QUOTE", "JSON_REMOVE", "JSON_REPLACE",
+                "JSON_SEARCH", "JSON_SET", "JSON_TABLE", "JSON_TYPE", "JSON_UNQUOTE", "JSON_VALID",
+
+                // lob
+                "BIT_TO_BLOB", "BLOB_FROM_FILE", "BLOB_LENGTH", "BLOB_TO_BIT", "CHAR_TO_BLOB", "CHAR_TO_CLOB",
+                "CLOB_FROM_FILE", "CLOB_LENGTH", "CLOB_TO_CHAR",
 
                 // data type casting
-                "DATE_FORMAT", "FORMAT", "STR_TO_DATE", "TIME_FORMAT", "TO_CHAR", "TO_DATE", "TO_DATETIME", "TO_NUMBER",
-                "TO_TIME", "TO_TIMESTAMP",
+                "CAST", "DATE_FORMAT", "FORMAT", "STR_TO_DATE", "TIME_FORMAT", "TO_CHAR", "TO_DATE", "TO_DATETIME",
+                "TO_DATETIME_TZ", "TO_NUMBER", "TO_TIME", "TO_TIMESTAMP", "TO_TIMESTAMP_TZ",
+
+                // aggregate and analytic
+                "AVG", "COUNT", "CUME_DIST", "DENSE_RANK", "FIRST_VALUE", "GROUP_CONCAT", "JSON_ARRAYAGG",
+                "JSON_OBJECTAGG", "LAG", "LAST_VALUE", "LEAD", "MAX", "MEDIAN", "MIN", "NTH_VALUE", "NTILE",
+                "PERCENTILE_CONT", "PERCENTILE_DISC", "PERCENT_RANK", "RANK", "ROW_NUMBER", "STDDEV", "STDDEV_POP",
+                "STDDEV_SAMP", "SUM", "VARIANCE", "VAR_POP", "VAR_SAMP",
+
+                // click counter
+                "DECR", "INCR",
+
+                // rownum
+                "GROUPBY_NUM", "INST_NUM", "ORDERBY_NUM", "ROWNUM",
 
                 // information
-                "CHARSET", "COERCIBILITY", "COLLATION", "CURRENT_USER", "USER", "DATABASE", "SCHEMA", "DBTIMEZONE",
-                "DISK_SIZE", "INDEX_CARDINALITY", "INET_ATON", "INET_NTOA", "LAST_INSERT_ID", "LIST_DBS", "ROW_COUNT",
-                "SESSIONTIMEZONE", /* "USER", dup */ "SYSTEM_USER", "VERSION",
+                "CHARSET", "COERCIBILITY", "COLLATION", "CURRENT_USER", "DATABASE", "DBTIMEZONE", "DEFAULT", "DISK_SIZE",
+                "INDEX_CARDINALITY", "INET_ATON", "INET_NTOA", "LAST_INSERT_ID", "LIST_DBS", "ROW_COUNT", "SCHEMA",
+                "SESSIONTIMEZONE", "SYSTEM_USER", "USER", "VERSION",
 
                 // encryption
                 "MD5", "SHA1", "SHA2",
 
                 // comparison
-                "COALESCE", "DECODE", "GREATEST", "IFNULL", "NVL", "LEAST", "NULLIF", "NVL2",
+                "COALESCE", "DECODE", "GREATEST", "IF", "IFNULL", "ISNULL", "LEAST", "NULLIF", "NVL", "NVL2",
 
                 // others
                 "SLEEP", "SYS_GUID"

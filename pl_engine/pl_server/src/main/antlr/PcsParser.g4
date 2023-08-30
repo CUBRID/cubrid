@@ -549,6 +549,23 @@ quoted_string
     ;
 
 identifier
-    : REGULAR_ID
+    : regular_id
     | DELIMITED_ID
     ;
+
+  // REGULAR_ID + intersection of {lexer words} and {built-in function names}
+regular_id
+    : REGULAR_ID
+    | DATE
+    | DEFAULT
+    | IF
+    | INSERT
+    | MOD
+    | REPLACE
+    | REVERSE
+    | TIME
+    | TIMESTAMP
+    | TRUNCATE
+    ;
+
+

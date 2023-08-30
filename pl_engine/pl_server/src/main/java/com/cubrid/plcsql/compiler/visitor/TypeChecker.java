@@ -549,7 +549,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
         String sql = String.format("select %s(%s) from dual", node.name, tvStr);
-        System.out.println("[temp] " + sql);
 
         List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(sql));
         assert sqlSemantics.size() == 1;

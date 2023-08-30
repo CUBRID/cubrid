@@ -28,17 +28,18 @@ package com.cubrid.plcsql.compiler.antlrgen;
 
 @members {
 private int staticSqlParenMatch = -1;
+private boolean checkFirstLParen = false;   // to detect that it is actually not a static sql but a built-in function call
 }
 
 // keywords that starts Static SQL
 WITH:                         W I T H           { staticSqlParenMatch++; mode(STATIC_SQL); };
 SELECT:                       S E L E C T       { staticSqlParenMatch++; mode(STATIC_SQL); };
-INSERT:                       I N S E R T       { staticSqlParenMatch++; mode(STATIC_SQL); };
+INSERT:                       I N S E R T       { staticSqlParenMatch++; checkFirstLParen = true; mode(STATIC_SQL); };
 UPDATE:                       U P D A T E       { staticSqlParenMatch++; mode(STATIC_SQL); };
 DELETE:                       D E L E T E       { staticSqlParenMatch++; mode(STATIC_SQL); };
-REPLACE:                      R E P L A C E     { staticSqlParenMatch++; mode(STATIC_SQL); };
+REPLACE:                      R E P L A C E     { staticSqlParenMatch++; checkFirstLParen = true; mode(STATIC_SQL); };
 MERGE:                        M E R G E         { staticSqlParenMatch++; mode(STATIC_SQL); };
-TRUNCATE:                     T R U N C A T E   { staticSqlParenMatch++; mode(STATIC_SQL); };
+TRUNCATE:                     T R U N C A T E   { staticSqlParenMatch++; checkFirstLParen = true; mode(STATIC_SQL); };
 
 // other keywords
 AND:                          A N D ;
@@ -200,15 +201,26 @@ mode STATIC_SQL;
 SS_SEMICOLON :  ';' {
         setType(PcsParser.SEMICOLON);
         staticSqlParenMatch = -1;
+        checkFirstLParen = false;
         mode(DEFAULT_MODE);
     };
-SS_STR :        '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'' ;
+SS_STR :        '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'' {
+        checkFirstLParen = false;
+    };
 SS_WS :         [ \t\r\n]+ ;
 SS_LPAREN :     '(' {
-        staticSqlParenMatch++;
-        setType(PcsParser.SS_NON_STR);
+        if (checkFirstLParen) {
+            setType(PcsParser.LPAREN);
+            staticSqlParenMatch = -1;
+            checkFirstLParen = false;
+            mode(DEFAULT_MODE);
+        } else {
+            staticSqlParenMatch++;
+            setType(PcsParser.SS_NON_STR);
+        }
     };
 SS_RPAREN :     ')' {
+        checkFirstLParen = false;
         staticSqlParenMatch--;
         if (staticSqlParenMatch == -1) {
             mode(DEFAULT_MODE);
@@ -217,7 +229,9 @@ SS_RPAREN :     ')' {
             setType(PcsParser.SS_NON_STR);
         }
     };
-SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ ;
+SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {
+        checkFirstLParen = false;
+    };
 
 // ************************
 // Fragment rules
@@ -255,5 +269,4 @@ fragment W : [wW];
 fragment X : [xX];
 fragment Y : [yY];
 fragment Z : [zZ];
-
 
