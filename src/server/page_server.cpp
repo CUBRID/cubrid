@@ -404,10 +404,6 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   m_conn.reset (new follower_server_conn_t (std::move (chn),
   {
     {
-      follower_to_followee_request::SEND_DUMMY,
-      std::bind (&page_server::follower_connection_handler::receive_dummy_request, std::ref (*this), std::placeholders::_1)
-    },
-    {
       follower_to_followee_request::SEND_LOG_PAGES_FETCH,
       std::bind (&page_server::follower_connection_handler::receive_log_pages_fetch, std::ref (*this), std::placeholders::_1)
     },
@@ -801,9 +797,6 @@ page_server::connect_to_followee_page_server (std::string &&hostname, int32_t po
   er_log_debug (ARG_FILE_LINE,
 		"This page server successfully connected to the followee page server to catch up. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
-
-  // TODO remove it. Just a test to make sure the connection works.
-  m_followee_conn->push_request (follower_to_followee_request::SEND_DUMMY, std::string (""));
 
   return NO_ERROR;
 }
