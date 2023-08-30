@@ -203,6 +203,7 @@ struct qo_plan
   // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
+  int hit_use_or_force;		/* 0: Not hit, 1: use, 2: force */// ctshim
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
