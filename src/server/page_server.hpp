@@ -101,7 +101,6 @@ class page_server
     int connect_to_followee_page_server (std::string &&hostname, int32_t port);
 
     void push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload);
-
     cublog::replicator &get_replicator ();
     void start_log_replicator (const log_lsa &start_lsa);
     void finish_replication_during_shutdown (cubthread::entry &thread_entry);

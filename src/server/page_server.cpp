@@ -242,6 +242,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
       assert_release (false);
     }
 
+  // TODO append received log pages to the log buffer
 }
 
 void
@@ -442,7 +443,7 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
 
   // Pack the requested log pages
   int error = NO_ERROR;
-  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) }; // Pack NO_ERROR assuming it'll succeed.
   log_reader lr { LOG_CS_SAFE_READER };
 
   for (int i = 0; i < cnt; i++)
@@ -456,6 +457,7 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
 
       if (error != NO_ERROR)
 	{
+	  // All or Nothing. Abandon all appended pages and just set the error.
 	  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
 	  break;
 	}
