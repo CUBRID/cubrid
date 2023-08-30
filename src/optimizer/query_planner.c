@@ -8752,6 +8752,11 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	  break;
 
+	case PT_NOT_LIKE:
+	  lhs_selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
+	  selectivity = qo_not_selectivity (env, lhs_selectivity);
+	  break;
+
 	case PT_SETNEQ:
 	case PT_SETEQ:
 	case PT_SUPERSETEQ:
@@ -8763,7 +8768,6 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  selectivity = DEFAULT_SELECTIVITY;
 	  break;
 
-	case PT_NOT_LIKE:
 	case PT_IS_NOT:
 	  selectivity = qo_not_selectivity (env, DEFAULT_SELECTIVITY);
 	  break;
