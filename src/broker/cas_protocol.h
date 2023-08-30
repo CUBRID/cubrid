@@ -368,7 +368,8 @@ extern "C"
   extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
   extern bool cas_bi_get_renewed_error_code (void);
   extern bool cas_di_understand_renewed_error_code (const char *driver_info);
-  extern void cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect);
+  extern void cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect,
+				       char oracle_compat_number_behavior);
 #ifdef __cplusplus
 }
 #endif
