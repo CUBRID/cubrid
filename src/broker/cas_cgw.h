@@ -111,7 +111,7 @@ struct t_odbc_col_info
 {
   char data_type;
   SQLLEN scale;
-  SQLLEN precision;
+  SQLULEN precision;
   char charset;
   char col_name[COL_NAME_LEN + 1];
   char default_value[DEFAULT_VALUE_LEN + 1];
@@ -125,7 +125,7 @@ struct t_odbc_col_info
   char is_shared;
   char attr_name[ATTR_NAME_LEN + 1];
   char class_name[CLASS_NAME_LEN + 1];
-  SQLLEN is_not_null;
+  SQLSMALLINT is_not_null;
 };
 
 typedef union odbc_bind_info ODBC_BIND_INFO;
