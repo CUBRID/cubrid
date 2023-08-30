@@ -412,6 +412,7 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   followee_to_follower_request::RESPOND,
   follower_to_followee_request::RESPOND,
   RESPONSE_PARTITIONING_SIZE,
+  nullptr,
   nullptr)); // TODO handle abnormal disconnection.
 
   m_ps.get_follower_responder ().register_connection (m_conn.get ());
@@ -498,6 +499,7 @@ page_server::followee_connection_handler::followee_connection_handler (cubcomm::
 		follower_to_followee_request::RESPOND,
 		followee_to_follower_request::RESPOND,
 		RESPONSE_PARTITIONING_SIZE,
+		nullptr,
 		nullptr)); // TODO handle abnormal disconnection.
 
   m_conn->start ();
