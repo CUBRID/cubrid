@@ -437,15 +437,17 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
                 node.setType(ret);
 
-                int i = 1;
+                int i = 1, found = -1;
                 for (String c : declForRecord.fieldTypes.keySet()) {
                     if (c.equals(node.fieldName)) {
-                        break;
+                        assert found < 0;
+                        found = i;
                     }
                     i++;
                 }
-                assert i <= declForRecord.fieldTypes.size();
-                node.setColIndex(i);
+                assert found > 0;
+
+                node.setColIndex(found);
             }
         } else {
             // this record is for a dynamic SQL
