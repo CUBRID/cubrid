@@ -558,19 +558,26 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (ss.errCode == 0) {
             assert ss.selectList.size() == 1;
             ColumnInfo ci = ss.selectList.get(0);
-            if (!DBTypeAdapter.isSupported(ci.type)) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(node.ctx), // s231
-                        "type of the function "
-                                + node.name
-                                + " call is an unsupported type "
-                                + DBTypeAdapter.getSqlTypeName(ci.type));
+
+            TypeSpecSimple ret;
+            if (DBTypeAdapter.isSupported(ci.type)) {
+                ret = DBTypeAdapter.getTypeSpec(ci.type);
+                assert !ret.equals(TypeSpecSimple.NULL);
+            } else {
+                // Allow the other types too, which can lead to run-time type errors,
+                // but accepts some more working programs. For example,
+                //
+                // create or replace procedure poo(i int) as
+                // begin
+                //     for r in (execute immediate 'select * from db_collation') loop
+                //         dbms_output.put_line(nvl2(i, r.coll_id, 2.7));
+                //     end loop;
+                // end;
+
+                ret = TypeSpecSimple.OBJECT;
             }
 
-            TypeSpecSimple ret = DBTypeAdapter.getTypeSpec(ci.type);
-            assert !ret.equals(TypeSpecSimple.NULL);
             node.setResultType(ret);
-
             return ret;
         } else {
             throw new SemanticError(

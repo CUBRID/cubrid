@@ -151,7 +151,7 @@ public class DBTypeAdapter {
             case DBType.DB_DATETIMELTZ:
                 return "DATETIMELTZ";
             default:
-                return "<Unknown>";
+                return "UNKNOWN (code: " + dbType + ")";
         }
     }
 }
