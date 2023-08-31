@@ -109,22 +109,22 @@ class page_server
     void finalize_request_responder ();
 
   private: // types
-    class connection_handler
+    class tran_server_connection_handler
     {
       public:
 	using tran_server_conn_t =
 		cubcomm::request_sync_client_server<page_to_tran_request, tran_to_page_request, std::string>;
 
-	connection_handler () = delete;
-	connection_handler (cubcomm::channel &&chn, transaction_server_type server_type, page_server &ps);
+	tran_server_connection_handler () = delete;
+	tran_server_connection_handler (cubcomm::channel &&chn, transaction_server_type server_type, page_server &ps);
 
-	connection_handler (const connection_handler &) = delete;
-	connection_handler (connection_handler &&) = delete;
+	tran_server_connection_handler (const tran_server_connection_handler &) = delete;
+	tran_server_connection_handler (tran_server_connection_handler &&) = delete;
 
-	~connection_handler ();
+	~tran_server_connection_handler ();
 
-	connection_handler &operator= (const connection_handler &) = delete;
-	connection_handler &operator= (connection_handler &&) = delete;
+	tran_server_connection_handler &operator= (const tran_server_connection_handler &) = delete;
+	tran_server_connection_handler &operator= (tran_server_connection_handler &&) = delete;
 
 	void push_request (page_to_tran_request id, std::string &&msg);
 	const std::string &get_connection_id () const;
@@ -257,31 +257,31 @@ class page_server
 	std::mutex m_pts_oldest_active_mvccids_mtx;
     };
   private:
-    using connection_handler_uptr_t = std::unique_ptr<connection_handler>;
+    using tran_server_connection_handler_uptr_t = std::unique_ptr<tran_server_connection_handler>;
     using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
     using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
 
-    using responder_t = server_request_responder<connection_handler::tran_server_conn_t>;
+    using tran_server_responder_t = server_request_responder<tran_server_connection_handler::tran_server_conn_t>;
 
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
-    void disconnect_tran_server_async (const connection_handler *conn);
+    void disconnect_tran_server_async (const tran_server_connection_handler *conn);
     bool is_active_tran_server_connected () const;
-    responder_t &get_responder ();
+    tran_server_responder_t &get_tran_server_responder ();
 
   private: // members
     const std::string m_server_name;
 
-    connection_handler_uptr_t m_active_tran_server_conn;
-    std::vector<connection_handler_uptr_t> m_passive_tran_server_conn;
+    tran_server_connection_handler_uptr_t m_active_tran_server_conn;
+    std::vector<tran_server_connection_handler_uptr_t> m_passive_tran_server_conn;
     std::mutex m_conn_mutex; // for the thread-safe connection and disconnection
     std::condition_variable m_conn_cv;
 
     std::unique_ptr<cublog::replicator> m_replicator;
 
-    std::unique_ptr<responder_t> m_responder;
+    std::unique_ptr<tran_server_responder_t> m_tran_server_responder;
 
-    async_disconnect_handler<connection_handler> m_async_disconnect_handler;
+    async_disconnect_handler<tran_server_connection_handler> m_async_disconnect_handler;
     pts_mvcc_tracker m_pts_mvcc_tracker;
 
     followee_connection_handler_uptr_t m_followee_conn;
