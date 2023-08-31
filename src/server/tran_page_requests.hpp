@@ -56,7 +56,7 @@ enum class page_to_tran_request
   SEND_TO_PTS_LOG_PRIOR_LIST, /* response-less */
 };
 
-// requets from page server to page server to catchup
+// requests from page server to page server to catchup
 enum class follower_to_followee_request
 {
   // Reserve for responses
@@ -66,7 +66,7 @@ enum class follower_to_followee_request
   SEND_LOG_PAGES_FETCH, /* synchronously waiting for response */
 };
 
-// requets from page server to page server to catchup
+// requests from page server to page server to catchup
 enum class followee_to_follower_request
 {
   // Reserve for responses
