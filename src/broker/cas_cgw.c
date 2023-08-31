@@ -453,18 +453,8 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	    case SQL_INTEGER:
 	      if (this_col_binding->col_unsigned_type)
 		{
-		  conv_ret =
-		    cgw_unicode_to_utf8 ((wchar_t *) this_col_binding->data_buffer, str_len, &conv_string,
-					 &conv_string_len);
-		  if (conv_ret < 0)
-		    {
-		      net_buf_cp_int (net_buf, -1, NULL);
-		      continue;
-		    }
-
-		  net_buf_cp_int (net_buf, (int) conv_string_len, NULL);
-		  net_buf_cp_str (net_buf, (char *) conv_string, conv_string_len - 1);
-		  net_buf_cp_byte (net_buf, 0);
+		  net_buf_cp_int (net_buf, NET_SIZE_INT, NULL);
+		  net_buf_cp_int (net_buf, *((unsigned int *) this_col_binding->data_buffer), NULL);
 		}
 	      else
 		{
@@ -475,18 +465,8 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	    case SQL_SMALLINT:
 	      if (this_col_binding->col_unsigned_type)
 		{
-		  conv_ret =
-		    cgw_unicode_to_utf8 ((wchar_t *) this_col_binding->data_buffer, str_len, &conv_string,
-					 &conv_string_len);
-		  if (conv_ret < 0)
-		    {
-		      net_buf_cp_int (net_buf, -1, NULL);
-		      continue;
-		    }
-
-		  net_buf_cp_int (net_buf, (int) conv_string_len, NULL);
-		  net_buf_cp_str (net_buf, (char *) conv_string, conv_string_len - 1);
-		  net_buf_cp_byte (net_buf, 0);
+		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+		  net_buf_cp_short (net_buf, *((unsigned short *) this_col_binding->data_buffer));
 		}
 	      else
 		{
@@ -495,26 +475,8 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 		}
 	      break;
 	    case SQL_TINYINT:
-	      if (this_col_binding->col_unsigned_type)
-		{
-		  conv_ret =
-		    cgw_unicode_to_utf8 ((wchar_t *) this_col_binding->data_buffer, str_len, &conv_string,
-					 &conv_string_len);
-		  if (conv_ret < 0)
-		    {
-		      net_buf_cp_int (net_buf, -1, NULL);
-		      continue;
-		    }
-
-		  net_buf_cp_int (net_buf, (int) conv_string_len, NULL);
-		  net_buf_cp_str (net_buf, (char *) conv_string, conv_string_len - 1);
-		  net_buf_cp_byte (net_buf, 0);
-		}
-	      else
-		{
-		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
-		  net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
-		}
+	      net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+	      net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
 	      break;
 	    case SQL_FLOAT:
 	    case SQL_REAL:
@@ -526,27 +488,9 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 	      net_buf_cp_double (net_buf, *((double *) this_col_binding->data_buffer));
 	      break;
 	    case SQL_BIGINT:
-	      if (this_col_binding->col_unsigned_type)
-		{
-		  conv_ret =
-		    cgw_unicode_to_utf8 ((wchar_t *) this_col_binding->data_buffer, str_len, &conv_string,
-					 &conv_string_len);
-		  if (conv_ret < 0)
-		    {
-		      net_buf_cp_int (net_buf, -1, NULL);
-		      continue;
-		    }
-
-		  net_buf_cp_int (net_buf, conv_string_len, NULL);
-		  net_buf_cp_str (net_buf, (char *) conv_string, conv_string_len - 1);
-		  net_buf_cp_byte (net_buf, 0);
-		}
-	      else
-		{
-		  net_buf_cp_int (net_buf, NET_SIZE_BIGINT, NULL);
-		  bigint = *((DB_BIGINT *) (this_col_binding->data_buffer));
-		  net_buf_cp_bigint (net_buf, bigint, NULL);
-		}
+	      net_buf_cp_int (net_buf, NET_SIZE_BIGINT, NULL);
+	      bigint = *((DB_BIGINT *) (this_col_binding->data_buffer));
+	      net_buf_cp_bigint (net_buf, bigint, NULL);
 	      break;
 #if (ODBCVER >= 0x0300)
 	    case SQL_DATETIME:
@@ -680,8 +624,9 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
   SQLRETURN err_code;
   SQLSMALLINT col_name_length = 0;
   SQLSMALLINT class_name_length = 0;
-  SQLLEN col_data_type = 0;
+  SQLSMALLINT col_data_type = 0;
   SQLLEN col_unsigned_type = 0;
+  SQLSMALLINT col_decimal_digits = 0;
 
   memset (col_info, 0x0, sizeof (T_ODBC_COL_INFO));
 
@@ -693,21 +638,16 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt,
-					   col_num,
-					   SQL_DESC_NAME,
-					   col_info->col_name, sizeof (col_info->col_name), &col_name_length, NULL));
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_CONCISE_TYPE, NULL, 0, NULL, &col_data_type));
+	       err_code = SQLDescribeCol (hstmt,
+					  (SQLSMALLINT) col_num,
+					  (SQLCHAR *) col_info->col_name,
+					  sizeof (col_info->col_name),
+					  &col_name_length, &col_data_type, &col_info->precision, &col_decimal_digits,
+					  &col_info->is_not_null));
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
 	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_SCALE, NULL, 0, NULL, &col_info->scale));
-
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_PRECISION, NULL, 0, NULL, &col_info->precision));
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
@@ -723,12 +663,6 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
 	}
       col_info->precision = num;
     }
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt,
-					   col_num,
-					   SQL_DESC_NAME,
-					   col_info->col_name, sizeof (col_info->col_name), &col_name_length, NULL));
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
@@ -737,9 +671,6 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
 					   SQL_DESC_TABLE_NAME,
 					   col_info->class_name, sizeof (col_info->class_name), &class_name_length,
 					   NULL));
-
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_NULLABLE, NULL, 0,	// Note count of bytes!
-								   NULL, &col_info->is_not_null));
 
   SQL_CHK_ERR (hstmt,
 	       SQL_HANDLE_STMT,
@@ -771,11 +702,13 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       data_type = CCI_U_TYPE_NUMERIC;
       break;
     case SQL_INTEGER:
-      data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_INT;
+      data_type = (is_unsigned_type) ? CCI_U_TYPE_BIGINT : CCI_U_TYPE_INT;
       break;
     case SQL_TINYINT:
+      data_type = CCI_U_TYPE_SHORT;
+      break;
     case SQL_SMALLINT:
-      data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_SHORT;
+      data_type = (is_unsigned_type) ? CCI_U_TYPE_INT : CCI_U_TYPE_SHORT;
       break;
     case SQL_FLOAT:
     case SQL_REAL:
@@ -824,7 +757,7 @@ cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
       data_type = CCI_U_TYPE_DATETIME;
       break;
     case SQL_BIGINT:
-      data_type = (is_unsigned_type) ? CCI_U_TYPE_CHAR : CCI_U_TYPE_BIGINT;
+      data_type = (is_unsigned_type) ? CCI_U_TYPE_NUMERIC : CCI_U_TYPE_BIGINT;
       break;
 #if (ODBCVER >= 0x0350)
     case SQL_GUID:
@@ -1113,6 +1046,26 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
       if (cgw_is_support_datatype (col_data_type, bind_col_size))
 	{
 	  bind_col_size = bind_col_size * 2;
+
+	  if (col_unsigned_type)
+	    {
+	      if (col_data_type == SQL_TINYINT)
+		{
+		  col_data_type = SQL_SMALLINT;
+		}
+	      else if (col_data_type == SQL_SMALLINT)
+		{
+		  col_data_type = SQL_INTEGER;
+		}
+	      else if (col_data_type == SQL_INTEGER)
+		{
+		  col_data_type = SQL_BIGINT;
+		}
+	      else if (col_data_type == SQL_BIGINT)
+		{
+		  col_data_type = SQL_NUMERIC;
+		}
+	    }
 
 	  this_col_binding->col_data_type = col_data_type;
 	  this_col_binding->col_size = bind_col_size;
@@ -2205,16 +2158,16 @@ get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type)
       c_type = SQL_C_BIT;
       break;
     case SQL_TINYINT:
-      c_type = (is_unsigned_type) ? SQL_C_WCHAR : SQL_C_TINYINT;
+      c_type = (is_unsigned_type) ? SQL_C_UTINYINT : SQL_C_TINYINT;
       break;
     case SQL_SMALLINT:
-      c_type = (is_unsigned_type) ? SQL_C_WCHAR : SQL_C_SHORT;
+      c_type = (is_unsigned_type) ? SQL_C_USHORT : SQL_C_SHORT;
       break;
     case SQL_INTEGER:
-      c_type = (is_unsigned_type) ? SQL_C_WCHAR : SQL_C_LONG;
+      c_type = (is_unsigned_type) ? SQL_C_ULONG : SQL_C_LONG;
       break;
     case SQL_BIGINT:
-      c_type = (is_unsigned_type) ? SQL_C_WCHAR : SQL_C_SBIGINT;
+      c_type = (is_unsigned_type) ? SQL_C_UBIGINT : SQL_C_SBIGINT;
       break;
     case SQL_REAL:
     case SQL_FLOAT:

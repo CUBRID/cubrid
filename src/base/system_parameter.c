@@ -6233,7 +6233,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
    &prm_oracle_compat_number_behavior_flag,
    (void *) &prm_oracle_compat_number_behavior_default,
