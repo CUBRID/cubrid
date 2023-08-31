@@ -7789,6 +7789,22 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   return node;
 }
 
+/*
+ * pt_set_flag_do_not_fold_for_dblink - setting "do_not_fold" flag recursively
+ *   return	: the expr node after setting the flag
+ *
+ *   parser(in)	: the parser context
+ *   node(in)	: the node not to be folded
+ *   arg(in)	:
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_set_flag_do_not_fold_for_dblink (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg, int *continue_walk)
+{
+  expr->flag.do_not_fold = 1;
+  return expr;
+}
+
 static PT_NODE *
 pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -7805,6 +7821,11 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	{
 	  // we want to test full execution of sub-tree; don't fold it!
 	  *continue_walk = PT_LIST_WALK;
+	}
+    case PT_EXPR:
+      if (pt_is_dblink_related (node))
+	{
+	  parser_walk_tree (parser, node, pt_set_flag_do_not_fold_for_dblink, NULL, NULL, NULL);
 	}
     default:
       // nope
@@ -18923,8 +18944,18 @@ error_zerodate:
 static bool
 pt_is_dblink_related (PT_NODE * p)
 {
+  PT_OP_TYPE op;
+
   if (p->node_type == PT_EXPR)
     {
+      op = p->info.expr.op;
+
+      /* for and, or, xor operator do not check */
+      if (op == PT_AND || op == PT_OR || op == PT_XOR)
+	{
+	  return false;
+	}
+
       if (p->info.expr.arg1 && pt_is_dblink_related (p->info.expr.arg1))
 	{
 	  return true;
