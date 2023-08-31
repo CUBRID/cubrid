@@ -8462,6 +8462,31 @@ pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_pa
 }
 
 /*
+ * pt_is_operator_arith() - returns TRUE if the operator has an arithmetic
+ *			      return type (i.e. +, -, *, /) and FALSE
+ *			      otherwise.
+ *
+ *   return: boolean
+ *   op(in): the operator
+ */
+bool
+pt_is_operator_arith (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_TIMES:
+    case PT_DIVIDE:
+    case PT_UNARY_MINUS:
+    case PT_MOD:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * pt_is_operator_logical() - returns TRUE if the operator has a logical
  *			      return type (i.e. <, >, AND etc.) and FALSE
  *			      otherwise.
@@ -10451,9 +10476,17 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	  {
 	    const char *target_owner_name = NULL;
 
+	    if (PT_SYNONYM_IS_DBLINKED (node))
+	      {
+		target_owner_name = synonym_owner_name;
+	      }
+	    else
+	      {
+		target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	      }
+
 	    /* When processing PT_NAME, resolved_name is prefixed to original_name.
 	     * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
-	    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
 	    if (target_owner_name == NULL
 		&& sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
 	      {
@@ -10481,9 +10514,17 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	assert (synonym_owner_name != NULL);
 	PT_SYNONYM_OWNER_NAME (node) = pt_name (parser, synonym_owner_name);
 
+	if (PT_SYNONYM_IS_DBLINKED (node))
+	  {
+	    target_owner_name = synonym_owner_name;
+	  }
+	else
+	  {
+	    target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
+	  }
+
 	/* When processing PT_NAME, resolved_name is prefixed to original_name.
 	 * If original_name is the name of a system class/vclass, resolved_name is not prefixed to original_name. */
-	target_owner_name = pt_get_qualifier_name (parser, PT_SYNONYM_TARGET_NAME (node));
 	if (target_owner_name == NULL
 	    && sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (node))) == true)
 	  {
@@ -10769,42 +10810,46 @@ static PT_NODE *
 pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
 {
   PT_SPEC_INFO *class_spec_info = &from_tbl->info.spec;
-  PT_NODE *drived_spec;
+  PT_NODE *derived_spec;
   PT_NODE *new_range_var;
   PT_NODE *dbl_col = NULL;
 
-  if ((drived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
+  if ((derived_spec = parser_new_node (parser, PT_DBLINK_TABLE)) == NULL)
     {
-      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
       return NULL;
     }
 
   if ((new_range_var = parser_new_node (parser, PT_NAME)) == NULL)
     {
-      PT_ERRORmf (parser, drived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
-      parser_free_node (parser, drived_spec);
+      PT_ERRORmf (parser, derived_spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      parser_free_node (parser, derived_spec);
       return NULL;
     }
 
+  parser->custom_print |= PT_PRINT_SUPPRESS_FOR_DBLINK;
+
+  derived_spec->info.dblink_table.remote_table_name = NULL;
   if (class_spec_info->entity_name->info.name.resolved)
     {
-      char tmp[1024];
-      snprintf (tmp, sizeof (tmp), "%s.%s", class_spec_info->entity_name->info.name.resolved,
-		class_spec_info->entity_name->info.name.original);
-      drived_spec->info.dblink_table.remote_table_name = pt_append_string (parser, NULL, tmp);
+      derived_spec->info.dblink_table.remote_table_name =
+	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name,
+			  class_spec_info->entity_name->info.name.resolved);
+      derived_spec->info.dblink_table.remote_table_name =
+	pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name, ".");
     }
-  else
-    {
-      drived_spec->info.dblink_table.remote_table_name =
-	pt_append_string (parser, NULL, class_spec_info->entity_name->info.name.original);
-    }
+  derived_spec->info.dblink_table.remote_table_name =
+    pt_append_string (parser, derived_spec->info.dblink_table.remote_table_name,
+		      class_spec_info->entity_name->info.name.original);
+
+  parser->custom_print &= ~PT_PRINT_SUPPRESS_FOR_DBLINK;
 
   assert (class_spec_info->remote_server_name->node_type == PT_NAME);
-  drived_spec->info.dblink_table.is_name = true;
-  drived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
+  derived_spec->info.dblink_table.is_name = true;
+  derived_spec->info.dblink_table.conn = class_spec_info->remote_server_name;
   if (class_spec_info->remote_server_name->next)
     {
-      drived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
+      derived_spec->info.dblink_table.owner_name = class_spec_info->remote_server_name->next;
       class_spec_info->remote_server_name->next = NULL;
     }
   class_spec_info->remote_server_name = NULL;
@@ -10828,16 +10873,16 @@ pt_mk_spec_derived_dblink_table (PARSER_CONTEXT * parser, PT_NODE * from_tbl)
   new_range_var->info.name.original = pt_append_string (parser, NULL, (char *) var_buf->bytes);
 
 
-  drived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
+  derived_spec->info.dblink_table.qstr = class_spec_info->entity_name;;
   class_spec_info->entity_name = NULL;
 
-  drived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
+  derived_spec->info.dblink_table.qstr->next = class_spec_info->range_var;
   class_spec_info->range_var = NULL;
 
-  drived_spec->info.dblink_table.cols = NULL;
+  derived_spec->info.dblink_table.cols = NULL;
 
   from_tbl->info.spec.range_var = new_range_var;
-  from_tbl->info.spec.derived_table = drived_spec;
+  from_tbl->info.spec.derived_table = derived_spec;
   from_tbl->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
 
   return from_tbl;
@@ -11556,10 +11601,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   int i;
   int tmp_local_cnt = snl->local_cnt;
   int tmp_server_cnt = snl->server_cnt;
+  unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
   PT_NODE *list = NULL;		/* for insert select list */
   PT_NODE *spec, *into_spec = NULL, *upd_spec = NULL, *server;
+
+  PARSER_VARCHAR *comment, *dml;
 
   switch (node->node_type)
     {
@@ -11637,12 +11685,18 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
+  /*
+   ** the query which has generic function is set flag.cannont_prepare to 1 by parser
+   ** because the generic function might not be executed, 
+   ** However, the dblink DML should be prepared even though it has generic function
+   */
+  node->flag.cannot_prepare = 0;
+
   /*  
    ** The target server must all be the same.
    ** Therefore, even if multiple tables are specified, only the first information is configured as PT_DBLINK_TABLE_DML.
    ** Postpone checking that "user.server" and "server" are the same.
    */
-
   PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
   if (!ct)
     {
@@ -11666,12 +11720,39 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
      It also should set flag not to convert to serial_next_value
      or serial_current_value for ORACLE or other DBMS.
    */
+
+  save_custom_print = parser->custom_print;
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK INSERT */ ", 20);
+      break;
+    case PT_UPDATE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK UPDATE */ ", 20);
+      break;
+    case PT_DELETE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK DELETE */ ", 20);
+      break;
+    case PT_MERGE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK MERGE */ ", 19);
+      break;
+    default:
+      /* must not reach here */
+      assert (false);
+    }
+
   parser->custom_print |=
-    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_SUPPRESS_DELETE_TARGET;
-  val->info.value.data_value.str = pt_print_bytes (parser, node);
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+    PT_PRINT_SUPPRESS_FOR_DBLINK;
+
+  dml = pt_print_bytes (parser, node);
+
+  val->info.value.data_value.str = pt_append_bytes (parser, comment, (const char *) dml->bytes, dml->length);
+
+  parser->custom_print = save_custom_print;
+
   PT_NODE_PRINT_VALUE_TO_TEXT (parser, val);
-  parser->custom_print &=
-    ~(PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_SUPPRESS_DELETE_TARGET);
 
   if (into_spec)
     {
@@ -11680,6 +11761,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   else
     {
       server = upd_spec->info.spec.remote_server_name;
+    }
+
+  if (server == NULL)
+    {
+      /* the subquery target in update query is not allowed */
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+      return;
     }
 
   assert (server->node_type == PT_NAME);
@@ -11818,12 +11906,27 @@ pt_convert_dml (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
         } while(0)
 // *INDENT-ON*     
 
+static PT_NODE *
+pt_set_print_in_value_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = (PT_NODE *) arg;
+
+  if (node->node_type == PT_EXPR && (node->info.expr.op == PT_IS_IN || node->info.expr.op == PT_IS_NOT_IN))
+    {
+      node->info.expr.arg2->flag.print_in_value_for_dblink = 1;
+    }
+
+  return node;
+}
+
 void
 pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   SERVER_NAME_LIST snl;
 
   memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
+
+  parser_walk_tree (parser, stmt, pt_set_print_in_value_for_dblink, NULL, NULL, NULL);
 
   switch (stmt->node_type)
     {

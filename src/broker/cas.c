@@ -872,6 +872,8 @@ cas_main (void)
   char tmp_passwd[SRV_CON_DBPASSWD_SIZE] = { 0, };
   SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;
   char *find_gateway = NULL;
+  char errplog_path[BROKER_PATH_MAX] = { 0, };
+  char errlog_file[BROKER_PATH_MAX] = { 0, };
 #endif
 
 #if defined(CAS_FOR_ORACLE)
@@ -943,6 +945,12 @@ cas_main (void)
   logddl_init (APP_NAME_CAS);
 
 #if defined(CAS_FOR_CGW)
+  sprintf (errlog_file, "%s%s_%d.err",
+	   get_cubrid_file (FID_CUBRID_ERR_DIR, errplog_path, BROKER_PATH_MAX), shm_appl->broker_name,
+	   shm_as_index + 1);
+
+  er_init (errlog_file, ER_NEVER_EXIT);
+
   if (cgw_init () < 0)
     {
       return -1;
@@ -1408,6 +1416,11 @@ cas_main (void)
 		as_info->cur_statement_pooling = OFF;
 	      }
 	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
+
+	    if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version, PROTOCOL_V12))
+	      {
+		cas_bi_set_oracle_compat_number_behavior (prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR));
+	      }
 
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 	    /* todo: casting T_BROKER_VERSION to T_CAS_PROTOCOL */
