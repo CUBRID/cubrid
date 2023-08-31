@@ -66,10 +66,7 @@ public class Server {
     private static LoggingThread loggingThread = null;
 
     private Server(ServerConfig conf) throws IOException, ClassNotFoundException {
-        if (conf == null) {
-            throw new IllegalArgumentException("ServerConfig is null");
-        }
-        Server.config = conf;
+        config = conf;
 
         // Server's security manager should be set first
         System.setSecurityManager(new SpSecurityManager());
@@ -192,6 +189,7 @@ public class Server {
         return jvmArguments;
     }
 
+    /* For JNI */
     public static int start(String[] args) {
         try {
             String name = args[0];
@@ -211,28 +209,33 @@ public class Server {
 
             ServerConfig config = new ServerConfig(name, version, envRoot, dbPath, socketInfo);
 
-            startWithConfig(config);
-            return Server.getServer().getServerPort();
+            return startWithConfig(config);
         } catch (Exception e) {
-            e.printStackTrace();
+            return PORT_NUMBER_UNKNOWN;
         }
-
-        return PORT_NUMBER_UNKNOWN;
     }
 
-    public static void startWithConfig(ServerConfig config) throws Exception {
+    /* Entry point (main) */
+    public static int startWithConfig(ServerConfig config)
+            throws ClassNotFoundException, IOException {
+        if (config == null) {
+            throw new IllegalArgumentException("ServerConfig is null");
+        }
+
         serverInstance = new Server(config);
         serverInstance.startSocketListener();
+        return Server.getServer().getServerPort();
     }
 
     public static void stop(int status) {
         if (serverInstance != null) {
             serverInstance.setShutdown();
             serverInstance.stopSocketListener();
+
             loggingThread.interrupt();
+
+            serverInstance = null;
         }
-        serverInstance = null;
-        // System.exit(status);
     }
 
     public static void main(String[] args) {

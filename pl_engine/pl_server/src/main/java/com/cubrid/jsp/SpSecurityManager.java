@@ -37,6 +37,8 @@ import java.security.Permission;
 
 public class SpSecurityManager extends SecurityManager {
     public void checkExit(int status) {
+        super.checkExit(status);
+
         Server instance = Server.getServer();
         if (instance != null && instance.getShutdown() == false) {
             throw new SecurityException();

@@ -36,6 +36,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -45,6 +46,11 @@ public class TestServer {
         Server.stop(0);
     }
 
+    @BeforeEach
+    void setUp() {
+        System.setSecurityManager(new SpSecurityManager());
+    }
+
     @Test
     public void testNullArgumentsException() {
         Assertions.assertThrows(
@@ -52,15 +58,6 @@ public class TestServer {
                 () -> {
                     Server.startWithConfig(null);
                 });
-    }
-
-    @Test
-    public void testNullArguments() {
-        try {
-            Server.startWithConfig(null);
-        } catch (Exception e) {
-            //
-        }
         assertNull(Server.getServer());
     }
 
@@ -79,7 +76,7 @@ public class TestServer {
                         tempDir.toAbsolutePath().toString(),
                         tempDir + "/databases",
                         "5151");
-        Server.startWithConfig(config);
+        assertEquals(5151, Server.startWithConfig(config));
         assertEquals(5151, Server.getServer().getServerPort());
     }
 
@@ -92,7 +89,7 @@ public class TestServer {
                         tempDir.toAbsolutePath().toString(),
                         tempDir + "/databases",
                         tempDir + "/temp.sock");
-        Server.startWithConfig(config);
+        assertEquals(Server.PORT_NUMBER_UDS, Server.startWithConfig(config));
         assertEquals(Server.PORT_NUMBER_UDS, Server.getServer().getServerPort());
     }
 }
