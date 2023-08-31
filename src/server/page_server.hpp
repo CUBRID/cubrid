@@ -192,11 +192,11 @@ class page_server
 	follower_connection_handler () = delete;
 	follower_connection_handler (cubcomm::channel &&chn, page_server &ps);
 
-	follower_connection_handler (const connection_handler &) = delete;
-	follower_connection_handler (connection_handler &&) = delete;
+	follower_connection_handler (const follower_connection_handler &) = delete;
+	follower_connection_handler (follower_connection_handler &&) = delete;
 
-	follower_connection_handler &operator= (const connection_handler &) = delete;
-	follower_connection_handler &operator= (connection_handler &&) = delete;
+	follower_connection_handler &operator= (const follower_connection_handler &) = delete;
+	follower_connection_handler &operator= (follower_connection_handler &&) = delete;
 
       private:
 	void receive_dummy_request (follower_server_conn_t::sequenced_payload &&a_sp);  // TODO remove it
@@ -214,11 +214,11 @@ class page_server
 	followee_connection_handler () = delete;
 	followee_connection_handler (cubcomm::channel &&chn, page_server &ps);
 
-	followee_connection_handler (const connection_handler &) = delete;
-	followee_connection_handler (connection_handler &&) = delete;
+	followee_connection_handler (const followee_connection_handler &) = delete;
+	followee_connection_handler (followee_connection_handler &&) = delete;
 
-	followee_connection_handler &operator= (const connection_handler &) = delete;
-	followee_connection_handler &operator= (connection_handler &&) = delete;
+	followee_connection_handler &operator= (const followee_connection_handler &) = delete;
+	followee_connection_handler &operator= (followee_connection_handler &&) = delete;
 
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
