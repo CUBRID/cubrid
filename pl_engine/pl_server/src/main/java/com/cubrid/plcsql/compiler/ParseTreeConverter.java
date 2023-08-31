@@ -2417,8 +2417,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert colName != null;
 
         int dotIdx = colName.lastIndexOf(".");
-        if (dotIdx > 0 && dotIdx < colName.length() - 1 && ci.className != null && ci.className.length() > 0 &&
-            ci.attrName != null) {
+        if (dotIdx > 0
+                && dotIdx < colName.length() - 1
+                && ci.className != null
+                && ci.className.length() > 0
+                && ci.attrName != null) {
 
             String afterDot = colName.substring(dotIdx + 1).toLowerCase();
             String attrName = ci.attrName.toLowerCase();
@@ -2482,7 +2485,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (old != null) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s427
-                            String.format("more than one columns have the same name '%s' in the SELECT list", col));
+                            String.format(
+                                    "more than one columns have the same name '%s' in the SELECT list",
+                                    col));
                 }
             }
 
