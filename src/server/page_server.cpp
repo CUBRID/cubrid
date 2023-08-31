@@ -225,7 +225,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 	return; // TODO the cold-start case. No need to catch up.
       }
 
-    constexpr size_t MAX_PAGE_REQUEST_CNT_AT_ONCE = 10; // Arbitrarily chosen
+    constexpr int MAX_PAGE_REQUEST_CNT_AT_ONCE = 10; // Arbitrarily chosen
     const LOG_PAGEID start_pageid = log_Gl.hdr.append_lsa.pageid;
     const LOG_PAGEID end_pageid = catchup_lsa.pageid;
     const size_t total_page_count = end_pageid - start_pageid + 1;
@@ -233,7 +233,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
     _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up pages range from %lld to %lld, count = %lld.\n",
 		   start_pageid, end_pageid, total_page_count);
 
-    const size_t page_cnt_in_buffer = std::min (total_page_count, MAX_PAGE_REQUEST_CNT_AT_ONCE);
+    const int page_cnt_in_buffer = (int) std::min (total_page_count, (size_t) MAX_PAGE_REQUEST_CNT_AT_ONCE);
     const size_t buffer_size_in_total = page_cnt_in_buffer * LOG_PAGESIZE + MAX_ALIGNMENT;
 
     auto log_pgbuf_buffer = std::unique_ptr<char []> { new char[buffer_size_in_total] };
@@ -241,7 +241,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
     std::vector<LOG_PAGE *> log_pgptr_vec;
     char *log_pgptr = aligned_log_pgbuf;
 
-    for (size_t i = 0; i < page_cnt_in_buffer; i++)
+    for (int i = 0; i < page_cnt_in_buffer; i++)
       {
 	log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf + i * LOG_PAGESIZE));
       }
@@ -250,7 +250,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
     size_t remaining_page_cnt = total_page_count;
     while (remaining_page_cnt > 0)
       {
-	const size_t request_page_cnt = std::min (page_cnt_in_buffer, remaining_page_cnt);
+	const int request_page_cnt = (int) std::min ((size_t) page_cnt_in_buffer, remaining_page_cnt);
 	// TODO request next log pages asynchronously with std::async
 	const int error_code = m_ps.m_followee_conn->request_log_pages (request_start_pageid, request_page_cnt, log_pgptr_vec);
 	if (error_code != NO_ERROR)
