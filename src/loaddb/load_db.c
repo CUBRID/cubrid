@@ -192,8 +192,7 @@ ldr_validate_object_file (const char *argv0, load_args * args)
 	{
 	  if (prm_get_integer_value (PRM_ID_HA_MODE))
 	    {
-	      if ((args->load_only == true
-		   || args->index_file.empty () == false
+	      if ((args->index_file.empty () == false
 		   || args->schema_file.empty () == false
 		   || args->schema_file_list.empty () == false || args->trigger_file.empty () == false))
 		{
