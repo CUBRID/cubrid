@@ -219,6 +219,8 @@ static int create_filename (const char *output_dirname, const char *output_prefi
 			    char *output_filename_p, const size_t filename_size);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *infix,
 			    const char *suffix, char *output_filename_p, const size_t filename_size);
+static int create_filefullpath (const char *output_dirname, const char *output_filename,
+				char *output_filename_p, const size_t filename_size);
 static int export_server (extract_context & ctxt, print_output & output_ctx);
 static int extract_all_schema_file (extract_context & ctxt, const char *output_filename);
 static int extract_split_schema_files (extract_context & ctxt);
@@ -4546,6 +4548,27 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
 }
 
 static int
+create_filefullpath (const char *output_dirname, const char *output_filename,
+		     char *output_filename_p, const size_t filename_size)
+{
+  if (output_dirname == NULL)
+    {
+      output_dirname = ".";
+    }
+
+  size_t total = strlen (output_dirname) + strlen (output_filename) + 8;
+
+  if (total > filename_size)
+    {
+      return -1;
+    }
+
+  snprintf (output_filename_p, filename_size - 1, "%s/%s", output_dirname, output_filename);
+
+  return 0;
+}
+
+static int
 extract_user (extract_context & ctxt)
 {
   FILE *output_file = NULL;
@@ -5558,6 +5581,7 @@ create_schema_info (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char filename_fullpath[PATH_MAX * 2] = { '\0' };
   char order_str[PATH_MAX * 2] = { '\0' };
   const char *loading_order[] = { "_schema_user", "_schema_class", "_schema_vclass", "_schema_synonym",
     "_schema_serial", "_schema_procedure", "_schema_server",
@@ -5600,7 +5624,14 @@ create_schema_info (extract_context & ctxt)
 	{
 	  if (strcmp (order_str, ctxt.schema_file_list[j].c_str ()) == 0)
 	    {
-	      if (access (ctxt.schema_file_list[j].c_str (), F_OK) != -1)
+	      if (create_filefullpath
+		  (ctxt.output_dirname, ctxt.schema_file_list[j].c_str (), filename_fullpath,
+		   sizeof (filename_fullpath)))
+		{
+		  continue;
+		}
+
+	      if (access (filename_fullpath, F_OK) != -1)
 		{
 		  output_ctx ("%s\n", ctxt.schema_file_list[j].c_str ());
 		  break;
