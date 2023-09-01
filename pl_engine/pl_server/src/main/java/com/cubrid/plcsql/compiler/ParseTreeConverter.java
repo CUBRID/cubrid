@@ -2423,9 +2423,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 && ci.className.length() > 0
                 && ci.attrName != null) {
 
-            String afterDot = colName.substring(dotIdx + 1).toLowerCase();
-            String attrName = ci.attrName.toLowerCase();
-            if (afterDot.equals(attrName)) {
+            String afterDot = colName.substring(dotIdx + 1);
+            if (afterDot.equalsIgnoreCase(ci.attrName)) {
                 // In this case, colName must be of the form <table name alias>.<attr name>
                 return ci.attrName;
             }
