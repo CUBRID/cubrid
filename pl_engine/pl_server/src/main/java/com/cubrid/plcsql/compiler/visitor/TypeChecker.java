@@ -813,7 +813,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
                 TypeSpec tyUsedExpr = visit(e); // s420
-                if (tyUsedExpr == TypeSpecSimple.BOOLEAN || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
+                if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(e.ctx), // s428
                             "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
@@ -934,7 +935,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
                 TypeSpec tyUsedExpr = visit(e); // s429
-                if (tyUsedExpr == TypeSpecSimple.BOOLEAN || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
+                if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(e.ctx), // s430
                             "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
