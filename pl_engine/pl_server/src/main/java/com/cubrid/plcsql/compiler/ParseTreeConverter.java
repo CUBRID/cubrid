@@ -2412,6 +2412,27 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return ret;
     }
 
+    private String getColumnNameInSelectList(ColumnInfo ci) {
+        String colName = ci.colName;
+        assert colName != null;
+
+        int dotIdx = colName.lastIndexOf(".");
+        if (dotIdx > 0
+                && dotIdx < colName.length() - 1
+                && ci.className != null
+                && ci.className.length() > 0
+                && ci.attrName != null) {
+
+            String afterDot = colName.substring(dotIdx + 1);
+            if (afterDot.equalsIgnoreCase(ci.attrName)) {
+                // In this case, colName must be of the form <table name alias>.<attr name>
+                return ci.attrName;
+            }
+        }
+
+        return colName;
+    }
+
     private StaticSql checkAndConvertStaticSql(SqlSemantics sws, ParserRuleContext ctx) {
 
         LinkedHashMap<Expr, TypeSpec> hostExprs = new LinkedHashMap<>();
@@ -2456,10 +2477,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             for (ColumnInfo ci : sws.selectList) {
                 String sqlType = getSqlTypeNameFromCode(ci.type);
 
-                String col = Misc.getNormalizedText(ci.colName);
+                String col = Misc.getNormalizedText(getColumnNameInSelectList(ci));
                 TypeSpec typeSpec = typeSpecs.get(sqlType);
                 assert typeSpec != null;
-                selectList.put(col, typeSpec);
+                TypeSpec old = selectList.put(col, typeSpec);
+                if (old != null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s427
+                            String.format(
+                                    "more than one columns have the same name '%s' in the SELECT list",
+                                    col));
+                }
             }
 
             // check (name-binding) and convert into-variables used in the SQL

@@ -453,7 +453,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     public int findColumn(String columnName) throws SQLException {
         Integer index = statementHandler.getColNameIndex().get(columnName.toLowerCase());
         if (index == null) {
-            CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                     CUBRIDServerSideJDBCErrorCode.ER_INVALID_COLUMN_NAME, null);
         }
 
