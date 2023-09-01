@@ -482,10 +482,9 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
 
   for (int i = 0; i < cnt; i++)
     {
-      const LOG_PAGEID log_pageid = start_pageid + i;
-      const log_lsa fetch_lsa { log_pageid, 0 };
+      const log_lsa fetch_lsa { start_pageid + i, 0 };
 
-      assert (log_pageid != LOGPB_HEADER_PAGE_ID);
+      assert (fetch_lsa.pageid != LOGPB_HEADER_PAGE_ID);
 
       error = lr.set_lsa_and_fetch_page (fetch_lsa);
 
