@@ -198,8 +198,12 @@ class page_server
 	follower_connection_handler &operator= (const follower_connection_handler &) = delete;
 	follower_connection_handler &operator= (follower_connection_handler &&) = delete;
 
+	~follower_connection_handler ();
+
       private:
-	void receive_dummy_request (follower_server_conn_t::sequenced_payload &&a_sp);  // TODO remove it
+	void receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp);
+
+	void serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out);
 
 	page_server &m_ps;
 	std::unique_ptr<follower_server_conn_t> m_conn;
@@ -222,6 +226,8 @@ class page_server
 
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
+
+	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> &log_pages_out);
 
       private:
 	page_server &m_ps;
@@ -262,12 +268,15 @@ class page_server
     using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
 
     using tran_server_responder_t = server_request_responder<tran_server_connection_handler::tran_server_conn_t>;
+    using follower_responder_t = server_request_responder<follower_connection_handler::follower_server_conn_t>;
 
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
     bool is_active_tran_server_connected () const;
+
     tran_server_responder_t &get_tran_server_responder ();
+    follower_responder_t &get_follower_responder ();
 
   private: // members
     const std::string m_server_name;
@@ -280,6 +289,7 @@ class page_server
     std::unique_ptr<cublog::replicator> m_replicator;
 
     std::unique_ptr<tran_server_responder_t> m_tran_server_responder;
+    std::unique_ptr<follower_responder_t> m_follower_responder;
 
     async_disconnect_handler<tran_server_connection_handler> m_async_disconnect_handler;
     pts_mvcc_tracker m_pts_mvcc_tracker;

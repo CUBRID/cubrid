@@ -207,17 +207,79 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   unpacker.unpack_int (port);
   cublog::lsa_utils::unpack (unpacker, catchup_lsa);
 
-  er_log_debug (ARG_FILE_LINE, "receive_start_catch_up: hostname = %s, port = %d, LSA = (%lld|%d)\n", host.c_str (), port,
-		LSA_AS_ARGS (&catchup_lsa));
+  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] Start catching up with the follower (%s:%d), until LSA = (%lld|%d)\n",
+		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
   if (port == -1)
     {
       return; // TODO: It means that the ATS is booting up, it will be set properly after ATS recovery is implemented.
     }
 
   // TODO: A thread will take the catch-up including establishing connection to avoid blocking ATS->PS reqeusts.
-  m_ps.connect_to_followee_page_server (std::move (host), port);
-}
+  // All the below here will be taken up.
+  {
+    m_ps.connect_to_followee_page_server (std::move (host), port);
 
+    assert (!log_Gl.hdr.append_lsa.is_null ());
+    assert (!catchup_lsa.is_null ());
+    assert (catchup_lsa >= log_Gl.hdr.append_lsa);
+
+    if (log_Gl.hdr.append_lsa == catchup_lsa)
+      {
+	_er_log_debug (ARG_FILE_LINE, "[CATCH-UP] There is nothing to catch up.\n");
+	return; // TODO the cold-start case. No need to catch up.
+      }
+
+    constexpr int MAX_PAGE_REQUEST_CNT_AT_ONCE = 10; // Arbitrarily chosen
+    const LOG_PAGEID start_pageid = log_Gl.hdr.append_lsa.pageid;
+    const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
+    const size_t total_page_count = end_pageid - start_pageid + 1;
+
+    _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up pages range from %lld to %lld, count = %lld.\n",
+		   start_pageid, end_pageid, total_page_count);
+
+    const int page_cnt_in_buffer = (int) std::min (total_page_count, (size_t) MAX_PAGE_REQUEST_CNT_AT_ONCE);
+    const size_t buffer_size_in_total = page_cnt_in_buffer * LOG_PAGESIZE + MAX_ALIGNMENT;
+
+    auto log_pgbuf_buffer = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+    char *const aligned_log_pgbuf = PTR_ALIGN (log_pgbuf_buffer.get (), MAX_ALIGNMENT);
+    std::vector<LOG_PAGE *> log_pgptr_vec;
+    char *log_pgptr = aligned_log_pgbuf;
+
+    for (int i = 0; i < page_cnt_in_buffer; i++)
+      {
+	log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf + i * LOG_PAGESIZE));
+      }
+
+    LOG_PAGEID request_start_pageid = start_pageid;
+    size_t remaining_page_cnt = total_page_count;
+    while (remaining_page_cnt > 0)
+      {
+	const int request_page_cnt = (int) std::min ((size_t) page_cnt_in_buffer, remaining_page_cnt);
+	// TODO request next log pages asynchronously with std::async
+	const int error_code = m_ps.m_followee_conn->request_log_pages (request_start_pageid, request_page_cnt, log_pgptr_vec);
+	if (error_code != NO_ERROR)
+	  {
+	    /* There are two kinds of erorrs either from client-side or server-side.
+	     * client-side error: it fails to send or receive.
+	     * server-side error: the follwee fails to fetch log pages. For example, due to
+	     *  - the followee PS amy truncate some log pages requested.
+	     *  - some requested pages are corrupted
+	     *  - or something
+	     * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
+	     */
+	    assert_release (false);
+	  }
+
+	remaining_page_cnt -= request_page_cnt;
+	request_start_pageid += request_page_cnt;
+
+	// TODO append received log pages to the log buffer
+      }
+
+    _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up completes, ranging from %lld to %lld, count = %lld.\n",
+		   start_pageid, end_pageid, total_page_count);
+  }
+}
 
 void
 page_server::tran_server_connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
@@ -380,8 +442,8 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   m_conn.reset (new follower_server_conn_t (std::move (chn),
   {
     {
-      follower_to_followee_request::SEND_DUMMY,
-      std::bind (&page_server::follower_connection_handler::receive_dummy_request, std::ref (*this), std::placeholders::_1)
+      follower_to_followee_request::SEND_LOG_PAGES_FETCH,
+      std::bind (&page_server::follower_connection_handler::receive_log_pages_fetch, std::ref (*this), std::placeholders::_1)
     },
   },
   followee_to_follower_request::RESPOND,
@@ -390,13 +452,77 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   nullptr,
   nullptr)); // TODO handle abnormal disconnection.
 
+  m_ps.get_follower_responder ().register_connection (m_conn.get ());
+
   m_conn->start ();
 }
 
-void page_server::follower_connection_handler::receive_dummy_request (follower_server_conn_t::sequenced_payload
-    &&a_sp)
+void
+page_server::follower_connection_handler::receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp)
 {
-  er_log_debug (ARG_FILE_LINE, "A follower has requested a duumy request");
+  auto log_serving_func = std::bind (&page_server::follower_connection_handler::serve_log_pages, std::ref (*this),
+				     std::placeholders::_1, std::placeholders::_2);
+  m_ps.get_follower_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (log_serving_func));
+}
+
+void
+page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out)
+{
+  // Unpack the message data
+  cubpacking::unpacker payload_unpacker { payload_in_out.c_str (), payload_in_out.size () };
+  LOG_PAGEID start_pageid;
+  int cnt;
+
+  assert (payload_in_out.size () == (sizeof (LOG_PAGEID) + OR_INT_SIZE));
+  payload_unpacker.unpack_bigint (start_pageid);
+  payload_unpacker.unpack_int (cnt);
+
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
+
+  // Pack the requested log pages
+  int error = NO_ERROR;
+  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) }; // Pack NO_ERROR assuming it'll succeed.
+  log_reader lr { LOG_CS_SAFE_READER };
+
+  for (int i = 0; i < cnt; i++)
+    {
+      const log_lsa fetch_lsa { start_pageid + i, 0 };
+
+      assert (fetch_lsa.pageid != LOGPB_HEADER_PAGE_ID);
+
+      error = lr.set_lsa_and_fetch_page (fetch_lsa);
+
+      if (error != NO_ERROR)
+	{
+	  // All or Nothing. Abandon all appended pages and just set the error.
+	  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+	  break;
+	}
+      else
+	{
+	  payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
+	}
+    }
+
+  if (perform_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "[READ LOG] Sending log pages to the pager server (%s). Page Id from %lld to %lld, Error code: %d\n",
+		     m_conn->get_underlying_channel_id ().c_str (), start_pageid, start_pageid + cnt - 1, error);
+    }
+}
+
+page_server::follower_connection_handler::~follower_connection_handler ()
+{
+  // blocking call
+  // internally, this will also wait pending outgoing roundtrip (send-receive) requests
+  m_conn->stop_incoming_communication_thread ();
+
+  // blocking call
+  // wait async responder to finish processing in-flight incoming roundtrip requests
+  m_ps.get_follower_responder ().wait_connection_to_become_idle (m_conn.get ());
+
+  m_conn->stop_outgoing_communication_thread ();
 }
 
 page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
@@ -425,7 +551,91 @@ int
 page_server::followee_connection_handler::send_receive (follower_to_followee_request reqid, std::string &&payload_in,
     std::string &payload_out)
 {
-  return m_conn->send_recv (reqid, std::move (payload_in), payload_out);
+  const css_error_code error_code =  m_conn->send_recv (reqid, std::move (payload_in), payload_out);
+  if (error_code != NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pageid, int count,
+    std::vector<LOG_PAGE *> &log_pages_out)
+{
+  int error_code = NO_ERROR;
+  std::string response_message;
+  cubpacking::packer payload_packer;
+  size_t size = 0;
+
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
+
+  size += payload_packer.get_packed_bigint_size (size); // start_pageid
+  size += payload_packer.get_packed_int_size (size); // count
+
+  std::unique_ptr < char[] > buffer (new char[size]);
+  payload_packer.set_buffer (buffer.get (), size);
+
+  payload_packer.pack_bigint (start_pageid);
+  payload_packer.pack_int (count);
+
+  if (perform_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to the page server (%s). Page ID from %lld to %lld\n",
+		     m_conn->get_underlying_channel_id ().c_str (), start_pageid, start_pageid + count - 1);
+    }
+
+  error_code = send_receive (follower_to_followee_request::SEND_LOG_PAGES_FETCH, std::string (buffer.get (), size),
+			     response_message);
+  if (error_code != NO_ERROR)
+    {
+      /* client-side error: it fails to send or receive.
+       */
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from the page server (%s). Error code: %d\n",
+			 m_conn->get_underlying_channel_id ().c_str (), error_code);
+	}
+      return error_code;
+    }
+
+  assert (response_message.size () > 0);
+
+  const char *message_ptr = response_message.c_str ();
+  std::memcpy (&error_code, message_ptr, sizeof (error_code));
+  message_ptr += sizeof (error_code);
+
+  if (error_code != NO_ERROR)
+    {
+      /*  server-side error from followee: the follwee fails to fetch log pages. For example,
+       *  - the followee PS amy truncate some log pages requested.
+       *  - some requested pages are corrupted
+       *  - or something
+       */
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from the page server (%s). Error code: %d\n",
+			 m_conn->get_underlying_channel_id ().c_str (), error_code);
+	}
+      return error_code;
+    }
+
+  for (int i = 0; i < count; i++)
+    {
+      std::memcpy (log_pages_out[i], message_ptr, LOG_PAGESIZE);
+      message_ptr += LOG_PAGESIZE;
+
+      assert (log_pages_out[i]->hdr.logical_pageid == start_pageid + i);
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from the page server (%s). Page ID: %lld\n",
+			 m_conn->get_underlying_channel_id ().c_str (), start_pageid + i);
+	}
+    }
+
+  return error_code;
 }
 
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)
@@ -623,9 +833,6 @@ page_server::connect_to_followee_page_server (std::string &&hostname, int32_t po
 		"This page server successfully connected to the followee page server to catch up. Channel id: %s.\n",
 		srv_chn.get_channel_id ().c_str ());
 
-  // TODO remove it. Just a test to make sure the connection works.
-  m_followee_conn->push_request (follower_to_followee_request::SEND_DUMMY, std::string (""));
-
   return NO_ERROR;
 }
 
@@ -752,6 +959,13 @@ page_server::get_tran_server_responder ()
   return *m_tran_server_responder;
 }
 
+page_server::follower_responder_t &
+page_server::get_follower_responder ()
+{
+  assert (m_follower_responder);
+  return *m_follower_responder;
+}
+
 void
 page_server::push_request_to_active_tran_server (page_to_tran_request reqid, std::string &&payload)
 {
@@ -800,10 +1014,12 @@ void
 page_server::init_request_responder ()
 {
   m_tran_server_responder = std::make_unique<tran_server_responder_t> ();
+  m_follower_responder = std::make_unique<follower_responder_t> ();
 }
 
 void
 page_server::finalize_request_responder ()
 {
   m_tran_server_responder.reset (nullptr);
+  m_follower_responder.reset (nullptr);
 }
