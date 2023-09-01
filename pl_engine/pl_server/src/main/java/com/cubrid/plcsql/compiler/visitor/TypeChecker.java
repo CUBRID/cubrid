@@ -884,27 +884,37 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtForIterLoop(StmtForIterLoop node) {
         TypeSpec ty;
+        Coercion c;
 
         ty = visit(node.lowerBound);
-        if (!TypeSpecSimple.INT.equals(ty)) {
+        c = Coercion.getCoercion(ty, TypeSpecSimple.INT);
+        if (c == null) {
             throw new SemanticError(
-                    Misc.getLineColumnOf(node.lowerBound.ctx), // s222
-                    "lower bounds of for loops must be of INT type");
+                    Misc.getLineColumnOf(node.lowerBound.ctx),  // s222
+                    "lower bounds of FOR loops must have a type compatible with INT");
+        } else {
+            node.lowerBound.setCoercion(c);
         }
 
         ty = visit(node.upperBound);
-        if (!TypeSpecSimple.INT.equals(ty)) {
+        c = Coercion.getCoercion(ty, TypeSpecSimple.INT);
+        if (c == null) {
             throw new SemanticError(
-                    Misc.getLineColumnOf(node.upperBound.ctx), // s223
-                    "upper bounds of for loops must be of INT type");
+                    Misc.getLineColumnOf(node.upperBound.ctx),  // s223
+                    "upper bounds of FOR loops must have a type compatible with INT");
+        } else {
+            node.upperBound.setCoercion(c);
         }
 
         if (node.step != null) {
             ty = visit(node.step);
-            if (!TypeSpecSimple.INT.equals(ty)) {
+            c = Coercion.getCoercion(ty, TypeSpecSimple.INT);
+            if (c == null) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(node.step.ctx), // s224
-                        "steps of for loops must be of INT type");
+                        Misc.getLineColumnOf(node.step.ctx),    // s224
+                        "steps of FOR loops must have a type compatible with INT");
+            } else {
+                node.step.setCoercion(c);
             }
         }
 
