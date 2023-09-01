@@ -1461,7 +1461,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SqlSemantics sws = staticSqls.get(selectCtx);
         assert sws != null;
-        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
+        if (sws.kind != ServerConstants.CUBRID_STMT_SELECT) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(selectCtx), // s066
+                    "Static SQLs in FOR loop iterators must be SELECT statements");
+        }
         if (sws.intoVars != null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(selectCtx), // s027
