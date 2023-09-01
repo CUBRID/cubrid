@@ -92,7 +92,7 @@ public class StmtForIterLoop extends Stmt {
             Misc.combineLines(
                     "{",
                     "  int upper_%'LEVEL'% = %'UPPER-BOUND'%;",
-                    "  int step_%'LEVEL'% = %'STEP'%;",
+                    "  int step_%'LEVEL'% = checkForLoopIterStep(%'STEP'%);",
                     "  %'OPT-LABEL'%",
                     "  for (int %'ITER'%_i%'LEVEL'% = %'LOWER-BOUND'%; %'ITER'%_i%'LEVEL'% <= upper_%'LEVEL'%; %'ITER'%_i%'LEVEL'% += step_%'LEVEL'%) {",
                     "    %'STATEMENTS'%",
@@ -103,7 +103,7 @@ public class StmtForIterLoop extends Stmt {
             Misc.combineLines(
                     "{",
                     "  int lower_%'LEVEL'% = %'LOWER-BOUND'%;",
-                    "  int step_%'LEVEL'% = %'STEP'%;",
+                    "  int step_%'LEVEL'% = checkForLoopIterStep(%'STEP'%);",
                     "  %'OPT-LABEL'%",
                     "  for (int %'ITER'%_i%'LEVEL'% = %'UPPER-BOUND'%; %'ITER'%_i%'LEVEL'% >= lower_%'LEVEL'%; %'ITER'%_i%'LEVEL'% -= step_%'LEVEL'%) {",
                     "    %'STATEMENTS'%",

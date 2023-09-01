@@ -53,6 +53,14 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static Integer checkForLoopIterStep(Integer step) {
+        if (step <= 0) {
+            throw new VALUE_ERROR("FOR loop iteration steps must be positive integers");
+        }
+
+        return step;
+    }
+
     // builtin exceptions
     public static class CASE_NOT_FOUND extends PlcsqlRuntimeError {
         public CASE_NOT_FOUND() {
@@ -109,6 +117,9 @@ public class SpLib {
     public static class VALUE_ERROR extends PlcsqlRuntimeError {
         public VALUE_ERROR() {
             super(CODE_VALUE_ERROR, MSG_VALUE_ERROR);
+        }
+        public VALUE_ERROR(String subMsg) {
+            super(CODE_VALUE_ERROR, MSG_VALUE_ERROR + ": " + subMsg);
         }
     }
 
