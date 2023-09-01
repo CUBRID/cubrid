@@ -18685,9 +18685,6 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
       assert (key1_type != DB_TYPE_MIDXKEY);
       assert (key2_type != DB_TYPE_MIDXKEY);
 
-      assert (tp_valid_indextype (key1_type));
-      assert (tp_valid_indextype (key2_type));
-
       /* safe code */
       if (key1_type == DB_TYPE_MIDXKEY)
 	{
@@ -18731,6 +18728,9 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	      return DB_UNK;
 	    }
 	}
+
+      assert (tp_valid_indextype (key1_type));
+      assert (tp_valid_indextype (key2_type));
 
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
