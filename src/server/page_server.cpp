@@ -218,6 +218,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 
     assert (!log_Gl.hdr.append_lsa.is_null ());
     assert (!catchup_lsa.is_null ());
+    assert (catchup_lsa >= log_Gl.hdr.append_lsa);
 
     if (log_Gl.hdr.append_lsa == catchup_lsa)
       {
@@ -227,7 +228,7 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 
     constexpr int MAX_PAGE_REQUEST_CNT_AT_ONCE = 10; // Arbitrarily chosen
     const LOG_PAGEID start_pageid = log_Gl.hdr.append_lsa.pageid;
-    const LOG_PAGEID end_pageid = catchup_lsa.pageid;
+    const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
     const size_t total_page_count = end_pageid - start_pageid + 1;
 
     _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up pages range from %lld to %lld, count = %lld.\n",
