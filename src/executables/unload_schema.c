@@ -145,7 +145,6 @@ static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, in
 static void emit_cycle_warning (print_output & output_ctx);
 static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
-static void emit_class_owner (print_output & output_ctx, MOP class_);
 static int export_serial (print_output & output_ctx);
 static int emit_indexes (print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 			 DB_OBJLIST * vclass_list_has_using_index);
@@ -582,40 +581,6 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
 	}
     }
   return (ordered);
-}
-
-
-/*
- * emit_class_owner - Emits a change_owner statement for a class that has been
- * created.
- *    return:  void
- *    fp(in/out):  FILE pointer
- *    class(in): class MOP
- */
-static void
-emit_class_owner (print_output & output_ctx, MOP class_)
-{
-  const char *classname;
-  MOP owner;
-  DB_VALUE value;
-
-  classname = db_get_class_name (class_);
-  if (classname != NULL)
-    {
-      owner = au_get_class_owner (class_);
-      if (owner != NULL)
-	{
-	  if (db_get (owner, "name", &value) == NO_ERROR)
-	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && db_get_string (&value) != NULL)
-		{
-		  output_ctx ("call [change_owner]('%s', '%s') on class [db_root];\n",
-			      sm_remove_qualifier_name (classname), db_get_string (&value));
-		}
-	      db_value_clear (&value);
-	    }
-	}
-    }
 }
 
 /*
@@ -1344,9 +1309,9 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	  continue;
 	}
 
-      /* Because class is created by the owner, it uses a name with the qualifier removed. */
-      output_ctx ("CREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS",
-		  PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
+      output_ctx ("CREATE %s %s%s%s.%s%s%s", is_vclass ? "VCLASS" : "CLASS", PRINT_IDENTIFIER (owner_name),
+		  PRINT_IDENTIFIER (class_name));
 
       if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
 	{
@@ -1401,34 +1366,6 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
       if (is_vclass <= 0 && storage_order == FOLLOW_STORAGE_ORDER)
 	{
 	  emit_class_meta (output_ctx, cl->op);
-	}
-
-      /*
-       * Before version 11.2, if an auto_increment column was added after changing the class owner,
-       * owner mismatch occurred.
-       * 
-       * e.g. create user u1;
-       *      create table t1;
-       *      call change_owner ('t1', 'u1') on class db_root;
-       *      alter table t1 add attribute c1 int auto_increment;
-       *      select c.clasS_name, c.owner.name, s.name, s.owner.name
-       *      from _db_class c, db_serial s
-       *      where c.class_name = s.class_name;
-       *
-       *        class_name            owner.name            name                  owner.name
-       *      ========================================================================================
-       *        't1'                  'U1'                  't1_ai_c1'            'DBA'
-       *
-       * After version 11.2, when adding an auto_increment column, there is no problem
-       * because it sets the owner in unique_name.
-       * 
-       * There is a problem if the DBA does not change the owner immediately when creating multiple classes
-       * with the same name. This is because a DBA cannot own multiple classes with the same name at the same time.
-       * Therefore, the owner must be changed immediately after class creation.
-       */
-      if (do_auth)
-	{
-	  emit_class_owner (output_ctx, cl->op);
 	}
 
       output_ctx ("\n");
