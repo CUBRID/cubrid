@@ -50,7 +50,8 @@ page_server::~page_server ()
   m_async_disconnect_handler.terminate ();
 }
 
-page_server::connection_handler::connection_handler (cubcomm::channel &&chn, transaction_server_type server_type,
+page_server::tran_server_connection_handler::tran_server_connection_handler (cubcomm::channel &&chn,
+    transaction_server_type server_type,
     page_server &ps)
   : m_server_type { server_type }
   , m_connection_id { chn.get_channel_id () }
@@ -68,60 +69,60 @@ page_server::connection_handler::connection_handler (cubcomm::channel &&chn, tra
     {
       // TODO: rename handler with _async / _sync
       tran_to_page_request::GET_BOOT_INFO,
-      std::bind (&page_server::connection_handler::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_LOG_PAGE_FETCH,
-      std::bind (&page_server::connection_handler::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_DATA_PAGE_FETCH,
-      std::bind (&page_server::connection_handler::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_DISCONNECT_MSG,
-      std::bind (&page_server::connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
     },
     // active only
     {
       tran_to_page_request::SEND_LOG_PRIOR_LIST,
-      std::bind (&page_server::connection_handler::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID,
-      std::bind (&page_server::connection_handler::handle_oldest_active_mvccid_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::handle_oldest_active_mvccid_request, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_START_CATCH_UP,
-      std::bind (&page_server::connection_handler::receive_start_catch_up, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_start_catch_up, std::ref (*this), std::placeholders::_1)
     },
     // passive only
     {
       tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH,
-      std::bind (&page_server::connection_handler::receive_log_boot_info_fetch, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_log_boot_info_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH,
-      std::bind (&page_server::connection_handler::receive_stop_log_prior_dispatch, std::ref (*this),
+      std::bind (&page_server::tran_server_connection_handler::receive_stop_log_prior_dispatch, std::ref (*this),
 		 std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_OLDEST_ACTIVE_MVCCID,
-      std::bind (&page_server::connection_handler::receive_oldest_active_mvccid, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_oldest_active_mvccid, std::ref (*this), std::placeholders::_1)
     }
   },
   page_to_tran_request::RESPOND,
   tran_to_page_request::RESPOND,
   RESPONSE_PARTITIONING_SIZE,
-  std::bind (&page_server::connection_handler::abnormal_tran_server_disconnect,
+  std::bind (&page_server::tran_server_connection_handler::abnormal_tran_server_disconnect,
 	     std::ref (*this), std::placeholders::_1, std::placeholders::_2), nullptr));
-  m_ps.get_responder ().register_connection (m_conn.get ());
+  m_ps.get_tran_server_responder ().register_connection (m_conn.get ());
 
   assert (m_conn != nullptr);
   m_conn->start ();
 }
 
-page_server::connection_handler::~connection_handler ()
+page_server::tran_server_connection_handler::~tran_server_connection_handler ()
 {
   assert (!m_prior_sender_sink_hook_func);
 
@@ -131,53 +132,55 @@ page_server::connection_handler::~connection_handler ()
 
   // blocking call
   // wait async responder to finish processing in-flight incoming roundtrip requests
-  m_ps.get_responder ().wait_connection_to_become_idle (m_conn.get ());
+  m_ps.get_tran_server_responder ().wait_connection_to_become_idle (m_conn.get ());
 
   m_conn->stop_outgoing_communication_thread ();
 }
 
 const std::string &
-page_server::connection_handler::get_connection_id () const
+page_server::tran_server_connection_handler::get_connection_id () const
 {
   return m_connection_id;
 }
 
 void
-page_server::connection_handler::push_request (page_to_tran_request id, std::string &&msg)
+page_server::tran_server_connection_handler::push_request (page_to_tran_request id, std::string &&msg)
 {
   m_conn->push (id, std::move (msg));
 }
 
 void
-page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::receive_log_prior_list (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   log_Gl.get_log_prior_receiver ().push_message (std::move (a_sp.pull_payload ()));
 }
 
 template<class F, class ... Args>
 void
-page_server::connection_handler::push_async_response (F &&a_func, tran_server_conn_t::sequenced_payload &&a_sp,
+page_server::tran_server_connection_handler::push_async_response (F &&a_func,
+    tran_server_conn_t::sequenced_payload &&a_sp,
     Args &&... args)
 {
   auto handler_func = std::bind (std::forward<F> (a_func), std::placeholders::_1, std::placeholders::_2,
 				 std::forward<Args> (args)...);
-  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
+  m_ps.get_tran_server_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
 }
 
 void
-page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   push_async_response (logpb_respond_fetch_log_page_request, std::move (a_sp));
 }
 
 void
-page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   push_async_response (pgbuf_respond_data_fetch_page_request, std::move (a_sp));
 }
 
 void
-page_server::connection_handler::handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload
+    &&a_sp)
 {
   assert (m_server_type == transaction_server_type::ACTIVE);
   const MVCCID oldest_mvccid = m_ps.m_pts_mvcc_tracker.get_global_oldest_active_mvccid ();
@@ -191,7 +194,7 @@ page_server::connection_handler::handle_oldest_active_mvccid_request (tran_serve
 
 
 void
-page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   auto payload = a_sp.pull_payload ();
   cubpacking::unpacker unpacker { payload.c_str (), payload.size ()};
@@ -279,16 +282,17 @@ page_server::connection_handler::receive_start_catch_up (tran_server_conn_t::seq
 }
 
 void
-page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   m_prior_sender_sink_hook_func =
-	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
+	  std::bind (&tran_server_connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
 
   push_async_response (log_pack_log_boot_info, std::move (a_sp), std::ref (m_prior_sender_sink_hook_func));
 }
 
 void
-page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload
+    &&a_sp)
 {
   // empty request message
 
@@ -302,7 +306,7 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 }
 
 void
-page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   assert (m_server_type == transaction_server_type::PASSIVE);
 
@@ -312,7 +316,7 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
 }
 
 void
-page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &&)
+page_server::tran_server_connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &&)
 {
   // if this instance acted as a prior sender sink - in other words, if this connection handler was for a
   // passive transaction server - it should have been disconnected beforehand
@@ -327,7 +331,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 }
 
 void
-page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code error_code,
+page_server::tran_server_connection_handler::abnormal_tran_server_disconnect (css_error_code error_code,
     bool &abort_further_processing)
 {
   /* Explanation for the mutex lock.
@@ -378,7 +382,7 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
  *        this message has no actual use currently. However, this mechanism will be reserved,
  *        because it can be used in the future when multiple PS's are supported. */
 void
-page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   /* It is simply a dummy value to check whether the TS (get_boot_info_from_page_server) receives the message well */
   DKNVOLS nvols_perm = VOLID_MAX;
@@ -392,7 +396,7 @@ page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::
 }
 
 void
-page_server::connection_handler::prior_sender_sink_hook (std::string &&message) const
+page_server::tran_server_connection_handler::prior_sender_sink_hook (std::string &&message) const
 {
   assert (m_conn != nullptr);
   assert (message.size () > 0);
@@ -413,7 +417,7 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
  * In all these scenarios, log prior dispatch sink must be disconnected explicitly.
  * */
 void
-page_server::connection_handler::remove_prior_sender_sink ()
+page_server::tran_server_connection_handler::remove_prior_sender_sink ()
 {
   std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
 
@@ -425,7 +429,7 @@ page_server::connection_handler::remove_prior_sender_sink ()
 }
 
 void
-page_server::connection_handler::push_disconnection_request ()
+page_server::tran_server_connection_handler::push_disconnection_request ()
 {
   push_request (page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG, std::string ());
 }
@@ -739,7 +743,8 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_active_tran_server ();
     }
 
-  m_active_tran_server_conn.reset (new connection_handler (std::move (chn), transaction_server_type::ACTIVE, *this));
+  m_active_tran_server_conn.reset (new tran_server_connection_handler (std::move (chn), transaction_server_type::ACTIVE,
+				   *this));
 }
 
 void
@@ -762,7 +767,8 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
     // handler's connection threads (inbound or outbound).
     std::lock_guard lk_guard { m_conn_mutex };
 
-    m_passive_tran_server_conn.emplace_back (new connection_handler (std::move (chn), transaction_server_type::PASSIVE,
+    m_passive_tran_server_conn.emplace_back (new tran_server_connection_handler (std::move (chn),
+	transaction_server_type::PASSIVE,
 	*this));
   }
 
@@ -847,7 +853,7 @@ page_server::disconnect_active_tran_server ()
 }
 
 void
-page_server::disconnect_tran_server_async (const connection_handler *conn)
+page_server::disconnect_tran_server_async (const tran_server_connection_handler *conn)
 {
   assert (conn != nullptr);
 
@@ -946,11 +952,11 @@ page_server::is_active_tran_server_connected () const
   return m_active_tran_server_conn != nullptr;
 }
 
-page_server::responder_t &
-page_server::get_responder ()
+page_server::tran_server_responder_t &
+page_server::get_tran_server_responder ()
 {
-  assert (m_responder);
-  return *m_responder;
+  assert (m_tran_server_responder);
+  return *m_tran_server_responder;
 }
 
 page_server::follower_responder_t &
@@ -1007,13 +1013,13 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 void
 page_server::init_request_responder ()
 {
-  m_responder = std::make_unique<responder_t> ();
+  m_tran_server_responder = std::make_unique<tran_server_responder_t> ();
   m_follower_responder = std::make_unique<follower_responder_t> ();
 }
 
 void
 page_server::finalize_request_responder ()
 {
-  m_responder.reset (nullptr);
+  m_tran_server_responder.reset (nullptr);
   m_follower_responder.reset (nullptr);
 }
