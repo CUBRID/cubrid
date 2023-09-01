@@ -118,6 +118,7 @@ public class SpLib {
         public VALUE_ERROR() {
             super(CODE_VALUE_ERROR, MSG_VALUE_ERROR);
         }
+
         public VALUE_ERROR(String subMsg) {
             super(CODE_VALUE_ERROR, MSG_VALUE_ERROR + ": " + subMsg);
         }
