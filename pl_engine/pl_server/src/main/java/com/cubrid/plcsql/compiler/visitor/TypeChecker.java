@@ -890,7 +890,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         c = Coercion.getCoercion(ty, TypeSpecSimple.INT);
         if (c == null) {
             throw new SemanticError(
-                    Misc.getLineColumnOf(node.lowerBound.ctx),  // s222
+                    Misc.getLineColumnOf(node.lowerBound.ctx), // s222
                     "lower bounds of FOR loops must have a type compatible with INT");
         } else {
             node.lowerBound.setCoercion(c);
@@ -900,7 +900,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         c = Coercion.getCoercion(ty, TypeSpecSimple.INT);
         if (c == null) {
             throw new SemanticError(
-                    Misc.getLineColumnOf(node.upperBound.ctx),  // s223
+                    Misc.getLineColumnOf(node.upperBound.ctx), // s223
                     "upper bounds of FOR loops must have a type compatible with INT");
         } else {
             node.upperBound.setCoercion(c);
@@ -911,7 +911,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             c = Coercion.getCoercion(ty, TypeSpecSimple.INT);
             if (c == null) {
                 throw new SemanticError(
-                        Misc.getLineColumnOf(node.step.ctx),    // s224
+                        Misc.getLineColumnOf(node.step.ctx), // s224
                         "steps of FOR loops must have a type compatible with INT");
             } else {
                 node.step.setCoercion(c);
