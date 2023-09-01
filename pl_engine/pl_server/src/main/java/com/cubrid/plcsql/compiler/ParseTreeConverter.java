@@ -1952,8 +1952,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Expr> ret = new NodeList<>();
 
-        for (ExpressionContext c : ctx.expression()) {
-            ret.addNode(visitExpression(c));
+        for (Restricted_using_elementContext c : ctx.restricted_using_element()) {
+            ret.addNode(visitExpression(c.expression()));
         }
 
         return ret;
