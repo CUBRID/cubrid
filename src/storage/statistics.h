@@ -125,7 +125,8 @@ extern char *stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** at
 extern int stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p,
 				   int with_fullscan);
 #endif /* !SERVER_MODE */
-STATIC_INLINE int stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
+  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * stats_adjust_sampling_weight () - adjust sampling weight
@@ -137,15 +138,15 @@ stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
 {
   /* This is based on the assumption that if the sample data is a lot of duplicated, */
   /* there will also be duplicate in the overall data. */
-  /* Differential weight is applied to NDV within 1% of all rows of sample data.*/
+  /* Differential weight is applied to NDV within 1% of all rows of sample data. */
   if (sampling_weight <= 1)
     {
       return sampling_weight;
     }
-  int min_NDV = NUMBER_OF_SAMPLING_PAGES * EXPECTED_ROWS_PER_PAGE / 100; /* 1% of number of sampling data */
+  int min_NDV = NUMBER_OF_SAMPLING_PAGES * EXPECTED_ROWS_PER_PAGE / 100;	/* 1% of number of sampling data */
   if (sampling_ndv < min_NDV)
     {
-      return MAX(sampling_weight * sampling_ndv / min_NDV, 1);
+      return MAX (sampling_weight * sampling_ndv / min_NDV, 1);
     }
   return sampling_weight;
 }
