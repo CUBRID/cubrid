@@ -680,6 +680,13 @@ cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
   col_info->data_type = cgw_odbc_type_to_cci_u_type (col_data_type, col_unsigned_type);
   col_info->charset = cgw_odbc_type_to_charset (col_data_type, col_unsigned_type);
 
+  // mariadb has an error in returning the precision value of unsigned bigint (18446744073709551615) as 19.
+  if (cgw_get_dbms_type () == CAS_CGW_DBMS_MARIADB && col_data_type == SQL_BIGINT && col_unsigned_type)
+    {
+      col_info->precision = 20;
+      col_info->scale = 0;
+    }
+
   return err_code;
 
 ODBC_ERROR:
