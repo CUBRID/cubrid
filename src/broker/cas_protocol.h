@@ -270,12 +270,16 @@ extern "C"
 
   enum t_dbms_type
   {
+    CAS_DBMS_NONE = 0,
     CAS_DBMS_CUBRID = 1,
     CAS_DBMS_MYSQL = 2,
     CAS_DBMS_ORACLE = 3,
     CAS_PROXY_DBMS_CUBRID = 4,
     CAS_PROXY_DBMS_MYSQL = 5,
-    CAS_PROXY_DBMS_ORACLE = 6
+    CAS_PROXY_DBMS_ORACLE = 6,
+    CAS_CGW_DBMS_ORACLE = 7,
+    CAS_CGW_DBMS_MYSQL = 8,
+    CAS_CGW_DBMS_MARIADB = 9
   };
   typedef enum t_dbms_type T_DBMS_TYPE;
 #define IS_CONNECTED_TO_PROXY(type) \
