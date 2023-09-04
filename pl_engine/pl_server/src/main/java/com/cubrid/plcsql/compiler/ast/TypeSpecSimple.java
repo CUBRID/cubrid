@@ -87,20 +87,15 @@ public class TypeSpecSimple extends TypeSpec {
             new TypeSpecSimple("String", "java.lang.String", IDX_STRING);
     public static TypeSpecSimple NUMERIC =
             new TypeSpecSimple("Numeric", "java.math.BigDecimal", IDX_NUMERIC);
-    public static TypeSpecSimple SHORT =
-            new TypeSpecSimple("Short", "java.lang.Short", IDX_SHORT);
-    public static TypeSpecSimple INT =
-            new TypeSpecSimple("Int", "java.lang.Integer", IDX_INT);
+    public static TypeSpecSimple SHORT = new TypeSpecSimple("Short", "java.lang.Short", IDX_SHORT);
+    public static TypeSpecSimple INT = new TypeSpecSimple("Int", "java.lang.Integer", IDX_INT);
     public static TypeSpecSimple BIGINT =
             new TypeSpecSimple("Bigint", "java.lang.Long", IDX_BIGINT);
-    public static TypeSpecSimple FLOAT =
-            new TypeSpecSimple("Float", "java.lang.Float", IDX_FLOAT);
+    public static TypeSpecSimple FLOAT = new TypeSpecSimple("Float", "java.lang.Float", IDX_FLOAT);
     public static TypeSpecSimple DOUBLE =
             new TypeSpecSimple("Double", "java.lang.Double", IDX_DOUBLE);
-    public static TypeSpecSimple DATE =
-            new TypeSpecSimple("Date", "java.sql.Date", IDX_DATE);
-    public static TypeSpecSimple TIME =
-            new TypeSpecSimple("Time", "java.sql.Time", IDX_TIME);
+    public static TypeSpecSimple DATE = new TypeSpecSimple("Date", "java.sql.Date", IDX_DATE);
+    public static TypeSpecSimple TIME = new TypeSpecSimple("Time", "java.sql.Time", IDX_TIME);
     public static TypeSpecSimple TIMESTAMP =
             new TypeSpecSimple("Timestamp", "java.sql.Timestamp", IDX_TIMESTAMP);
     public static TypeSpecSimple DATETIME =

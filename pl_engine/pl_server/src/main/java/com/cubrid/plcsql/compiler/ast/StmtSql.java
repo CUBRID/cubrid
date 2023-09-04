@@ -161,7 +161,10 @@ public abstract class StmtSql extends Stmt {
             if (dynamic) {
                 resultStr = String.format("r%%'LEVEL'%%.getObject(%d)", i + 1);
             } else {
-                resultStr = String.format("(%s) r%%'LEVEL'%%.getObject(%d)", columnTypeList.get(i).toJavaCode(), i + 1);
+                resultStr =
+                        String.format(
+                                "(%s) r%%'LEVEL'%%.getObject(%d)",
+                                columnTypeList.get(i).toJavaCode(), i + 1);
             }
 
             if (i > 0) {
@@ -171,7 +174,10 @@ public abstract class StmtSql extends Stmt {
             Coercion c = coercions.get(i);
             boolean checkNotNull = (id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull;
             if (checkNotNull) {
-                sbuf.append(String.format("%s = checkNotNull(%s);", id.toJavaCode(), c.toJavaCode(resultStr)));
+                sbuf.append(
+                        String.format(
+                                "%s = checkNotNull(%s);",
+                                id.toJavaCode(), c.toJavaCode(resultStr)));
             } else {
                 sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
             }

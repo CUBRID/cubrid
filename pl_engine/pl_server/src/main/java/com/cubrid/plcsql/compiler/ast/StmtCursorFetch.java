@@ -102,7 +102,9 @@ public class StmtCursorFetch extends Stmt {
             if (columnTypeList == null) {
                 resultStr = String.format("rs.getObject(%d)", i + 1);
             } else {
-                resultStr = String.format("(%s) rs.getObject(%d)", columnTypeList.get(i).toJavaCode(), i + 1);
+                resultStr =
+                        String.format(
+                                "(%s) rs.getObject(%d)", columnTypeList.get(i).toJavaCode(), i + 1);
             }
 
             if (i > 0) {

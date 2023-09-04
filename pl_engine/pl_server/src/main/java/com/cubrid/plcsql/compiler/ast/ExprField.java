@@ -66,7 +66,8 @@ public class ExprField extends Expr {
             // record is for a Static SQL
             //
             assert type != null;
-            return String.format("(%s) %s.getObject(%d)", type.toJavaCode(), record.toJavaCode(), colIndex);
+            return String.format(
+                    "(%s) %s.getObject(%d)", type.toJavaCode(), record.toJavaCode(), colIndex);
         } else {
 
             // record is for a Dynamic SQL

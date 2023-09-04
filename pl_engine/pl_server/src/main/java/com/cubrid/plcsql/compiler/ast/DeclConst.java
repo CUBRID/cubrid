@@ -69,9 +69,12 @@ public class DeclConst extends DeclIdTyped {
     @Override
     public String toJavaCode() {
         if (notNull) {
-            return String.format("final %s %s = checkNotNull(%s);", typeSpec.toJavaCode(), name, val.toJavaCode());
+            return String.format(
+                    "final %s %s = checkNotNull(%s);",
+                    typeSpec.toJavaCode(), name, val.toJavaCode());
         } else {
-            return String.format("final %s %s = %s;", typeSpec.toJavaCode(), name, val.toJavaCode());
+            return String.format(
+                    "final %s %s = %s;", typeSpec.toJavaCode(), name, val.toJavaCode());
         }
     }
 }

@@ -55,7 +55,7 @@ public class SpLib {
 
     public static <T> T checkNotNull(T val) {
         if (val == null) {
-            throw new VALUE_ERROR("NOT NULL constraint violation");    
+            throw new VALUE_ERROR("NOT NULL constraint violation");
         }
 
         return val;

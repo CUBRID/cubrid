@@ -640,7 +640,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec valType = visit(node.val);
         TypeSpec varType = ((DeclIdTyped) node.var.decl).typeSpec();
 
-        boolean checkNotNull = (node.var.decl instanceof DeclVar) && ((DeclVar) node.var.decl).notNull;
+        boolean checkNotNull =
+                (node.var.decl instanceof DeclVar) && ((DeclVar) node.var.decl).notNull;
         if (checkNotNull && valType.equals(TypeSpecSimple.NULL)) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.val.ctx), // s231

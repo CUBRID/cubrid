@@ -71,7 +71,8 @@ public class DeclVar extends DeclIdTyped {
             return String.format("%s[] %s = new %s[] { null };", ty, name, ty);
         } else {
             if (notNull) {
-                return String.format("%s[] %s = new %s[] { checkNotNull(%s) };", ty, name, ty, val.toJavaCode());
+                return String.format(
+                        "%s[] %s = new %s[] { checkNotNull(%s) };", ty, name, ty, val.toJavaCode());
             } else {
                 return String.format("%s[] %s = new %s[] { %s };", ty, name, ty, val.toJavaCode());
             }
