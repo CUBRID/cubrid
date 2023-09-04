@@ -433,7 +433,7 @@ case_statement_else_part
     ;
 
 restricted_using_clause
-    : USING expression (',' expression)*
+    : USING restricted_using_element (',' restricted_using_element)*
     ;
 
 using_clause
@@ -442,6 +442,10 @@ using_clause
 
 using_element
     : (IN OUT? | OUT | INOUT)? expression
+    ;
+
+restricted_using_element
+    : (IN)? expression
     ;
 
 routine_name
