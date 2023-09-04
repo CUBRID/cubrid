@@ -73,43 +73,42 @@ public class TypeSpecSimple extends TypeSpec {
     }
 
     // the following two are not actual Java types but only for internal type checking
-    public static TypeSpecSimple NULL = new TypeSpecSimple("Null", "Null", null, IDX_NULL);
-    public static TypeSpecSimple CURSOR = new TypeSpecSimple("Cursor", "Cursor", null, IDX_CURSOR);
+    public static TypeSpecSimple NULL = new TypeSpecSimple("Null", "Null", IDX_NULL);
+    public static TypeSpecSimple CURSOR = new TypeSpecSimple("Cursor", "Cursor", IDX_CURSOR);
 
     // (1) used as an argument type of some operators in SpLib
     // (2) used as an expression type when a specific Java type cannot be given
     public static TypeSpecSimple OBJECT =
-            new TypeSpecSimple("Object", "java.lang.Object", "getObject", IDX_OBJECT);
+            new TypeSpecSimple("Object", "java.lang.Object", IDX_OBJECT);
 
     public static TypeSpecSimple BOOLEAN =
-            new TypeSpecSimple("Boolean", "java.lang.Boolean", "getBoolean", IDX_BOOLEAN);
+            new TypeSpecSimple("Boolean", "java.lang.Boolean", IDX_BOOLEAN);
     public static TypeSpecSimple STRING =
-            new TypeSpecSimple("String", "java.lang.String", "getString", IDX_STRING);
+            new TypeSpecSimple("String", "java.lang.String", IDX_STRING);
     public static TypeSpecSimple NUMERIC =
-            new TypeSpecSimple("Numeric", "java.math.BigDecimal", "getBigDecimal", IDX_NUMERIC);
+            new TypeSpecSimple("Numeric", "java.math.BigDecimal", IDX_NUMERIC);
     public static TypeSpecSimple SHORT =
-            new TypeSpecSimple("Short", "java.lang.Short", "getShort", IDX_SHORT);
+            new TypeSpecSimple("Short", "java.lang.Short", IDX_SHORT);
     public static TypeSpecSimple INT =
-            new TypeSpecSimple("Int", "java.lang.Integer", "getInt", IDX_INT);
+            new TypeSpecSimple("Int", "java.lang.Integer", IDX_INT);
     public static TypeSpecSimple BIGINT =
-            new TypeSpecSimple("Bigint", "java.lang.Long", "getLong", IDX_BIGINT);
+            new TypeSpecSimple("Bigint", "java.lang.Long", IDX_BIGINT);
     public static TypeSpecSimple FLOAT =
-            new TypeSpecSimple("Float", "java.lang.Float", "getFloat", IDX_FLOAT);
+            new TypeSpecSimple("Float", "java.lang.Float", IDX_FLOAT);
     public static TypeSpecSimple DOUBLE =
-            new TypeSpecSimple("Double", "java.lang.Double", "getDouble", IDX_DOUBLE);
+            new TypeSpecSimple("Double", "java.lang.Double", IDX_DOUBLE);
     public static TypeSpecSimple DATE =
-            new TypeSpecSimple("Date", "java.sql.Date", "getDate", IDX_DATE);
+            new TypeSpecSimple("Date", "java.sql.Date", IDX_DATE);
     public static TypeSpecSimple TIME =
-            new TypeSpecSimple("Time", "java.sql.Time", "getTime", IDX_TIME);
+            new TypeSpecSimple("Time", "java.sql.Time", IDX_TIME);
     public static TypeSpecSimple TIMESTAMP =
-            new TypeSpecSimple("Timestamp", "java.sql.Timestamp", "getTimestamp", IDX_TIMESTAMP);
+            new TypeSpecSimple("Timestamp", "java.sql.Timestamp", IDX_TIMESTAMP);
     public static TypeSpecSimple DATETIME =
-            new TypeSpecSimple("Datetime", "java.sql.Timestamp", "getTimestamp", IDX_DATETIME);
+            new TypeSpecSimple("Datetime", "java.sql.Timestamp", IDX_DATETIME);
     public static TypeSpecSimple SYS_REFCURSOR =
             new TypeSpecSimple(
                     "Sys_refcursor",
                     "com.cubrid.plcsql.predefined.sp.SpLib.Query",
-                    null,
                     IDX_SYS_REFCURSOR);
 
     /* TODO: restore later
@@ -142,9 +141,8 @@ public class TypeSpecSimple extends TypeSpec {
     // Private
     // ------------------------------------------------------------------
 
-    private TypeSpecSimple(
-            String pcsName, String fullJavaType, String nameOfGetMethod, int simpleTypeIdx) {
-        super(pcsName, getJavaCode(fullJavaType), nameOfGetMethod, simpleTypeIdx);
+    private TypeSpecSimple(String pcsName, String fullJavaType, int simpleTypeIdx) {
+        super(pcsName, getJavaCode(fullJavaType), simpleTypeIdx);
         this.fullJavaType = fullJavaType;
     }
 
