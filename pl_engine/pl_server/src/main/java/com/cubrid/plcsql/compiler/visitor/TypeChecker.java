@@ -809,10 +809,16 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                     "SQL in the EXECUTE IMMEDIATE statement must be of STRING type");
         }
 
-        // check types of expressions in USING clause
+        // check types of expressions in the USING clause
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
-                visit(e); // s420
+                TypeSpec tyUsedExpr = visit(e); // s420
+                if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(e.ctx), // s428
+                            "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
+                }
             }
         }
 
@@ -933,6 +939,19 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.sql.ctx), // s225
                     "SQL in EXECUTE IMMEDIATE statements must be of STRING type");
+        }
+
+        // check types of expressions in the USING clause
+        if (node.usedExprList != null) {
+            for (Expr e : node.usedExprList) {
+                TypeSpec tyUsedExpr = visit(e); // s429
+                if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(e.ctx), // s430
+                            "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
+                }
+            }
         }
 
         visitNodeList(node.stmts);
