@@ -120,6 +120,8 @@ public class Unit extends AstNode {
                         ? "// no parameters"
                         : routine.paramList.toJavaCode(",\n");
 
+        String strNullifyOutParam = DeclRoutine.getNullifyOutParamStr(routine.paramList);
+
         return tmplUnit.replace("%'IMPORTS'%", importsStr)
                 .replace("%'CLASS-NAME'%", getClassName())
                 .replace(
@@ -127,6 +129,7 @@ public class Unit extends AstNode {
                         routine.retType == null ? "void" : routine.retType.toJavaCode())
                 .replace("%'METHOD-NAME'%", routine.name)
                 .replace("      %'PARAMETERS'%", Misc.indentLines(strParams, 3))
+                .replace("    %'NULLIFY-OUT-PARAMETERS'%", Misc.indentLines(strNullifyOutParam, 2))
                 .replace("      %'GET-CONNECTION'%", Misc.indentLines(strGetConn, 3))
                 .replace("      %'DECL-CLASS'%", Misc.indentLines(strDecls, 3))
                 .replace("      %'BODY'%", Misc.indentLines(routine.body.toJavaCode(), 3));
@@ -156,6 +159,8 @@ public class Unit extends AstNode {
                     "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
                     "      %'PARAMETERS'%",
                     "    ) throws Exception {",
+                    "",
+                    "    %'NULLIFY-OUT-PARAMETERS'%",
                     "",
                     "    try {",
                     "      Long[] sql_rowcount = new Long[] { -1L };",
