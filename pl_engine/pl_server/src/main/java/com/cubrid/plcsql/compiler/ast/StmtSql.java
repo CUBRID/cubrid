@@ -157,16 +157,24 @@ public abstract class StmtSql extends Stmt {
             assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
                     : "only variables or out-parameters can be used in into-clauses";
 
-            String nameOfGetMethod =
-                    dynamic ? "getObject" : columnTypeList.get(i).getNameOfGetMethod();
-            String resultStr = String.format("r%%'LEVEL'%%.%s(%d)", nameOfGetMethod, i + 1);
+            String resultStr;
+            if (dynamic) {
+                resultStr = String.format("r%%'LEVEL'%%.getObject(%d)", i + 1);
+            } else {
+                resultStr = String.format("(%s) r%%'LEVEL'%%.getObject(%d)", columnTypeList.get(i).toJavaCode(), i + 1);
+            }
 
             if (i > 0) {
                 sbuf.append("\n");
             }
 
             Coercion c = coercions.get(i);
-            sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
+            boolean checkNotNull = (id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull;
+            if (checkNotNull) {
+                sbuf.append(String.format("%s = checkNotNull(%s);", id.toJavaCode(), c.toJavaCode(resultStr)));
+            } else {
+                sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
+            }
 
             i++;
         }
