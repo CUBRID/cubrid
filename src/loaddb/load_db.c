@@ -1405,6 +1405,8 @@ ldr_check_file_list (std::string & file_name, int &num_files, int &error_code)
   T_SCHEMA_FILE_LIST_INFO **new_schema_info = NULL;
   char buffer[PATH_MAX] = { 0, };
   std::string read_file_name = "";
+  std::string schema_info_fullpath = "";
+  size_t last_slash = 0;
 
   error_code = NO_ERROR;
 
@@ -1420,6 +1422,7 @@ ldr_check_file_list (std::string & file_name, int &num_files, int &error_code)
 
   while (fgets ((char *) buffer, LINE_MAX, schema_fp) != NULL)
     {
+      schema_info_fullpath = file_name;
       trim (buffer);
 
       if (buffer[0] == '\0')
@@ -1463,7 +1466,18 @@ ldr_check_file_list (std::string & file_name, int &num_files, int &error_code)
       num_files++;
 
       strcpy (schema_object_file->schema_file_name, buffer);
-      read_file_name = buffer;
+
+      last_slash = schema_info_fullpath.find_last_of (PATH_SEPARATOR);
+      if (last_slash != std::string::npos)
+	{
+	  schema_info_fullpath = schema_info_fullpath.substr (0, last_slash + 1);
+	  read_file_name = schema_info_fullpath + buffer;
+	}
+      else
+	{
+	  read_file_name = buffer;
+	}
+
       schema_object_file->schema_fp = ldr_check_file (read_file_name, error_code);
       if (error_code != NO_ERROR && schema_object_file->schema_fp == NULL)
 	{
