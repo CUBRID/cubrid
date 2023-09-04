@@ -293,7 +293,7 @@ class page_server
 
 	  LOG_PAGEID request_start_pageid = start_pageid;
 	  size_t remaining_page_cnt = total_page_count;
-	  auto request_page_fun = [this, &log_pgptr_recv_vec, &request_start_pageid, &remaining_page_cnt, page_cnt_in_buffer] ()
+	  auto request_pages_fun = [this, &log_pgptr_recv_vec, &request_start_pageid, &remaining_page_cnt, page_cnt_in_buffer] ()
 	  {
 	    const int request_page_cnt = (int) std::min ((size_t) page_cnt_in_buffer, remaining_page_cnt);
 	    const int error_code = m_conn_handler.request_log_pages (request_start_pageid, request_page_cnt, log_pgptr_recv_vec);
@@ -313,13 +313,13 @@ class page_server
 	    request_start_pageid += request_page_cnt;
 	  };
 
-	  auto req_future = std::async (std::launch::async, request_page_fun);
+	  auto req_future = std::async (std::launch::async, request_pages_fun);
 	  while (m_terminated == false && remaining_page_cnt > 0)
 	    {
 	      req_future.get (); // waits until the previous requests are replied
 	      log_pgptr_vec.swap (log_pgptr_recv_vec);
-	      req_future = std::async (std::launch::async, request_page_fun);
-	      // TODO append pages in log_pgptr_vec to the log buffer
+	      req_future = std::async (std::launch::async, request_pages_fun);
+	      // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
 	    }
 
 	  req_future.get (); // waits until the previous requests are replied
