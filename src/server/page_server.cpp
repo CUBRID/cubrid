@@ -197,7 +197,7 @@ void
 page_server::tran_server_connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   auto payload = a_sp.pull_payload ();
-  cubpacking::unpacker unpacker { payload.c_str (), payload.size ()};
+  cubpacking::unpacker unpacker { payload.c_str (), payload.size () };
 
   std::string host;
   int32_t port;
@@ -212,31 +212,34 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
 		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
   if (port == -1)
     {
-      return; // TODO: It means that the ATS is booting up, it will be set properly after ATS recovery is implemented.
+      // TODO: It means that the ATS is booting up.
+      // it will be set properly after ATS recovery is implemented.
+      return;
     }
 
-  {
-    m_ps.connect_to_followee_page_server (std::move (host), port);
+  // Establish a connection with the PS to catch up with, and start catchup_worker with it.
+  // The connection will be destoryed at the end of the catch-up
+  m_ps.connect_to_followee_page_server (std::move (host), port);
 
-    assert (!catchup_lsa.is_null ());
-    assert (!log_Gl.hdr.append_lsa.is_null ());
-    assert (catchup_lsa >= log_Gl.hdr.append_lsa);
+  assert (!catchup_lsa.is_null ());
+  assert (!log_Gl.hdr.append_lsa.is_null ());
+  assert (catchup_lsa >= log_Gl.hdr.append_lsa);
 
-    if (log_Gl.hdr.append_lsa == catchup_lsa)
-      {
-	_er_log_debug (ARG_FILE_LINE, "[CATCH-UP] There is nothing to catch up.\n");
-	return; // TODO the cold-start case. No need to catch up. Just send a catchup_done msg to the ATS
-      }
-
-    assert (m_ps.m_catchup_worker == nullptr);
-    m_ps.m_catchup_worker.reset (new catchup_worker {*m_ps.m_followee_conn.get (), catchup_lsa });
-    m_ps.m_catchup_worker->set_on_catchup_done_func ([]()
+  if (log_Gl.hdr.append_lsa == catchup_lsa)
     {
-      _er_log_debug (ARG_FILE_LINE, "catchup-done msg");
-    });
-    m_ps.m_catchup_worker->start ();
+      _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] There is nothing to catch up.\n");
+      return; // TODO the cold-start case. No need to catch up. Just send a catchup_done msg to the ATS
+    }
 
-  }
+  assert (m_ps.m_catchup_worker == nullptr);
+  m_ps.m_catchup_worker.reset (new catchup_worker {*m_ps.m_followee_conn.get (), catchup_lsa });
+  m_ps.m_catchup_worker->set_on_catchup_done_func ([this]()
+  {
+    m_ps.m_followee_conn.reset (nullptr);
+    // TODO Send a catchup_done msg to the ATS;
+  });
+
+  m_ps.m_catchup_worker->start ();
 }
 
 void
