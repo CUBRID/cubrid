@@ -69,7 +69,9 @@
 
 #define ISCAN_OVERHEAD_FACTOR   1.1
 #define TEMP_SETUP_COST 5.0
-#define MJ_CPU_WEIGHT   0.025
+#define QO_CPU_WEIGHT   0.0025
+#define MJ_CPU_OVERHEAD_FACTOR   20
+#define ISCAN_IO_HIT_RATIO   0.5
 
 #define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
@@ -2954,7 +2956,7 @@ qo_nljoin_cost (QO_PLAN * planp)
   inner_cpu_cost = guessed_result_cardinality * inner->variable_cpu_cost;
 
   /* inner side IO cost of nested-loop block join */
-  inner_io_cost = guessed_result_cardinality * inner->variable_io_cost;	/* assume IO as # blocks */
+  inner_io_cost = guessed_result_cardinality * inner->variable_io_cost * ISCAN_IO_HIT_RATIO;	/* assume IO as # blocks */
 
   /* outer side CPU cost of nested-loop block join */
   outer_cpu_cost = outer->variable_cpu_cost;
@@ -3059,7 +3061,7 @@ qo_mjoin_cost (QO_PLAN * planp)
   planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
   /* CPU and IO costs which are variable according to the join plan */
   planp->variable_cpu_cost = outer->variable_cpu_cost + inner->variable_cpu_cost;
-  planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * (double) MJ_CPU_WEIGHT;
+  planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * QO_CPU_WEIGHT * MJ_CPU_OVERHEAD_FACTOR;
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
 }
