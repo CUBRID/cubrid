@@ -143,7 +143,7 @@ public abstract class DeclRoutine extends Decl {
         StringBuilder sb = new StringBuilder();
 
         boolean first = true;
-        for (DeclParam dp: paramList.nodes) {
+        for (DeclParam dp : paramList.nodes) {
             if (dp instanceof DeclParamOut && !((DeclParamOut) dp).alsoIn) {
 
                 if (first) {
