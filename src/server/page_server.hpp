@@ -234,6 +234,106 @@ class page_server
 	std::unique_ptr<followee_server_conn_t> m_conn;
     };
 
+    class catchup_worker
+    {
+      public:
+	catchup_worker (followee_connection_handler &conn_handler, const LOG_LSA catchup_lsa)
+	  : m_conn_handler { conn_handler }
+	  , m_on_catchup_done_func { nullptr }
+	  , m_entry_manager { TT_SYSTEM_WORKER }
+	  , m_terminated { false }
+	  , m_catchup_lsa { catchup_lsa }
+	{ }
+
+	void start ()
+	{
+	  m_thread = std::thread (&catchup_worker::execute, std::ref (*this));
+	}
+
+	void terminate ()
+	{
+	  m_terminated = true;
+	  m_thread.join ();
+	}
+
+	void set_on_catchup_done_func (std::function<void (void)> &&func)
+	{
+	  m_on_catchup_done_func = std::move (func);
+	}
+
+      private:
+	void execute ()
+	{
+	  auto &entry = m_entry_manager.create_context ();
+
+	  constexpr int MAX_PAGE_REQUEST_CNT_AT_ONCE = 10; // Arbitrarily chosen
+	  const LOG_PAGEID start_pageid = log_Gl.hdr.append_lsa.pageid;
+	  const LOG_PAGEID end_pageid = m_catchup_lsa.offset == 0 ? m_catchup_lsa.pageid - 1 : m_catchup_lsa.pageid;
+	  const size_t total_page_count = end_pageid - start_pageid + 1;
+
+	  // Initlize variables for buffers
+	  const int page_cnt_in_buffer = (int) std::min (total_page_count, (size_t) MAX_PAGE_REQUEST_CNT_AT_ONCE);
+	  const size_t buffer_size_in_total = page_cnt_in_buffer * LOG_PAGESIZE + MAX_ALIGNMENT;
+	  auto log_pgbuf_buffer = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+	  char *const aligned_log_pgbuf = PTR_ALIGN (log_pgbuf_buffer.get (), MAX_ALIGNMENT);
+	  char *log_pgptr = aligned_log_pgbuf;
+
+	  std::vector<LOG_PAGE *> log_pgptr_vec;
+	  for (int i = 0; i < page_cnt_in_buffer; i++)
+	    {
+	      log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf + i * LOG_PAGESIZE));
+	    }
+
+	  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
+			 start_pageid, end_pageid, total_page_count);
+
+	  LOG_PAGEID request_start_pageid = start_pageid;
+	  size_t remaining_page_cnt = total_page_count;
+	  while (m_terminated == false && remaining_page_cnt > 0)
+	    {
+	      const int request_page_cnt = (int) std::min ((size_t) page_cnt_in_buffer, remaining_page_cnt);
+	      // TODO request next log pages asynchronously with std::async
+	      const int error_code = m_conn_handler.request_log_pages (request_start_pageid, request_page_cnt, log_pgptr_vec);
+	      if (error_code != NO_ERROR)
+		{
+		  /* There are two kinds of erorrs either from client-side or server-side.
+		   * client-side error: it fails to send or receive.
+		   * server-side error: the follwee fails to fetch log pages. For example, due to
+		   *  - the followee PS amy truncate some log pages requested.
+		   *  - some requested pages are corrupted
+		   *  - or something
+		   * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
+		   */
+		  assert_release (false);
+		}
+
+	      remaining_page_cnt -= request_page_cnt;
+	      request_start_pageid += request_page_cnt;
+
+	      // TODO append received log pages to the log buffer
+	    }
+
+	  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
+			 start_pageid, end_pageid, total_page_count);
+
+	  if (m_on_catchup_done_func != nullptr)
+	    {
+	      m_on_catchup_done_func ();
+	    }
+
+	  m_entry_manager.retire_context (entry);
+	}
+
+	followee_connection_handler &m_conn_handler;
+	std::function<void (void)> m_on_catchup_done_func;
+
+	cubthread::system_worker_entry_manager m_entry_manager;
+	std::thread m_thread;
+	std::atomic<bool> m_terminated;
+
+	const LOG_LSA m_catchup_lsa;
+    };
+
     /*
      * helper class to track the active oldest mvccids of each Page Transaction Server.
      * This provides the globally oldest active mvcc id to the vacuum on ATS.
@@ -296,6 +396,8 @@ class page_server
 
     followee_connection_handler_uptr_t m_followee_conn;
     std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
+
+    std::unique_ptr<catchup_worker> m_catchup_worker;
 };
 
 #endif // !_PAGE_SERVER_HPP_
