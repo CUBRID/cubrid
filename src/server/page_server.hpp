@@ -28,6 +28,7 @@
 #include "async_disconnect_handler.hpp"
 
 #include <memory>
+#include <future>
 
 /* Sequence diagram of server-server communication:
  *
@@ -275,13 +276,16 @@ class page_server
 	  const int page_cnt_in_buffer = (int) std::min (total_page_count, (size_t) MAX_PAGE_REQUEST_CNT_AT_ONCE);
 	  const size_t buffer_size_in_total = page_cnt_in_buffer * LOG_PAGESIZE + MAX_ALIGNMENT;
 	  auto log_pgbuf_buffer = std::unique_ptr<char []> { new char[buffer_size_in_total] };
-	  char *const aligned_log_pgbuf = PTR_ALIGN (log_pgbuf_buffer.get (), MAX_ALIGNMENT);
-	  char *log_pgptr = aligned_log_pgbuf;
+	  auto log_pgbuf_back_buffer = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+	  char *const aligned_log_pgbuf_buffer = PTR_ALIGN (log_pgbuf_buffer.get (), MAX_ALIGNMENT);
+	  char *const aligned_log_pgbuf_recv_buffer = PTR_ALIGN (log_pgbuf_buffer.get (), MAX_ALIGNMENT);
 
 	  std::vector<LOG_PAGE *> log_pgptr_vec;
+	  std::vector<LOG_PAGE *> log_pgptr_recv_vec;
 	  for (int i = 0; i < page_cnt_in_buffer; i++)
 	    {
-	      log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf + i * LOG_PAGESIZE));
+	      log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer + i * LOG_PAGESIZE));
+	      log_pgptr_recv_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_recv_buffer + i * LOG_PAGESIZE));
 	    }
 
 	  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
@@ -289,29 +293,36 @@ class page_server
 
 	  LOG_PAGEID request_start_pageid = start_pageid;
 	  size_t remaining_page_cnt = total_page_count;
+	  auto request_page_fun = [this, &log_pgptr_recv_vec, &request_start_pageid, &remaining_page_cnt, page_cnt_in_buffer] ()
+	  {
+	    const int request_page_cnt = (int) std::min ((size_t) page_cnt_in_buffer, remaining_page_cnt);
+	    const int error_code = m_conn_handler.request_log_pages (request_start_pageid, request_page_cnt, log_pgptr_recv_vec);
+	    if (error_code != NO_ERROR)
+	      {
+		/* There are two kinds of erorrs either from client-side or server-side.
+		 * client-side error: it fails to send or receive.
+		 * server-side error: the follwee fails to fetch log pages. For example, due to
+		 *  - the followee PS amy truncate some log pages requested.
+		 *  - some requested pages are corrupted
+		 *  - or something
+		 * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
+		 */
+		assert_release (false);
+	      }
+	    remaining_page_cnt -= request_page_cnt;
+	    request_start_pageid += request_page_cnt;
+	  };
+
+	  auto req_future = std::async (std::launch::async, request_page_fun);
 	  while (m_terminated == false && remaining_page_cnt > 0)
 	    {
-	      const int request_page_cnt = (int) std::min ((size_t) page_cnt_in_buffer, remaining_page_cnt);
-	      // TODO request next log pages asynchronously with std::async
-	      const int error_code = m_conn_handler.request_log_pages (request_start_pageid, request_page_cnt, log_pgptr_vec);
-	      if (error_code != NO_ERROR)
-		{
-		  /* There are two kinds of erorrs either from client-side or server-side.
-		   * client-side error: it fails to send or receive.
-		   * server-side error: the follwee fails to fetch log pages. For example, due to
-		   *  - the followee PS amy truncate some log pages requested.
-		   *  - some requested pages are corrupted
-		   *  - or something
-		   * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
-		   */
-		  assert_release (false);
-		}
-
-	      remaining_page_cnt -= request_page_cnt;
-	      request_start_pageid += request_page_cnt;
-
-	      // TODO append received log pages to the log buffer
+	      req_future.get (); // waits until the previous requests are replied
+	      log_pgptr_vec.swap (log_pgptr_recv_vec);
+	      req_future = std::async (std::launch::async, request_page_fun);
+	      // TODO append pages in log_pgptr_vec to the log buffer
 	    }
+
+	  req_future.get (); // waits until the previous requests are replied
 
 	  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 			 start_pageid, end_pageid, total_page_count);

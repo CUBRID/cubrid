@@ -207,7 +207,8 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   unpacker.unpack_int (port);
   cublog::lsa_utils::unpack (unpacker, catchup_lsa);
 
-  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] Start catching up with the follower (%s:%d), until LSA = (%lld|%d)\n",
+  _er_log_debug (ARG_FILE_LINE,
+		 "[CATCH-UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
 		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
   if (port == -1)
     {
