@@ -50,6 +50,7 @@
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "query_hash_scan.h"
+#include "statistics.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -72,8 +73,6 @@ static int rv;
   while (0)
 
 #define GET_NTH_OID(oid_setp, n) ((OID *)((OID *)(oid_setp) + (n)))
-
-#define NUMBER_OF_SAMPLING_PAGES 1000
 
 /* ISS_RANGE_DETAILS stores information about the two ranges we use
  * interchangeably in Index Skip Scan mode: along with the real range, we

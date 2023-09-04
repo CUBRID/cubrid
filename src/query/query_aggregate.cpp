@@ -38,6 +38,7 @@
 #include "string_opfunc.h"
 #include "xasl.h"                           // QPROC_IS_INTERPOLATION_FUNC
 #include "xasl_aggregate.hpp"
+#include "statistics.h"
 
 #include <cmath>
 
@@ -1197,6 +1198,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   OR_BUF buf;
   double dbl;
   int sampling_weight = 1;
+  int adjust_sam_weight = 1;
 
   db_make_null (&sqr_val);
   db_make_null (&dbval);
@@ -1318,7 +1320,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	      if (agg_p->function == PT_COUNT)
 		{
-		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt * sampling_weight);
+		  adjust_sam_weight = stats_adjust_sampling_weight (list_id_p->tuple_cnt, sampling_weight);
+		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt * adjust_sam_weight);
 		}
 	      else
 		{
