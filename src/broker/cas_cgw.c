@@ -71,18 +71,18 @@ typedef struct t_supported_dbms T_SUPPORTED_DBMS;
 struct t_supported_dbms
 {
   char *dbms_name;
-  SUPPORTED_DBMS_TYPE dbms_type;
+  T_DBMS_TYPE dbms_type;
 };
 
 static INTL_CODESET client_charset = INTL_CODESET_UTF8;
 static char conv_out_string[CONV_STRING_BUF_SIZE + 1];
 static T_SUPPORTED_DBMS supported_dbms_list[] =
-  { {"oracle", SUPPORTED_DBMS_ORACLE}, {"mysql", SUPPORTED_DBMS_MYSQL}, {"mariadb", SUPPORTED_DBMS_MARIADB},
-{"not supported db", NOT_SUPPORTED_DBMS}
+  { {"oracle", CAS_CGW_DBMS_ORACLE}, {"mysql", CAS_CGW_DBMS_MYSQL}, {"mariadb", CAS_CGW_DBMS_MARIADB},
+{"not supported db", CAS_DBMS_NONE}
 };
 
 static int supported_dbms_max_num = sizeof (supported_dbms_list) / sizeof (T_SUPPORTED_DBMS);
-static SUPPORTED_DBMS_TYPE curr_dbms_type = NOT_SUPPORTED_DBMS;
+static T_DBMS_TYPE curr_dbms_type = CAS_DBMS_NONE;
 
 T_CGW_HANDLE *local_odbc_handle = NULL;
 
@@ -116,7 +116,7 @@ static int cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target
 static int cgw_conv_mtow (wchar_t * destStr, char *sourStr);
 static int cgw_uint32_to_uni16 (uint32_t i, uint16_t * u);
 static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t * src, size_t len);
-static char *cgw_get_dbms_name (SUPPORTED_DBMS_TYPE db_type);
+static char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
 
 
 int
@@ -178,8 +178,7 @@ cgw_get_handle (T_CGW_HANDLE ** cgw_handle)
 }
 
 int
-cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, char *db_name, char *db_user,
-		      char *db_passwd)
+cgw_database_connect (T_DBMS_TYPE dbms_type, const char *connect_url, char *db_name, char *db_user, char *db_passwd)
 {
   SQLRETURN err_code;
   wchar_t wcs_url[(CGW_LINK_URL_MAX_LEN + 1) * sizeof (wchar_t)] = { 0, };
@@ -202,7 +201,7 @@ cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, ch
 	       SQL_HANDLE_ENV,
 	       err_code = SQLAllocHandle (SQL_HANDLE_DBC, local_odbc_handle->henv, &local_odbc_handle->hdbc));
 
-  if (dbms_type == SUPPORTED_DBMS_MYSQL || dbms_type == SUPPORTED_DBMS_MARIADB)
+  if (dbms_type == CAS_CGW_DBMS_MYSQL || dbms_type == CAS_CGW_DBMS_MARIADB)
     {
       SQL_CHK_ERR (local_odbc_handle->hdbc,
 		   SQL_HANDLE_ENV,
@@ -1217,7 +1216,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
   // Oracle ODBC does not support the BIGINT type.
   // So, change it to Numeric type.
-  if (curr_dbms_type == SUPPORTED_DBMS_ORACLE && type == CCI_U_TYPE_BIGINT)
+  if (curr_dbms_type == CAS_CGW_DBMS_ORACLE && type == CCI_U_TYPE_BIGINT)
     {
       src_type = type;
       type = CCI_U_TYPE_NUMERIC;
@@ -1273,7 +1272,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 
     case CCI_U_TYPE_NUMERIC:
       {
-	if (curr_dbms_type == SUPPORTED_DBMS_MARIADB)
+	if (curr_dbms_type == CAS_CGW_DBMS_MARIADB)
 	  {
 
 	    char *value = NULL;
@@ -1603,7 +1602,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 	    break;
 	  }
 
-	if (curr_dbms_type == SUPPORTED_DBMS_MYSQL || curr_dbms_type == SUPPORTED_DBMS_MARIADB)
+	if (curr_dbms_type == CAS_CGW_DBMS_MYSQL || curr_dbms_type == CAS_CGW_DBMS_MARIADB)
 	  {
 	    c_data_type = SQL_C_CHAR;
 	    sql_bind_type = SQL_TYPE_TIMESTAMP;
@@ -1622,7 +1621,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						      (SQLPOINTER) (&value_list->time_stemp_str_val),
 						      sizeof (value_list->time_stemp_str_val), NULL));
 	  }
-	else if (curr_dbms_type == SUPPORTED_DBMS_ORACLE)
+	else if (curr_dbms_type == CAS_CGW_DBMS_ORACLE)
 	  {
 	    c_data_type = SQL_C_TYPE_TIMESTAMP;
 	    sql_bind_type = SQL_TYPE_TIMESTAMP;
@@ -2359,11 +2358,11 @@ cgw_count_number_of_digits (int num_bits)
   return (num_bits == 0) ? 0 : NUM_OF_DIGITS (pow (2, num_bits) - 1);
 }
 
-SUPPORTED_DBMS_TYPE
+T_DBMS_TYPE
 cgw_is_supported_dbms (char *dbms)
 {
   if (dbms == NULL)
-    return NOT_SUPPORTED_DBMS;
+    return CAS_DBMS_NONE;
 
   ut_tolower (dbms);
 
@@ -2374,7 +2373,7 @@ cgw_is_supported_dbms (char *dbms)
 	  return supported_dbms_list[i].dbms_type;
 	}
     }
-  return NOT_SUPPORTED_DBMS;
+  return CAS_DBMS_NONE;
 }
 
 int
@@ -2395,12 +2394,12 @@ ODBC_ERROR:
 }
 
 void
-cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type)
+cgw_set_dbms_type (T_DBMS_TYPE dbms_type)
 {
   curr_dbms_type = dbms_type;
 }
 
-SUPPORTED_DBMS_TYPE
+T_DBMS_TYPE
 cgw_get_dbms_type ()
 {
   return curr_dbms_type;
@@ -2734,7 +2733,7 @@ cgw_wchar_to_sqlwchar (wchar_t * src, size_t len)
 }
 
 static char *
-cgw_get_dbms_name (SUPPORTED_DBMS_TYPE db_type)
+cgw_get_dbms_name (T_DBMS_TYPE db_type)
 {
   for (int i = 0; i < supported_dbms_max_num; i++)
     {
