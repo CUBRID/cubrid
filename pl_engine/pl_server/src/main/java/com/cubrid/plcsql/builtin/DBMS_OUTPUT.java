@@ -82,7 +82,7 @@ public class DBMS_OUTPUT {
 
     public static void putLine(String line) {
         Context c = getContext();
-        c.getMessageBuffer().putLine(line == null ? "" : line);
+        c.getMessageBuffer().putLine(line);
     }
 
     public static void put(String str) {
