@@ -98,20 +98,12 @@ typedef enum
   PLUS
 } SIGN;
 
-typedef enum
-{
-  SUPPORTED_DBMS_ORACLE = 0,
-  SUPPORTED_DBMS_MYSQL,
-  SUPPORTED_DBMS_MARIADB,
-  NOT_SUPPORTED_DBMS
-} SUPPORTED_DBMS_TYPE;
-
 typedef struct t_odbc_col_info T_ODBC_COL_INFO;
 struct t_odbc_col_info
 {
   char data_type;
   SQLLEN scale;
-  SQLLEN precision;
+  SQLULEN precision;
   char charset;
   char col_name[COL_NAME_LEN + 1];
   char default_value[DEFAULT_VALUE_LEN + 1];
@@ -125,7 +117,7 @@ struct t_odbc_col_info
   char is_shared;
   char attr_name[ATTR_NAME_LEN + 1];
   char class_name[CLASS_NAME_LEN + 1];
-  SQLLEN is_not_null;
+  SQLSMALLINT is_not_null;
 };
 
 typedef union odbc_bind_info ODBC_BIND_INFO;
@@ -160,7 +152,7 @@ extern int cgw_get_stmt_handle (SQLHDBC hdbc, SQLHSTMT * stmt);
 extern int cgw_get_driver_info (SQLHDBC hdbc, SQLUSMALLINT info_type, void *driver_info, SQLSMALLINT size);
 
 // db connection functions
-extern int cgw_database_connect (SUPPORTED_DBMS_TYPE dbms_type, const char *connect_url, char *db_name, char *db_user,
+extern int cgw_database_connect (T_DBMS_TYPE dbms_type, const char *connect_url, char *db_name, char *db_user,
 				 char *db_passwd);
 extern void cgw_database_disconnect (void);
 extern int cgw_is_database_connected (void);
@@ -184,8 +176,8 @@ extern int cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding,
 extern int cgw_copy_tuple (T_COL_BINDER * src_col_binding, T_COL_BINDER * dst_col_binding);
 
 extern int cgw_endtran (SQLHDBC hdbc, int tran_type);
-extern SUPPORTED_DBMS_TYPE cgw_is_supported_dbms (char *dbms);
-extern void cgw_set_dbms_type (SUPPORTED_DBMS_TYPE dbms_type);
-extern SUPPORTED_DBMS_TYPE cgw_get_dbms_type ();
+extern T_DBMS_TYPE cgw_is_supported_dbms (char *dbms);
+extern void cgw_set_dbms_type (T_DBMS_TYPE dbms_type);
+extern T_DBMS_TYPE cgw_get_dbms_type ();
 
 #endif /* _CAS_CGW_H_ */

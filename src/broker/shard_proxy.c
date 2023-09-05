@@ -32,6 +32,7 @@
 #include "shard_proxy.h"
 #include "shard_proxy_handler.h"
 #include "shard_key_func.h"
+#include "system_parameter.h"
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
@@ -210,6 +211,12 @@ main (int argc, char *argv[])
   if (error)
     {
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to initialize proxy context handler.");
+      return error;
+    }
+
+  if (sysprm_load_and_init (NULL, NULL, SYSPRM_IGNORE_INTL_PARAMS) != NO_ERROR)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "System Parameter load failed.");
       return error;
     }
 
