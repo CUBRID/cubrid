@@ -267,7 +267,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec = (TypeSpec) visit(ctx.type_spec());
 
-        DeclParamOut ret = new DeclParamOut(ctx, name, typeSpec);
+        boolean alsoIn = ctx.IN() != null || ctx.INOUT() != null;
+        DeclParamOut ret = new DeclParamOut(ctx, name, typeSpec, alsoIn);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -2538,8 +2539,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
 
-            if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) > 0) {
-                paramList.nodes.add(new DeclParamOut(null, "p" + i, paramType));
+            if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
+                boolean alsoIn = (params[i].mode & ServerConstants.PARAM_MODE_IN) != 0;
+                paramList.nodes.add(new DeclParamOut(null, "p" + i, paramType, alsoIn));
             } else {
                 paramList.nodes.add(new DeclParamIn(null, "p" + i, paramType));
             }

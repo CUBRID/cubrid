@@ -81,10 +81,12 @@ public abstract class DeclRoutine extends Decl {
                                         "  %'DECLARATIONS'%",
                                         Misc.indentLines(decls.toJavaCode(), 1));
         String strParams = paramList.toJavaCode(",\n");
+        String strNullifyOutParam = getNullifyOutParamStr(paramList);
 
         return tmplFuncBody
                 .replace("%'RETURN-TYPE'%", retType == null ? "void" : retType.toJavaCode())
                 .replace("    %'PARAMETERS'%", Misc.indentLines(strParams, 2))
+                .replace("  %'NULLIFY-OUT-PARAMETERS'%", Misc.indentLines(strNullifyOutParam, 1))
                 .replace("  %'DECL-CLASS'%", Misc.indentLines(strDeclClass, 1))
                 .replace("  %'BODY'%", Misc.indentLines(body.toJavaCode(), 1))
                 .replace("%'METHOD-NAME'%", name);
@@ -129,6 +131,37 @@ public abstract class DeclRoutine extends Decl {
     }
 
     // --------------------------------------------------
+    // Package Private
+    // --------------------------------------------------
+
+    static String getNullifyOutParamStr(NodeList<DeclParam> paramList) {
+
+        if (paramList == null) {
+            return "// no OUT parameters\n";
+        }
+
+        StringBuilder sb = new StringBuilder();
+
+        boolean first = true;
+        for (DeclParam dp : paramList.nodes) {
+            if (dp instanceof DeclParamOut && !((DeclParamOut) dp).alsoIn) {
+
+                if (first) {
+                    first = false;
+                    sb.append("// nullifying OUT parameters\n");
+                }
+
+                sb.append(String.format("%s[0] = null;\n", ((DeclParamOut) dp).name));
+            }
+        }
+        if (first) {
+            sb.append("// no OUT parameters\n");
+        }
+
+        return sb.toString();
+    }
+
+    // --------------------------------------------------
     // Private
     // --------------------------------------------------
 
@@ -137,6 +170,8 @@ public abstract class DeclRoutine extends Decl {
                     "%'RETURN-TYPE'% %'METHOD-NAME'%(",
                     "    %'PARAMETERS'%",
                     "  ) throws Exception {",
+                    "",
+                    "  %'NULLIFY-OUT-PARAMETERS'%",
                     "",
                     "  %'DECL-CLASS'%",
                     "",
