@@ -1788,8 +1788,13 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATETIME)) {
+            // must be calculated everytime because the AM/PM indicator can change according to the
+            // locale change
+            return String.format("00:00:00.000 %s 00/00/0000", AM_PM.format(ZERO_DATE));
+        }
 
-        return datetimeFormat.format(e);
+        return DATETIME_FORMAT.format(e);
     }
 
     // from date
@@ -1813,8 +1818,11 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATE)) {
+            return "00/00/0000";
+        }
 
-        return dateFormat.format(e);
+        return DATE_FORMAT.format(e);
     }
 
     // from time
@@ -1823,7 +1831,7 @@ public class SpLib {
             return null;
         }
 
-        return timeFormat.format(e);
+        return TIME_FORMAT.format(e);
     }
 
     // from timestamp
@@ -1862,8 +1870,13 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_TIMESTAMP)) {
+            // must be calculated everytime because the AM/PM indicator can change according to the
+            // locale change
+            return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
+        }
 
-        return timestampFormat.format(e);
+        return TIMESTAMP_FORMAT.format(e);
     }
 
     // from double
@@ -2721,11 +2734,15 @@ public class SpLib {
     private static final Float FLOAT_ZERO = Float.valueOf(0.0f);
     private static final Double DOUBLE_ZERO = Double.valueOf(0.0);
 
-    private static final DateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
-    private static final DateFormat timeFormat = new SimpleDateFormat("hh:mm:ss a");
-    private static final DateFormat datetimeFormat =
+    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy");
+    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a");
+    private static final DateFormat DATETIME_FORMAT =
             new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy");
-    private static final DateFormat timestampFormat = new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+    private static final DateFormat TIMESTAMP_FORMAT =
+            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+
+    private static final DateFormat AM_PM = new SimpleDateFormat("a");
+    private static final Date ZERO_DATE = new Date(0L);
 
     private static Boolean commonOpEq(Object l, Object r) {
         if (l == null || r == null) {
@@ -3353,6 +3370,10 @@ public class SpLib {
             return lConv.compareTo(rConv);
         }
     }
+
+    private static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);
+    private static final Timestamp NULL_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+    private static final Timestamp NULL_TIMESTAMP = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
 
     private static boolean isEmptyStr(String s) {
         return s == null || s.length() == 0;

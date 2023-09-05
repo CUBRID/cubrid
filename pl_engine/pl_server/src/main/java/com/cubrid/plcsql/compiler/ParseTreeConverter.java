@@ -575,7 +575,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitDate_exp(Date_expContext ctx) {
+    public ExprDate visitDate_exp(Date_expContext ctx) {
+        addToImports("java.sql.Date");
+
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
         LocalDate date = DateTimeParser.DateLiteral.parse(s);
@@ -589,7 +591,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitTime_exp(Time_expContext ctx) {
+    public ExprTime visitTime_exp(Time_expContext ctx) {
+        addToImports("java.sql.Time");
+
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
         LocalTime time = DateTimeParser.TimeLiteral.parse(s);
@@ -603,13 +607,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitTimestamp_exp(Timestamp_expContext ctx) {
+    public ExprTimestamp visitTimestamp_exp(Timestamp_expContext ctx) {
+        addToImports("java.sql.Timestamp");
+
         String s = ctx.quoted_string().getText();
         return parseZonedDateTime(ctx, s, false, "TIMESTAMP");
     }
 
     @Override
-    public Expr visitDatetime_exp(Datetime_expContext ctx) {
+    public ExprDatetime visitDatetime_exp(Datetime_expContext ctx) {
+        addToImports("java.sql.Timestamp");
+
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
         LocalDateTime datetime = DateTimeParser.DatetimeLiteral.parse(s);
