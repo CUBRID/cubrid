@@ -235,7 +235,8 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   m_ps.m_catchup_worker.reset (new catchup_worker {*m_ps.m_followee_conn.get (), catchup_lsa });
   m_ps.m_catchup_worker->set_on_catchup_done_func ([this]()
   {
-    m_ps.m_followee_conn.reset (nullptr);
+    m_ps.m_followee_conn.reset (
+	    nullptr); // 커넥션이 끊긴 워커는 살아 있으면 안된다. 그냥 워커를 죽이는게?
     // TODO Send a catchup_done msg to the ATS;
   });
 
@@ -530,6 +531,9 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
   std::string response_message;
   cubpacking::packer payload_packer;
   size_t size = 0;
+
+  assert (0 < count);
+  assert (count <= log_pages_out.size ());
 
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
 

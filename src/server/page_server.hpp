@@ -244,7 +244,21 @@ class page_server
 	  , m_entry_manager { TT_SYSTEM_WORKER }
 	  , m_terminated { false }
 	  , m_catchup_lsa { catchup_lsa }
-	{ }
+	{
+	  // Initialize variables for buffers
+	  constexpr int PAGE_CNT_IN_BUFFER = 10;       // Arbitrarily chosen
+	  const size_t buffer_size_in_total = PAGE_CNT_IN_BUFFER * LOG_PAGESIZE + MAX_ALIGNMENT;
+	  m_log_pgbuf_buffer1 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+	  m_log_pgbuf_buffer2 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+	  char *const aligned_log_pgbuf_buffer1 = PTR_ALIGN (m_log_pgbuf_buffer1.get (), MAX_ALIGNMENT);
+	  char *const aligned_log_pgbuf_buffer2 = PTR_ALIGN (m_log_pgbuf_buffer2.get (), MAX_ALIGNMENT);
+
+	  for (int i = 0; i < PAGE_CNT_IN_BUFFER; i++)
+	    {
+	      m_log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer1 + i * LOG_PAGESIZE));
+	      m_log_pgptr_recv_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer2 + i * LOG_PAGESIZE));
+	    }
+	}
 
 	void start ()
 	{
@@ -265,38 +279,17 @@ class page_server
       private:
 	void execute ()
 	{
+	  // a thread entry is needed for error logging and appending log pages
 	  auto &entry = m_entry_manager.create_context ();
 
-	  constexpr int MAX_PAGE_REQUEST_CNT_AT_ONCE = 10; // Arbitrarily chosen
 	  const LOG_PAGEID start_pageid = log_Gl.hdr.append_lsa.pageid;
 	  const LOG_PAGEID end_pageid = m_catchup_lsa.offset == 0 ? m_catchup_lsa.pageid - 1 : m_catchup_lsa.pageid;
 	  const size_t total_page_count = end_pageid - start_pageid + 1;
 
-	  // Initlize variables for buffers
-	  const int page_cnt_in_buffer = (int) std::min (total_page_count, (size_t) MAX_PAGE_REQUEST_CNT_AT_ONCE);
-	  const size_t buffer_size_in_total = page_cnt_in_buffer * LOG_PAGESIZE + MAX_ALIGNMENT;
-	  auto log_pgbuf_buffer = std::unique_ptr<char []> { new char[buffer_size_in_total] };
-	  auto log_pgbuf_back_buffer = std::unique_ptr<char []> { new char[buffer_size_in_total] };
-	  char *const aligned_log_pgbuf_buffer = PTR_ALIGN (log_pgbuf_buffer.get (), MAX_ALIGNMENT);
-	  char *const aligned_log_pgbuf_recv_buffer = PTR_ALIGN (log_pgbuf_buffer.get (), MAX_ALIGNMENT);
-
-	  std::vector<LOG_PAGE *> log_pgptr_vec;
-	  std::vector<LOG_PAGE *> log_pgptr_recv_vec;
-	  for (int i = 0; i < page_cnt_in_buffer; i++)
-	    {
-	      log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer + i * LOG_PAGESIZE));
-	      log_pgptr_recv_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_recv_buffer + i * LOG_PAGESIZE));
-	    }
-
-	  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
-			 start_pageid, end_pageid, total_page_count);
-
-	  LOG_PAGEID request_start_pageid = start_pageid;
-	  size_t remaining_page_cnt = total_page_count;
-	  auto request_pages_fun = [this, &log_pgptr_recv_vec, &request_start_pageid, &remaining_page_cnt, page_cnt_in_buffer] ()
+	  auto request_pages_fun = [this] (LOG_PAGEID start_pageid, size_t cnt) -> int
 	  {
-	    const int request_page_cnt = (int) std::min ((size_t) page_cnt_in_buffer, remaining_page_cnt);
-	    const int error_code = m_conn_handler.request_log_pages (request_start_pageid, request_page_cnt, log_pgptr_recv_vec);
+	    const int request_page_cnt = (int) std::min (m_log_pgptr_recv_vec.size (), cnt);
+	    const int error_code = m_conn_handler.request_log_pages (start_pageid, request_page_cnt, m_log_pgptr_recv_vec);
 	    if (error_code != NO_ERROR)
 	      {
 		/* There are two kinds of erorrs either from client-side or server-side.
@@ -309,20 +302,34 @@ class page_server
 		 */
 		assert_release (false);
 	      }
-	    remaining_page_cnt -= request_page_cnt;
-	    request_start_pageid += request_page_cnt;
+	    return request_page_cnt;
 	  };
 
-	  auto req_future = std::async (std::launch::async, request_pages_fun);
-	  while (m_terminated == false && remaining_page_cnt > 0)
+	  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
+			 start_pageid, end_pageid, total_page_count);
+
+	  LOG_PAGEID request_start_pageid = start_pageid;
+	  size_t remaining_page_cnt = total_page_count;
+	  auto req_future = std::async (std::launch::async, request_pages_fun, request_start_pageid, remaining_page_cnt);
+	  while (remaining_page_cnt > 0)
 	    {
-	      req_future.get (); // waits until the previous requests are replied
-	      log_pgptr_vec.swap (log_pgptr_recv_vec);
-	      req_future = std::async (std::launch::async, request_pages_fun);
+	      const int req_cnt = req_future.get (); // waits until the previous requests are replied
+	      remaining_page_cnt -= req_cnt;
+	      request_start_pageid += req_cnt;
+
+	      if (m_terminated)
+		{
+		  break;
+		}
+
+	      m_log_pgptr_vec.swap (m_log_pgptr_recv_vec);
+
+	      if (remaining_page_cnt > 0)
+		{
+		  req_future = std::async (std::launch::async, request_pages_fun, request_start_pageid, req_cnt);
+		}
 	      // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
 	    }
-
-	  req_future.get (); // waits until the previous requests are replied
 
 	  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 			 start_pageid, end_pageid, total_page_count);
@@ -341,6 +348,13 @@ class page_server
 	cubthread::system_worker_entry_manager m_entry_manager;
 	std::thread m_thread;
 	std::atomic<bool> m_terminated;
+
+	// buffers to contain received log pages.
+	// One of them is used as a back buffer for receiving and the other is used for appending pages.
+	std::unique_ptr<char []> m_log_pgbuf_buffer1;
+	std::unique_ptr<char []> m_log_pgbuf_buffer2;
+	std::vector<LOG_PAGE *> m_log_pgptr_vec;
+	std::vector<LOG_PAGE *> m_log_pgptr_recv_vec;
 
 	const LOG_LSA m_catchup_lsa;
     };
