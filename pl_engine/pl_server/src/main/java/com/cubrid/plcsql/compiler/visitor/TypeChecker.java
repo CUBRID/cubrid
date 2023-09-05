@@ -390,17 +390,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert (idType.equals(TypeSpecSimple.CURSOR)
                 || idType.equals(TypeSpecSimple.SYS_REFCURSOR)); // by earlier check
 
-        switch (node.attr) {
-            case ISOPEN:
-            case FOUND:
-            case NOTFOUND:
-                return TypeSpecSimple.BOOLEAN;
-            case ROWCOUNT:
-                return TypeSpecSimple.BIGINT;
-            default:
-                assert false : "unreachable";
-                throw new RuntimeException("unreachable");
-        }
+        return node.attr.ty;
     }
 
     @Override

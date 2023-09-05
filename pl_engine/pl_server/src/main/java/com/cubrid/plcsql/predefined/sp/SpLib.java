@@ -53,6 +53,10 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static Object throwInvalidCursor(String subMsg) {
+        throw new INVALID_CURSOR(subMsg);
+    }
+
     public static <T> T checkNotNull(T val) {
         if (val == null) {
             throw new VALUE_ERROR("NOT NULL constraint violation");

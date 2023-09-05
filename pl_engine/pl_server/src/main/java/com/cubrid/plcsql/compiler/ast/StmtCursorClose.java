@@ -61,7 +61,7 @@ public class StmtCursorClose extends Stmt {
     private static final String tmplStmt =
             Misc.combineLines(
                     "// cursor close",
-                    "if (%'CURSOR'%.isOpen()) {",
+                    "if (%'CURSOR'% != null && %'CURSOR'%.isOpen()) {",
                     "  %'CURSOR'%.close();",
                     "} else {",
                     "  throw new INVALID_CURSOR(\"tried to close an unopened cursor\");",
