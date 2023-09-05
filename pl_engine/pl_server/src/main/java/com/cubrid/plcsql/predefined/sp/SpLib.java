@@ -1731,7 +1731,8 @@ public class SpLib {
             return null;
         }
         if (e.equals(NULL_DATETIME)) {
-            // must be calculated everytime because the AM/PM indicator can change according to the locale change
+            // must be calculated everytime because the AM/PM indicator can change according to the
+            // locale change
             return String.format("00:00:00.000 %s 00/00/0000", AM_PM.format(ZERO_DATE));
         }
 
@@ -1812,7 +1813,8 @@ public class SpLib {
             return null;
         }
         if (e.equals(NULL_TIMESTAMP)) {
-            // must be calculated everytime because the AM/PM indicator can change according to the locale change
+            // must be calculated everytime because the AM/PM indicator can change according to the
+            // locale change
             return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
         }
 
@@ -2678,7 +2680,8 @@ public class SpLib {
     private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a");
     private static final DateFormat DATETIME_FORMAT =
             new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy");
-    private static final DateFormat TIMESTAMP_FORMAT = new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+    private static final DateFormat TIMESTAMP_FORMAT =
+            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
 
     private static final DateFormat AM_PM = new SimpleDateFormat("a");
     private static final Date ZERO_DATE = new Date(0L);
