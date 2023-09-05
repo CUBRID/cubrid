@@ -1848,7 +1848,7 @@ public class SpLib {
             return null;
         }
 
-        return e.toString();
+        return String.format("%.15e", e);
     }
 
     public static Float convDoubleToFloat(Double e) {
@@ -1915,7 +1915,7 @@ public class SpLib {
             return null;
         }
 
-        return e.toString();
+        return String.format("%.6e", e);
     }
 
     public static Double convFloatToDouble(Float e) {
