@@ -86,6 +86,10 @@ public class SpLib {
         public INVALID_CURSOR() {
             super(CODE_INVALID_CURSOR, MSG_INVALID_CURSOR);
         }
+
+        public INVALID_CURSOR(String s) {
+            super(CODE_STORAGE_ERROR, (s == null || s.length() == 0) ? MSG_INVALID_CURSOR : s);
+        }
     }
 
     public static class NO_DATA_FOUND extends PlcsqlRuntimeError {
