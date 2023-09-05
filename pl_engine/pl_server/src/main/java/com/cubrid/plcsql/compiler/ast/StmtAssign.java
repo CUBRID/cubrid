@@ -52,7 +52,13 @@ public class StmtAssign extends Stmt {
 
     @Override
     public String toJavaCode() {
-        return String.format("%s = %s;", var.toJavaCode(), val.toJavaCode());
+
+        boolean checkNotNull = (var.decl instanceof DeclVar) && ((DeclVar) var.decl).notNull;
+        if (checkNotNull) {
+            return String.format("%s = checkNotNull(%s);", var.toJavaCode(), val.toJavaCode());
+        } else {
+            return String.format("%s = %s;", var.toJavaCode(), val.toJavaCode());
+        }
     }
 
     // --------------------------------------------------

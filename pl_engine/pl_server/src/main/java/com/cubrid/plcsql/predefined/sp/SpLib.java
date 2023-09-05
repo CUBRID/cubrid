@@ -53,6 +53,14 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static <T> T checkNotNull(T val) {
+        if (val == null) {
+            throw new VALUE_ERROR("NOT NULL constraint violation");
+        }
+
+        return val;
+    }
+
     public static Integer checkForLoopIterStep(Integer step) {
         if (step <= 0) {
             throw new VALUE_ERROR("FOR loop iteration steps must be positive integers");
