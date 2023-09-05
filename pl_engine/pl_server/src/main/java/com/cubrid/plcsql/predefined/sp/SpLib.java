@@ -76,8 +76,11 @@ public class SpLib {
         public CASE_NOT_FOUND() {
             super(CODE_CASE_NOT_FOUND, MSG_CASE_NOT_FOUND);
         }
+
         public CASE_NOT_FOUND(String subMsg) {
-            super(CODE_CASE_NOT_FOUND, isEmptyStr(subMsg) ? MSG_CASE_NOT_FOUND : (MSG_CASE_NOT_FOUND + ": " + subMsg));
+            super(
+                    CODE_CASE_NOT_FOUND,
+                    isEmptyStr(subMsg) ? MSG_CASE_NOT_FOUND : (MSG_CASE_NOT_FOUND + ": " + subMsg));
         }
     }
 
@@ -85,8 +88,13 @@ public class SpLib {
         public CURSOR_ALREADY_OPEN() {
             super(CODE_CURSOR_ALREADY_OPEN, MSG_CURSOR_ALREADY_OPEN);
         }
+
         public CURSOR_ALREADY_OPEN(String subMsg) {
-            super(CODE_CURSOR_ALREADY_OPEN, isEmptyStr(subMsg) ? MSG_CURSOR_ALREADY_OPEN : (MSG_CURSOR_ALREADY_OPEN + ": " + subMsg));
+            super(
+                    CODE_CURSOR_ALREADY_OPEN,
+                    isEmptyStr(subMsg)
+                            ? MSG_CURSOR_ALREADY_OPEN
+                            : (MSG_CURSOR_ALREADY_OPEN + ": " + subMsg));
         }
     }
 
@@ -94,8 +102,11 @@ public class SpLib {
         public INVALID_CURSOR() {
             super(CODE_INVALID_CURSOR, MSG_INVALID_CURSOR);
         }
+
         public INVALID_CURSOR(String subMsg) {
-            super(CODE_INVALID_CURSOR, isEmptyStr(subMsg) ? MSG_INVALID_CURSOR: (MSG_INVALID_CURSOR+ ": " + subMsg));
+            super(
+                    CODE_INVALID_CURSOR,
+                    isEmptyStr(subMsg) ? MSG_INVALID_CURSOR : (MSG_INVALID_CURSOR + ": " + subMsg));
         }
     }
 
@@ -103,8 +114,11 @@ public class SpLib {
         public NO_DATA_FOUND() {
             super(CODE_NO_DATA_FOUND, MSG_NO_DATA_FOUND);
         }
+
         public NO_DATA_FOUND(String subMsg) {
-            super(CODE_NO_DATA_FOUND, isEmptyStr(subMsg) ? MSG_NO_DATA_FOUND : (MSG_NO_DATA_FOUND + ": " + subMsg));
+            super(
+                    CODE_NO_DATA_FOUND,
+                    isEmptyStr(subMsg) ? MSG_NO_DATA_FOUND : (MSG_NO_DATA_FOUND + ": " + subMsg));
         }
     }
 
@@ -112,8 +126,11 @@ public class SpLib {
         public PROGRAM_ERROR() {
             super(CODE_PROGRAM_ERROR, MSG_PROGRAM_ERROR);
         }
+
         public PROGRAM_ERROR(String subMsg) {
-            super(CODE_PROGRAM_ERROR, isEmptyStr(subMsg) ? MSG_PROGRAM_ERROR : (MSG_PROGRAM_ERROR + ": " + subMsg));
+            super(
+                    CODE_PROGRAM_ERROR,
+                    isEmptyStr(subMsg) ? MSG_PROGRAM_ERROR : (MSG_PROGRAM_ERROR + ": " + subMsg));
         }
     }
 
@@ -121,8 +138,11 @@ public class SpLib {
         public STORAGE_ERROR() {
             super(CODE_STORAGE_ERROR, MSG_STORAGE_ERROR);
         }
+
         public STORAGE_ERROR(String subMsg) {
-            super(CODE_STORAGE_ERROR, isEmptyStr(subMsg) ? MSG_STORAGE_ERROR : (MSG_STORAGE_ERROR + ": " + subMsg));
+            super(
+                    CODE_STORAGE_ERROR,
+                    isEmptyStr(subMsg) ? MSG_STORAGE_ERROR : (MSG_STORAGE_ERROR + ": " + subMsg));
         }
     }
 
@@ -130,8 +150,11 @@ public class SpLib {
         public SQL_ERROR() {
             super(CODE_STORAGE_ERROR, MSG_SQL_ERROR);
         }
+
         public SQL_ERROR(String subMsg) {
-            super(CODE_STORAGE_ERROR, isEmptyStr(subMsg) ? MSG_SQL_ERROR : (MSG_SQL_ERROR + ": " + subMsg));
+            super(
+                    CODE_STORAGE_ERROR,
+                    isEmptyStr(subMsg) ? MSG_SQL_ERROR : (MSG_SQL_ERROR + ": " + subMsg));
         }
     }
 
@@ -139,8 +162,11 @@ public class SpLib {
         public TOO_MANY_ROWS() {
             super(CODE_TOO_MANY_ROWS, MSG_TOO_MANY_ROWS);
         }
+
         public TOO_MANY_ROWS(String subMsg) {
-            super(CODE_TOO_MANY_ROWS, isEmptyStr(subMsg) ? MSG_TOO_MANY_ROWS : (MSG_TOO_MANY_ROWS + ": " + subMsg));
+            super(
+                    CODE_TOO_MANY_ROWS,
+                    isEmptyStr(subMsg) ? MSG_TOO_MANY_ROWS : (MSG_TOO_MANY_ROWS + ": " + subMsg));
         }
     }
 
@@ -148,8 +174,11 @@ public class SpLib {
         public VALUE_ERROR() {
             super(CODE_VALUE_ERROR, MSG_VALUE_ERROR);
         }
+
         public VALUE_ERROR(String subMsg) {
-            super(CODE_VALUE_ERROR, isEmptyStr(subMsg) ? MSG_VALUE_ERROR : (MSG_VALUE_ERROR + ": " + subMsg));
+            super(
+                    CODE_VALUE_ERROR,
+                    isEmptyStr(subMsg) ? MSG_VALUE_ERROR : (MSG_VALUE_ERROR + ": " + subMsg));
         }
     }
 
@@ -157,8 +186,11 @@ public class SpLib {
         public ZERO_DIVIDE() {
             super(CODE_ZERO_DIVIDE, MSG_ZERO_DIVIDE);
         }
+
         public ZERO_DIVIDE(String subMsg) {
-            super(CODE_ZERO_DIVIDE, isEmptyStr(subMsg) ? MSG_ZERO_DIVIDE : (MSG_ZERO_DIVIDE + ": " + subMsg));
+            super(
+                    CODE_ZERO_DIVIDE,
+                    isEmptyStr(subMsg) ? MSG_ZERO_DIVIDE : (MSG_ZERO_DIVIDE + ": " + subMsg));
         }
     }
 
@@ -171,9 +203,13 @@ public class SpLib {
         public $APP_ERROR(int code, String subMsg) {
             super(code, isEmptyStr(subMsg) ? MSG_APP_ERROR : (MSG_APP_ERROR + ": " + subMsg));
         }
+
         public $APP_ERROR(String subMsg) {
-            super(CODE_APP_ERROR, isEmptyStr(subMsg) ? MSG_APP_ERROR : (MSG_APP_ERROR + ": " + subMsg));
+            super(
+                    CODE_APP_ERROR,
+                    isEmptyStr(subMsg) ? MSG_APP_ERROR : (MSG_APP_ERROR + ": " + subMsg));
         }
+
         public $APP_ERROR() {
             super(CODE_APP_ERROR, MSG_APP_ERROR);
         }
