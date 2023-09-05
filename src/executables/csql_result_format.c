@@ -1422,7 +1422,7 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 
 	  if (DB_VALUE_TYPE (value) == DB_TYPE_FLOAT)
 	    {
-	      sprintf (double_str, "%g", db_get_float (value));
+	      sprintf (double_str, "%.7g", db_get_float (value));
 	    }
 	  else
 	    {
