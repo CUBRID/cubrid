@@ -69,24 +69,25 @@ public abstract class StmtSql extends Stmt {
     public String toJavaCode() {
         String setUsedExprStr = Common.getSetUsedExprStr(usedExprList);
 
+        String strHandleIntoClause, strBanIntoClause;
         if (intoVarList == null) {
             assert coercions == null;
-
-            return tmplDml.replace("%'KIND'%", dynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", Misc.indentLines(sql.toJavaCode(), 1, true))
-                    .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
-                    .replace("%'LEVEL'%", "" + level);
+            strHandleIntoClause = strBanIntoClause = "// no INTO clause";
         } else {
             assert coercions != null;
-
-            String setResultsStr = getSetResultsStr(intoVarList);
-            return tmplSelect
-                    .replace("%'KIND'%", dynamic ? "dynamic" : "static")
-                    .replace("%'SQL'%", Misc.indentLines(sql.toJavaCode(), 1, true))
-                    .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
-                    .replace("      %'SET-RESULTS'%", Misc.indentLines(setResultsStr, 3))
-                    .replace("%'LEVEL'%", "" + level);
+            String strSetResults = getSetResultsStr(intoVarList);
+            strHandleIntoClause =
+                    tmplHandleIntoClause.replace(
+                            "    %'SET-RESULTS'%", Misc.indentLines(strSetResults, 2));
+            strBanIntoClause = tmplBanIntoClause;
         }
+
+        return tmplStmt.replace("%'KIND'%", dynamic ? "dynamic" : "static")
+                .replace("%'SQL'%", Misc.indentLines(sql.toJavaCode(), 2, true))
+                .replace("    %'BAN-INTO-CLAUSE'%", Misc.indentLines(strBanIntoClause, 2))
+                .replace("    %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 2))
+                .replace("      %'HANDLE-INTO-CLAUSE'%", Misc.indentLines(strHandleIntoClause, 3))
+                .replace("%'LEVEL'%", "" + level);
     }
 
     public void setCoercions(List<Coercion> coercions) {
@@ -99,48 +100,62 @@ public abstract class StmtSql extends Stmt {
 
     private List<Coercion> coercions;
 
-    private static final String tmplDml =
+    private static final String tmplStmt =
             Misc.combineLines(
-                    "try { // %'KIND'% SQL statement",
-                    "  String dynSql_%'LEVEL'% = %'SQL'%;",
-                    "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
-                    "  %'SET-USED-VALUES'%",
-                    "  sql_rowcount[0] = (long) stmt_%'LEVEL'%.executeUpdate();",
-                    "  stmt_%'LEVEL'%.close();",
-                    "} catch (SQLException e) {",
-                    "  Server.log(e);",
-                    "  throw new SQL_ERROR(e.getMessage());",
-                    "}");
-
-    private static final String tmplSelect =
-            Misc.combineLines(
-                    "try { // %'KIND'% Select statement",
-                    "  String dynSql_%'LEVEL'% = %'SQL'%;",
-                    "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
-                    "  %'SET-USED-VALUES'%",
-                    "  ResultSet r%'LEVEL'% = stmt_%'LEVEL'%.executeQuery();",
-                    "  int i%'LEVEL'% = 0;",
-                    "  while (r%'LEVEL'%.next()) {",
-                    "    i%'LEVEL'%++;",
-                    "    if (i%'LEVEL'% > 1) {",
-                    "      break;",
+                    "{ // %'KIND'% SQL statement",
+                    "  PreparedStatement stmt_%'LEVEL'% = null;",
+                    "  try {",
+                    "    String dynSql_%'LEVEL'% = %'SQL'%;",
+                    "    stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
+                    "    %'BAN-INTO-CLAUSE'%",
+                    "    %'SET-USED-VALUES'%",
+                    "    if (stmt_%'LEVEL'%.execute()) {",
+                    "      sql_rowcount[0] = 0L;", // not from the Oracle specification, but from
+                    // Oracle 19.0.0.0 behavior
+                    "      %'HANDLE-INTO-CLAUSE'%",
                     "    } else {",
-                    "      %'SET-RESULTS'%",
+                    "      sql_rowcount[0] = (long) stmt_%'LEVEL'%.getUpdateCount();",
+                    "    }",
+                    "  } catch (SQLException e) {",
+                    "    Server.log(e);",
+                    "    throw new SQL_ERROR(e.getMessage());",
+                    "  } finally {",
+                    "    if (stmt_%'LEVEL'% != null) {",
+                    "      stmt_%'LEVEL'%.close();",
                     "    }",
                     "  }",
-                    "  if (i%'LEVEL'% == 0) {",
-                    "    sql_rowcount[0] = 0L;",
-                    "    throw new NO_DATA_FOUND();",
-                    "  } else if (i%'LEVEL'% == 1) {",
-                    "    sql_rowcount[0] = 1L;",
+                    "}");
+
+    private static final String tmplHandleIntoClause =
+            Misc.combineLines(
+                    "ResultSet r%'LEVEL'% = stmt_%'LEVEL'%.getResultSet();",
+                    "if (r%'LEVEL'% == null) {",
+                    "  throw new SQL_ERROR(\"no result set\");", // EXECUTE IMMEDIATE 'CALL ...'
+                    // INTO ... leads to this line
+                    "}",
+                    "int i%'LEVEL'% = 0;",
+                    "while (r%'LEVEL'%.next()) {",
+                    "  i%'LEVEL'%++;",
+                    "  if (i%'LEVEL'% > 1) {",
+                    "    break;",
                     "  } else {",
-                    "    sql_rowcount[0] = 1L; // Surprise? Refer to the Spec.",
-                    "    throw new TOO_MANY_ROWS();",
+                    "    %'SET-RESULTS'%",
                     "  }",
-                    "  stmt_%'LEVEL'%.close();",
-                    "} catch (SQLException e) {",
-                    "  Server.log(e);",
-                    "  throw new SQL_ERROR(e.getMessage());",
+                    "}",
+                    "if (i%'LEVEL'% == 0) {",
+                    "  throw new NO_DATA_FOUND();",
+                    "} else if (i%'LEVEL'% == 1) {",
+                    "  sql_rowcount[0] = 1L;",
+                    "} else {",
+                    "  sql_rowcount[0] = 1L; // Surprise? Refer to the Spec.",
+                    "  throw new TOO_MANY_ROWS();",
+                    "}");
+
+    private static final String tmplBanIntoClause =
+            Misc.combineLines(
+                    "ResultSetMetaData rsmd_%'LEVEL'% = stmt_%'LEVEL'%.getMetaData();",
+                    "if (rsmd_%'LEVEL'% == null || rsmd_%'LEVEL'%.getColumnCount() < 1) {",
+                    "  throw new SQL_ERROR(\"INTO clause cannot be used without a SELECT statement\");",
                     "}");
 
     private String getSetResultsStr(List<ExprId> intoVarList) {
