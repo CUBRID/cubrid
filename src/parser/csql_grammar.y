@@ -314,8 +314,8 @@ FUNCTION_MAP *keyword_offset (const char *name);
 
 static PT_NODE* pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size);
 
-static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
-static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list);
+static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                                  size_t min_args, size_t max_args);
 static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                                       size_t min_args, size_t max_args, size_t mod2);
