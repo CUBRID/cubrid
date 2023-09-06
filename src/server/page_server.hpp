@@ -270,13 +270,14 @@ class page_server
 	  assert (m_terminated == true);
 
 	  m_terminated = false;
-	  m_thread = std::thread (&catchup_worker::execute, std::ref (*this));
+	  std::thread (&catchup_worker::execute, std::ref (*this)).detach ();
 	}
 
 	void terminate ()
 	{
+	  auto ulock = std::unique_lock <std::mutex> (m_term_mtx);
 	  m_terminated = true;
-	  m_thread.join ();
+	  m_term_cv.wait (ulock);
 	  m_conn_handler.reset (nullptr);
 	}
 
@@ -335,10 +336,16 @@ class page_server
 	      remaining_page_cnt -= req_cnt;
 	      request_start_pageid += req_cnt;
 
-	      if (m_terminated)
-		{
-		  break;
-		}
+
+	      {
+		auto lockg = std::lock_guard <std::mutex> (m_term_mtx);
+		if (m_terminated)
+		  {
+		    m_entry_manager.retire_context (entry);
+		    m_term_cv.notify_one (); // notify it's terminated.
+		    return;
+		  }
+	      }
 
 	      m_log_pgptr_vec.swap (m_log_pgptr_recv_vec);
 
@@ -359,6 +366,7 @@ class page_server
 	    }
 
 	  m_entry_manager.retire_context (entry);
+	  m_conn_handler.reset (nullptr);
 	}
 
 	followee_connection_handler_uptr_t m_conn_handler;
@@ -368,7 +376,9 @@ class page_server
 
 	cubthread::system_worker_entry_manager m_entry_manager;
 	std::thread m_thread;
-	std::atomic<bool> m_terminated;
+	bool m_terminated;
+	std::mutex m_term_mtx;
+	std::condition_variable m_term_cv;
 
 	// buffers to contain received log pages.
 	// One of them is used as a back buffer for receiving and the other is used for appending pages.
