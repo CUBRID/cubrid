@@ -1439,9 +1439,10 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 
 1355 Il file "%1$s" non è stato trovato.
+1356 Non c'è alcun suggerimento nella query DBLink o il tipo di istruzione non è corretto. %1$s
 
-1356 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1357 Ultimo errore
+1357 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1358 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

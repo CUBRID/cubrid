@@ -15427,7 +15427,6 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 {
   key_val_range inf_key_val_range;
   PAGE_PTR root_page = NULL;
-  VPID root_vpid;
   int error_code = NO_ERROR;
   DB_MIDXKEY *midxkey = NULL;
   DB_VALUE *swap_key = NULL;
@@ -15461,8 +15460,6 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 
   if (!bts->is_btid_int_valid)
     {
-      root_vpid.pageid = btid->root_pageid;
-      root_vpid.volid = btid->vfid.volid;
       root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, NULL, &bts->btid_int);
       if (root_page == NULL)
 	{
@@ -19145,9 +19142,6 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
       assert (key1_type != DB_TYPE_MIDXKEY);
       assert (key2_type != DB_TYPE_MIDXKEY);
 
-      assert (tp_valid_indextype (key1_type));
-      assert (tp_valid_indextype (key2_type));
-
       /* safe code */
       if (key1_type == DB_TYPE_MIDXKEY)
 	{
@@ -19191,6 +19185,9 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	      return DB_UNK;
 	    }
 	}
+
+      assert (tp_valid_indextype (key1_type));
+      assert (tp_valid_indextype (key2_type));
 
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 

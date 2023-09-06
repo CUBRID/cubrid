@@ -1732,10 +1732,11 @@
 #define ER_SQL_ERROR_LOG_MSG_TRACE                  -1354
 
 #define ER_FILE_NOT_FOUND                           -1355
+#define ER_CGW_INVALID_DBLINT_HINT                  -1356
 
-#define ER_SP_COMPILE_ERROR                         -1356
+#define ER_SP_COMPILE_ERROR                         -1357
 
-#define ER_LAST_ERROR                               -1357
+#define ER_LAST_ERROR                               -1358
 
 /*
  * CAUTION!
