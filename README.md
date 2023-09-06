@@ -1,6 +1,6 @@
 # ![CUBRID LOGO](docs/tangram_24.svg) CUBRID Database Management System
 
-CUBRID is a DBMS being supported by an active community of open source developers 
+CUBRID is a DBMS supported by an active community of open source developers 
 and provides better performance and features necessary for Web services.
 
 Below you will see the brief list of sections to guide you to easily get started.
@@ -64,7 +64,7 @@ For more information about CUBRID license policy, visit https://www.cubrid.org/c
 
 - https://www.reddit.com/r/CUBRID/
       
-  If You encounter any difficulties with getting started, or just have some questions, or find bugs, or have some suggestions, we kindly ask you to post your thoughts on our subreddit
+  If You encounter any difficulties getting started, or just have some questions, or find bugs, or have some suggestions, we kindly ask you to post your thoughts on our subreddit
 
 Sincerely,
 Your CUBRID Development Team.
