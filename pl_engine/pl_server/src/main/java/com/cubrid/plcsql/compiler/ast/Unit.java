@@ -163,7 +163,7 @@ public class Unit extends AstNode {
                     "    %'NULLIFY-OUT-PARAMETERS'%",
                     "",
                     "    try {",
-                    "      Long[] sql_rowcount = new Long[] { -1L };",
+                    "      Long[] sql_rowcount = new Long[] { null };",
                     "      %'GET-CONNECTION'%",
                     "",
                     "      %'DECL-CLASS'%",
