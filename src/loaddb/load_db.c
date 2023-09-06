@@ -192,8 +192,7 @@ ldr_validate_object_file (const char *argv0, load_args * args)
 	{
 	  if (prm_get_integer_value (PRM_ID_HA_MODE))
 	    {
-	      if ((args->load_only == true
-		   || args->index_file.empty () == false
+	      if ((args->index_file.empty () == false
 		   || args->schema_file.empty () == false
 		   || args->schema_file_list.empty () == false || args->trigger_file.empty () == false))
 		{
@@ -1406,6 +1405,11 @@ ldr_check_file_list (std::string & file_name, int &num_files, int &error_code)
   T_SCHEMA_FILE_LIST_INFO **new_schema_info = NULL;
   char buffer[PATH_MAX] = { 0, };
   std::string read_file_name = "";
+  std::string schema_info_fullpath = "";
+  size_t seperator_pos = 0;
+#if defined(WINDOWS)
+  size_t last_slash = 0;
+#endif
 
   error_code = NO_ERROR;
 
@@ -1421,6 +1425,7 @@ ldr_check_file_list (std::string & file_name, int &num_files, int &error_code)
 
   while (fgets ((char *) buffer, LINE_MAX, schema_fp) != NULL)
     {
+      schema_info_fullpath = file_name;
       trim (buffer);
 
       if (buffer[0] == '\0')
@@ -1464,7 +1469,38 @@ ldr_check_file_list (std::string & file_name, int &num_files, int &error_code)
       num_files++;
 
       strcpy (schema_object_file->schema_file_name, buffer);
-      read_file_name = buffer;
+
+      seperator_pos = schema_info_fullpath.find_last_of (PATH_SEPARATOR);
+
+      if (seperator_pos == std::string::npos)
+	{
+	  seperator_pos = 0;
+	}
+
+#if defined(WINDOWS)
+      last_slash = schema_info_fullpath.find_last_of ('/');
+
+      if (last_slash == std::string::npos)
+	{
+	  last_slash = 0;
+	}
+
+      if (last_slash > seperator_pos)
+	{
+	  seperator_pos = last_slash;
+	}
+#endif
+
+      if (seperator_pos > 0)
+	{
+	  schema_info_fullpath = schema_info_fullpath.substr (0, seperator_pos + 1);
+	  read_file_name = schema_info_fullpath + buffer;
+	}
+      else
+	{
+	  read_file_name = buffer;
+	}
+
       schema_object_file->schema_fp = ldr_check_file (read_file_name, error_code);
       if (error_code != NO_ERROR && schema_object_file->schema_fp == NULL)
 	{
