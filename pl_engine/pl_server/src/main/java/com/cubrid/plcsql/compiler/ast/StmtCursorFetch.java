@@ -79,8 +79,8 @@ public class StmtCursorFetch extends Stmt {
     private static final String tmplStmt =
             Misc.combineLines(
                     "{ // cursor fetch",
-                    "  if (!%'CURSOR'%.isOpen()) {",
-                    "    throw new INVALID_CURSOR(\"tried to fetch with an unopened cursor\");",
+                    "  if (%'CURSOR'% == null || !%'CURSOR'%.isOpen()) {",
+                    "    throw new INVALID_CURSOR(\"tried to fetch an unopened cursor\");",
                     "  }",
                     "  ResultSet rs = %'CURSOR'%.rs;",
                     "  if (rs == null) {",
