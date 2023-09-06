@@ -33,6 +33,8 @@
 #include "language_support.h"
 #include "string_opfunc.h"
 #include "unicode_support.h"
+#include "string_buffer.hpp"
+#include "db_value_printer.hpp"
 
 #include "dbtype.h"
 
@@ -282,6 +284,8 @@ static char *set_to_string (DB_VALUE * value, char begin_notation, char end_nota
 			    bool plain_string, CSQL_OUTPUT_TYPE output_type, char column_encolser);
 static char *duplicate_string (const char *string);
 static int get_object_print_format (void);
+
+bool is_env_print_midxkey_value = false;
 
 /*
  * add_commas() - counts the digits in this string and adds the commas
@@ -1843,6 +1847,27 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_
 	  }
       }
       break;
+
+    case DB_TYPE_MIDXKEY:
+      {
+	if (is_env_print_midxkey_value)
+	  {
+	    string_buffer sb;
+
+	    sb.clear ();
+	    db_sprint_value (value, sb);
+
+	    /*  Make sure it has the same format as the result of using cast().
+	     *  '{1, 'abc'}'  or  '{1, ''abc''}'  (depends on change_single_quote)
+	     */
+	    result =
+	      string_to_string (sb.get_buffer (), string_delimiter, '\0', sb.len (), &len, plain_string,
+				change_single_quote);
+	    sb.clear ();
+	    break;		/* escape switch */
+	  }
+      }
+      [[fallthrough]];
 
     default:
       {

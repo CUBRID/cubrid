@@ -525,6 +525,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       goto fatal_error;
     }
 
+  /* check environment for print midxkey */
+  extern bool is_env_print_midxkey_value;
+  is_env_print_midxkey_value = is_boolean_keyword_true (getenv ("CUBRID_PRINT_MIDXKEY"));
+
   /* For batch file input and csql command argument input */
   csql_Tty_fp = NULL;
   if (csql_arg->command)

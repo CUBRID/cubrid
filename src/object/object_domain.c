@@ -49,6 +49,8 @@
 #include "tz_support.h"
 #include "chartype.h"
 #include "db_json.hpp"
+#include "string_buffer.hpp"
+#include "db_value_printer.hpp"
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
@@ -7213,6 +7215,25 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  src = &src_replacement;
 	}
     }
+  else if (original_type == DB_TYPE_MIDXKEY && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR))
+    {
+      string_buffer sb;
+
+      sb.clear ();
+      db_sprint_value (src, sb);
+      db_make_string_copy (&src_replacement, sb.get_buffer ());
+      sb.clear ();
+
+      if (src == dest)
+	{
+	  // if src is equal to dest then JSON_DOC can be deleted after required information was extracted from it
+	  pr_clear_value (dest);
+	}
+
+      original_type = DB_VALUE_TYPE (&src_replacement);
+      src = &src_replacement;
+    }
+
 
   if (desired_type == original_type)
     {
