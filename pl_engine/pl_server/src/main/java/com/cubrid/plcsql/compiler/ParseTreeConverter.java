@@ -1862,11 +1862,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public StmtCommit visitCommit_statement(Commit_statementContext ctx) {
+        connectionRequired = true;
+        addToImports("java.sql.*");
         return new StmtCommit(ctx);
     }
 
     @Override
     public StmtRollback visitRollback_statement(Rollback_statementContext ctx) {
+        connectionRequired = true;
+        addToImports("java.sql.*");
         return new StmtRollback(ctx);
     }
 
