@@ -76,7 +76,9 @@ public abstract class StmtSql extends Stmt {
         } else {
             assert coercions != null;
             String strSetResults = getSetResultsStr(intoVarList);
-            strHandleIntoClause = tmplHandleIntoClause.replace("    %'SET-RESULTS'%", Misc.indentLines(strSetResults, 2));
+            strHandleIntoClause =
+                    tmplHandleIntoClause.replace(
+                            "    %'SET-RESULTS'%", Misc.indentLines(strSetResults, 2));
             strBanIntoClause = tmplBanIntoClause;
         }
 
@@ -108,7 +110,8 @@ public abstract class StmtSql extends Stmt {
                     "    %'BAN-INTO-CLAUSE'%",
                     "    %'SET-USED-VALUES'%",
                     "    if (stmt_%'LEVEL'%.execute()) {",
-                    "      sql_rowcount[0] = 0L;",    // not from the Oracle specification, but from Oracle 19.0.0.0 behavior
+                    "      sql_rowcount[0] = 0L;", // not from the Oracle specification, but from
+                    // Oracle 19.0.0.0 behavior
                     "      %'HANDLE-INTO-CLAUSE'%",
                     "    } else {",
                     "      sql_rowcount[0] = (long) stmt_%'LEVEL'%.getUpdateCount();",
@@ -127,7 +130,8 @@ public abstract class StmtSql extends Stmt {
             Misc.combineLines(
                     "ResultSet r%'LEVEL'% = stmt_%'LEVEL'%.getResultSet();",
                     "if (r%'LEVEL'% == null) {",
-                    "  throw new SQL_ERROR(\"no result set\");", // EXECUTE IMMEDIATE 'CALL ...' INTO ... leads to this line
+                    "  throw new SQL_ERROR(\"no result set\");", // EXECUTE IMMEDIATE 'CALL ...'
+                    // INTO ... leads to this line
                     "}",
                     "int i%'LEVEL'% = 0;",
                     "while (r%'LEVEL'%.next()) {",

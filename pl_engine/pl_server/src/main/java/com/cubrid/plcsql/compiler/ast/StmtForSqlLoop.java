@@ -90,11 +90,12 @@ public abstract class StmtForSqlLoop extends Stmt {
                     "    }",
                     "    %'SET-USED-VALUES'%",
                     "    if (!stmt_%'LEVEL'%.execute()) {",
-                    "      throw new SQL_ERROR(\"use a SELECT statement\");",   // double check
+                    "      throw new SQL_ERROR(\"use a SELECT statement\");", // double check
                     "    }",
                     "    ResultSet %'RECORD'%_r%'LEVEL'% = stmt_%'LEVEL'%.getResultSet();",
                     "    if (%'RECORD'%_r%'LEVEL'% == null) {",
-                    "      throw new SQL_ERROR(\"no result set\");",  // EXECUTE IMMDIATE 'CALL ...' leads to this line
+                    "      throw new SQL_ERROR(\"no result set\");", // EXECUTE IMMDIATE 'CALL ...'
+                    // leads to this line
                     "    }",
                     "    %'LABEL'%",
                     "    while (%'RECORD'%_r%'LEVEL'%.next()) {",
