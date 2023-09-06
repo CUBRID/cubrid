@@ -1,4 +1,4 @@
-# [<img src="https://ftp.cubrid.org/CUBRID_Docs/Brochure/BI_Images/cubrid-logo-tangram-300.png" width="25" height="25"/>](cubrid_logo.png) CUBRID Database Management System
+# [<img src="docs/tangram.svg" width="25" height="25"/>](cubrid_logo.png) CUBRID Database Management System
 
 CUBRID is a DBMS being supported by an active community of open source developers 
 and provides better performance and features necessary for Web services.
