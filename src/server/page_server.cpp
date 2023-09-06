@@ -232,7 +232,7 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
     }
 
   assert (m_ps.m_catchup_worker == nullptr);
-  m_ps.m_catchup_worker.reset (new catchup_worker { std::move (m_ps.m_followee_conn), catchup_lsa});
+  m_ps.m_catchup_worker.reset (new catchup_worker { m_ps, std::move (m_ps.m_followee_conn), catchup_lsa});
   m_ps.m_catchup_worker->set_on_success ([this]()
   {
     // TODO Send a catchup_done msg to the ATS;

@@ -242,8 +242,9 @@ class page_server
     class catchup_worker
     {
       public:
-	catchup_worker (followee_connection_handler_uptr_t &&conn_handler, const LOG_LSA catchup_lsa)
-	  : m_conn_handler { std::move (conn_handler) }
+	catchup_worker (page_server &ps, followee_connection_handler_uptr_t &&conn_handler, const LOG_LSA catchup_lsa)
+	  : m_ps { ps }
+	  ,  m_conn_handler { std::move (conn_handler) }
 	  , m_on_success_func { nullptr }
 	  , m_on_failure_func { nullptr }
 	  , m_entry_manager { TT_SYSTEM_WORKER }
@@ -366,9 +367,10 @@ class page_server
 	    }
 
 	  m_entry_manager.retire_context (entry);
-	  m_conn_handler.reset (nullptr);
+	  m_ps.m_catchup_worker.reset (nullptr);
 	}
 
+	page_server &m_ps;
 	followee_connection_handler_uptr_t m_conn_handler;
 
 	std::function<void (void)> m_on_success_func;
