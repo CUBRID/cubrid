@@ -77,8 +77,6 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     /* For findColumn */
     protected HashMap<String, Integer> colNameToIdx;
 
-    private boolean wasNullValue = false;
-
     private boolean isInserting;
     private int currentRowIndex = -1;
 
@@ -234,7 +232,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     @Override
     public boolean wasNull() throws SQLException {
-        return wasNullValue;
+        return statementHandler.getWasNull();
     }
 
     @Override
