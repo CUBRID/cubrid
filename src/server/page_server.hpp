@@ -235,14 +235,19 @@ class page_server
 	std::unique_ptr<followee_server_conn_t> m_conn;
     };
 
+    using tran_server_connection_handler_uptr_t = std::unique_ptr<tran_server_connection_handler>;
+    using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
+    using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
+
     class catchup_worker
     {
       public:
-	catchup_worker (followee_connection_handler &conn_handler, const LOG_LSA catchup_lsa)
-	  : m_conn_handler { conn_handler }
-	  , m_on_catchup_done_func { nullptr }
+	catchup_worker (followee_connection_handler_uptr_t &&conn_handler, const LOG_LSA catchup_lsa)
+	  : m_conn_handler { std::move (conn_handler) }
+	  , m_on_success_func { nullptr }
+	  , m_on_failure_func { nullptr }
 	  , m_entry_manager { TT_SYSTEM_WORKER }
-	  , m_terminated { false }
+	  , m_terminated { true }
 	  , m_catchup_lsa { catchup_lsa }
 	{
 	  // Initialize variables for buffers
@@ -262,6 +267,9 @@ class page_server
 
 	void start ()
 	{
+	  assert (m_terminated == true);
+
+	  m_terminated = false;
 	  m_thread = std::thread (&catchup_worker::execute, std::ref (*this));
 	}
 
@@ -269,11 +277,17 @@ class page_server
 	{
 	  m_terminated = true;
 	  m_thread.join ();
+	  m_conn_handler.reset (nullptr);
 	}
 
-	void set_on_catchup_done_func (std::function<void (void)> &&func)
+	void set_on_success (std::function<void (void)> &&func)
 	{
-	  m_on_catchup_done_func = std::move (func);
+	  m_on_success_func = std::move (func);
+	}
+
+	void set_on_failure (std::function<void (void)> &&func)
+	{
+	  m_on_failure_func = std::move (func);
 	}
 
       private:
@@ -289,7 +303,7 @@ class page_server
 	  auto request_pages_fun = [this] (LOG_PAGEID start_pageid, size_t cnt) -> int
 	  {
 	    const int request_page_cnt = (int) std::min (m_log_pgptr_recv_vec.size (), cnt);
-	    const int error_code = m_conn_handler.request_log_pages (start_pageid, request_page_cnt, m_log_pgptr_recv_vec);
+	    const int error_code = m_conn_handler->request_log_pages (start_pageid, request_page_cnt, m_log_pgptr_recv_vec);
 	    if (error_code != NO_ERROR)
 	      {
 		/* There are two kinds of erorrs either from client-side or server-side.
@@ -301,6 +315,10 @@ class page_server
 		 * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
 		 */
 		assert_release (false);
+		if (m_on_failure_func == nullptr)
+		  {
+		    m_on_failure_func ();
+		  }
 	      }
 	    return request_page_cnt;
 	  };
@@ -326,24 +344,27 @@ class page_server
 
 	      if (remaining_page_cnt > 0)
 		{
-		  req_future = std::async (std::launch::async, request_pages_fun, request_start_pageid, req_cnt);
+		  req_future = std::async (std::launch::async, request_pages_fun, request_start_pageid, remaining_page_cnt);
 		}
+
 	      // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
 	    }
 
 	  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 			 start_pageid, end_pageid, total_page_count);
 
-	  if (m_on_catchup_done_func != nullptr)
+	  if (m_on_success_func != nullptr)
 	    {
-	      m_on_catchup_done_func ();
+	      m_on_success_func ();
 	    }
 
 	  m_entry_manager.retire_context (entry);
 	}
 
-	followee_connection_handler &m_conn_handler;
-	std::function<void (void)> m_on_catchup_done_func;
+	followee_connection_handler_uptr_t m_conn_handler;
+
+	std::function<void (void)> m_on_success_func;
+	std::function<void (void)> m_on_failure_func;
 
 	cubthread::system_worker_entry_manager m_entry_manager;
 	std::thread m_thread;
@@ -388,10 +409,6 @@ class page_server
 	std::mutex m_pts_oldest_active_mvccids_mtx;
     };
   private:
-    using tran_server_connection_handler_uptr_t = std::unique_ptr<tran_server_connection_handler>;
-    using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
-    using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
-
     using tran_server_responder_t = server_request_responder<tran_server_connection_handler::tran_server_conn_t>;
     using follower_responder_t = server_request_responder<follower_connection_handler::follower_server_conn_t>;
 
