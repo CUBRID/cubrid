@@ -44,6 +44,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
+#include "host_lookup.h"
 
 #define LINE_BUF_SIZE                (512)
 #define HOSTNAME_LEN                 (256)
@@ -53,7 +54,6 @@
 #define IPv4_ADDR_LEN                (4)
 #define NUM_IPADDR_DOT               (3)
 #define MAX_NUM_IPADDR_PER_HOST      (1)
-#define USER_HOSTS_FILE              "cubrid_hosts.conf"
 
 #define NUM_DIGIT(VAL)              (size_t)(log10 (VAL) + 1)
 #define FREE_MEM(PTR)           \
@@ -100,7 +100,8 @@ static std::unordered_map <std::string, int> user_host_Map;
 // *INDENT-ON*
 
 static struct hostent *hostent_alloc (char *ipaddr, char *hostname);
-static bool ip_format_check (char *ip_addr);
+static bool is_valid_ip (char *ip_addr);
+static bool is_valid_hostname (char *hostname, int str_len);
 static int load_hosts_file ();
 static struct hostent *host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE lookup_type);
 
@@ -182,13 +183,12 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
       if (hosts_conf_file_Load == LOAD_INIT)
 	{
 	  hosts_conf_file_Load = load_hosts_file ();
-	  if (hosts_conf_file_Load == LOAD_FAIL)
-	    {
-	      pthread_mutex_unlock (&load_hosts_file_lock);
-	      goto return_phase;
-	    }
 	}
       pthread_mutex_unlock (&load_hosts_file_lock);
+    }
+  if (hosts_conf_file_Load == LOAD_FAIL)
+    {
+      goto return_phase;
     }
 
   addr_trans = (struct sockaddr_in *) saddr;
@@ -218,14 +218,6 @@ host_lookup_internal (const char *hostname, struct sockaddr *saddr, LOOKUP_TYPE 
   /*Hostname and IP addr cannot be found */
   else
     {
-      if (lookup_type == HOSTNAME_TO_IPADDR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, hostname);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_CANT_LOOKUP_INFO, 1, addr_trans_ch_buf);
-	}
       goto return_phase;
     }
 
@@ -258,6 +250,7 @@ load_hosts_file ()
   int cache_idx = 0, temp_idx;
   /*line muber of cubrid_hosts.conf file */
   int line_num = 0;
+  int str_len = 0;
 
   char addr_trans_ch_buf[IPADDR_LEN];
   struct in_addr addr_trans;
@@ -267,13 +260,13 @@ load_hosts_file ()
 
   memset (file_line, 0, LINE_BUF_SIZE + 1);
 
-  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, USER_HOSTS_FILE);
+  hosts_conf_dir = envvar_confdir_file (host_conf_file_full_path, PATH_MAX, "cubrid_hosts.conf");
 
   fp = fopen (hosts_conf_dir, "r");
   if (fp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_NOT_FOUND, 1, host_conf_file_full_path);
-      goto load_fail_phase;
+      goto load_end_phase;
     }
 
   while (fgets (file_line, LINE_BUF_SIZE, fp) != NULL)
@@ -298,42 +291,36 @@ load_hosts_file ()
 	  strcpy (temp_token, token);
 	  if (hostent_flag == INSERT_IPADDR)
 	    {
-	      if (ip_format_check (temp_token) == false)
+	      if (is_valid_ip (temp_token) == false)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "IP address", token, line_num,
-			  USER_HOSTS_FILE);
-
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
+		  continue;
 		}
 	      else
 		{
 		  strncpy (ipaddr, token, IPADDR_LEN);
 		  ipaddr[IPADDR_LEN - 1] = '\0';
-
 		  hostent_flag = INSERT_HOSTNAME;
 		}
 	    }
 	  else
 	    {
-	      if (strlen (token) > HOSTNAME_LEN - 1)
+	      if (hostname[0] != '\0')
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_TOO_LONG, 3, token, line_num,
-			  USER_HOSTS_FILE);
-
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
+		  break;
 		}
-	      else if (ip_format_check (temp_token) == true)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_INVALID_FORMAT, 4, "Hostname", token, line_num,
-			  USER_HOSTS_FILE);
 
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
+	      str_len = strlen (temp_token);
+	      if (str_len > HOSTNAME_LEN - 1)
+		{
+		  continue;
+		}
+	      else if (is_valid_ip (temp_token) == true)
+		{
+		  continue;
+		}
+	      else if (is_valid_hostname (temp_token, str_len) == false)
+		{
+		  continue;
 		}
 	      else
 		{
@@ -346,7 +333,8 @@ load_hosts_file ()
       if (hostname[0] && ipaddr[0])
 	{
 	  /*not duplicated hostname, IP address or not duplicated hostname and duplicated IP address */
-	  if ((user_host_Map.find (hostname) == user_host_Map.end ()))
+	  if ((user_host_Map.find (hostname) == user_host_Map.end ())
+	      && (user_host_Map.find (ipaddr) == user_host_Map.end ()))
 	    {
 	      user_host_Map[hostname] = cache_idx;
 	      user_host_Map[ipaddr] = cache_idx;
@@ -354,8 +342,9 @@ load_hosts_file ()
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
+		  /*to return the 'LOAD_FAIL' */
+		  cache_idx = 0;
+		  goto load_end_phase;
 		}
 
 	      cache_idx++;
@@ -363,57 +352,27 @@ load_hosts_file ()
 	  /*duplicated hostname */
 	  else
 	    {
-	      /*duplicated hostname but different ip address */
-
-	      temp_idx = user_host_Map.find (hostname)->second;
-	      memcpy (&addr_trans.s_addr, hostent_Cache[temp_idx]->h_addr_list[0], sizeof (addr_trans.s_addr));
-
-	      if (inet_ntop (AF_INET, &addr_trans.s_addr, addr_trans_ch_buf, sizeof (addr_trans_ch_buf)) == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
-		}
-
-	      if (strcmp (addr_trans_ch_buf, ipaddr))
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_ALREADY_EXIST, 3, hostname, line_num,
-			  USER_HOSTS_FILE);
-
-		  user_host_Map.clear ();
-		  fclose (fp);
-		  goto load_fail_phase;
-		}
-
+	      continue;
 	    }
 	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE, 2, line_num,
-		  USER_HOSTS_FILE);
-
-	  user_host_Map.clear ();
-	  fclose (fp);
-	  goto load_fail_phase;
-	}
     }
-  fclose (fp);
 
-  return LOAD_SUCCESS;
+load_end_phase:
+  if (fp != NULL)
+    {
+      fclose (fp);
+    }
 
-load_fail_phase:
-
-  return LOAD_FAIL;
+  return cache_idx > 0 ? LOAD_SUCCESS : LOAD_FAIL;
 }
 
 /*
- * ip_format_check () - Check the ipv4 IP address format.
+ * is_valid_ip () - Check the ipv4 IP address format.
  * 
  * return   : true if IP address is valid format, false otherwise
  */
 static bool
-ip_format_check (char *ip_addr)
+is_valid_ip (char *ip_addr)
 {
 
   int dec_val;
@@ -460,6 +419,38 @@ err_phase:
 
   ret = false;
   return ret;
+}
+
+/*
+ * is_valid_hostname () - Check the host name is valid format.
+ *
+ * return   : true if host name is valid format, false otherwise
+ */
+static bool
+is_valid_hostname (char *hostname, int str_len)
+{
+
+  int char_num = 0;
+
+  if (!isalpha (hostname[0]))
+    {
+      return false;
+    }
+
+  if (!isalnum (hostname[str_len - 1]))
+    {
+      return false;
+    }
+
+  for (char_num = 1; char_num < str_len - 1; char_num++)
+    {
+      if (!(isalnum (hostname[char_num]) || (hostname[char_num] == '-') || (hostname[char_num] == '.')))
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*

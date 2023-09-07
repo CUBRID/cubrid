@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
 117 Absolute pathname for the database is too long. The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
 118 Failed to locate current working directory.
-119 Cannot find ("%1$s") in /etc/hosts. Please check permissions of the file or if there is the hostname.
+119 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 120 The maximum number of volumes (%1$d) has been exceeded.
 121 Trying to remove "%1$s" a permanent volume from the database.
 122 Unable to access system message catalog.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Could not establish a pipe to the master server.
 348 Must specify either service or port identifier.
 349 Unknown service for TCP: %1$s.
-350 Cannot find ("%1$s") in /etc/hosts. Please check permissions of the file or if there is the hostname.
+350 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 351 Cannot create TCP socket.
 352 tcp_open: cannot get a reserved TCP port.
 353 Cannot make connection to master server on host "%1$s".
@@ -904,7 +904,7 @@ $ LOADDB
 834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
 835 Undefined statistics item.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial/server/synonym etc).
+837 Cannot drop the user who owns database objects.
 838 Cannot open more than %1$d index scans simultaneously.
 839 "%1$s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%1$s".
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Index loading was aborted after an error.
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Cannot get address and canonical name  for ("%1$s") in /etc/hosts. Please check permission of the file or if there is the hostname.
+1246 Cannot get address and canonical name  for ("%1$s") in "%2$s". Please check permission of the file or if there is the hostname.
 1247 The time(%1$s) specified must be after the time(%2$s) of the specified backup.
 1248 Invalid Key file : %1$s
 1249 Cannot find the key (index: %1$d).
@@ -1437,18 +1437,12 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" is invalid format at line %3$d of the file "%4$s".
-1356 Hostname "%1$s" is too long, it should be less than or equal to 256 at line %2$d of the file "%3$s".
-1357 Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses at line %2$d of the file "%3$s".
-1358 Both, the IP address and hostname, must be written completely at line %1$d of the file "%2$s".
-1359 Unable to look up "%1$s" in the cubrid_hosts.conf.
-1360 An error occured when using user defined host.
 
-1361 File "%1$s" was not found.
+1355 File "%1$s" was not found.
+1356 There is no hint in the DBLink query, or the statement type is incorrect. %1$s
 
-1362 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-
-1363 Last Error
+1357 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1358 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1614,6 +1608,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No options specified for ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.

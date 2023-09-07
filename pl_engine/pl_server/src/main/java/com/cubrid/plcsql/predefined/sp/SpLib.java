@@ -53,10 +53,38 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static Object throwInvalidCursor(String subMsg) {
+        throw new INVALID_CURSOR(subMsg);
+    }
+
+    public static <T> T checkNotNull(T val) {
+        if (val == null) {
+            throw new VALUE_ERROR("NOT NULL constraint violation");
+        }
+
+        return val;
+    }
+
+    public static Integer checkForLoopIterStep(Integer step) {
+        if (step <= 0) {
+            throw new VALUE_ERROR("FOR loop iteration steps must be positive integers");
+        }
+
+        return step;
+    }
+
+    // ---------------------------------------------------------------------------------------
     // builtin exceptions
+    //
     public static class CASE_NOT_FOUND extends PlcsqlRuntimeError {
         public CASE_NOT_FOUND() {
             super(CODE_CASE_NOT_FOUND, MSG_CASE_NOT_FOUND);
+        }
+
+        public CASE_NOT_FOUND(String subMsg) {
+            super(
+                    CODE_CASE_NOT_FOUND,
+                    isEmptyStr(subMsg) ? MSG_CASE_NOT_FOUND : (MSG_CASE_NOT_FOUND + ": " + subMsg));
         }
     }
 
@@ -64,11 +92,25 @@ public class SpLib {
         public CURSOR_ALREADY_OPEN() {
             super(CODE_CURSOR_ALREADY_OPEN, MSG_CURSOR_ALREADY_OPEN);
         }
+
+        public CURSOR_ALREADY_OPEN(String subMsg) {
+            super(
+                    CODE_CURSOR_ALREADY_OPEN,
+                    isEmptyStr(subMsg)
+                            ? MSG_CURSOR_ALREADY_OPEN
+                            : (MSG_CURSOR_ALREADY_OPEN + ": " + subMsg));
+        }
     }
 
     public static class INVALID_CURSOR extends PlcsqlRuntimeError {
         public INVALID_CURSOR() {
             super(CODE_INVALID_CURSOR, MSG_INVALID_CURSOR);
+        }
+
+        public INVALID_CURSOR(String subMsg) {
+            super(
+                    CODE_INVALID_CURSOR,
+                    isEmptyStr(subMsg) ? MSG_INVALID_CURSOR : (MSG_INVALID_CURSOR + ": " + subMsg));
         }
     }
 
@@ -76,11 +118,23 @@ public class SpLib {
         public NO_DATA_FOUND() {
             super(CODE_NO_DATA_FOUND, MSG_NO_DATA_FOUND);
         }
+
+        public NO_DATA_FOUND(String subMsg) {
+            super(
+                    CODE_NO_DATA_FOUND,
+                    isEmptyStr(subMsg) ? MSG_NO_DATA_FOUND : (MSG_NO_DATA_FOUND + ": " + subMsg));
+        }
     }
 
     public static class PROGRAM_ERROR extends PlcsqlRuntimeError {
         public PROGRAM_ERROR() {
             super(CODE_PROGRAM_ERROR, MSG_PROGRAM_ERROR);
+        }
+
+        public PROGRAM_ERROR(String subMsg) {
+            super(
+                    CODE_PROGRAM_ERROR,
+                    isEmptyStr(subMsg) ? MSG_PROGRAM_ERROR : (MSG_PROGRAM_ERROR + ": " + subMsg));
         }
     }
 
@@ -88,11 +142,23 @@ public class SpLib {
         public STORAGE_ERROR() {
             super(CODE_STORAGE_ERROR, MSG_STORAGE_ERROR);
         }
+
+        public STORAGE_ERROR(String subMsg) {
+            super(
+                    CODE_STORAGE_ERROR,
+                    isEmptyStr(subMsg) ? MSG_STORAGE_ERROR : (MSG_STORAGE_ERROR + ": " + subMsg));
+        }
     }
 
     public static class SQL_ERROR extends PlcsqlRuntimeError {
-        public SQL_ERROR(String s) {
-            super(CODE_STORAGE_ERROR, (s == null || s.length() == 0) ? MSG_SQL_ERROR : s);
+        public SQL_ERROR() {
+            super(CODE_STORAGE_ERROR, MSG_SQL_ERROR);
+        }
+
+        public SQL_ERROR(String subMsg) {
+            super(
+                    CODE_STORAGE_ERROR,
+                    isEmptyStr(subMsg) ? MSG_SQL_ERROR : (MSG_SQL_ERROR + ": " + subMsg));
         }
     }
 
@@ -100,11 +166,23 @@ public class SpLib {
         public TOO_MANY_ROWS() {
             super(CODE_TOO_MANY_ROWS, MSG_TOO_MANY_ROWS);
         }
+
+        public TOO_MANY_ROWS(String subMsg) {
+            super(
+                    CODE_TOO_MANY_ROWS,
+                    isEmptyStr(subMsg) ? MSG_TOO_MANY_ROWS : (MSG_TOO_MANY_ROWS + ": " + subMsg));
+        }
     }
 
     public static class VALUE_ERROR extends PlcsqlRuntimeError {
         public VALUE_ERROR() {
             super(CODE_VALUE_ERROR, MSG_VALUE_ERROR);
+        }
+
+        public VALUE_ERROR(String subMsg) {
+            super(
+                    CODE_VALUE_ERROR,
+                    isEmptyStr(subMsg) ? MSG_VALUE_ERROR : (MSG_VALUE_ERROR + ": " + subMsg));
         }
     }
 
@@ -112,26 +190,34 @@ public class SpLib {
         public ZERO_DIVIDE() {
             super(CODE_ZERO_DIVIDE, MSG_ZERO_DIVIDE);
         }
+
+        public ZERO_DIVIDE(String subMsg) {
+            super(
+                    CODE_ZERO_DIVIDE,
+                    isEmptyStr(subMsg) ? MSG_ZERO_DIVIDE : (MSG_ZERO_DIVIDE + ": " + subMsg));
+        }
     }
+
+    //
+    // builtin exceptions
+    // ---------------------------------------------------------------------------------------
 
     // user defined exception
     public static class $APP_ERROR extends PlcsqlRuntimeError {
-        public $APP_ERROR(int code, String msg) {
-            super(code, msg);
+        public $APP_ERROR(int code, String subMsg) {
+            super(code, isEmptyStr(subMsg) ? MSG_APP_ERROR : (MSG_APP_ERROR + ": " + subMsg));
         }
 
-        public $APP_ERROR(String msg) {
-            super(CODE_APP_ERROR, msg);
+        public $APP_ERROR(String subMsg) {
+            super(
+                    CODE_APP_ERROR,
+                    isEmptyStr(subMsg) ? MSG_APP_ERROR : (MSG_APP_ERROR + ": " + subMsg));
         }
 
         public $APP_ERROR() {
-            super(CODE_APP_ERROR, "a user defined exception");
+            super(CODE_APP_ERROR, MSG_APP_ERROR);
         }
     }
-
-    public static String SQLERRM = null;
-    public static Integer SQLCODE = null;
-    public static Date SYSDATE = null;
 
     // --------------------------------------------------------
     // DBMS_OUTPUT procedures
@@ -1706,8 +1792,13 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATETIME)) {
+            // must be calculated everytime because the AM/PM indicator can change according to the
+            // locale change
+            return String.format("00:00:00.000 %s 00/00/0000", AM_PM.format(ZERO_DATE));
+        }
 
-        return datetimeFormat.format(e);
+        return DATETIME_FORMAT.format(e);
     }
 
     // from date
@@ -1731,8 +1822,11 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATE)) {
+            return "00/00/0000";
+        }
 
-        return dateFormat.format(e);
+        return DATE_FORMAT.format(e);
     }
 
     // from time
@@ -1741,7 +1835,7 @@ public class SpLib {
             return null;
         }
 
-        return timeFormat.format(e);
+        return TIME_FORMAT.format(e);
     }
 
     // from timestamp
@@ -1780,8 +1874,13 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_TIMESTAMP)) {
+            // must be calculated everytime because the AM/PM indicator can change according to the
+            // locale change
+            return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
+        }
 
-        return timestampFormat.format(e);
+        return TIMESTAMP_FORMAT.format(e);
     }
 
     // from double
@@ -1824,7 +1923,7 @@ public class SpLib {
             return null;
         }
 
-        return e.toString();
+        return String.format("%.15e", e);
     }
 
     public static Float convDoubleToFloat(Double e) {
@@ -1891,7 +1990,7 @@ public class SpLib {
             return null;
         }
 
-        return e.toString();
+        return String.format("%.6e", e);
     }
 
     public static Double convFloatToDouble(Float e) {
@@ -2619,7 +2718,6 @@ public class SpLib {
     private static final int CODE_TOO_MANY_ROWS = 7;
     private static final int CODE_VALUE_ERROR = 8;
     private static final int CODE_ZERO_DIVIDE = 9;
-
     private static final int CODE_APP_ERROR = 99;
 
     private static final String MSG_CASE_NOT_FOUND = "case not found";
@@ -2632,6 +2730,7 @@ public class SpLib {
     private static final String MSG_TOO_MANY_ROWS = "too many rows";
     private static final String MSG_VALUE_ERROR = "value error";
     private static final String MSG_ZERO_DIVIDE = "division by zero";
+    private static final String MSG_APP_ERROR = "user defined exception";
 
     private static final Short SHORT_ZERO = Short.valueOf((short) 0);
     private static final Integer INT_ZERO = Integer.valueOf(0);
@@ -2639,11 +2738,15 @@ public class SpLib {
     private static final Float FLOAT_ZERO = Float.valueOf(0.0f);
     private static final Double DOUBLE_ZERO = Double.valueOf(0.0);
 
-    private static final DateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
-    private static final DateFormat timeFormat = new SimpleDateFormat("hh:mm:ss a");
-    private static final DateFormat datetimeFormat =
+    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy");
+    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a");
+    private static final DateFormat DATETIME_FORMAT =
             new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy");
-    private static final DateFormat timestampFormat = new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+    private static final DateFormat TIMESTAMP_FORMAT =
+            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+
+    private static final DateFormat AM_PM = new SimpleDateFormat("a");
+    private static final Date ZERO_DATE = new Date(0L);
 
     private static Boolean commonOpEq(Object l, Object r) {
         if (l == null || r == null) {
@@ -3270,5 +3373,13 @@ public class SpLib {
             assert rConv != null;
             return lConv.compareTo(rConv);
         }
+    }
+
+    private static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);
+    private static final Timestamp NULL_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+    private static final Timestamp NULL_TIMESTAMP = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+
+    private static boolean isEmptyStr(String s) {
+        return s == null || s.length() == 0;
     }
 }

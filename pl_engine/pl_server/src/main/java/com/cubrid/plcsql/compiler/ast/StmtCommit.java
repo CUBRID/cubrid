@@ -58,6 +58,7 @@ public class StmtCommit extends Stmt {
             Misc.combineLines(
                     "try {",
                     "  conn.commit();",
+                    "  sql_rowcount[0] = 0L;",
                     "} catch (SQLException e) {",
                     "  Server.log(e);",
                     "  throw new SQL_ERROR(e.getMessage());",

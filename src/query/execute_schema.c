@@ -2785,6 +2785,35 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	    }
 	}
 
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      bool has_deduplicate_key_col = false;
+
+      // Class or shared attributes are not considered. These are not indexed columns.
+      // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
+      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
+	{
+	  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+	  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
+	    {
+	      ((PT_INDEX_INFO *) idx_info)->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
+	    }
+	  else
+	    {
+	      if (idx_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+		{
+		  PT_INDEX_INFO *t_info = (PT_INDEX_INFO *) idx_info;
+		  t_info->deduplicate_level = param_dedup_level;
+		}
+
+	      if ((idx_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF) && (idx_info->prefix_length == NULL))
+		{
+		  has_deduplicate_key_col = true;
+		  nnames++;
+		}
+	    }
+	}
+#endif
+
       attnames = (char **) malloc ((nnames + 1) * sizeof (const char *));
       if (attnames == NULL)
 	{
@@ -2821,6 +2850,12 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  i++;
 	  c = c->next;
 	}
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if (has_deduplicate_key_col)
+	{
+	  nnames--;		// get count of real columns, except hidden column
+	}
+#endif
       attnames[i] = NULL;
 
       if (nnames == 1 && idx_info->prefix_length)
@@ -2846,6 +2881,26 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	      func_index_info->attr_index_start = nnames - idx_info->func_no_args;
 	    }
 	}
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      if (has_deduplicate_key_col)
+	{
+	  SM_CLASS *class_ = NULL;
+	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX));
+
+	  error = au_fetch_class (obj, &class_, AU_FETCH_READ, AU_INDEX);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  if (class_->constraints == NULL
+	      || !classobj_check_attr_in_unique_constraint (class_->constraints, attnames, func_index_info))
+	    {
+	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info,
+					    nnames, SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
+	    }
+	}
+#endif
     }
 
   cname = sm_produce_constraint_name (sm_get_ch_name (obj), ctype, (const char **) attnames, asc_desc, constraint_name);
@@ -7476,6 +7531,61 @@ add_foreign_key (DB_CTMPL * ctemplate, const PT_NODE * cnstr, const char **att_n
     {
       att_names[i++] = p->info.name.original;
     }
+
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
+  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
+    {
+      fk_info->deduplicate_level = DEDUPLICATE_KEY_LEVEL_OFF;
+    }
+  else
+    {
+      if (fk_info->deduplicate_level == DEDUPLICATE_OPTION_AUTO)
+	{
+	  fk_info->deduplicate_level = param_dedup_level;
+	}
+
+      if (fk_info->deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
+	{
+	  SM_CLASS *class_ = NULL;
+	  SM_CLASS_CONSTRAINT *free_cons = NULL;
+	  SM_CLASS_CONSTRAINT *check_cons;
+
+	  if (ctemplate->op != NULL)
+	    {
+	      error = au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      check_cons = class_->constraints;
+	    }
+	  else
+	    {
+	      error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &check_cons);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      free_cons = check_cons;
+	    }
+
+	  att_names[i] = NULL;
+	  if (check_cons == NULL || !classobj_check_attr_in_unique_constraint (check_cons, (char **) att_names, NULL))
+	    {
+	      // adjust for FK: add deduplicate_key_attr column
+	      att_names[i++] = dk_get_deduplicate_key_attr_name (fk_info->deduplicate_level);
+	    }
+
+	  if (free_cons != NULL)
+	    {
+	      classobj_free_class_constraints (free_cons);
+	    }
+	}
+    }
+#endif
   att_names[i] = NULL;
 
   if (fk_info->referenced_attrs != NULL)
@@ -7557,7 +7667,13 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 
   if (max_attrs > 0)
     {
+#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      // If there is an FK, one more space is allocated in advance because deduplicate_key_attr information will be added.
+      // max_attrs +  [ deduplicate_key_attr ] + NULL
+      buf_size = (max_attrs + 2) * sizeof (char *);
+#else
       buf_size = (max_attrs + 1) * sizeof (char *);
+#endif
       att_names = (char **) malloc (buf_size);
 
       if (att_names == NULL)

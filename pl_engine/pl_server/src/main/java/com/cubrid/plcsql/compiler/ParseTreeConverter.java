@@ -227,9 +227,25 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return EMPTY_PARAMS;
         }
 
+        boolean ofTopLevel = symbolStack.getCurrentScope().level == 2;
         NodeList<DeclParam> ret = new NodeList<>();
-        for (ParameterContext pc : ctx.parameter()) {
-            ret.addNode((DeclParam) visit(pc));
+        if (ofTopLevel) {
+            for (ParameterContext pc : ctx.parameter()) {
+                DeclParam dp = (DeclParam) visit(pc);
+                if (dp.typeSpec == TypeSpecSimple.BOOLEAN
+                        || dp.typeSpec == TypeSpecSimple.SYS_REFCURSOR) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(pc), // s064
+                            "type "
+                                    + dp.typeSpec.pcsName
+                                    + " cannot be used as a paramter type of stored procedures");
+                }
+                ret.addNode(dp);
+            }
+        } else {
+            for (ParameterContext pc : ctx.parameter()) {
+                ret.addNode((DeclParam) visit(pc));
+            }
         }
 
         return ret;
@@ -251,7 +267,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec = (TypeSpec) visit(ctx.type_spec());
 
-        DeclParamOut ret = new DeclParamOut(ctx, name, typeSpec);
+        boolean alsoIn = ctx.IN() != null || ctx.INOUT() != null;
+        DeclParamOut ret = new DeclParamOut(ctx, name, typeSpec, alsoIn);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -558,7 +575,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitDate_exp(Date_expContext ctx) {
+    public ExprDate visitDate_exp(Date_expContext ctx) {
+        addToImports("java.sql.Date");
+
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
         LocalDate date = DateTimeParser.DateLiteral.parse(s);
@@ -572,7 +591,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitTime_exp(Time_expContext ctx) {
+    public ExprTime visitTime_exp(Time_expContext ctx) {
+        addToImports("java.sql.Time");
+
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
         LocalTime time = DateTimeParser.TimeLiteral.parse(s);
@@ -586,13 +607,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitTimestamp_exp(Timestamp_expContext ctx) {
+    public ExprTimestamp visitTimestamp_exp(Timestamp_expContext ctx) {
+        addToImports("java.sql.Timestamp");
+
         String s = ctx.quoted_string().getText();
         return parseZonedDateTime(ctx, s, false, "TIMESTAMP");
     }
 
     @Override
-    public Expr visitDatetime_exp(Datetime_expContext ctx) {
+    public ExprDatetime visitDatetime_exp(Datetime_expContext ctx) {
+        addToImports("java.sql.Timestamp");
+
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
         LocalDateTime datetime = DateTimeParser.DatetimeLiteral.parse(s);
@@ -990,6 +1015,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitCursor_definition(Cursor_definitionContext ctx) {
 
+        connectionRequired = true;
+        addToImports("java.sql.*");
+
         String name = Misc.getNormalizedText(ctx.identifier());
 
         symbolStack.pushSymbolTable("cursor_def", null);
@@ -1167,7 +1195,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return new ExprId(ctx, name, scope, (DeclId) decl);
         } else if (decl instanceof DeclFunc) {
             Scope scope = symbolStack.getCurrentScope();
-            return new ExprLocalFuncCall(ctx, name, null, scope, (DeclFunc) decl);
+            return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
         }
 
         assert false : "unreachable";
@@ -1231,7 +1259,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         if (ctx.expression() == null) {
-            controlFlowBlocked = true; // s107-3
+            controlFlowBlocked = true; // s107-9
             return new StmtExit(ctx, declLabel);
         } else {
             Expr cond = visitExpression(ctx.expression());
@@ -1442,7 +1470,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SqlSemantics sws = staticSqls.get(selectCtx);
         assert sws != null;
-        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
+        if (sws.kind != ServerConstants.CUBRID_STMT_SELECT) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(selectCtx), // s066
+                    "Static SQLs in FOR loop iterators must be SELECT statements");
+        }
         if (sws.intoVars != null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(selectCtx), // s027
@@ -1691,6 +1723,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public AstNode visitClose_statement(Close_statementContext ctx) {
 
+        connectionRequired = true;
+        addToImports("java.sql.*");
+
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
 
         ExprId cursor = visitNonFuncIdentifier(idCtx); // s032: undeclared id ...
@@ -1750,6 +1785,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitFetch_statement(Fetch_statementContext ctx) {
+
+        connectionRequired = true;
+        addToImports("java.sql.*");
 
         IdentifierContext idCtx = ctx.cursor_exp().identifier();
         ExprId cursor = visitNonFuncIdentifier(idCtx); // s037: undeclared id ...
@@ -1824,11 +1862,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public StmtCommit visitCommit_statement(Commit_statementContext ctx) {
+        connectionRequired = true;
+        addToImports("java.sql.*");
         return new StmtCommit(ctx);
     }
 
     @Override
     public StmtRollback visitRollback_statement(Rollback_statementContext ctx) {
+        connectionRequired = true;
+        addToImports("java.sql.*");
         return new StmtRollback(ctx);
     }
 
@@ -1927,8 +1969,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Expr> ret = new NodeList<>();
 
-        for (ExpressionContext c : ctx.expression()) {
-            ret.addNode(visitExpression(c));
+        for (Restricted_using_elementContext c : ctx.restricted_using_element()) {
+            ret.addNode(visitExpression(c.expression()));
         }
 
         return ret;
@@ -2028,7 +2070,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private static final BigInteger UINT_LITERAL_MAX =
             new BigInteger("99999999999999999999999999999999999999");
     private static final BigInteger BIGINT_MAX = new BigInteger("9223372036854775807");
-    private static final BigInteger INT_MAX = new BigInteger("2147483648");
+    private static final BigInteger INT_MAX = new BigInteger("2147483647");
 
     private static final String SYMBOL_TABLE_TOP = "%predefined";
     private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
@@ -2170,6 +2212,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         "function " + name + " must specify its return type");
             }
             TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
+            if (symbolStack.getCurrentScope().level == 1) { // at top level
+                if (retType == TypeSpecSimple.BOOLEAN || retType == TypeSpecSimple.SYS_REFCURSOR) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.type_spec()), // s065
+                            "type "
+                                    + retType.pcsName
+                                    + " cannot be used as a return type of stored functions");
+                }
+            }
             DeclFunc ret = new DeclFunc(ctx, name, paramList, retType);
             symbolStack.putDecl(name, ret);
         } else {
@@ -2365,6 +2416,27 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return ret;
     }
 
+    private String getColumnNameInSelectList(ColumnInfo ci) {
+        String colName = ci.colName;
+        assert colName != null;
+
+        int dotIdx = colName.lastIndexOf(".");
+        if (dotIdx > 0
+                && dotIdx < colName.length() - 1
+                && ci.className != null
+                && ci.className.length() > 0
+                && ci.attrName != null) {
+
+            String afterDot = colName.substring(dotIdx + 1);
+            if (afterDot.equalsIgnoreCase(ci.attrName)) {
+                // In this case, colName must be of the form <table name alias>.<attr name>
+                return ci.attrName;
+            }
+        }
+
+        return colName;
+    }
+
     private StaticSql checkAndConvertStaticSql(SqlSemantics sws, ParserRuleContext ctx) {
 
         LinkedHashMap<Expr, TypeSpec> hostExprs = new LinkedHashMap<>();
@@ -2409,10 +2481,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             for (ColumnInfo ci : sws.selectList) {
                 String sqlType = getSqlTypeNameFromCode(ci.type);
 
-                String col = Misc.getNormalizedText(ci.colName);
+                String col = Misc.getNormalizedText(getColumnNameInSelectList(ci));
                 TypeSpec typeSpec = typeSpecs.get(sqlType);
                 assert typeSpec != null;
-                selectList.put(col, typeSpec);
+                TypeSpec old = selectList.put(col, typeSpec);
+                if (old != null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s427
+                            String.format(
+                                    "more than one columns have the same name '%s' in the SELECT list",
+                                    col));
+                }
             }
 
             // check (name-binding) and convert into-variables used in the SQL
@@ -2451,8 +2530,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
 
-            if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) > 0) {
-                paramList.nodes.add(new DeclParamOut(null, "p" + i, paramType));
+            if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
+                boolean alsoIn = (params[i].mode & ServerConstants.PARAM_MODE_IN) != 0;
+                paramList.nodes.add(new DeclParamOut(null, "p" + i, paramType, alsoIn));
             } else {
                 paramList.nodes.add(new DeclParamIn(null, "p" + i, paramType));
             }

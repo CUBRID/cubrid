@@ -560,6 +560,7 @@ valid options:\n\
   -C, --CS-mode               client-server mode execution\n\
       --datafile-per-class    create a object file for each class; default: disabled\n\
       --split-schema-files    split schema information by object and generate each file; Default: generate one schema file with all objects\n\
+      --skip-index-detail     Không in các tùy chọn mệnh đề VỚI được chỉ định khi tạo chỉ mục; mặc định: bị vô hiệu hóa \n\
       --as-dba                If the login user is a member of the DBA group, extract the same schema file as the DBA.\n
 
 

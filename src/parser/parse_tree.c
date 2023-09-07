@@ -1247,6 +1247,9 @@ parser_free_parser (PARSER_CONTEXT * parser)
 
   assert (parser != NULL);
 
+  /* free remote dblink cols */
+  pt_free_dblink_remote_cols (parser);
+
   /* free string blocks */
   pt_free_string_blocks (parser);
   /* free node blocks */

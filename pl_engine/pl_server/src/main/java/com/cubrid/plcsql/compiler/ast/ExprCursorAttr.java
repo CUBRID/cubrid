@@ -36,16 +36,18 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public class ExprCursorAttr extends Expr {
 
     public enum Attr {
-        ISOPEN("isOpen"),
-        FOUND("found"),
-        NOTFOUND("notFound"),
-        ROWCOUNT("rowCount");
+        ISOPEN(TypeSpecSimple.BOOLEAN, "isOpen"),
+        FOUND(TypeSpecSimple.BOOLEAN, "found"),
+        NOTFOUND(TypeSpecSimple.BOOLEAN, "notFound"),
+        ROWCOUNT(TypeSpecSimple.BIGINT, "rowCount");
 
-        Attr(String method) {
+        Attr(TypeSpecSimple ty, String method) {
+            this.ty = ty;
             this.method = method;
         }
 
-        private String method;
+        public final TypeSpecSimple ty;
+        private final String method;
     }
 
     @Override
@@ -65,10 +67,28 @@ public class ExprCursorAttr extends Expr {
 
     @Override
     public String exprToJavaCode() {
-        return id.toJavaCode() + "." + attr.method + "()";
+        if (attr == Attr.ISOPEN) {
+            return tmplIsOpen
+                    .replace("%'CURSOR'%", id.toJavaCode())
+                    .replace("%'METHOD'%", attr.method);
+        } else {
+            return tmplOthers
+                    .replace("%'CURSOR'%", id.toJavaCode())
+                    .replace("%'JAVA-TYPE'%", attr.ty.toJavaCode())
+                    .replace(
+                            "%'SUBMSG'%",
+                            "tried to retrieve an attribute from an unopened SYS_REFCURSOR")
+                    .replace("%'METHOD'%", attr.method);
+        }
     }
 
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
+
+    private static final String tmplIsOpen =
+            "((%'CURSOR'% == null) ? Boolean.FALSE : %'CURSOR'%.%'METHOD'%())";
+
+    private static final String tmplOthers =
+            "((%'CURSOR'% == null) ? (%'JAVA-TYPE'%) throwInvalidCursor(\"%'SUBMSG'%\") : %'CURSOR'%.%'METHOD'%())";
 }

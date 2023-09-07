@@ -34,14 +34,12 @@ public abstract class TypeSpec extends AstNode {
 
     public final String pcsName;
     public final String javaCode;
-    public final String nameOfGetMethod;
     public final int simpleTypeIdx;
 
-    public TypeSpec(String pcsName, String javaCode, String nameOfGetMethod, int simpleTypeIdx) {
+    public TypeSpec(String pcsName, String javaCode, int simpleTypeIdx) {
         super(null);
         this.pcsName = pcsName;
         this.javaCode = javaCode;
-        this.nameOfGetMethod = nameOfGetMethod;
         this.simpleTypeIdx = simpleTypeIdx;
     }
 
@@ -77,10 +75,6 @@ public abstract class TypeSpec extends AstNode {
     }
 
     public abstract String toJavaSignature();
-
-    public String getNameOfGetMethod() {
-        return nameOfGetMethod;
-    }
 
     // overriden by TypeSpecSimple
     public boolean isNumber() {

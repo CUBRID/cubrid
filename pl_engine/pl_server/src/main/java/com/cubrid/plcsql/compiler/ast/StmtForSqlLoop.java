@@ -79,18 +79,35 @@ public abstract class StmtForSqlLoop extends Stmt {
 
     private static final String tmplStmt =
             Misc.combineLines(
-                    "try { // for-loop with %'KIND'% SQL",
-                    "  String sql_%'LEVEL'% = %'SQL'%;",
-                    "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(sql_%'LEVEL'%);",
-                    "  %'SET-USED-VALUES'%",
-                    "  ResultSet %'RECORD'%_r%'LEVEL'% = stmt_%'LEVEL'%.executeQuery();",
-                    "  %'LABEL'%",
-                    "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
-                    "    %'STATEMENTS'%",
+                    "{ // for-loop with %'KIND'% SQL",
+                    "  PreparedStatement stmt_%'LEVEL'% = null;",
+                    "  try {",
+                    "    String sql_%'LEVEL'% = %'SQL'%;",
+                    "    stmt_%'LEVEL'% = conn.prepareStatement(sql_%'LEVEL'%);",
+                    "    ResultSetMetaData rsmd_%'LEVEL'% = stmt_%'LEVEL'%.getMetaData();",
+                    "    if (rsmd_%'LEVEL'% == null || rsmd_%'LEVEL'%.getColumnCount() < 1) {",
+                    "      throw new SQL_ERROR(\"not a SELECT statement\");",
+                    "    }",
+                    "    %'SET-USED-VALUES'%",
+                    "    if (!stmt_%'LEVEL'%.execute()) {",
+                    "      throw new SQL_ERROR(\"use a SELECT statement\");", // double check
+                    "    }",
+                    "    ResultSet %'RECORD'%_r%'LEVEL'% = stmt_%'LEVEL'%.getResultSet();",
+                    "    if (%'RECORD'%_r%'LEVEL'% == null) {",
+                    "      throw new SQL_ERROR(\"no result set\");", // EXECUTE IMMDIATE 'CALL ...'
+                    // leads to this line
+                    "    }",
+                    "    %'LABEL'%",
+                    "    while (%'RECORD'%_r%'LEVEL'%.next()) {",
+                    "      %'STATEMENTS'%",
+                    "    }",
+                    "  } catch (SQLException e) {",
+                    "    Server.log(e);",
+                    "    throw new SQL_ERROR(e.getMessage());",
+                    "  } finally {",
+                    "    if (stmt_%'LEVEL'% != null) {",
+                    "      stmt_%'LEVEL'%.close();",
+                    "    }",
                     "  }",
-                    "  stmt_%'LEVEL'%.close();",
-                    "} catch (SQLException e) {",
-                    "  Server.log(e);",
-                    "  throw new SQL_ERROR(e.getMessage());",
                     "}");
 }
