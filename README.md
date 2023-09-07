@@ -17,7 +17,7 @@ Follow tutorials at:
 
 ## Build from Source
 
-Before you build CUBRID:
+### Build Requirements
 
 - A modern C++ compiler capable of C++ 17 is required:
   - GCC 8.3 or newer (devtoolset-8 is recommended)
@@ -27,6 +27,14 @@ Before you build CUBRID:
   - To use ninja build system, CMake 3.16.3 or later is required
 - For more information about 3rdparty libraries, see [3rdparty/README.md](3rdparty/README.md)
 
+### How to Install the Build Requiements
+
+  Please refer to the following link:
+
+- [install_build_requirements.md](docs/install_build_requirements.md)
+
+### How to Build CUBRID
+
 On Linux:
 ```
 ./build.sh
@@ -35,7 +43,7 @@ To see usage, run `./build.sh -h`
 
 On Windows:
 ```
-.\win\build.bat
+.\win\build.bat /out ${OUTPUT_DIR} dist
 ```
 To see usage, run `.\win\build.bat /h`
 
