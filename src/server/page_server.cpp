@@ -635,9 +635,9 @@ page_server::followee_connection_handler::execute_catchup (const LOG_LSA catchup
   const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
   const size_t total_page_count = end_pageid - start_pageid + 1;
 
-  auto request_pages_fun = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t cnt) -> int
+  auto request_pages_to_buffer = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t remainder) -> int
   {
-    const int request_page_cnt = (int) std::min (log_pgptr_recv_vec.size (), cnt);
+    const int request_page_cnt = (int) std::min (log_pgptr_recv_vec.size (), remainder);
     const int error_code = request_log_pages (start_pageid, request_page_cnt, log_pgptr_recv_vec);
     if (error_code != NO_ERROR)
       {
@@ -659,11 +659,10 @@ page_server::followee_connection_handler::execute_catchup (const LOG_LSA catchup
 
   LOG_PAGEID request_start_pageid = start_pageid;
   size_t remaining_page_cnt = total_page_count;
-  auto req_future = std::async (std::launch::async, request_pages_fun, request_start_pageid, remaining_page_cnt);
+  auto req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, remaining_page_cnt);
   while (remaining_page_cnt > 0)
     {
       const int req_cnt = req_future.get (); // waits until the previous requests are replied
-      assert (req_cnt <= remaining_page_cnt);
       remaining_page_cnt -= req_cnt;
       request_start_pageid += req_cnt;
 
@@ -676,7 +675,7 @@ page_server::followee_connection_handler::execute_catchup (const LOG_LSA catchup
 
       if (remaining_page_cnt > 0)
 	{
-	  req_future = std::async (std::launch::async, request_pages_fun, request_start_pageid, remaining_page_cnt);
+	  req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, remaining_page_cnt);
 	}
       // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
     }
