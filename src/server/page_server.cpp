@@ -697,7 +697,7 @@ page_server::followee_connection_handler::execute_catchup (cubthread::entry &ent
     }
 
   // TODO: send DISCONNECT_MSG to the followee only if the connecion is alive (no communication error)
-  // disconnect (release) this connection_handler. It should be taken by another thread.
+
   m_ps.m_followee_conn.reset (nullptr);
 }
 
