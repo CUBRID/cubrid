@@ -46,6 +46,8 @@ struct test_thread_init_final
     // same default value as in system_parameter module
     prm_set_bool_value (PRM_ID_PERF_TEST_MODE, false);
     prm_set_integer_value (PRM_ID_VACUUM_WORKER_COUNT, 10);
+    prm_set_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT, 0);
+    prm_set_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT, 0);
   }
 };
 
