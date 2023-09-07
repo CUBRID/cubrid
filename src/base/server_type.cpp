@@ -283,12 +283,13 @@ int get_maxim_extra_thread_count_by_server_type ()
   if (local_server_type == SERVER_TYPE_UNKNOWN)
     {
       // by this time, the server type is in one of two states:
-      //  - either non iniitialized, in which case it will be initialized later from config file
+      //  - either non initialized, in which case it will be initialized later from config file
       //  - or, explicitly initialized from command line
-      // in the case of the first state, we need the config server here
+      // in the case of the first state, we need the config file value here
       // NOTE: further explanation, we cannot move the initialization of the entire "server type" infrastructure -
-      //  - aka, the function 'init_server_type' - because calling that function makes use of the actual
-      // threading infrastructure that this function is aiming to calibrate
+      //  - aka, the function 'init_server_type' - before thread infrastructure initialization because server
+      // type initialization already initializes some threads and, on the other hand, the threading infrastructure
+      // needs this function to properly initialize itself
       const auto server_type_from_config = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
       local_server_type = get_server_type_from_config (server_type_from_config);
     }
