@@ -27,6 +27,7 @@
 #include "tran_page_requests.hpp"
 #include "async_disconnect_handler.hpp"
 
+#include <future>
 #include <memory>
 
 /* Sequence diagram of server-server communication:
