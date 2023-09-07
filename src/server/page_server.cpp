@@ -30,12 +30,23 @@
 #include "page_buffer.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
+#include "thread_entry_task.hpp"
 #include "vpid_utilities.hpp"
 
 #include <cassert>
 #include <cstring>
 #include <functional>
 #include <thread>
+
+page_server::page_server (const char *db_name)
+  : m_server_name { db_name }
+{
+  const auto thread_count = 4; // Arbitrary chosen
+  const auto task_max_count = thread_count * 4;
+
+  m_workpool = cubthread::get_manager ()->create_worker_pool (thread_count, task_max_count, "page_server_workers",
+	       nullptr, 1, false);
+}
 
 page_server::~page_server ()
 {
@@ -603,17 +614,14 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
 void
 page_server::followee_connection_handler::start_catchup (const LOG_LSA catchup_lsa)
 {
-  auto catchup_func = std::bind (&followee_connection_handler::execute_catchup, std::ref (*this), catchup_lsa);
-  m_catchup_thread = std::thread (catchup_func, catchup_lsa);
+  auto catchup_func = std::bind (&followee_connection_handler::execute_catchup, std::ref (*this), std::placeholders::_1,
+				 catchup_lsa);
+  cubthread::get_manager ()->push_task (m_ps.m_workpool, new cubthread::entry_callable_task (catchup_func));
 }
 
 void
-page_server::followee_connection_handler::execute_catchup (const LOG_LSA catchup_lsa)
+page_server::followee_connection_handler::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa)
 {
-  // a thread entry is needed for error logging and appending log pages
-  auto entry_manager = cubthread::system_worker_entry_manager { TT_SYSTEM_WORKER };
-  auto &entry = entry_manager.create_context ();
-
   // Initialize variables for buffers
   constexpr int PAGE_CNT_IN_BUFFER = 10;       // Arbitrarily chosen
   const size_t buffer_size_in_total = PAGE_CNT_IN_BUFFER * LOG_PAGESIZE + MAX_ALIGNMENT;
@@ -680,8 +688,6 @@ page_server::followee_connection_handler::execute_catchup (const LOG_LSA catchup
       // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
     }
 
-  entry_manager.retire_context (entry);
-
   if (remaining_page_cnt == 0)
     {
       _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
@@ -692,6 +698,7 @@ page_server::followee_connection_handler::execute_catchup (const LOG_LSA catchup
 
   // TODO: send DISCONNECT_MSG to the followee only if the connecion is alive (no communication error)
   // disconnect (release) this connection_handler. It should be taken by another thread.
+  m_ps.m_followee_conn.reset (nullptr);
 }
 
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)

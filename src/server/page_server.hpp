@@ -83,9 +83,7 @@
 class page_server
 {
   public:
-    page_server (const char *db_name)
-      : m_server_name { db_name }
-    { }
+    page_server (const char *db_name);
     page_server (const page_server &) = delete;
     page_server (page_server &&) = delete;
 
@@ -235,7 +233,7 @@ class page_server
 
 	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> &log_pages_out);
 
-	void execute_catchup (const LOG_LSA catchup_lsa);
+	void execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa);
 
       private:
 	page_server &m_ps;
@@ -285,6 +283,7 @@ class page_server
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
+    void disconnect_followee_async ();
     bool is_active_tran_server_connected () const;
 
     tran_server_responder_t &get_tran_server_responder ();
@@ -308,6 +307,8 @@ class page_server
 
     followee_connection_handler_uptr_t m_followee_conn;
     std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
+
+    cubthread::entry_workpool *m_workpool; // a workpool to take some background jobs that needs a thread entry
 };
 
 #endif // !_PAGE_SERVER_HPP_
