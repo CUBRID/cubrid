@@ -31,43 +31,63 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.Scope;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class ExprLocalFuncCall extends Expr {
+public class ExprBuiltinFuncCall extends Expr {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprLocalFuncCall(this);
+        return visitor.visitExprBuiltinFuncCall(this);
     }
 
     public final String name;
     public final NodeList<Expr> args;
-    public final Scope scope;
-    public final DeclFunc decl;
-    public final boolean prefixDeclBlock;
 
-    public ExprLocalFuncCall(
-            ParserRuleContext ctx, String name, NodeList<Expr> args, Scope scope, DeclFunc decl) {
+    public ExprBuiltinFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
         super(ctx);
 
         this.name = name;
         this.args = args;
-        this.scope = scope;
-        this.decl = decl;
-        prefixDeclBlock = decl.scope().declDone;
     }
 
     @Override
     public String exprToJavaCode() {
 
-        String block = prefixDeclBlock ? decl.scope().block + "." : "";
+        assert resultType != null;
+
+        String ty = resultType.javaCode;
 
         if (args.nodes.size() == 0) {
-            return block + name + "()";
+            // invokeBuiltinFunc: defined in SpLib
+            return "(" + ty + ") invokeBuiltinFunc(conn, \"" + name + "\")";
         } else {
-            return block + name + "(\n" + Misc.indentLines(decl.argsToJavaCode(args), 1) + "\n)";
+            String argsStr = Misc.indentLines(argsToJavaCode(args), 1);
+            return "(" + ty + ") invokeBuiltinFunc(conn, \"" + name + "\"" + argsStr + "\n)";
         }
+    }
+
+    public void setResultType(TypeSpecSimple resultType) {
+        this.resultType = resultType;
+    }
+
+    // -------------------------------------------------
+    // Private
+    // -------------------------------------------------
+
+    private TypeSpecSimple resultType;
+
+    private String argsToJavaCode(NodeList<Expr> args) {
+
+        assert args != null;
+
+        StringBuffer sbuf = new StringBuffer();
+
+        for (Expr a : args.nodes) {
+            sbuf.append(",\n");
+            sbuf.append(a.toJavaCode());
+        }
+
+        return sbuf.toString();
     }
 }
