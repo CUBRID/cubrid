@@ -28,6 +28,7 @@
 #include "system_parameter.h"
 
 #include <string>
+#include <thread>
 
 std::unique_ptr<tran_server> ts_Gl;
 
@@ -271,6 +272,62 @@ bool is_tran_server_with_remote_storage ()
   return false;
 }
 
+/*
+ * get_page_server_maxim_extra_thread_count - returns the number of extra thread count per
+ *        scalability server type
+ *
+ */
+int get_maxim_extra_thread_count_by_server_type ()
+{
+  SERVER_TYPE local_server_type = g_server_type;
+  if (local_server_type == SERVER_TYPE_UNKNOWN)
+    {
+      // by this time, the server type is in one of two states:
+      //  - either non iniitialized, in which case it will be initialized later from config file
+      //  - or, explicitly initialized from command line
+      // in the case of the first state, we need the config server here
+      // NOTE: further explanation, we cannot move the initialization of the entire "server type" infrastructure -
+      //  - aka, the function 'init_server_type' - because calling that function makes use of the actual
+      // threading infrastructure that this function is aiming to calibrate
+      const auto server_type_from_config = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+      local_server_type = get_server_type_from_config (server_type_from_config);
+    }
+
+  if (local_server_type == SERVER_TYPE_PAGE)
+    {
+      // thread pool used by page server to perform parallel replication
+      //
+      int replication_parallel_thread_count_min = -1;
+      int replication_parallel_thread_count_max = -1;
+      int prm_error = sysprm_get_range (prm_get_name (PRM_ID_REPLICATION_PARALLEL_COUNT),
+					&replication_parallel_thread_count_min, &replication_parallel_thread_count_max);
+      if (prm_error != PRM_ERR_NO_ERROR)
+	{
+	  // a safe bet
+	  replication_parallel_thread_count_max = std::thread::hardware_concurrency ();
+	}
+
+      // thread pool used by page server to asynchronously service requests from transaction servers
+      //
+      int server_request_responder_thread_count_min = -1;
+      int server_request_responder_thread_count_max = -1;
+      prm_error = sysprm_get_range (prm_get_name (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT),
+				    &server_request_responder_thread_count_min, &server_request_responder_thread_count_max);
+      if (prm_error != PRM_ERR_NO_ERROR)
+	{
+	  // a safe bet
+	  server_request_responder_thread_count_max = std::thread::hardware_concurrency ();
+	}
+
+      return replication_parallel_thread_count_max + server_request_responder_thread_count_max;
+    }
+  // NOTE: the same parallel replication mechanism is also used for active transaction server recovery mechanism;
+  // but, because that one is transient and only occuring before any other thread infrastructure is instantiated in
+  // an active transaction server, we can safely ignore for now
+
+  return 0;
+}
+
 active_tran_server *get_active_tran_server_ptr ()
 {
   if (is_active_transaction_server ())
@@ -352,6 +409,11 @@ bool is_passive_server ()
 bool is_transaction_server ()
 {
   return true;
+}
+
+int get_maxim_extra_thread_count_by_server_type ()
+{
+  return 0;
 }
 
 #endif // !SERVER_MODE = SA_MODE

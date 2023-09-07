@@ -29,6 +29,7 @@ set(FAKE_THREAD_UTILS_SRC
   fake_system_parameter.cpp
   fake_thread_entry.cpp
   fake_thread_utils.cpp
+  fake_server_type.cpp
   ${BASE_DIR}/perf.cpp
   ${THREAD_DIR}/thread_manager.cpp
   ${THREAD_DIR}/thread_daemon.cpp
