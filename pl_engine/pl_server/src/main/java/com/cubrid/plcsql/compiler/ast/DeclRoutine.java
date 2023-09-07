@@ -52,8 +52,6 @@ public abstract class DeclRoutine extends Decl {
             Body body) {
         super(ctx);
 
-        assert paramList != null;
-
         this.name = name;
         this.paramList = paramList;
         this.retType = retType;
@@ -71,6 +69,8 @@ public abstract class DeclRoutine extends Decl {
 
     @Override
     public String toJavaCode() {
+
+        assert paramList != null;
 
         String strDeclClass =
                 decls == null
@@ -94,6 +94,8 @@ public abstract class DeclRoutine extends Decl {
 
     public List<TypeSpec> getParamTypes() {
 
+        assert paramList != null;
+
         List<TypeSpec> ret = new ArrayList<TypeSpec>();
 
         for (DeclParam param : paramList.nodes) {
@@ -106,6 +108,7 @@ public abstract class DeclRoutine extends Decl {
     public String argsToJavaCode(NodeList<Expr> args) {
 
         assert args != null;
+        assert paramList != null;
         assert args.nodes.size() == paramList.nodes.size();
 
         StringBuffer sbuf = new StringBuffer();

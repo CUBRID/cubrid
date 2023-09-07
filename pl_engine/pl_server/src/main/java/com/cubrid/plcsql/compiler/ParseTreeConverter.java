@@ -33,7 +33,6 @@ package com.cubrid.plcsql.compiler;
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
 import com.cubrid.jsp.data.ColumnInfo;
-import com.cubrid.jsp.data.DBType;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
@@ -157,7 +156,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                     + " must be assignable to because it is to an OUT parameter");
                 }
 
-                String sqlType = getSqlTypeNameFromCode(fs.retType.type);
+                String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
                 TypeSpec retType = getTypeSpec(sqlType);
                 if (retType == null) {
                     throw new SemanticError( // s418
@@ -176,7 +175,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             } else if (q instanceof ServerAPI.ColumnType) {
                 ServerAPI.ColumnType ct = (ServerAPI.ColumnType) q;
 
-                String sqlType = getSqlTypeNameFromCode(ct.colType.type);
+                String sqlType = DBTypeAdapter.getSqlTypeName(ct.colType.type);
                 TypeSpec ty = getTypeSpec(sqlType);
                 if (ty == null) {
                     throw new SemanticError( // s410
@@ -784,36 +783,42 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
             return ret;
         } else {
-            if (decl.paramList.nodes.size() != args.nodes.size()) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s009
-                        "the number of arguments to function "
-                                + name
-                                + " does not match the number of its formal parameters");
-            }
-
-            int i = 0;
-            for (Expr arg : args.nodes) {
-                DeclParam dp = decl.paramList.nodes.get(i);
-
-                if (dp instanceof DeclParamOut) {
-                    if (arg instanceof ExprId && isAssignableTo((ExprId) arg)) {
-                        // OK
-                    } else {
-                        throw new SemanticError(
-                                Misc.getLineColumnOf(arg.ctx), // s010
-                                "argument "
-                                        + (i + 1)
-                                        + " to the function "
-                                        + name
-                                        + " must be assignable to because it is to an OUT parameter");
-                    }
+            if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
+                connectionRequired = true;
+                addToImports("java.sql.*");
+                return new ExprBuiltinFuncCall(ctx, name, args);
+            } else {
+                if (decl.paramList.nodes.size() != args.nodes.size()) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s009
+                            "the number of arguments to function "
+                                    + name
+                                    + " does not match the number of its formal parameters");
                 }
 
-                i++;
-            }
+                int i = 0;
+                for (Expr arg : args.nodes) {
+                    DeclParam dp = decl.paramList.nodes.get(i);
 
-            return new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+                    if (dp instanceof DeclParamOut) {
+                        if (arg instanceof ExprId && isAssignableTo((ExprId) arg)) {
+                            // OK
+                        } else {
+                            throw new SemanticError(
+                                    Misc.getLineColumnOf(arg.ctx), // s010
+                                    "argument "
+                                            + (i + 1)
+                                            + " to the function "
+                                            + name
+                                            + " must be assignable to because it is to an OUT parameter");
+                        }
+                    }
+
+                    i++;
+                }
+
+                return new ExprLocalFuncCall(ctx, name, args, symbolStack.getCurrentScope(), decl);
+            }
         }
     }
 
@@ -964,7 +969,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         // currently, only the Autonomous Transaction is
         // allowed only in the top-level declarations
-        if (symbolStack.getCurrentScope().level != 2) {
+        if (symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx), // s013
                     "AUTONOMOUS_TRANSACTION can only be declared at the top level");
@@ -2225,7 +2230,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         "function " + name + " must specify its return type");
             }
             TypeSpec retType = (TypeSpec) visit(ctx.type_spec());
-            if (symbolStack.getCurrentScope().level == 1) { // at top level
+            if (symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN) { // at top level
                 if (retType == TypeSpecSimple.BOOLEAN || retType == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.type_spec()), // s065
@@ -2309,126 +2314,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
-    private boolean isSupportedDbType(int sqlTypeCode) {
-        switch (sqlTypeCode) {
-            case DBType.DB_NULL:
-            case DBType.DB_CHAR:
-            case DBType.DB_STRING:
-            case DBType.DB_SHORT:
-            case DBType.DB_INT:
-            case DBType.DB_BIGINT:
-            case DBType.DB_NUMERIC:
-            case DBType.DB_FLOAT:
-            case DBType.DB_DOUBLE:
-            case DBType.DB_DATE:
-            case DBType.DB_TIME:
-            case DBType.DB_DATETIME:
-            case DBType.DB_TIMESTAMP:
-                return true;
-        }
-
-        return false;
-    }
-
-    private String getSqlTypeNameFromCode(int sqlTypeCode) {
-        String ret = null;
-        switch (sqlTypeCode) { // got from com.cubrid.jsp.data.DBType
-            case DBType.DB_NULL:
-                ret = "NULL";
-                break;
-            case DBType.DB_INT:
-                ret = "INT";
-                break;
-            case DBType.DB_FLOAT:
-                ret = "FLOAT";
-                break;
-            case DBType.DB_DOUBLE:
-                ret = "DOUBLE";
-                break;
-            case DBType.DB_STRING:
-                ret = "STRING";
-                break;
-            case DBType.DB_OBJECT:
-                ret = "OBJECT";
-                break;
-            case DBType.DB_SET:
-                ret = "SET";
-                break;
-            case DBType.DB_MULTISET:
-                ret = "MULTISET";
-                break;
-            case DBType.DB_SEQUENCE:
-                ret = "SEQUENCE";
-                break;
-            case DBType.DB_TIME:
-                ret = "TIME";
-                break;
-            case DBType.DB_TIMESTAMP:
-                ret = "TIMESTAMP";
-                break;
-            case DBType.DB_DATE:
-                ret = "DATE";
-                break;
-            case DBType.DB_MONETARY:
-                ret = "MONETARY";
-                break;
-            case DBType.DB_SHORT:
-                ret = "SHORT";
-                break;
-            case DBType.DB_NUMERIC:
-                ret = "NUMERIC";
-                break;
-            case DBType.DB_OID:
-                ret = "OID";
-                break;
-            case DBType.DB_CHAR:
-                ret = "CHAR";
-                break;
-            case DBType.DB_RESULTSET:
-                ret = "RESULTSET";
-                break;
-            case DBType.DB_BIGINT:
-                ret = "BIGINT";
-                break;
-            case DBType.DB_DATETIME:
-                ret = "DATETIME";
-                break;
-
-            case DBType.DB_BIT:
-                ret = "BIT";
-                break;
-            case DBType.DB_VARBIT:
-                ret = "VARBIT";
-                break;
-
-            case DBType.DB_BLOB:
-                ret = "BLOB";
-                break;
-            case DBType.DB_CLOB:
-                ret = "CLOB";
-                break;
-            case DBType.DB_ENUMERATION:
-                ret = "ENUMERATION";
-                break;
-            case DBType.DB_TIMESTAMPTZ:
-                ret = "TIMESTAMPTZ";
-                break;
-            case DBType.DB_TIMESTAMPLTZ:
-                ret = "TIMESTAMPLTZ";
-                break;
-            case DBType.DB_DATETIMETZ:
-                ret = "DATETIMETZ";
-                break;
-            case DBType.DB_DATETIMELTZ:
-                ret = "DATETIMELTZ";
-                break;
-            default:
-                ret = "<Unknown>";
-        }
-
-        return ret;
-    }
-
     private String getColumnNameInSelectList(ColumnInfo ci) {
         String colName = ci.colName;
         assert colName != null;
@@ -2462,11 +2347,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 if (pi.name.equals("?")) {
                     // auto parameter
                     assert pi.value != null;
-                    if (!isSupportedDbType(pi.type)) {
+                    if (!DBTypeAdapter.isSupported(pi.type)) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s419
                                 "the Static SQL contains a constant value of an unsupported type "
-                                        + getSqlTypeNameFromCode(pi.type));
+                                        + DBTypeAdapter.getSqlTypeName(pi.type));
                     }
 
                     ExprAutoParam autoParam = new ExprAutoParam(ctx, pi.value, pi.type);
@@ -2492,11 +2377,19 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             // convert select list
             selectList = new LinkedHashMap<>();
             for (ColumnInfo ci : sws.selectList) {
-                String sqlType = getSqlTypeNameFromCode(ci.type);
-
                 String col = Misc.getNormalizedText(getColumnNameInSelectList(ci));
-                TypeSpec typeSpec = typeSpecs.get(sqlType);
+
+                if (!DBTypeAdapter.isSupported(ci.type)) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s426
+                            "the SELECT statement contains a column "
+                                    + col
+                                    + " of an unsupported type "
+                                    + DBTypeAdapter.getSqlTypeName(ci.type));
+                }
+                TypeSpec typeSpec = DBTypeAdapter.getTypeSpec(ci.type);
                 assert typeSpec != null;
+
                 TypeSpec old = selectList.put(col, typeSpec);
                 if (old != null) {
                     throw new SemanticError(
@@ -2537,7 +2430,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         int len = params.length;
         for (int i = 0; i < len; i++) {
 
-            String sqlType = getSqlTypeNameFromCode(params[i].type);
+            String sqlType = DBTypeAdapter.getSqlTypeName(params[i].type);
             TypeSpec paramType = getTypeSpec(sqlType);
             if (paramType == null) {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);

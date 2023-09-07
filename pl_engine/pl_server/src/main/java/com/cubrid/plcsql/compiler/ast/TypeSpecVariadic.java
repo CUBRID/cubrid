@@ -68,8 +68,13 @@ public class TypeSpecVariadic extends TypeSpec {
         return elem + "[]";
     }
 
+    @Override
+    public String getTypicalValueStr() {
+        return null;
+    }
+
     public TypeSpecVariadic(TypeSpecSimple elem) {
-        super(null, null, -1);
+        super(null, null, -1, null);
         this.elem = elem;
     }
 }

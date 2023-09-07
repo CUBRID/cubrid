@@ -35,12 +35,15 @@ public abstract class TypeSpec extends AstNode {
     public final String pcsName;
     public final String javaCode;
     public final int simpleTypeIdx;
+    public final String typicalValueStr; // used to type builtin function calls
 
-    public TypeSpec(String pcsName, String javaCode, int simpleTypeIdx) {
+    public TypeSpec(String pcsName, String javaCode, int simpleTypeIdx, String typicalValueStr) {
+
         super(null);
         this.pcsName = pcsName;
         this.javaCode = javaCode;
         this.simpleTypeIdx = simpleTypeIdx;
+        this.typicalValueStr = typicalValueStr;
     }
 
     public static TypeSpec ofJavaName(String javaType) {
@@ -65,7 +68,7 @@ public abstract class TypeSpec extends AstNode {
     @Override
     public boolean equals(Object that) {
         return this == that; // Actually, this is the same as equals of Object class.
-        // I just wanted to be explicit.
+        // I just want to be explicit.
     }
 
     @Override
@@ -75,6 +78,10 @@ public abstract class TypeSpec extends AstNode {
     }
 
     public abstract String toJavaSignature();
+
+    public String getTypicalValueStr() {
+        return typicalValueStr;
+    }
 
     // overriden by TypeSpecSimple
     public boolean isNumber() {
