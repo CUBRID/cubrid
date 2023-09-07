@@ -419,7 +419,7 @@ function do_print()
 	echo ""
 	echo ""
         echo "  ----------------------------------------------------------------------------------------------------------------------"
-	echo "  *** Key=${match_key} Threahols=${threshold_value}"
+	echo "  *** Key=${match_key} Thresholds=${threshold_value}"
 	echo ""
 
 	printf "  %-${format_sz[1]}s\t" "${title_nm[1]}"
