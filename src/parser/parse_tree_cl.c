@@ -542,7 +542,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
 
 		  name_coll = PT_GET_COLLATION_MODIFIER (name);
 
-		  if (name_coll == -1 && name->data_type != NULL)
+		  if (!PT_HAS_COLLATION_MODIFIER (name) && name->data_type != NULL)
 		    {
 		      name_coll = name->data_type->info.data_type.collation_id;
 		    }
@@ -12165,7 +12165,7 @@ pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PT_NODE *
 pt_init_function (PT_NODE * p)
 {
-  p->info.function.function_type = (FUNC_TYPE) 0;
+  p->info.function.function_type = (FUNC_CODE) 0;
   p->info.function.all_or_distinct = (PT_MISC_TYPE) 0;
 
   return p;
@@ -12180,7 +12180,7 @@ pt_init_function (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  FUNC_TYPE code;
+  FUNC_CODE code;
   PARSER_VARCHAR *q = 0, *r1;
   PT_NODE *order_by = NULL;
 
@@ -15974,7 +15974,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
 	  || (p->info.value.is_collate_allowed == false)
 	  || (prt_coll_id == LANG_SYS_COLLATION && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
-	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && PT_GET_COLLATION_MODIFIER (p) == -1))
+	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && !PT_HAS_COLLATION_MODIFIER (p)))
 	{
 	  prt_coll_id = -1;
 	}
@@ -15997,9 +15997,10 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
     case PT_TYPE_SEQUENCE:
-      if (p->spec_ident || (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
+      if (p->spec_ident || ((parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK) && p->flag.print_in_value_for_dblink))
 	{
 	  /* this is tagged as an "in" clause right hand side Print it as a parenthesized list */
+	  /* print_in_value_for_dblink is a flag as same meaning for dblink */
 	  r1 = pt_print_bytes_l (parser, p->info.value.data_value.set);
 	  q = pt_append_nulstring (parser, q, "(");
 	  q = pt_append_varchar (parser, q, r1);
@@ -16007,7 +16008,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
-	  if (p->type_enum != PT_TYPE_SEQUENCE)
+	  if (p->type_enum != PT_TYPE_SEQUENCE && !(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	    {
 	      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
 	    }
@@ -16029,7 +16030,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_INTEGER:
     case PT_TYPE_BIGINT:
     case PT_TYPE_SMALLINT:
-      if ((p->info.value.text != NULL) && !(parser->custom_print & PT_SUPPRESS_BIGINT_CAST))
+      if (p->info.value.text != NULL && !(parser->custom_print & PT_SUPPRESS_BIGINT_CAST))
 	{
 	  r = p->info.value.text;
 	}
@@ -16082,10 +16083,13 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_DATETIME:
     case PT_TYPE_DATETIMETZ:
     case PT_TYPE_DATETIMELTZ:
-      if (p->info.value.text)
+      if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
-	  q = pt_append_nulstring (parser, q, p->info.value.text);
-	  break;
+	  if (p->info.value.text)
+	    {
+	      q = pt_append_nulstring (parser, q, p->info.value.text);
+	      break;
+	    }
 	}
       r = (char *) p->info.value.data_value.str->bytes;
 
@@ -16126,17 +16130,20 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_CHAR:
     case PT_TYPE_NCHAR:
     case PT_TYPE_BIT:
-      if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
+      if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
-	  if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+	  if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
 	    {
-	      parser->flag.long_string_skipped = 1;
+	      if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+		{
+		  parser->flag.long_string_skipped = 1;
+		  break;
+		}
+
+	      q = pt_append_nulstring (parser, q, p->info.value.text);
+
 	      break;
 	    }
-
-	  q = pt_append_nulstring (parser, q, p->info.value.text);
-
-	  break;
 	}
       r1 = p->info.value.data_value.str;
       if (parser->flag.dont_prt_long_string)
@@ -16200,17 +16207,20 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_VARCHAR:	/* have to check for embedded quotes */
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_VARBIT:
-      if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
+      if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
-	  if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+	  if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
 	    {
-	      parser->flag.long_string_skipped = 1;
+	      if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+		{
+		  parser->flag.long_string_skipped = 1;
+		  break;
+		}
+
+	      q = pt_append_nulstring (parser, q, p->info.value.text);
+
 	      break;
 	    }
-
-	  q = pt_append_nulstring (parser, q, p->info.value.text);
-
-	  break;
 	}
       r1 = p->info.value.data_value.str;
       if (parser->flag.dont_prt_long_string)

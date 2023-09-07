@@ -1439,9 +1439,10 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 
 
 1355 Le fichier "%1$s" est introuvable.
+1356 Il n'y a pas d'indication dans la requête DBLink ou le type d'instruction est incorrect. %1$s
 
-1356 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1357 Dernière erreur
+1357 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1358 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

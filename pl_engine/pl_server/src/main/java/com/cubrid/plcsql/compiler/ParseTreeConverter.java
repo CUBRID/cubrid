@@ -266,7 +266,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec = (TypeSpec) visit(ctx.type_spec());
 
-        DeclParamOut ret = new DeclParamOut(ctx, name, typeSpec);
+        boolean alsoIn = ctx.IN() != null || ctx.INOUT() != null;
+        DeclParamOut ret = new DeclParamOut(ctx, name, typeSpec, alsoIn);
         symbolStack.putDecl(name, ret);
 
         return ret;
@@ -573,7 +574,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitDate_exp(Date_expContext ctx) {
+    public ExprDate visitDate_exp(Date_expContext ctx) {
+        addToImports("java.sql.Date");
+
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
         LocalDate date = DateTimeParser.DateLiteral.parse(s);
@@ -587,7 +590,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitTime_exp(Time_expContext ctx) {
+    public ExprTime visitTime_exp(Time_expContext ctx) {
+        addToImports("java.sql.Time");
+
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
         LocalTime time = DateTimeParser.TimeLiteral.parse(s);
@@ -601,13 +606,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitTimestamp_exp(Timestamp_expContext ctx) {
+    public ExprTimestamp visitTimestamp_exp(Timestamp_expContext ctx) {
+        addToImports("java.sql.Timestamp");
+
         String s = ctx.quoted_string().getText();
         return parseZonedDateTime(ctx, s, false, "TIMESTAMP");
     }
 
     @Override
-    public Expr visitDatetime_exp(Datetime_expContext ctx) {
+    public ExprDatetime visitDatetime_exp(Datetime_expContext ctx) {
+        addToImports("java.sql.Timestamp");
+
         String s = ctx.quoted_string().getText();
         s = unquoteStr(s);
         LocalDateTime datetime = DateTimeParser.DatetimeLiteral.parse(s);
@@ -1466,7 +1475,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         SqlSemantics sws = staticSqls.get(selectCtx);
         assert sws != null;
-        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
+        if (sws.kind != ServerConstants.CUBRID_STMT_SELECT) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(selectCtx), // s066
+                    "Static SQLs in FOR loop iterators must be SELECT statements");
+        }
         if (sws.intoVars != null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(selectCtx), // s027
@@ -1854,11 +1867,15 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public StmtCommit visitCommit_statement(Commit_statementContext ctx) {
+        connectionRequired = true;
+        addToImports("java.sql.*");
         return new StmtCommit(ctx);
     }
 
     @Override
     public StmtRollback visitRollback_statement(Rollback_statementContext ctx) {
+        connectionRequired = true;
+        addToImports("java.sql.*");
         return new StmtRollback(ctx);
     }
 
@@ -1957,8 +1974,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         NodeList<Expr> ret = new NodeList<>();
 
-        for (ExpressionContext c : ctx.expression()) {
-            ret.addNode(visitExpression(c));
+        for (Restricted_using_elementContext c : ctx.restricted_using_element()) {
+            ret.addNode(visitExpression(c.expression()));
         }
 
         return ret;
@@ -2297,6 +2314,27 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
+    private String getColumnNameInSelectList(ColumnInfo ci) {
+        String colName = ci.colName;
+        assert colName != null;
+
+        int dotIdx = colName.lastIndexOf(".");
+        if (dotIdx > 0
+                && dotIdx < colName.length() - 1
+                && ci.className != null
+                && ci.className.length() > 0
+                && ci.attrName != null) {
+
+            String afterDot = colName.substring(dotIdx + 1);
+            if (afterDot.equalsIgnoreCase(ci.attrName)) {
+                // In this case, colName must be of the form <table name alias>.<attr name>
+                return ci.attrName;
+            }
+        }
+
+        return colName;
+    }
+
     private StaticSql checkAndConvertStaticSql(SqlSemantics sws, ParserRuleContext ctx) {
 
         LinkedHashMap<Expr, TypeSpec> hostExprs = new LinkedHashMap<>();
@@ -2339,21 +2377,27 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             // convert select list
             selectList = new LinkedHashMap<>();
             for (ColumnInfo ci : sws.selectList) {
-                String colName = ci.colName;
+                String col = Misc.getNormalizedText(getColumnNameInSelectList(ci));
 
                 if (!DBTypeAdapter.isSupported(ci.type)) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s426
                             "the SELECT statement contains a column "
-                                    + colName
+                                    + col
                                     + " of an unsupported type "
                                     + DBTypeAdapter.getSqlTypeName(ci.type));
                 }
                 TypeSpec typeSpec = DBTypeAdapter.getTypeSpec(ci.type);
                 assert typeSpec != null;
 
-                String col = Misc.getNormalizedText(colName);
-                selectList.put(col, typeSpec);
+                TypeSpec old = selectList.put(col, typeSpec);
+                if (old != null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s427
+                            String.format(
+                                    "more than one columns have the same name '%s' in the SELECT list",
+                                    col));
+                }
             }
 
             // check (name-binding) and convert into-variables used in the SQL
@@ -2392,8 +2436,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
 
-            if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) > 0) {
-                paramList.nodes.add(new DeclParamOut(null, "p" + i, paramType));
+            if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
+                boolean alsoIn = (params[i].mode & ServerConstants.PARAM_MODE_IN) != 0;
+                paramList.nodes.add(new DeclParamOut(null, "p" + i, paramType, alsoIn));
             } else {
                 paramList.nodes.add(new DeclParamIn(null, "p" + i, paramType));
             }

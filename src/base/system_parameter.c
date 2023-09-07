@@ -2407,10 +2407,10 @@ bool PRM_PL_TRANSACTION_CONTROL = false;
 static bool prm_pl_transaction_control_default = false;
 static unsigned int prm_pl_transaction_control_flag = 0;
 
-int PRM_VACUUM_OVFP_CHECK_DURATION = 2678400;
-static int prm_vacuum_ovfp_check_duration_default = 2678400;	/* 31 days * 24 hours * 60 min * 60 secs  */
-static int prm_vacuum_ovfp_check_duration_upper = INT_MAX;
-static int prm_vacuum_ovfp_check_duration_lower = 60;	// 1 min
+int PRM_VACUUM_OVFP_CHECK_DURATION = 45000;
+static int prm_vacuum_ovfp_check_duration_default = 45000;
+static int prm_vacuum_ovfp_check_duration_upper = 600000;
+static int prm_vacuum_ovfp_check_duration_lower = 1;	// 1 min
 static unsigned int prm_vacuum_ovfp_check_duration_flag = 0;
 
 int PRM_VACUUM_OVFP_CHECK_THRESHOLD = 1000;
@@ -6239,7 +6239,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
    &prm_oracle_compat_number_behavior_flag,
    (void *) &prm_oracle_compat_number_behavior_default,
@@ -6306,7 +6306,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_VACUUM_OVFP_CHECK_DURATION,
    PRM_NAME_VACUUM_OVFP_CHECK_DURATION,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
+   (PRM_FOR_SERVER),
    PRM_INTEGER,
    &prm_vacuum_ovfp_check_duration_flag,
    (void *) &prm_vacuum_ovfp_check_duration_default,
@@ -10874,6 +10874,7 @@ prm_tune_parameters (void)
       if (GETHOSTNAME (host_name, sizeof (host_name)))
 	{
 	  strncpy (host_name, "localhost", sizeof (host_name) - 1);
+	  er_clear ();
 	}
 
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);
@@ -11026,6 +11027,7 @@ prm_tune_parameters (void)
       if (GETHOSTNAME (host_name, sizeof (host_name)))
 	{
 	  strncpy (host_name, "localhost", sizeof (host_name) - 1);
+	  er_clear ();
 	}
 
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);

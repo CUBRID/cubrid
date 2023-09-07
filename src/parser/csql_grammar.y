@@ -152,6 +152,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "db_elo.h"
 #include "storage_common.h"
 #include "jsp_cl.h"
+#include "db_function.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -313,10 +314,10 @@ FUNCTION_MAP *keyword_offset (const char *name);
 
 static PT_NODE* pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size);
 
-static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
-static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list);
+static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                                  size_t min_args, size_t max_args);
-static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                                       size_t min_args, size_t max_args, size_t mod2);
 
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
@@ -24668,7 +24669,7 @@ int parser_function_code = PT_EMPTY;
 size_t json_table_column_count = 0;
 
 static PT_NODE *
-parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code,
+parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code,
 			    PT_NODE * args_list)
 {
   PT_NODE *node = NULL;
@@ -24688,7 +24689,7 @@ parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code,
 }
 
 static PT_NODE *
-parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                  size_t min_args, size_t max_args)
 {
   size_t count = (size_t) parser_count_list (args_list);
@@ -24703,7 +24704,7 @@ parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, P
 }
 
 static PT_NODE *
-parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                       size_t min_args, size_t max_args, size_t mod2)
 {
   size_t count = (size_t) parser_count_list (args_list);

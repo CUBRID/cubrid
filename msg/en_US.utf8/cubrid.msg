@@ -683,8 +683,8 @@ $ LOADDB
 613 In class "%3$s", local component "%1$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
 614 Number of active log archives has been exceeded the max desired number of %1$d.
 615 Cannot establish contact with the Winsock interface. Winsock error: %1$d.
-616 Cannot determine machine name using Winsock interface. Winsock error: %1$d.
-617 Cannot determine machine id using Winsock interface. There must be an entry in the host name table for this machine. Winsock error: %1$d.
+616 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
+617 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 618 Attribute is not updatable.
 619 Bad source codeset.
 620 Bad destination codeset.
@@ -1439,9 +1439,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 
 1355 File "%1$s" was not found.
+1356 There is no hint in the DBLink query, or the statement type is incorrect. %1$s
 
-1356 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1357 Last Error
+1357 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1358 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

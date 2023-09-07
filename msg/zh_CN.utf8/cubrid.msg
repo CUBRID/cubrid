@@ -1440,9 +1440,10 @@ $ LOADDB
 
 
 1355 找不到文件"%1$s"。
+1356 DBLink查询没有提示，或者语句类型不正确。 %1$s
 
-1356 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1357 最后一个错误.
+1357 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1358 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):

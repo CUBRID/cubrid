@@ -79,6 +79,9 @@ public class StmtCursorFetch extends Stmt {
     private static final String tmplStmt =
             Misc.combineLines(
                     "{ // cursor fetch",
+                    "  if (%'CURSOR'% == null || !%'CURSOR'%.isOpen()) {",
+                    "    throw new INVALID_CURSOR(\"tried to fetch an unopened cursor\");",
+                    "  }",
                     "  ResultSet rs = %'CURSOR'%.rs;",
                     "  if (rs == null) {",
                     "    throw new PROGRAM_ERROR();",
@@ -98,11 +101,14 @@ public class StmtCursorFetch extends Stmt {
         StringBuffer sbuf = new StringBuffer();
         for (ExprId id : intoVarList) {
 
-            String nameOfGetMethod =
-                    (columnTypeList == null)
-                            ? "getObject"
-                            : columnTypeList.get(i).getNameOfGetMethod();
-            String resultStr = String.format("rs.%s(%d)", nameOfGetMethod, i + 1);
+            String resultStr;
+            if (columnTypeList == null) {
+                resultStr = String.format("rs.getObject(%d)", i + 1);
+            } else {
+                resultStr =
+                        String.format(
+                                "(%s) rs.getObject(%d)", columnTypeList.get(i).toJavaCode(), i + 1);
+            }
 
             if (i > 0) {
                 sbuf.append("\n");

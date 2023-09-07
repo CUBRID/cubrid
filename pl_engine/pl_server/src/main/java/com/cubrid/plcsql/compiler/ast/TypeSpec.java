@@ -34,21 +34,18 @@ public abstract class TypeSpec extends AstNode {
 
     public final String pcsName;
     public final String javaCode;
-    public final String nameOfGetMethod;
     public final int simpleTypeIdx;
     public final String typicalValueStr; // used to type builtin function calls
 
     public TypeSpec(
             String pcsName,
             String javaCode,
-            String nameOfGetMethod,
             int simpleTypeIdx,
             String typicalValueStr) {
 
         super(null);
         this.pcsName = pcsName;
         this.javaCode = javaCode;
-        this.nameOfGetMethod = nameOfGetMethod;
         this.simpleTypeIdx = simpleTypeIdx;
         this.typicalValueStr = typicalValueStr;
     }
@@ -85,10 +82,6 @@ public abstract class TypeSpec extends AstNode {
     }
 
     public abstract String toJavaSignature();
-
-    public String getNameOfGetMethod() {
-        return nameOfGetMethod;
-    }
 
     public String getTypicalValueStr() {
         return typicalValueStr;

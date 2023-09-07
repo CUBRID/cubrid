@@ -74,7 +74,7 @@ public class TypeSpecVariadic extends TypeSpec {
     }
 
     public TypeSpecVariadic(TypeSpecSimple elem) {
-        super(null, null, null, -1, null);
+        super(null, null, -1, null);
         this.elem = elem;
     }
 }
