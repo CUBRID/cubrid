@@ -226,86 +226,54 @@ class page_server
 	followee_connection_handler &operator= (followee_connection_handler &&) = delete;
 
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
-	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
 
-	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> &log_pages_out);
+	void start_catchup (const LOG_LSA catchup_lsa)
+	{
+	  auto catchup_func = std::bind (&followee_connection_handler::execute_catchup, std::ref (*this), catchup_lsa);
+	  m_catchup_thread = std::thread (catchup_func, catchup_lsa);
+	}
+
+	~followee_connection_handler ()
+	{
+	  m_terminated = true;
+	  m_catchup_thread.join(); // wait until the catchup thread exits
+	}
 
       private:
-	page_server &m_ps;
-	std::unique_ptr<followee_server_conn_t> m_conn;
-    };
+	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
+	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> &log_pages_out);
 
-    using tran_server_connection_handler_uptr_t = std::unique_ptr<tran_server_connection_handler>;
-    using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
-    using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
-
-    class catchup_worker
-    {
-      public:
-	catchup_worker (page_server &ps, followee_connection_handler_uptr_t &&conn_handler, const LOG_LSA catchup_lsa)
-	  : m_ps { ps }
-	  ,  m_conn_handler { std::move (conn_handler) }
-	  , m_on_success_func { nullptr }
-	  , m_on_failure_func { nullptr }
-	  , m_entry_manager { TT_SYSTEM_WORKER }
-	  , m_terminated { true }
-	  , m_catchup_lsa { catchup_lsa }
+	void execute_catchup (const LOG_LSA catchup_lsa)
 	{
+	  // a thread entry is needed for error logging and appending log pages
+	  auto entry_manager = cubthread::system_worker_entry_manager { TT_SYSTEM_WORKER };
+	  auto &entry = entry_manager.create_context ();
+
 	  // Initialize variables for buffers
 	  constexpr int PAGE_CNT_IN_BUFFER = 10;       // Arbitrarily chosen
 	  const size_t buffer_size_in_total = PAGE_CNT_IN_BUFFER * LOG_PAGESIZE + MAX_ALIGNMENT;
-	  m_log_pgbuf_buffer1 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
-	  m_log_pgbuf_buffer2 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
-	  char *const aligned_log_pgbuf_buffer1 = PTR_ALIGN (m_log_pgbuf_buffer1.get (), MAX_ALIGNMENT);
-	  char *const aligned_log_pgbuf_buffer2 = PTR_ALIGN (m_log_pgbuf_buffer2.get (), MAX_ALIGNMENT);
+	  auto log_pgbuf_buffer1 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+	  auto log_pgbuf_buffer2 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+	  char *const aligned_log_pgbuf_buffer1 = PTR_ALIGN (log_pgbuf_buffer1.get (), MAX_ALIGNMENT);
+	  char *const aligned_log_pgbuf_buffer2 = PTR_ALIGN (log_pgbuf_buffer2.get (), MAX_ALIGNMENT);
+
+	  auto log_pgptr_vec = std::vector<LOG_PAGE *> {};
+	  auto log_pgptr_recv_vec = std::vector<LOG_PAGE *> {};
 
 	  for (int i = 0; i < PAGE_CNT_IN_BUFFER; i++)
 	    {
-	      m_log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer1 + i * LOG_PAGESIZE));
-	      m_log_pgptr_recv_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer2 + i * LOG_PAGESIZE));
+	      log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer1 + i * LOG_PAGESIZE));
+	      log_pgptr_recv_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer2 + i * LOG_PAGESIZE));
 	    }
-	}
-
-	void start ()
-	{
-	  assert (m_terminated == true);
-
-	  m_terminated = false;
-	  std::thread (&catchup_worker::execute, std::ref (*this)).detach ();
-	}
-
-	void terminate ()
-	{
-	  auto ulock = std::unique_lock <std::mutex> (m_term_mtx);
-	  m_terminated = true;
-	  m_term_cv.wait (ulock);
-	  m_conn_handler.reset (nullptr);
-	}
-
-	void set_on_success (std::function<void (void)> &&func)
-	{
-	  m_on_success_func = std::move (func);
-	}
-
-	void set_on_failure (std::function<void (void)> &&func)
-	{
-	  m_on_failure_func = std::move (func);
-	}
-
-      private:
-	void execute ()
-	{
-	  // a thread entry is needed for error logging and appending log pages
-	  auto &entry = m_entry_manager.create_context ();
 
 	  const LOG_PAGEID start_pageid = log_Gl.hdr.append_lsa.pageid;
-	  const LOG_PAGEID end_pageid = m_catchup_lsa.offset == 0 ? m_catchup_lsa.pageid - 1 : m_catchup_lsa.pageid;
+	  const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
 	  const size_t total_page_count = end_pageid - start_pageid + 1;
 
-	  auto request_pages_fun = [this] (LOG_PAGEID start_pageid, size_t cnt) -> int
+	  auto request_pages_fun = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t cnt) -> int
 	  {
-	    const int request_page_cnt = (int) std::min (m_log_pgptr_recv_vec.size (), cnt);
-	    const int error_code = m_conn_handler->request_log_pages (start_pageid, request_page_cnt, m_log_pgptr_recv_vec);
+	    const int request_page_cnt = (int) std::min (log_pgptr_recv_vec.size (), cnt);
+	    const int error_code = request_log_pages (start_pageid, request_page_cnt, log_pgptr_recv_vec);
 	    if (error_code != NO_ERROR)
 	      {
 		/* There are two kinds of erorrs either from client-side or server-side.
@@ -317,10 +285,6 @@ class page_server
 		 * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
 		 */
 		assert_release (false);
-		if (m_on_failure_func == nullptr)
-		  {
-		    m_on_failure_func ();
-		  }
 	      }
 	    return request_page_cnt;
 	  };
@@ -337,60 +301,46 @@ class page_server
 	      remaining_page_cnt -= req_cnt;
 	      request_start_pageid += req_cnt;
 
+	      if (m_terminated)
+		{
+		  break;
+		}
 
-	      {
-		auto lockg = std::lock_guard <std::mutex> (m_term_mtx);
-		if (m_terminated)
-		  {
-		    m_entry_manager.retire_context (entry);
-		    m_term_cv.notify_one (); // notify it's terminated.
-		    return;
-		  }
-	      }
-
-	      m_log_pgptr_vec.swap (m_log_pgptr_recv_vec);
+	      log_pgptr_vec.swap (log_pgptr_recv_vec);
 
 	      if (remaining_page_cnt > 0)
 		{
 		  req_future = std::async (std::launch::async, request_pages_fun, request_start_pageid, remaining_page_cnt);
 		}
-
 	      // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
 	    }
 
-	  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
-			 start_pageid, end_pageid, total_page_count);
+	  entry_manager.retire_context (entry);
 
-	  if (m_on_success_func != nullptr)
+	  assert (remaining_page_cnt >= 0);
+	  if (remaining_page_cnt == 0)
 	    {
-	      m_on_success_func ();
+	      _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
+			     start_pageid, end_pageid, total_page_count);
+	      // TODO: send CATCHUP_DONE_MSG to the ATS
+	      // TODO: resume appneding log prior nodes from the ATS.
 	    }
 
-	  m_entry_manager.retire_context (entry);
-	  m_ps.m_catchup_worker.reset (nullptr);
+	  // TODO: send DISCONNECT_MSG to the followee only if the connecion is alive (no communication error)
+	  // disconnect (release) this connection_handler. It should be taken by another thread.
 	}
 
+      private:
 	page_server &m_ps;
-	followee_connection_handler_uptr_t m_conn_handler;
+	std::unique_ptr<followee_server_conn_t> m_conn;
 
-	std::function<void (void)> m_on_success_func;
-	std::function<void (void)> m_on_failure_func;
-
-	cubthread::system_worker_entry_manager m_entry_manager;
-	std::thread m_thread;
-	bool m_terminated;
-	std::mutex m_term_mtx;
-	std::condition_variable m_term_cv;
-
-	// buffers to contain received log pages.
-	// One of them is used as a back buffer for receiving and the other is used for appending pages.
-	std::unique_ptr<char []> m_log_pgbuf_buffer1;
-	std::unique_ptr<char []> m_log_pgbuf_buffer2;
-	std::vector<LOG_PAGE *> m_log_pgptr_vec;
-	std::vector<LOG_PAGE *> m_log_pgptr_recv_vec;
-
-	const LOG_LSA m_catchup_lsa;
+	std::thread m_catchup_thread;
+	std::atomic<bool> m_terminated;
     };
+
+    using tran_server_connection_handler_uptr_t = std::unique_ptr<tran_server_connection_handler>;
+    using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
+    using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
 
     /*
      * helper class to track the active oldest mvccids of each Page Transaction Server.
@@ -420,6 +370,7 @@ class page_server
 	std::unordered_map<std::string, MVCCID> m_pts_oldest_active_mvccids;
 	std::mutex m_pts_oldest_active_mvccids_mtx;
     };
+
   private:
     using tran_server_responder_t = server_request_responder<tran_server_connection_handler::tran_server_conn_t>;
     using follower_responder_t = server_request_responder<follower_connection_handler::follower_server_conn_t>;
@@ -427,6 +378,7 @@ class page_server
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
+    void disconnect_followee_async ();
     bool is_active_tran_server_connected () const;
 
     tran_server_responder_t &get_tran_server_responder ();
@@ -450,8 +402,6 @@ class page_server
 
     followee_connection_handler_uptr_t m_followee_conn;
     std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
-
-    std::unique_ptr<catchup_worker> m_catchup_worker;
 };
 
 #endif // !_PAGE_SERVER_HPP_
