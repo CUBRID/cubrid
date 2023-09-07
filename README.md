@@ -72,7 +72,7 @@ For more information about CUBRID license policy, visit https://www.cubrid.org/c
 
 - https://www.reddit.com/r/CUBRID/
       
-  If You encounter any difficulties getting started, or just have some questions, or find bugs, or have some suggestions, we kindly ask you to post your thoughts on our subreddit
+  If you encounter any difficulties getting started, or just have some questions, or find bugs, or have some suggestions, we kindly ask you to post your thoughts on our subreddit
 
 Sincerely,
 Your CUBRID Development Team.
