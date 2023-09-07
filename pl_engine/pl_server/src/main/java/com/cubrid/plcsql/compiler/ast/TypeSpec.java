@@ -37,11 +37,7 @@ public abstract class TypeSpec extends AstNode {
     public final int simpleTypeIdx;
     public final String typicalValueStr; // used to type builtin function calls
 
-    public TypeSpec(
-            String pcsName,
-            String javaCode,
-            int simpleTypeIdx,
-            String typicalValueStr) {
+    public TypeSpec(String pcsName, String javaCode, int simpleTypeIdx, String typicalValueStr) {
 
         super(null);
         this.pcsName = pcsName;

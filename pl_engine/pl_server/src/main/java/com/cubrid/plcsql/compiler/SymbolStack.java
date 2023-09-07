@@ -130,8 +130,12 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$GET_LINE",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamOut(null, "line", TypeSpecSimple.STRING, false))
-                                .addNode(new DeclParamOut(null, "status", TypeSpecSimple.INT, true)));
+                                .addNode(
+                                        new DeclParamOut(
+                                                null, "line", TypeSpecSimple.STRING, false))
+                                .addNode(
+                                        new DeclParamOut(
+                                                null, "status", TypeSpecSimple.INT, true)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
 
         // new_line

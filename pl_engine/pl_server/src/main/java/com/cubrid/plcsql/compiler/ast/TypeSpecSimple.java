@@ -84,44 +84,30 @@ public class TypeSpecSimple extends TypeSpec {
     public static TypeSpecSimple BOOLEAN =
             new TypeSpecSimple("Boolean", "java.lang.Boolean", IDX_BOOLEAN, null);
     public static TypeSpecSimple STRING =
-            new TypeSpecSimple(
-                    "String", "java.lang.String", IDX_STRING, "cast(? as string)");
+            new TypeSpecSimple("String", "java.lang.String", IDX_STRING, "cast(? as string)");
     public static TypeSpecSimple NUMERIC =
             new TypeSpecSimple(
-                    "Numeric",
-                    "java.math.BigDecimal",
-                    IDX_NUMERIC,
-                    "cast(? as numeric)");
+                    "Numeric", "java.math.BigDecimal", IDX_NUMERIC, "cast(? as numeric)");
     public static TypeSpecSimple SHORT =
-            new TypeSpecSimple(
-                    "Short", "java.lang.Short", IDX_SHORT, "cast(? as short)");
+            new TypeSpecSimple("Short", "java.lang.Short", IDX_SHORT, "cast(? as short)");
     public static TypeSpecSimple INT =
             new TypeSpecSimple("Int", "java.lang.Integer", IDX_INT, "cast(? as int)");
     public static TypeSpecSimple BIGINT =
-            new TypeSpecSimple(
-                    "Bigint", "java.lang.Long", IDX_BIGINT, "cast(? as bigint)");
+            new TypeSpecSimple("Bigint", "java.lang.Long", IDX_BIGINT, "cast(? as bigint)");
     public static TypeSpecSimple FLOAT =
-            new TypeSpecSimple(
-                    "Float", "java.lang.Float", IDX_FLOAT, "cast(? as float)");
+            new TypeSpecSimple("Float", "java.lang.Float", IDX_FLOAT, "cast(? as float)");
     public static TypeSpecSimple DOUBLE =
-            new TypeSpecSimple(
-                    "Double", "java.lang.Double", IDX_DOUBLE, "cast(? as double)");
+            new TypeSpecSimple("Double", "java.lang.Double", IDX_DOUBLE, "cast(? as double)");
     public static TypeSpecSimple DATE =
             new TypeSpecSimple("Date", "java.sql.Date", IDX_DATE, "cast(? as date)");
     public static TypeSpecSimple TIME =
             new TypeSpecSimple("Time", "java.sql.Time", IDX_TIME, "cast(? as time)");
     public static TypeSpecSimple TIMESTAMP =
             new TypeSpecSimple(
-                    "Timestamp",
-                    "java.sql.Timestamp",
-                    IDX_TIMESTAMP,
-                    "cast(? as timestamp)");
+                    "Timestamp", "java.sql.Timestamp", IDX_TIMESTAMP, "cast(? as timestamp)");
     public static TypeSpecSimple DATETIME =
             new TypeSpecSimple(
-                    "Datetime",
-                    "java.sql.Timestamp",
-                    IDX_DATETIME,
-                    "cast(? as datetime)");
+                    "Datetime", "java.sql.Timestamp", IDX_DATETIME, "cast(? as datetime)");
     public static TypeSpecSimple SYS_REFCURSOR =
             new TypeSpecSimple(
                     "Sys_refcursor",
@@ -159,7 +145,8 @@ public class TypeSpecSimple extends TypeSpec {
     // Private
     // ------------------------------------------------------------------
 
-    private TypeSpecSimple(String pcsName, String fullJavaType, int simpleTypeIdx, String typicalValueStr) {
+    private TypeSpecSimple(
+            String pcsName, String fullJavaType, int simpleTypeIdx, String typicalValueStr) {
         super(pcsName, getJavaCode(fullJavaType), simpleTypeIdx, typicalValueStr);
         this.fullJavaType = fullJavaType;
     }
