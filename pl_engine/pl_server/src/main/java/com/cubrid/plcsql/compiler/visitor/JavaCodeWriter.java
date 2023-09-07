@@ -46,10 +46,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public StringBuilder codeRangeMarkers = new StringBuilder();
 
     public void buildCodeLines(Unit unit) {
-        CodeToResolve ttr = visit(unit);
-        ttr.resolve(codeLines, codeRangeMarkers, 0);
+        CodeToResolve ctr = visitUnit(unit);
+        ctr.resolve(0, codeLines, codeRangeMarkers);
         for (String s: codeLines) {
-            assert(s.indexOf("\n") == -1) : "not a single line: " + s;
+            if (s.indexOf("\n") != -1) {
+                throw new RuntimeException("each code line must be a single line: '" + s + "'");
+            }
         }
 
         System.out.println(String.format("[temp] code range markers = [%s]", codeRangeMarkers.toString()));
@@ -80,6 +82,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String[] strDecls = new String[] { "// no declarations" }; // TODO: temporary
 
         return new CodeTemplate(
+            "Unit",
             new int[] { 0, 0 },
             new String[] {
                 "%'%IMPORTS'%",
@@ -173,7 +176,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitExprBinaryOp(ExprBinaryOp node) {
-        return new CodeTemplate(Misc.getLineColumnOf(node.ctx),
+        return new CodeTemplate("ExprBinaryOp", Misc.getLineColumnOf(node.ctx),
             new String[] {
                 "op%'OPERATION'%(",
                 "  %'%LEFT-OPERAND'%,",
@@ -253,7 +256,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitExprUint(ExprUint node) {
-        return new CodeTemplate(Misc.getLineColumnOf(node.ctx), new String[] { node.toJavaCode() }); // TODO: temporary
+        return new CodeTemplate("ExprUnit", Misc.getLineColumnOf(node.ctx), new String[] { node.toJavaCode() }); // TODO: temporary
     }
 
     @Override
@@ -407,14 +410,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
 
         return Misc.isEmpty(node.args) ?
-            new CodeTemplate(Misc.getLineColumnOf(node.ctx),
+            new CodeTemplate("StmtLocalProcCall", Misc.getLineColumnOf(node.ctx),
+                
                 new String[] {
                     "%'BLOCK'%%'NAME'%();",
                 },
                 "%'BLOCK'%", block,
                 "%'NAME'%", node.name
             ) :
-            new CodeTemplate(Misc.getLineColumnOf(node.ctx),
+            new CodeTemplate("StmtLocalProcCall", Misc.getLineColumnOf(node.ctx),
                 new String[] {
                     "%'BLOCK'%%'NAME'%(",
                     "  %'%ARGUMENTS'%",
@@ -464,7 +468,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitBody(Body node) {
-        return new CodeTemplate(POSITION_IGNORED,
+        return new CodeTemplate("Body", POSITION_IGNORED,
             new String[] {
                 "try {",
                 "  %'%STATEMENTS'%",
@@ -517,7 +521,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     interface CodeToResolve {
-        void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel);
+        void resolve(int indentLevel, List<String> codeLines, StringBuilder codeRangeMarkers);
     }
 
     // -----------------------------------------------------------------
@@ -526,19 +530,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final int[] POSITION_IGNORED = new int[] { -1, -1 };
     private static final String[] dummyStrArr = new String[0];
-
-    private static class CodeFixedWord implements CodeToResolve {
-
-        final String fixedWord;
-
-        CodeFixedWord(String fixedWord) {
-            this.fixedWord = fixedWord;
-        }
-
-        public void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel) {
-            throw new RuntimeException("unreachable");
-        }
-    }
 
     private static class CodeList implements CodeToResolve {
 
@@ -549,18 +540,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             elements = new ArrayList<>();
         }
 
-        void addElement(CodeTemplate element) {
+        void addElement(CodeTemplate element) {     // NOTE: CodeTemplate, not CodeToResolve
             elements.add(element);
         }
 
-        public void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel) {
+        public void resolve(int indentLevel, List<String> codeLines, StringBuilder codeRangeMarkers) {
 
             if (resolved) {
                 throw new RuntimeException("already resolved");
             } else {
 
                 for (CodeTemplate t: elements) {
-                    t.resolve(codeLines, codeRangeMarkers, indentLevel);
+                    t.resolve(indentLevel, codeLines, codeRangeMarkers);
                 }
 
                 resolved = true;
@@ -572,16 +563,19 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         boolean resolved;
 
+        final String astNode;
         final String plcsqlLineColumn;
         final String[] template;
         final LinkedHashMap<String, Object> substitutions = new LinkedHashMap<>();
             // key (String) - template hole name
             // value (Object) - String, String[] or CodeToResolve to fill the hole
 
-        CodeTemplate(int[] pos, String[] template, Object... pairs) {
+        CodeTemplate(String astNode, int[] pos, String[] template, Object... pairs) {
 
-            assert(pos != null);
-            assert(template != null);
+            assert pos != null && pos.length == 2;
+            assert template != null;
+
+            this.astNode = astNode;
 
             int plcsqlLine = pos[0];
             int plcsqlColumn = pos[1];
@@ -590,30 +584,37 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             if (plcsqlLine < 0 && plcsqlColumn < 0) {
                 this.plcsqlLineColumn = null;   // do not mark code range in this case
             } else {
-                assert(plcsqlLine >= 0 && plcsqlColumn >= 0);
+                if (plcsqlLine <= 0 || plcsqlColumn <= 0) {
+                    throw new RuntimeException(String.format(
+                        "%s - line and column numbers of code templates must be positive integers: (%d, %d)",
+                        astNode, plcsqlLine, plcsqlColumn));
+                }
                 this.plcsqlLineColumn = String.format("%d,%d", plcsqlLine, plcsqlColumn);
             }
             this.template = template;
 
             int len = pairs.length;
-            assert(len % 2 == 0);
+            if (len % 2 != 0) {
+                throw new RuntimeException(astNode + " - the number of substitution pairs elements must be an even number");
+            }
             for (int i = 0; i < len; i += 2) {
-                assert(pairs[i] instanceof String);
+                if (!(pairs[i] instanceof String)) {
+                    throw new RuntimeException(astNode + " - first element of each pair must be a String: " + pairs[i]);
+                }
                 Object thing = pairs[i + 1];
-                if (thing instanceof CodeFixedWord) {
-                    this.substitutions.put((String) pairs[i], ((CodeFixedWord) thing).fixedWord);
-                } else if (thing instanceof String || thing instanceof String[] || thing instanceof CodeToResolve) {
+                if (thing instanceof String || thing instanceof String[] || thing instanceof CodeToResolve) {
+                    // String is for a small hole, and the String[] and CodeToResolve are for a big hole
                     this.substitutions.put((String) pairs[i], thing);
                 } else {
-                    assert(false);
+                    throw new RuntimeException("invalid type of a substitute " + thing);
                 }
             }
         }
 
-        public void resolve(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel) {
+        public void resolve(int indentLevel, List<String> codeLines, StringBuilder codeRangeMarkers) {
 
             if (resolved) {
-                throw new RuntimeException("already resolved");
+                throw new RuntimeException(astNode + " - already resolved");
             } else {
 
                 boolean markCodeRange = plcsqlLineColumn != null;
@@ -622,7 +623,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 }
 
                 for (String line: template) {
-                    resolveTemplateLine(codeLines, codeRangeMarkers, indentLevel, line);
+                    resolveTemplateLine(line, indentLevel, codeLines, codeRangeMarkers);
                 }
 
                 if (markCodeRange) {
@@ -637,55 +638,68 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         // Private
         // -----------------------------------------------
 
-        private void resolveTemplateLine(List<String> codeLines, StringBuilder codeRangeMarkers, int indentLevel,
-                String line) {
+        private void resolveTemplateLine(String line, int indentLevel, List<String> codeLines, StringBuilder codeRangeMarkers) {
 
-            assert(line != null);
-            assert(!line.endsWith(" ")) : "a template line has a trailing space: '" + line + "'";
+            assert line != null;
+
+            if (line.endsWith(" ")) {
+                throw new RuntimeException("a template line may not have a trailing space: '" + line + "'");
+            }
 
             String indent = Misc.getIndent(indentLevel);
 
-            Set<String> holes = new HashSet<>();
-            String bigHole = getHoles(holes, line);
+            Set<String> smallHoles = new HashSet<>();
+            String bigHole = getHoles(smallHoles, line);
             if (bigHole == null) {
-                // case 1 (namely, small hole) : word replacements in a single line
+
+                // case 1: word replacements in a single line (namely, small holes)
                 for (String hole: substitutions.keySet()) {
-                    if (holes.contains(hole)) {
-                        assert(!isBigHole(hole)) : "wrong big hole " + hole;
+                    if (smallHoles.contains(hole)) {
+                        if (isBigHole(hole)) {
+                            throw new RuntimeException("a big hole in the small holes set: '" + hole + "'");
+                        }
                         Object substitute = substitutions.get(hole);
                         if (substitute instanceof String) {
                             line = line.replace(hole, (String) substitute);
                         } else {
-                            assert(false) : "wrong substitution for " + hole; // cannot be a String[] or CodeToResolve
+                            throw new RuntimeException("substitute for a small hole '" + hole + "' is not a String: '" + substitute + "'");
                         }
                     }
                 }
-                assert(line.indexOf("%'") == -1);  // no holes in the substitutes
+                if (line.indexOf("%'") != -1) {
+                    throw new RuntimeException("no holes can remain after completing substitutions: '" + line + "'");
+                }
                 codeLines.add(indent + line);
             } else {
-                // case 2 (namely, big hole) : expanded to multiple lines
+                assert smallHoles.size() == 0;
+
+                // case 2: expanded to multiple lines (namely, single big hole)
                 int spaces = line.indexOf(bigHole);
                 int indentLevelDelta = spaces / Misc.INDENT_SIZE;
-                String suffix = line.substring(spaces + bigHole.length());
+                String remainder = line.substring(spaces + bigHole.length());
 
                 Object substitute = substitutions.get(bigHole);
                 if (substitute instanceof String[]) {
                     indent = indent + Misc.getIndent(indentLevelDelta);
                     for (String l: (String[]) substitute) {
-                        assert(l.indexOf("%'") == -1);  // no holes in the substitutes
+                        if (l.indexOf("%'") != -1) {
+                            throw new RuntimeException("a line in a string array substitute may not have a hole: '" + l + "'");
+                        }
                         codeLines.add(indent + l);
                     }
                 } else if (substitute instanceof CodeToResolve) {
-                    ((CodeToResolve) substitute).resolve(codeLines, codeRangeMarkers, indentLevel + indentLevelDelta);
+                    ((CodeToResolve) substitute).resolve(indentLevel + indentLevelDelta, codeLines, codeRangeMarkers);
                 } else {
-                    assert(false) : "wrong substitution for " + bigHole;  // cannot be a single String
+                    throw new RuntimeException("substitute for a big hole '" + bigHole +
+                        "' is neither a String nor a CodeToResolve: '" + substitute + "'");
                 }
 
-                // append the suffix, if any, to the last line (this is mainly for the commas after expressions)
-                if (suffix.length() > 0) {
+                // Append the remainder, if any, to the last line.
+                // This is mainly for the commas after expressions.
+                if (remainder.length() > 0) {
                     int lastLineIndex = codeLines.size() - 1;
                     String lastLine = codeLines.get(lastLineIndex);
-                    codeLines.set(lastLineIndex, lastLine + suffix);
+                    codeLines.set(lastLineIndex, lastLine + remainder);
                 }
             }
         }
@@ -706,7 +720,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     return null;
                 } else {
                     int end = line.indexOf("'%", begin + 2);
-                    assert(end != -1);
+                    if (end == -1) {
+                       throw new RuntimeException("not closed hole in a line '" + line + "'");
+                    }
                     i = end + 2;
 
                     String hole = line.substring(begin, i);
@@ -714,13 +730,23 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         first = false;
                         if (isBigHole(hole)) {
                             for (int j = 0; j < begin; j++) {
-                                assert(line.charAt(j) == ' ');  // only spaces allowed before a big hole
+                                if (line.charAt(j) != ' ') {
+                                   throw new RuntimeException("only spaces allowed before a big hole: '" + line + "'");
+                                }
                             }
-                            assert(line.indexOf("%'", i) == -1); // ho more holes after a big hole
+                            if (line.indexOf("%'", i) != -1) {
+                                throw new RuntimeException("no more holes after a big hole: '" + line + "'");
+                            }
 
                             return hole;
                         }
+                    } else {
+                        if (isBigHole(hole)) {
+                            throw new RuntimeException("big holes must be the only hole in the line: '" + hole + "'");
+                        }
+
                     }
+
                     holes.add(hole);
                 }
             }
