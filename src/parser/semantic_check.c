@@ -5047,8 +5047,29 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_MODIFY_QUERY:
       if (type != PT_CLASS && (qry = alter->info.alter.alter_clause.query.query) != NULL)
 	{
-	  pt_validate_query_spec (parser, qry, db);
+	  int client_type = db_get_client_type ();
+
+	  if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY
+	      || client_type == DB_CLIENT_TYPE_ADMIN_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	    {
+	      DB_OBJECT *me = db_get_user ();
+	      const char *user_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
+	      assert (user_name != NULL);
+
+	      MOP owner = au_find_user (user_name);
+	      assert (owner != NULL);
+	      /* set user to owner to translate query specification. */
+	      AU_SET_USER (owner);
+	      pt_validate_query_spec (parser, qry, db);
+	      /* restore user */
+	      AU_SET_USER (me);
+	    }
+	  else
+	    {
+	      pt_validate_query_spec (parser, qry, db);
+	    }
 	}
+
       /* FALLTHRU */
     case PT_DROP_QUERY:
       if (type == PT_CLASS)
