@@ -28,7 +28,6 @@
 #include "async_disconnect_handler.hpp"
 
 #include <memory>
-#include <future>
 
 /* Sequence diagram of server-server communication:
  *
@@ -245,10 +244,6 @@ class page_server
 	std::atomic<bool> m_terminated;
     };
 
-    using tran_server_connection_handler_uptr_t = std::unique_ptr<tran_server_connection_handler>;
-    using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
-    using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
-
     /*
      * helper class to track the active oldest mvccids of each Page Transaction Server.
      * This provides the globally oldest active mvcc id to the vacuum on ATS.
@@ -279,13 +274,16 @@ class page_server
     };
 
   private:
+    using tran_server_connection_handler_uptr_t = std::unique_ptr<tran_server_connection_handler>;
+    using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
+    using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
+
     using tran_server_responder_t = server_request_responder<tran_server_connection_handler::tran_server_conn_t>;
     using follower_responder_t = server_request_responder<follower_connection_handler::follower_server_conn_t>;
 
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
-    void disconnect_followee_async ();
     bool is_active_tran_server_connected () const;
 
     tran_server_responder_t &get_tran_server_responder ();

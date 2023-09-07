@@ -227,8 +227,8 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
       return; // TODO the cold-start case. No need to catch up. Just send a catchup_done msg to the ATS
     }
 
-  // Establish a connection with the PS to catch up with, and start catchup_worker with it.
-  // The connection will be destoryed at the end of the catch-up
+  // Establish a connection with the PS to catch up with, and start the cathup asynchronously.
+  // The connection will be destoryed at the end of the catch-up.
   m_ps.connect_to_followee_page_server (std::move (host), port);
   m_ps.m_followee_conn->start_catchup (catchup_lsa);
 }
@@ -499,7 +499,6 @@ page_server::followee_connection_handler::~followee_connection_handler ()
   m_terminated = true;
   m_catchup_thread.join(); // wait until the catchup thread exits
 }
-
 
 void
 page_server::followee_connection_handler::push_request (follower_to_followee_request reqid, std::string &&msg)
