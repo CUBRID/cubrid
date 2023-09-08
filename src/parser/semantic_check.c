@@ -5047,26 +5047,33 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_MODIFY_QUERY:
       if (type != PT_CLASS && (qry = alter->info.alter.alter_clause.query.query) != NULL)
 	{
+	  MOP me = NULL;
+	  MOP owner = NULL;
+	  bool change_owner_flag = false;
 	  int client_type = db_get_client_type ();
 
-	  if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY
-	      || client_type == DB_CLIENT_TYPE_ADMIN_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	  if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
 	    {
-	      DB_OBJECT *me = db_get_user ();
 	      const char *user_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
-	      assert (user_name != NULL);
+	      if (user_name != NULL)
+		{
+		  me = db_get_user ();
+		  owner = au_find_user (user_name);
+		  if (owner != NULL && !ws_is_same_object (owner, me))
+		    {
+		      /* set user to owner to translate query specification. */
+		      AU_SET_USER (owner);
+		      change_owner_flag = true;
+		    }
+		}
+	    }
 
-	      MOP owner = au_find_user (user_name);
-	      assert (owner != NULL);
-	      /* set user to owner to translate query specification. */
-	      AU_SET_USER (owner);
-	      pt_validate_query_spec (parser, qry, db);
+	  pt_validate_query_spec (parser, qry, db);
+
+	  if (change_owner_flag)
+	    {
 	      /* restore user */
 	      AU_SET_USER (me);
-	    }
-	  else
-	    {
-	      pt_validate_query_spec (parser, qry, db);
 	    }
 	}
 
@@ -8658,7 +8665,34 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else				/* must be a CREATE VCLASS statement */
     {
+      MOP me = NULL;
+      MOP owner = NULL;
+      bool change_owner_flag = false;
+      int client_type = db_get_client_type ();
+
+      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	{
+	  const char *user_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
+	  if (user_name != NULL)
+	    {
+	      me = db_get_user ();
+	      owner = au_find_user (user_name);
+	      if (owner != NULL && !ws_is_same_object (owner, me))
+		{
+		  /* set user to owner to translate query specification. */
+		  AU_SET_USER (owner);
+		  change_owner_flag = true;
+		}
+	    }
+	}
+
       pt_check_create_view (parser, node);
+
+      if (change_owner_flag)
+	{
+	  /* restore user */
+	  AU_SET_USER (me);
+	}
     }
 
   /* check that all constraints look valid */
