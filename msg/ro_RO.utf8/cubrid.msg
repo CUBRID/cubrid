@@ -904,7 +904,7 @@ $ LOADDB
 834 Există disconcordanţe între şirul de caractere sursă "%1$s" şi şirul de formatare "%2$s" date în to_number().
 835 Element de statistică necunoscut.
 836 Latch-ul pe pagina(%1$d|%2$d) a expirat.
-837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale/server/synonym etc) nu poate fi şters.
+837 Un utilizator care deţine obiecte în baza de date nu poate fi şters.
 838 Nu se pot deschide simultan mai mult de %1$d indecşi.
 839 "%1$s": Parametru de sistem necunoscut sau valoare invalidă.
 840 Parametrul de sistem "%1$s" nu poate fi schimbat.
@@ -1439,8 +1439,9 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 
 1355 Fișierul "%1$s" nu a fost găsit.
+1356 Nu există niciun indiciu în interogarea DBLink sau tipul de instrucțiune este incorect. %1$s
 
-1356 Ultima eroare
+1357 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

@@ -683,8 +683,8 @@ $ LOADDB
 613 In class "%3$s", local component "%1$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
 614 Number of active log archives has been exceeded the max desired number of %1$d.
 615 Cannot establish contact with the Winsock interface. Winsock error: %1$d.
-616 Cannot determine machine name using Winsock interface. Winsock error: %1$d.
-617 Cannot determine machine id using Winsock interface. There must be an entry in the host name table for this machine. Winsock error: %1$d.
+616 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
+617 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 618 Attribute is not updatable.
 619 Bad source codeset.
 620 Bad destination codeset.
@@ -904,7 +904,7 @@ $ LOADDB
 834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
 835 Undefined statistics item.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial/server/synonym etc).
+837 Cannot drop the user who owns database objects.
 838 Cannot open more than %1$d index scans simultaneously.
 839 "%1$s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%1$s".
@@ -1440,8 +1440,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 
 1355 File "%1$s" was not found. 
+1356 There is no hint in the DBLink query, or the statement type is incorrect. %1$s
 
-1356 Last Error
+1357 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

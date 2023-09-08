@@ -304,6 +304,11 @@ load_hosts_file ()
 	    }
 	  else
 	    {
+	      if (hostname[0] != '\0')
+		{
+		  break;
+		}
+
 	      str_len = strlen (temp_token);
 	      if (str_len > HOSTNAME_LEN - 1)
 		{
