@@ -331,7 +331,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
   if(UNIX)
     #compile OpenSSL library given an internet url to a OpenSSL archive
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
-    set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib64/libssl.a ${3RDPARTY_LIBS_DIR}/lib64/libcrypto.a)
+    set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
     set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
     externalproject_add(${LIBOPENSSL_TARGET}
@@ -341,7 +341,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
+      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared --libdir=lib # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBOPENSSL_BYPRODUCTS}"
