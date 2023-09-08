@@ -316,7 +316,7 @@ sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos, int length)
 {
   int result = 0;
   const int KEY_LENGTH = 128;
-  char shard_key [KEY_LENGTH];
+  char shard_key[KEY_LENGTH];
   char *p;
 
   snprintf (shard_key, KEY_LENGTH, "%s", pos);
