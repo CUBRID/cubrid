@@ -34,8 +34,6 @@
 #include <sys/stat.h>
 #include <math.h>
 
-#include "fmt/format.h"
-
 #include "utility.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
@@ -1314,64 +1312,32 @@ itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base)
       goto exit_on_error;	/* give up */
     }
 
-  /* special treats for 2, 8, 10, 16 */
-  if (base == 10)
-  {
-    std::string str = fmt::format(FMT_STRING("{:d}"), value);
-    memcpy (wstr, str.data(), str.size());
-    *(wstr + str.size ()) = '\0';
-    nbytes = str.size ();
-  }
-  else if (base == 16) 
-  {
-    std::string str = fmt::format(FMT_STRING("{:x}"), value);
-    memcpy (wstr, str.data(), str.size());
-    *(wstr + str.size ()) = '\0';
-    nbytes = str.size ();
-  }
-  else if (base == 8)
-  {
-    std::string str = fmt::format(FMT_STRING("{:o}"), value);
-    memcpy (wstr, str.data(), str.size());
-    *(wstr + str.size ()) = '\0';
-    nbytes = str.size ();
-  }
-  else if (base == 2)
-  {
-    std::string str = fmt::format(FMT_STRING("{:b}"), value);
-    memcpy (wstr, str.data(), str.size());
-    *(wstr + str.size ()) = '\0';
-    nbytes = str.size ();
-  }
-  else
-  {
-    /* Take care of sign - in case of INT_MIN, it remains as it is */
-    is_negative = (value < 0) ? true : false;
-    if (is_negative)
-      {
-        value = -value;		/* change to the positive number */
-      }
+  /* Take care of sign - in case of INT_MIN, it remains as it is */
+  is_negative = (value < 0) ? true : false;
+  if (is_negative)
+    {
+      value = -value;		/* change to the positive number */
+    }
 
-    /* Conversion. Number is reversed. */
-    do
-      {
-        quotient = value / base;
-        remainder = value % base;
-        *wstr++ = itoa_digit[(remainder >= 0) ? remainder : -remainder];
-      }
-    while ((value = quotient) != 0);
+  /* Conversion. Number is reversed. */
+  do
+    {
+      quotient = value / base;
+      remainder = value % base;
+      *wstr++ = itoa_digit[(remainder >= 0) ? remainder : -remainder];
+    }
+  while ((value = quotient) != 0);
 
-    if (is_negative)
-      {
-        *wstr++ = '-';
-      }
-    *wstr = '\0';			/* Null terminate */
+  if (is_negative)
+    {
+      *wstr++ = '-';
+    }
+  *wstr = '\0';			/* Null terminate */
 
-    /* Reverse string */
-    itoa_strreverse (tout->ptr, wstr - 1);
+  /* Reverse string */
+  itoa_strreverse (tout->ptr, wstr - 1);
 
-    nbytes = CAST_STRLEN (wstr - tout->ptr);
-  }
+  nbytes = CAST_STRLEN (wstr - tout->ptr);
 
   tout->ptr += nbytes;
   tout->count += nbytes;

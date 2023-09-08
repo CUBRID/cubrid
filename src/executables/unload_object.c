@@ -40,8 +40,6 @@
 #define	SIGALRM	14
 #endif /* WINDOWS */
 
-#include <ostream>
-
 #include <fmt/core.h>
 #include <fmt/compile.h>
 #include <fmt/os.h>
@@ -171,9 +169,7 @@ static int64_t total_approximate_class_objects = 0;
 
 #define HEADER_FORMAT 	"-------------------------------+--------------------------------\n""    %-25s  |  %23s \n""-------------------------------+--------------------------------\n"
 #define MSG_FORMAT 		"    %-25s  |  %10ld (%3d%% / %5d%%)"
-
-#define HEADER_FORMAT_FMT 	"-------------------------------+--------------------------------\n""    {:<25}  |  {:<23} \n""-------------------------------+--------------------------------\n"
-#define MSG_FORMAT_FMT  "    {:<25}  |  {:>10} ({:>3}% / {:>5}%)"
+static FILE *unloadlog_file = NULL;
 
 static int get_estimated_objs (HFID * hfid, int64_t * est_objects);
 static int set_referenced_subclasses (DB_OBJECT * class_);
@@ -182,7 +178,7 @@ static void extractobjects_cleanup (void);
 static void extractobjects_term_handler (int sig);
 static bool mark_referenced_domain (SM_CLASS * class_ptr, int *num_set);
 static void gauge_alarm_handler (int sig);
-static int process_class (extract_context & ctxt, fmt::v10::ostream &os, int cl_no);
+static int process_class (extract_context & ctxt, int cl_no);
 static int process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class);
 static int process_set (DB_SET * set);
 static int process_value (DB_VALUE * value);
@@ -465,7 +461,6 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
   char *class_name = NULL;
   char owner_str[DB_MAX_USER_LENGTH + 4] = { '\0' };
 
-{
   /* register new signal handlers */
   prev_intr_handler = os_set_signal_handler (SIGINT, extractobjects_term_handler);
   prev_term_handler = os_set_signal_handler (SIGTERM, extractobjects_term_handler);
@@ -900,12 +895,16 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
    */
   total_approximate_class_objects = est_objects;
   snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", ctxt.output_prefix);
-  auto unloadlog_file = fmt::output_file(unloadlog_filename, fmt::buffer_size=16384);
-  unloadlog_file.print(FMT_STRING(HEADER_FORMAT_FMT), "Class Name", "Total Instances");
+  
+  unloadlog_file = fopen (unloadlog_filename, "w+");
+  if (unloadlog_file != NULL)
+    {
+      fprintf (unloadlog_file, HEADER_FORMAT, "Class Name", "Total Instances");
+    }
 
   if (verbose_flag)
     {
-	  fmt::print(FMT_STRING(HEADER_FORMAT_FMT), "Class Name", "Total Instances");
+	  fprintf (stdout, HEADER_FORMAT, "Class Name", "Total Instances");
     }
 
   do
@@ -938,7 +937,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 		    }
 		}
 
-	      ret_val = process_class (ctxt, unloadlog_file, i);
+	     ret_val = process_class (ctxt, i);
 
 	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
 		{
@@ -970,22 +969,20 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
       status = 1;
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 	       total_objects - failed_objects, total_objects);
-	/*
-      if (unloadlog_file)
-	{
+	if (unloadlog_file != NULL)
+  {
 	  fprintf (unloadlog_file,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 		   total_objects - failed_objects, total_objects);
 	}
-	*/
     }
   else if (verbose_flag)
     {
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_DUMPED),
 	       total_objects);
     }
-	/*
-  if (unloadlog_file)
+
+  if (unloadlog_file != NULL)
     {
 
       if (failed_objects == 0)
@@ -999,23 +996,19 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 	       lsa.pageid, lsa.offset);
 
     }
-		*/
 
   /* flush remaining buffer */
   if (!datafile_per_class && text_print_flush (obj_out) != NO_ERROR)
     {
       status = 1;
     }
-}
 
 /* in case of both normal and error */
 end:
-  /*
   if (unloadlog_file != NULL)
     {
       fclose (unloadlog_file);
     }
-  */
 
   /*
    * Cleanup
@@ -1067,7 +1060,7 @@ gauge_alarm_handler (int sig)
  *    cl_no(in): class object index for class_table
  */
 static int
-process_class (extract_context & ctxt, fmt::v10::ostream& unloadlog_file, int cl_no)
+process_class (extract_context & ctxt, int cl_no)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_ = class_table->mops[cl_no];
@@ -1272,7 +1265,8 @@ process_class (extract_context & ctxt, fmt::v10::ostream& unloadlog_file, int cl
 	{
 	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
-	  unloadlog_file.print(FMT_STRING(MSG_FORMAT_FMT "\n"), sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
+fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
+      fflush (unloadlog_file);
       if (verbose_flag)
 	{
 	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
@@ -1294,8 +1288,8 @@ process_class (extract_context & ctxt, fmt::v10::ostream& unloadlog_file, int cl
 	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
 
-	  unloadlog_file.print(FMT_STRING(MSG_FORMAT_FMT "\n"), sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
-
+fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
+      fflush (unloadlog_file);
       if (verbose_flag)
 	{
 	  fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
@@ -1431,7 +1425,7 @@ process_class (extract_context & ctxt, fmt::v10::ostream& unloadlog_file, int cl
       fflush (stdout);
     }
 
-  unloadlog_file.print(FMT_STRING(MSG_FORMAT_FMT "\n"), sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
+fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
 
 exit_on_end:
 
