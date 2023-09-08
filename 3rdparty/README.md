@@ -14,3 +14,4 @@ This directory contains a CMake build script for third-party softwares that CUBR
 - Flex and Bison
   - flex 2.5.34 and bison 3.0.0 (On Linux)
   - winflexbison 2.5.22 (On Windows)
+- fmt 10.1.1

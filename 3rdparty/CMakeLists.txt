@@ -464,18 +464,18 @@ if(WITH_FMT STREQUAL "EXTERNAL")
     ADD_BY_PRODUCTS_VARIABLE ("FMT" ${FMT_LIBS})
     externalproject_add(${FMT_TARGET}
       GIT_REPOSITORY https://github.com/fmtlib/fmt
-      GIT_TAG a0b8a92             # https://github.com/fmtlib/fmt/releases/tag/10.0.0
+      GIT_TAG f5e5435             # https://github.com/fmtlib/fmt/releases/tag/10.1.1
       CMAKE_ARGS -DCMAKE_C_FLAGS=-fPIC -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=17 -DFMT_TEST=OFF -DFMT_DOC=OFF -DFMT_INSTALL=ON -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}
       STEP_TARGETS build
       "${FMT_BYPRODUCTS}"
     )
   else(UNIX)
     set(FMT_INCLUDES ${WINDOWS_EXTERNAL_DIR}/fmt/include)
-    set(FMT_LIBS ${WINDOWS_EXTERNAL_DIR}/fmt/lib/re2.lib)
-    set(FMT_DLL ${WINDOWS_EXTERNAL_DIR}/fmt/bin/re2.dll)
+    set(FMT_LIBS ${WINDOWS_EXTERNAL_DIR}/fmt/lib/fmt.lib)
+    set(FMT_DLL ${WINDOWS_EXTERNAL_DIR}/fmt/bin/fmt.dll)
     add_custom_target(${FMT_TARGET}
-      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${FMT_TARGET} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/re2.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy ${FMT_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/re2.dll
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${FMT_TARGET} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/fmt.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy ${FMT_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/fmt.dll
     )
   endif(UNIX)
 else(WITH_FMT STREQUAL "EXTERNAL")
