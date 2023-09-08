@@ -5240,7 +5240,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       int client_type = db_get_client_type ();
 
       /* in the case of loaddb, it can just check the column from the attr_def node. */
-      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY)
+      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
 	{
 	  PT_NODE *cols;
 
