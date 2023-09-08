@@ -40,10 +40,6 @@
 #define	SIGALRM	14
 #endif /* WINDOWS */
 
-#include <fmt/core.h>
-#include <fmt/compile.h>
-#include <fmt/os.h>
-
 #include "authenticate.h"
 #include "utility.h"
 #include "load_object.h"
@@ -170,6 +166,7 @@ static int64_t total_approximate_class_objects = 0;
 #define HEADER_FORMAT 	"-------------------------------+--------------------------------\n""    %-25s  |  %23s \n""-------------------------------+--------------------------------\n"
 #define MSG_FORMAT 		"    %-25s  |  %10ld (%3d%% / %5d%%)"
 static FILE *unloadlog_file = NULL;
+
 
 static int get_estimated_objs (HFID * hfid, int64_t * est_objects);
 static int set_referenced_subclasses (DB_OBJECT * class_);
@@ -895,16 +892,14 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
    */
   total_approximate_class_objects = est_objects;
   snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", ctxt.output_prefix);
-  
   unloadlog_file = fopen (unloadlog_filename, "w+");
   if (unloadlog_file != NULL)
     {
       fprintf (unloadlog_file, HEADER_FORMAT, "Class Name", "Total Instances");
     }
-
   if (verbose_flag)
     {
-	  fprintf (stdout, HEADER_FORMAT, "Class Name", "Total Instances");
+      fprintf (stdout, HEADER_FORMAT, "Class Name", "Total Instances");
     }
 
   do
@@ -937,7 +932,7 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 		    }
 		}
 
-	     ret_val = process_class (ctxt, i);
+	      ret_val = process_class (ctxt, i);
 
 	      if (datafile_per_class && IS_CLASS_REQUESTED (i))
 		{
@@ -969,8 +964,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
       status = 1;
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 	       total_objects - failed_objects, total_objects);
-	if (unloadlog_file != NULL)
-  {
+      if (unloadlog_file != NULL)
+	{
 	  fprintf (unloadlog_file,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_FAILED),
 		   total_objects - failed_objects, total_objects);
@@ -984,17 +979,14 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
 
   if (unloadlog_file != NULL)
     {
-
       if (failed_objects == 0)
 	{
 	  fprintf (unloadlog_file,
 		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_OBJECTS_DUMPED),
 		   total_objects);
 	}
-
       fprintf (unloadlog_file, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_LOG_LSA),
 	       lsa.pageid, lsa.offset);
-
     }
 
   /* flush remaining buffer */
@@ -1009,7 +1001,6 @@ end:
     {
       fclose (unloadlog_file);
     }
-
   /*
    * Cleanup
    */
@@ -1265,7 +1256,7 @@ process_class (extract_context & ctxt, int cl_no)
 	{
 	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
-fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
@@ -1287,8 +1278,7 @@ fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 
 	{
 	  total = (int) (100 * ((float) total_objects / (float) total_approximate_class_objects));
 	}
-
-fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
+      fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 0, 100, total);
       fflush (unloadlog_file);
       if (verbose_flag)
 	{
@@ -1424,8 +1414,7 @@ fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), (long) 
       fprintf (stdout, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
       fflush (stdout);
     }
-
-fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
+  fprintf (unloadlog_file, MSG_FORMAT "\n", sm_ch_name ((MOBJ) class_ptr), class_objects, 100, total);
 
 exit_on_end:
 
