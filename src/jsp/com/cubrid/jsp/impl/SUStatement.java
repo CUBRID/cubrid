@@ -436,6 +436,12 @@ public class SUStatement {
         }
 
         tuple = tuples[cursorPosition - fetchedStartCursorPosition];
+        if (tuple.getAttribute(index) == null) {
+            // it is error case... but for safe guard
+            wasNull = true;
+            return null;
+        }
+
         obj = tuple.getAttribute(index);
         wasNull = tuple.getWasNull(index);
         return obj;

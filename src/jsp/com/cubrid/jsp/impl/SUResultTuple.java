@@ -11,11 +11,12 @@ public class SUResultTuple {
     private SOID oid;
 
     private Object attributes[];
-    private boolean wasNull[];
+    private boolean wasNull[] = null;
 
     public SUResultTuple(int tupleIndex, int attributeNumber) {
         index = tupleIndex;
         attributes = new Object[attributeNumber];
+        wasNull = new boolean[attributeNumber];
     }
 
     public SUResultTuple(CUBRIDUnpacker unpacker) throws TypeMismatchException {
@@ -73,6 +74,12 @@ public class SUResultTuple {
          */
 
         attributes[tIndex] = data;
+
+        if (data instanceof NullValue) {
+            wasNull[tIndex] = true;
+        } else {
+            wasNull[tIndex] = false;
+        }
     }
 
     public void setOID(SOID o) {
