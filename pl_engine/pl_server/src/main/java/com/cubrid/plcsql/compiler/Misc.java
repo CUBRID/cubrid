@@ -42,6 +42,7 @@ import java.util.HashMap;
 
 public class Misc {
 
+    public static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
     public static final String INDENT = "  "; // two spaces
     public static final int INDENT_SIZE = INDENT.length();
 
@@ -183,8 +184,6 @@ public class Misc {
     // ----------------------------------------------
     // Private
     // ----------------------------------------------
-
-    private static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
 
     private static final String[] smallIndents = new String[] {
         makeIndent(0), makeIndent(1), makeIndent(2), makeIndent(3), makeIndent(4),

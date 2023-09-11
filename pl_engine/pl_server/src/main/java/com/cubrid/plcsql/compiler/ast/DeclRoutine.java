@@ -133,11 +133,7 @@ public abstract class DeclRoutine extends Decl {
         return sbuf.toString();
     }
 
-    // --------------------------------------------------
-    // Package Private
-    // --------------------------------------------------
-
-    static String getNullifyOutParamStr(NodeList<DeclParam> paramList) {
+    public static String getNullifyOutParamStr(NodeList<DeclParam> paramList) {
 
         if (paramList == null) {
             return "// no OUT parameters\n";
