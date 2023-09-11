@@ -429,6 +429,8 @@ public class SUStatement {
         }
 
         SUResultTuple tuple = null;
+        Object obj = null;
+
         if ((tuples == null) || (tuples[cursorPosition - fetchedStartCursorPosition] == null)) {
             return null;
         }
@@ -440,8 +442,9 @@ public class SUStatement {
             return null;
         }
 
+        obj = tuple.getAttribute(index);
         wasNull = tuple.getWasNull(index);
-        return tuple;
+        return obj;
     }
 
     public boolean getWasNull() {
