@@ -223,24 +223,15 @@ class page_server
 	followee_connection_handler &operator= (const followee_connection_handler &) = delete;
 	followee_connection_handler &operator= (followee_connection_handler &&) = delete;
 
-	~followee_connection_handler ();
-
-	void start_catchup (const LOG_LSA catchup_lsa);
+	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> &log_pages_out);
 
       private:
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
 
-	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> &log_pages_out);
-
-	void execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa);
-
       private:
 	page_server &m_ps;
 	std::unique_ptr<followee_server_conn_t> m_conn;
-
-	std::thread m_catchup_thread;
-	std::atomic<bool> m_terminated;
     };
 
     /*
@@ -283,8 +274,11 @@ class page_server
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
-    void disconnect_followee_async ();
+    void disconnect_followee_page_server (bool with_disc_msg);
     bool is_active_tran_server_connected () const;
+
+    void start_catchup (const LOG_LSA catchup_lsa);
+    void execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa);
 
     tran_server_responder_t &get_tran_server_responder ();
     follower_responder_t &get_follower_responder ();
@@ -307,6 +301,7 @@ class page_server
 
     followee_connection_handler_uptr_t m_followee_conn;
     std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
+    std::mutex m_followee_conn_mutex;
 
     cubthread::entry_workpool *m_workpool; // a workpool to take some background jobs that needs a thread entry
 };
