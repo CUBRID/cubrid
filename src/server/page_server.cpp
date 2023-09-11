@@ -925,7 +925,7 @@ page_server::disconnect_followee_page_server (const bool with_disc_msg)
 	}
       m_followee_conn.reset (nullptr);
 
-      er_log_debug (ARG_FILE_LINE, "The followee page server is disconnected.\n");
+      er_log_debug (ARG_FILE_LINE, "The followee page server has been disconnected.\n");
     }
 }
 
@@ -961,15 +961,13 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
   const size_t total_page_count = end_pageid - start_pageid + 1;
 
-  /*
-   *  Request pages to the followee
-   *  return false if it failes due to disconnection of whatever, otherwise true.
-   */
+  // Request pages to the followee
   auto request_pages_to_buffer = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t request_page_cnt) -> int
   {
     auto lockg = std::lock_guard <std::mutex> (m_followee_conn_mutex);
     if (m_followee_conn == nullptr)
       {
+	// It has been disconnected somewhere, because of an error or server shutdown.
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
 	return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
       }

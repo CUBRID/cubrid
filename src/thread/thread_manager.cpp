@@ -421,7 +421,8 @@ namespace cubthread
     std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // one per each connection
     std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
     std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
-    std::size_t max_server_type_workers = 4;
+    std::size_t max_server_type_workers =
+	    4; // used in page_server or tran_server. TODO set depending on server type and configurable.
     std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
 
     // note: thread entry initialization is slow, that is why we keep a static pool initialized from the beginning to
