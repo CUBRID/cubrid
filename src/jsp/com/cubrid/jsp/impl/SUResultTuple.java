@@ -3,12 +3,15 @@ package com.cubrid.jsp.impl;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.SOID;
 import com.cubrid.jsp.exception.TypeMismatchException;
+import com.cubrid.jsp.value.NullValue;
 import com.cubrid.jsp.value.Value;
 
 public class SUResultTuple {
     private int index;
     private SOID oid;
+
     private Object attributes[];
+    private boolean wasNull[];
 
     public SUResultTuple(int tupleIndex, int attributeNumber) {
         index = tupleIndex;
@@ -20,10 +23,18 @@ public class SUResultTuple {
         int attributeLength = unpacker.unpackInt();
 
         attributes = new Object[attributeLength];
+        wasNull = new boolean[attributeLength];
+
         for (int i = 0; i < attributeLength; i++) {
             int paramType = unpacker.unpackInt();
             Value v = unpacker.unpackValue(paramType);
             attributes[i] = v;
+
+            if (v instanceof NullValue) {
+                wasNull[i] = true;
+            } else {
+                wasNull[i] = false;
+            }
         }
 
         oid = unpacker.unpackOID();
@@ -38,10 +49,10 @@ public class SUResultTuple {
     }
 
     public Object getAttribute(int tIndex) {
-        /*
-         * if (tIndex < 0 || attributes == null || tIndex >= attributes.length)
-         * return null;
-         */
+        if (tIndex < 0 || attributes == null || tIndex >= attributes.length) {
+            return null;
+        }
+
         return attributes[tIndex];
     }
 
@@ -70,5 +81,9 @@ public class SUResultTuple {
 
     public int tupleNumber() {
         return index;
+    }
+
+    public boolean getWasNull(int tIndex) {
+        return wasNull[tIndex];
     }
 }

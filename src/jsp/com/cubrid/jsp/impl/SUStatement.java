@@ -428,17 +428,16 @@ public class SUStatement {
             // GET_BY_OID initialized 1 tuple at constructor
         }
 
-        Object obj;
+        SUResultTuple tuple = null;
+        Object obj = null;
 
-        if ((tuples == null)
-                || (tuples[cursorPosition - fetchedStartCursorPosition] == null)
-                || ((obj = tuples[cursorPosition - fetchedStartCursorPosition].getAttribute(index))
-                        == null)) {
-            wasNull = true;
+        if ((tuples == null) || (tuples[cursorPosition - fetchedStartCursorPosition] == null)) {
             return null;
         }
-        wasNull = false;
 
+        tuple = tuples[cursorPosition - fetchedStartCursorPosition];
+        obj = tuple.getAttribute(index);
+        wasNull = tuple.getWasNull(index);
         return obj;
     }
 
