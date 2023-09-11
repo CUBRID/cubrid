@@ -429,16 +429,19 @@ public class SUStatement {
         }
 
         SUResultTuple tuple = null;
-        Object obj = null;
-
         if ((tuples == null) || (tuples[cursorPosition - fetchedStartCursorPosition] == null)) {
             return null;
         }
 
         tuple = tuples[cursorPosition - fetchedStartCursorPosition];
-        obj = tuple.getAttribute(index);
+        if (tuple.getAttribute(index) == null) {
+            // it is error case... but for safe guard
+            wasNull = true;
+            return null;
+        }
+
         wasNull = tuple.getWasNull(index);
-        return obj;
+        return tuple;
     }
 
     public boolean getWasNull() {
