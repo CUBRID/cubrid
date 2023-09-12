@@ -37,8 +37,8 @@ namespace cubschema
     //
   }
 
-  grant::grant (struct db_object *&tu, struct db_object *&cm, const DB_AUTH &au, bool grant_opt)
-    : target_user {tu}, classmop {cm}, auth {au}, with_grant_option {grant_opt}
+  grant::grant (struct db_object *&tu, const DB_AUTH &au, bool grant_opt)
+    : target_user {tu}, auth {au}, with_grant_option {grant_opt}
   {
     //
   }
@@ -49,16 +49,27 @@ namespace cubschema
     //
   }
 
-  system_catalog_definition::system_catalog_definition (const std::string_view n, const std::vector<column> &attrs,
-      const std::vector<constraint> &cts,
+  system_catalog_definition::system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
+      const cstr_vec_type &cts,
       const authorization &au)
     : name {n}
     , attributes {attrs}
     , constraints {cts}
+    , query_specs {}
     , auth {au}
   {
     //
   }
 
-
+  system_catalog_definition::system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
+      const qs_vec_type &qs,
+      const authorization &au)
+    : name {n}
+    , attributes {attrs}
+    , constraints {}
+    , query_specs {qs}
+    , auth {au}
+  {
+    //
+  }
 }

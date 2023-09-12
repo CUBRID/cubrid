@@ -32,7 +32,7 @@
 namespace cubschema
 {
   MOP
-  system_catalog_builder::create_and_mark_system_class (std::string_view name)
+  system_catalog_builder::create_and_mark_system_class (const std::string_view name)
   {
     if (name.empty ())
       {
@@ -42,14 +42,25 @@ namespace cubschema
       }
 
     // class_mop
-    MOP class_mop = db_create_class (name.data ());
-    if (class_mop == nullptr)
+    MOP class_mop = nullptr;
+    if (sm_is_system_class (name))
       {
-	assert (er_errid () != NO_ERROR);
-	return nullptr;
+	class_mop = db_create_class (name.data ());
+	if (class_mop != nullptr)
+	  {
+	    sm_mark_system_class (class_mop, 1);
+	  }
       }
-    sm_mark_system_class (class_mop, 1);
+    else if (sm_is_system_vclass (name))
+      {
+	class_mop = db_create_vclass (name.data ());
+      }
+    else
+      {
+	assert (false);
+      }
 
+    assert (er_errid () == NO_ERROR);
     return class_mop;
   }
 
@@ -142,7 +153,7 @@ namespace cubschema
 
     for (const grant &g : auth.grants)
       {
-	error_code = au_grant (g.target_user, class_mop, AU_SELECT, false);
+	error_code = au_grant (g.target_user, class_mop, g.auth, g.with_grant_option);
 	if (error_code != NO_ERROR)
 	  {
 	    return error_code;
@@ -150,5 +161,65 @@ namespace cubschema
       }
 
     return error_code;
+  }
+
+  int
+  system_catalog_builder::build_vclass (const MOP class_mop, const system_catalog_definition &def)
+  {
+    int error_code = NO_ERROR;
+
+    if (class_mop == nullptr)
+      {
+	// should not happen
+	assert (false);
+	return ER_FAILED;
+      }
+
+    // attributes
+    const std::vector <column> &attributes = def.attributes;
+    for (const auto &attr: attributes)
+      {
+	const char *name = attr.name.data ();
+	const char *type = attr.type.data ();
+	error_code = db_add_attribute (class_mop, name, type, NULL);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+      }
+
+    // query spec
+    const std::vector <std::string> &query_specs = def.query_specs;
+    for (const auto &qs: query_specs)
+      {
+	error_code = db_add_query_spec (class_mop, qs.data ());
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+      }
+
+    const authorization &auth = def.auth;
+    assert (auth.owner != nullptr);
+    if (auth.owner != nullptr)
+      {
+	error_code = au_change_owner (class_mop, auth.owner);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+      }
+
+    for (const grant &g : auth.grants)
+      {
+	assert (g.target_user != nullptr);
+	error_code = au_grant (g.target_user, class_mop, g.auth, g.with_grant_option);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+      }
+
+    return error_code; // NO_ERROR
   }
 }

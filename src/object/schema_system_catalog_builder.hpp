@@ -69,8 +69,9 @@ namespace cubschema
       ~system_catalog_builder () = default;
 
     public:
-      static MOP create_and_mark_system_class (std::string_view name);
+      static MOP create_and_mark_system_class (const std::string_view name);
       static int build_class (const MOP class_mop, const system_catalog_definition &def);
+      static int build_vclass (const MOP class_mop, const system_catalog_definition &def);
   };
 }
 

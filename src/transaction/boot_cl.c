@@ -553,6 +553,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	  error_code = tr_install ();
 	  if (error_code == NO_ERROR)
 	    {
+	      catcls_init ();
 	      error_code = catcls_install_class ();
 	      if (error_code == NO_ERROR)
 		{

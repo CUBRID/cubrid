@@ -58,11 +58,10 @@ namespace cubschema
   struct grant
   {
     struct db_object *target_user;
-    struct db_object *classmop;
     DB_AUTH auth;
     bool with_grant_option;
 
-    grant (struct db_object *&tu, struct db_object *&cm, const DB_AUTH &au, bool grant_opt);
+    grant (struct db_object *&tu, const DB_AUTH &au, bool grant_opt);
   };
 
   struct authorization
@@ -75,13 +74,24 @@ namespace cubschema
 
   struct system_catalog_definition
   {
+    using attr_vec_type = std::vector <column>;
+    using cstr_vec_type = std::vector <constraint>;
+    using qs_vec_type = std::vector <std::string>;
+
     const std::string name;
-    const std::vector <column> attributes;
-    const std::vector <constraint> constraints;
+    const attr_vec_type attributes;
+
+    const cstr_vec_type constraints; // for class
+    const qs_vec_type query_specs; // for vclass
+
     const authorization auth;
 
-    system_catalog_definition (const std::string_view n, const std::vector<column> &attrs,
-			       const std::vector<constraint> &cts,
+    system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
+			       const cstr_vec_type &cts,
+			       const authorization &au);
+
+    system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
+			       const qs_vec_type &qs,
 			       const authorization &au);
   };
 }

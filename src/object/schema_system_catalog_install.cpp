@@ -81,12 +81,16 @@ static int boot_define_view_db_charset (void);
 static int boot_define_view_db_server (void);
 static int boot_define_view_synonym (void);
 
-/* ========================================================================== */
-/* NEW DEFINITION */
-/* ========================================================================== */
+// query specs
+static const char *sm_define_view_class_spec (void);
 
 namespace cubschema
 {
+  /* ========================================================================== */
+  /* NEW DEFINITION (CLASS) */
+  /* ========================================================================== */
+
+
 // TODO: find right place
 // TODO: implement formatting utility function for std::string (like fmt library)
   const inline std::string format_varchar (const int size)
@@ -109,69 +113,155 @@ namespace cubschema
   const std::string VARCHAR_255 {format_varchar (255)};
   const std::string VARCHAR_2048 {format_varchar (2048)}; // for comment
 
+  class system_catalog_initializer
+  {
+    public:
+      // classes
+      static const system_catalog_definition &init_class ();
+
+      // views
+      static const system_catalog_definition &init_vclass ();
+  };
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_class ()
+  {
 // _db_class
-  system_catalog_definition sm_define_class (
-	  // name
-	  CT_CLASS_NAME,
-	  // columns
-  {
-    {"class_of", OBJECT},
-    {"unique_name", VARCHAR_255},
-    {"class_name", VARCHAR_255},
-    {"class_type", INTEGER},
-    {"is_system_class", INTEGER},
-    {"owner", AU_USER_CLASS_NAME},
-    {"inst_attr_count", INTEGER},
-    {"class_attr_count", INTEGER},
-    {"shared_attr_count", INTEGER},
-    {"inst_meth_count", INTEGER},
-    {"class_meth_count", INTEGER},
-    {"collation_id", INTEGER},
-    {"tde_algorithm", INTEGER},
-    {"sub_classes", format_sequence (CT_CLASS_NAME)},
-    {"super_classes", format_sequence (CT_CLASS_NAME)},
-    {"inst_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
-    {"class_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
-    {"shared_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
-    {"inst_meths", format_sequence (CT_METHOD_NAME)},
-    {"class_meths", format_sequence (CT_METHOD_NAME)},
-    {"meth_files", format_sequence (CT_METHFILE_NAME)},
-    {"query_specs", format_sequence (CT_QUERYSPEC_NAME)},
-    {"indexes", format_sequence (CT_INDEX_NAME)},
-    {"comment", VARCHAR_2048},
-    {"partition", format_sequence (CT_PARTITION_NAME)}
-  },
+    static system_catalog_definition sm_define_class (
+	    // name
+	    CT_CLASS_NAME,
+	    // columns
+    {
+      {"class_of", OBJECT},
+      {"unique_name", VARCHAR_255},
+      {"class_name", VARCHAR_255},
+      {"class_type", INTEGER},
+      {"is_system_class", INTEGER},
+      {"owner", AU_USER_CLASS_NAME},
+      {"inst_attr_count", INTEGER},
+      {"class_attr_count", INTEGER},
+      {"shared_attr_count", INTEGER},
+      {"inst_meth_count", INTEGER},
+      {"class_meth_count", INTEGER},
+      {"collation_id", INTEGER},
+      {"tde_algorithm", INTEGER},
+      {"sub_classes", format_sequence (CT_CLASS_NAME)},
+      {"super_classes", format_sequence (CT_CLASS_NAME)},
+      {"inst_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
+      {"class_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
+      {"shared_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
+      {"inst_meths", format_sequence (CT_METHOD_NAME)},
+      {"class_meths", format_sequence (CT_METHOD_NAME)},
+      {"meth_files", format_sequence (CT_METHFILE_NAME)},
+      {"query_specs", format_sequence (CT_QUERYSPEC_NAME)},
+      {"indexes", format_sequence (CT_INDEX_NAME)},
+      {"comment", VARCHAR_2048},
+      {"partition", format_sequence (CT_PARTITION_NAME)}
+    },
 // constraints
-  {
-    /*
-    *  Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
-    *  in src/storage/catalog_class.c.
-    *
-    *  _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
-    *  in src/storage/btree.c, it becomes assert (false) in the code below.
-    *
-    *    CREATE TABLE t1 (c1 INT);
-    *    RENAME CLASS t1 AS t2;
-    *
-    *    assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
-    *            || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
-    *
-    *  All others should be false, and !BTREE_IS_UNIQUE (btid_int->unique_pk) should be true. However,
-    *  if there is a primary key or a unique index, !BTREE_IS_UNIQUE (btid_int->unique_pk) also becomes false,
-    *  and all are false. In the btree_key_insert_new_key function, analysis should be added to the operation
-    *  of the primary key and unique index.
-    *
-    *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
-    */
-    {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}, false},
-    {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false}
-  },
+    {
+      /*
+      *  Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
+      *  in src/storage/catalog_class.c.
+      *
+      *  _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
+      *  in src/storage/btree.c, it becomes assert (false) in the code below.
+      *
+      *    CREATE TABLE t1 (c1 INT);
+      *    RENAME CLASS t1 AS t2;
+      *
+      *    assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
+      *            || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
+      *
+      *  All others should be false, and !BTREE_IS_UNIQUE (btid_int->unique_pk) should be true. However,
+      *  if there is a primary key or a unique index, !BTREE_IS_UNIQUE (btid_int->unique_pk) also becomes false,
+      *  and all are false. In the btree_key_insert_new_key function, analysis should be added to the operation
+      *  of the primary key and unique index.
+      *
+      *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
+      */
+      {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false}
+    },
 // authorization
-  {
-    // owner, grants
-    Au_dba_user, {}
+    {
+      // owner, grants
+      Au_dba_user, {}
+    }
+    );
+
+    return sm_define_class;
   }
-  );
+
+  /* ========================================================================== */
+  /* NEW DEFINITION (VCLASS) */
+  /* ========================================================================== */
+
+// TODO: Add checking the following rules in compile time (@hgryoo)
+  /*
+   * Please follow the rules below when writing query specifications for system virtual classes.
+   *
+   *  1. First indent 1 tab, then 2 spaces.
+   *     - The CASE statement indents 2 spaces until the END.
+   *  2. All lines do not start with a space.
+   *  3. All lines end with a space. However, the following case does not end with a space.
+   *     - If the current line ends with "(", it ends without a space.
+   *     - If the next line starts with ")", the current line ends without a space.
+   *  4. Add a space before "(" and after ")". Remove spaces after "(" and before ")".
+   *  5. Add a space before "{" and after "}". Remove spaces after "{" and before "}".
+   *  6. Add a space before and after "+" and "=" operators.
+   *  7. Change the line.
+   *     - In the SELECT, FROM, WHERE, and ORDER BY clauses, change the line.
+   *     - After the SELECT, FROM, WHERE, and ORDER BY keywords, change the line.
+   *     - In the AND and OR clauses, change the line.
+   *     - In more than one TABLE expression, change the line.
+   *  8. Do not change the line.
+   *     - If the expression length is less than 120 characters, write it on one line.
+   *     - In the CASE statement, write the WHEN and THEN clauses on one line.
+   *     - In the FROM clause, write a TABLE expression and related tables on one line.
+   *  9. In the SELECT and FROM clauses, use the AS keyword before alias.
+   * 10. If the CAST function is used, write a comment about the data type being changed.
+   * 11. If column are compared without changing in the CASE statement, write the column name after the CASE keyword.
+   * 12. If %s (Format Specifier) is used in the FROM clause, write a comment about the value to be used.
+   * 13. Because path expression cannot be used in ANSI style, write a join condition in the WHERE clause.
+   *
+   */
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_vclass ()
+  {
+// db_class
+    static system_catalog_definition sm_define_view_class (
+	    // name
+	    CTV_CLASS_NAME,
+	    // columns
+    {
+      {"class_name", VARCHAR_255},
+      {"owner_name", VARCHAR_255},
+      {"class_type", "varchar(6)"},
+      {"is_system_class", "varchar(3)"},
+      {"tde_algorithm", "varchar(32)"},
+      {"partitioned", "varchar(3)"},
+      {"is_reuse_oid_class", "varchar(3)"},
+      {"collation", "varchar(32)"},
+      {"comment", VARCHAR_2048}
+    },
+// query specs
+    {
+      sm_define_view_class_spec ()
+    },
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    }
+    );
+    return sm_define_view_class;
+  }
 }
 
 // for backward compatibility
@@ -207,14 +297,9 @@ static cubschema::catcls_function clist[] =
   {CT_SYNONYM_NAME, boot_define_synonym}
 };
 
-static cubschema::catcls_function_ng clist_new [] =
-{
-  {CT_CLASS_NAME, cubschema::sm_define_class}
-};
-
 static cubschema::catcls_function vclist[] =
 {
-  {CTV_CLASS_NAME, boot_define_view_class},
+  // {CTV_CLASS_NAME, boot_define_view_class},
   {CTV_SUPER_CLASS_NAME, boot_define_view_super_class},
   {CTV_VCLASS_NAME, boot_define_view_vclass},
   {CTV_ATTRIBUTE_NAME, boot_define_view_attribute},
@@ -236,17 +321,39 @@ static cubschema::catcls_function vclist[] =
   {CTV_SYNONYM_NAME,boot_define_view_synonym}
 };
 
+static std::vector<cubschema::catcls_function_ng> *clist_new = nullptr;
+static std::vector<cubschema::catcls_function_ng> *vclist_new = nullptr;
+
+void
+catcls_init (void)
+{
+  // TODO: for late initialization (for au_init () to retrieve MOPs: Au_dba_user and Au_public_user)
+  static std::vector<cubschema::catcls_function_ng> cl =
+  {
+    {CT_CLASS_NAME, cubschema::system_catalog_initializer::init_class ()}
+  };
+
+  static std::vector<cubschema::catcls_function_ng> vcl =
+  {
+    {CTV_CLASS_NAME, cubschema::system_catalog_initializer::init_vclass ()}
+  };
+
+  clist_new = &cl;
+  vclist_new = &vcl;
+}
+
 int
 catcls_install_class (void)
 {
   int error_code = NO_ERROR;
 
-  const int num_classes_old = sizeof (clist) / sizeof (clist[0]);
-  const int num_classes_new = sizeof (clist_new) / sizeof (clist_new[0]);
-  const int num_classes_total = num_classes_old + num_classes_new;
+  const size_t num_classes_old = sizeof (clist) / sizeof (clist[0]);
+  const size_t num_classes_new = clist_new->size ();
+  const size_t num_classes_total = num_classes_old + num_classes_new;
 
   MOP class_mop[num_classes_total] = {nullptr};
-  int i, save;
+  int save;
+  size_t i;
   AU_DISABLE (save);
 
   using catalog_builder = cubschema::system_catalog_builder;
@@ -256,7 +363,7 @@ catcls_install_class (void)
       if (i < num_classes_new)
 	{
 	  // new routine
-	  class_mop[i] = catalog_builder::create_and_mark_system_class (clist_new[i].name);
+	  class_mop[i] = catalog_builder::create_and_mark_system_class ((*clist_new)[i].name);
 	}
       else
 	{
@@ -277,7 +384,7 @@ catcls_install_class (void)
       if (i < num_classes_new)
 	{
 	  // new routine
-	  error_code = catalog_builder::build_class (class_mop[i], clist_new[i].definition);
+	  error_code = catalog_builder::build_class (class_mop[i], (*clist_new)[i].definition);
 	}
       else
 	{
@@ -310,14 +417,41 @@ catcls_install_vclass (void)
 {
   int save;
   size_t i;
-  size_t num_vclasses = sizeof (vclist) / sizeof (vclist[0]);
+
+  const size_t num_vclasses_old = sizeof (vclist) / sizeof (vclist[0]);
+  const size_t num_vclasses_new = vclist_new->size ();
+  const size_t num_vclasses_total = num_vclasses_old + num_vclasses_new;
+
   int error_code = NO_ERROR;
 
   AU_DISABLE (save);
 
-  for (i = 0; i < num_vclasses; i++)
+  using catalog_builder = cubschema::system_catalog_builder;
+
+  for (i = 0; i < num_vclasses_total; i++)
     {
-      error_code = (vclist[i].vclass_func) ();
+      if (i < num_vclasses_new)
+	{
+	  // new routine
+	  MOP class_mop = catalog_builder::create_and_mark_system_class ((*vclist_new)[i].name);
+	  if (class_mop != nullptr)
+	    {
+	      error_code = catalog_builder::build_vclass (class_mop, (*vclist_new)[i].definition);
+	    }
+
+	  if (er_errid () != NO_ERROR)
+	    {
+	      error_code = er_errid ();
+	    }
+	}
+      else
+	{
+	  // old routine
+	  int idx = i - num_vclasses_new;
+	  error_code = (vclist[idx].vclass_func) ();
+	}
+
+
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -2856,7 +2990,6 @@ boot_define_db_server (MOP class_mop)
 /* LEGACY FUNCTIONS (SYSTEM VCLASS) */
 /* ========================================================================== */
 
-
 /*
  * Please follow the rules below when writing query specifications for system virtual classes.
  *
@@ -5351,4 +5484,86 @@ boot_define_view_db_server (void)
     }
 
   return NO_ERROR;
+}
+
+/* ========================================================================== */
+/* NEW ROUTINE (QUERY SPECS OF SYSTEM VCLASS) */
+/* ========================================================================== */
+
+static const char *
+sm_define_view_class_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+	  "[c].[class_name] AS [class_name], "
+	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [class_type], "
+	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
+	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
+	  "CASE "
+	    "WHEN [c].[sub_classes] IS NULL THEN 'NO' "
+	    /* CT_PARTITION_NAME */
+	    "ELSE NVL ((SELECT 'YES' FROM [%s] AS [p] WHERE [p].[class_of] = [c] AND [p].[pname] IS NULL), 'NO') "
+	    "END AS [partitioned], "
+	  "CASE WHEN MOD ([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
+	  "[coll].[coll_name] AS [collation], "
+	  "[c].[comment] AS [comment] "
+	"FROM "
+	  /* CT_CLASS_NAME */
+	  "[%s] AS [c], "
+	  /* CT_COLLATION_NAME */
+	  "[%s] AS [coll] "
+	"WHERE "
+	  "[c].[collation_id] = [coll].[coll_id] "
+	  "AND ("
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[c].[owner].[name]} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[c]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[class_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'SELECT'"
+		")"
+	    ")",
+	CT_PARTITION_NAME,
+	CT_CLASS_NAME,
+	CT_COLLATION_NAME,
+	AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
+
+  return stmt;
 }

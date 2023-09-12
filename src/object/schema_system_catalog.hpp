@@ -28,6 +28,11 @@
 
 #include "porting.h"
 
+// test class_name is of system (class/vclass)s for legacy routine
 extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string_view class_name);
+
+extern EXPORT_IMPORT bool sm_is_system_class (const std::string_view name);
+extern EXPORT_IMPORT bool sm_is_system_vclass (const std::string_view name);
+
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_HPP_ */

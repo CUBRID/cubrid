@@ -27,6 +27,7 @@
 
 #include "porting.h"
 
+extern EXPORT_IMPORT void catcls_init (void);
 extern EXPORT_IMPORT int catcls_install_class (void);
 extern EXPORT_IMPORT int catcls_install_vclass (void);
 
