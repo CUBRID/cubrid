@@ -201,6 +201,7 @@ class page_server
 
       private:
 	void receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp);
+	void receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp);
 
 	void serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out);
 

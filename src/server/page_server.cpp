@@ -408,6 +408,10 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   m_conn.reset (new follower_server_conn_t (std::move (chn),
   {
     {
+      follower_to_followee_request::SEND_DISCONNECT_MSG,
+      std::bind (&page_server::follower_connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+    },
+    {
       follower_to_followee_request::SEND_LOG_PAGES_FETCH,
       std::bind (&page_server::follower_connection_handler::receive_log_pages_fetch, std::ref (*this), std::placeholders::_1)
     },
@@ -476,6 +480,13 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
 		     "[READ LOG] Sending log pages to the pager server (%s). Page Id from %lld to %lld, Error code: %d\n",
 		     m_conn->get_underlying_channel_id ().c_str (), start_pageid, start_pageid + cnt - 1, error);
     }
+}
+
+void
+page_server::follower_connection_handler::receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp)
+{
+
+
 }
 
 page_server::follower_connection_handler::~follower_connection_handler ()
