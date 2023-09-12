@@ -34,7 +34,6 @@
 #include "locator_cl.h"
 
 // system classes
-static int boot_define_class (MOP class_mop);
 static int boot_define_attribute (MOP class_mop);
 static int boot_define_domain (MOP class_mop);
 static int boot_define_method (MOP class_mop);
@@ -60,7 +59,6 @@ static int boot_define_db_server (MOP class_mop);
 static int boot_define_synonym (MOP class_mop);
 
 // system vclasses
-static int boot_define_view_class (void);
 static int boot_define_view_super_class (void);
 static int boot_define_view_vclass (void);
 static int boot_define_view_attribute (void);
@@ -273,7 +271,6 @@ using COLUMN = cubschema::column;
 
 static cubschema::catcls_function clist[] =
 {
-  // {CT_CLASS_NAME, boot_define_class},
   {CT_ATTRIBUTE_NAME, boot_define_attribute},
   {CT_DOMAIN_NAME, boot_define_domain},
   {CT_METHOD_NAME, boot_define_method},
@@ -299,7 +296,6 @@ static cubschema::catcls_function clist[] =
 
 static cubschema::catcls_function vclist[] =
 {
-  // {CTV_CLASS_NAME, boot_define_view_class},
   {CTV_SUPER_CLASS_NAME, boot_define_view_super_class},
   {CTV_VCLASS_NAME, boot_define_view_vclass},
   {CTV_ATTRIBUTE_NAME, boot_define_view_attribute},
@@ -467,243 +463,6 @@ end:
 /* ========================================================================== */
 /* LEGACY FUNCTIONS (SYSTEM CLASS) */
 /* ========================================================================== */
-
-/*
- * boot_define_class :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_class (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char domain_string[32];
-  int error_code = NO_ERROR;
-  const char *index1_col_names[2] = { "unique_name", NULL };
-  const char *index2_col_names[3] = { "class_name", "owner", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "class_of", "object", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* unique name */
-  error_code = smt_add_attribute (def, "unique_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* class name */
-  error_code = smt_add_attribute (def, "class_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "class_type", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "is_system_class", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "owner", AU_USER_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "inst_attr_count", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "class_attr_count", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "shared_attr_count", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "inst_meth_count", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "class_meth_count", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "collation_id", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "tde_algorithm", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_CLASS_NAME);
-
-  error_code = smt_add_attribute (def, "sub_classes", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "super_classes", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_ATTRIBUTE_NAME);
-
-  error_code = smt_add_attribute (def, "inst_attrs", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "class_attrs", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "shared_attrs", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_METHOD_NAME);
-
-  error_code = smt_add_attribute (def, "inst_meths", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "class_meths", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_METHFILE_NAME);
-
-  error_code = smt_add_attribute (def, "meth_files", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_QUERYSPEC_NAME);
-
-  error_code = smt_add_attribute (def, "query_specs", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_INDEX_NAME);
-
-  error_code = smt_add_attribute (def, "indexes", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "comment", "varchar(2048)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_PARTITION_NAME);
-
-  error_code = smt_add_attribute (def, "partition", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /*
-   *  Define the index name so that it always has the same name as the macro variable (CATCLS_INDEX_NAME)
-   *  in src/storage/catalog_class.c.
-   *
-   *  _db_class must not have a primary key or a unique index. In the btree_key_insert_new_key function
-   *  in src/storage/btree.c, it becomes assert (false) in the code below.
-   *
-   *    CREATE TABLE t1 (c1 INT);
-   *    RENAME CLASS t1 AS t2;
-   *
-   *    assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
-   *            || log_is_in_crash_recovery () || btree_check_locking_for_insert_unique (thread_p, insert_helper));
-   *
-   *  All others should be false, and !BTREE_IS_UNIQUE (btid_int->unique_pk) should be true. However,
-   *  if there is a primary key or a unique index, !BTREE_IS_UNIQUE (btid_int->unique_pk) also becomes false,
-   *  and all are false. In the btree_key_insert_new_key function, analysis should be added to the operation
-   *  of the primary key and unique index.
-   *
-   *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
-   */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, "i__db_class_unique_name", index1_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index2_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
 
 /*
  * boot_define_attribute :
@@ -3018,141 +2777,6 @@ boot_define_db_server (MOP class_mop)
  * 13. Because path expression cannot be used in ANSI style, write a join condition in the WHERE clause.
  *
  */
-
-/*
- * boot_define_view_class :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- */
-static int
-boot_define_view_class (void)
-{
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"class_type", "varchar(6)"},
-    {"is_system_class", "varchar(3)"},
-    {"tde_algorithm", "varchar(32)"},
-    {"partitioned", "varchar(3)"},
-    {"is_reuse_oid_class", "varchar(3)"},
-    {"collation", "varchar(32)"},
-    {"comment", "varchar(2048)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_CLASS_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
-
-  // *INDENT-OFF*
-  sprintf (stmt,
-	"SELECT "
-	  "[c].[class_name] AS [class_name], "
-	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
-	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [class_type], "
-	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
-	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
-	  "CASE "
-	    "WHEN [c].[sub_classes] IS NULL THEN 'NO' "
-	    /* CT_PARTITION_NAME */
-	    "ELSE NVL ((SELECT 'YES' FROM [%s] AS [p] WHERE [p].[class_of] = [c] AND [p].[pname] IS NULL), 'NO') "
-	    "END AS [partitioned], "
-	  "CASE WHEN MOD ([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
-	  "[coll].[coll_name] AS [collation], "
-	  "[c].[comment] AS [comment] "
-	"FROM "
-	  /* CT_CLASS_NAME */
-	  "[%s] AS [c], "
-	  /* CT_COLLATION_NAME */
-	  "[%s] AS [coll] "
-	"WHERE "
-	  "[c].[collation_id] = [coll].[coll_id] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
-	CT_PARTITION_NAME,
-	CT_CLASS_NAME,
-	CT_COLLATION_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
-  // *INDENT-ON*
-
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
 
 /*
  * boot_define_view_super_class :
