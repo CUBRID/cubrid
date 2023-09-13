@@ -197,6 +197,8 @@ class page_server
 	follower_connection_handler &operator= (const follower_connection_handler &) = delete;
 	follower_connection_handler &operator= (follower_connection_handler &&) = delete;
 
+	const std::string get_channel_id () const;
+
 	~follower_connection_handler ();
 
       private:
@@ -220,6 +222,8 @@ class page_server
 
 	followee_connection_handler &operator= (const followee_connection_handler &) = delete;
 	followee_connection_handler &operator= (followee_connection_handler &&) = delete;
+
+	const std::string get_channel_id () const;
 
 	int request_log_pages (LOG_PAGEID start_pageid, int count, const std::vector<LOG_PAGE *> &log_pages_out);
 

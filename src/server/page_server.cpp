@@ -427,6 +427,12 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   m_conn->start ();
 }
 
+const std::string
+page_server::follower_connection_handler::get_channel_id () const
+{
+  return m_conn->get_underlying_channel_id ();
+}
+
 void
 page_server::follower_connection_handler::receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp)
 {
@@ -486,6 +492,7 @@ void
 page_server::follower_connection_handler::receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp)
 {
   m_ps.disconnect_follower_server_async (this);
+  // Don't access any members below here. This will be destroyed anytime soon.
 }
 
 page_server::follower_connection_handler::~follower_connection_handler ()
@@ -515,6 +522,12 @@ page_server::followee_connection_handler::followee_connection_handler (cubcomm::
 		nullptr)); // TODO handle abnormal disconnection.
 
   m_conn->start ();
+}
+
+const std::string
+page_server::followee_connection_handler::get_channel_id () const
+{
+  return m_conn->get_underlying_channel_id ();
 }
 
 void
@@ -933,13 +946,14 @@ page_server::disconnect_followee_page_server (const bool with_disc_msg)
   auto lockg = std::lock_guard { m_followee_conn_mutex };
   if (m_followee_conn != nullptr)
     {
+      auto channel_id = m_followee_conn->get_channel_id ();
       if (with_disc_msg)
 	{
 	  //TODO send the disconnect msg
 	}
       m_followee_conn.reset (nullptr);
 
-      er_log_debug (ARG_FILE_LINE, "The followee page server has been disconnected.\n");
+      er_log_debug (ARG_FILE_LINE, "The followee page server has been disconnected. channel id: %s\n", channel_id.c_str ());
     }
 }
 
@@ -950,7 +964,7 @@ page_server::disconnect_follower_server_async (const follower_connection_handler
 
   if (m_follower_disc_future.valid())
     {
-      m_follower_disc_future.get (); // waits until the previous async is donee
+      m_follower_disc_future.get (); // waits until the previous async is done
     }
 
   auto lockg_conn_vec = std::lock_guard { m_follower_conn_vec_mutex };
@@ -964,7 +978,9 @@ page_server::disconnect_follower_server_async (const follower_connection_handler
 
   auto reset_func = [] (auto &&conn_uptr)
   {
+    auto channel_id = conn_uptr->get_channel_id ();
     conn_uptr.reset (nullptr);
+    er_log_debug (ARG_FILE_LINE, "The follower page server has been disconnected. channel id: %s\n", channel_id.c_str ());
   };
   m_follower_disc_future = std::async (std::launch::async, reset_func, std::move (*it));
   assert (m_follower_disc_future.valid ());
