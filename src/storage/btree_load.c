@@ -3578,6 +3578,9 @@ compare_driver (const void *first, const void *second, void *arg)
 
       /* fast implementation of pr_midxkey_compare (). do not use DB_VALUE container for speed-up */
 
+      mem1 += OR_SHORT_SIZE;
+      mem2 += OR_SHORT_SIZE;
+
       bitptr1 = mem1;
       bitptr2 = mem2;
 
@@ -4134,7 +4137,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	       * To do this, reduce the number of columns.
 	       * Modify bitmap information for btree_multicol_key_is_null() function. */
 	      new_ptr->data.midxkey.ncolumns--;
-	      OR_MULTI_CLEAR_BOUND_BIT (new_ptr->data.midxkey.buf, new_ptr->data.midxkey.ncolumns);
+	      OR_MULTI_CLEAR_BOUND_BIT (new_ptr->data.midxkey.buf + OR_SHORT_SIZE, new_ptr->data.midxkey.ncolumns);
 	      new_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
 	    }
 	  else

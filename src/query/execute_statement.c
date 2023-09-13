@@ -11715,6 +11715,8 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       dom = attr_dom;
     }
 
+  buf_size += OR_SHORT_SIZE;
+
   bitmap_size = OR_MULTI_BOUND_BIT_BYTES (attr_count);
   buf_size += bitmap_size;
 
@@ -11725,10 +11727,10 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       goto error_return;
     }
 
-  bound_bits = midxkey.buf;
+  bound_bits = midxkey.buf + OR_SHORT_SIZE;
   key_ptr = bound_bits + bitmap_size;
 
-  or_init (&buf, key_ptr, buf_size - bitmap_size);
+  or_init (&buf, key_ptr, buf_size - bitmap_size - OR_SHORT_SIZE);
   MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
@@ -11752,6 +11754,14 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
     }
 
   midxkey.size = buf_size;
+  if (buf_size < OR_MAX_SHORT_UNSIGNED)
+    {
+      OR_PUT_SHORT (midxkey.buf, buf_size);
+    }
+  else
+    {
+      OR_PUT_SHORT (midxkey.buf, 0xFFFF);
+    }
   midxkey.ncolumns = attr_count;
   midxkey.domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, attr_count, 0, setdomain);
   if (midxkey.domain == NULL)

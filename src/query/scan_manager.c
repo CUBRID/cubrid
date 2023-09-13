@@ -1559,7 +1559,9 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   /* bitmap is always fully sized */
   nullmap_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-  buf_size = nullmap_size;
+
+  buf_size += OR_SHORT_SIZE;
+  buf_size += nullmap_size;
 
   /* check to need a new setdomain */
   for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, i = 0; operand != NULL && idx_dom != NULL;
@@ -1763,10 +1765,18 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       goto err_exit;
     }
 
-  nullmap_ptr = midxkey.buf;
+  if (buf_size < OR_MAX_SHORT_UNSIGNED)
+    {
+      OR_PUT_SHORT (midxkey.buf, buf_size);
+    }
+  else
+    {
+      OR_PUT_SHORT (midxkey.buf, 0xFFFF);
+    }
+  nullmap_ptr = midxkey.buf + OR_SHORT_SIZE;
   key_ptr = nullmap_ptr + nullmap_size;
 
-  or_init (&buf, key_ptr, buf_size - nullmap_size);
+  or_init (&buf, key_ptr, buf_size - nullmap_size - OR_SHORT_SIZE);
   MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, nullmap_size);
 
   /* generate multi columns key (values -> midxkey.buf) */

@@ -308,7 +308,7 @@ extern int pr_free_ext_value (DB_VALUE * value);
 extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
 						   int total_order, int num_index_term, int *start_colp,
 						   int *diff_column, bool * dom_is_desc, int *result_size);
-extern int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain);
+STATIC_INLINE int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);
 extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
@@ -406,6 +406,27 @@ STATIC_INLINE int
 pr_is_prefix_key_type (DB_TYPE type)
 {
   return (type == DB_TYPE_MIDXKEY || pr_is_string_type (type));
+}
+
+/*
+ * pr_midxkey_element_disk_size - returns the number of bytes that will be
+ * written by the "index_write" type function for this memory buffer.
+ *    return: byte size of disk representation
+ *    mem(in): memory buffer
+ *    domain(in): type domain
+ */
+STATIC_INLINE int
+pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
+{
+  /*
+   * variable types except VARCHAR, VARNCHAR, and VARBIT
+   * cannot be a member of midxkey
+   */
+  assert (!(domain->type->variable_p
+	    && !(TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARNCHAR
+		 || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)));
+
+  return domain->type->get_index_size_of_mem (mem, domain);
 }
 
 //////////////////////////////////////////////////////////////////////////

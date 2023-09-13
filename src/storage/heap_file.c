@@ -12501,7 +12501,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 
   or_init (&buf, midxkey->buf, -1);
 
-  nullmap_ptr = midxkey->buf;
+  or_advance (&buf, OR_SHORT_SIZE);
+  nullmap_ptr = midxkey->buf + OR_SHORT_SIZE;
   or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_atts));
   k = 0;
   for (i = 0; i < num_atts && k < num_atts; i++)
@@ -12616,8 +12617,16 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
     }
 
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
+  if (midxkey->size < OR_MAX_SHORT_UNSIGNED)
+    {
+      OR_PUT_SHORT (midxkey->buf, midxkey->size);
+    }
+  else
+    {
+      OR_PUT_SHORT (midxkey->buf, 0xFFFF);
+    }
   midxkey->ncolumns = num_atts;
-  midxkey->domain = NULL;
+  midxkey->domain = NULL;	// *key_domain
 
   if (key_domain != NULL)
     {
@@ -12705,7 +12714,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 
   or_init (&buf, midxkey->buf, -1);
 
-  nullmap_ptr = midxkey->buf;
+  nullmap_ptr = midxkey->buf + OR_SHORT_SIZE;
+  or_advance (&buf, OR_SHORT_SIZE);
 
   /* On constructing index */
   num_vals = attrinfo->num_values;
@@ -12773,6 +12783,14 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
       pr_clear_value (&value);
     }
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
+  if (midxkey->size < OR_MAX_SHORT_UNSIGNED)
+    {
+      OR_PUT_SHORT (midxkey->buf, midxkey->size);
+    }
+  else
+    {
+      OR_PUT_SHORT (midxkey->buf, 0xFFFF);
+    }
   midxkey->ncolumns = num_vals;
   midxkey->domain = midxkey_domain;
   midxkey->min_max_val.position = -1;

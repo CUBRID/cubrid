@@ -18489,6 +18489,7 @@ btree_multicol_key_is_null (DB_VALUE * key)
       if (midxkey && midxkey->ncolumns != -1)
 	{
 	  bits = (unsigned char *) midxkey->buf;
+	  bits += OR_SHORT_SIZE;
 	  nbytes = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
 	  for (i = 0; i < nbytes; i++)
 	    {
@@ -18522,6 +18523,7 @@ btree_multicol_key_has_null (DB_VALUE * key)
   int status = 0;
   DB_MIDXKEY *midxkey;
   int i;
+  char *bitptr;
 
   if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
     {
@@ -18530,12 +18532,14 @@ btree_multicol_key_has_null (DB_VALUE * key)
       midxkey = db_get_midxkey (key);
       assert (midxkey != NULL);
 
+      bitptr = midxkey->buf + OR_SHORT_SIZE;
+
       /* ncolumns == -1 means already constructing step */
       if (midxkey && midxkey->ncolumns != -1)
 	{
 	  for (i = 0; i < midxkey->ncolumns; i++)
 	    {
-	      if (OR_MULTI_ATT_IS_UNBOUND (midxkey->buf, i))
+	      if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
 		{
 		  return 1;
 		}
@@ -24736,8 +24740,8 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 static int
 btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
-  int inc_slot;			/* Slot incremental value to advance to next key. */
   VPID next_vpid;		/* VPID of next leaf. */
+  int inc_slot;			/* Slot incremental value to advance to next key. */
   BTREE_NODE_HEADER *node_header;	/* Leaf node header. */
   int key_count;		/* Node key count. */
   PAGE_PTR next_node_page = NULL;	/* Page pointer to next leaf node. */
