@@ -19,16 +19,9 @@
 #include "server_type.hpp"
 
 #include "active_tran_server.hpp"
-#include "passive_tran_server.hpp"
-#include "communication_server_channel.hpp"
-#include "connection_defs.h"
-#include "error_manager.h"
-#include "log_impl.h"
 #include "page_server.hpp"
+#include "passive_tran_server.hpp"
 #include "system_parameter.h"
-
-#include <string>
-#include <thread>
 
 std::unique_ptr<tran_server> ts_Gl;
 
