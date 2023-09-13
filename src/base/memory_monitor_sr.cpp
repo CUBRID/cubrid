@@ -744,10 +744,11 @@ void mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info)
 MMON_STAT_ID mmon_set_tracking_tag (MMON_STAT_ID new_tag)
 {
   MMON_STAT_ID prev_tag;
+  THREAD_ENTRY *cur_thread_p;
 
-  mmon_tracking_thread_p = thread_get_thread_entry_info ();
-  prev_tag = mmon_tracking_thread_p->mmon_tracking_tag;
-  mmon_tracking_thread_p->mmon_tracking_tag = new_tag;
+  cur_thread_p = thread_get_thread_entry_info ();
+  prev_tag = cur_thread_p->mmon_tracking_tag;
+  cur_thread_p->mmon_tracking_tag = new_tag;
 
   return prev_tag;
 }
