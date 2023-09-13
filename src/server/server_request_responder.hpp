@@ -164,13 +164,8 @@ template<typename T_CONN>
 server_request_responder<T_CONN>::server_request_responder ()
   : m_threads_context_manager (std::make_unique<cubthread::system_worker_entry_manager> (TT_SYSTEM_WORKER))
 {
-  const int prm_thread_count = prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
-  const int prm_task_count = prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT);
-
-  const size_t THREAD_COUNT =
-	  (size_t) ((prm_thread_count <= 0) ? std::thread::hardware_concurrency () : prm_thread_count);
-  const size_t TASK_MAX_COUNT =
-	  (size_t) ((prm_task_count <= 0) ? (std::thread::hardware_concurrency () * 4) : prm_task_count);
+  const size_t THREAD_COUNT = (size_t)prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
+  const size_t TASK_MAX_COUNT = (size_t)prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT);
 
   m_threads = cubthread::get_manager ()->create_worker_pool (THREAD_COUNT, TASK_MAX_COUNT, "server_request_responder",
 	      m_threads_context_manager.get (), 1, false);

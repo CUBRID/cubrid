@@ -2401,13 +2401,23 @@ static const bool prm_scal_perf_ps_repl_thread_ignore_unfix_default = false;
 bool PRM_SCAL_PERF_PS_REPL_THREAD_IGNORE_UNFIX_VALUE = prm_scal_perf_ps_repl_thread_ignore_unfix_default;
 
 static unsigned int prm_scal_perf_ps_req_responder_thread_count_flag = 0;
-static int prm_scal_perf_ps_req_responder_thread_count_default = 0;
+static int prm_scal_perf_ps_req_responder_thread_count_default =
+#if defined (SERVER_MODE)
+  cubthread::system_core_count ();
+#else
+  0;				/* code not reachable in non-server mode */
+#endif
 int PRM_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT_CURRENT_VALUE = 0;
 static int prm_scal_perf_ps_req_responder_thread_count_upper_value = 64;
 static int prm_scal_perf_ps_req_responder_thread_count_lower_value = 0;
 
 static unsigned int prm_scal_perf_ps_req_responder_task_count_flag = 0;
-static int prm_scal_perf_ps_req_responder_task_count_default = 0;
+static int prm_scal_perf_ps_req_responder_task_count_default =
+#if defined (SERVER_MODE)
+  (cubthread::system_core_count () * 4);
+#else
+  0;				/* code not reachable in non-server mode */
+#endif
 int PRM_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT_CURRENT_VALUE = 0;
 static int prm_scal_perf_ps_req_responder_task_count_upper_value = (1 << 16);
 static int prm_scal_perf_ps_req_responder_task_count_lower_value = 0;

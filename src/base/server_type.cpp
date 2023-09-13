@@ -112,7 +112,7 @@ int init_server_type (const char *db_name)
   int er_code = NO_ERROR;
   const auto server_type_from_config = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   const auto transaction_server_type_from_config =
-	  (transaction_server_type_config) prm_get_integer_value ( PRM_ID_TRANSACTION_SERVER_TYPE);
+	  (transaction_server_type_config) prm_get_integer_value (PRM_ID_TRANSACTION_SERVER_TYPE);
   g_transaction_server_type = get_transaction_server_type_from_config (transaction_server_type_from_config);
 
   if (g_server_type == SERVER_TYPE_UNKNOWN)
@@ -298,29 +298,16 @@ int get_maxim_extra_thread_count_by_server_type ()
     {
       // thread pool used by page server to perform parallel replication
       //
-      int replication_parallel_thread_count_min = -1;
-      int replication_parallel_thread_count_max = -1;
-      int prm_error = sysprm_get_range (prm_get_name (PRM_ID_REPLICATION_PARALLEL_COUNT),
-					&replication_parallel_thread_count_min, &replication_parallel_thread_count_max);
-      if (prm_error != PRM_ERR_NO_ERROR)
-	{
-	  // a safe bet
-	  replication_parallel_thread_count_max = std::thread::hardware_concurrency ();
-	}
+      const int replication_parallel_thread_count = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
 
       // thread pool used by page server to asynchronously service requests from transaction servers
       //
-      int server_request_responder_thread_count_min = -1;
-      int server_request_responder_thread_count_max = -1;
-      prm_error = sysprm_get_range (prm_get_name (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT),
-				    &server_request_responder_thread_count_min, &server_request_responder_thread_count_max);
-      if (prm_error != PRM_ERR_NO_ERROR)
-	{
-	  // a safe bet
-	  server_request_responder_thread_count_max = std::thread::hardware_concurrency ();
-	}
+      int server_request_responder_thread_count
+	= prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
+      // TODO: there are now two such thread pools on the page server; a future refactoring will remove one
+      server_request_responder_thread_count *= 2;
 
-      return replication_parallel_thread_count_max + server_request_responder_thread_count_max;
+      return replication_parallel_thread_count + server_request_responder_thread_count;
     }
   // NOTE: the same parallel replication mechanism is also used for active transaction server recovery mechanism;
   // but, because that one is transient and only occuring before any other thread infrastructure is instantiated in
