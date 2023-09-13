@@ -485,8 +485,7 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
 void
 page_server::follower_connection_handler::receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp)
 {
-
-
+  m_ps.disconnect_follower_server_async (this);
 }
 
 page_server::follower_connection_handler::~follower_connection_handler ()
@@ -763,7 +762,11 @@ page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
   assert (chn.is_connection_alive ());
   const auto channel_id = chn.get_channel_id ();
 
-  m_follower_conn_vec.emplace_back (new follower_connection_handler (std::move (chn), *this));
+  {
+    auto lockg = std::lock_guard <std::mutex> (m_follower_conn_vec_mutex);
+
+    m_follower_conn_vec.emplace_back (new follower_connection_handler (std::move (chn), *this));
+  }
 
   er_log_debug (ARG_FILE_LINE,
 		"A follower page server connected to this page server to catch up. Channel id: %s.\n",
@@ -927,7 +930,7 @@ page_server::disconnect_all_tran_servers ()
 void
 page_server::disconnect_followee_page_server (const bool with_disc_msg)
 {
-  auto lockg = std::lock_guard <std::mutex> (m_followee_conn_mutex);
+  auto lockg = std::lock_guard { m_followee_conn_mutex };
   if (m_followee_conn != nullptr)
     {
       if (with_disc_msg)
@@ -938,6 +941,35 @@ page_server::disconnect_followee_page_server (const bool with_disc_msg)
 
       er_log_debug (ARG_FILE_LINE, "The followee page server has been disconnected.\n");
     }
+}
+
+void
+page_server::disconnect_follower_server_async (const follower_connection_handler *conn)
+{
+  auto lockg_disc = std::lock_guard { m_follower_disc_mutex };
+
+  if (m_follower_disc_future.valid())
+    {
+      m_follower_disc_future.get (); // waits until the previous async is donee
+    }
+
+  auto lockg_conn_vec = std::lock_guard { m_follower_conn_vec_mutex };
+
+  const auto it = std::find_if (m_follower_conn_vec.begin (), m_follower_conn_vec.end (),
+				[&conn] (auto & conn_uptr)
+  {
+    return conn_uptr.get () == conn;
+  });
+  assert (it != m_follower_conn_vec.cend ());
+
+  auto reset_func = [] (auto &&conn_uptr)
+  {
+    conn_uptr.reset (nullptr);
+  };
+  m_follower_disc_future = std::async (std::launch::async, reset_func, std::move (*it));
+  assert (m_follower_disc_future.valid ());
+
+  m_follower_conn_vec.erase (it);
 }
 
 void

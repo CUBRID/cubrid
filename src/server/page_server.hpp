@@ -275,6 +275,7 @@ class page_server
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
     void disconnect_followee_page_server (bool with_disc_msg);
+    void disconnect_follower_server_async (const follower_connection_handler *conn);
     bool is_active_tran_server_connected () const;
 
     void start_catchup (const LOG_LSA catchup_lsa);
@@ -300,8 +301,11 @@ class page_server
     pts_mvcc_tracker m_pts_mvcc_tracker;
 
     followee_connection_handler_uptr_t m_followee_conn;
-    std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
     std::mutex m_followee_conn_mutex;
+    std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
+    std::mutex m_follower_conn_vec_mutex;
+    std::future<void> m_follower_disc_future;
+    std::mutex m_follower_disc_mutex;
 
     cubthread::entry_workpool *m_workpool; // a workpool to take some background jobs that needs a thread entry
 };
