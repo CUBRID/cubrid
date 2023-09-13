@@ -29,6 +29,9 @@
 #include "dbtype_def.h"
 #include "memory_alloc.h"
 #include "thread_compat.hpp"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif
 
 #include <stdio.h>
 

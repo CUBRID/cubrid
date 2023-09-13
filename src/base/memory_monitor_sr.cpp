@@ -740,3 +740,20 @@ void mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info)
 
   mmon_Gl->aggregate_tran_info (tran_count, info);
 }
+
+MMON_STAT_ID mmon_set_tracking_tag (MMON_STAT_ID new_tag)
+{
+  MMON_STAT_ID prev_tag;
+
+  mmon_tracking_thread_p = thread_get_thread_entry_info ();
+  prev_tag = mmon_tracking_thread_p->mmon_tracking_tag;
+  mmon_tracking_thread_p->mmon_tracking_tag = new_tag;
+
+  return prev_tag;
+}
+
+void mmon_add_stat_with_tracking_tag (int64_t size)
+{
+  THREAD_ENTRY *cur_thread_p = thread_get_thread_entry_info ();
+  mmon_add_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+}

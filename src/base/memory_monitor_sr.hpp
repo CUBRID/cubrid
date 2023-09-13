@@ -30,8 +30,8 @@
 #include <type_traits>
 
 #include "perf_def.hpp"
-#include "thread_entry.hpp"
 #include "memory_monitor_common.h"
+#include "thread_manager.hpp""
 
 #define MMON_PARSE_MASK 0x0000FFFF
 #define MMON_MAKE_STAT_ID(module_idx) ((module_idx) << 16)
@@ -66,4 +66,6 @@ void mmon_aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO>
 void mmon_aggregate_module_info_summary (std::vector<MMON_MODULE_INFO> &info);
 void mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info);
 
+MMON_STAT_ID mmon_set_tracking_tag (MMON_STAT_ID new_tag);
+void mmon_add_stat_with_tracking_tag (int64_t size);
 #endif /* _MEMORY_MONITOR_SR_HPP_ */

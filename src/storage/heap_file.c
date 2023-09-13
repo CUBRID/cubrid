@@ -71,6 +71,9 @@
 #include "log_append.hpp"
 #include "string_buffer.hpp"
 #include "tde.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
 #include <set>
 
@@ -14306,6 +14309,9 @@ heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 static DISK_ISVALID
 heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk)
 {
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tracking_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
   chk->ht = mht_create ("Validate Relocation entries hash table", HEAP_CHK_ADD_UNFOUND_RELOCOIDS, oid_hash,
 			oid_compare_equals);
   if (chk->ht == NULL)
@@ -14340,6 +14346,10 @@ heap_chkreloc_start (HEAP_CHKALL_RELOCOIDS * chk)
   chk->verify = true;
   chk->verify_not_vacuumed = false;
   chk->not_vacuumed_res = DISK_VALID;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tracking_tag);
+#endif
 
   return DISK_VALID;
 }

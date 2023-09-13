@@ -916,6 +916,9 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
 
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (DB_SIZEOF (MHT_TABLE));
+#endif
 
   /* Initialize the chunky memory manager */
   ht->heap_id = db_create_fixed_heap (DB_SIZEOF (HENTRY), MAX (2, ht_estsize / 2 + 1));
