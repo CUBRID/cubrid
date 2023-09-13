@@ -405,6 +405,11 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
 
+  auto send_error_handler = std::bind (&page_server::follower_connection_handler::send_error_handler, this,
+				       std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = std::bind (&page_server::follower_connection_handler::recv_error_handler, this,
+				       std::placeholders::_1);
+
   m_conn.reset (new follower_server_conn_t (std::move (chn),
   {
     {
@@ -419,8 +424,8 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   followee_to_follower_request::RESPOND,
   follower_to_followee_request::RESPOND,
   RESPONSE_PARTITIONING_SIZE,
-  nullptr,
-  nullptr)); // TODO handle abnormal disconnection.
+  send_error_handler,
+  recv_error_handler));
 
   m_ps.get_follower_responder ().register_connection (m_conn.get ());
 
@@ -489,6 +494,20 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
 }
 
 void
+page_server::follower_connection_handler::send_error_handler (css_error_code error_code, bool &abort_further_processing)
+{
+  m_ps.disconnect_follower_server_async (this);
+  // Don't access any members below here. This will be destroyed anytime soon.
+}
+
+void
+page_server::follower_connection_handler::recv_error_handler (css_error_code error_code)
+{
+  m_ps.disconnect_follower_server_async (this);
+  // Don't access any members below here. This will be destroyed anytime soon.
+}
+
+void
 page_server::follower_connection_handler::receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp)
 {
   m_ps.disconnect_follower_server_async (this);
@@ -513,13 +532,18 @@ page_server::followee_connection_handler::followee_connection_handler (cubcomm::
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
 
+  auto send_error_handler = std::bind (&page_server::followee_connection_handler::send_error_handler, this,
+				       std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = std::bind (&page_server::followee_connection_handler::recv_error_handler, this,
+				       std::placeholders::_1);
+
   m_conn.reset (new followee_server_conn_t (std::move (chn),
 		{}, // followee doesn't request anything
 		follower_to_followee_request::RESPOND,
 		followee_to_follower_request::RESPOND,
 		RESPONSE_PARTITIONING_SIZE,
-		nullptr,
-		nullptr)); // TODO handle abnormal disconnection.
+		send_error_handler,
+		recv_error_handler));
 
   m_conn->start ();
 }
@@ -628,6 +652,20 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
     }
 
   return error_code;
+}
+
+void
+page_server::followee_connection_handler::send_error_handler (css_error_code, bool &)
+{
+  // TODO an arbitrary disconnection from followee is not allowed for now.
+  assert_release (false);
+}
+
+void
+page_server::followee_connection_handler::recv_error_handler (css_error_code)
+{
+  // TODO an arbitrary disconnection from followee is not allowed for now.
+  assert_release (false);
 }
 
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)

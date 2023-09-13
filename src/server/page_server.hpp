@@ -207,6 +207,9 @@ class page_server
 
 	void serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out);
 
+	void send_error_handler (css_error_code error_code, bool &abort_further_processing);
+	void recv_error_handler (css_error_code error_code);
+
 	page_server &m_ps;
 	std::unique_ptr<follower_server_conn_t> m_conn;
     };
@@ -233,6 +236,9 @@ class page_server
 		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
 
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
+
+	void send_error_handler (css_error_code error_code, bool &abort_further_processing);
+	void recv_error_handler (css_error_code error_code);
 
       private:
 	page_server &m_ps;
