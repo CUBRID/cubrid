@@ -347,7 +347,7 @@ catcls_install_class (void)
   const size_t num_classes_new = clist_new->size ();
   const size_t num_classes_total = num_classes_old + num_classes_new;
 
-  MOP class_mop[num_classes_total] = {nullptr};
+  std::vector<MOP> class_mop (num_classes_total, nullptr);
   int save;
   size_t i;
   AU_DISABLE (save);
