@@ -211,9 +211,6 @@ class page_server
     class followee_connection_handler
     {
       public:
-	using followee_server_conn_t =
-		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
-
 	followee_connection_handler () = delete;
 	followee_connection_handler (cubcomm::channel &&chn, page_server &ps);
 
@@ -226,6 +223,9 @@ class page_server
 	int request_log_pages (LOG_PAGEID start_pageid, int count, const std::vector<LOG_PAGE *> &log_pages_out);
 
       private:
+	using followee_server_conn_t =
+		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
+
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
 
@@ -263,7 +263,6 @@ class page_server
 	std::mutex m_pts_oldest_active_mvccids_mtx;
     };
 
-  private:
     using tran_server_connection_handler_uptr_t = std::unique_ptr<tran_server_connection_handler>;
     using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
     using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
