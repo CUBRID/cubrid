@@ -50,18 +50,30 @@ namespace cubperf
     std::atomic<uint32_t> expand_resize_count;
   } MMON_MEM_STAT;
 
-  /* TODO: this dummy modules will be changed when heap module is registered */
-  MMON_STAT_INFO dummy_stat_info[] =
+  MMON_STAT_INFO heap_stat_info[] =
   {
-    {MMON_STAT_DUMMY_1, NULL, NULL},
-    {MMON_STAT_DUMMY_2, "dummy_comp", "dummy_subcomp"},
+    {MMON_HEAP_SCAN, "SCANCACHE", NULL},
+    {MMON_HEAP_BESTSPACE, "BESTSPACE CACHE", NULL},
+    {MMON_HEAP_CLASSREPR, "CLASSREPR CACHE", NULL},
+    {MMON_HEAP_CLASSREPR_HASH, "CLASSREPR CACHE", "HASHTABLE"},
+    {MMON_HEAP_ATTRINFO, "ATTRINFO CACHE", NULL},
+    {MMON_HEAP_HFIDTABLE, "HFID TABLE", NULL},
+    {MMON_HEAP_HFIDTABLE_HASH, "HFID TABLE", "HASHTABLE"},
+    {MMON_HEAP_CHNGUESS, "CHNGUESS", NULL},
+    {MMON_HEAP_CHNGUESS_HASH, "CHNGUESS", "HASHTABLE"},
+    {MMON_HEAP_OTHERS, "OTHERS", NULL},
     {MMON_STAT_LAST, NULL, NULL} /* for recognizing end */
   };
 
-  MMON_STAT_INFO long_dummy_stat_info[] =
+  MMON_STAT_INFO common_stat_info[] =
   {
-    {MMON_STAT_LONG_DUMMY_1, NULL, NULL},
-    {MMON_STAT_LONG_DUMMY_2, "LONGDUMMY_ATTR_CACHE", "LINKEDLIST"},
+    {MMON_COMMON, NULL, NULL},
+    {MMON_STAT_LAST, NULL, NULL}
+  };
+
+  MMON_STAT_INFO others_stat_info[] =
+  {
+    {MMON_OTHERS, NULL, NULL},
     {MMON_STAT_LAST, NULL, NULL}
   };
 
@@ -542,11 +554,12 @@ namespace cubperf
     , m_total_mem_usage {0}
     , m_aggregater {this}
   {
-    /* TODO: this dummy modules will be changed when heap module is registered */
-    m_module[MMON_MODULE_DUMMY] = std::make_unique<mmon_module>
-				  (module_names[MMON_MODULE_DUMMY], dummy_stat_info);
-    m_module[MMON_MODULE_LONG_DUMMY] = std::make_unique<mmon_module>
-				       (module_names[MMON_MODULE_LONG_DUMMY], long_dummy_stat_info);
+    m_module[MMON_MODULE_HEAP] = std::make_unique<mmon_module>
+				 (module_names[MMON_MODULE_HEAP], heap_stat_info);
+    m_module[MMON_MODULE_COMMON] = std::make_unique<mmon_module>
+				   (module_names[MMON_MODULE_COMMON], common_stat_info);
+    m_module[MMON_MODULE_OTHERS] = std::make_unique<mmon_module>
+				   (module_names[MMON_MODULE_OTHERS], others_stat_info);
   }
 
   void memory_monitor::add_stat (MMON_STAT_ID stat_id, int64_t size)
@@ -563,8 +576,6 @@ namespace cubperf
   void memory_monitor::add_tran_stat (THREAD_ENTRY *thread_p, int64_t size)
   {
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-    assert ((size >= 0) || ((uint64_t) (-size) <= tdes->cur_mem_usage));
 
     tdes->cur_mem_usage += size;
   }
@@ -588,6 +599,15 @@ namespace cubperf
   {
     add_stat (src, - (size));
     add_stat (dest, size);
+
+    /* If move is occurred from other modules to MMON_COMMON,
+     * it means that memory is returned to common structures for keeping.
+     * ex) pool, free list, reserved, etc..
+     * In this case, transaction's memory usage will be subtracted. */
+    if (dest == MMON_COMMON)
+      {
+	add_tran_stat (thread_p, - (size));
+      }
   }
 
   void memory_monitor::end_init_phase ()

@@ -35,6 +35,9 @@
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "resource_tracker.hpp"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif
 
 #include <cstring>
 #include <sstream>
@@ -127,6 +130,9 @@ namespace cubthread
     , no_supplemental_log (false)
     , trigger_involved (false)
     , is_cdc_daemon (false)
+#ifdef SERVER_MODE
+    , mmon_tracking_tag (MMON_OTHERS)
+#endif
 #if !defined (NDEBUG)
     , fi_test_array (NULL)
     , count_private_allocators (0)

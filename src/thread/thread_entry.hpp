@@ -52,6 +52,8 @@ struct log_zip;
 struct vacuum_worker;
 // from xasl_unpack_info.hpp
 struct xasl_unpack_info;
+// from memory_monitor_sr.hpp
+enum mmon_stat_id:int;
 
 // forward resource trackers
 namespace cubbase
@@ -278,6 +280,11 @@ namespace cubthread
       bool no_supplemental_log;
       bool trigger_involved;
       bool is_cdc_daemon;
+
+#ifdef SERVER_MODE
+      /* for memory monitoring */
+      enum mmon_stat_id mmon_tracking_tag;
+#endif
 
 #if !defined(NDEBUG)
       fi_test_item *fi_test_array;

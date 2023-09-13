@@ -30,19 +30,26 @@
 #include <type_traits>
 
 #include "perf_def.hpp"
-#include "thread_compat.hpp"
+#include "thread_entry.hpp"
 #include "memory_monitor_common.h"
 
 #define MMON_PARSE_MASK 0x0000FFFF
 #define MMON_MAKE_STAT_ID(module_idx) ((module_idx) << 16)
 
-typedef enum
+typedef enum mmon_stat_id:int
 {
-  /* TODO: this dummy modules will be changed when heap module is registered */
-  MMON_STAT_DUMMY_1 = MMON_MAKE_STAT_ID (MMON_MODULE_DUMMY),
-  MMON_STAT_DUMMY_2,
-  MMON_STAT_LONG_DUMMY_1 = MMON_MAKE_STAT_ID (MMON_MODULE_LONG_DUMMY),
-  MMON_STAT_LONG_DUMMY_2,
+  MMON_HEAP_SCAN = MMON_MAKE_STAT_ID (MMON_MODULE_HEAP),
+  MMON_HEAP_BESTSPACE,
+  MMON_HEAP_CLASSREPR,
+  MMON_HEAP_CLASSREPR_HASH,
+  MMON_HEAP_ATTRINFO,
+  MMON_HEAP_HFIDTABLE,
+  MMON_HEAP_HFIDTABLE_HASH,
+  MMON_HEAP_CHNGUESS,
+  MMON_HEAP_CHNGUESS_HASH,
+  MMON_HEAP_OTHERS,
+  MMON_COMMON = MMON_MAKE_STAT_ID (MMON_MODULE_COMMON),
+  MMON_OTHERS = MMON_MAKE_STAT_ID (MMON_MODULE_OTHERS),
   MMON_STAT_LAST = MMON_MAKE_STAT_ID (MMON_MODULE_LAST)
 } MMON_STAT_ID;
 
