@@ -529,7 +529,7 @@ page_server::followee_connection_handler::send_receive (follower_to_followee_req
 
 int
 page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pageid, int count,
-    std::vector<LOG_PAGE *> &log_pages_out)
+    const std::vector<LOG_PAGE *> &log_pages_out)
 {
   int error_code = NO_ERROR;
   std::string response_message;
@@ -974,10 +974,10 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
     const int error_code = m_followee_conn->request_log_pages (start_pageid, request_page_cnt, log_pgptr_recv_vec);
     if (error_code != NO_ERROR)
       {
-	/* There are two kinds of erorrs either from client-side or server-side.
+	/* There are two kinds of errors either from client-side or server-side.
 	 * client-side error: it fails to send or receive.
-	 * server-side error: the follwee fails to fetch log pages. For example, due to
-	 *  - the followee PS amy truncate some log pages requested.
+	 * server-side error: the followee fails to fetch log pages. For example, due to
+	 *  - the followee PS any truncate some log pages requested.
 	 *  - some requested pages are corrupted
 	 *  - or something
 	 * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.

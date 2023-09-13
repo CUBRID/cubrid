@@ -223,7 +223,7 @@ class page_server
 	followee_connection_handler &operator= (const followee_connection_handler &) = delete;
 	followee_connection_handler &operator= (followee_connection_handler &&) = delete;
 
-	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> &log_pages_out);
+	int request_log_pages (LOG_PAGEID start_pageid, int count, const std::vector<LOG_PAGE *> &log_pages_out);
 
       private:
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
