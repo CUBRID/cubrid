@@ -224,6 +224,7 @@ class page_server
 	followee_connection_handler &operator= (followee_connection_handler &&) = delete;
 
 	const std::string get_channel_id () const;
+	void push_request (follower_to_followee_request reqid, std::string &&msg);
 
 	int request_log_pages (LOG_PAGEID start_pageid, int count, const std::vector<LOG_PAGE *> &log_pages_out);
 
@@ -231,7 +232,6 @@ class page_server
 	using followee_server_conn_t =
 		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
 
-	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
 
       private:

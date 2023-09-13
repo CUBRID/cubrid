@@ -949,7 +949,7 @@ page_server::disconnect_followee_page_server (const bool with_disc_msg)
       auto channel_id = m_followee_conn->get_channel_id ();
       if (with_disc_msg)
 	{
-	  //TODO send the disconnect msg
+	  m_followee_conn->push_request (follower_to_followee_request::SEND_DISCONNECT_MSG, std::string ());
 	}
       m_followee_conn.reset (nullptr);
 
