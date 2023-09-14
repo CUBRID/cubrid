@@ -753,7 +753,6 @@ extern "C"
 						       SYSPRM_ASSIGN_VALUE ** assignments_ptr);
   extern SYSPRM_ERR sysprm_make_default_values (const char *data, char *default_val_buf, const int buf_size);
   extern int sysprm_init_intl_param (void);
-  extern bool is_boolean_keyword_true (char *word);
 #endif				/* !SERVER_MODE */
 
   extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int length);

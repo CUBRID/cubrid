@@ -12779,20 +12779,6 @@ sysprm_init_intl_param (void)
 
   return error;
 }
-
-bool
-is_boolean_keyword_true (char *word)
-{
-  if (word && *word)
-    {
-      const KEYVAL *keyvalp = prm_keyword (-1, word, boolean_words, DIM (boolean_words));
-      if (keyvalp)
-	{
-	  return (bool) keyvalp->val;
-	}
-    }
-  return false;
-}
 #endif /* !SERVER_MODE */
 
 /*

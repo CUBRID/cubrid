@@ -525,10 +525,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       goto fatal_error;
     }
 
-  /* check environment for print midxkey */
-  extern bool is_env_print_midxkey_value;
-  is_env_print_midxkey_value = is_boolean_keyword_true (getenv ("CUBRID_PRINT_MIDXKEY"));
-
   /* For batch file input and csql command argument input */
   csql_Tty_fp = NULL;
   if (csql_arg->command)
@@ -1495,6 +1491,21 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       else
 	{
 	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
+	}
+      break;
+
+    case S_CMD_MIDXKEY:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_arg->midxkey_print = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_arg->midxkey_print = false;
+	}
+      if (csql_Is_interactive)
+	{
+	  fprintf (csql_Output_fp, "MIDXKEY IS %s\n", (csql_arg->midxkey_print ? "ON" : "OFF"));
 	}
       break;
     }
