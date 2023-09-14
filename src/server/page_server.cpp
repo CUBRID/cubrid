@@ -979,6 +979,13 @@ page_server::disconnect_all_tran_servers ()
 }
 
 void
+page_server::disconnect_all_follower_page_servers ()
+{
+  // TODO disconnect, but wait for now
+  //
+}
+
+void
 page_server::disconnect_followee_page_server (const bool with_disc_msg)
 {
   auto lockg = std::lock_guard { m_followee_conn_mutex };

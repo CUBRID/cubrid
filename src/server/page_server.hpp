@@ -96,6 +96,8 @@ class page_server
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
     void set_follower_page_server_connection (cubcomm::channel &&chn);
     void disconnect_all_tran_servers ();
+    void disconnect_followee_page_server (bool with_disc_msg);
+    void disconnect_all_follower_page_servers ();
 
     int connect_to_followee_page_server (std::string &&hostname, int32_t port);
 
@@ -284,7 +286,6 @@ class page_server
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
-    void disconnect_followee_page_server (bool with_disc_msg);
     void disconnect_follower_server_async (const follower_connection_handler *conn);
     bool is_active_tran_server_connected () const;
 
