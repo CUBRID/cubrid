@@ -862,8 +862,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 		}
 	      int *len = NULL;
 
-	      val = get_current_result (&len, result_info, csql_arg	/* csql_arg->plain_output, csql_arg->query_output,
-									   csql_arg->loaddb_output, csql_arg->column_enclosure */ );
+	      val = get_current_result (&len, result_info, csql_arg);
 	      if (val == NULL)
 		{
 		  csql_Error_code = CSQL_ERR_SQL_ERROR;
