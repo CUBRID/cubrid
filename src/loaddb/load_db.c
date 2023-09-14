@@ -582,6 +582,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	{
 	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT);
 	}
+      else
+	{
+	  db_set_client_type (DB_CLIENT_TYPE_LOADDB_UTILITY);
+	}
       (void) db_login (args.user_name.c_str (), args.password.c_str ());
       error = db_restart (arg->command_name, true, args.volume.c_str ());
       if (error != NO_ERROR)
@@ -602,11 +606,20 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
   else
     {
+      /*  This can only be reached through loaddb_dba().
+       *  However, loaddb_dba() is no longer a valid function.
+       */
+      assert (false);
+      /* Comment out the code below (But, do not delete it).
+       * When activating, you should consider a new value to replace DB_CLIENT_TYPE_ADMIN_UTILITY.
+       */
+#if 0
       /* if we're in the protected DBA mode, just login without authorization */
       AU_DISABLE_PASSWORDS ();
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
       (void) db_login ("DBA", NULL);
       error = db_restart (arg->command_name, true, args.volume.c_str ());
+#endif
     }
 
   if (error != NO_ERROR)

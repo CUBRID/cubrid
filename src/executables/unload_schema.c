@@ -5583,8 +5583,9 @@ create_schema_info (extract_context & ctxt)
   char output_filename[PATH_MAX * 2] = { '\0' };
   char filename_fullpath[PATH_MAX * 2] = { '\0' };
   char order_str[PATH_MAX * 2] = { '\0' };
-  const char *loading_order[] = { "_schema_user", "_schema_class", "_schema_vclass", "_schema_synonym",
-    "_schema_serial", "_schema_procedure", "_schema_server",
+  const char *loading_order[] =
+    { "_schema_user", "_schema_class", "_schema_vclass", "_schema_server", "_schema_synonym",
+    "_schema_serial", "_schema_procedure",
     "_schema_pk", "_schema_fk", "_schema_grant", "_schema_vclass_query_spec"
   };
 
