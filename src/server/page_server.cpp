@@ -30,7 +30,7 @@
 #include "page_buffer.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
-#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
 #include "vpid_utilities.hpp"
 
 #include <cassert>
