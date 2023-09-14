@@ -222,7 +222,7 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   cublog::lsa_utils::unpack (unpacker, catchup_lsa);
 
   _er_log_debug (ARG_FILE_LINE,
-		 "[CATCH-UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
+		 "[CATCH_UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
 		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
   if (port == -1)
     {
@@ -237,7 +237,7 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
 
   if (log_Gl.hdr.append_lsa == catchup_lsa)
     {
-      _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] There is nothing to catch up.\n");
+      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] There is nothing to catch up.\n");
       return; // TODO the cold-start case. No need to catch up. Just send a catchup_done msg to the ATS
     }
 
@@ -987,7 +987,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
     return error_code;
   };
 
-  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
+  _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
 		 start_pageid, end_pageid, total_page_count);
 
   LOG_PAGEID request_start_pageid = start_pageid;
@@ -1019,7 +1019,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   if (error == NO_ERROR)
     {
       assert (remaining_page_cnt == 0);
-      _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
+      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 		     start_pageid, end_pageid, total_page_count);
       // TODO: send CATCHUP_DONE_MSG to the ATS
       // TODO: start appneding log prior nodes from the ATS.
@@ -1030,7 +1030,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   else
     {
       assert (remaining_page_cnt > 0);
-      _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
+      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
 		     error, remaining_page_cnt, total_page_count);
       constexpr bool with_disc_msg = false;
       disconnect_followee_page_server (with_disc_msg);
