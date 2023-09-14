@@ -5047,8 +5047,36 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_MODIFY_QUERY:
       if (type != PT_CLASS && (qry = alter->info.alter.alter_clause.query.query) != NULL)
 	{
+	  MOP me = NULL;
+	  MOP owner = NULL;
+	  bool change_owner_flag = false;
+	  int client_type = db_get_client_type ();
+
+	  if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	    {
+	      const char *user_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
+	      if (user_name != NULL)
+		{
+		  me = db_get_user ();
+		  owner = au_find_user (user_name);
+		  if (owner != NULL && !ws_is_same_object (owner, me))
+		    {
+		      /* set user to owner to translate query specification. */
+		      AU_SET_USER (owner);
+		      change_owner_flag = true;
+		    }
+		}
+	    }
+
 	  pt_validate_query_spec (parser, qry, db);
+
+	  if (change_owner_flag)
+	    {
+	      /* restore user */
+	      AU_SET_USER (me);
+	    }
 	}
+
       /* FALLTHRU */
     case PT_DROP_QUERY:
       if (type == PT_CLASS)
@@ -8637,7 +8665,34 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else				/* must be a CREATE VCLASS statement */
     {
+      MOP me = NULL;
+      MOP owner = NULL;
+      bool change_owner_flag = false;
+      int client_type = db_get_client_type ();
+
+      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	{
+	  const char *user_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
+	  if (user_name != NULL)
+	    {
+	      me = db_get_user ();
+	      owner = au_find_user (user_name);
+	      if (owner != NULL && !ws_is_same_object (owner, me))
+		{
+		  /* set user to owner to translate query specification. */
+		  AU_SET_USER (owner);
+		  change_owner_flag = true;
+		}
+	    }
+	}
+
       pt_check_create_view (parser, node);
+
+      if (change_owner_flag)
+	{
+	  /* restore user */
+	  AU_SET_USER (me);
+	}
     }
 
   /* check that all constraints look valid */
@@ -8939,13 +8994,16 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
       /* PT_SYNONYM_TARGET_NAME (node) != NULL */
 
       /* target_owner_name */
-      owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
-      assert (owner_name != NULL && *owner_name != '\0');
-      owner_obj = db_find_user (owner_name);
-      if (owner_obj == NULL)
+      if (!PT_SYNONYM_IS_DBLINKED (node))
 	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
-	  return;
+	  owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
+	  assert (owner_name != NULL && *owner_name != '\0');
+	  owner_obj = db_find_user (owner_name);
+	  if (owner_obj == NULL)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	      return;
+	    }
 	}
     }
 }
@@ -9043,13 +9101,16 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
    * || (synonym_obj == NULL && db_find_class () == NULL && er_errid () == ER_LC_UNKNOWN_CLASSNAME) */
 
   /* target_owner_name */
-  owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
-  assert (owner_name != NULL && *owner_name != '\0');
-  owner_obj = db_find_user (owner_name);
-  if (owner_obj == NULL)
+  if (!PT_SYNONYM_IS_DBLINKED (node))
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
-      return;
+      owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
+      assert (owner_name != NULL && *owner_name != '\0');
+      owner_obj = db_find_user (owner_name);
+      if (owner_obj == NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	  return;
+	}
     }
 }
 

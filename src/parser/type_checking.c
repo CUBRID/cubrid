@@ -292,6 +292,7 @@ static void pt_fix_arguments_collation_flag (PT_NODE * expr);
 static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
+static bool pt_is_dblink_related (PT_NODE * p);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -7779,6 +7780,22 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   return node;
 }
 
+/*
+ * pt_set_flag_do_not_fold_for_dblink - setting "do_not_fold" flag recursively
+ *   return	: the expr node after setting the flag
+ *
+ *   parser(in)	: the parser context
+ *   node(in)	: the node not to be folded
+ *   arg(in)	:
+ *   continue_walk(in):
+ */
+static PT_NODE *
+pt_set_flag_do_not_fold_for_dblink (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg, int *continue_walk)
+{
+  expr->flag.do_not_fold = 1;
+  return expr;
+}
+
 static PT_NODE *
 pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -7796,7 +7813,11 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  // we want to test full execution of sub-tree; don't fold it!
 	  *continue_walk = PT_LIST_WALK;
 	}
-      break;
+    case PT_EXPR:
+      if (pt_is_dblink_related (node))
+	{
+	  parser_walk_tree (parser, node, pt_set_flag_do_not_fold_for_dblink, NULL, NULL, NULL);
+	}
     default:
       // nope
       break;
@@ -11263,7 +11284,8 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
 {
   PT_TYPE_ENUM result_type;
 
-  static bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+  /* it should not be static because the parameter could be changed without broker restart */
+  bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
 
   if (pt_is_op_hv_late_bind (op) && (t1 == PT_TYPE_MAYBE || t2 == PT_TYPE_MAYBE))
     {
@@ -17654,6 +17676,54 @@ overflow:
 error_zerodate:
   PT_ERRORc (parser, o1, er_msg ());
   return 0;
+}
+
+/*
+ * check if the expr node has any dblink-related term
+ */
+static bool
+pt_is_dblink_related (PT_NODE * p)
+{
+  PT_OP_TYPE op;
+
+  if (p->node_type == PT_EXPR)
+    {
+      op = p->info.expr.op;
+
+      /* for and, or, xor operator do not check */
+      if (op == PT_AND || op == PT_OR || op == PT_XOR)
+	{
+	  return false;
+	}
+
+      if (p->info.expr.arg1 && pt_is_dblink_related (p->info.expr.arg1))
+	{
+	  return true;
+	}
+      if (p->info.expr.arg2 && pt_is_dblink_related (p->info.expr.arg2))
+	{
+	  return true;
+	}
+      if (p->info.expr.arg3 && pt_is_dblink_related (p->info.expr.arg3))
+	{
+	  return true;
+	}
+
+      return false;
+    }
+
+  if (p->node_type == PT_NAME && p->info.name.spec_id)
+    {
+      PT_NODE *spec;
+
+      spec = (PT_NODE *) (p->info.name.spec_id);
+      if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*

@@ -1439,8 +1439,10 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 
 
 1355 Fișierul "%1$s" nu a fost găsit.
+1356 Nu există niciun indiciu în interogarea DBLink sau tipul de instrucțiune este incorect. %1$s
+1357 Conversia șirului SQL în șir larg a eșuat.
 
-1356 Ultima eroare
+1358 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

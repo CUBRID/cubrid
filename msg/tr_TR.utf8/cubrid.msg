@@ -1439,8 +1439,10 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 
 
 1355 "%1$s" dosyası bulunamadı.
+1356 DBLink sorgusunda ipucu yok veya ifade türü yanlış. %1$s
+1357 SQL dizesini geniş dizeye dönüştürme işlemi başarısız oldu.
 
-1356 Son Hata
+1358 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
