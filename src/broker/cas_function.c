@@ -687,7 +687,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  pwd_offset_ptr = psr->pwd_offset_ptr;
 	}
       // ctshim
-      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), pwd_offset_ptr);      
+      cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), pwd_offset_ptr);
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
@@ -1814,7 +1814,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 	  PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
 	  pwd_offset_ptr = psr->pwd_offset_ptr;
 	}
-      //ctshim
+      //ctshim 
       cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), pwd_offset_ptr);
       logddl_set_sql_text (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt));
     }
