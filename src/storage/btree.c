@@ -328,10 +328,8 @@ struct btree_stats_env
   int pkeys_val_num;
   DB_VALUE pkeys_val[BTREE_STATS_PKEYS_NUM];	/* partial key-value */
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  DB_VALUE prev_key_val;
-  int same_prefix_len;
-#endif
+  DB_VALUE prev_key_val;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+  int same_prefix_len;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 };
 
 typedef struct show_index_scan_ctx SHOW_INDEX_SCAN_CTX;
@@ -1247,11 +1245,8 @@ static DISK_ISVALID btree_check_page_key (THREAD_ENTRY * thread_p, const OID * c
 static DISK_ISVALID btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, VPID * pg_vpid);
 static DISK_ISVALID btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 					  const char *btname, PAGE_PTR pg_ptr, VPID * pg_vpid, BTREE_NODE_INFO * INFO);
-static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				       , BTREE_STATS_ENV * env
-#endif
-  );
+static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
+				       BTREE_STATS_ENV * env /* support for SUPPORT_DEDUPLICATE_KEY_MODE */ );
 static void btree_print_space (FILE * fp, int n);
 static int btree_delete_meta_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, int slot_id);
 static int btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R);
@@ -4587,12 +4582,8 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
     }
   fprintf (fp, "\n");
   fprintf (fp, " OVFID: %d|%d\n", root_header->ovfid.fileid, root_header->ovfid.volid);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   fprintf (fp, " Btree Revision Level: %d\n", root_header->_32.rev_level);
   fprintf (fp, " Btree Decompress position: %d\n", GET_DECOMPRESS_IDX_HEADER (root_header));
-#else
-  fprintf (fp, " Btree Revision Level: %d\n", root_header->rev_level);
-#endif
   fprintf (fp, "\n");
 }
 
@@ -5563,11 +5554,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
  */
 BTID *
 xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id,
-		  int unique_pk, long long num_oids, long long num_nulls, long long num_keys
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-		  , int deduplicate_key_pos
-#endif
-  )
+		  int unique_pk, long long num_oids, long long num_nulls, long long num_keys, int deduplicate_key_pos)
 {
   BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
   VPID root_vpid;
@@ -5636,12 +5623,11 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   COPY_OID (&(root_header->topclass_oid), class_oid);
 
   VFID_SET_NULL (&(root_header->ovfid));
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+
+  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+  // root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
   root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
   SET_DECOMPRESS_IDX_HEADER (root_header, deduplicate_key_pos);
-#else
-  root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
-#endif
 
 #if defined (SERVER_MODE)
   root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
@@ -5819,12 +5805,10 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
       btid->nonleaf_key_type = btree_generate_prefix_domain (btid);
     }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+  //btid->rev_level = root_header->rev_level;
   btid->rev_level = root_header->_32.rev_level;
   btid->deduplicate_key_idx = GET_DECOMPRESS_IDX_HEADER (root_header);
-#else
-  btid->rev_level = root_header->rev_level;
-#endif
 
   return rc;
 }
@@ -5961,7 +5945,7 @@ error_return:
 }
 
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 int
 btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 				  key_val_range * kv_range, bool * is_newly)
@@ -6084,8 +6068,6 @@ clear_pos:
   return ret;
 }
 
-#endif
-
 /*
  * btree_find_foreign_key () - Find and lock any existing object in foreign key. Used to check that delete/update on
  *			       primary key is allowed.
@@ -6110,9 +6092,9 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   assert (class_oid != NULL);
   assert (found_oid != NULL);
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   bool is_newly = false;
 
+  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   db_make_null (&kv_range.key1);
   db_make_null (&kv_range.key2);
   error_code = btree_remake_foreign_key_with_PK (thread_p, btid, key, class_oid, &kv_range, &is_newly);
@@ -6121,21 +6103,16 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
       ASSERT_ERROR ();
       return error_code;
     }
-#endif
 
   /* Find if key has any objects. */
 
   /* Define range of scan. */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (!is_newly)
     {
       pr_share_value (key, &kv_range.key1);
       pr_share_value (key, &kv_range.key2);
     }
-#else
-  pr_share_value (key, &kv_range.key1);
-  pr_share_value (key, &kv_range.key2);
-#endif
+
   kv_range.range = GE_LE;
   kv_range.num_index_term = 0;
 
@@ -6153,23 +6130,18 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       if (is_newly)
 	{
 	  pr_clear_value (&kv_range.key1);
 	  pr_clear_value (&kv_range.key2);
 	}
-#endif
+
       return error_code;
     }
   /* Execute scan. */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   btree_scan.is_fk_remake = is_newly;
-#endif
   error_code = btree_range_scan (thread_p, &btree_scan, btree_range_scan_find_fk_any_object);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   btree_scan.is_fk_remake = false;
-#endif
   assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
 
   /* Output found object. */
@@ -6187,13 +6159,11 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
     }
 #endif /* SERVER_MODE */
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (is_newly)
     {
       pr_clear_value (&kv_range.key1);
       pr_clear_value (&kv_range.key2);
     }
-#endif
 
   return error_code;
 }
@@ -6682,7 +6652,7 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 static inline bool
 btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
 {
@@ -6704,7 +6674,6 @@ btree_is_same_key_for_stats (BTREE_STATS_ENV * env, DB_VALUE * key_value)
   pr_clone_value (key_value, &(env->prev_key_val));
   return false;
 }
-#endif
 
 /*
  * btree_get_stats_key () -
@@ -6758,12 +6727,12 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 	  goto exit_on_error;
 	}
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
       if (btree_is_same_key_for_stats (env, &key_value))
 	{
 	  goto end;
 	}
-#endif
+
       /* Is there any visible objects? */
       max_visible_oids = 1;
       num_visible_oids = 0;
@@ -6858,13 +6827,12 @@ count_keys:
 	  goto exit_on_error;
 	}
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       if (btree_is_same_key_for_stats (env, &key_value))
 	{
 	  env->stat_info->keys--;
 	  goto end;
 	}
-#endif
+
       /* get pkeys info */
       ret = btree_get_stats_midxkey (thread_p, env, db_get_midxkey (&key_value));
       if (ret != NO_ERROR)
@@ -7295,10 +7263,8 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
   /* clear old stats */
   memset (env->stat_info->pkeys, 0x00, env->pkeys_val_num * sizeof (env->stat_info->pkeys[0]));
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   db_make_null (&(env->prev_key_val));
   env->same_prefix_len = env->btree_scan.btid_int.deduplicate_key_idx;
-#endif
 
   if (with_fullscan || npages <= STATS_SAMPLING_THRESHOLD)
     {
@@ -7310,10 +7276,8 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       ret = btree_get_stats_with_AR_sampling (thread_p, env);
     }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   pr_clear_value (&(env->prev_key_val));
   env->same_prefix_len = -1;
-#endif
 
   if (ret != NO_ERROR)
     {
@@ -8704,11 +8668,8 @@ btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
  *   cpc(in):
  */
 static int
-btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-			    , BTREE_STATS_ENV * env
-#endif
-  )
+btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
+			    BTREE_STATS_ENV * env)
 {
   RECDES rec;			/* Page record descriptor */
   int free_space;		/* Total free space of the Page */
@@ -8776,11 +8737,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
 #endif /* !NDEBUG */
 
-	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-					    , env
-#endif
-	    );
+	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2, env);
 	  pgbuf_unfix_and_init (thread_p, page);
 	  if (ret != NO_ERROR)
 	    {
@@ -8790,9 +8747,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  /* form the cpc structure for a non-leaf node page */
 	  cpc->dis_key_cnt += cpc2.dis_key_cnt;
 	  cpc->tot_val_cnt += cpc2.tot_val_cnt;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  cpc->deduplicate_dis_key_cnt += cpc2.deduplicate_dis_key_cnt;
-#endif
 	  cpc->leaf_pg_cnt += cpc2.leaf_pg_cnt;
 	  cpc->nleaf_pg_cnt += cpc2.nleaf_pg_cnt;
 	  cpc->tot_pg_cnt += cpc2.tot_pg_cnt;
@@ -8819,12 +8774,10 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   else
     {				/* a leaf page */
       /* form the cpc structure for a leaf node page */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       cpc->dis_key_cnt = 0;
       cpc->deduplicate_dis_key_cnt = key_cnt;
-#else
-      cpc->dis_key_cnt = key_cnt;
-#endif
+      //cpc->dis_key_cnt = key_cnt;
+
       cpc->leaf_pg_cnt = 1;
       cpc->height = 1;
       for (i = 1; i <= key_cnt; i++)
@@ -8842,15 +8795,13 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	      goto exit_on_error;
 	    }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+	  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	  //cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
 	  if (!btree_is_same_key_for_stats (env, &key1))
 	    {
 	      cpc->dis_key_cnt++;
 	      cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
 	    }
-#else
-	  cpc->sum_key_len += btree_get_disk_size_of_key (&key1);
-#endif
 	  btree_clear_key_value (&clear_key, &key1);
 
 	  /* find the value (OID) count for the record */
@@ -8917,16 +8868,12 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 
   if (cpc->dis_key_cnt > 0)
     {
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
-#endif
       cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
       cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+
       cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->deduplicate_dis_key_cnt);
-#else
-      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
-#endif
+      //cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
     }
   if (cpc->leaf_pg_cnt > 0)
     {
@@ -8974,11 +8921,9 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   BTREE_ROOT_HEADER *root_header = NULL;
   int ret = NO_ERROR;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   BTREE_STATS_ENV stats_env;
   /* This routine uses only prev_key_val and same_prefix_len among the members of the structure. */
   memset (&stats_env, 0x00, sizeof (stats_env));
-#endif
 
   /* read root page */
   root_vpid.pageid = btid->root_pageid;
@@ -9006,20 +8951,12 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       goto exit_on_error;
     }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   db_make_null (&(stats_env.prev_key_val));
   stats_env.same_prefix_len = GET_DECOMPRESS_IDX_HEADER (root_header);
-#endif
-  /* traverse the tree and store the capacity info */
-  ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				    , &stats_env
-#endif
-    );
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  /* traverse the tree and store the capacity info */
+  ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc, &stats_env);
   pr_clear_value (&(stats_env.prev_key_val));
-#endif
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -9095,13 +9032,9 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   /* dump the capacity information */
   fprintf (fp, "\nDistinct Key Count: %d\n", cpc.dis_key_cnt);
   fprintf (fp, "Total Value Count: %lld\n", cpc.tot_val_cnt);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   fprintf (fp, "Deduplicate Distinct Key Count: %d\n", cpc.deduplicate_dis_key_cnt);
-#endif
   fprintf (fp, "Average Value Count Per Key: %d\n", cpc.avg_val_per_key);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   fprintf (fp, "Average Value Count Per Deduplicate Key: %d\n", cpc.avg_val_per_dedup_key);
-#endif
 
   fprintf (fp, "Total Page Count: %d\n", cpc.tot_pg_cnt + cpc.ovfl_oid_pg.tot_pg_cnt);
   fprintf (fp, "Leaf Page Count: %d\n", cpc.leaf_pg_cnt);
@@ -22389,17 +22322,14 @@ btree_scan_for_show_index_capacity (THREAD_ENTRY * thread_p, DB_VALUE ** out_val
   // {"Total_value", "bigint"}
   db_make_bigint (out_values[idx++], cpc.tot_val_cnt);
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   //  {"Deduplicate_distinct_key", "int"},
   db_make_int (out_values[idx++], cpc.deduplicate_dis_key_cnt);
-#endif
 
   // {"Avg_num_value_per_key", "int"}
   db_make_int (out_values[idx++], cpc.avg_val_per_key);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+
   // {"Avg_num_value_per_deduplicate_key", "int"}
   db_make_int (out_values[idx++], cpc.avg_val_per_dedup_key);
-#endif
 
   // {"Num_leaf_page", "int"}
   db_make_int (out_values[idx++], cpc.leaf_pg_cnt);
@@ -26016,7 +25946,7 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       /* Key was fully consumed. We are here because no object was found. Since this key was the only one of interest,
        * scan can be stopped. */
       assert (OID_ISNULL (&((BTREE_FIND_FK_OBJECT *) bts->bts_other)->found_oid));
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+      /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
       if (bts->is_fk_remake)
 	{
 	  /* Go to next key. 
@@ -26024,7 +25954,7 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	  bts->key_status = BTS_KEY_IS_CONSUMED;
 	  return NO_ERROR;
 	}
-#endif
+
       bts->end_scan = true;
     }
   return NO_ERROR;
