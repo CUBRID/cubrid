@@ -4072,10 +4072,21 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, char 
   SM_CLASS_CONSTRAINT *cons;
   SM_ATTRIBUTE **attp;
   char **namep;
-  int nnames, cols_non_func;
+  int cols_non_func;
 
-  // If there is a column corresponding to PK among the attributes constituting the index, the deduplicate_key_column is not added.
-  cols_non_func = (func_index_info) ? func_index_info->attr_index_start : nnames;
+  // If there is a column corresponding to PK/UK among the attributes constituting the index, the deduplicate_key_column is not added.
+  if (func_index_info)
+    {
+      cols_non_func = func_index_info->attr_index_start;
+    }
+  else
+    {
+      cols_non_func = 0;
+      for (namep = att_names; *namep; namep++)
+	{
+	  cols_non_func++;
+	}
+    }
 
   for (cons = cons_list; cons; cons = cons->next)
     {

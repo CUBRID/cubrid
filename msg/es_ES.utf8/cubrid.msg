@@ -1439,8 +1439,9 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 
 
 1355 No se encontró el archivo "%1$s".
+1356 No hay ninguna pista en la consulta de DBLink o el tipo de instrucción es incorrecto. %1$s
 
-1356 Ultimo error
+1357 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

@@ -182,6 +182,8 @@ static int process_value (DB_VALUE * value);
 static void update_hash (OID * object_oid, OID * class_oid, int *data);
 static DB_OBJECT *is_class (OID * obj_oid, OID * class_oid);
 static int all_classes_processed (void);
+static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
+			    char *output_filename_p, const size_t filename_size);
 
 /*
  * get_estimated_objs - get the estimated number of object reside in file heap
@@ -891,7 +893,15 @@ extract_objects (extract_context & ctxt, const char *output_dirname)
    * Dump the object definitions
    */
   total_approximate_class_objects = est_objects;
-  snprintf (unloadlog_filename, sizeof (unloadlog_filename) - 1, "%s_unloaddb.log", ctxt.output_prefix);
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, "_unloaddb.log", unloadlog_filename, sizeof (unloadlog_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      status = 1;
+      goto end;
+    }
+
   unloadlog_file = fopen (unloadlog_filename, "w+");
   if (unloadlog_file != NULL)
     {
@@ -2005,4 +2015,25 @@ get_requested_classes (const char *input_filename, DB_OBJECT * class_list[])
   fclose (input_file);
 
   return error;
+}
+
+static int
+create_filename (const char *output_dirname, const char *output_prefix, const char *suffix, char *output_filename_p,
+		 const size_t filename_size)
+{
+  if (output_dirname == NULL)
+    {
+      output_dirname = ".";
+    }
+
+  size_t total = strlen (output_dirname) + strlen (output_prefix) + strlen (suffix) + 8;
+
+  if (total > filename_size)
+    {
+      return -1;
+    }
+
+  snprintf (output_filename_p, filename_size - 1, "%s/%s%s", output_dirname, output_prefix, suffix);
+
+  return 0;
 }

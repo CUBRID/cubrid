@@ -1439,8 +1439,9 @@ $ LOADDB
 
 
 1355 파일 "%1$s"을(를) 찾을 수 없습니다.
+1356 DBLink 쿼리에 Hint가 없거나, Statement type 이 잘못되었습니다. : %1$s
 
-1356 마지막 에러
+1357 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
