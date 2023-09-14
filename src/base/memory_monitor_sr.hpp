@@ -31,7 +31,7 @@
 
 #include "perf_def.hpp"
 #include "memory_monitor_common.h"
-#include "thread_manager.hpp""
+#include "thread_manager.hpp"
 
 #define MMON_PARSE_MASK 0x0000FFFF
 #define MMON_MAKE_STAT_ID(module_idx) ((module_idx) << 16)
