@@ -58,7 +58,6 @@ static int sp_get_int_bind_value (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hin
 static int sp_is_valid_hint (SP_PARSER_CTX * parser_p, SP_PARSER_HINT * hint_p);
 static bool sp_is_start_token (SP_TOKEN token);
 
-
 SP_PARSER_CTX *
 sp_create_parser (const char *sql_stmt)
 {
@@ -316,15 +315,24 @@ static int
 sp_make_int_sp_value_from_string (SP_VALUE * value_p, char *pos, int length)
 {
   int result = 0;
-  char tmp = pos[length];
+  const int KEY_LENGTH = 128;
+  char shard_key[KEY_LENGTH];
+  char *p;
 
-  pos[length] = '\0';
-  result = parse_bigint (&value_p->integer, pos, 10);
+  snprintf (shard_key, KEY_LENGTH, "%s", pos);
+  p = strchr (shard_key, ';');
+  if (p)
+    {
+      *p = '\0';
+    }
+  shard_key[length] = '\0';
+
+  result = parse_bigint (&value_p->integer, shard_key, 10);
   if (result != 0)
     {
       return ER_SP_INVALID_HINT;
     }
-  pos[length] = tmp;
+
   value_p->type = VT_INTEGER;
   return NO_ERROR;
 }

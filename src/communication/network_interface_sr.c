@@ -4038,9 +4038,8 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   OID class_oid;
   int attr_id, unique_pk;
   char *ptr;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int deduplicate_key_pos = -1;
-#endif
+
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4049,15 +4048,10 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  ptr = or_unpack_int (ptr, &deduplicate_key_pos);
-#endif
+  ptr = or_unpack_int (ptr, &deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-  return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				  , deduplicate_key_pos
-#endif
-    );
+  return_btid =
+    xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -10442,10 +10436,12 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     {
       /* 3) make out arguments */
 
-      // *INDENT-OFF*
-      std::vector<std::reference_wrapper<DB_VALUE>> out_args;
-      // *INDENT-ON*
       method_sig_node *sig = sig_list.method_sig;
+      // *INDENT-OFF*
+      DB_VALUE dummy_null;
+      db_make_null (&dummy_null);
+      std::vector<std::reference_wrapper<DB_VALUE>> out_args (sig->num_method_args, dummy_null);
+      // *INDENT-ON*
       for (int i = 0; i < sig->num_method_args; i++)
 	{
 	  if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
@@ -10454,7 +10450,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	    }
 
 	  int pos = sig->method_arg_pos[i];
-	  out_args.push_back (std::ref (args[pos]));
+	  out_args[pos] = std::ref (args[pos]);
 	}
 
       /* 4) pack */

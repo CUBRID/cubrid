@@ -11763,6 +11763,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       server = upd_spec->info.spec.remote_server_name;
     }
 
+  if (server == NULL)
+    {
+      /* the subquery target in update query is not allowed */
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+      return;
+    }
+
   assert (server->node_type == PT_NAME);
 
   ct->info.dblink_table.is_name = true;
@@ -11899,12 +11906,27 @@ pt_convert_dml (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
         } while(0)
 // *INDENT-ON*     
 
+static PT_NODE *
+pt_set_print_in_value_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = (PT_NODE *) arg;
+
+  if (node->node_type == PT_EXPR && (node->info.expr.op == PT_IS_IN || node->info.expr.op == PT_IS_NOT_IN))
+    {
+      node->info.expr.arg2->flag.print_in_value_for_dblink = 1;
+    }
+
+  return node;
+}
+
 void
 pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   SERVER_NAME_LIST snl;
 
   memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
+
+  parser_walk_tree (parser, stmt, pt_set_print_in_value_for_dblink, NULL, NULL, NULL);
 
   switch (stmt->node_type)
     {

@@ -263,6 +263,7 @@ typedef struct
   int type_idx;
   int dec_precision;
   int precision;
+  int charset;
 } S_REMOTE_COL_ATTR;
 
 typedef struct remote_tbl_cols S_REMOTE_TBL_COLS;
@@ -4850,15 +4851,46 @@ PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_JSON
 };
 
+static T_CCI_U_TYPE
+pt_dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
+{
+  if (CCI_IS_SET_TYPE (u_ext_type))
+    {
+      return CCI_U_TYPE_SET;
+    }
+  else if (CCI_IS_MULTISET_TYPE (u_ext_type))
+    {
+      return CCI_U_TYPE_MULTISET;
+    }
+  else if (CCI_IS_SEQUENCE_TYPE (u_ext_type))
+    {
+      return CCI_U_TYPE_SEQUENCE;
+    }
+  else
+    {
+      return (T_CCI_U_TYPE) CCI_GET_COLLECTION_DOMAIN (u_ext_type);
+    }
+}
+
 static bool
 pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node, const S_REMOTE_COL_ATTR * attr)
 {
   PT_NODE *dt = NULL;
-  int is_default = 0;
+  bool need_precision = true;
 
   attr_def_node->data_type = NULL;
-  /* it needs to convert ext type to CCI_U_TYPE */
-  attr_def_node->type_enum = pt_type[(T_CCI_U_TYPE) CCI_GET_COLLECTION_DOMAIN (attr->type_idx)];
+
+  if (attr->type_idx > PT_TYPE_NONE)
+    {
+      /* this is the case of loaddb */
+      attr_def_node->type_enum = (PT_TYPE_ENUM) attr->type_idx;
+    }
+  else
+    {
+      /* it needs to convert ext type to CCI_U_TYPE */
+      attr_def_node->type_enum = pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+    }
+
   switch (attr_def_node->type_enum)
     {
     case PT_TYPE_JSON:
@@ -4866,24 +4898,31 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
     case PT_TYPE_VARCHAR:
     case PT_TYPE_CHAR:
+    case PT_TYPE_VARNCHAR:
+    case PT_TYPE_NCHAR:
+    case PT_TYPE_BIT:
+    case PT_TYPE_VARBIT:
     case PT_TYPE_NUMERIC:
-    case PT_TYPE_FLOAT:
+    case PT_TYPE_MONETARY:
       break;
 
     case PT_TYPE_BLOB:
     case PT_TYPE_CLOB:
     case PT_TYPE_OBJECT:
     case PT_TYPE_ENUMERATION:
+    case PT_TYPE_SET:
+    case PT_TYPE_MULTISET:
+    case PT_TYPE_SEQUENCE:
       PT_ERRORmf (parser, attr_def_node, MSGCAT_SET_PARSER_SEMANTIC,
 		  MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (attr_def_node->type_enum));
       return false;
 
     default:
-      is_default = 1;
+      need_precision = false;
       break;
     }
 
-  if (is_default == 0)
+  if (need_precision)
     {
       attr_def_node->data_type = dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -4896,6 +4935,7 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
+      dt->info.data_type.units = attr->charset;
     }
 
   attr_def_node->data_type = dt;
@@ -5197,6 +5237,24 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     }
   else
     {
+      int client_type = db_get_client_type ();
+
+      /* in the case of loaddb, it can just check the column from the attr_def node. */
+      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	{
+	  PT_NODE *cols;
+
+	  for (cols = dblink_table->cols; cols; cols = cols->next)
+	    {
+	      rmt_attr = rmt_tbl_cols->get_col_attr ((char *) cols->info.attr_def.attr_name->info.name.original);
+	      rmt_attr->type_idx = cols->type_enum;
+	      rmt_attr->dec_precision = (cols->data_type) ? cols->info.data_type.dec_precision : 0;
+	      rmt_attr->precision = (cols->data_type) ? cols->info.data_type.precision : 0;
+	      rmt_attr->charset = (cols->data_type) ? cols->info.data_type.units : 0;
+	    }
+	  return NO_ERROR;
+	}
+
       /* for collecting column info from "SELECT sel-list form dblink(server, 'SELECT ...') */
       sql =
 	pt_append_string (parser, "/* DBLINK SELECT */ ",
@@ -5240,6 +5298,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       rmt_attr->type_idx = col_info[i].ext_type;
       rmt_attr->dec_precision = col_info[i].scale;
       rmt_attr->precision = col_info[i].precision;
+      rmt_attr->charset = col_info[i].charset;
     }
 
   err = NO_ERROR;
@@ -11477,7 +11536,6 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     case PT_DOT_:
       check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
 				node->info.dot.arg2->info.name.original);
-      *continue_walk = PT_LIST_WALK;
       break;
 
     case PT_NAME:

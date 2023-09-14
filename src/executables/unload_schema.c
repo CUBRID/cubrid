@@ -167,7 +167,6 @@ static int order_classes (DB_OBJLIST ** class_list, DB_OBJLIST ** order_list, in
 static void emit_cycle_warning (print_output & output_ctx);
 static void force_one_class (print_output & output_ctx, DB_OBJLIST ** class_list, DB_OBJLIST ** order_list);
 static DB_OBJLIST *get_ordered_classes (print_output & output_ctx, MOP * class_table);
-static void emit_class_owner (extract_context & ctxt, print_output & output_ctx, MOP class_);
 static int export_serial (extract_context & ctxt, print_output & output_ctx);
 static int emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * classes, int has_indexes,
 			 DB_OBJLIST * vclass_list_has_using_index);
@@ -220,6 +219,8 @@ static int create_filename (const char *output_dirname, const char *output_prefi
 			    char *output_filename_p, const size_t filename_size);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *infix,
 			    const char *suffix, char *output_filename_p, const size_t filename_size);
+static int create_filefullpath (const char *output_dirname, const char *output_filename,
+				char *output_filename_p, const size_t filename_size);
 static int export_server (extract_context & ctxt, print_output & output_ctx);
 static int extract_all_schema_file (extract_context & ctxt, const char *output_filename);
 static int extract_split_schema_files (extract_context & ctxt);
@@ -643,43 +644,6 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
   return (ordered);
 }
 
-
-/*
- * emit_class_owner - Emits a change_owner statement for a class that has been
- * created.
- *    return:  void
- *    fp(in/out):  FILE pointer
- *    class(in): class MOP
- */
-static void
-emit_class_owner (extract_context & ctxt, print_output & output_ctx, MOP class_)
-{
-  const char *classname;
-  MOP owner;
-  DB_VALUE value;
-
-  classname = db_get_class_name (class_);
-  if (classname != NULL)
-    {
-      owner = au_get_class_owner (class_);
-      if (owner != NULL)
-	{
-	  if (db_get (owner, "name", &value) == NO_ERROR)
-	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && db_get_string (&value) != NULL)
-		{
-		  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		    {
-		      output_ctx ("call [change_owner]('%s', '%s') on class [db_root];\n",
-				  sm_remove_qualifier_name (classname), db_get_string (&value));
-		    }
-		}
-	      db_value_clear (&value);
-	    }
-	}
-    }
-}
-
 /*
  * export_serial - export db_serial
  *    return: NO_ERROR if successful, error code otherwise
@@ -1029,7 +993,6 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
-      output_ctx ("\n");
       do
 	{
 	  for (i = 0; i < SYNONYM_VALUE_INDEX_MAX; i++)
@@ -1126,6 +1089,8 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 		  continue;
 		}
 	    }
+
+	  output_ctx ("\n");
 
 	  if (is_public == 1)
 	    {
@@ -1492,6 +1457,7 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
   const char *name = NULL;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *class_name = NULL;
+  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
   const char *tde_algo_name = NULL;
   int is_partitioned = 0;
   SM_CLASS *class_ = NULL;
@@ -1509,6 +1475,10 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	  continue;
 	}
 
+      SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
+      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			sizeof (output_owner));
+
       if (au_fetch_class_force (cl->op, &class_, AU_FETCH_READ) != NO_ERROR)
 	{
 	  class_ = NULL;
@@ -1517,18 +1487,18 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	{
 	  if (extract_class == EXTRACT_CLASS_ALL)
 	    {
-	      output_ctx ("\nCREATE %s %s%s%s", is_vclass ? "VCLASS" : "CLASS",
-			  PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+	      output_ctx ("\nCREATE %s %s%s%s%s", is_vclass ? "VCLASS" : "CLASS", output_owner,
+			  PRINT_IDENTIFIER (class_name));
 	    }
 	  else
 	    {
 	      if (is_vclass == TRUE && extract_class == EXTRACT_VCLASS)
 		{
-		  output_ctx ("\nCREATE VCLASS %s%s%s", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+		  output_ctx ("\nCREATE VCLASS %s%s%s%s", output_owner, PRINT_IDENTIFIER (class_name));
 		}
 	      else if (is_vclass == FALSE && extract_class == EXTRACT_CLASS)
 		{
-		  output_ctx ("\nCREATE CLASS %s%s%s", PRINT_IDENTIFIER (sm_remove_qualifier_name (name)));
+		  output_ctx ("\nCREATE CLASS %s%s%s%s", output_owner, PRINT_IDENTIFIER (class_name));
 		}
 	      else
 		{
@@ -1585,34 +1555,6 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
       if (is_vclass <= 0 && ctxt.storage_order == FOLLOW_STORAGE_ORDER)
 	{
 	  emit_class_meta (output_ctx, cl->op);
-	}
-
-      /*
-       * Before version 11.2, if an auto_increment column was added after changing the class owner,
-       * owner mismatch occurred.
-       * 
-       * e.g. create user u1;
-       *      create table t1;
-       *      call change_owner ('t1', 'u1') on class db_root;
-       *      alter table t1 add attribute c1 int auto_increment;
-       *      select c.clasS_name, c.owner.name, s.name, s.owner.name
-       *      from _db_class c, db_serial s
-       *      where c.class_name = s.class_name;
-       *
-       *        class_name            owner.name            name                  owner.name
-       *      ========================================================================================
-       *        't1'                  'U1'                  't1_ai_c1'            'DBA'
-       *
-       * After version 11.2, when adding an auto_increment column, there is no problem
-       * because it sets the owner in unique_name.
-       * 
-       * There is a problem if the DBA does not change the owner immediately when creating multiple classes
-       * with the same name. This is because a DBA cannot own multiple classes with the same name at the same time.
-       * Therefore, the owner must be changed immediately after class creation.
-       */
-      if (ctxt.do_auth)
-	{
-	  emit_class_owner (ctxt, output_ctx, cl->op);
 	}
     }
 }
@@ -3370,9 +3312,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   const int *prefix_length;
   int k, n_attrs = 0;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
-#endif
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
@@ -3475,7 +3415,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	    }
 	}
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       reserved_col_buf[0] = '\0';
       if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
 	{
@@ -3495,7 +3434,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 		}
 	    }
 	}
-#endif
 
       k = 0;
       for (att = atts; k < n_attrs; att++)
@@ -3564,7 +3502,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       /* If it's unique then it must surely be with online flag. */
       assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	      || (ctype != DB_CONSTRAINT_UNIQUE && ctype != DB_CONSTRAINT_REVERSE_UNIQUE));
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+
       if ((reserved_col_buf[0] == '\0') && !SM_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
 	{
 	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
@@ -3584,12 +3522,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	{
 	  output_ctx (" WITH ONLINE");
 	}
-#else
-      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  output_ctx (" WITH ONLINE");
-	}
-#endif
+
       if (constraint->index_status == SM_INVISIBLE_INDEX)
 	{
 	  output_ctx (" INVISIBLE ");
@@ -4239,9 +4172,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   char *class_name = NULL;
   MOP ref_clsop;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
-#endif
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
@@ -4261,14 +4192,12 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    {
 	      if (db_attribute_class (*att) != cl->op)
 		{
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 		  if (IS_DEDUPLICATE_KEY_ATTR_ID ((*att)->id))
 		    {
 		      assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type));
 		      assert (att[1] == NULL);
 		      break;
 		    }
-#endif
 		  has_inherited_atts = true;
 		  break;
 		}
@@ -4287,12 +4216,9 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  output_ctx ("\nALTER CLASS %s%s%s%s ADD", output_owner, PRINT_IDENTIFIER (class_name));
 	  output_ctx (" CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  reserved_col_buf[0] = '\0';
-#endif
 	  for (att = atts; *att != NULL; att++)
 	    {
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	      if (IS_DEDUPLICATE_KEY_ATTR_ID (att[0]->id))
 		{
 		  assert (att[1] == NULL);
@@ -4300,7 +4226,7 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 						 GET_DEDUPLICATE_KEY_ATTR_LEVEL (att[0]->id));
 		  break;
 		}
-#endif
+
 	      att_name = db_attribute_name (*att);
 	      if (att != atts)
 		{
@@ -4313,7 +4239,6 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    }
 	  output_ctx (")");
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  if (reserved_col_buf[0] == '\0')
 	    {
 	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
@@ -4322,7 +4247,6 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    {
 	      output_ctx (" WITH %s", reserved_col_buf);
 	    }
-#endif
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
 	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
@@ -4601,6 +4525,27 @@ create_filename (const char *output_dirname, const char *output_prefix, const ch
     }
 
   snprintf (output_filename_p, filename_size - 1, "%s/%s%s%s", output_dirname, output_prefix, infix, suffix);
+
+  return 0;
+}
+
+static int
+create_filefullpath (const char *output_dirname, const char *output_filename,
+		     char *output_filename_p, const size_t filename_size)
+{
+  if (output_dirname == NULL)
+    {
+      output_dirname = ".";
+    }
+
+  size_t total = strlen (output_dirname) + strlen (output_filename) + 8;
+
+  if (total > filename_size)
+    {
+      return -1;
+    }
+
+  snprintf (output_filename_p, filename_size - 1, "%s/%s", output_dirname, output_filename);
 
   return 0;
 }
@@ -5061,7 +5006,7 @@ extract_vclass (extract_context & ctxt)
     }
 
   emit_schema (ctxt, output_ctx, EXTRACT_VCLASS);
-  err = (er_errid () == NO_ERROR) ? ER_FAILED : NO_ERROR;
+  err = (er_errid () == NO_ERROR) ? NO_ERROR : ER_FAILED;
 
   fflush (output_file);
 
@@ -5618,11 +5563,12 @@ create_schema_info (extract_context & ctxt)
   FILE *output_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char filename_fullpath[PATH_MAX * 2] = { '\0' };
   char order_str[PATH_MAX * 2] = { '\0' };
   const char *loading_order[] =
-    { "_schema_user", "_schema_class", "_schema_vclass", "_schema_synonym", "_schema_vclass_query_spec",
-    "_schema_serial", "_schema_procedure", "_schema_server",
-    "_schema_pk", "_schema_fk", "_schema_grant",
+    { "_schema_user", "_schema_class", "_schema_vclass", "_schema_server", "_schema_synonym",
+    "_schema_serial", "_schema_procedure",
+    "_schema_pk", "_schema_fk", "_schema_grant", "_schema_vclass_query_spec"
   };
 
   const size_t len = sizeof (loading_order) / sizeof (loading_order[0]);
@@ -5661,7 +5607,14 @@ create_schema_info (extract_context & ctxt)
 	{
 	  if (strcmp (order_str, ctxt.schema_file_list[j].c_str ()) == 0)
 	    {
-	      if (access (ctxt.schema_file_list[j].c_str (), F_OK) != -1)
+	      if (create_filefullpath
+		  (ctxt.output_dirname, ctxt.schema_file_list[j].c_str (), filename_fullpath,
+		   sizeof (filename_fullpath)))
+		{
+		  continue;
+		}
+
+	      if (access (filename_fullpath, F_OK) != -1)
 		{
 		  output_ctx ("%s\n", ctxt.schema_file_list[j].c_str ());
 		  break;

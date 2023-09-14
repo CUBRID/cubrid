@@ -1549,16 +1549,12 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
   if (TP_DOMAIN_TYPE (btree_stats_p->key_type) == DB_TYPE_MIDXKEY)
     {
       btree_stats_p->pkeys_size = tp_domain_size (btree_stats_p->key_type->setdomain);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       btree_stats_p->dedup_idx = GET_DECOMPRESS_IDX_HEADER (root_header);
-#endif
     }
   else
     {
       btree_stats_p->pkeys_size = 1;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       btree_stats_p->dedup_idx = -1;
-#endif
     }
 
   /* cut-off to stats */
@@ -2514,9 +2510,7 @@ catalog_copy_btree_statistic (BTREE_STATS * new_btree_stats_p, int new_btree_sta
 	  new_stats_p->keys = pre_stats_p->keys;
 	  new_stats_p->key_type = pre_stats_p->key_type;
 	  new_stats_p->pkeys_size = pre_stats_p->pkeys_size;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  new_stats_p->dedup_idx = pre_stats_p->dedup_idx;
-#endif
 
 	  assert (new_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	  for (k = 0; k < new_stats_p->pkeys_size; k++)
@@ -4863,13 +4857,9 @@ catalog_dump_disk_attribute (DISK_ATTR * attr_p)
 
       prefix = "";
       assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       assert (bt_statsp->dedup_idx != 0);
       int pkeys_size = (bt_statsp->dedup_idx >= 0) ? bt_statsp->dedup_idx : bt_statsp->pkeys_size;
       for (i = 0; i < pkeys_size; i++)
-#else
-      for (i = 0; i < bt_statsp->pkeys_size; i++)
-#endif
 	{
 	  fprintf (stdout, "%s%d", prefix, bt_statsp->pkeys[i]);
 	  prefix = ",";
@@ -5434,13 +5424,11 @@ catalog_get_cardinality (THREAD_ENTRY * thread_p, OID * class_oid, DISK_REPR * r
   if (TP_DOMAIN_TYPE (p_stat_info->key_type) == DB_TYPE_MIDXKEY)
     {
       key_size = tp_domain_size (p_stat_info->key_type->setdomain);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       if (p_stat_info->dedup_idx > 0)
 	{
 	  // Avoid providing information about columns added with deduplicate options.
 	  key_size--;
 	}
-#endif
     }
   else
     {
