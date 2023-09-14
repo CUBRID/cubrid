@@ -104,7 +104,11 @@ function get_options()
 	local sa_mode=0
 	local tsort=""
 
-	args=$(getopt -o :u:p:o:c:t:k:s:CSv  -l user:,password:,owner:,class:,threshold:,key:,sort:,--verbose   -- "$@" )
+	args=$(getopt -o :u:p:o:c:t:k:s:CSv  -l user:,password:,owner:,class:,threshold:,key:,sort:,verbose   -- "$@")
+        if [[ $? -ne 0 ]]; then
+          show_usage
+        fi
+
 	eval set -- "$args"
 	while true
 	do
@@ -419,7 +423,7 @@ function do_print()
 	echo ""
 	echo ""
         echo "  ----------------------------------------------------------------------------------------------------------------------"
-	echo "  *** Key=${match_key} Threahols=${threshold_value}"
+	echo "  *** Key=${match_key} Thresholds=${threshold_value}"
 	echo ""
 
 	printf "  %-${format_sz[1]}s\t" "${title_nm[1]}"
