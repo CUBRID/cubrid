@@ -53,29 +53,4 @@ public class StmtWhileLoop extends Stmt {
         this.cond = cond;
         this.stmts = stmts;
     }
-
-    @Override
-    public String toJavaCode() {
-        String condStr;
-        if (cond instanceof ExprTrue) {
-            // to avoid unreachable statement check of javac
-            condStr = "opNot(false)";
-        } else {
-            condStr = cond.toJavaCode();
-        }
-
-        return tmpl.replace(
-                        "%'OPT-LABEL'%", declLabel == null ? "// no label" : declLabel.toJavaCode())
-                .replace("%'EXPRESSION'%", condStr)
-                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines(
-                    "%'OPT-LABEL'%",
-                    "while (Boolean.TRUE.equals(%'EXPRESSION'%)) {", "  %'STATEMENTS'%", "}");
 }

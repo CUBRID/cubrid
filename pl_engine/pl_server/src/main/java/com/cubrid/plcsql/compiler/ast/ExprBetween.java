@@ -52,19 +52,4 @@ public class ExprBetween extends Expr {
         this.lowerBound = lowerBound;
         this.upperBound = upperBound;
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return tmpl.replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
-                .replace("  %'LOWER-BOUND'%", Misc.indentLines(lowerBound.toJavaCode(), 1))
-                .replace("  %'UPPER-BOUND'%", Misc.indentLines(upperBound.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines(
-                    "opBetween(", "  %'TARGET'%,", "  %'LOWER-BOUND'%,", "  %'UPPER-BOUND'%", ")");
 }

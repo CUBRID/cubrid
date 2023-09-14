@@ -59,20 +59,4 @@ public class StmtLocalProcCall extends Stmt {
         this.decl = decl;
         prefixDeclBlock = decl.scope().declDone;
     }
-
-    @Override
-    public String toJavaCode() {
-
-        String block = prefixDeclBlock ? decl.scope().block + "." : "";
-
-        if (args.nodes.size() == 0) {
-            return block + name + "();";
-        } else {
-            return block + name + "(\n" + Misc.indentLines(decl.argsToJavaCode(args), 1) + "\n);";
-        }
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

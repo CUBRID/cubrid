@@ -58,15 +58,4 @@ public class ExName extends AstNode {
     public ExName(ParserRuleContext ctx, String name) {
         this(ctx, name, null, null);
     }
-
-    @Override
-    public String toJavaCode() {
-        // depends on the context in which this node is located and must not be called directly
-        assert false;
-        return null;
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

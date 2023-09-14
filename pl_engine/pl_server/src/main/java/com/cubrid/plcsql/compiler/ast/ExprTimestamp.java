@@ -52,8 +52,7 @@ public class ExprTimestamp extends Expr {
         this.originType = originType;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
 
         if (time.equals(DateTimeParser.nullDatetimeUTC)) {
             return "new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0)";
@@ -70,9 +69,4 @@ public class ExprTimestamp extends Expr {
                     time.getNano());
         }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
 }

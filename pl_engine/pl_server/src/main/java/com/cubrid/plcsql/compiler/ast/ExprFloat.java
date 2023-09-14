@@ -48,12 +48,7 @@ public class ExprFloat extends Expr {
         this.val = val;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
         return "new BigDecimal(\"" + val + "\")";
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

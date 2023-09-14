@@ -58,16 +58,4 @@ public class ExprLocalFuncCall extends Expr {
         this.decl = decl;
         prefixDeclBlock = decl.scope().declDone;
     }
-
-    @Override
-    public String exprToJavaCode() {
-
-        String block = prefixDeclBlock ? decl.scope().block + "." : "";
-
-        if (args.nodes.size() == 0) {
-            return block + name + "()";
-        } else {
-            return block + name + "(\n" + Misc.indentLines(decl.argsToJavaCode(args), 1) + "\n)";
-        }
-    }
 }

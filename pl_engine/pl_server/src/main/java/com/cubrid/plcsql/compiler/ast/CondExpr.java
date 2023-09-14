@@ -50,17 +50,4 @@ public class CondExpr extends AstNode {
         this.cond = cond;
         this.expr = expr;
     }
-
-    @Override
-    public String toJavaCode() {
-        return tmpl.replace("%'CONDITION'%", cond.toJavaCode())
-                .replace("  %'EXPRESSION'%", Misc.indentLines(expr.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines("Boolean.TRUE.equals(%'CONDITION'%) ?", "  %'EXPRESSION'% :");
 }

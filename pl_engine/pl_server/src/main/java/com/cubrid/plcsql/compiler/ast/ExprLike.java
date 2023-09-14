@@ -52,20 +52,4 @@ public class ExprLike extends Expr {
         this.pattern = pattern;
         this.escape = escape;
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return tmpl.replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
-                .replace("  %'PATTERN'%", Misc.indentLines(pattern.toJavaCode(), 1))
-                .replace(
-                        "  %'ESCAPE'%",
-                        Misc.indentLines(escape == null ? "null" : escape.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines("opLike(", "  %'TARGET'%,", "  %'PATTERN'%,", "  %'ESCAPE'%", ")");
 }

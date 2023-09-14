@@ -50,18 +50,4 @@ public class CaseExpr extends AstNode {
         this.val = val;
         this.expr = expr;
     }
-
-    @Override
-    public String toJavaCode() {
-        return tmpl.replace("%'VALUE'%", val.toJavaCode())
-                .replace("  %'EXPRESSION'%", Misc.indentLines(expr.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines(
-                    "Boolean.TRUE.equals(opEq(selector, %'VALUE'%)) ?", "  %'EXPRESSION'% :");
 }

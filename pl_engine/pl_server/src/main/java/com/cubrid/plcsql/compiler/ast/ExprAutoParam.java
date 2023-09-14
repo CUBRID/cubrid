@@ -64,8 +64,7 @@ public class ExprAutoParam extends Expr {
         return DBTypeAdapter.getTypeSpec(ty);
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
 
         if (ty == DBType.DB_NULL) {
             return "null";

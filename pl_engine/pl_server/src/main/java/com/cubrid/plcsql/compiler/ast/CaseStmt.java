@@ -50,19 +50,4 @@ public class CaseStmt extends AstNode {
         this.val = val;
         this.stmts = stmts;
     }
-
-    @Override
-    public String toJavaCode() {
-        return tmpl.replace("%'VALUE'%", val.toJavaCode())
-                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines(
-                    "if (Boolean.TRUE.equals(opEq(selector_%'LEVEL'%, %'VALUE'%))) {",
-                    "  %'STATEMENTS'%", "}");
 }

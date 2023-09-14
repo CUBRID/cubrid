@@ -61,12 +61,12 @@ public class TypeSpecPercent extends TypeSpec {
     }
 
     @Override
-    public String toJavaCode() {
+    public String javaCode() {
         if (resolvedType == null) {
             assert false;
             throw new RuntimeException("unreachable");
         } else {
-            return resolvedType.toJavaCode();
+            return resolvedType.javaCode();
         }
     }
 

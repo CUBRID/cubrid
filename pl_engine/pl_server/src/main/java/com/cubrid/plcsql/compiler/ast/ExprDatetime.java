@@ -50,8 +50,7 @@ public class ExprDatetime extends Expr {
         this.time = time;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
         if (time.equals(DateTimeParser.nullDatetime)) {
             return "new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0)";
             // server
@@ -67,9 +66,4 @@ public class ExprDatetime extends Expr {
                     time.getNano());
         }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
 }

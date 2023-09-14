@@ -44,15 +44,4 @@ public abstract class Expr extends AstNode {
     public void setCoercion(Coercion c) {
         this.coercion = c;
     }
-
-    public abstract String exprToJavaCode();
-
-    @Override
-    public final String toJavaCode() {
-        if (coercion == null) {
-            return "/* null coercion */ " + exprToJavaCode();
-        } else {
-            return coercion.toJavaCode(exprToJavaCode());
-        }
-    }
 }

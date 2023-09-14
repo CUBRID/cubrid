@@ -56,28 +56,4 @@ public class StmtIf extends Stmt {
         this.condStmtParts = condStmtParts;
         this.elsePart = elsePart;
     }
-
-    @Override
-    public String toJavaCode() {
-        if (forIfStmt && elsePart == null) {
-            return condStmtParts.toJavaCode(" else ");
-        } else {
-
-            String elseCode;
-            if (elsePart == null) {
-                elseCode = "throw new CASE_NOT_FOUND();";
-            } else {
-                elseCode = elsePart.toJavaCode();
-            }
-
-            return condStmtParts.toJavaCode(" else ")
-                    + " else {\n"
-                    + Misc.indentLines(elseCode, 1)
-                    + "\n}";
-        }
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

@@ -52,35 +52,4 @@ public class NodeList<N extends AstNode> extends AstNode {
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitNodeList(this);
     }
-
-    @Override
-    public String toJavaCode() {
-        return toJavaCode("\n");
-    }
-
-    public String toJavaCode(String delim) {
-
-        StringBuffer sbuf = new StringBuffer();
-
-        boolean first = true;
-        for (N p : nodes) {
-
-            if (delim != null) {
-                if (first) {
-                    first = false;
-                } else {
-                    sbuf.append(delim);
-                }
-            }
-
-            sbuf.append(p.toJavaCode());
-        }
-
-        return sbuf.toString();
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
 }

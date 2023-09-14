@@ -44,6 +44,8 @@ public class ExprCond extends Expr {
     public final NodeList<CondExpr> condParts;
     public final Expr elsePart;
 
+    public TypeSpec resultType;
+
     public ExprCond(ParserRuleContext ctx, NodeList<CondExpr> condParts, Expr elsePart) {
         super(ctx);
 
@@ -51,33 +53,7 @@ public class ExprCond extends Expr {
         this.elsePart = elsePart;
     }
 
-    @Override
-    public String exprToJavaCode() {
-
-        if (TypeSpecSimple.NULL.equals(resultType)) {
-            // in this case, every branch including else has null as its expression.
-            return "null";
-        } else {
-            String elseCode;
-            if (elsePart == null) {
-                elseCode = "null";
-            } else {
-                elseCode = elsePart.toJavaCode();
-            }
-            return tmpl.replace("%'COND-PARTS'%", condParts.toJavaCode())
-                    .replace("%'ELSE-PART'%", elseCode);
-        }
-    }
-
     public void setResultType(TypeSpec ty) {
         this.resultType = ty;
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private TypeSpec resultType;
-
-    private static final String tmpl = Misc.combineLines("(%'COND-PARTS'%", "%'ELSE-PART'%)");
 }

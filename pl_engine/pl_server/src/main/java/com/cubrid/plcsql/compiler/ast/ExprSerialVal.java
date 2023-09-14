@@ -57,42 +57,4 @@ public class ExprSerialVal extends Expr {
         this.name = name;
         this.mode = mode;
     }
-
-    @Override
-    public String exprToJavaCode() {
-
-        return tmplSerialVal
-                .replace("%'SERIAL-NAME'%", name)
-                .replace(
-                        "%'SERIAL-VAL'%",
-                        (mode == SerialVal.CURR_VAL) ? "CURRENT_VALUE" : "NEXT_VALUE");
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmplSerialVal =
-            Misc.combineLines(
-                    "(new Object() {",
-                    "  BigDecimal getSerialVal() throws Exception {",
-                    "    try {",
-                    "      BigDecimal ret;",
-                    "      String dynSql = \"select %'SERIAL-NAME'%.%'SERIAL-VAL'%\";",
-                    "      PreparedStatement stmt = conn.prepareStatement(dynSql);",
-                    "      ResultSet r = stmt.executeQuery();",
-                    "      if (r.next()) {",
-                    "        ret = r.getBigDecimal(1);",
-                    "      } else {",
-                    "        assert false; // serial value must be present",
-                    "        ret = null;",
-                    "      }",
-                    "      stmt.close();",
-                    "      return ret;",
-                    "    } catch (SQLException e) {",
-                    "      Server.log(e);",
-                    "      throw new PROGRAM_ERROR();",
-                    "    } ",
-                    "  }",
-                    "}.getSerialVal())");
 }

@@ -48,8 +48,7 @@ public class StmtContinue extends Stmt {
         this.declLabel = declLabel;
     }
 
-    @Override
-    public String toJavaCode() {
+    public String javaCode() {
 
         if (declLabel == null) {
             return "continue;";
@@ -57,8 +56,4 @@ public class StmtContinue extends Stmt {
             return String.format("continue %s_%d;", declLabel.name, declLabel.scope.level);
         }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

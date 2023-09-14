@@ -44,6 +44,8 @@ public class ExprBuiltinFuncCall extends Expr {
     public final String name;
     public final NodeList<Expr> args;
 
+    public TypeSpecSimple resultType;
+
     public ExprBuiltinFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
         super(ctx);
 
@@ -51,43 +53,7 @@ public class ExprBuiltinFuncCall extends Expr {
         this.args = args;
     }
 
-    @Override
-    public String exprToJavaCode() {
-
-        assert resultType != null;
-
-        String ty = resultType.javaCode;
-
-        if (args.nodes.size() == 0) {
-            // invokeBuiltinFunc: defined in SpLib
-            return "(" + ty + ") invokeBuiltinFunc(conn, \"" + name + "\")";
-        } else {
-            String argsStr = Misc.indentLines(argsToJavaCode(args), 1);
-            return "(" + ty + ") invokeBuiltinFunc(conn, \"" + name + "\"" + argsStr + "\n)";
-        }
-    }
-
     public void setResultType(TypeSpecSimple resultType) {
         this.resultType = resultType;
-    }
-
-    // -------------------------------------------------
-    // Private
-    // -------------------------------------------------
-
-    private TypeSpecSimple resultType;
-
-    private String argsToJavaCode(NodeList<Expr> args) {
-
-        assert args != null;
-
-        StringBuffer sbuf = new StringBuffer();
-
-        for (Expr a : args.nodes) {
-            sbuf.append(",\n");
-            sbuf.append(a.toJavaCode());
-        }
-
-        return sbuf.toString();
     }
 }

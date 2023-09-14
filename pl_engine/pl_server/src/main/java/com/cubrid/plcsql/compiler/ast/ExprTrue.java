@@ -43,9 +43,4 @@ public class ExprTrue extends Expr {
     public ExprTrue(ParserRuleContext ctx) {
         super(ctx);
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return "true";
-    }
 }

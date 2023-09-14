@@ -51,29 +51,4 @@ public class StmtOpenFor extends Stmt {
         this.id = id;
         this.staticSql = staticSql;
     }
-
-    @Override
-    public String toJavaCode() {
-
-        StringBuffer sbuf = new StringBuffer();
-        for (Expr e : staticSql.hostExprs.keySet()) {
-            sbuf.append(",\n");
-            sbuf.append(e.toJavaCode());
-        }
-
-        return tmplStmt.replace("%'REF-CURSOR'%", id.toJavaCode())
-                .replace("%'QUERY'%", '"' + staticSql.rewritten + '"')
-                .replace("%'HOST-VARIABLES'%", Misc.indentLines(sbuf.toString(), 2, true));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmplStmt =
-            Misc.combineLines(
-                    "{ // open-for statement",
-                    "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
-                    "  %'REF-CURSOR'%.open(conn%'HOST-VARIABLES'%);",
-                    "}");
 }

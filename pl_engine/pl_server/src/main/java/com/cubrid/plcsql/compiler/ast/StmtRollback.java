@@ -44,23 +44,4 @@ public class StmtRollback extends Stmt {
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitStmtRollback(this);
     }
-
-    @Override
-    public String toJavaCode() {
-        return code;
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String code =
-            Misc.combineLines(
-                    "try {",
-                    "  conn.rollback();",
-                    "  sql_rowcount[0] = 0L;",
-                    "} catch (SQLException e) {",
-                    "  Server.log(e);",
-                    "  throw new SQL_ERROR(e.getMessage());",
-                    "}");
 }

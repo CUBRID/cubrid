@@ -44,6 +44,8 @@ public abstract class StmtSql extends Stmt {
     public final List<ExprId> intoVarList;
     public final List<? extends Expr> usedExprList;
 
+    public List<Coercion> coercions;
+
     public StmtSql(
             ParserRuleContext ctx,
             boolean dynamic,
@@ -65,141 +67,7 @@ public abstract class StmtSql extends Stmt {
         this.usedExprList = usedExprList;
     }
 
-    @Override
-    public String toJavaCode() {
-        String setUsedExprStr = Common.getSetUsedExprStr(usedExprList);
-
-        String strHandleIntoClause, strBanIntoClause;
-        if (intoVarList == null) {
-            assert coercions == null;
-            strHandleIntoClause = strBanIntoClause = "// no INTO clause";
-        } else {
-            assert coercions != null;
-            String strSetResults = getSetResultsStr(intoVarList);
-            strHandleIntoClause =
-                    tmplHandleIntoClause.replace(
-                            "    %'SET-RESULTS'%", Misc.indentLines(strSetResults, 2));
-            strBanIntoClause = tmplBanIntoClause;
-        }
-
-        return tmplStmt.replace("%'KIND'%", dynamic ? "dynamic" : "static")
-                .replace("%'SQL'%", Misc.indentLines(sql.toJavaCode(), 2, true))
-                .replace("    %'BAN-INTO-CLAUSE'%", Misc.indentLines(strBanIntoClause, 2))
-                .replace("    %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 2))
-                .replace("      %'HANDLE-INTO-CLAUSE'%", Misc.indentLines(strHandleIntoClause, 3))
-                .replace("%'LEVEL'%", "" + level);
-    }
-
     public void setCoercions(List<Coercion> coercions) {
         this.coercions = coercions;
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private List<Coercion> coercions;
-
-    private static final String tmplStmt =
-            Misc.combineLines(
-                    "{ // %'KIND'% SQL statement",
-                    "  PreparedStatement stmt_%'LEVEL'% = null;",
-                    "  try {",
-                    "    String dynSql_%'LEVEL'% = %'SQL'%;",
-                    "    stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
-                    "    %'BAN-INTO-CLAUSE'%",
-                    "    %'SET-USED-VALUES'%",
-                    "    if (stmt_%'LEVEL'%.execute()) {",
-                    "      sql_rowcount[0] = 0L;", // not from the Oracle specification, but from
-                    // Oracle 19.0.0.0 behavior
-                    "      %'HANDLE-INTO-CLAUSE'%",
-                    "    } else {",
-                    "      sql_rowcount[0] = (long) stmt_%'LEVEL'%.getUpdateCount();",
-                    "    }",
-                    "  } catch (SQLException e) {",
-                    "    Server.log(e);",
-                    "    throw new SQL_ERROR(e.getMessage());",
-                    "  } finally {",
-                    "    if (stmt_%'LEVEL'% != null) {",
-                    "      stmt_%'LEVEL'%.close();",
-                    "    }",
-                    "  }",
-                    "}");
-
-    private static final String tmplHandleIntoClause =
-            Misc.combineLines(
-                    "ResultSet r%'LEVEL'% = stmt_%'LEVEL'%.getResultSet();",
-                    "if (r%'LEVEL'% == null) {",
-                    "  throw new SQL_ERROR(\"no result set\");", // EXECUTE IMMEDIATE 'CALL ...'
-                    // INTO ... leads to this line
-                    "}",
-                    "int i%'LEVEL'% = 0;",
-                    "while (r%'LEVEL'%.next()) {",
-                    "  i%'LEVEL'%++;",
-                    "  if (i%'LEVEL'% > 1) {",
-                    "    break;",
-                    "  } else {",
-                    "    %'SET-RESULTS'%",
-                    "  }",
-                    "}",
-                    "if (i%'LEVEL'% == 0) {",
-                    "  throw new NO_DATA_FOUND();",
-                    "} else if (i%'LEVEL'% == 1) {",
-                    "  sql_rowcount[0] = 1L;",
-                    "} else {",
-                    "  sql_rowcount[0] = 1L; // Surprise? Refer to the Spec.",
-                    "  throw new TOO_MANY_ROWS();",
-                    "}");
-
-    private static final String tmplBanIntoClause =
-            Misc.combineLines(
-                    "ResultSetMetaData rsmd_%'LEVEL'% = stmt_%'LEVEL'%.getMetaData();",
-                    "if (rsmd_%'LEVEL'% == null || rsmd_%'LEVEL'%.getColumnCount() < 1) {",
-                    "  throw new SQL_ERROR(\"INTO clause cannot be used without a SELECT statement\");",
-                    "}");
-
-    private String getSetResultsStr(List<ExprId> intoVarList) {
-
-        StringBuffer sbuf = new StringBuffer();
-
-        int size = intoVarList.size();
-        assert coercions.size() == size;
-        assert dynamic || (columnTypeList != null && columnTypeList.size() == size);
-
-        int i = 0;
-        for (ExprId id : intoVarList) {
-
-            assert id.decl instanceof DeclVar || id.decl instanceof DeclParamOut
-                    : "only variables or out-parameters can be used in into-clauses";
-
-            String resultStr;
-            if (dynamic) {
-                resultStr = String.format("r%%'LEVEL'%%.getObject(%d)", i + 1);
-            } else {
-                resultStr =
-                        String.format(
-                                "(%s) r%%'LEVEL'%%.getObject(%d)",
-                                columnTypeList.get(i).toJavaCode(), i + 1);
-            }
-
-            if (i > 0) {
-                sbuf.append("\n");
-            }
-
-            Coercion c = coercions.get(i);
-            boolean checkNotNull = (id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull;
-            if (checkNotNull) {
-                sbuf.append(
-                        String.format(
-                                "%s = checkNotNull(%s);",
-                                id.toJavaCode(), c.toJavaCode(resultStr)));
-            } else {
-                sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
-            }
-
-            i++;
-        }
-
-        return sbuf.toString();
     }
 }

@@ -52,9 +52,4 @@ public class DeclException extends Decl {
     public String kind() {
         return "exception";
     }
-
-    @Override
-    public String toJavaCode() {
-        return "class " + name + " extends $APP_ERROR {}";
-    }
 }

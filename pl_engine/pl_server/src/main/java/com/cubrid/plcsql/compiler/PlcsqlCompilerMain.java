@@ -255,17 +255,12 @@ public class PlcsqlCompilerMain {
         }
 
         // ------------------------------------------
-        // temporary
-
-        JavaCodeWriter jcw = new JavaCodeWriter();
-        jcw.buildCodeLines(unit);
-
-        // ------------------------------------------
         //
 
+        JavaCodeWriter jcw = new JavaCodeWriter();
         CompileInfo info =
                 new CompileInfo(
-                        unit.toJavaCode(),
+                        jcw.buildCodeLines(unit),
                         String.format(sqlTemplate[0], unit.getJavaSignature()),
                         unit.getClassName(),
                         unit.getJavaSignature());

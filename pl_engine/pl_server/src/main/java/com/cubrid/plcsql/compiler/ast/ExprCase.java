@@ -45,6 +45,9 @@ public class ExprCase extends Expr {
     public final NodeList<CaseExpr> whenParts;
     public final Expr elsePart;
 
+    public TypeSpec selectorType;
+    public TypeSpec resultType;
+
     public ExprCase(
             ParserRuleContext ctx, Expr selector, NodeList<CaseExpr> whenParts, Expr elsePart) {
         super(ctx);
@@ -54,30 +57,6 @@ public class ExprCase extends Expr {
         this.elsePart = elsePart;
     }
 
-    @Override
-    public String exprToJavaCode() {
-
-        assert selectorType != null;
-        assert resultType != null;
-
-        if (resultType.equals(TypeSpecSimple.NULL)) {
-            // in this case, every branch including else has null as its expression.
-            return "null";
-        } else {
-            String elseCode;
-            if (elsePart == null) {
-                elseCode = "null";
-            } else {
-                elseCode = elsePart.toJavaCode();
-            }
-            return tmpl.replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
-                    .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                    .replace("%'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(), 2, true))
-                    .replace("    %'ELSE-PART'%", Misc.indentLines(elseCode, 2))
-                    .replace("%'RESULT-TYPE'%", resultType.toJavaCode());
-        }
-    }
-
     public void setSelectorType(TypeSpec ty) {
         this.selectorType = ty;
     }
@@ -85,18 +64,4 @@ public class ExprCase extends Expr {
     public void setResultType(TypeSpec ty) {
         this.resultType = ty;
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private TypeSpec selectorType;
-    private TypeSpec resultType;
-
-    private static final String tmpl =
-            Misc.combineLines(
-                    "(new Object() { %'RESULT-TYPE'% invoke(%'SELECTOR-TYPE'% selector) throws Exception { // simple case expression",
-                    "  return %'WHEN-PARTS'%",
-                    "    %'ELSE-PART'%;",
-                    "}}.invoke(%'SELECTOR-VALUE'%))");
 }

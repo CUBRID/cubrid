@@ -50,8 +50,7 @@ public class ExprDate extends Expr {
         this.date = date;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
         if (date.equals(DateTimeParser.nullDate)) {
             return "new Date(0 - 1900, 0 - 1, 0)";
         } else {
@@ -60,8 +59,4 @@ public class ExprDate extends Expr {
                     date.getYear(), date.getMonthValue(), date.getDayOfMonth());
         }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

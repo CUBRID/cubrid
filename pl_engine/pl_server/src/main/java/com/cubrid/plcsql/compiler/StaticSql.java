@@ -43,7 +43,7 @@ public class StaticSql {
     public final ParserRuleContext ctx;
     public final int kind;
     public final String rewritten;
-    public final LinkedHashMap<Expr, TypeSpec> hostExprs;
+    public final LinkedHashMap<Expr, TypeSpec> hostExprs;   // currently, TypeSpecs are always null. 
     public final LinkedHashMap<String, TypeSpec> selectList;
     public final List<ExprId> intoVars; // can be null
 

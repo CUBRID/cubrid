@@ -1569,7 +1569,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         controlFlowBlocked = true; // s017-4
-        return new StmtRaise(ctx, exName);
+        return new StmtRaise(ctx, exName, exHandlerDepth);
     }
 
     @Override
