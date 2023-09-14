@@ -987,11 +987,23 @@ page_server::disconnect_all_follower_page_servers ()
    * For now, this waits until just all the catch-up jobs in progress are done.
    */
   constexpr auto millis_20 = std::chrono::milliseconds { 20 };
+
+  er_log_debug (ARG_FILE_LINE, "Wait until all follower connections are disconnected.\n");
+
   auto ulock_conn_vec = std::unique_lock { m_follower_conn_vec_mutex };
+  auto lockg_disc = std::lock_guard { m_follower_disc_mutex };
+
   while (!m_follower_conn_vec_cv.wait_for (ulock_conn_vec, millis_20, [this]
   {
     return m_follower_conn_vec.empty ();
     }));
+
+  assert (m_follower_conn_vec.empty());
+
+  if (m_follower_disc_future.valid ())
+    {
+      m_follower_disc_future.get (); // wait until it's done if there is an on-going disconnection.
+    }
   er_log_debug (ARG_FILE_LINE, "All follower connections have been disconnected.\n");
 }
 
@@ -1015,33 +1027,42 @@ page_server::disconnect_followee_page_server (const bool with_disc_msg)
 void
 page_server::disconnect_follower_server_async (const follower_connection_handler *conn)
 {
-  auto lockg_disc = std::lock_guard { m_follower_disc_mutex };
+  follower_connection_handler_uptr_t disconnecting_conn_uptr;
+  {
+    auto lockg_conn_vec = std::lock_guard { m_follower_conn_vec_mutex };
 
-  if (m_follower_disc_future.valid())
+    auto it = std::find_if (m_follower_conn_vec.begin (), m_follower_conn_vec.end (),
+			    [&conn] (auto & conn_uptr)
     {
-      m_follower_disc_future.get (); // waits until the previous async is done
-    }
+      return conn_uptr.get () == conn;
+    });
 
-  auto lockg_conn_vec = std::lock_guard { m_follower_conn_vec_mutex };
-
-  const auto it = std::find_if (m_follower_conn_vec.begin (), m_follower_conn_vec.end (),
-				[&conn] (auto & conn_uptr)
+    if (it == m_follower_conn_vec.cend ())
+      {
+	// It's already been disconnected or in progress by another thread.
+	return;
+      }
+    er_log_debug (ARG_FILE_LINE, "disconnect_follower_server_async 요청");
+    disconnecting_conn_uptr = std::move (*it);
+    m_follower_conn_vec.erase (it);
+    m_follower_conn_vec_cv.notify_one ();
+  }
   {
-    return conn_uptr.get () == conn;
-  });
-  assert (it != m_follower_conn_vec.cend ());
+    auto lockg_disc = std::lock_guard { m_follower_disc_mutex };
+    if (m_follower_disc_future.valid ())
+      {
+	m_follower_disc_future.get (); // waits until the previous async is done
+      }
 
-  auto reset_func = [] (auto &&conn_uptr)
-  {
-    auto channel_id = conn_uptr->get_channel_id ();
-    conn_uptr.reset (nullptr);
-    er_log_debug (ARG_FILE_LINE, "The follower page server has been disconnected. channel id: %s\n", channel_id.c_str ());
-  };
-  m_follower_disc_future = std::async (std::launch::async, reset_func, std::move (*it));
-  assert (m_follower_disc_future.valid ());
-
-  m_follower_conn_vec.erase (it);
-  m_follower_conn_vec_cv.notify_one ();
+    auto reset_func = [] (auto &&conn_uptr)
+    {
+      auto channel_id = conn_uptr->get_channel_id ();
+      conn_uptr.reset (nullptr);
+      er_log_debug (ARG_FILE_LINE, "The follower page server has been disconnected. channel id: %s\n", channel_id.c_str ());
+    };
+    m_follower_disc_future = std::async (std::launch::async, reset_func, std::move (disconnecting_conn_uptr));
+    assert (m_follower_disc_future.valid ());
+  }
 }
 
 void

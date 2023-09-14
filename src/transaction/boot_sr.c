@@ -3202,11 +3202,11 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
        *   - Stop the request sender for the connection.
        */
       ps_Gl->disconnect_all_tran_servers ();
+      ps_Gl->disconnect_all_follower_page_servers ();
+      ps_Gl->disconnect_followee_page_server (true /* with_disc_msg */ );
       log_Gl.finalize_log_prior_receiver ();
       log_Gl.finalize_log_prior_sender ();
       ps_Gl->finish_replication_during_shutdown (*thread_p);
-      ps_Gl->disconnect_all_follower_page_servers ();
-      ps_Gl->disconnect_followee_page_server (true /* with_disc_msg */ );
       ps_Gl->finalize_request_responder ();
     }
   else if (is_passive_transaction_server ())
