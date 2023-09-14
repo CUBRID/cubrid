@@ -7319,7 +7319,6 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r4);
     }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (p->info.index.unique == false)
     {
       char buf[64] = { 0x00, };
@@ -7357,16 +7356,6 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, " INVISIBLE ");
     }
-#else // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  if (p->info.index.index_status == SM_INVISIBLE_INDEX)
-    {
-      b = pt_append_nulstring (parser, b, " INVISIBLE ");
-    }
-  else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-    {
-      b = pt_append_nulstring (parser, b, " WITH ONLINE ");
-    }
-#endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
   if (p->info.index.comment != NULL)
     {

@@ -9857,9 +9857,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pktable_name, *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int fk_i;
-#endif
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -9956,14 +9954,9 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
       assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
       if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
-#else
-      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
-#endif
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -10000,9 +9993,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int fk_i;
-#endif
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -10119,14 +10110,9 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
       assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
       if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
-#else
-      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
-#endif
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
