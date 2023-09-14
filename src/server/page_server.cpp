@@ -981,8 +981,18 @@ page_server::disconnect_all_tran_servers ()
 void
 page_server::disconnect_all_follower_page_servers ()
 {
-  // TODO disconnect, but wait for now
-  //
+  /*
+   * TODO it should request to disconnect to all followers and wait until it's done.
+   * It will be addressed when follower has a way to re-start the catch-up with another followee.
+   * For now, this waits until just all the catch-up jobs in progress are done.
+   */
+  constexpr auto millis_20 = std::chrono::milliseconds { 20 };
+  auto ulock_conn_vec = std::unique_lock { m_follower_conn_vec_mutex };
+  while (!m_follower_conn_vec_cv.wait_for (ulock_conn_vec, millis_20, [this]
+  {
+    return m_follower_conn_vec.empty ();
+    }));
+  er_log_debug (ARG_FILE_LINE, "All follower connections have been disconnected.\n");
 }
 
 void
@@ -1031,6 +1041,7 @@ page_server::disconnect_follower_server_async (const follower_connection_handler
   assert (m_follower_disc_future.valid ());
 
   m_follower_conn_vec.erase (it);
+  m_follower_conn_vec_cv.notify_one ();
 }
 
 void
@@ -1119,7 +1130,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	}
       // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
     }
-
+  std::this_thread::sleep_for (std::chrono::seconds (10));
   if (error == NO_ERROR)
     {
       assert (remaining_page_cnt == 0);

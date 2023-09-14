@@ -315,6 +315,7 @@ class page_server
     std::mutex m_followee_conn_mutex;
     std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
     std::mutex m_follower_conn_vec_mutex;
+    std::condition_variable m_follower_conn_vec_cv;
     std::future<void> m_follower_disc_future;
     std::mutex m_follower_disc_mutex;
 
