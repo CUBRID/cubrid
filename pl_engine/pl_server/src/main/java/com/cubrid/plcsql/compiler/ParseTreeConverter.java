@@ -201,6 +201,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         addToImports("com.cubrid.jsp.Server");
         addToImports("com.cubrid.plcsql.predefined.PlcsqlRuntimeError");
+        addToImports("java.util.List");
 
         AstNode ret = visitCreate_routine(ctx.create_routine());
 

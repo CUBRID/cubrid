@@ -52,7 +52,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeToResolve ctr = visitUnit(unit);
         ctr.resolve(0, codeLines, codeRangeMarkers);
 
-        //System.out.println(String.format("[temp] code range markers = [%s]", codeRangeMarkers.toString()));
+        codeLines.add("  private static List<CodeRangeMarker> codeRangeMarkerList = buildCodeRangeMarkerList(\"" +
+            codeRangeMarkers + "\");");
+        codeLines.add("}");
 
         return String.join("\n", codeLines.toArray(dummyStrArr));
     }
@@ -93,15 +95,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             "      %'%BODY'%",
             "    } catch (OutOfMemoryError e) {",
             "      Server.log(e);",
-            "      throw new STORAGE_ERROR();",
+            "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");", 
+            "      throw new STORAGE_ERROR().setPlcLineColumn(pos);",
             "    } catch (PlcsqlRuntimeError e) {",
-            "      throw e;",
+            "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");", 
+            "      throw e.setPlcLineColumn(pos);",
             "    } catch (Throwable e) {",
             "      Server.log(e);",
-            "      throw new PROGRAM_ERROR();",
+            "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");", 
+            "      throw new PROGRAM_ERROR().setPlcLineColumn(pos);",
             "    }",
-            "  }",
-            "}"
+            "  }"
         };
 
     @Override
@@ -464,21 +468,21 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExprDate(ExprDate node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprDate", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprDate", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprDatetime(ExprDatetime node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprDatetime", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprDatetime", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprFalse(ExprFalse node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprFalse", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprFalse", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -560,7 +564,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExprId(ExprId node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprId", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprId", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -690,20 +694,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExprNull(ExprNull node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprNull", Misc.getLineColumnOf(node.ctx), "null");
+        CodeTemplate tmpl = new CodeTemplate("ExprNull", Misc.UNKNOWN_LINE_COLUMN, "null");
 
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprUint(ExprUint node) {
-        CodeTemplate tmpl = new CodeTemplate("ExprUnit", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprUnit", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprFloat(ExprFloat node) {
-        CodeTemplate tmpl = new CodeTemplate("ExprFloat", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprFloat", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -751,28 +755,28 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExprSqlRowCount(ExprSqlRowCount node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprSqlRowCount", Misc.getLineColumnOf(node.ctx), "sql_rowcount[0]");
+        CodeTemplate tmpl = new CodeTemplate("ExprSqlRowCount", Misc.UNKNOWN_LINE_COLUMN, "sql_rowcount[0]");
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprStr(ExprStr node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprStr", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprStr", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprTime(ExprTime node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprTime", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprTime", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprTrue(ExprTrue node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprTrue", Misc.getLineColumnOf(node.ctx), "true");
+        CodeTemplate tmpl = new CodeTemplate("ExprTrue", Misc.UNKNOWN_LINE_COLUMN, "true");
         return applyCoercion(node.coercion, tmpl);
     }
 
@@ -803,28 +807,28 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExprTimestamp(ExprTimestamp node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprTimestamp", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprTimestamp", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprAutoParam(ExprAutoParam node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprAutoParam", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprAutoParam", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprSqlCode(ExprSqlCode node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprSqlCode", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprSqlCode", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
     @Override
     public CodeToResolve visitExprSqlErrm(ExprSqlErrm node) {
 
-        CodeTemplate tmpl = new CodeTemplate("ExprSqlCode", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        CodeTemplate tmpl = new CodeTemplate("ExprSqlCode", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
         return applyCoercion(node.coercion, tmpl);
     }
 
