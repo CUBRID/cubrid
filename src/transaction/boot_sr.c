@@ -3262,7 +3262,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   if (is_active_transaction_server ())
     {
       // for active transaction server, the log final needs to have the full connection
-      // infrastructure alive to fluhs the last of the log
+      // infrastructure alive to flush the last of the log
       ts_Gl->stop_outgoing_page_server_messages ();
       ts_Gl->disconnect_all_page_servers ();
       // the check for ATS is needed because finalize routine asserts that there

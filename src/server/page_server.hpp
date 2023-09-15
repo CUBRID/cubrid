@@ -229,9 +229,10 @@ class page_server
 	followee_connection_handler &operator= (followee_connection_handler &&) = delete;
 
 	const std::string get_channel_id () const;
-	void push_request (follower_to_followee_request reqid, std::string &&msg);
 
 	int request_log_pages (LOG_PAGEID start_pageid, int count, const std::vector<LOG_PAGE *> &log_pages_out);
+
+	void push_request (follower_to_followee_request reqid, std::string &&msg);
 
       private:
 	using followee_server_conn_t =
@@ -287,6 +288,7 @@ class page_server
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
     void disconnect_follower_server_async (const follower_connection_handler *conn);
+    \
     bool is_active_tran_server_connected () const;
 
     void start_catchup (const LOG_LSA catchup_lsa);
@@ -312,14 +314,15 @@ class page_server
     pts_mvcc_tracker m_pts_mvcc_tracker;
 
     followee_connection_handler_uptr_t m_followee_conn;
-    std::mutex m_followee_conn_mutex;
     std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
+
+    std::mutex m_followee_conn_mutex;
     std::mutex m_follower_conn_vec_mutex;
     std::condition_variable m_follower_conn_vec_cv;
     std::future<void> m_follower_disc_future;
     std::mutex m_follower_disc_mutex;
 
-    cubthread::entry_workpool *m_workpool; // a workpool to take some background jobs that needs a thread entry
+    cubthread::entry_workpool *m_worker_pool; // a worker_pool to take some background jobs that needs a thread entry
 };
 
 #endif // !_PAGE_SERVER_HPP_
