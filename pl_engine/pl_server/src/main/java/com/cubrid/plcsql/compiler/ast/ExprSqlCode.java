@@ -53,7 +53,8 @@ public class ExprSqlCode extends Expr {
             return String.format("e%d.code", exHandlerDepth);
         } else {
             assert exHandlerDepth == 0;
-            // SQLCODEs that do not belong to an exception handler evaluates to zero (see Oracle Spec.)
+            // SQLCODEs that do not belong to an exception handler evaluates to zero (see Oracle
+            // Spec.)
             return "0";
         }
     }

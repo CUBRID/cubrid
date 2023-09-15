@@ -50,8 +50,8 @@ import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
-import java.util.List;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
@@ -61,15 +61,16 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     //
 
-    private static final int[] UNKNOWN_LINE_COLUMN = new int[] { -1, -1 };
+    private static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
 
-    public static int[] getPlcLineColumn(List<CodeRangeMarker> crmList, Throwable thrown, String fileName) {
+    public static int[] getPlcLineColumn(
+            List<CodeRangeMarker> crmList, Throwable thrown, String fileName) {
 
         StackTraceElement[] stackTrace = thrown.getStackTrace();
 
         // get exception line number in the generated Java class
         int exceptionJavaLine = 0;
-        for (StackTraceElement e: stackTrace) {
+        for (StackTraceElement e : stackTrace) {
             if (e.getFileName().equals(fileName)) {
                 exceptionJavaLine = e.getLineNumber();
                 break;
@@ -81,12 +82,12 @@ public class SpLib {
 
         // find the innermost code range that contains the Java line number
         Stack<CodeRangeMarker> stack = new Stack<>();
-        for (CodeRangeMarker crm: crmList) {
+        for (CodeRangeMarker crm : crmList) {
 
             if (exceptionJavaLine < crm.javaLine) {
                 CodeRangeMarker innermost = stack.peek();
                 assert innermost != null;
-                return new int[] { innermost.plcLine, innermost.plcColumn };
+                return new int[] {innermost.plcLine, innermost.plcColumn};
             }
 
             if (crm.isBegin) {
@@ -106,7 +107,7 @@ public class SpLib {
 
         List<CodeRangeMarker> ret = new LinkedList<>();
 
-        int stackHeight = 0;    // to check the validity of generated code range markers
+        int stackHeight = 0; // to check the validity of generated code range markers
         int len = split.length;
         for (int i = 1; i < len; i++) {
 
@@ -119,8 +120,12 @@ public class SpLib {
                 stackHeight++;
                 String[] split2 = s.substring(1).split(",");
                 assert split2.length == 3;
-                ret.add(new CodeRangeMarker(true,
-                    Integer.parseInt(split2[0]), Integer.parseInt(split2[1]), Integer.parseInt(split2[2])));
+                ret.add(
+                        new CodeRangeMarker(
+                                true,
+                                Integer.parseInt(split2[0]),
+                                Integer.parseInt(split2[1]),
+                                Integer.parseInt(split2[2])));
             } else {
                 // ending marker of the form ')<java-line>'
                 stackHeight--;

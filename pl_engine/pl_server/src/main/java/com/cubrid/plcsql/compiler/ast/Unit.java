@@ -30,12 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.sql.*;
-import org.antlr.v4.runtime.ParserRuleContext;
-
 import java.util.Set;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 public class Unit extends AstNode {
 
@@ -105,7 +103,7 @@ public class Unit extends AstNode {
 
     public String[] getImportsArray() {
         if (imports.size() == 0) {
-            return new String[] { "// no imports" };
+            return new String[] {"// no imports"};
         } else {
             return imports.toArray(dummyStrArr);
         }

@@ -30,9 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.ArrayList;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class StmtCursorOpen extends Stmt {

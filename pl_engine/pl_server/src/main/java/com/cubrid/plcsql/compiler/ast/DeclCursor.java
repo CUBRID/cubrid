@@ -31,7 +31,6 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.Arrays;
 import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 

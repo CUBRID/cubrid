@@ -57,6 +57,6 @@ public class PlcsqlRuntimeError extends RuntimeException {
     // Private
     // --------------------------------------------
 
-    private int line = -1;;     // -1: unknown yet
+    private int line = -1;; // -1: unknown yet
     private int column = -1;
 }

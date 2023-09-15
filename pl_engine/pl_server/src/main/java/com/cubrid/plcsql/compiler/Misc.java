@@ -31,14 +31,12 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.NodeList;
-
 import java.io.PrintStream;
+import java.util.HashMap;
+import java.util.Map;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
-
-import java.util.Map;
-import java.util.HashMap;
 
 public class Misc {
 
@@ -185,10 +183,11 @@ public class Misc {
     // Private
     // ----------------------------------------------
 
-    private static final String[] smallIndents = new String[] {
-        makeIndent(0), makeIndent(1), makeIndent(2), makeIndent(3), makeIndent(4),
-        makeIndent(5), makeIndent(6), makeIndent(7), makeIndent(8), makeIndent(9)
-    };
+    private static final String[] smallIndents =
+            new String[] {
+                makeIndent(0), makeIndent(1), makeIndent(2), makeIndent(3), makeIndent(4),
+                makeIndent(5), makeIndent(6), makeIndent(7), makeIndent(8), makeIndent(9)
+            };
     private static final Map<Integer, String> bigIndents = new HashMap<Integer, String>();
 
     private static String makeIndent(int indentLevel) {
@@ -199,5 +198,4 @@ public class Misc {
 
         return sbuf.toString();
     }
-
 }
