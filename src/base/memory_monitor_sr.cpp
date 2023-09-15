@@ -599,15 +599,6 @@ namespace cubperf
   {
     add_stat (src, - (size));
     add_stat (dest, size);
-
-    /* If move is occurred from other modules to MMON_COMMON,
-     * it means that memory is returned to common structures for keeping.
-     * ex) pool, free list, reserved, etc..
-     * In this case, transaction's memory usage will be subtracted. */
-    if (dest == MMON_COMMON)
-      {
-	add_tran_stat (thread_p, - (size));
-      }
   }
 
   void memory_monitor::end_init_phase ()
@@ -757,4 +748,37 @@ void mmon_add_stat_with_tracking_tag (int64_t size)
 {
   THREAD_ENTRY *cur_thread_p = thread_get_thread_entry_info ();
   mmon_add_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+}
+
+void mmon_sub_stat_with_tracking_tag (int64_t size)
+{
+  THREAD_ENTRY *cur_thread_p = thread_get_thread_entry_info ();
+  mmon_sub_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+}
+
+void mmon_move_stat_with_tracking_tag (int64_t size, bool tag_is_src)
+{
+  THREAD_ENTRY *cur_thread_p = thread_get_thread_entry_info ();
+
+  /* WARNING: this function is only for base data structures that can use MMON_COMMON tag
+   * If move is occurred from other modules to MMON_COMMON,
+   * it means that memory is returned to common structures for keeping.
+   * ex) pool, free list, reserved, etc..
+   * In this case, transaction's memory usage will be subtracted. */
+  if (tag_is_src)
+    {
+      mmon_move_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, MMON_COMMON, size);
+      mmon_Gl->add_tran_stat (cur_thread_p, - (size));
+    }
+  else
+    {
+      mmon_move_stat (cur_thread_p, MMON_COMMON, cur_thread_p->mmon_tracking_tag, size);
+      mmon_Gl->add_tran_stat (cur_thread_p, size);
+    }
+}
+
+void mmon_resize_stat_with_tracking_tag (int64_t old_size, int64_t new_size)
+{
+  THREAD_ENTRY *cur_thread_p = thread_get_thread_entry_info ();
+  mmon_resize_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, old_size, new_size);
 }

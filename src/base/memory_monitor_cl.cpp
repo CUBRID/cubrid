@@ -152,7 +152,14 @@ mmon_print_tran_info (MMON_TRAN_INFO &tran_info)
 
   for (const auto &t_stat : tran_info.tran_stat)
     {
-      fprintf (stdout, "\t%14d | %17lu\n", t_stat.tranid, t_stat.cur_stat);
+      if (t_stat.cur_stat >= 0)
+	{
+	  fprintf (stdout, "\t%14d | %17lu\n", t_stat.tranid, t_stat.cur_stat);
+	}
+      else
+	{
+	  fprintf (stdout, "\t%14d | %17lu\n", t_stat.tranid, 0);
+	}
     }
   fprintf (stdout, "\n-----------------------------------------------------\n\n");
 }

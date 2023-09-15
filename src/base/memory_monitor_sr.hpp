@@ -68,4 +68,7 @@ void mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info);
 
 MMON_STAT_ID mmon_set_tracking_tag (MMON_STAT_ID new_tag);
 void mmon_add_stat_with_tracking_tag (int64_t size);
+void mmon_sub_stat_with_tracking_tag (int64_t size);
+void mmon_move_stat_with_tracking_tag (int64_t size, bool tag_is_src);
+void mmon_resize_stat_with_tracking_tag (int64_t old_size, int64_t new_size);
 #endif /* _MEMORY_MONITOR_SR_HPP_ */
