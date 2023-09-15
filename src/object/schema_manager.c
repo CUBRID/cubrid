@@ -5495,6 +5495,10 @@ sm_find_class_with_purpose (const char *name, bool for_update)
 	  char target_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 	  sm_get_synonym_target_name (synonym_mop, target_name, SM_MAX_IDENTIFIER_LENGTH);
 	  class_mop = locator_find_class_with_purpose (target_name, for_update);
+	  if (class_mop)
+	    {
+	      er_clear ();
+	    }
 	}
       else
 	{
