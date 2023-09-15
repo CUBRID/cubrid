@@ -300,7 +300,11 @@ int get_maxim_extra_thread_count_by_server_type ()
       // TODO: there are now two such thread pools on the page server; a future refactoring will remove one
       server_request_responder_thread_count *= 2;
 
-      return replication_parallel_thread_count + server_request_responder_thread_count;
+      // TODO: there is a worker pool to deal with background tasks that need cubthread::entry: page_server::m_worker_pool
+      // a future refactoring will make it shared with request responders above.
+      const int shared_worker_pool_thread_count = 4;
+
+      return replication_parallel_thread_count + server_request_responder_thread_count + shared_worker_pool_thread_count;
     }
   // NOTE: the same parallel replication mechanism is also used for active transaction server recovery mechanism;
   // but, because that one is transient and only occuring before any other thread infrastructure is instantiated in

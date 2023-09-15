@@ -27,6 +27,7 @@
 #include "tran_page_requests.hpp"
 #include "async_disconnect_handler.hpp"
 
+#include <future>
 #include <memory>
 
 /* Sequence diagram of server-server communication:
@@ -82,9 +83,7 @@
 class page_server
 {
   public:
-    page_server (const char *db_name)
-      : m_server_name { db_name }
-    { }
+    page_server (const char *db_name);
     page_server (const page_server &) = delete;
     page_server (page_server &&) = delete;
 
@@ -212,9 +211,6 @@ class page_server
     class followee_connection_handler
     {
       public:
-	using followee_server_conn_t =
-		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
-
 	followee_connection_handler () = delete;
 	followee_connection_handler (cubcomm::channel &&chn, page_server &ps);
 
@@ -224,10 +220,14 @@ class page_server
 	followee_connection_handler &operator= (const followee_connection_handler &) = delete;
 	followee_connection_handler &operator= (followee_connection_handler &&) = delete;
 
+	int request_log_pages (LOG_PAGEID start_pageid, int count, const std::vector<LOG_PAGE *> &log_pages_out);
+
+      private:
+	using followee_server_conn_t =
+		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
+
 	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
-
-	int request_log_pages (LOG_PAGEID start_pageid, int count, std::vector<LOG_PAGE *> &log_pages_out);
 
       private:
 	page_server &m_ps;
@@ -262,7 +262,7 @@ class page_server
 	std::unordered_map<std::string, MVCCID> m_pts_oldest_active_mvccids;
 	std::mutex m_pts_oldest_active_mvccids_mtx;
     };
-  private:
+
     using tran_server_connection_handler_uptr_t = std::unique_ptr<tran_server_connection_handler>;
     using follower_connection_handler_uptr_t = std::unique_ptr<follower_connection_handler>;
     using followee_connection_handler_uptr_t = std::unique_ptr<followee_connection_handler>;
@@ -273,7 +273,11 @@ class page_server
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
+    void disconnect_followee_page_server (bool with_disc_msg);
     bool is_active_tran_server_connected () const;
+
+    void start_catchup (const LOG_LSA catchup_lsa);
+    void execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa);
 
     tran_server_responder_t &get_tran_server_responder ();
     follower_responder_t &get_follower_responder ();
@@ -296,6 +300,9 @@ class page_server
 
     followee_connection_handler_uptr_t m_followee_conn;
     std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
+    std::mutex m_followee_conn_mutex;
+
+    cubthread::entry_workpool *m_worker_pool; // a worker_pool to take some background jobs that needs a thread entry
 };
 
 #endif // !_PAGE_SERVER_HPP_

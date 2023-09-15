@@ -30,12 +30,23 @@
 #include "page_buffer.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
+#include "thread_manager.hpp"
 #include "vpid_utilities.hpp"
 
 #include <cassert>
 #include <cstring>
 #include <functional>
 #include <thread>
+
+page_server::page_server (const char *db_name)
+  : m_server_name { db_name }
+{
+  const auto thread_count = 4; // Arbitrary chosen
+  const auto task_max_count = thread_count * 4;
+
+  m_worker_pool = cubthread::get_manager ()->create_worker_pool (thread_count, task_max_count, "page_server_workers",
+		  nullptr, 1, false);
+}
 
 page_server::~page_server ()
 {
@@ -48,6 +59,9 @@ page_server::~page_server ()
   assert (m_passive_tran_server_conn.size () == 0);
 
   m_async_disconnect_handler.terminate ();
+
+  cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
+  assert (m_worker_pool == nullptr);
 }
 
 page_server::tran_server_connection_handler::tran_server_connection_handler (cubcomm::channel &&chn,
@@ -197,7 +211,7 @@ void
 page_server::tran_server_connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   auto payload = a_sp.pull_payload ();
-  cubpacking::unpacker unpacker { payload.c_str (), payload.size ()};
+  cubpacking::unpacker unpacker { payload.c_str (), payload.size () };
 
   std::string host;
   int32_t port;
@@ -207,78 +221,30 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   unpacker.unpack_int (port);
   cublog::lsa_utils::unpack (unpacker, catchup_lsa);
 
-  _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] Start catching up with the follower (%s:%d), until LSA = (%lld|%d)\n",
+  _er_log_debug (ARG_FILE_LINE,
+		 "[CATCH_UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
 		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
   if (port == -1)
     {
-      return; // TODO: It means that the ATS is booting up, it will be set properly after ATS recovery is implemented.
+      // TODO: It means that the ATS is booting up.
+      // it will be set properly after ATS recovery is implemented.
+      return;
     }
 
-  // TODO: A thread will take the catch-up including establishing connection to avoid blocking ATS->PS reqeusts.
-  // All the below here will be taken up.
-  {
-    m_ps.connect_to_followee_page_server (std::move (host), port);
+  assert (!catchup_lsa.is_null ());
+  assert (!log_Gl.hdr.append_lsa.is_null ());
+  assert (catchup_lsa >= log_Gl.hdr.append_lsa);
 
-    assert (!log_Gl.hdr.append_lsa.is_null ());
-    assert (!catchup_lsa.is_null ());
-    assert (catchup_lsa >= log_Gl.hdr.append_lsa);
+  if (log_Gl.hdr.append_lsa == catchup_lsa)
+    {
+      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] There is nothing to catch up.\n");
+      return; // TODO the cold-start case. No need to catch up. Just send a catchup_done msg to the ATS
+    }
 
-    if (log_Gl.hdr.append_lsa == catchup_lsa)
-      {
-	_er_log_debug (ARG_FILE_LINE, "[CATCH-UP] There is nothing to catch up.\n");
-	return; // TODO the cold-start case. No need to catch up.
-      }
-
-    constexpr int MAX_PAGE_REQUEST_CNT_AT_ONCE = 10; // Arbitrarily chosen
-    const LOG_PAGEID start_pageid = log_Gl.hdr.append_lsa.pageid;
-    const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
-    const size_t total_page_count = end_pageid - start_pageid + 1;
-
-    _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up pages range from %lld to %lld, count = %lld.\n",
-		   start_pageid, end_pageid, total_page_count);
-
-    const int page_cnt_in_buffer = (int) std::min (total_page_count, (size_t) MAX_PAGE_REQUEST_CNT_AT_ONCE);
-    const size_t buffer_size_in_total = page_cnt_in_buffer * LOG_PAGESIZE + MAX_ALIGNMENT;
-
-    auto log_pgbuf_buffer = std::unique_ptr<char []> { new char[buffer_size_in_total] };
-    char *const aligned_log_pgbuf = PTR_ALIGN (log_pgbuf_buffer.get (), MAX_ALIGNMENT);
-    std::vector<LOG_PAGE *> log_pgptr_vec;
-    char *log_pgptr = aligned_log_pgbuf;
-
-    for (int i = 0; i < page_cnt_in_buffer; i++)
-      {
-	log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf + i * LOG_PAGESIZE));
-      }
-
-    LOG_PAGEID request_start_pageid = start_pageid;
-    size_t remaining_page_cnt = total_page_count;
-    while (remaining_page_cnt > 0)
-      {
-	const int request_page_cnt = (int) std::min ((size_t) page_cnt_in_buffer, remaining_page_cnt);
-	// TODO request next log pages asynchronously with std::async
-	const int error_code = m_ps.m_followee_conn->request_log_pages (request_start_pageid, request_page_cnt, log_pgptr_vec);
-	if (error_code != NO_ERROR)
-	  {
-	    /* There are two kinds of erorrs either from client-side or server-side.
-	     * client-side error: it fails to send or receive.
-	     * server-side error: the follwee fails to fetch log pages. For example, due to
-	     *  - the followee PS amy truncate some log pages requested.
-	     *  - some requested pages are corrupted
-	     *  - or something
-	     * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
-	     */
-	    assert_release (false);
-	  }
-
-	remaining_page_cnt -= request_page_cnt;
-	request_start_pageid += request_page_cnt;
-
-	// TODO append received log pages to the log buffer
-      }
-
-    _er_log_debug (ARG_FILE_LINE, "[CATCH-UP] The catch-up completes, ranging from %lld to %lld, count = %lld.\n",
-		   start_pageid, end_pageid, total_page_count);
-  }
+  // Establish a connection with the PS to catch up with, and start the cathup asynchronously.
+  // The connection will be destoryed at the end of the catch-up.
+  m_ps.connect_to_followee_page_server (std::move (host), port);
+  m_ps.start_catchup (catchup_lsa);
 }
 
 void
@@ -563,12 +529,15 @@ page_server::followee_connection_handler::send_receive (follower_to_followee_req
 
 int
 page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pageid, int count,
-    std::vector<LOG_PAGE *> &log_pages_out)
+    const std::vector<LOG_PAGE *> &log_pages_out)
 {
   int error_code = NO_ERROR;
   std::string response_message;
   cubpacking::packer payload_packer;
   size_t size = 0;
+
+  assert (0 < count);
+  assert ((size_t) count <= log_pages_out.size ());
 
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
 
@@ -942,6 +911,130 @@ page_server::disconnect_all_tran_servers ()
   m_async_disconnect_handler.terminate ();
 
   er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: All connections have been disconnected.\n");
+}
+
+void
+page_server::disconnect_followee_page_server (const bool with_disc_msg)
+{
+  auto lockg = std::lock_guard <std::mutex> (m_followee_conn_mutex);
+  if (m_followee_conn != nullptr)
+    {
+      if (with_disc_msg)
+	{
+	  //TODO send the disconnect msg
+	}
+      m_followee_conn.reset (nullptr);
+
+      er_log_debug (ARG_FILE_LINE, "The followee page server has been disconnected.\n");
+    }
+}
+
+void
+page_server::start_catchup (const LOG_LSA catchup_lsa)
+{
+  assert (m_followee_conn != nullptr);
+  auto catchup_func = std::bind (&page_server::execute_catchup, std::ref (*this), std::placeholders::_1, catchup_lsa);
+  cubthread::get_manager ()->push_task (m_worker_pool, new cubthread::entry_callable_task (catchup_func));
+}
+
+void
+page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa)
+{
+  // Initialize variables for buffers
+  constexpr int PAGE_CNT_IN_BUFFER = 10;       // Arbitrarily chosen
+  const size_t buffer_size_in_total = PAGE_CNT_IN_BUFFER * LOG_PAGESIZE + MAX_ALIGNMENT;
+  auto log_pgbuf_buffer1 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+  auto log_pgbuf_buffer2 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+  char *const aligned_log_pgbuf_buffer1 = PTR_ALIGN (log_pgbuf_buffer1.get (), MAX_ALIGNMENT);
+  char *const aligned_log_pgbuf_buffer2 = PTR_ALIGN (log_pgbuf_buffer2.get (), MAX_ALIGNMENT);
+
+  auto log_pgptr_vec = std::vector<LOG_PAGE *> {};
+  auto log_pgptr_recv_vec = std::vector<LOG_PAGE *> {};
+
+  for (int i = 0; i < PAGE_CNT_IN_BUFFER; i++)
+    {
+      log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer1 + i * LOG_PAGESIZE));
+      log_pgptr_recv_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer2 + i * LOG_PAGESIZE));
+    }
+
+  const LOG_PAGEID start_pageid = log_Gl.hdr.append_lsa.pageid;
+  const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
+  const size_t total_page_count = end_pageid - start_pageid + 1;
+
+  // Request pages to the followee
+  auto request_pages_to_buffer = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t request_page_cnt) -> int
+  {
+    auto lockg = std::lock_guard <std::mutex> (m_followee_conn_mutex);
+    if (m_followee_conn == nullptr)
+      {
+	// It has been disconnected somewhere, because of an error or server shutdown.
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+	return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+      }
+    const int error_code = m_followee_conn->request_log_pages (start_pageid, request_page_cnt, log_pgptr_recv_vec);
+    if (error_code != NO_ERROR)
+      {
+	/* There are two kinds of errors either from client-side or server-side.
+	 * client-side error: it fails to send or receive.
+	 * server-side error: the followee fails to fetch log pages. For example, due to
+	 *  - the followee PS any truncate some log pages requested.
+	 *  - some requested pages are corrupted
+	 *  - or something
+	 * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
+	 */
+	assert_release (false);
+      }
+    return error_code;
+  };
+
+  _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
+		 start_pageid, end_pageid, total_page_count);
+
+  LOG_PAGEID request_start_pageid = start_pageid;
+  size_t remaining_page_cnt = total_page_count;
+  size_t request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
+  auto req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
+  int error = NO_ERROR;
+  while (remaining_page_cnt > 0)
+    {
+      error = req_future.get (); // waits until the previous requests are replied
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+
+      remaining_page_cnt -= request_page_cnt;
+      request_start_pageid += request_page_cnt;
+
+      log_pgptr_vec.swap (log_pgptr_recv_vec);
+
+      if (remaining_page_cnt > 0)
+	{
+	  request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
+	  req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
+	}
+      // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
+    }
+
+  if (error == NO_ERROR)
+    {
+      assert (remaining_page_cnt == 0);
+      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
+		     start_pageid, end_pageid, total_page_count);
+      // TODO: send CATCHUP_DONE_MSG to the ATS
+      // TODO: start appneding log prior nodes from the ATS.
+
+      constexpr bool with_disc_msg = true;
+      disconnect_followee_page_server (with_disc_msg);
+    }
+  else
+    {
+      assert (remaining_page_cnt > 0);
+      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
+		     error, remaining_page_cnt, total_page_count);
+      constexpr bool with_disc_msg = false;
+      disconnect_followee_page_server (with_disc_msg);
+    }
 }
 
 bool
