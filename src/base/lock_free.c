@@ -30,6 +30,9 @@
 #include "error_manager.h"
 #include "error_code.h"
 #include "memory_alloc.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* defined(SERVER_MODE) */
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -1895,6 +1898,9 @@ lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_s
     }
   else
     {
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (void *) * hash_size);
+#endif
       /* zero all */
       memset (table->buckets, 0, sizeof (void *) * hash_size);
     }
@@ -1903,12 +1909,18 @@ lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_s
   table->backbuffer = (void **) malloc (sizeof (void *) * hash_size);
   if (table->backbuffer == NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (void *) * hash_size);
+#endif
       free (table->buckets);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (void *) * hash_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   else
     {
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (void *) * hash_size);
+#endif
       int i;
 
       /* put backbuffer in a "locked" state */
@@ -1960,6 +1972,9 @@ lf_hash_destroy (LF_HASH_TABLE * table)
 	    }
 	}
 
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (void *) * table->hash_size);
+#endif
       /* free memory */
       free (table->buckets);
       table->buckets = NULL;
@@ -1968,6 +1983,9 @@ lf_hash_destroy (LF_HASH_TABLE * table)
   pthread_mutex_destroy (&table->backbuffer_mutex);
   if (table->backbuffer)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (void *) * table->hash_size);
+#endif
       free (table->backbuffer);
       table->backbuffer = NULL;
     }

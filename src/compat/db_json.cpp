@@ -67,6 +67,9 @@
 #include "query_dump.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
 #include <algorithm>
 #include <sstream>
@@ -789,6 +792,9 @@ JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw)
     m_validator (NULL),
     m_is_loaded (false)
 {
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (strlen (schema_raw) + 1);
+#endif
   m_schema_raw = strdup (schema_raw);
   /*
    * schema_raw_hash_code = std::hash<std::string>{}(std::string(schema_raw));
@@ -800,18 +806,27 @@ JSON_VALIDATOR::~JSON_VALIDATOR (void)
 {
   if (m_schema != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (rapidjson::SchemaDocument));
+#endif
       delete m_schema;
       m_schema = NULL;
     }
 
   if (m_validator != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (rapidjson::SchemaValidator));
+#endif
       delete m_validator;
       m_validator = NULL;
     }
 
   if (m_schema_raw != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (m_schema_raw) + 1);
+#endif
       free (m_schema_raw);
       m_schema_raw = NULL;
     }
@@ -856,6 +871,12 @@ JSON_VALIDATOR::JSON_VALIDATOR (const JSON_VALIDATOR &copy)
   else
     {
       m_schema_raw = strdup (copy.m_schema_raw);
+#ifdef SERVER_MODE
+      if (m_schema_raw != NULL)
+	{
+	  mmon_add_stat_with_tracking_tag (strlen (m_schema_raw) + 1);
+	}
+#endif
 
       /* TODO: is this safe? */
       m_document.CopyFrom (copy.m_document, m_document.GetAllocator ());
@@ -881,6 +902,10 @@ JSON_VALIDATOR::generate_schema_validator (void)
 {
   m_schema = new rapidjson::SchemaDocument (m_document);
   m_validator = new rapidjson::SchemaValidator (*m_schema);
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (rapidjson::SchemaDocument) +
+				   sizeof (rapidjson::SchemaValidator));
+#endif
 }
 
 /*
@@ -2332,6 +2357,9 @@ JSON_DOC *
 db_json_allocate_doc ()
 {
   JSON_DOC *doc = new JSON_DOC ();
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (JSON_DOC));
+#endif
   return doc;
 }
 
@@ -2339,6 +2367,9 @@ JSON_DOC *
 db_json_make_json_object ()
 {
   JSON_DOC *doc = new JSON_DOC ();
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (JSON_DOC));
+#endif
   doc->SetObject ();
   return doc;
 }
@@ -2347,6 +2378,9 @@ JSON_DOC *
 db_json_make_json_array ()
 {
   JSON_DOC *doc = new JSON_DOC();
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (JSON_DOC));
+#endif
   doc->SetArray ();
   return doc;
 }
@@ -2354,6 +2388,9 @@ db_json_make_json_array ()
 void
 db_json_delete_doc (JSON_DOC *&doc)
 {
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (JSON_DOC));
+#endif
   delete doc;
   doc = NULL;
 }
@@ -2366,10 +2403,16 @@ db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR *&validator)
   assert (validator == NULL);
 
   validator = new JSON_VALIDATOR (json_schema_raw);
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (JSON_VALIDATOR));
+#endif
 
   error_code = validator->load ();
   if (error_code != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (JSON_VALIDATOR));
+#endif
       delete validator;
       validator = NULL;
       return error_code;
@@ -2381,6 +2424,9 @@ db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR *&validator)
 JSON_VALIDATOR *
 db_json_copy_validator (JSON_VALIDATOR *validator)
 {
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (JSON_VALIDATOR));
+#endif
   return new JSON_VALIDATOR (*validator);
 }
 
@@ -2393,6 +2439,9 @@ db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc)
 void
 db_json_delete_validator (JSON_VALIDATOR *&validator)
 {
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (JSON_VALIDATOR));;
+#endif
   delete validator;
   validator = NULL;
 }

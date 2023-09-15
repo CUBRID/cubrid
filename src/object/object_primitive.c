@@ -54,6 +54,8 @@
 #include "virtual_object.h"
 #include "transform_cl.h"
 #include "dbi.h"
+#else /* defined (SERVER_MODE) */
+#include "memory_monitor_sr.hpp"
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
@@ -1957,6 +1959,11 @@ pr_clear_value (DB_VALUE * value)
 	    }
 	  if (value->data.json.schema_raw != NULL)
 	    {
+#ifdef SERVER_MODE
+              // *INDENT-OFF*
+              mmon_sub_stat_with_tracking_tag (strlen (const_cast<char *>(value->data.json.schema_raw)) + 1);
+              // *INDENT-ON*
+#endif
 	      db_private_free (NULL, const_cast < char *>(value->data.json.schema_raw));
 	      value->data.json.schema_raw = NULL;
 	    }
@@ -1988,6 +1995,9 @@ pr_clear_value (DB_VALUE * value)
 	{
 	  if (value->need_clear)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (value->data.midxkey.size);
+#endif
 	      db_private_free_and_init (NULL, midxkey_buf);
 	    }
 	  /*
@@ -2009,6 +2019,9 @@ pr_clear_value (DB_VALUE * value)
 	{
 	  if (value->need_clear)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (value->data.ch.medium.size);
+#endif
 	      // here is safe to const_cast since the ownership was handed over by setting need_clear flag to true
 	      char *temp = CONST_CAST (char *, char_medium_buf);
 	      db_private_free_and_init (NULL, temp);
@@ -2028,6 +2041,9 @@ pr_clear_value (DB_VALUE * value)
 	    {
 	      if (value->data.ch.info.compressed_need_clear != 0)
 		{
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (value->data.ch.medium.compressed_size);
+#endif
 		  // here is safe to const_cast since the ownership was handed over by setting need_clear flag to true
 		  db_private_free_and_init (NULL, compressed_str);
 		}
@@ -2042,6 +2058,9 @@ pr_clear_value (DB_VALUE * value)
 	    {
 	      if (value->data.ch.info.compressed_need_clear != 0)
 		{
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (value->data.ch.medium.compressed_size);
+#endif
 		  db_private_free_and_init (NULL, compressed_str);
 		}
 	    }
@@ -2064,6 +2083,9 @@ pr_clear_value (DB_VALUE * value)
 	  char *temp = CONST_CAST (char *, db_get_enum_string (value));
 	  if (temp != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (value->data.enumeration.str_val.medium.size);
+#endif
 	      db_private_free_and_init (NULL, temp);
 	    }
 	}
@@ -6925,6 +6947,9 @@ mr_setval_set_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYP
 		    }
 		  else
 		    {
+#ifdef SERVER_MODE
+		      mmon_add_stat_with_tracking_tag (src_ref->disk_size);
+#endif
 		      ref->need_clear = true;
 		      ref->disk_size = src_ref->disk_size;
 		      ref->disk_domain = src_ref->disk_domain;

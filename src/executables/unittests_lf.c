@@ -22,6 +22,9 @@
 
 #include "porting.h"
 #include "lock_free.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif
 #include <stdio.h>
 #include <pthread.h>
 #include <time.h>
@@ -76,6 +79,103 @@ struct xentry
 using my_hashmap = lf_hash_table_cpp<int, xentry>;
 using my_hashmap_iterator = my_hashmap::iterator;
 // *INDENT-ON*
+
+/* fake functions */
+int
+mmon_initialize (const char *server_name)
+{
+  return 0;
+}
+
+void
+mmon_notify_server_start ()
+{
+  return;
+}
+
+void
+mmon_finalize ()
+{
+  return;
+}
+
+void
+mmon_add_stat (THREAD_ENTRY * thread_p, MMON_STAT_ID stat_id, int64_t size)
+{
+  return;
+}
+
+void
+mmon_sub_stat (THREAD_ENTRY * thread_p, MMON_STAT_ID stat_id, int64_t size)
+{
+  return;
+}
+
+void
+mmon_move_stat (THREAD_ENTRY * thread_p, MMON_STAT_ID src, MMON_STAT_ID dest, int64_t size)
+{
+  return;
+}
+
+void
+mmon_resize_stat (THREAD_ENTRY * thread_p, MMON_STAT_ID stat_id, int64_t old_size, int64_t new_size)
+{
+  return;
+}
+
+void
+mmon_aggregate_server_info (MMON_SERVER_INFO & info)
+{
+  return;
+}
+
+void
+mmon_aggregate_module_info (int module_index, std::vector < MMON_MODULE_INFO > &info)
+{
+  return;
+}
+
+void
+mmon_aggregate_module_info_summary (std::vector < MMON_MODULE_INFO > &info)
+{
+  return;
+}
+
+void
+mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO & info)
+{
+  return;
+}
+
+MMON_STAT_ID
+mmon_set_tracking_tag (MMON_STAT_ID new_tag)
+{
+  return MMON_STAT_LAST;
+}
+
+void
+mmon_add_stat_with_tracking_tag (int64_t size)
+{
+  return;
+}
+
+void
+mmon_sub_stat_with_tracking_tag (int64_t size)
+{
+  return;
+}
+
+void
+mmon_move_stat_with_tracking_tag (int64_t size, bool tag_is_src)
+{
+  return;
+}
+
+void
+mmon_resize_stat_with_tracking_tag (int64_t old_size, int64_t new_size)
+{
+  return;
+}
 
 /* entry manipulation functions */
 static void *

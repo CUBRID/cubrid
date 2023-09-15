@@ -64,6 +64,8 @@
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
+#else /* defined (SERVER_MODE) */
+#include "memory_monitor_sr.hpp"
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
@@ -18288,11 +18290,17 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lo
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return error_status;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (max_length + 1);
+#endif
       if (max_length > 0)
 	{
 	  error_status = db_elo_read (elo, 0, cs, max_length, NULL);
 	  if (error_status == ER_ES_GENERAL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (max_length + 1);
+#endif
 	      /* by the spec, some lob handling functions treats the read error as a NULL value */
 	      db_make_null (result_value);
 	      db_private_free_and_init (NULL, cs);
@@ -18303,6 +18311,9 @@ lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lo
 	    }
 	  else if (error_status < 0)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (max_length + 1);
+#endif
 	      db_private_free_and_init (NULL, cs);
 	      return error_status;
 	    }

@@ -27,6 +27,9 @@
 #include "rb_tree.h"
 #include "string_buffer.hpp"
 #include "vacuum.h"
+#if defined (SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif
 
 #include <cstring>  // for std::strcpy
 //
@@ -188,6 +191,9 @@ xtx_add_lob_locator (cubthread::entry *thread_p, const char *locator, LOB_LOCATO
 
   entry = new lob_locator_entry ();
   savept = new lob_savepoint_entry ();
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (lob_locator_entry) + sizeof (lob_savepoint_entry));
+#endif
 
   entry->top = savept;
   entry->m_key = lob_locator_key (locator);
@@ -271,6 +277,9 @@ xtx_change_state_of_locator (cubthread::entry *thread_p, const char *locator, co
       if (LSA_LT (&entry->top->savept_lsa, &last_lsa))
 	{
 	  lob_savepoint_entry *savept = new lob_savepoint_entry ();
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (sizeof (lob_savepoint_entry));
+#endif
 
 	  /* copy structure (avoid redundant memory copy) */
 	  savept->state = entry->top->state;
@@ -361,9 +370,15 @@ lob_locator_free (lob_locator_entry *&entry)
 
       savept = entry->top;
       entry->top = savept->prev;
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (lob_savepoint_entry));
+#endif
       delete savept;
     }
 
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (lob_locator_entry));
+#endif
   delete entry;
   entry = NULL;
 }

@@ -56,6 +56,9 @@
 #include "intl_support.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* defined (SERVER_MODE) */
 
 #if __WORDSIZE == 32
 #define GET_PTR_FOR_HASH(key) ((unsigned int)(key))
@@ -941,6 +944,9 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
       free_and_init (ht);
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (size);
+#endif
 
   ht->hash_func = hash_func;
   ht->cmp_func = cmp_func;
@@ -1140,7 +1146,9 @@ void
 mht_destroy (MHT_TABLE * ht)
 {
   assert (ht != NULL);
-
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (ht->size + DB_SIZEOF (MHT_TABLE));
+#endif
   free_and_init (ht->table);
 
   /* release hash table entry storage */
@@ -1683,6 +1691,9 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
       ht->nprealloc_entries--;
       hentry = ht->prealloc_entries;
       ht->prealloc_entries = ht->prealloc_entries->next;
+#ifdef SERVER_MODE
+      mmon_move_stat_with_tracking_tag (DB_SIZEOF (HENTRY), false);
+#endif
     }
   else
     {
@@ -1691,6 +1702,9 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	{
 	  return NULL;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (DB_SIZEOF (HENTRY));
+#endif
     }
 
   if (ht->build_lru_list)
@@ -2088,6 +2102,9 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 	  ht->nprealloc_entries++;
 	  hentry->next = ht->prealloc_entries;
 	  ht->prealloc_entries = hentry;
+#ifdef SERVER_MODE
+	  mmon_move_stat_with_tracking_tag (DB_SIZEOF (HENTRY), true);
+#endif
 
 	  return NO_ERROR;
 	}
@@ -2206,6 +2223,9 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
 	  ht->nprealloc_entries++;
 	  hentry->next = ht->prealloc_entries;
 	  ht->prealloc_entries = hentry;
+#ifdef SERVER_MODE
+	  mmon_move_stat_with_tracking_tag (DB_SIZEOF (HENTRY), true);
+#endif
 
 	  return NO_ERROR;
 	}

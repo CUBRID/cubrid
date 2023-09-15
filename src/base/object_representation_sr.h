@@ -171,6 +171,9 @@ struct or_index
 {
   OR_INDEX *next;		/* obsolete : use array for accessing elements */
   OR_ATTRIBUTE **atts;		/* Array of associated attributes */
+#ifdef SERVER_MODE
+  int att_cnt;			/* size of atts for memory monitoring */
+#endif
   int *asc_desc;		/* array of ascending / descending */
   int *attrs_prefix_length;	/* prefix length */
   char *btname;			/* index( or constraint) name */

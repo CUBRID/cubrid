@@ -23,6 +23,9 @@
 #include "mvcc_active_tran.hpp"
 
 #include "log_impl.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
 #include <cstring>
 
@@ -55,11 +58,19 @@ mvcc_active_tran::initialize ()
   m_long_tran_mvccids = new MVCCID[long_tran_max_size ()] ();
   m_long_tran_mvccids_length = 0;
   m_initialized = true;
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (unit_type) * BITAREA_MAX_SIZE +
+				   sizeof (UINT64) * long_tran_max_size ());
+#endif
 }
 
 void
 mvcc_active_tran::finalize ()
 {
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (unit_type) * BITAREA_MAX_SIZE +
+				   sizeof (UINT64) * long_tran_max_size ());
+#endif
   delete [] m_bit_area;
   m_bit_area = NULL;
 

@@ -41,6 +41,9 @@
 #include "byte_order.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#if defined (SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
 #if defined (__cplusplus)
 #include <cmath>
@@ -3623,6 +3626,9 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	    assert (er_errid () != NO_ERROR);
 	    return er_errid ();
 	  }
+#ifdef SERVER_MODE
+	mmon_add_stat_with_tracking_tag (size + 1);
+#endif
 
 	strcpy (return_string, str_buf);
 	type = DB_VALUE_DOMAIN_TYPE (dest);

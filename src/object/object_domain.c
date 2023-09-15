@@ -56,6 +56,8 @@
 #include "locator_cl.h"
 #include "object_template.h"
 #include "dbi.h"
+#else /* SERVER_MODE */
+#include "memory_monitor_sr.hpp"
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
@@ -805,10 +807,16 @@ tp_domain_clear_enumeration (DB_ENUMERATION * enumeration)
     {
       if (DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]) != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i])) + 1);
+#endif
 	  free_and_init (DB_GET_ENUM_ELEM_STRING (&enumeration->elements[i]));
 	}
     }
 
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (DB_ENUM_ELEMENT) * enumeration->count);
+#endif
   free_and_init (enumeration->elements);
 }
 
@@ -1201,6 +1209,9 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, src->count * sizeof (DB_ENUM_ELEMENT));
       return ER_FAILED;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (src->count * sizeof (DB_ENUM_ELEMENT));
+#endif
 
   for (i = 0; i < src->count; i++)
     {
@@ -1219,6 +1230,9 @@ tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error_return;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (DB_GET_ENUM_ELEM_STRING_SIZE (src_elem) + 1);
+#endif
 	  memcpy (dest_str, DB_GET_ENUM_ELEM_STRING (src_elem), DB_GET_ENUM_ELEM_STRING_SIZE (src_elem));
 	  dest_str[DB_GET_ENUM_ELEM_STRING_SIZE (src_elem)] = 0;
 	  DB_SET_ENUM_ELEM_STRING (dest_elem, dest_str);
@@ -1240,9 +1254,15 @@ error_return:
 	{
 	  if (DB_GET_ENUM_ELEM_STRING (&dest->elements[i]) != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (DB_GET_ENUM_ELEM_STRING_SIZE (&dest->elements[i]));
+#endif
 	      free_and_init (DB_GET_ENUM_ELEM_STRING (&dest->elements[i]));
 	    }
 	}
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (dest->count * sizeof (DB_ENUM_ELEMENT));
+#endif
       free_and_init (dest->elements);
     }
 
@@ -7189,6 +7209,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_JSON_STRING:
 	  db_make_string_copy (&src_replacement, db_json_get_string_from_document (src_doc));
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (src_replacement.data.ch.medium.size);
+#endif
 	  break;
 	default:
 	  use_replacement = false;
@@ -9193,9 +9216,15 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    bit_char_string = (char *) db_private_alloc (NULL, dst_size + 1);
 	    if (bit_char_string)
 	      {
+#ifdef SERVER_MODE
+		mmon_add_stat_with_tracking_tag (dst_size + 1);
+#endif
 		if (qstr_hex_to_bin (bit_char_string, dst_size, db_get_string (src), src_size) != src_size)
 		  {
 		    status = DOMAIN_ERROR;
+#ifdef SERVER_MODE
+		    mmon_sub_stat_with_tracking_tag (dst_size + 1);
+#endif
 		    db_private_free_and_init (NULL, bit_char_string);
 		  }
 		else
@@ -9360,6 +9389,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		status = DOMAIN_ERROR;
 		break;
 	      }
+#ifdef SERVER_MODE
+	    mmon_add_stat_with_tracking_tag (max_size);
+#endif
 
 	    if (original_type == DB_TYPE_BIGINT)
 	      {
@@ -9380,6 +9412,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		    && db_value_precision (target) < (int) strlen (new_string))
 		  {
 		    status = DOMAIN_OVERFLOW;
+#ifdef SERVER_MODE
+		    mmon_sub_stat_with_tracking_tag (max_size);
+#endif
 		    db_private_free_and_init (NULL, new_string);
 		  }
 		else
@@ -9391,6 +9426,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    else
 	      {
 		status = DOMAIN_ERROR;
+#ifdef SERVER_MODE
+		mmon_sub_stat_with_tracking_tag (max_size);
+#endif
 		db_private_free_and_init (NULL, new_string);
 	      }
 	  }
@@ -9444,6 +9482,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		status = DOMAIN_ERROR;
 		break;
 	      }
+#ifdef SERVER_MODE
+	    mmon_add_stat_with_tracking_tag (max_size);
+#endif
 
 	    strcpy (new_string, str_buf);
 
@@ -9451,6 +9492,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		&& db_value_precision (target) < max_size - 1)
 	      {
 		status = DOMAIN_OVERFLOW;
+#ifdef SERVER_MODE
+		mmon_sub_stat_with_tracking_tag (max_size);
+#endif
 		db_private_free_and_init (NULL, new_string);
 	      }
 	    else
@@ -9473,6 +9517,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		status = DOMAIN_ERROR;
 		break;
 	      }
+#ifdef SERVER_MODE
+	    mmon_add_stat_with_tracking_tag (max_size);
+#endif
 
 	    snprintf (new_string, max_size - 1, "%s%.*f", lang_currency_symbol (db_get_monetary (src)->type), 2,
 		      db_get_monetary (src)->amount);
@@ -9492,6 +9539,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		&& db_value_precision (target) < (int) strlen (new_string))
 	      {
 		status = DOMAIN_OVERFLOW;
+#ifdef SERVER_MODE
+		mmon_sub_stat_with_tracking_tag (max_size);
+#endif
 		db_private_free_and_init (NULL, new_string);
 	      }
 	    else
@@ -9519,6 +9569,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		status = DOMAIN_ERROR;
 		break;
 	      }
+#ifdef SERVER_MODE
+	    mmon_add_stat_with_tracking_tag (max_size);
+#endif
 
 	    err = NO_ERROR;
 
@@ -9575,6 +9628,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		&& db_value_precision (target) < (int) strlen (new_string))
 	      {
 		status = DOMAIN_OVERFLOW;
+#ifdef SERVER_MODE
+		mmon_sub_stat_with_tracking_tag (max_size);
+#endif
 		db_private_free_and_init (NULL, new_string);
 	      }
 	    else
@@ -9598,6 +9654,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		status = DOMAIN_ERROR;
 		break;
 	      }
+#ifdef SERVER_MODE
+	    mmon_add_stat_with_tracking_tag (max_size);
+#endif
 
 	    convert_error = bfmt_print (1 /* BIT_STRING_HEX */ , src,
 					new_string, max_size);
@@ -9608,6 +9667,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		    && (db_value_precision (target) < (int) strlen (new_string)))
 		  {
 		    status = DOMAIN_OVERFLOW;
+#ifdef SERVER_MODE
+		    mmon_sub_stat_with_tracking_tag (max_size);
+#endif
 		    db_private_free_and_init (NULL, new_string);
 		  }
 		else
@@ -9619,11 +9681,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    else if (convert_error == -1)
 	      {
 		status = DOMAIN_OVERFLOW;
+#ifdef SERVER_MODE
+		mmon_sub_stat_with_tracking_tag (max_size);
+#endif
 		db_private_free_and_init (NULL, new_string);
 	      }
 	    else
 	      {
 		status = DOMAIN_ERROR;
+#ifdef SERVER_MODE
+		mmon_sub_stat_with_tracking_tag (max_size);
+#endif
 		db_private_free_and_init (NULL, new_string);
 	      }
 	  }
@@ -9664,10 +9732,22 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	    json_str = db_json_get_raw_json_body_from_document (db_get_json_document (src));
 	    len = strlen (json_str);
+#ifdef SERVER_MODE
+	    if (json_str != NULL)
+	      {
+		mmon_add_stat_with_tracking_tag (len + 1);
+	      }
+#endif
 
 	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE && db_value_precision (target) < len)
 	      {
 		status = DOMAIN_OVERFLOW;
+#ifdef SERVER_MODE
+		if (json_str != NULL)
+		  {
+		    mmon_sub_stat_with_tracking_tag (len + 1);
+		  }
+#endif
 		db_private_free_and_init (NULL, json_str);
 	      }
 	    else
@@ -10051,6 +10131,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		      }
 		    else
 		      {
+#ifdef SERVER_MODE
+			mmon_add_stat_with_tracking_tag (val_str_size + 1);
+#endif
 			memcpy (enum_str_tmp, val_str, val_str_size);
 			enum_str_tmp[val_str_size] = 0;
 		      }

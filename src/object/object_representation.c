@@ -45,6 +45,9 @@
 #include "query_list.h"
 #include "set_object.h"
 #include "access_spec.hpp"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -6032,6 +6035,9 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_ENUM_ELEMENT) * count);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (DB_ENUM_ELEMENT) * count);
+#endif
 
   for (idx = 0; idx < count; idx++)
     {
@@ -6062,6 +6068,9 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_return;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (str_size + 1);
+#endif
       value_str = db_get_string (&value);
       if (value_str)
 	{
@@ -6093,8 +6102,14 @@ error_return:
     {
       for (--idx; idx >= 0; idx--)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (DB_GET_ENUM_ELEM_STRING (&enum_vals[idx])) + 1);
+#endif
 	  free_and_init (DB_GET_ENUM_ELEM_STRING (&enum_vals[idx]));
 	}
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (DB_ENUM_ELEMENT) * count);
+#endif
       free_and_init (enum_vals);
     }
   pr_clear_value (&value);
@@ -6703,6 +6718,12 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
   else
     {
       schema = db_private_strdup (NULL, db_get_string (&schema_value));
+#ifdef SERVER_MODE
+      if (schema != NULL)
+	{
+	  mmon_add_stat_with_tracking_tag (db_get_string_size (&schema_value) + 1);
+	}
+#endif
     }
 
   pr_clear_value (&schema_value);

@@ -32,6 +32,9 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "dbtype.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
 /*
  * db_elo.c - DB_API for ELO layer

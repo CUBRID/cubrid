@@ -981,6 +981,9 @@ heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data, void *args)
       else
 	{
 	  free_and_init (ent);
+#ifdef SERVER_MODE
+	  mmon_sub_stat (thread_p, MMON_HEAP_BESTSPACE, sizeof (HEAP_STATS_ENTRY));
+#endif
 
 	  heap_Bestspace->num_free++;
 	}
@@ -16929,6 +16932,9 @@ heap_classrepr_dump_all (THREAD_ENTRY * thread_p, FILE * fp, OID * class_oid)
 	}
 
       fprintf (fp, "\n*** End of dump.\n");
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, sizeof (OR_CLASSREP *) * count);
+#endif
       free_and_init (rep_all);
     }
 
@@ -17861,6 +17867,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (class_name) + 1);
+#endif
 
   /* Class_oid */
   oid_to_string (buf, sizeof (buf), &heap_hdr->class_oid);
@@ -17870,6 +17879,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   /* HFID */
   db_make_int (out_values[idx], hfid_p->vfid.volid);
@@ -17889,6 +17901,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   /* Next_vpid */
   vpid_to_string (buf, sizeof (buf), &heap_hdr->next_vpid);
@@ -17898,6 +17913,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   /* Unfill space */
   db_make_int (out_values[idx], heap_hdr->unfill_space);
@@ -17950,6 +17968,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   db_make_int (out_values[idx], heap_hdr->estimates.num_second_best);
   idx++;
@@ -17989,6 +18010,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   vpid_to_string (buf, sizeof (buf), &heap_hdr->estimates.last_vpid);
   error = db_make_string_copy (out_values[idx], buf);
@@ -17997,6 +18021,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   vpid_to_string (buf, sizeof (buf), &heap_hdr->estimates.full_search_vpid);
   error = db_make_string_copy (out_values[idx], buf);
@@ -18005,6 +18032,9 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (buf) + 1);
+#endif
 
   assert (idx == out_cnt);
 
@@ -18017,6 +18047,9 @@ cleanup:
 
   if (class_name != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, strlen (class_name) + 1);
+#endif
       free_and_init (class_name);
     }
 
@@ -18112,6 +18145,9 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (classname) + 1);
+#endif
 
   oid_to_string (class_oid_str, sizeof (class_oid_str), &fdes.heap.class_oid);
   error = db_make_string_copy (out_values[idx], class_oid_str);
@@ -18120,6 +18156,9 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
     {
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_OTHERS, strlen (class_oid_str) + 1);
+#endif
 
   db_make_int (out_values[idx], hfid_p->vfid.volid);
   idx++;
@@ -18182,6 +18221,9 @@ cleanup:
 
   if (classname != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_p, MMON_HEAP_OTHERS, strlen (classname) + 1);
+#endif
       free_and_init (classname);
     }
 

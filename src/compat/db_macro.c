@@ -42,6 +42,8 @@
 #include "tz_support.h"
 #if !defined(SERVER_MODE)
 #include "object_accessor.h"
+#else
+#include "memory_monitor_sr.hpp"
 #endif
 #include "elo.h"
 #include "db_elo.h"
@@ -981,6 +983,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      break;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (byte_size + 1);
+#endif
 
 	  assert (byte_size < db_get_string_size (value));
 	  strncpy (string, val_str, byte_size);
@@ -1006,6 +1011,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      break;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (byte_size + 1);
+#endif
 
 	  assert (byte_size < db_get_string_size (value));
 	  strncpy (string, val_str, byte_size);
@@ -1032,6 +1040,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      break;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (byte_size + 1);
+#endif
 
 	  assert (byte_size < db_get_string_size (value));
 	  strncpy (string, val_str, byte_size);
@@ -1057,6 +1068,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      break;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (byte_size + 1);
+#endif
 
 	  assert (byte_size < db_get_string_size (value));
 	  strncpy (string, val_str, byte_size);
@@ -1083,6 +1097,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      break;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (precision);
+#endif
 
 	  memcpy (string, val_str, precision);
 	  db_make_bit (&src_value, precision << 3, string, precision << 3);
@@ -1105,6 +1122,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      break;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (precision);
+#endif
 
 	  memcpy (string, val_str, precision);
 	  db_make_varbit (&src_value, precision << 3, string, precision << 3);
@@ -1129,6 +1149,9 @@ db_string_truncate (DB_VALUE * value, const int precision)
 
   if (string != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (string) + 1);
+#endif
       db_private_free (NULL, string);
     }
 

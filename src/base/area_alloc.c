@@ -42,6 +42,8 @@
 
 #if !defined (SERVER_MODE)
 #include "work_space.h"
+#else /* defined (SERVER_MODE) */
+#include "memory_monitor_sr.hpp"
 #endif /* !defined (SERVER_MODE) */
 
 #if !defined (SERVER_MODE)
@@ -119,6 +121,9 @@ void
 area_final (void)
 {
   AREA *area, *next;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_COMMON);
+#endif
 
   for (area = area_List, next = NULL; area != NULL; area = next)
     {
@@ -131,6 +136,9 @@ area_final (void)
   set_area_reset ();
 
   pthread_mutex_destroy (&area_List_lock);
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 }
 
 /*
@@ -249,6 +257,7 @@ area_destroy (AREA * area)
   AREA *a, *prev;
 #if defined(SERVER_MODE)
   int rv;
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_COMMON);
 #endif /* SERVER_MODE */
 
   assert (area != NULL);
@@ -277,6 +286,9 @@ area_destroy (AREA * area)
   area_flush (area);
 
   free_and_init (area);
+#if defined(SERVER_MODE)
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 }
 
 /*
@@ -308,6 +320,9 @@ area_alloc_block (AREA * area)
 
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (total);
+#endif
 
   new_block->bitmap.init (LF_BITMAP_LIST_OF_CHUNKS, (int) area->alloc_count, LF_AREA_BITMAP_USAGE_RATIO);
   assert ((int) area->alloc_count == new_block->bitmap.entry_count);
@@ -365,6 +380,7 @@ area_alloc (AREA * area)
   char *entry_ptr;
 #if defined(SERVER_MODE)
   int rv;
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_COMMON);
 #endif /* SERVER_MODE */
 #if !defined (NDEBUG)
   int *prefix;
@@ -429,6 +445,9 @@ area_alloc (AREA * area)
       /* error has been set */
       return NULL;
     }
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   /* alloc free entry from this new block */
   entry_idx = block->bitmap.get_entry ();
@@ -606,6 +625,9 @@ area_flush (AREA * area)
     {
       next_blockset = blockset->next;
 
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (AREA_BLOCK) * blockset->used_count + sizeof (AREA_BLOCKSET_LIST));
+#endif
       for (i = 0; i < blockset->used_count; i++)
 	{
 	  block = blockset->items[i];

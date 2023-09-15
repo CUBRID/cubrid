@@ -30,6 +30,9 @@
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
 #include "vacuum.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
 #define MVCC_IS_REC_INSERTER_ACTIVE(thread_p, rec_header_p) \
   (mvcc_is_active_id (thread_p, (rec_header_p)->mvcc_ins_id))
@@ -664,6 +667,9 @@ mvcc_snapshot::reset ()
 void
 mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
 {
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_OTHERS);
+#endif
   dest.m_active_mvccs.initialize ();
   m_active_mvccs.copy_to (dest.m_active_mvccs, mvcc_active_tran::copy_safety::THREAD_SAFE);
 
@@ -671,6 +677,9 @@ mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
   dest.highest_completed_mvccid = highest_completed_mvccid;
   dest.snapshot_fnc = snapshot_fnc;
   dest.valid = valid;
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 }
 
 mvcc_info::mvcc_info ()

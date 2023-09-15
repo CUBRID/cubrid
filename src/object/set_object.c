@@ -46,8 +46,9 @@
 #include "transaction_cl.h"
 #include "virtual_object.h"
 #include "parser.h"
-#else /* !SERVER_MODE */
-#endif
+#else /* SERVER_MODE */
+#include "memory_monitor_sr.hpp"
+#endif /* !SERVER_MODE */
 
 
 /* If this is the server stub out ws_pin.
@@ -228,6 +229,9 @@ new_block (long n)
   block = (COL_BLOCK *) db_private_alloc (NULL, COLBLOCKSIZE (n));
   if (block)
     {
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (COLBLOCKSIZE (n));
+#endif
       block->count = n;
       block->next = NULL;
       return &(block->val[0]);
@@ -247,11 +251,23 @@ static DB_VALUE *
 realloc_block (DB_VALUE * in_block, long n)
 {
   COL_BLOCK *block;
+#ifdef SERVER_MODE
+  long prev;
+#endif
 
   if (in_block)
     {
       block = BLOCK_START (in_block);
+#ifdef SERVER_MODE
+      prev = block->count;
+#endif
       block = (COL_BLOCK *) db_private_realloc (NULL, block, COLBLOCKSIZE (n));
+#ifdef SERVER_MODE
+      if (block != NULL)
+	{
+	  mmon_resize_stat_with_tracking_tag (COLBLOCKSIZE (prev), COLBLOCKSIZE (n));
+	}
+#endif
     }
   else
     {
@@ -283,6 +299,9 @@ set_free_block (DB_VALUE * in_block)
     {
       /* back up to beginning of block */
       freeblock = BLOCK_START (in_block);
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (COLBLOCKSIZE (freeblock->count));
+#endif
       db_private_free_and_init (NULL, freeblock);
     }
 }
@@ -632,10 +651,23 @@ col_expand_array (COL * col, long blockindex)
   if (col->array)
     {
       col->array = (DB_VALUE **) db_private_realloc (NULL, col->array, EXPAND (blockindex) * sizeof (DB_VALUE *));
+#ifdef SERVER_MODE
+      if (col->array != NULL)
+	{
+	  mmon_resize_stat_with_tracking_tag ((col->arraytop + 1) * sizeof (DB_VALUE *),
+					      EXPAND (blockindex) * sizeof (DB_VALUE *));
+	}
+#endif
     }
   else
     {
       col->array = (DB_VALUE **) db_private_alloc (NULL, EXPAND (blockindex) * sizeof (DB_VALUE *));
+#ifdef SERVER_MODE
+      if (col->array != NULL)
+	{
+	  mmon_add_stat_with_tracking_tag (EXPAND (blockindex) * sizeof (DB_VALUE *));
+	}
+#endif
     }
   if (!col->array)
     {
@@ -2037,6 +2069,9 @@ free_set_reference (DB_COLLECTION * ref)
   /* free any disk set */
   if (ref->disk_set && ref->need_clear)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (ref->disk_size);
+#endif
       db_private_free_and_init (NULL, ref->disk_set);
     }
   ref->disk_set = NULL;
@@ -2138,6 +2173,9 @@ set_tform_disk_set (DB_COLLECTION * ref, COL ** setptr)
       /* free/clear the disk_set */
       if (ref->need_clear)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (ref->disk_size);
+#endif
 	  db_private_free_and_init (NULL, ref->disk_set);
 	}
       ref->disk_set = NULL;
@@ -4347,6 +4385,9 @@ setobj_free (COL * col)
 
   if (col->array != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag ((col->arraytop + 1) * sizeof (DB_VALUE *));
+#endif
       db_private_free_and_init (NULL, col->array);
       col->array = NULL;
     }

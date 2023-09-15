@@ -33,6 +33,9 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "set_object.h"
+#if defined(SERVER_MODE)
+#include "memory_monitor_sr.hpp"
+#endif /* SERVER_MODE */
 
 #include <assert.h>
 #include <new>
@@ -1392,6 +1395,9 @@ or_get_default_value (OR_ATTRIBUTE * attr, char *ptr, int length)
       attr->default_value.value = malloc (length);
       if (attr->default_value.value != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (attr->default_value.val_length);
+#endif
 	  memcpy (attr->default_value.value, vptr, length);
 	  success = 1;
 	}
@@ -1442,6 +1448,9 @@ or_get_current_default_value (OR_ATTRIBUTE * attr, char *ptr, int length)
       attr->current_default_value.value = malloc (length);
       if (attr->current_default_value.value != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (attr->current_default_value.val_length);
+#endif
 	  memcpy (attr->current_default_value.value, vptr, length);
 	  success = 1;
 	}
@@ -1544,6 +1553,12 @@ or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * in
 
   index->fk->next = NULL;
   index->fk->fkname = strdup (fkname);
+#ifdef SERVER_MODE
+  if (index->fk->fkname != NULL)
+    {
+      mmon_add_stat_with_tracking_tag (strlen (fkname) + 1);
+    }
+#endif
 
   args = classobj_decompose_property_oid (db_get_string (&val), &pageid, &slotid, &volid);
   if (args != 3)
@@ -1611,6 +1626,9 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	  assert (false);	/* TODO */
 	  return;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 
       fk->next = NULL;
 
@@ -1634,6 +1652,9 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 
       if (set_get_element_nocopy (fk_seq, 1, &val) != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 	  free_and_init (fk);
 	  return;
 	}
@@ -1642,6 +1663,9 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 
       if (args != 3)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 	  free_and_init (fk);
 	  return;
 	}
@@ -1652,6 +1676,9 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 
       if (set_get_element_nocopy (fk_seq, 2, &val) != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 	  free_and_init (fk);
 	  return;
 	}
@@ -1659,6 +1686,9 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 
       if (set_get_element_nocopy (fk_seq, 3, &val) != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 	  free_and_init (fk);
 	  return;
 	}
@@ -1666,11 +1696,20 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 
       if (set_get_element_nocopy (fk_seq, 4, &val) != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 	  free_and_init (fk);
 	  return;
 	}
       fkname = db_get_string (&val);
       fk->fkname = strdup (fkname);
+#ifdef SERVER_MODE
+      if (fk->fkname != NULL)
+	{
+	  mmon_add_stat_with_tracking_tag (strlen (fkname) + 1);
+	}
+#endif
 
       if (i == 0)
 	{
@@ -1686,6 +1725,13 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 	    }
 	  else
 	    {
+#ifdef SERVER_MODE
+	      if (fk->fkname)
+		{
+		  mmon_sub_stat_with_tracking_tag (strlen (fk->fkname) + 1);
+		}
+	      mmon_sub_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 	      free_and_init (fk->fkname);
 	      free_and_init (fk);
 	    }
@@ -1713,11 +1759,17 @@ or_install_btids_prefix_length (DB_SEQ * prefix_seq, OR_INDEX * index, int num_a
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * num_attrs);
       return;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (int) * num_attrs);
+#endif
 
   for (i = 0; i < num_attrs; i++)
     {
       if (set_get_element_nocopy (prefix_seq, i, &val) != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (int) * num_attrs);
+#endif
 	  free_and_init (index->attrs_prefix_length);
 	  return;
 	}
@@ -1794,6 +1846,9 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_PREDICATE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (OR_PREDICATE));
+#endif
 
   filter_predicate->pred_string = strdup (db_get_string (&val1));
   if (filter_predicate->pred_string == NULL)
@@ -1803,6 +1858,9 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
 	      strlen (db_get_string (&val1)) * sizeof (char));
       goto err;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (strlen (filter_predicate->pred_string) + 1);
+#endif
 
   buffer = db_get_string (&val2);
   buffer_len = db_get_string_size (&val2);
@@ -1813,6 +1871,9 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_len * sizeof (char));
       goto err;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (buffer_len * sizeof (char));
+#endif
 
   memcpy (filter_predicate->pred_stream, buffer, buffer_len);
   filter_predicate->pred_stream_size = buffer_len;
@@ -1824,14 +1885,23 @@ err:
     {
       if (filter_predicate->pred_string)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (filter_predicate->pred_string) + 1);
+#endif
 	  free_and_init (filter_predicate->pred_string);
 	}
 
       if (filter_predicate->pred_stream)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (buffer_len * sizeof (char));
+#endif
 	  free_and_init (filter_predicate->pred_stream);
 	}
 
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_PREDICATE));
+#endif
       free_and_init (filter_predicate);
     }
   return error;
@@ -1894,6 +1964,10 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_ATTRIBUTE *) * att_cnt);
       return;
     }
+#ifdef SERVER_MODE
+  index->att_cnt = att_cnt;
+  mmon_add_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE *) * att_cnt);
+#endif
 
   index->asc_desc = (int *) malloc (sizeof (int) * att_cnt);
   if (index->asc_desc == NULL)
@@ -1901,6 +1975,9 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * att_cnt);
       return;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (int) * att_cnt);
+#endif
 
   (rep->n_indexes)++;
   index->btid = *id;
@@ -1950,6 +2027,12 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	}
     }
   index->btname = strdup (cons_name);
+#ifdef SERVER_MODE
+  if (index->btname != NULL)
+    {
+      mmon_add_stat_with_tracking_tag (strlen (cons_name) + 1);
+    }
+#endif
 
   /* Get the index status. */
   set_get_element_nocopy (constraint_seq, seq_size - 2, &stat_val);
@@ -2079,6 +2162,9 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 				      sizeof (int) * att_cnt);
 			      return;
 			    }
+#ifdef SERVER_MODE
+			  mmon_add_stat_with_tracking_tag (sizeof (int) * att_cnt);
+#endif
 			  for (i = 0; i < att_cnt; i++)
 			    {
 			      index->attrs_prefix_length[i] = -1;
@@ -2148,6 +2234,9 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
 		  ptr->btids = (BTID *) malloc (sizeof (BTID) * size);
 		  if (ptr->btids != NULL)
 		    {
+#ifdef SERVER_MODE
+		      mmon_add_stat_with_tracking_tag (sizeof (BTID) * size);
+#endif
 		      memcpy (ptr->btids, ptr->btid_pack, (sizeof (BTID) * ptr->n_btids));
 		    }
 		  ptr->max_btids = size;
@@ -2157,6 +2246,9 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
 		  /* we already have an externally allocated array, make it bigger */
 		  size = ptr->n_btids + OR_ATT_BTID_PREALLOC;
 		  ptr->btids = (BTID *) realloc (ptr->btids, size * sizeof (BTID));
+#ifdef SERVER_MODE
+		  mmon_resize_stat_with_tracking_tag (sizeof (BTID) * ptr->max_btids, sizeof (BTID) * size);
+#endif
 		  ptr->max_btids = size;
 		}
 	    }
@@ -2301,6 +2393,9 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_INDEX) * n_btids);
 	  return;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (OR_INDEX) * n_btids);
+#endif
       memset (rep->indexes, 0, sizeof (OR_INDEX) * n_btids);
     }
 
@@ -2374,6 +2469,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_CLASSREP));
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (OR_CLASSREP));
+#endif
 
   start = record->data;
 
@@ -2408,6 +2506,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 	  goto error_cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+#endif
       memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
     }
 
@@ -2420,6 +2521,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
 	  goto error_cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
+#endif
       memset (rep->shared_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
     }
 
@@ -2432,6 +2536,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		  sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
 	  goto error_cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
+#endif
       memset (rep->class_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
     }
 
@@ -2495,6 +2602,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
       // *INDENT-OFF*
       new (&att->auto_increment.serial_obj) std::atomic<or_aligned_oid> (oid_Null_oid);
       // *INDENT-ON*
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (std::atomic < or_aligned_oid >));
+#endif
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
@@ -2623,6 +2733,17 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		      def_expr_format_str = db_get_string (&def_expr_format);
 		      att->default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
 		      att->current_default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
+#ifdef SERVER_MODE
+		      if (att->default_value.default_expr.default_expr_format != NULL)
+			{
+			  mmon_add_stat_with_tracking_tag (strlen (def_expr_format_str) + 1);
+			}
+
+		      if (att->current_default_value.default_expr.default_expr_format != NULL)
+			{
+			  mmon_add_stat_with_tracking_tag (strlen (def_expr_format_str) + 1);
+			}
+#endif
 		    }
 		}
 	      else
@@ -2728,6 +2849,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		{
 		  goto error_cleanup;
 		}
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (att->default_value.val_length);
+#endif
 
 	      memcpy (att->current_default_value.value, att->default_value.value, att->default_value.val_length);
 	      att->current_default_value.val_length = att->default_value.val_length;
@@ -2805,6 +2929,9 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		{
 		  goto error_cleanup;
 		}
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (att->default_value.val_length);
+#endif
 
 	      memcpy (att->current_default_value.value, att->default_value.value, att->default_value.val_length);
 	      att->current_default_value.val_length = att->default_value.val_length;
@@ -2847,19 +2974,31 @@ error_cleanup:
 
   if (rep->attributes)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+#endif
       free_and_init (rep->attributes);
     }
 
   if (rep->shared_attrs)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
+#endif
       free_and_init (rep->shared_attrs);
     }
 
   if (rep->class_attrs)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
+#endif
       free_and_init (rep->class_attrs);
     }
 
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (OR_CLASSREP));
+#endif
   free_and_init (rep);
 
   return NULL;
@@ -2948,6 +3087,9 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
     {
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (OR_CLASSREP));
+#endif
 
   rep->attributes = NULL;
   rep->shared_attrs = NULL;
@@ -2975,9 +3117,15 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
   rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
   if (rep->attributes == NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_CLASSREP));
+#endif
       free_and_init (rep);
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+#endif
   memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 
   /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of the
@@ -3118,6 +3266,9 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	      (sizeof (OR_CLASSREP *) * (old_rep_count + 1)));
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (OR_CLASSREP *) * (old_rep_count + 1));
+#endif
 
   memset (rep_arr, 0x0, sizeof (OR_CLASSREP *) * (old_rep_count + 1));
 
@@ -3137,6 +3288,9 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_CLASSREP));
 	  goto error;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (OR_CLASSREP));
+#endif
       rep = rep_arr[i + 1];
 
       /* set disk_rep to the beginning of the i'th set element */
@@ -3176,6 +3330,9 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 		  (sizeof (OR_ATTRIBUTE) * rep->n_attributes));
 	  goto error;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+#endif
       memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 
       /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of
@@ -3287,6 +3444,9 @@ error:
     {
       or_free_classrep (rep_arr[i]);
     }
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (OR_CLASSREP *) * (old_rep_count + 1));
+#endif
   free_and_init (rep_arr);
 
   return NULL;
@@ -3619,29 +3779,48 @@ or_free_classrep (OR_CLASSREP * rep)
 	{
 	  if (att->default_value.value != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (att->default_value.val_length);
+#endif
 	      free_and_init (att->default_value.value);
 	    }
 
 	  if (att->default_value.default_expr.default_expr_format != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (att->default_value.default_expr.default_expr_format) + 1);
+#endif
 	      free_and_init (att->default_value.default_expr.default_expr_format);
 	    }
 
 	  if (att->current_default_value.value != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (att->current_default_value.val_length);
+#endif
 	      free_and_init (att->current_default_value.value);
 	    }
 
 	  if (att->current_default_value.default_expr.default_expr_format != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (att->current_default_value.default_expr.default_expr_format) +
+					       1);
+#endif
 	      free_and_init (att->current_default_value.default_expr.default_expr_format);
 	    }
 
 	  if (att->btids != NULL && att->btids != att->btid_pack)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (BTID) * att->max_btids);
+#endif
 	      free_and_init (att->btids);
 	    }
 	}
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+#endif
       free_and_init (rep->attributes);
     }
 
@@ -3651,29 +3830,48 @@ or_free_classrep (OR_CLASSREP * rep)
 	{
 	  if (att->default_value.value != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (att->default_value.val_length);
+#endif
 	      free_and_init (att->default_value.value);
 	    }
 
 	  if (att->default_value.default_expr.default_expr_format != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (att->default_value.default_expr.default_expr_format) + 1);
+#endif
 	      free_and_init (att->default_value.default_expr.default_expr_format);
 	    }
 
 	  if (att->current_default_value.value != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (att->current_default_value.val_length);
+#endif
 	      free_and_init (att->current_default_value.value);
 	    }
 
 	  if (att->current_default_value.default_expr.default_expr_format != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (att->current_default_value.default_expr.default_expr_format) +
+					       1);
+#endif
 	      free_and_init (att->current_default_value.default_expr.default_expr_format);
 	    }
 
 	  if (att->btids != NULL && att->btids != att->btid_pack)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (BTID) * att->max_btids);
+#endif
 	      free_and_init (att->btids);
 	    }
 	}
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
+#endif
       free_and_init (rep->shared_attrs);
     }
 
@@ -3683,19 +3881,31 @@ or_free_classrep (OR_CLASSREP * rep)
 	{
 	  if (att->default_value.value != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (att->default_value.val_length);
+#endif
 	      free_and_init (att->default_value.value);
 	    }
 
 	  if (att->current_default_value.value != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (att->current_default_value.val_length);
+#endif
 	      free_and_init (att->current_default_value.value);
 	    }
 
 	  if (att->btids != NULL && att->btids != att->btid_pack)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (BTID) * att->max_btids);
+#endif
 	      free_and_init (att->btids);
 	    }
 	}
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
+#endif
       free_and_init (rep->class_attrs);
     }
 
@@ -3705,11 +3915,17 @@ or_free_classrep (OR_CLASSREP * rep)
 	{
 	  if (index->atts != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE *) * index->att_cnt);
+#endif
 	      free_and_init (index->atts);
 	    }
 
 	  if (index->btname != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (index->btname) + 1);
+#endif
 	      free_and_init (index->btname);
 	    }
 
@@ -3717,24 +3933,39 @@ or_free_classrep (OR_CLASSREP * rep)
 	    {
 	      if (index->filter_predicate->pred_string)
 		{
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (strlen (index->filter_predicate->pred_string) + 1);
+#endif
 		  free_and_init (index->filter_predicate->pred_string);
 		}
 
 	      if (index->filter_predicate->pred_stream)
 		{
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (sizeof (char) * index->filter_predicate->pred_stream_size);
+#endif
 		  free_and_init (index->filter_predicate->pred_stream);
 		}
 
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (OR_PREDICATE));
+#endif
 	      free_and_init (index->filter_predicate);
 	    }
 
 	  if (index->asc_desc != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (int) * index->att_cnt);
+#endif
 	      free_and_init (index->asc_desc);
 	    }
 
 	  if (index->attrs_prefix_length != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (int) * index->att_cnt);
+#endif
 	      free_and_init (index->attrs_prefix_length);
 	    }
 
@@ -3745,8 +3976,14 @@ or_free_classrep (OR_CLASSREP * rep)
 		  fk_next = fk->next;
 		  if (fk->fkname)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (strlen (fk->fkname) + 1);
+#endif
 		      free_and_init (fk->fkname);
 		    }
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 		  free_and_init (fk);
 		}
 	    }
@@ -3754,19 +3991,34 @@ or_free_classrep (OR_CLASSREP * rep)
 	    {
 	      if (index->func_index_info->expr_string)
 		{
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (strlen (index->func_index_info->expr_string) + 1);
+#endif
 		  free_and_init (index->func_index_info->expr_string);
 		}
 	      if (index->func_index_info->expr_stream)
 		{
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (index->func_index_info->expr_stream_size);
+#endif
 		  free_and_init (index->func_index_info->expr_stream);
 		}
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (OR_FUNCTION_INDEX));
+#endif
 	      free_and_init (index->func_index_info);
 	    }
 	}
 
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_INDEX) * rep->n_indexes);
+#endif
       free_and_init (rep->indexes);
     }
 
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (OR_CLASSREP));
+#endif
   free_and_init (rep);
 }
 
@@ -3942,6 +4194,9 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (decompressed_length + 1);
+#endif
 	  *alloced_string = 1;
 
 	  rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
@@ -4064,6 +4319,9 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_FUNCTION_INDEX));
       goto error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (OR_FUNCTION_INDEX));
+#endif
 
   fi_info->expr_string = strdup (db_get_string (&val1));
   if (fi_info->expr_string == NULL)
@@ -4072,6 +4330,9 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
 	      strlen (db_get_string (&val1)) * sizeof (char));
       goto error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (strlen (fi_info->expr_string) + 1);
+#endif
 
   buffer = db_get_string (&val);
   fi_info->expr_stream_size = db_get_string_size (&val);
@@ -4081,6 +4342,9 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, fi_info->expr_stream_size * sizeof (char));
       goto error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (fi_info->expr_stream_size);
+#endif
   memcpy (fi_info->expr_stream, buffer, fi_info->expr_stream_size);
 
   if (set_get_element_nocopy (fi_seq, 2, &val) != NO_ERROR)
@@ -4105,14 +4369,23 @@ error:
     {
       if (fi_info->expr_string)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (fi_info->expr_string) + 1);
+#endif
 	  free_and_init (fi_info->expr_string);
 	}
 
       if (fi_info->expr_stream)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (fi_info->expr_stream_size);
+#endif
 	  free_and_init (fi_info->expr_stream);
 	}
 
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (OR_FUNCTION_INDEX));
+#endif
       free_and_init (fi_info);
     }
 
