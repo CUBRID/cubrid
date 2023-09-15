@@ -302,7 +302,7 @@ class page_server
     std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
     std::mutex m_followee_conn_mutex;
 
-    cubthread::entry_workpool *m_workpool; // a workpool to take some background jobs that needs a thread entry
+    cubthread::entry_workpool *m_worker_pool; // a worker_pool to take some background jobs that needs a thread entry
 };
 
 #endif // !_PAGE_SERVER_HPP_

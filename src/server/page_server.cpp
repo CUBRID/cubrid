@@ -44,8 +44,8 @@ page_server::page_server (const char *db_name)
   const auto thread_count = 4; // Arbitrary chosen
   const auto task_max_count = thread_count * 4;
 
-  m_workpool = cubthread::get_manager ()->create_worker_pool (thread_count, task_max_count, "page_server_workers",
-	       nullptr, 1, false);
+  m_worker_pool = cubthread::get_manager ()->create_worker_pool (thread_count, task_max_count, "page_server_workers",
+		  nullptr, 1, false);
 }
 
 page_server::~page_server ()
@@ -60,8 +60,8 @@ page_server::~page_server ()
 
   m_async_disconnect_handler.terminate ();
 
-  cubthread::get_manager ()->destroy_worker_pool (m_workpool);
-  assert (m_workpool == nullptr);
+  cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
+  assert (m_worker_pool == nullptr);
 }
 
 page_server::tran_server_connection_handler::tran_server_connection_handler (cubcomm::channel &&chn,
@@ -934,7 +934,7 @@ page_server::start_catchup (const LOG_LSA catchup_lsa)
 {
   assert (m_followee_conn != nullptr);
   auto catchup_func = std::bind (&page_server::execute_catchup, std::ref (*this), std::placeholders::_1, catchup_lsa);
-  cubthread::get_manager ()->push_task (m_workpool, new cubthread::entry_callable_task (catchup_func));
+  cubthread::get_manager ()->push_task (m_worker_pool, new cubthread::entry_callable_task (catchup_func));
 }
 
 void
