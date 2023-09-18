@@ -1001,6 +1001,9 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
   HEAP_STATS_ENTRY *ent;
   int rc;
   PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   assert (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0);
 
@@ -1050,6 +1053,9 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
 
 	  goto end;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_p, MMON_HEAP_BESTSPACE, sizeof (HEAP_STATS_ENTRY));
+#endif
 
       heap_Bestspace->num_alloc++;
     }
@@ -1084,6 +1090,10 @@ end:
 
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_ADD);
 
   return ent;
@@ -1102,6 +1112,9 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
   int del_cnt = 0;
   int rc;
   PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
 
@@ -1124,6 +1137,10 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_DEL);
 
   return del_cnt;
@@ -1141,6 +1158,9 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
   HEAP_STATS_ENTRY *ent;
   int rc;
   PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
   rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
@@ -1162,6 +1182,10 @@ end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
 
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_DEL);
 
@@ -3261,6 +3285,9 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
   bool best_hint_is_used;
   PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_find_page_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   assert (PGBUF_IS_CLEAN_WATCHER (pg_watcher));
 
@@ -3464,6 +3491,10 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
    * start) into the findbest space ring.
    */
   *idx_badspace = idx_worstspace;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   /*
    * Reset back the timeout value of the transaction
@@ -14989,6 +15020,9 @@ static int
 heap_stats_bestspace_initialize (void)
 {
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   if (heap_Bestspace != NULL)
     {
@@ -15024,9 +15058,17 @@ heap_stats_bestspace_initialize (void)
   heap_Bestspace->free_list_count = 0;
   heap_Bestspace->free_list = NULL;
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -15042,6 +15084,9 @@ heap_stats_bestspace_finalize (void)
 {
   HEAP_STATS_ENTRY *ent;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_BESTSPACE);
+#endif
 
   if (heap_Bestspace == NULL)
     {
@@ -15059,6 +15104,9 @@ heap_stats_bestspace_finalize (void)
 	  heap_Bestspace->free_list = ent->next;
 	  ent->next = NULL;
 
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (HEAP_STATS_ENTRY));
+#endif
 	  free (ent);
 
 	  heap_Bestspace->free_list_count--;
@@ -15081,6 +15129,10 @@ heap_stats_bestspace_finalize (void)
   pthread_mutex_destroy (&heap_Bestspace->bestspace_mutex);
 
   heap_Bestspace = NULL;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
