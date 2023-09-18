@@ -759,7 +759,7 @@ void
 logddl_write ()
 {
   FILE *fp = NULL;
-  char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
+  char buf[DDL_LOG_BUFFER_SIZE];
   int len = 0;
 
   if (ddl_logging_enabled == false)
@@ -908,7 +908,7 @@ void
 logddl_write_end_for_csql_fileinput (const char *fmt, ...)
 {
   FILE *fp = NULL;
-  char buf[DDL_LOG_BUFFER_SIZE] = { 0 };
+  char buf[DDL_LOG_BUFFER_SIZE];
   int len = 0;
   struct timeval time_val;
   va_list args;
@@ -980,6 +980,7 @@ logddl_create_log_msg (char *msg, int *pwd_offset_ptr)
   long elapsed_sec = 0;
   long elapsed_msec = 0;
 
+  *msg = '\0';
   if (ddl_logging_enabled == false)
     {
       return -1;
@@ -1083,11 +1084,11 @@ logddl_create_log_msg (char *msg, int *pwd_offset_ptr)
 			 result, ddl_audit_handle.elapsed_time, ddl_audit_handle.msg, ddl_audit_handle.sql_text);
     }
 
-  if (retval >= (DDL_LOG_BUFFER_SIZE - 1))
+  if (retval >= DDL_LOG_BUFFER_SIZE)
     {
       msg[DDL_LOG_BUFFER_SIZE - 2] = '\n';
       msg[DDL_LOG_BUFFER_SIZE - 1] = '\0';
-      retval = DDL_LOG_BUFFER_SIZE;
+      retval = (DDL_LOG_BUFFER_SIZE - 1);
     }
   return retval;
 }

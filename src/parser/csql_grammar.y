@@ -184,17 +184,18 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 
 #define STACK_SIZE	128
 
+struct _s_passwd{
+  int parser_call_check;
+  int parser_add_user_check;
+  int method_arg_idx;
+  int method_password_arg_idx;
+  int pwd_start_offset;
+  int pwd_end_offset;
+  int pwd_comma_offset;
+};
+static struct _s_passwd pwd_info = { 0, 0, 0, -1, -1, -1, -1 };
 
 static int parser_groupby_exception = 0;
-
-static int parser_call_check = 0;
-static int parser_add_user_check = 0;
-static int method_arg_idx = 0;
-static int method_password_arg_idx = -1;
-static int pwd_start_offset = -1;
-static int pwd_end_offset = -1;
-static int pwd_comma_offset = -1;
-
 
 /* xxxnum_check: 0 not allowed, no compatibility check
 		 1 allowed, compatibility check (search_condition)
@@ -1749,13 +1750,14 @@ stmt
 		{{ DBG_TRACE_GRAMMAR(stmt, : );
 			msg_ptr = 0;
 
-                        pwd_start_offset = -1;
-                        pwd_end_offset = -1;
-                        pwd_comma_offset = -1;
-                        parser_call_check = 0;
-                        parser_add_user_check = 0;
-                        method_arg_idx = 0;
-
+                        pwd_info.parser_call_check = 0; // ctshim
+                        pwd_info.parser_add_user_check = 0;
+                        pwd_info.method_arg_idx = 0;
+                        pwd_info.method_password_arg_idx = -1;
+                        pwd_info.pwd_start_offset = -1; 
+                        pwd_info.pwd_end_offset = -1;
+                        pwd_info.pwd_comma_offset = -1;                        
+                        
 			if (this_parser->original_buffer)
 			  {
 			    int pos = @$.buffer_pos;
@@ -2889,9 +2891,9 @@ create_stmt
 
 		DBG_PRINT}}
 	| CREATE			/* 1 */
-		{ 
+		{  // ctshim
                   push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); 
-                  parser_add_user_check = 1;
+                  pwd_info.parser_add_user_check = 1;
                 }	/* 2 */
 	  USER				/* 3 */
 	  identifier_without_dot	/* 4 */
@@ -9041,24 +9043,24 @@ opt_password
 		{{ DBG_TRACE_GRAMMAR(opt_password, : );
 
 			$$ = NULL;                        
-                        if(parser_add_user_check)
+                        if(pwd_info.parser_add_user_check)  // ctshim
                         {
-                           pwd_start_offset = (@$.buffer_pos);
-                           pwd_end_offset = (@$.buffer_pos);
-                           pt_add_password_offset(pwd_start_offset, pwd_end_offset, false, true);
+                           pwd_info.pwd_start_offset = (@$.buffer_pos);
+                           pwd_info.pwd_end_offset = (@$.buffer_pos);
+                           pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, true);
                         }
 
 		DBG_PRINT}}
 	| PASSWORD
-		{ push_msg(MSGCAT_SYNTAX_INVALID_PASSWORD); 
-                  pwd_start_offset = (@$.buffer_pos);
+		{ push_msg(MSGCAT_SYNTAX_INVALID_PASSWORD); // ctshim
+                  pwd_info.pwd_start_offset = (@$.buffer_pos);
                 }
 	  char_string_literal
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(opt_password, | PASSWORD char_string_literal);
 
-                        pwd_end_offset = (@$.buffer_pos);
-                        pt_add_password_offset(pwd_start_offset, pwd_end_offset, false, false);
+                        pwd_info.pwd_end_offset = (@$.buffer_pos); // ctshim
+                        pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, false);
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -9106,15 +9108,15 @@ opt_members
 call_stmt
 	: CALL
                 {{
-                    pwd_comma_offset = -1;
-                    parser_call_check = 1;
-                    method_arg_idx = 0;                
-                    method_password_arg_idx = -1;
+                    pwd_info.pwd_comma_offset = -1; // ctshim
+                    pwd_info.parser_call_check = 1;
+                    pwd_info.method_arg_idx = 0;                
+                    pwd_info.method_password_arg_idx = -1;
                 }}
          generic_function into_clause_opt
 		{{ DBG_TRACE_GRAMMAR(call_stmt, : CALL generic_function into_clause_opt);
 
-                        parser_call_check = 0;
+                        pwd_info.parser_call_check = 0; // ctshim
 			PT_NODE *node = $3;
 			if (node)
 			  {
@@ -14459,12 +14461,12 @@ expression_list
 
 expression_queue
 	: expression_queue  ','
-            {{
-                if(parser_call_check)
+            {{  // ctshim
+                if(pwd_info.parser_call_check)
                   {                           
-                     if(++method_arg_idx == method_password_arg_idx)
+                     if(++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
                        {
-                         pwd_start_offset = (@$.buffer_pos);
+                         pwd_info.pwd_start_offset = (@$.buffer_pos);
                        }
                   }
             }}
@@ -14472,9 +14474,9 @@ expression_queue
 		{{ DBG_TRACE_GRAMMAR(expression_queue, : expression_queue  ',' expression_);
 			container_2 new_q;
 
-                        if(parser_call_check && (method_arg_idx == method_password_arg_idx))
+                        if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
                            {
-                              pwd_end_offset = (@$.buffer_pos);
+                              pwd_info.pwd_end_offset = (@$.buffer_pos); // ctshim
                            }
 
 			PT_NODE* q_head = CONTAINER_AT_0($1);
@@ -14488,11 +14490,11 @@ expression_queue
 		DBG_PRINT}}
 	| 
            {{ 
-                if(parser_call_check)
+                if(pwd_info.parser_call_check)
                   {     
-                     if(++method_arg_idx == method_password_arg_idx)
+                     if(++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
                        {
-                          pwd_start_offset = (@$.buffer_pos);;
+                          pwd_info.pwd_start_offset = (@$.buffer_pos); // ctshim
                        }
                   }
            }}
@@ -14500,9 +14502,9 @@ expression_queue
 		{{ DBG_TRACE_GRAMMAR(expression_queue, | expression_);
 			container_2 new_q;
 
-                        if(parser_call_check && (method_arg_idx  == method_password_arg_idx))
+                        if(pwd_info.parser_call_check && (pwd_info.method_arg_idx  == pwd_info.method_password_arg_idx))
                            {
-                              pwd_end_offset = (@$.buffer_pos);
+                              pwd_info.pwd_end_offset = (@$.buffer_pos); // ctshim
                            }
 
 			SET_CONTAINER_2(new_q, $2, $2);
@@ -18854,16 +18856,16 @@ opt_on_target
 generic_function
 	: identifier 
         {
-            if(parser_call_check)
-            {                
+            if(pwd_info.parser_call_check)
+            {   // ctshim             
                 if(strcasecmp($1->info.name.original, "set_password")==0)
-                    method_password_arg_idx = 1;
+                    pwd_info.method_password_arg_idx = 1;
                 else if(strcasecmp($1->info.name.original, "add_user")==0)    
-                   method_password_arg_idx = 2;
+                   pwd_info.method_password_arg_idx = 2;
                 else if(strcasecmp($1->info.name.original, "login")==0)    
-                    method_password_arg_idx = 2;
+                    pwd_info.method_password_arg_idx = 2;
                 else
-                    method_password_arg_idx = 0;
+                    pwd_info.method_password_arg_idx = 0;
             }
         }
         '(' opt_expression_list ')' opt_on_target
@@ -18888,9 +18890,9 @@ generic_function
 				node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
 			      }
 
-                              if ($6 != NULL && parser_call_check && method_password_arg_idx != 0)
-                              {
-                                 pt_add_password_offset(pwd_start_offset, pwd_end_offset, (pwd_comma_offset != -1), false);
+                              if ($6 != NULL && pwd_info.parser_call_check && pwd_info.method_password_arg_idx != 0)
+                              { // ctshim
+                                 pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, (pwd_info.pwd_comma_offset != -1), false);
                               }
 			  }
 
@@ -18952,11 +18954,11 @@ opt_expression_list
 	| expression_list
 		{{ DBG_TRACE_GRAMMAR(opt_expression_list, | expression_list );
                         
-                         if((method_password_arg_idx == 2) && (pwd_start_offset == -1 && pwd_end_offset == -1))
-                         {
-                            pwd_comma_offset = (@$.buffer_pos);
-                            pwd_start_offset = pwd_comma_offset;
-                            pwd_end_offset = pwd_comma_offset;
+                         if((pwd_info.method_password_arg_idx == 2) && (pwd_info.pwd_start_offset == -1 && pwd_info.pwd_end_offset == -1))
+                         { // ctshim
+                            pwd_info.pwd_comma_offset = (@$.buffer_pos);
+                            pwd_info.pwd_start_offset = pwd_info.pwd_comma_offset;
+                            pwd_info.pwd_end_offset = pwd_info.pwd_comma_offset;
                          }
 
 			$$ = $1;
@@ -24185,9 +24187,9 @@ connect_item
           {{ DBG_TRACE_GRAMMAR(connect_item,   | PASSWORD '='  );
                container_2 ctn;
 
-               pwd_start_offset = (@$.buffer_pos);
-               pwd_end_offset = (@$.buffer_pos);
-               pt_add_password_offset(pwd_start_offset, pwd_end_offset, false, false);
+               pwd_info.pwd_start_offset = (@$.buffer_pos); // ctshim
+               pwd_info.pwd_end_offset = (@$.buffer_pos);
+               pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, false);
 
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
@@ -24210,14 +24212,14 @@ connect_item
            DBG_PRINT}}
         | PASSWORD '=' 
           {
-                pwd_start_offset = (@$.buffer_pos);
+                pwd_info.pwd_start_offset = (@$.buffer_pos); // ctshim
           }
           CHAR_STRING
           {{ DBG_TRACE_GRAMMAR(connect_item, | PASSWORD '=' CHAR_STRING );
                 container_2 ctn;
                 
-                pwd_end_offset = (@$.buffer_pos);
-                pt_add_password_offset(pwd_start_offset, pwd_end_offset, false, false);
+                pwd_info.pwd_end_offset = (@$.buffer_pos);
+                pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, false);
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
