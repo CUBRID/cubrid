@@ -4715,6 +4715,7 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 
       la_make_room_for_mvcc_insid (recdes);
 
+      // It will be coverted to REC_BIGONE which contains all mvcc flags on. 
       if (recdes->length > la_Info.maxslotted_reclength)
 	{
 	  repid_and_flag_bits |=
