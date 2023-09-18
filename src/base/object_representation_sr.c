@@ -589,10 +589,22 @@ orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr)
 	  if (array == NULL)
 	    {
 	      array = (OID *) malloc (newsize * sizeof (OID));
+#ifdef SERVER_MODE
+	      if (array != NULL)
+		{
+		  mmon_add_stat_with_tracking_tag (newsize * sizeof (OID));
+		}
+#endif
 	    }
 	  else
 	    {
 	      array = (OID *) realloc (array, newsize * sizeof (OID));
+#ifdef SERVER_MODE
+	      if (array != NULL)
+		{
+		  mmon_resize_stat_with_tracking_tag (max * sizeof (OID), newsize * sizeof (OID));
+		}
+#endif
 	    }
 
 	  if (array == NULL)
