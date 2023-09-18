@@ -3689,8 +3689,7 @@ la_make_room_for_mvcc_insid (RECDES * recdes)
 
   assert (recdes->area_size >= recdes->length + OR_MVCCID_SIZE);
 
-  //LA_MOVE_INSIDE_RECORD (recdes, OR_INT_SIZE + OR_MVCCID_SIZE, OR_INT_SIZE);
-  LA_MOVE_INSIDE_RECORD (recdes, OR_MVCC_INSERT_ID_OFFSET + OR_MVCCID_SIZE, OR_MVCC_INSERT_ID_OFFSET);
+  LA_MOVE_INSIDE_RECORD (recdes, OR_MVCC_INSERT_ID_OFFSET + OR_MVCC_INSERT_ID_SIZE, OR_MVCC_INSERT_ID_OFFSET);
 
   return;
 }
