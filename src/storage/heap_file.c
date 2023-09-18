@@ -12385,7 +12385,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
   if (set_attrids != guess_attrids)
     {
 #ifdef SERVER_MODE
-      if (ser_attrids != NULL)
+      if (set_attrids != NULL)
 	{
 	  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, classrepr->n_attributes * sizeof (ATTR_ID));
 	}
@@ -12408,7 +12408,7 @@ error:
   if (set_attrids != guess_attrids)
     {
 #ifdef SERVER_MODE
-      if (ser_attrids != NULL)
+      if (set_attrids != NULL)
 	{
 	  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, classrepr->n_attributes * sizeof (ATTR_ID));
 	}
@@ -12554,7 +12554,7 @@ heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * 
   if (set_attrids != guess_attrids)
     {
 #ifdef SERVER_MODE
-      if (ser_attrids != NULL)
+      if (set_attrids != NULL)
 	{
 	  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, num_found_attrs * sizeof (ATTR_ID));
 	}
@@ -12575,7 +12575,7 @@ error:
   if (set_attrids != guess_attrids)
     {
 #ifdef SERVER_MODE
-      if (ser_attrids != NULL)
+      if (set_attrids != NULL)
 	{
 	  mmon_sub_stat (thread_p, MMON_HEAP_ATTRINFO, num_found_attrs * sizeof (ATTR_ID));
 	}
