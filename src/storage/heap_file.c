@@ -6969,13 +6969,29 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 
       if (scan_cache->num_btids > 0)
 	{
+#ifdef SERVER_MODE
+	  if (scan_cache->m_index_stats)
+	    {
+	      multi_index_unique_stats::container_type stat_map = scan_cache->m_index_stats->get_map ();
+	      mmon_sub_stat (thread_p, MMON_HEAP_SCAN,
+			     (sizeof (BTID) + sizeof (btree_unique_stats)) * stat_map.size ());
+	      mmon_sub_stat (thread_p, MMON_HEAP_SCAN, sizeof (multi_index_unique_stats));
+	    }
+#endif
 	  delete scan_cache->m_index_stats;
 	  scan_cache->m_index_stats = new multi_index_unique_stats ();
+#ifdef SERVER_MODE
+	  mmon_add_stat (thread_p, MMON_HEAP_SCAN, sizeof (multi_index_unique_stats));
+#endif
 	  /* initialize the structure */
 	  for (i = 0; i < scan_cache->num_btids; i++)
 	    {
 	      scan_cache->m_index_stats->add_empty (classrepr->indexes[i].btid);
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat (thread_p, MMON_HEAP_SCAN,
+			 (sizeof (BTID) + sizeof (btree_unique_stats)) * scan_cache->num_btids);
+#endif
 	}
 
       /* free class representation */
@@ -7186,6 +7202,14 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
     }
   else
     {
+#ifdef SERVER_MODE
+      if (scan_cache->m_index_stats)
+	{
+	  multi_index_unique_stats::container_type stat_map = scan_cache->m_index_stats->get_map ();
+	  mmon_sub_stat (thread_p, MMON_HEAP_SCAN, (sizeof (BTID) + sizeof (btree_unique_stats)) * stat_map.size ());
+	  mmon_sub_stat (thread_p, MMON_HEAP_SCAN, sizeof (multi_index_unique_stats));
+	}
+#endif
       delete scan_cache->m_index_stats;
       scan_cache->m_index_stats = NULL;
       scan_cache->num_btids = 0;
@@ -7209,6 +7233,9 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	  while (curr_node != NULL)
 	    {
 	      next_node = curr_node->next;
+#ifdef SERVER_MODE
+	      mmon_sub_stat (thread_p, MMON_HEAP_SCAN, sizeof (HEAP_SCANCACHE_NODE_LIST));
+#endif
 	      db_private_free_and_init (thread_p, curr_node);
 	      curr_node = next_node;
 	    }
@@ -24424,6 +24451,9 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sca
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HEAP_SCANCACHE_NODE_LIST));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_p, MMON_HEAP_SCAN, sizeof (HEAP_SCANCACHE_NODE_LIST));
+#endif
 
   COPY_OID (&new_->node.class_oid, partition_oid);
   HFID_COPY (&new_->node.hfid, &hfid);
@@ -25391,11 +25421,17 @@ heap_scancache_block_allocate (cubmem::block &b, size_t size)
     {
       b.ptr = (char *) db_private_alloc (NULL, size);
       assert (b.ptr != NULL);
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, size);
+#endif
     }
   else
     {
       b.ptr = (char *) db_private_realloc (NULL, b.ptr, size);
       assert (b.ptr != NULL);
+#ifdef SERVER_MODE
+      mmon_resize_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, b.dim, size);
+#endif
     }
   b.dim = size;
 }
@@ -25403,6 +25439,12 @@ heap_scancache_block_allocate (cubmem::block &b, size_t size)
 static void
 heap_scancache_block_deallocate (cubmem::block &b)
 {
+#ifdef SERVER_MODE
+  if (b.ptr != NULL)
+    {
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, b.dim);
+    }
+#endif
   db_private_free_and_init (NULL, b.ptr);
   b.dim = 0;
 }
@@ -25422,12 +25464,21 @@ heap_scancache::alloc_area ()
   if (m_area == NULL)
     {
       m_area = new cubmem::single_block_allocator (HEAP_SCANCACHE_BLOCK_ALLOCATOR);
+#ifdef SERVER_MODE
+      mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, sizeof (cubmem::single_block_allocator));
+#endif
     }
 }
 
 void
 heap_scancache::end_area ()
 {
+#ifdef SERVER_MODE
+  if (m_area)
+    {
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_SCAN, sizeof (cubmem::single_block_allocator));
+    }
+#endif
   delete m_area;
   m_area = NULL;
 }
