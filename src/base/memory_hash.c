@@ -929,6 +929,9 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (HENTRY));
 
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (DB_SIZEOF (MHT_TABLE));
+#endif
       free_and_init (ht);
       return NULL;
     }
@@ -941,6 +944,9 @@ mht_create (const char *name, int est_size, unsigned int (*hash_func) (const voi
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 
       db_destroy_fixed_heap (ht->heap_id);
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (DB_SIZEOF (MHT_TABLE));
+#endif
       free_and_init (ht);
       return NULL;
     }
@@ -1154,6 +1160,9 @@ mht_destroy (MHT_TABLE * ht)
   /* release hash table entry storage */
   db_destroy_fixed_heap (ht->heap_id);
 
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (DB_SIZEOF (MHT_TABLE));
+#endif
   free_and_init (ht);
 }
 

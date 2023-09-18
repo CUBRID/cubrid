@@ -15149,6 +15149,9 @@ heap_chnguess_initialize (void)
   HEAP_CHNGUESS_ENTRY *entry;
   int i;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CHNGUESS_HASH);
+#endif
 
   if (heap_Guesschn != NULL)
     {
@@ -15194,6 +15197,10 @@ heap_chnguess_initialize (void)
       mht_destroy (heap_Guesschn_area.ht);
       goto exit_on_error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		 sizeof (HEAP_CHNGUESS_ENTRY) * heap_Guesschn_area.num_entries);
+#endif
 
   heap_Guesschn_area.bitindex = (unsigned char *) malloc (heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
   if (heap_Guesschn_area.bitindex == NULL)
@@ -15202,9 +15209,17 @@ heap_chnguess_initialize (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 1,
 	      (size_t) (heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries));
       mht_destroy (heap_Guesschn_area.ht);
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		     sizeof (HEAP_CHNGUESS_ENTRY) * heap_Guesschn_area.num_entries);
+#endif
       free_and_init (heap_Guesschn_area.entries);
       goto exit_on_error;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		 heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
+#endif
 
   /*
    * Initialize every entry as not recently freed
@@ -15221,9 +15236,17 @@ heap_chnguess_initialize (void)
     }
   heap_Guesschn = &heap_Guesschn_area;
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return ret;
 
 exit_on_error:
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return (ret == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -15302,6 +15325,11 @@ heap_chnguess_realloc (void)
   /*
    * Now throw previous storage
    */
+#ifdef SERVER_MODE
+  mmon_resize_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		    save_nbytes * heap_Guesschn_area.num_entries,
+		    heap_Guesschn_area.nbytes * heap_Guesschn_area.num_entries);
+#endif
   free_and_init (save_bitindex);
 
   return ret;
@@ -15321,13 +15349,25 @@ static int
 heap_chnguess_finalize (void)
 {
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CHNGUESS_HASH);
+#endif
 
   if (heap_Guesschn == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;		/* nop */
     }
 
   mht_destroy (heap_Guesschn->ht);
+#ifdef SERVER_MODE
+  mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		 sizeof (HEAP_CHNGUESS_ENTRY) * heap_Guesschn->num_entries);
+  mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_CHNGUESS,
+		 heap_Guesschn->nbytes * heap_Guesschn->num_entries);
+#endif
   free_and_init (heap_Guesschn->entries);
   free_and_init (heap_Guesschn->bitindex);
   heap_Guesschn->ht = NULL;
@@ -15486,9 +15526,15 @@ heap_chnguess_decache (const OID * oid)
 {
   HEAP_CHNGUESS_ENTRY *entry;
   int ret = NO_ERROR;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_CHNGUESS_HASH);
+#endif
 
   if (heap_Guesschn == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;		/* nop */
     }
 
@@ -15509,6 +15555,10 @@ heap_chnguess_decache (const OID * oid)
     {
       heap_Guesschn->schema_change = false;
     }
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
@@ -15659,6 +15709,9 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
   int i;
   bool can_continue;
   HEAP_CHNGUESS_ENTRY *entry;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag;
+#endif
 
   if (heap_Guesschn == NULL)
     {
@@ -15670,11 +15723,18 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
       return NULL_CHN;
     }
 
+#ifdef SERVER_MODE
+  prev_tag = mmon_set_tracking_tag (MMON_HEAP_CHNGUESS);
+#endif
+
   if (heap_Guesschn->num_clients <= tran_index)
     {
       if (heap_chnguess_realloc () != NO_ERROR)
 	{
 	  csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NULL_CHN;
 	}
     }
@@ -15751,6 +15811,10 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
     }
 
   csect_exit (thread_p, CSECT_HEAP_CHNGUESS);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return chn;
 }
