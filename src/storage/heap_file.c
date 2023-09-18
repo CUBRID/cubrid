@@ -23792,6 +23792,12 @@ heap_get_class_info_from_record (THREAD_ENTRY * thread_p, const OID * class_oid,
   if (classname != NULL)
     {
       *classname = strdup (or_class_name (&recdes));
+#ifdef SERVER_MODE
+      if (*classname != NULL)
+	{
+	  mmon_add_stat_with_tracking_tag (strlen (*classname) + 1);
+	}
+#endif
     }
 
   error_code = heap_scancache_end (thread_p, &scan_cache);
@@ -23818,6 +23824,10 @@ heap_hfid_table_entry_alloc (void)
       return NULL;
     }
 
+#ifdef SERVER_MODE
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE, sizeof (HEAP_HFID_TABLE_ENTRY));
+#endif
+
   new_entry->classname = NULL;
 
   return (void *) new_entry;
@@ -23838,10 +23848,16 @@ heap_hfid_table_entry_free (void *entry)
       // Clear the classname.
       if (entry_p->classname != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE, strlen (entry_p->classname) + 1);
+#endif
 	  free (entry_p->classname);
 	  entry_p->classname = NULL;
 	}
 
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE, sizeof (HEAP_HFID_TABLE_ENTRY));
+#endif
       free (entry);
       return NO_ERROR;
     }
@@ -23883,6 +23899,9 @@ heap_hfid_table_entry_uninit (void *entry)
   HEAP_HFID_TABLE_ENTRY *entry_p = (HEAP_HFID_TABLE_ENTRY *) entry;
   if (entry_p->classname != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE, strlen (entry_p->classname) + 1);
+#endif
       free (entry_p->classname);
       entry_p->classname = NULL;
     }
@@ -23970,9 +23989,15 @@ heap_initialize_hfid_table (void)
 {
   int ret = NO_ERROR;
   LF_ENTRY_DESCRIPTOR *edesc = NULL;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_HFIDTABLE_HASH);
+#endif
 
   if (heap_Hfid_table != NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;
     }
 
@@ -23997,6 +24022,9 @@ heap_initialize_hfid_table (void)
   ret = lf_freelist_init (&heap_Hfid_table_area.hfid_hash_freelist, 1, 100, edesc, &hfid_table_Ts);
   if (ret != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return ret;
     }
 
@@ -24007,12 +24035,19 @@ heap_initialize_hfid_table (void)
   if (ret != NO_ERROR)
     {
       lf_hash_destroy (&heap_Hfid_table_area.hfid_hash);
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return ret;
     }
 
   heap_Hfid_table_area.logging = prm_get_bool_value (PRM_ID_HEAP_INFO_CACHE_LOGGING);
 
   heap_Hfid_table = &heap_Hfid_table_area;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
@@ -24025,6 +24060,9 @@ heap_initialize_hfid_table (void)
 void
 heap_finalize_hfid_table (void)
 {
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_HFIDTABLE_HASH);
+#endif
   if (heap_Hfid_table != NULL)
     {
       /* destroy hash and freelist */
@@ -24033,6 +24071,9 @@ heap_finalize_hfid_table (void)
 
       heap_Hfid_table = NULL;
     }
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 }
 
 /*
@@ -24184,12 +24225,18 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   HFID hfid_local = HFID_INITIALIZER;
   char *classname_local = NULL;
   int inserted = 0;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_HFIDTABLE);
+#endif
 
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
   assert (ftype == FILE_HEAP || ftype == FILE_HEAP_REUSE_SLOTS);
 
   if (class_oid == NULL || OID_ISNULL (class_oid))
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       /* We can't cache it. */
       return NO_ERROR;
     }
@@ -24198,6 +24245,9 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
     lf_hash_find_or_insert (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, (void **) &entry, &inserted);
   if (error_code != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       assert (false);
       return error_code;
     }
@@ -24210,6 +24260,12 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   if (classname_in != NULL)
     {
       classname_local = strdup (classname_in);
+#ifdef SERVER_MODE
+      if (classname_local != NULL)
+	{
+	  mmon_add_stat_with_tracking_tag (strlen (classname_local) + 1);
+	}
+#endif
     }
   else
     {
@@ -24231,8 +24287,15 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 
 	  if (classname_local != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (classname_local) + 1);
+#endif
 	      free (classname_local);
 	    }
+
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
 	  return error_code;
 	}
@@ -24243,6 +24306,9 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   char *dummy_null = NULL;
   if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (classname_local) + 1);
+#endif
       free (classname_local);
     }
 
@@ -24250,6 +24316,10 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
 
   heap_hfid_table_log (thread_p, class_oid, "heap_cache_class_info hfid=%d|%d|%d, ftype=%s, classname = %s",
 		       HFID_AS_ARGS (hfid), file_type_to_string (ftype), classname_local);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   /* Successfully cached. */
   return NO_ERROR;
@@ -24275,6 +24345,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
   HEAP_HFID_TABLE_ENTRY *entry = NULL;
   char *classname_local = NULL;
   int inserted = 0;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_HFIDTABLE);
+#endif
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
@@ -24283,6 +24356,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return error_code;
     }
   assert (entry != NULL);
@@ -24302,6 +24378,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	  boot_find_root_heap (&entry->hfid);
 	  entry->ftype = FILE_HEAP;
 	  lf_tran_end_with_mb (t_entry);
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 	  return NO_ERROR;
 	}
 
@@ -24317,6 +24396,10 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 	  // remove entry
 	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
 
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
 	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
 	}
@@ -24326,6 +24409,9 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
       if (!entry->classname.compare_exchange_strong (dummy_null, classname_local))
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (classname_local) + 1);
+#endif
 	  // somebody else has set it
 	  free (classname_local);
 	}
@@ -24345,6 +24431,10 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
 	  // remove entry
 	  lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, (void *) class_oid, NULL);
+
+#ifdef SERVER_MODE
+	  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
 	  heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get failed error = %d", error_code);
 	  return error_code;
@@ -24367,6 +24457,10 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
     }
 
   lf_tran_end_with_mb (t_entry);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   heap_hfid_table_log (thread_p, class_oid, "heap_hfid_cache_get hfid=%d|%d|%d, ftype = %s, classname = %s",
 		       HFID_AS_ARGS (&entry->hfid), file_type_to_string (entry->ftype), entry->classname.load ());
