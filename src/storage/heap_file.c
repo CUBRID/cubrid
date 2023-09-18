@@ -1550,6 +1550,9 @@ heap_classrepr_finalize_cache (void)
 
   if (heap_Classrepr == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       return NO_ERROR;		/* nop */
     }
 
@@ -14867,6 +14870,10 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
 #endif
   free_and_init (chk->unfound_reloc_oids);
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return valid_reloc;
 }
 
@@ -15497,6 +15504,10 @@ heap_chnguess_finalize (void)
   heap_Guesschn->nbytes = 0;
 
   heap_Guesschn = NULL;
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return ret;
 }
@@ -17645,6 +17656,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
   ATTR_ID atts_id[1] = { 0 };
   DB_VALUE orig_value;
   TP_DOMAIN_STATUS status;
+#ifdef SERVER_MODE
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_HEAP_OTHERS);
+#endif
 
   db_make_null (&orig_value);
 
@@ -17957,6 +17971,9 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
 exit:
   pr_clear_value (&orig_value);
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
   return error;
 }
 

@@ -1646,6 +1646,9 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 
       if (set_get_element_nocopy (fk_seq, 0, &val) != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 	  free_and_init (fk);
 	  return;
 	}
@@ -1654,6 +1657,9 @@ or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index)
 
       if (args != 3)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (OR_FOREIGN_KEY));
+#endif
 	  free_and_init (fk);
 	  return;
 	}
