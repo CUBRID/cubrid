@@ -3720,7 +3720,7 @@ la_make_room_for_mvcc_delid_and_prev_ver (RECDES * recdes)
 
   assert (recdes->area_size >= recdes->length + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE);
 
-  LA_MOVE_INSIDE_RECORD (recdes, OR_MVCC_DELETE_ID_OFFSET (mvcc_flag) + OR_MVCCID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
+  LA_MOVE_INSIDE_RECORD (recdes, OR_MVCC_DELETE_ID_OFFSET (mvcc_flag) + OR_MVCC_DELETE_ID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
 			 OR_MVCC_DELETE_ID_OFFSET (mvcc_flag));
 
   return;
