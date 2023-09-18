@@ -24,7 +24,8 @@
 
 /* The list should sync with net_server_request defined in network.h */
 /* client: used to collect histogram, server: used to log an error */
-const char *net_server_request_name[NET_SERVER_REQUEST_END] = {
+const char *net_server_request_name[NET_SERVER_REQUEST_END] =
+{
   "NET_SERVER_BO_INIT_SERVER",
   "NET_SERVER_BO_REGISTER_CLIENT",
   "NET_SERVER_BO_UNREGISTER_CLIENT",
