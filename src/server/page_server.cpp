@@ -655,6 +655,7 @@ void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::stri
   er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
 #endif
 }
+
 void page_server::pts_mvcc_tracker::delete_oldest_active_mvccid (const std::string &pts_channel_id)
 {
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
@@ -995,6 +996,12 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   size_t request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
   auto req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
   int error = NO_ERROR;
+
+  LOG_CS_ENTER (&entry);
+
+  logpb_flush_pages_direct (&entry);
+  logpb_flush_header (&entry);
+
   while (remaining_page_cnt > 0)
     {
       error = req_future.get (); // waits until the previous requests are replied
@@ -1014,15 +1021,22 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
 	}
       // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
+      for (size_t i = 0; i < request_page_cnt; i++)
+	{
+	  logpb_append_catchup_page (&entry, log_pgptr_vec[i]);
+	}
     }
 
   if (error == NO_ERROR)
     {
       assert (remaining_page_cnt == 0);
+
+      logpb_end_catchup (&entry, catchup_lsa);
+
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 		     start_pageid, end_pageid, total_page_count);
       // TODO: send CATCHUP_DONE_MSG to the ATS
-      // TODO: start appneding log prior nodes from the ATS.
+      // TODO: start appending log prior nodes from the ATS.
 
       constexpr bool with_disc_msg = true;
       disconnect_followee_page_server (with_disc_msg);
@@ -1035,6 +1049,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
       constexpr bool with_disc_msg = false;
       disconnect_followee_page_server (with_disc_msg);
     }
+
+  LOG_CS_EXIT (&entry);
 }
 
 bool

@@ -3362,6 +3362,115 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logpb_append_catchup_page -
+ *
+ * return: NO_ERROR
+ *
+ *   node(in):
+ */
+int
+logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr)
+{
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (log_Gl.append.log_pgptr != NULL);
+
+  if (log_Gl.append.log_pgptr->hdr.logical_pageid == pgptr->hdr.logical_pageid)
+    {
+      memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
+    }
+  else
+    {
+      logpb_next_append_page (thread_p, LOG_SET_DIRTY);
+      memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
+
+      // TODO Comment about why it should be set;
+      if (pgptr->hdr.offset != NULL_LOG_OFFSET)
+	{
+	  log_Gl.append.prev_lsa.pageid = pgptr->hdr.logical_pageid;
+	  log_Gl.append.prev_lsa.offset = pgptr->hdr.offset;
+
+	  // We don't need to set log_Gl.hdr.append_lsa correctly here.
+	  // It will be set at the end of the catch-up in logpb_end_catchup ().
+	  log_Gl.hdr.append_lsa = log_Gl.append.prev_lsa;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * logpb_end_catchup -
+ *
+ * return: NO_ERROR
+ *
+ *   node(in):
+ */
+int
+logpb_end_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
+{
+  // set prev_lsa and append_lsa to the correct value
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  char log_pgbuf[LOG_PAGESIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
+  LOG_LSA nav_lsa = log_Gl.append.prev_lsa;
+  LOG_PAGE *log_pgptr = NULL;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+    {
+      assert (false);		// TODO error handling
+    }
+
+  while (nav_lsa < catchup_lsa)
+    {
+      if (nav_lsa.pageid != prev_lsa.pageid)
+	{
+	  if (logpb_fetch_page (thread_p, &nav_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+	    {
+	      assert (false);	// TODO error handling
+	    }
+	}
+
+      /*
+       * If offset is missing, it is because we archive an incomplete
+       * log record or we start dumping the log not from its first page. We
+       * have to find the offset by searching for the next log_record in the page
+       */
+      if (nav_lsa.offset == NULL_OFFSET)
+	{
+	  nav_lsa.offset = log_pgptr->hdr.offset;
+	  if (nav_lsa.offset == NULL_OFFSET)
+	    {
+	      assert (false);
+	    }
+	}
+
+      prev_lsa = nav_lsa;
+
+      LOG_RECORD_HEADER *log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &prev_lsa);
+
+      nav_lsa = log_rec->forw_lsa;
+
+      if (nav_lsa.is_null () && logpb_is_page_in_archive (nav_lsa.pageid))
+	{
+	  nav_lsa.pageid = prev_lsa.pageid + 1;
+	  nav_lsa.offset = NULL_OFFSET;
+	}
+    }
+
+  assert (nav_lsa == catchup_lsa);
+
+  log_Gl.append.prev_lsa = prev_lsa;
+  log_Gl.hdr.append_lsa = catchup_lsa;
+  log_Gl.prior_info.prior_lsa = catchup_lsa;
+
+  return NO_ERROR;
+}
+
+/*
  * logpb_append_next_record -
  *
  * return: NO_ERROR
