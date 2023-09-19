@@ -696,7 +696,7 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
 	  if (temp->node_type == PT_NAME)
 	    {
 	      PT_NAME_INFO_SET_FLAG (temp, PT_NAME_INFO_CONSTANT);
-	      temp->info.name.constant_value = lambda_arg->tree;
+	      temp->info.name.constant_value = parser_copy_tree (parser, lambda_arg->tree);
 	    }
 
 	  return tree_or_name;
@@ -7325,7 +7325,6 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r4);
     }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if (p->info.index.unique == false)
     {
       char buf[64] = { 0x00, };
@@ -7363,16 +7362,6 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, " INVISIBLE ");
     }
-#else // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  if (p->info.index.index_status == SM_INVISIBLE_INDEX)
-    {
-      b = pt_append_nulstring (parser, b, " INVISIBLE ");
-    }
-  else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-    {
-      b = pt_append_nulstring (parser, b, " WITH ONLINE ");
-    }
-#endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
   if (p->info.index.comment != NULL)
     {
