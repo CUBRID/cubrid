@@ -167,6 +167,9 @@ typedef struct tf_ct_class
 #define CTV_DB_CHARSET_NAME	   "db_charset"
 #define CTV_DB_SERVER_NAME         "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
+#define CTV_ALL_OBJECTS_NAME       "db_all_objects"
+#define CTV_DBA_OBJECTS_NAME       "db_dba_objects"
+#define CTV_USER_OBJECTS_NAME      "db_user_objects"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"
 #define CT_DBCOLL_COLL_NAME_COLUMN	   "coll_name"
