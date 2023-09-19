@@ -3361,6 +3361,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
     }
 }
 
+#if defined(SERVER_MODE)
 /*
  * logpb_append_catchup_page -
  *
@@ -3463,12 +3464,17 @@ logpb_end_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 
   assert (nav_lsa == catchup_lsa);
 
+  // prior_info 변경할때 race condition이 있을 수 있나?
   log_Gl.append.prev_lsa = prev_lsa;
+  log_Gl.prior_info.prev_lsa = prev_lsa;
   log_Gl.hdr.append_lsa = catchup_lsa;
   log_Gl.prior_info.prior_lsa = catchup_lsa;
+  log_Gl.get_log_prior_sender ().reset_unsent_lsa (catchup_lsa);
 
   return NO_ERROR;
 }
+
+#endif /* SERVER_MODE */
 
 /*
  * logpb_append_next_record -
