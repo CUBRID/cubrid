@@ -235,7 +235,7 @@ namespace cubperf
 
   inline int mmon_module::get_comp_idx (int comp_idx_map_val) const
   {
-    return (comp_idx_map_val >> 16);
+    return (int) (((uint32_t) comp_idx_map_val) >> 16);
   }
 
   inline int mmon_module::get_subcomp_idx (int comp_idx_map_val) const
@@ -245,7 +245,7 @@ namespace cubperf
 
   inline int memory_monitor::get_module_idx (MMON_STAT_ID stat_id) const
   {
-    return (((int) stat_id) >> 16);
+    return (int) (((uint32_t) stat_id) >> 16);
   }
 
   const char *mmon_subcomponent::get_name ()
@@ -575,9 +575,17 @@ namespace cubperf
 
   void memory_monitor::add_tran_stat (THREAD_ENTRY *thread_p, int64_t size)
   {
-    LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+    if (thread_p)
+      {
+	LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
-    tdes->cur_mem_usage += size;
+	/* there are some case that has no LOG_TDES in THREAD_ENTRY
+	 * when server booting */
+	if (tdes)
+	  {
+	    tdes->cur_mem_usage += size;
+	  }
+      }
   }
 
   void memory_monitor::resize_stat (THREAD_ENTRY *thread_p, MMON_STAT_ID stat_id, int64_t old_size,
@@ -667,6 +675,7 @@ void mmon_finalize ()
   if (mmon_Gl != nullptr)
     {
       delete mmon_Gl;
+      mmon_Gl = nullptr;
     }
 }
 
@@ -734,51 +743,78 @@ void mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info)
 
 MMON_STAT_ID mmon_set_tracking_tag (MMON_STAT_ID new_tag)
 {
-  MMON_STAT_ID prev_tag;
+  MMON_STAT_ID prev_tag = MMON_STAT_LAST;
   THREAD_ENTRY *cur_thread_p;
 
-  cur_thread_p = thread_get_thread_entry_info ();
-  prev_tag = cur_thread_p->mmon_tracking_tag;
-  cur_thread_p->mmon_tracking_tag = new_tag;
+  if (mmon_Gl != nullptr)
+    {
+      cur_thread_p = thread_get_thread_entry_info ();
+      prev_tag = cur_thread_p->mmon_tracking_tag;
+      cur_thread_p->mmon_tracking_tag = new_tag;
+    }
 
   return prev_tag;
 }
 
 void mmon_add_stat_with_tracking_tag (int64_t size)
 {
-  THREAD_ENTRY *cur_thread_p = thread_get_thread_entry_info ();
-  mmon_add_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+  THREAD_ENTRY *cur_thread_p;
+
+  if (mmon_Gl != nullptr)
+    {
+      cur_thread_p = thread_get_thread_entry_info ();
+      assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+      mmon_add_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+    }
 }
 
 void mmon_sub_stat_with_tracking_tag (int64_t size)
 {
-  THREAD_ENTRY *cur_thread_p = thread_get_thread_entry_info ();
-  mmon_sub_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+  THREAD_ENTRY *cur_thread_p;
+
+  if (mmon_Gl != nullptr)
+    {
+      cur_thread_p = thread_get_thread_entry_info ();
+      assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+      mmon_sub_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+    }
 }
 
 void mmon_move_stat_with_tracking_tag (int64_t size, bool tag_is_src)
 {
-  THREAD_ENTRY *cur_thread_p = thread_get_thread_entry_info ();
+  THREAD_ENTRY *cur_thread_p;
 
-  /* WARNING: this function is only for base data structures that can use MMON_COMMON tag
-   * If move is occurred from other modules to MMON_COMMON,
-   * it means that memory is returned to common structures for keeping.
-   * ex) pool, free list, reserved, etc..
-   * In this case, transaction's memory usage will be subtracted. */
-  if (tag_is_src)
+  if (mmon_Gl != nullptr)
     {
-      mmon_move_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, MMON_COMMON, size);
-      mmon_Gl->add_tran_stat (cur_thread_p, - (size));
-    }
-  else
-    {
-      mmon_move_stat (cur_thread_p, MMON_COMMON, cur_thread_p->mmon_tracking_tag, size);
-      mmon_Gl->add_tran_stat (cur_thread_p, size);
+      cur_thread_p = thread_get_thread_entry_info ();
+      assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+
+      /* WARNING: this function is only for base data structures that can use MMON_COMMON tag
+       * If move is occurred from other modules to MMON_COMMON,
+       * it means that memory is returned to common structures for keeping.
+       * ex) pool, free list, reserved, etc..
+       * In this case, transaction's memory usage will be subtracted. */
+      if (tag_is_src)
+	{
+	  mmon_move_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, MMON_COMMON, size);
+	  mmon_Gl->add_tran_stat (cur_thread_p, - (size));
+	}
+      else
+	{
+	  mmon_move_stat (cur_thread_p, MMON_COMMON, cur_thread_p->mmon_tracking_tag, size);
+	  mmon_Gl->add_tran_stat (cur_thread_p, size);
+	}
     }
 }
 
 void mmon_resize_stat_with_tracking_tag (int64_t old_size, int64_t new_size)
 {
-  THREAD_ENTRY *cur_thread_p = thread_get_thread_entry_info ();
-  mmon_resize_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, old_size, new_size);
+  THREAD_ENTRY *cur_thread_p;
+
+  if (mmon_Gl != nullptr)
+    {
+      cur_thread_p = thread_get_thread_entry_info ();
+      assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+      mmon_resize_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, old_size, new_size);
+    }
 }

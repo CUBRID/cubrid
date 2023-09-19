@@ -2318,6 +2318,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   /* *INDENT-ON* */
 
+#if defined(SERVER_MODE)
+  error_code = mmon_initialize (db_name);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+#endif
+
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
   /*
@@ -2360,14 +2368,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	  goto error;
 	}
     }
-
-#if defined(SERVER_MODE)
-  error_code = mmon_initialize (db_name);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-#endif
 
   spage_boot (thread_p);
   error_code = heap_manager_initialize ();
@@ -2818,7 +2818,6 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
-  mmon_finalize ();
   cdc_daemons_destroy ();
 
   pgbuf_daemons_destroy ();
@@ -2837,6 +2836,10 @@ error:
   er_stack_push ();
   boot_server_all_finalize (thread_p, ER_THREAD_FINAL, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
   er_stack_pop ();
+
+#if defined(SERVER_MODE)
+  mmon_finalize ();
+#endif
 
 #if defined (SA_MODE)
   cubthread::finalize ();
@@ -3134,7 +3137,6 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
-  mmon_finalize ();
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
 #endif
@@ -3157,6 +3159,10 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
       boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
       er_stack_pop ();
     }
+
+#if defined(SERVER_MODE)
+  mmon_finalize ();
+#endif
 
 #if defined (SA_MODE)
   // stop thread module

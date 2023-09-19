@@ -129,6 +129,7 @@ mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODU
       if (server_mem_usage != 0)
 	{
 	  cur_stat_ratio = m_info.stat.cur_stat / (double) server_mem_usage;
+	  cur_stat_ratio *= 100;
 	}
 
       fprintf (stdout, "\t%5d\t%-20s\t: %17lu(%3d%%)\n", mmon_convert_module_name_to_index (m_info.name),

@@ -442,12 +442,12 @@ area_alloc (AREA * area)
   if (block == NULL)
     {
       pthread_mutex_unlock (&area->area_mutex);
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       /* error has been set */
       return NULL;
     }
-#ifdef SERVER_MODE
-  (void) mmon_set_tracking_tag (prev_tag);
-#endif
 
   /* alloc free entry from this new block */
   entry_idx = block->bitmap.get_entry ();
@@ -459,6 +459,9 @@ area_alloc (AREA * area)
       free_and_init (block);
 
       pthread_mutex_unlock (&area->area_mutex);
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       /* error has been set */
       return NULL;
     }
@@ -485,6 +488,10 @@ found:
 
   entry_ptr += AREA_PREFIX_SIZE;
 #endif /* !NDEBUG */
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   assert (entry_ptr < (block->data + area->block_size));
 
@@ -626,7 +633,7 @@ area_flush (AREA * area)
       next_blockset = blockset->next;
 
 #ifdef SERVER_MODE
-      mmon_sub_stat_with_tracking_tag (sizeof (AREA_BLOCK) * blockset->used_count + sizeof (AREA_BLOCKSET_LIST));
+      mmon_sub_stat_with_tracking_tag (sizeof (AREA_BLOCK) * blockset->used_count);
 #endif
       for (i = 0; i < blockset->used_count; i++)
 	{

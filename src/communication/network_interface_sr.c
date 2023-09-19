@@ -7287,11 +7287,10 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error = NO_ERROR;
   MMON_SERVER_INFO server_info;
-  int string_len;
 
   mmon_aggregate_server_info (server_info);
 
-  string_len = or_packed_string_length (server_info.name, NULL);
+  size += or_packed_string_length (server_info.name, NULL);
   /* (CBRD-24943) Alignment size check is needed because or_pack_int64() use different alignment unit(8 byte)
    * to other packing function(4 byte). And it occurs to use more 4 bytes for alignment. */
   size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
