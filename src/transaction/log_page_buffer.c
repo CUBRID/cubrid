@@ -3396,6 +3396,8 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
 	}
     }
 
+  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
+
   return NO_ERROR;
 }
 
@@ -3409,7 +3411,6 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
 int
 logpb_end_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 {
-  // set prev_lsa and append_lsa to the correct value
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   char log_pgbuf[LOG_PAGESIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
@@ -3470,6 +3471,8 @@ logpb_end_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
   log_Gl.hdr.append_lsa = catchup_lsa;
   log_Gl.prior_info.prior_lsa = catchup_lsa;
   log_Gl.get_log_prior_sender ().reset_unsent_lsa (catchup_lsa);
+
+  logpb_flush_all_append_pages (thread_p);
 
   return NO_ERROR;
 }
