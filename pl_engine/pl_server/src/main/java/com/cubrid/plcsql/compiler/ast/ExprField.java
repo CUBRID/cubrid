@@ -58,8 +58,7 @@ public class ExprField extends Expr {
         this.fieldName = fieldName;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
 
         if (colIndex > 0) {
 
@@ -67,13 +66,13 @@ public class ExprField extends Expr {
             //
             assert type != null;
             return String.format(
-                    "(%s) %s.getObject(%d)", type.toJavaCode(), record.toJavaCode(), colIndex);
+                    "(%s) %s.getObject(%d)", type.javaCode, record.javaCode(), colIndex);
         } else {
 
             // record is for a Dynamic SQL
             //
             assert type == null;
-            return String.format("%s.getObject(\"%s\")", record.toJavaCode(), fieldName);
+            return String.format("%s.getObject(\"%s\")", record.javaCode(), fieldName);
         }
     }
 

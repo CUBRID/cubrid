@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -52,20 +51,4 @@ public class ExprLike extends Expr {
         this.pattern = pattern;
         this.escape = escape;
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return tmpl.replace("  %'TARGET'%", Misc.indentLines(target.toJavaCode(), 1))
-                .replace("  %'PATTERN'%", Misc.indentLines(pattern.toJavaCode(), 1))
-                .replace(
-                        "  %'ESCAPE'%",
-                        Misc.indentLines(escape == null ? "null" : escape.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines("opLike(", "  %'TARGET'%,", "  %'PATTERN'%,", "  %'ESCAPE'%", ")");
 }

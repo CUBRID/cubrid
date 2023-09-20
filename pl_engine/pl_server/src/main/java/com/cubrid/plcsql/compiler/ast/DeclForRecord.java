@@ -58,12 +58,4 @@ public class DeclForRecord extends DeclId {
     public String kind() {
         return "for-loop-record";
     }
-
-    @Override
-    public String toJavaCode() {
-        // unreachable: currently, used only in for-dynamic-sql-loop, not in any ordinary declration
-        // list
-        assert false;
-        throw new RuntimeException("unreachable");
-    }
 }

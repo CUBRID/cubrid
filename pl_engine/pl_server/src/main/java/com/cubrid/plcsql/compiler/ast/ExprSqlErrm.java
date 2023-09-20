@@ -47,8 +47,7 @@ public class ExprSqlErrm extends Expr {
         this.exHandlerDepth = exHandlerDepth;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
 
         if (exHandlerDepth > 0) {
             return String.format("e%d.getMessage()", exHandlerDepth);

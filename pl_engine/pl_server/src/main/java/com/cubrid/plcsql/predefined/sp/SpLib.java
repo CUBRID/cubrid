@@ -50,9 +50,111 @@ import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
+
+    // -------------------------------------------------------------------------------
+    // To provide line and column numbers for run-time exceptions
+    //
+
+    private static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
+
+    public static int[] getPlcLineColumn(
+            List<CodeRangeMarker> crmList, Throwable thrown, String fileName) {
+
+        StackTraceElement[] stackTrace = thrown.getStackTrace();
+
+        // get exception line number in the generated Java class
+        int exceptionJavaLine = 0;
+        for (StackTraceElement e : stackTrace) {
+            if (e.getFileName().equals(fileName)) {
+                exceptionJavaLine = e.getLineNumber();
+                break;
+            }
+        }
+        if (exceptionJavaLine == 0) {
+            return UNKNOWN_LINE_COLUMN;
+        }
+
+        // find the innermost code range that contains the Java line number
+        Stack<CodeRangeMarker> stack = new Stack<>();
+        for (CodeRangeMarker crm : crmList) {
+
+            if (exceptionJavaLine < crm.javaLine) {
+                CodeRangeMarker innermost = stack.peek();
+                assert innermost != null;
+                return new int[] {innermost.plcLine, innermost.plcColumn};
+            }
+
+            if (crm.isBegin) {
+                stack.push(crm);
+            } else {
+                stack.pop();
+            }
+        }
+        assert false;
+        throw new RuntimeException("unreachable");
+    }
+
+    public static List<CodeRangeMarker> buildCodeRangeMarkerList(String markers) {
+
+        String[] split = markers.split(" ");
+        assert split[0].length() == 0 && split[1].charAt(0) == '(';
+
+        List<CodeRangeMarker> ret = new LinkedList<>();
+
+        int stackHeight = 0; // to check the validity of generated code range markers
+        int len = split.length;
+        for (int i = 1; i < len; i++) {
+
+            String s = split[i];
+
+            boolean isBegin = (s.charAt(0) == '(');
+            assert isBegin || (s.charAt(0) == ')');
+            if (isBegin) {
+                // beginning marker of the form '(<java-line>,<pcs-line>,<pcs-column>'
+                stackHeight++;
+                String[] split2 = s.substring(1).split(",");
+                assert split2.length == 3;
+                ret.add(
+                        new CodeRangeMarker(
+                                true,
+                                Integer.parseInt(split2[0]),
+                                Integer.parseInt(split2[1]),
+                                Integer.parseInt(split2[2])));
+            } else {
+                // ending marker of the form ')<java-line>'
+                stackHeight--;
+                ret.add(new CodeRangeMarker(false, Integer.parseInt(s.substring(1)), -1, -1));
+            }
+        }
+        assert stackHeight == 0;
+
+        return ret;
+    }
+
+    public static class CodeRangeMarker {
+
+        public final boolean isBegin;
+        public final int javaLine;
+        public final int plcLine;
+        public final int plcColumn;
+
+        public CodeRangeMarker(boolean isBegin, int javaLine, int plcLine, int plcColumn) {
+            this.isBegin = isBegin;
+            this.javaLine = javaLine;
+            this.plcLine = plcLine;
+            this.plcColumn = plcColumn;
+        }
+    }
+
+    //
+    // To provide line and column numbers for run-time exceptions
+    // -------------------------------------------------------------------------------
 
     public static Object invokeBuiltinFunc(Connection conn, String name, Object... args) {
 

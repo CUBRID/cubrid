@@ -49,19 +49,4 @@ public class StmtAssign extends Stmt {
         this.var = var;
         this.val = val;
     }
-
-    @Override
-    public String toJavaCode() {
-
-        boolean checkNotNull = (var.decl instanceof DeclVar) && ((DeclVar) var.decl).notNull;
-        if (checkNotNull) {
-            return String.format("%s = checkNotNull(%s);", var.toJavaCode(), val.toJavaCode());
-        } else {
-            return String.format("%s = %s;", var.toJavaCode(), val.toJavaCode());
-        }
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

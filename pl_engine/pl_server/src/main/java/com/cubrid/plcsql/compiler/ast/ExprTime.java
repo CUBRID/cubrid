@@ -49,13 +49,8 @@ public class ExprTime extends Expr {
         this.time = time;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
         return String.format(
                 "new Time(%d, %d, %d)", time.getHour(), time.getMinute(), time.getSecond());
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

@@ -44,8 +44,7 @@ public class ExprFalse extends Expr {
         super(null);
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
         return "false";
     }
 }

@@ -71,8 +71,7 @@ public abstract class TypeSpec extends AstNode {
         // I just want to be explicit.
     }
 
-    @Override
-    public String toJavaCode() {
+    public String javaCode() {
         assert javaCode != null;
         return javaCode;
     }

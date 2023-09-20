@@ -43,9 +43,4 @@ public class ExprNull extends Expr {
     public ExprNull(ParserRuleContext ctx) {
         super(ctx);
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return "null";
-    }
 }

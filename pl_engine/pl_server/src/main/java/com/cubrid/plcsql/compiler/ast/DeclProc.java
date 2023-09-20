@@ -57,8 +57,4 @@ public class DeclProc extends DeclRoutine {
     public String kind() {
         return "procedure";
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }
