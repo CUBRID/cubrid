@@ -316,9 +316,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_type = NULL;
 	      bt_statsp->pkeys_size = 0;
 	      bt_statsp->pkeys = NULL;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	      bt_statsp->dedup_idx = -1;
-#endif
 
 #if 0				/* reserved for future use */
 	      for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
@@ -369,9 +367,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)
 		{
 		  bt_statsp->pkeys_size = tp_domain_size (bt_statsp->key_type->setdomain);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 		  bt_statsp->dedup_idx = btid_int.deduplicate_key_idx;
-#endif
 		}
 	      else
 		{
@@ -1939,14 +1935,12 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	    }
 
 	  att_id = db_get_int (&att_val);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
 	    {
 	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (att_id);
 	      (index->n_atts)++;
 	    }
 	  else
-#endif
 	    {
 	      for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 		{
@@ -2254,7 +2248,6 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
 	{
           // *INDENT-OFF* 
@@ -2274,7 +2267,6 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 	      att_id = db_get_int (&att_val);	/* The first attrID after HIDDEN_INDEX_COL */
 	    }
 	}
-#endif
 
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
@@ -4002,7 +3994,6 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	    }
 	}
     }
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   else
     {
       *alloced_string = 0;
@@ -4012,7 +4003,6 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	  *string = dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id));
 	}
     }
-#endif
 
   return rc;
 }

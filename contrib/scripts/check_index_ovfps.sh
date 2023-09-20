@@ -104,7 +104,11 @@ function get_options()
 	local sa_mode=0
 	local tsort=""
 
-	args=$(getopt -o :u:p:o:c:t:k:s:CSv  -l user:,password:,owner:,class:,threshold:,key:,sort:,--verbose   -- "$@" )
+	args=$(getopt -o :u:p:o:c:t:k:s:CSv  -l user:,password:,owner:,class:,threshold:,key:,sort:,verbose   -- "$@")
+        if [[ $? -ne 0 ]]; then
+          show_usage
+        fi
+
 	eval set -- "$args"
 	while true
 	do

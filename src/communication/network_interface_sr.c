@@ -2585,6 +2585,32 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 }
 
 /*
+ * shf_get_maxslotted_reclength -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+shf_get_maxslotted_reclength (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int maxslotted_reclength;
+
+  (void) xheap_get_maxslotted_reclength (maxslotted_reclength);
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  (void) or_pack_int (reply, maxslotted_reclength);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * sfile_apply_tde_to_class_files -
  *
  * return:
@@ -4038,9 +4064,8 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   OID class_oid;
   int attr_id, unique_pk;
   char *ptr;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int deduplicate_key_pos = -1;
-#endif
+
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4049,15 +4074,10 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  ptr = or_unpack_int (ptr, &deduplicate_key_pos);
-#endif
+  ptr = or_unpack_int (ptr, &deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-  return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				  , deduplicate_key_pos
-#endif
-    );
+  return_btid =
+    xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);

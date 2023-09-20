@@ -5495,6 +5495,10 @@ sm_find_class_with_purpose (const char *name, bool for_update)
 	  char target_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 	  sm_get_synonym_target_name (synonym_mop, target_name, SM_MAX_IDENTIFIER_LENGTH);
 	  class_mop = locator_find_class_with_purpose (target_name, for_update);
+	  if (class_mop)
+	    {
+	      er_clear ();
+	    }
 	}
       else
 	{
@@ -9620,13 +9624,12 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	      /*
 	       * Try to find a corresponding attribute in the flattened template
 	       */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[i]->id))
 		{
 		  assert (attrs[i + 1] == NULL);
 		  continue;
 		}
-#endif
+
 	      for (att = flat->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 		{
 		  if (SM_COMPARE_NAMES (attrs[i]->header.name, att->header.name) == 0)
@@ -10829,11 +10832,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   // TODO: optimize has_instances case
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-			       , dk_sm_deduplicate_key_position (n_attrs, attrs, function_index)
-#endif
-	);
+      error =
+	btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk,
+			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index));
     }
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else
@@ -10965,13 +10966,11 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       // We cannot make a PK with a function. Therefore, only the last member is checked.
       if (n_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (key_attrs[n_attrs - 1]->id))
 	{
 	  n_attrs--;
 	}
-#endif
 
       domain = construct_index_key_domain (n_attrs, key_attrs, asc_desc, NULL, -1, NULL);
       if (domain == NULL)
@@ -14219,9 +14218,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       bool is_fk = false;
-#endif
 
       switch (type)
 	{
@@ -14236,9 +14233,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  is_fk = true;
-#endif
 	  break;
 	case DB_CONSTRAINT_NOT_NULL:
 	  prefix = "n_";
@@ -14270,14 +14265,13 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  if (is_fk && IS_DEDUPLICATE_KEY_ATTR_NAME (*ptr))
 	    {
 	      n_attrs--;	/* Do not include deduplicate_key_attr name in the FK name */
 	      assert (i == n_attrs);
 	      break;
 	    }
-#endif
+
 	  do_desc = false;	/* init */
 	  if (asc_desc)
 	    {
