@@ -30,9 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.sql.*;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class Unit extends AstNode {
@@ -44,14 +44,14 @@ public class Unit extends AstNode {
 
     public final boolean autonomousTransaction;
     public final boolean connectionRequired;
-    public final String importsStr;
+    public final Set<String> imports;
     public final DeclRoutine routine;
 
     public Unit(
             ParserRuleContext ctx,
             boolean autonomousTransaction,
             boolean connectionRequired,
-            String importsStr,
+            Set<String> imports,
             DeclRoutine routine) {
         super(ctx);
 
@@ -59,7 +59,7 @@ public class Unit extends AstNode {
 
         this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
-        this.importsStr = importsStr;
+        this.imports = imports;
         this.routine = routine;
     }
 
@@ -91,50 +91,6 @@ public class Unit extends AstNode {
         }
     }
 
-    @Override
-    public String toJavaCode() {
-
-        String strGetConn;
-        if (connectionRequired) {
-            strGetConn =
-                    tmplGetConn.replace(
-                            "%'AUTONOMOUS-TRANSACTION'%",
-                            autonomousTransaction
-                                    ? "autonomous_transaction=true"
-                                    : "autonomous_transaction=false");
-        } else {
-            strGetConn = "// connection not required";
-        }
-
-        String strDecls =
-                routine.decls == null
-                        ? "// no declarations"
-                        : tmplDeclClass
-                                .replace("%'BLOCK'%", routine.getDeclBlockName())
-                                .replace(
-                                        "  %'DECLARATIONS'%",
-                                        Misc.indentLines(routine.decls.toJavaCode(), 1));
-        ;
-        String strParams =
-                routine.paramList == null
-                        ? "// no parameters"
-                        : routine.paramList.toJavaCode(",\n");
-
-        String strNullifyOutParam = DeclRoutine.getNullifyOutParamStr(routine.paramList);
-
-        return tmplUnit.replace("%'IMPORTS'%", importsStr)
-                .replace("%'CLASS-NAME'%", getClassName())
-                .replace(
-                        "%'RETURN-TYPE'%",
-                        routine.retType == null ? "void" : routine.retType.toJavaCode())
-                .replace("%'METHOD-NAME'%", routine.name)
-                .replace("      %'PARAMETERS'%", Misc.indentLines(strParams, 3))
-                .replace("    %'NULLIFY-OUT-PARAMETERS'%", Misc.indentLines(strNullifyOutParam, 2))
-                .replace("      %'GET-CONNECTION'%", Misc.indentLines(strGetConn, 3))
-                .replace("      %'DECL-CLASS'%", Misc.indentLines(strDecls, 3))
-                .replace("      %'BODY'%", Misc.indentLines(routine.body.toJavaCode(), 3));
-    }
-
     public String getClassName() {
 
         if (className == null) {
@@ -145,54 +101,19 @@ public class Unit extends AstNode {
         return className;
     }
 
+    public String[] getImportsArray() {
+        if (imports.size() == 0) {
+            return new String[] {"// no imports"};
+        } else {
+            return imports.toArray(dummyStrArr);
+        }
+    }
+
     // ------------------------------------------
     // Private
     // ------------------------------------------
 
-    private static final String tmplUnit =
-            Misc.combineLines(
-                    "%'IMPORTS'%",
-                    "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
-                    "",
-                    "public class %'CLASS-NAME'% {",
-                    "",
-                    "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
-                    "      %'PARAMETERS'%",
-                    "    ) throws Exception {",
-                    "",
-                    "    %'NULLIFY-OUT-PARAMETERS'%",
-                    "",
-                    "    try {",
-                    "      Long[] sql_rowcount = new Long[] { null };",
-                    "      %'GET-CONNECTION'%",
-                    "",
-                    "      %'DECL-CLASS'%",
-                    "",
-                    "      %'BODY'%",
-                    "    } catch (OutOfMemoryError e) {",
-                    "      Server.log(e);",
-                    "      throw new STORAGE_ERROR();",
-                    "    } catch (PlcsqlRuntimeError e) {",
-                    "      throw e;",
-                    "    } catch (Throwable e) {",
-                    "      Server.log(e);",
-                    "      throw new PROGRAM_ERROR();",
-                    "    }",
-                    "  }",
-                    "}");
-
-    private static final String tmplGetConn =
-            Misc.combineLines(
-                    "Connection conn = DriverManager.getConnection"
-                            + "(\"jdbc:default:connection::?%'AUTONOMOUS-TRANSACTION'%\");");
-
-    private static final String tmplDeclClass =
-            Misc.combineLines(
-                    "class Decl_of_%'BLOCK'% {",
-                    "  Decl_of_%'BLOCK'%() throws Exception {};",
-                    "  %'DECLARATIONS'%",
-                    "}",
-                    "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();");
+    private static final String[] dummyStrArr = new String[0];
 
     private String className;
 }

@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -50,18 +49,4 @@ public class CaseExpr extends AstNode {
         this.val = val;
         this.expr = expr;
     }
-
-    @Override
-    public String toJavaCode() {
-        return tmpl.replace("%'VALUE'%", val.toJavaCode())
-                .replace("  %'EXPRESSION'%", Misc.indentLines(expr.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines(
-                    "Boolean.TRUE.equals(opEq(selector, %'VALUE'%)) ?", "  %'EXPRESSION'% :");
 }

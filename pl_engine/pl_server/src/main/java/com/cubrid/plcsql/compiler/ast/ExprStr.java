@@ -48,12 +48,7 @@ public class ExprStr extends Expr {
         this.val = val;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
         return '"' + val + '"';
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

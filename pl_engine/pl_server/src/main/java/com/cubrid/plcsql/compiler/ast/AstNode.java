@@ -37,8 +37,6 @@ public abstract class AstNode {
 
     public final ParserRuleContext ctx;
 
-    public abstract String toJavaCode();
-
     public abstract <R> R accept(AstVisitor<R> visitor);
 
     public AstNode(ParserRuleContext ctx) {

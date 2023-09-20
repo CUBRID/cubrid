@@ -36,6 +36,7 @@ import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
+import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
 import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -256,9 +257,10 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         //
 
+        JavaCodeWriter jcw = new JavaCodeWriter();
         CompileInfo info =
                 new CompileInfo(
-                        unit.toJavaCode(),
+                        jcw.buildCodeLines(unit),
                         String.format(sqlTemplate[0], unit.getJavaSignature()),
                         unit.getClassName(),
                         unit.getJavaSignature());

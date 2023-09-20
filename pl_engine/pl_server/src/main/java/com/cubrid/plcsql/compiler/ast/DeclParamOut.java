@@ -52,16 +52,7 @@ public class DeclParamOut extends DeclParam {
         return "out-parameter";
     }
 
-    @Override
-    public String toJavaCode() {
-        return String.format("%s[] %s", typeSpec.toJavaCode(), name);
-    }
-
     public String toJavaSignature() {
         return String.format("%s[]", typeSpec.toJavaSignature());
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

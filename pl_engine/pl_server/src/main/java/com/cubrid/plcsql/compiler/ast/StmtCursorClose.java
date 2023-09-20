@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -48,22 +47,4 @@ public class StmtCursorClose extends Stmt {
 
         this.id = id;
     }
-
-    @Override
-    public String toJavaCode() {
-        return tmplStmt.replace("%'CURSOR'%", id.toJavaCode());
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmplStmt =
-            Misc.combineLines(
-                    "// cursor close",
-                    "if (%'CURSOR'% != null && %'CURSOR'%.isOpen()) {",
-                    "  %'CURSOR'%.close();",
-                    "} else {",
-                    "  throw new INVALID_CURSOR(\"tried to close an unopened cursor\");",
-                    "}");
 }

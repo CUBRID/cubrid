@@ -49,13 +49,4 @@ public class StmtReturn extends Stmt {
         this.retVal = retVal;
         this.retType = retType;
     }
-
-    @Override
-    public String toJavaCode() {
-        if (retVal == null) {
-            return "return;";
-        } else {
-            return "return " + retVal.toJavaCode() + ";";
-        }
-    }
 }

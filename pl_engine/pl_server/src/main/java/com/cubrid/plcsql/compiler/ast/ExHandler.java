@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -53,38 +52,4 @@ public class ExHandler extends AstNode {
         this.stmts = stmts;
         this.depth = depth;
     }
-
-    @Override
-    public String toJavaCode() {
-
-        boolean first = true;
-        StringBuffer sbuf = new StringBuffer();
-        for (ExName ex : exNames) {
-
-            if (first) {
-                first = false;
-            } else {
-                sbuf.append(" | ");
-            }
-
-            if ("OTHERS".equals(ex.name)) {
-                sbuf.append("Throwable");
-            } else if (ex.prefixDeclBlock) {
-                sbuf.append("Decl_of_" + ex.decl.scope().block + "." + ex.name);
-            } else {
-                sbuf.append(ex.name);
-            }
-        }
-
-        return tmpl.replace("%'EXCEPTIONS'%", sbuf.toString())
-                .replace("%'DEPTH'%", Integer.toString(depth))
-                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines(" catch (%'EXCEPTIONS'% e%'DEPTH'%) {", "  %'STATEMENTS'%", "}");
 }

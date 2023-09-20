@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -54,36 +53,5 @@ public class StmtGlobalProcCall extends Stmt {
         this.level = level;
         this.name = name;
         this.args = args;
-    }
-
-    @Override
-    public String toJavaCode() {
-        String dynSql = getDynSql(name, args.nodes.size());
-        String setUsedExprStr = Common.getSetUsedExprStr(args.nodes);
-        return tmplStmt.replace("%'PROC-NAME'%", name)
-                .replace("%'DYNAMIC-SQL'%", dynSql)
-                .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedExprStr, 1))
-                .replace("%'LEVEL'%", "" + level);
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmplStmt =
-            Misc.combineLines(
-                    "try { // global procedure call: %'PROC-NAME'%",
-                    "  String dynSql_%'LEVEL'% = \"%'DYNAMIC-SQL'%\";",
-                    "  CallableStatement stmt_%'LEVEL'% = conn.prepareCall(dynSql_%'LEVEL'%);",
-                    "  %'SET-USED-VALUES'%",
-                    "  stmt_%'LEVEL'%.execute();",
-                    "  stmt_%'LEVEL'%.close();",
-                    "} catch (SQLException e) {",
-                    "  Server.log(e);",
-                    "  throw new SQL_ERROR(e.getMessage());",
-                    "}");
-
-    private static String getDynSql(String name, int argCount) {
-        return String.format("call %s(%s)", name, Common.getQuestionMarks(argCount));
     }
 }

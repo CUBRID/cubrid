@@ -31,7 +31,6 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.Coercion;
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -47,6 +46,8 @@ public class StmtCursorFetch extends Stmt {
     public final List<TypeSpec> columnTypeList;
     public final List<ExprId> intoVarList;
 
+    public List<Coercion> coercions;
+
     public StmtCursorFetch(
             ParserRuleContext ctx,
             ExprId id,
@@ -59,66 +60,7 @@ public class StmtCursorFetch extends Stmt {
         this.intoVarList = intoVarList;
     }
 
-    @Override
-    public String toJavaCode() {
-        String setIntoVarsStr = getSetIntoVarsStr(intoVarList);
-        return tmplStmt.replace("%'CURSOR'%", id.toJavaCode())
-                .replace("    %'SET-INTO-VARIABLES'%", Misc.indentLines(setIntoVarsStr, 2));
-    }
-
     public void setCoercions(List<Coercion> coercions) {
         this.coercions = coercions;
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private List<Coercion> coercions;
-
-    private static final String tmplStmt =
-            Misc.combineLines(
-                    "{ // cursor fetch",
-                    "  if (%'CURSOR'% == null || !%'CURSOR'%.isOpen()) {",
-                    "    throw new INVALID_CURSOR(\"tried to fetch an unopened cursor\");",
-                    "  }",
-                    "  ResultSet rs = %'CURSOR'%.rs;",
-                    "  if (rs == null) {",
-                    "    throw new PROGRAM_ERROR();",
-                    "  } else if (rs.next()) {",
-                    "    %'SET-INTO-VARIABLES'%",
-                    "  } else {",
-                    "    ;", // TODO: setting nulls to into-variables?
-                    "  }",
-                    "}");
-
-    private String getSetIntoVarsStr(List<ExprId> intoVarList) {
-
-        assert coercions != null;
-        assert coercions.size() == intoVarList.size();
-
-        int i = 0;
-        StringBuffer sbuf = new StringBuffer();
-        for (ExprId id : intoVarList) {
-
-            String resultStr;
-            if (columnTypeList == null) {
-                resultStr = String.format("rs.getObject(%d)", i + 1);
-            } else {
-                resultStr =
-                        String.format(
-                                "(%s) rs.getObject(%d)", columnTypeList.get(i).toJavaCode(), i + 1);
-            }
-
-            if (i > 0) {
-                sbuf.append("\n");
-            }
-
-            Coercion c = coercions.get(i);
-            sbuf.append(String.format("%s = %s;", id.toJavaCode(), c.toJavaCode(resultStr)));
-
-            i++;
-        }
-        return sbuf.toString();
     }
 }

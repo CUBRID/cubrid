@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -59,21 +58,4 @@ public class Body extends AstNode {
         this.exHandlers = exHandlers;
         this.label = label;
     }
-
-    @Override
-    public String toJavaCode() {
-        if (exHandlers.nodes.size() == 0) {
-            return stmts.toJavaCode();
-        } else {
-            return tmpl.replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1))
-                    .replace("%'CATCHES'%", exHandlers.toJavaCode(null));
-        }
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines("try {", "  %'STATEMENTS'%", "}%'CATCHES'%");
 }

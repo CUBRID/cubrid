@@ -55,8 +55,7 @@ public class ExprId extends Expr {
         prefixDeclBlock = decl.scope().declDone;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
         if (decl instanceof DeclParamOut) {
             return String.format("%s[0]", name);
         } else if (decl instanceof DeclParamIn) {
@@ -84,7 +83,7 @@ public class ExprId extends Expr {
     }
 
     // TODO: coercion?
-    public String toJavaCodeForOutParam() {
+    public String javaCodeForOutParam() {
         if (decl instanceof DeclParamOut) {
             return String.format("%s", name);
         } else if (decl instanceof DeclVar) {
@@ -98,8 +97,4 @@ public class ExprId extends Expr {
             return null;
         }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

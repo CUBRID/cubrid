@@ -43,13 +43,4 @@ public class ExprSqlRowCount extends Expr {
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitExprSqlRowCount(this);
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return "sql_rowcount[0]";
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

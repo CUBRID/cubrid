@@ -41,7 +41,7 @@ import java.util.Set;
 
 public abstract class Coercion {
 
-    public abstract String toJavaCode(String exprJavaCode);
+    public abstract String javaCode(String exprJavaCode);
 
     public static Coercion getCoercion(TypeSpec from, TypeSpec to) {
 
@@ -78,7 +78,7 @@ public abstract class Coercion {
 
     public static class Identity extends Coercion {
         @Override
-        public String toJavaCode(String exprJavaCode) {
+        public String javaCode(String exprJavaCode) {
             return exprJavaCode; // no coercion
         }
     }
@@ -93,8 +93,8 @@ public abstract class Coercion {
         }
 
         @Override
-        public String toJavaCode(String exprJavaCode) {
-            return String.format("(%s) %s", to.toJavaCode(), exprJavaCode);
+        public String javaCode(String exprJavaCode) {
+            return String.format("(%s) %s", to.javaCode(), exprJavaCode);
         }
     }
 
@@ -108,7 +108,7 @@ public abstract class Coercion {
         }
 
         @Override
-        public String toJavaCode(String exprJavaCode) {
+        public String javaCode(String exprJavaCode) {
             return String.format("conv%sTo%s(%s)", from, to, exprJavaCode);
         }
     }

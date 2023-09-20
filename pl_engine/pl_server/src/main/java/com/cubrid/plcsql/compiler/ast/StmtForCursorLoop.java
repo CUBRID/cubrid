@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -61,38 +60,4 @@ public class StmtForCursorLoop extends StmtCursorOpen {
         this.record = record;
         this.stmts = stmts;
     }
-
-    @Override
-    public String toJavaCode() {
-        DeclCursor decl = (DeclCursor) cursor.decl;
-        String dupCursorArgStr = getDupCursorArgStr(decl.paramRefCounts);
-        String hostValuesStr = getHostValuesStr(decl.paramMarks, decl.paramRefCounts);
-        return tmplStmt.replace("  %'DUPLICATE-CURSOR-ARG'%", Misc.indentLines(dupCursorArgStr, 1))
-                .replace("%'CURSOR'%", cursor.toJavaCode())
-                .replace("%'HOST-VALUES'%", Misc.indentLines(hostValuesStr, 2, true))
-                .replace("%'RECORD'%", record)
-                .replace("%'LABEL'%", label == null ? "// no label" : label + "_%'LEVEL'%:")
-                .replace("%'LEVEL'%", "" + cursor.scope.level)
-                .replace("    %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 2));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmplStmt =
-            Misc.combineLines(
-                    "try { // for loop with a cursor",
-                    "  %'DUPLICATE-CURSOR-ARG'%",
-                    "  %'CURSOR'%.open(conn%'HOST-VALUES'%);",
-                    "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
-                    "  %'LABEL'%",
-                    "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
-                    "    %'STATEMENTS'%",
-                    "  }",
-                    "  %'CURSOR'%.close();",
-                    "} catch (SQLException e) {",
-                    "  Server.log(e);",
-                    "  throw new SQL_ERROR(e.getMessage());",
-                    "}");
 }
