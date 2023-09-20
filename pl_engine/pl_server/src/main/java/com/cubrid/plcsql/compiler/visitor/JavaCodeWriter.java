@@ -2034,7 +2034,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // -----------------------------------------------------------------
 
     private static String[] tmplDupCursorArg =
-            new String[] {"Object a%'INDEX'%_%%'LEVEL'%% =", "  %'+ARG'%;"};
+            new String[] {"Object a%'INDEX'%_%'LEVEL'% =", "  %'+ARG'%;"};
 
     private Object getDupCursorArgs(StmtCursorOpen node, int[] paramRefCounts) {
 
