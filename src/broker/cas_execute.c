@@ -1405,7 +1405,16 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
     }
   else
     {
-      srv_handle->total_tuple_count = (int) row_count;
+      if (row_count == -1)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_UNKNOWN_AFFECTED_ROWS, 0);
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+      else
+	{
+	  srv_handle->total_tuple_count = (int) row_count;
+	}
     }
 
   if (do_commit_after_execute (*srv_handle))
@@ -8526,7 +8535,7 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
 {
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
-  int num_result;
+  int num_result = 0;
   char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
   char *class_name_only = NULL;
   char synonym_sql_stmt[QUERY_BUFFER_MAX], *synonym_sql_stmt_p = synonym_sql_stmt;
@@ -8561,6 +8570,11 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
 	      class_name_only = dot + 1;
 	    }
 	}
+    }
+
+  if (schema_name[0] == '\0')
+    {
+      strncpy (schema_name, database_user, DB_MAX_SCHEMA_LENGTH - 1);
     }
 
   if (schema_name[0] != '\0' && class_name_only != NULL)
@@ -8662,6 +8676,27 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
 	{
 	  db_close_session (session);
 	}
+
+      if (num_result < 0)
+	{
+	  return num_result;
+	}
+
+      if (num_result == 0)
+	{
+	  net_buf_cp_int (net_buf, num_result, NULL);
+	  schema_attr_meta (net_buf);
+
+	  return 0;
+	}
+    }
+  else
+    {
+
+      net_buf_cp_int (net_buf, 0, NULL);
+      schema_attr_meta (net_buf);
+
+      return 0;
     }
 
   // *INDENT-OFF*
@@ -8690,22 +8725,11 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
       STRING_APPEND (sql_p, avail_size, "AND a.attr_type in {'INSTANCE', 'SHARED'} ");
     }
 
-  if (pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH)
+  if (class_name_only == NULL)
     {
-      if (class_name_only)
-	{
-	  STRING_APPEND (sql_p, avail_size, "AND a.class_name LIKE '%s' ESCAPE '%s' ", class_name_only,
-			 get_backslash_escape_string ());
-	}
+      class_name_only = CONST_CAST (char *, "");
     }
-  else
-    {
-      if (class_name_only == NULL)
-	{
-	  class_name_only = CONST_CAST (char *, "");
-	}
-      STRING_APPEND (sql_p, avail_size, "AND a.class_name = '%s' ", class_name_only);
-    }
+  STRING_APPEND (sql_p, avail_size, "AND a.class_name = '%s' ", class_name_only);
 
   if (pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH)
     {
@@ -9857,9 +9881,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pktable_name, *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int fk_i;
-#endif
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -9956,14 +9978,9 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
       assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
       if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
-#else
-      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
-#endif
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -10000,9 +10017,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int fk_i;
-#endif
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -10119,14 +10134,9 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
       assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
       if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
-#else
-      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
-#endif
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,

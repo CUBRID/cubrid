@@ -927,9 +927,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   btid_int.deduplicate_key_idx = dk_get_deduplicate_key_position (n_attrs, attr_ids, func_attr_index_start);
-#endif
+
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
 
   /*
@@ -1150,11 +1150,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
       BTID_SET_NULL (btid);
       if (xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0], unique_pk, sort_args->n_oids,
-			    sort_args->n_nulls, load_args->n_keys
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-			    , btid_int.deduplicate_key_idx
-#endif
-	  ) == NULL)
+			    sort_args->n_nulls, load_args->n_keys, btid_int.deduplicate_key_idx) == NULL)
 	{
 	  goto error;
 	}
@@ -1925,12 +1921,9 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   COPY_OID (&(root_header->topclass_oid), &load_args->btid->topclass_oid);
 
   root_header->ovfid = load_args->btid->ovfid;	/* structure copy */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+
   root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
   SET_DECOMPRESS_IDX_HEADER (root_header, load_args->btid->deduplicate_key_idx);
-#else
-  root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
-#endif
 
 #if defined (SERVER_MODE)
   root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
@@ -3944,7 +3937,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   BTREE_SCAN_PART partitions[MAX_PARTITIONS];
   bool has_nulls = false;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   bool has_deduplicate_key_col = false;
   DB_VALUE new_fk_key[2];
   DB_VALUE *fk_key_ptr = &fk_key;
@@ -3960,9 +3952,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  fk_key_ptr = &(new_fk_key[0]);
 	}
     }
-#else
-  DB_VALUE *fk_key_ptr = &fk_key;
-#endif
 
   btree_init_temp_key_value (&clear_fk_key, &fk_key);
   btree_init_temp_key_value (&clear_pk_key, &pk_key);
@@ -4117,7 +4106,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  continue;
 	}
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       if (has_deduplicate_key_col)
 	{
 	  assert (!DB_IS_NULL (&fk_key));
@@ -4152,7 +4140,6 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
 	  fk_key_ptr = new_ptr;
 	}
-#endif
 
       /* We got the value from the foreign key, now search through the primary key index. */
       found = false;
@@ -4334,10 +4321,8 @@ end:
   btree_clear_key_value (&clear_fk_key, &fk_key);
   btree_clear_key_value (&clear_pk_key, &pk_key);
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   pr_clear_value (&(new_fk_key[0]));
   pr_clear_value (&(new_fk_key[1]));
-#endif
 
   if (clear_pcontext == true)
     {
@@ -4652,9 +4637,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   btid_int.deduplicate_key_idx = dk_get_deduplicate_key_position (n_attrs, attr_ids, func_attr_index_start);
-#endif
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
   /*
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
