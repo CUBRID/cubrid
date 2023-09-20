@@ -178,9 +178,12 @@ public enum CoercionScheme {
                     // further rules
 
                     if (lType.isDateTime()) {
-                        if ((opName.equals("opAdd") &&
-                                (rType.isString() || rType.isNumber() || rType == TypeSpecSimple.NULL)) ||
-                            (opName.equals("opSubtract") && (rType.isNumber() || rType == TypeSpecSimple.NULL))) {
+                        if ((opName.equals("opAdd")
+                                        && (rType.isString()
+                                                || rType.isNumber()
+                                                || rType == TypeSpecSimple.NULL))
+                                || (opName.equals("opSubtract")
+                                        && (rType.isNumber() || rType == TypeSpecSimple.NULL))) {
 
                             // date/time + string/number, or
                             // date/time - number
@@ -200,8 +203,10 @@ public enum CoercionScheme {
 
                     if (rType.isDateTime()) {
 
-                        if (opName.equals("opAdd") &&
-                                (lType.isString() || lType.isNumber() || lType == TypeSpecSimple.NULL)) {
+                        if (opName.equals("opAdd")
+                                && (lType.isString()
+                                        || lType.isNumber()
+                                        || lType == TypeSpecSimple.NULL)) {
 
                             // string/number + date/time
 
@@ -228,7 +233,6 @@ public enum CoercionScheme {
 
                             return ret;
                         }
-
                     }
 
                     return null;
