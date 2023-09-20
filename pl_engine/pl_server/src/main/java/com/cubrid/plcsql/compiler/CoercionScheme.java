@@ -178,8 +178,9 @@ public enum CoercionScheme {
                     // further rules
 
                     if (lType.isDateTime()) {
-                        if ((opName.equals("opAdd") && (rType.isString() || rType.isNumber()))
-                                || (opName.equals("opSubtract") && rType.isNumber())) {
+                        if ((opName.equals("opAdd") &&
+                                (rType.isString() || rType.isNumber() || rType == TypeSpecSimple.NULL)) ||
+                            (opName.equals("opSubtract") && (rType.isNumber() || rType == TypeSpecSimple.NULL))) {
 
                             // date/time + string/number, or
                             // date/time - number
@@ -198,7 +199,9 @@ public enum CoercionScheme {
                     }
 
                     if (rType.isDateTime()) {
-                        if (opName.equals("opAdd") && (lType.isString() || lType.isNumber())) {
+
+                        if (opName.equals("opAdd") &&
+                                (lType.isString() || lType.isNumber() || lType == TypeSpecSimple.NULL)) {
 
                             // string/number + date/time
 
@@ -212,7 +215,20 @@ public enum CoercionScheme {
                             ret.add(rType);
 
                             return ret;
+                        } else if (opName.equals("opSubtract") && lType == TypeSpecSimple.NULL) {
+
+                            Coercion c = Coercion.getCoercion(lType, rType);
+                            assert c != null;
+                            outCoercions.add(c);
+                            outCoercions.add(Coercion.IDENTITY);
+
+                            List<TypeSpec> ret = new ArrayList<>();
+                            ret.add(rType);
+                            ret.add(rType);
+
+                            return ret;
                         }
+
                     }
 
                     return null;
