@@ -4151,7 +4151,11 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 	  /* wrapped cast should be pushed and it will be removed while rewriting the dblink query */
 	  if (term->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_CAST_WRAP))
 	    {
-	      return true;
+	      /* it needs to check if the argument is pushable */
+	      if (mq_is_dblink_pushable_term (parser, term->info.expr.arg1))
+		{
+		  return true;
+		}
 	    }
 
 	  /* other expression like built-in and stored function and etc. */
