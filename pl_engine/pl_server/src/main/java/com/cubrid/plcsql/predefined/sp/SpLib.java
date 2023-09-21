@@ -177,12 +177,11 @@ public class SpLib {
 
                 return ret;
             } else {
-                // no data?
-                throw new PROGRAM_ERROR();
+                throw new PROGRAM_ERROR(); // unreachable
             }
         } catch (SQLException e) {
             Server.log(e);
-            throw new PROGRAM_ERROR();
+            throw new SQL_ERROR(e.getMessage());
         }
     }
 
@@ -361,7 +360,7 @@ public class SpLib {
 
     public static void DBMS_OUTPUT$ENABLE(Integer size) {
         if (size == null) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("size must be non-null");
         }
         DBMS_OUTPUT.enable(size);
     }
@@ -413,7 +412,7 @@ public class SpLib {
         public void close() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR();
+                    throw new INVALID_CURSOR("attempted to close an unopened cursor");
                 }
                 if (rs != null) {
                     Statement stmt = rs.getStatement();
@@ -440,7 +439,7 @@ public class SpLib {
         public boolean found() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR();
+                    throw new INVALID_CURSOR("attempted to read an attribute of an unopened cursor");
                 }
                 return rs.getRow() > 0;
             } catch (SQLException e) {
@@ -452,7 +451,7 @@ public class SpLib {
         public boolean notFound() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR();
+                    throw new INVALID_CURSOR("attempted to read an attribute of an unopened cursor");
                 }
                 return rs.getRow() == 0;
             } catch (SQLException e) {
@@ -464,7 +463,7 @@ public class SpLib {
         public long rowCount() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR();
+                    throw new INVALID_CURSOR("attempted to read an attribute of an unopened cursor");
                 }
                 return (long) rs.getRow();
             } catch (SQLException e) {
@@ -2390,7 +2389,7 @@ public class SpLib {
         LocalDateTime dt = DateTimeParser.DatetimeLiteral.parse(e);
         if (dt == null) {
             // invalid string
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a DATETIME format");
         }
 
         if (dt.equals(DateTimeParser.nullDatetime)) {
@@ -2415,7 +2414,7 @@ public class SpLib {
         LocalDate d = DateTimeParser.DateLiteral.parse(e);
         if (d == null) {
             // invalid string
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a DATE format");
         }
 
         if (d.equals(DateTimeParser.nullDate)) {
@@ -2433,7 +2432,7 @@ public class SpLib {
         LocalTime t = DateTimeParser.TimeLiteral.parse(e);
         if (t == null) {
             // invalid string
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a TIME format");
         }
 
         return new Time(t.getHour(), t.getMinute(), t.getSecond());
@@ -2447,7 +2446,7 @@ public class SpLib {
         ZonedDateTime zdt = DateTimeParser.TimestampLiteral.parse(e);
         if (zdt == null) {
             // invalid string
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a TIMESTAMP format");
         }
 
         if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
@@ -2505,7 +2504,7 @@ public class SpLib {
         try {
             return Double.valueOf(e);
         } catch (NumberFormatException ex) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a DOUBLE format");
         }
     }
 
@@ -2521,7 +2520,7 @@ public class SpLib {
         try {
             return Float.valueOf(e);
         } catch (NumberFormatException ex) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a FLOAT format");
         }
     }
 
@@ -2562,7 +2561,7 @@ public class SpLib {
             return (Timestamp) e;
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with DATETIME");
     }
 
     public static Date convObjectToDate(Object e) {
@@ -2579,7 +2578,7 @@ public class SpLib {
             return convTimestampToDate((Timestamp) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with DATE");
     }
 
     public static Time convObjectToTime(Object e) {
@@ -2606,7 +2605,7 @@ public class SpLib {
             return convTimestampToTime((Timestamp) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with TIME");
     }
 
     public static Timestamp convObjectToTimestamp(Object e) {
@@ -2635,7 +2634,7 @@ public class SpLib {
             return convDatetimeToTimestamp((Timestamp) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with TIMESTAMP");
     }
 
     public static Integer convObjectToInt(Object e) {
@@ -2659,7 +2658,7 @@ public class SpLib {
             return convDoubleToInt((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with INTEGER");
     }
 
     public static Short convObjectToShort(Object e) {
@@ -2683,7 +2682,7 @@ public class SpLib {
             return convDoubleToShort((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with SHORT");
     }
 
     public static String convObjectToString(Object e) {
@@ -2716,7 +2715,7 @@ public class SpLib {
             */
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with STRING");
     }
 
     public static Double convObjectToDouble(Object e) {
@@ -2740,7 +2739,7 @@ public class SpLib {
             return (Double) e;
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with DOUBLE");
     }
 
     public static Float convObjectToFloat(Object e) {
@@ -2764,7 +2763,7 @@ public class SpLib {
             return convDoubleToFloat((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with FLOAT");
     }
 
     public static BigDecimal convObjectToNumeric(Object e) {
@@ -2788,7 +2787,7 @@ public class SpLib {
             return convDoubleToNumeric((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with NUMERIC");
     }
 
     public static Long convObjectToBigint(Object e) {
@@ -2812,7 +2811,7 @@ public class SpLib {
             return convDoubleToBigint((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with BIGINT");
     }
 
     // ------------------------------------------------
@@ -2995,7 +2994,7 @@ public class SpLib {
         try {
             return bd.longValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not fit in a BIGINT: " + bd);
         }
     }
 
@@ -3005,7 +3004,7 @@ public class SpLib {
         try {
             return bd.intValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not fit in an INTEGER: " + bd);
         }
     }
 
@@ -3015,7 +3014,7 @@ public class SpLib {
         try {
             return bd.shortValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not fit in a SHORT: " + bd);
         }
     }
 
@@ -3029,7 +3028,7 @@ public class SpLib {
             // <00001>  cast( cast(-1 as bigint) as time): 12:00:0/ AM
             //
             // 1 row selected. (0.004910 sec) Committed. (0.000020 sec)
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("negative values not allowed");
         }
 
         int totalSec = (int) (l % 86400L);
@@ -3044,11 +3043,11 @@ public class SpLib {
         if (l < 0L) {
             //   select cast(cast(-100 as bigint) as timestamp);
             //   ERROR: Cannot coerce value of domain "bigint" to domain "timestamp"
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("negative values not allowed");
         } else if (l
                 > 2147483647L) { // 2147483647L : see section 'implicit type conversion' in the user
             // manual
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("values over 2,147,483,647 not allowed");
         } else {
             return new Timestamp(l * 1000L); // * 1000 : converts it to milli-seconds
         }
@@ -3066,7 +3065,7 @@ public class SpLib {
         try {
             return new BigDecimal(s);
         } catch (NumberFormatException e) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a NUMERIC format");
         }
     }
 
@@ -3467,7 +3466,7 @@ public class SpLib {
 
         if (lConv == null) {
             assert rConv == null;
-            throw new VALUE_ERROR(); // cannot compare two values of unsupported types
+            throw new VALUE_ERROR("imcomparable types"); // cannot compare two values of unsupported types
         } else {
             assert rConv != null;
             return lConv.compareTo(rConv);

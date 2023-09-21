@@ -318,7 +318,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitDeclLabel(DeclLabel node) {
-        assert false; // unreachable
         throw new RuntimeException("unreachable");
     }
 
@@ -551,7 +550,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      return ret;",
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
-                "      throw new PROGRAM_ERROR();",
+                "      throw new SQL_ERROR(e.getMessage());",
                 "    }",
                 "  }",
                 "}.invoke(",
@@ -780,14 +779,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      if (r.next()) {",
                 "        ret = r.getBigDecimal(1);",
                 "      } else {",
-                "        assert false; // serial value must be present",
                 "        ret = null;",
                 "      }",
                 "      stmt.close();",
                 "      return ret;",
                 "    } catch (SQLException e) {",
                 "      Server.log(e);",
-                "      throw new PROGRAM_ERROR();",
+                "      throw new SQL_ERROR(e.getMessage());",
                 "    }",
                 "  }",
                 "}.getSerialVal())"
@@ -1093,12 +1091,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "{ // cursor fetch",
                 "  if (%'CURSOR'% == null || !%'CURSOR'%.isOpen()) {",
-                "    throw new INVALID_CURSOR(\"tried to fetch an unopened cursor\");",
+                "    throw new INVALID_CURSOR(\"tried to fetch values with an unopened cursor\");",
                 "  }",
                 "  ResultSet rs = %'CURSOR'%.rs;",
-                "  if (rs == null) {",
-                "    throw new PROGRAM_ERROR();",
-                "  } else if (rs.next()) {",
+                "  if (rs.next()) {",
                 "    %'+SET-INTO-VARIABLES'%",
                 "  } else {",
                 "    ;", // TODO: setting nulls to into-variables?
@@ -1265,7 +1261,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "ResultSetMetaData rsmd_%'LEVEL'% = stmt_%'LEVEL'%.getMetaData();",
                 "if (rsmd_%'LEVEL'% == null || rsmd_%'LEVEL'%.getColumnCount() < 1) {",
-                "  throw new SQL_ERROR(\"INTO clause cannot be used without a SELECT statement\");",
+                "  throw new SQL_ERROR(\"INTO clause must be used with a SELECT statement\");",
                 "}"
             };
 
@@ -1913,21 +1909,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitExName(ExName node) {
         // depends on the context in which this node is located and must not be called directly
-        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
     @Override
     public CodeToResolve visitTypeSpecPercent(TypeSpecPercent node) {
         // TypeSpecs are not visited
-        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
     @Override
     public CodeToResolve visitTypeSpecSimple(TypeSpecSimple node) {
         // TypeSpecs are not visited
-        assert false : "unreachable";
         throw new RuntimeException("unreachable");
     }
 
@@ -2283,7 +2276,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'+EXPR'%",
                     exprCode);
         } else {
-            assert false;
             throw new RuntimeException("unreachable");
         }
     }
@@ -2398,7 +2390,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     // hole
                     this.substitutions.put(hole, thing);
                 } else {
-                    assert false : "invalid type of a substitute " + thing + " for hole " + hole;
                     throw new RuntimeException("unreachable");
                 }
             }
@@ -2445,12 +2436,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     if (substitute instanceof String) {
                         line = line.replace(hole, (String) substitute);
                     } else {
-                        assert false
-                                : "substitute for a small hole '"
-                                        + hole
-                                        + "' is not a String: '"
-                                        + substitute
-                                        + "'";
                         throw new RuntimeException("unreachable");
                     }
                 }
@@ -2536,12 +2521,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     }
 
                 } else {
-                    assert false
-                            : "substitute for a big hole '"
-                                    + bigHole
-                                    + "' is neither a String, String[] nor a CodeToResolve: '"
-                                    + substitute
-                                    + "'";
                     throw new RuntimeException("unreachable");
                 }
 
