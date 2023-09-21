@@ -2839,7 +2839,7 @@ public class SpLib {
     private static final String MSG_NO_DATA_FOUND = "no data found";
     private static final String MSG_PROGRAM_ERROR = "internal server error";
     private static final String MSG_STORAGE_ERROR = "storage error";
-    private static final String MSG_SQL_ERROR = "error while running SQL";
+    private static final String MSG_SQL_ERROR = "SQL error";
     private static final String MSG_TOO_MANY_ROWS = "too many rows";
     private static final String MSG_VALUE_ERROR = "value error";
     private static final String MSG_ZERO_DIVIDE = "division by zero";
