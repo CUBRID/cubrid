@@ -96,8 +96,7 @@ public class SpLib {
                 stack.pop();
             }
         }
-        assert false;
-        throw new RuntimeException("unreachable");
+        throw new PROGRAM_ERROR(); // unreachable
     }
 
     public static List<CodeRangeMarker> buildCodeRangeMarkerList(String markers) {
@@ -551,7 +550,6 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -586,7 +584,6 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -682,7 +679,6 @@ public class SpLib {
     public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -756,7 +752,6 @@ public class SpLib {
     public static Boolean opNullSafeEq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -833,7 +828,6 @@ public class SpLib {
     public static Boolean opNeq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -908,7 +902,6 @@ public class SpLib {
     public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -981,7 +974,6 @@ public class SpLib {
     public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1054,7 +1046,6 @@ public class SpLib {
     public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1128,7 +1119,6 @@ public class SpLib {
     public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1235,7 +1225,6 @@ public class SpLib {
     public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1310,7 +1299,6 @@ public class SpLib {
     public static Boolean opIn(ZonedDateTime o, ZonedDateTime... arr) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1387,7 +1375,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1464,7 +1451,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1508,7 +1494,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1552,7 +1537,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1653,7 +1637,6 @@ public class SpLib {
     public static ZonedDateTime opAdd(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1661,7 +1644,6 @@ public class SpLib {
     public static ZonedDateTime opAdd(Long l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1670,7 +1652,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1758,7 +1739,6 @@ public class SpLib {
     public static Long opSubtract(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1793,7 +1773,6 @@ public class SpLib {
     public static ZonedDateTime opSubtract(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1802,7 +1781,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1881,7 +1859,6 @@ public class SpLib {
         try {
             return s.matches(regex);
         } catch (PatternSyntaxException e) {
-            assert false;
             throw new PROGRAM_ERROR(); // unreachable
         }
     }
@@ -3124,7 +3101,6 @@ public class SpLib {
                 // not applicable
             } else if (r instanceof Timestamp) {
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3163,7 +3139,6 @@ public class SpLib {
                 lConv = convStringToTimestamp((String) l);
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3203,7 +3178,6 @@ public class SpLib {
                 lConv = convShortToTimestamp((Short) l);
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3243,7 +3217,6 @@ public class SpLib {
                 lConv = convIntToTimestamp((Integer) l);
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3283,7 +3256,6 @@ public class SpLib {
                 lConv = convBigintToTimestamp((Long) l);
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3319,7 +3291,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3355,7 +3326,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3391,7 +3361,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3422,7 +3391,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3456,7 +3424,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3491,12 +3458,10 @@ public class SpLib {
                 lConv = (Timestamp) l;
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else {
-            assert false : "unreachable";
             throw new PROGRAM_ERROR(); // unreachable
         }
 
