@@ -439,7 +439,8 @@ public class SpLib {
         public boolean found() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR("attempted to read an attribute of an unopened cursor");
+                    throw new INVALID_CURSOR(
+                            "attempted to read an attribute of an unopened cursor");
                 }
                 return rs.getRow() > 0;
             } catch (SQLException e) {
@@ -451,7 +452,8 @@ public class SpLib {
         public boolean notFound() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR("attempted to read an attribute of an unopened cursor");
+                    throw new INVALID_CURSOR(
+                            "attempted to read an attribute of an unopened cursor");
                 }
                 return rs.getRow() == 0;
             } catch (SQLException e) {
@@ -463,7 +465,8 @@ public class SpLib {
         public long rowCount() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR("attempted to read an attribute of an unopened cursor");
+                    throw new INVALID_CURSOR(
+                            "attempted to read an attribute of an unopened cursor");
                 }
                 return (long) rs.getRow();
             } catch (SQLException e) {
@@ -3466,7 +3469,8 @@ public class SpLib {
 
         if (lConv == null) {
             assert rConv == null;
-            throw new VALUE_ERROR("imcomparable types"); // cannot compare two values of unsupported types
+            throw new VALUE_ERROR(
+                    "imcomparable types"); // cannot compare two values of unsupported types
         } else {
             assert rConv != null;
             return lConv.compareTo(rConv);
