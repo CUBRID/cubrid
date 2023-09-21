@@ -18,21 +18,17 @@
 
 
 /*
- * schema_system_class.h - External definitions for the schema manager
+ * schema_system_catalog_install.hpp
  */
 
-#ifndef _SCHEMA_SYSTEM_CATALOG_HPP_
-#define _SCHEMA_SYSTEM_CATALOG_HPP_
 
-#include <string_view>
+#ifndef _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_
+#define _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_
 
 #include "porting.h"
 
-// test class_name is of system (class/vclass)s for legacy routine
-extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string_view class_name);
+extern EXPORT_IMPORT void catcls_init (void);
+extern EXPORT_IMPORT int catcls_install_class (void);
+extern EXPORT_IMPORT int catcls_install_vclass (void);
 
-extern EXPORT_IMPORT bool sm_is_system_class (const std::string_view name);
-extern EXPORT_IMPORT bool sm_is_system_vclass (const std::string_view name);
-
-
-#endif /* _SCHEMA_SYSTEM_CATALOG_HPP_ */
+#endif // _SCHEMA_SYSTEM_CATALOG_INSTALL_HPP_
