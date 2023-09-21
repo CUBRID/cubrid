@@ -3378,25 +3378,60 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
   if (log_Gl.append.log_pgptr->hdr.logical_pageid == pgptr->hdr.logical_pageid)
     {
       memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
+      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
     }
   else
     {
+      assert (log_Gl.append.log_pgptr->hdr.logical_pageid + 1 == pgptr->hdr.logical_pageid);
+
+      assert (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS);
+
+      log_Pb.partial_append.status = LOGPB_APPENDREC_IN_PROGRESS;
+
+      log_Gl.append.prev_lsa = log_Gl.hdr.append_lsa;
+
       logpb_next_append_page (thread_p, LOG_SET_DIRTY);
       memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
+
+      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 
       // TODO Comment about why it should be set;
       if (pgptr->hdr.offset != NULL_LOG_OFFSET)
 	{
-	  log_Gl.append.prev_lsa.pageid = pgptr->hdr.logical_pageid;
-	  log_Gl.append.prev_lsa.offset = pgptr->hdr.offset;
+	  assert (log_Gl.hdr.append_lsa.pageid == pgptr->hdr.logical_pageid);
+	  log_Gl.hdr.append_lsa.offset = pgptr->hdr.offset;
+
+	  LOG_RECORD_HEADER *log_rec = LOG_GET_LOG_RECORD_HEADER (pgptr, &log_Gl.hdr.append_lsa);
+	  log_Gl.append.prev_lsa = log_rec->back_lsa;
 
 	  // We don't need to set log_Gl.hdr.append_lsa correctly here.
 	  // It will be set at the end of the catch-up in logpb_end_catchup ().
-	  log_Gl.hdr.append_lsa = log_Gl.append.prev_lsa;
 	}
-    }
+      else
+	{
+	  assert (false);	// TODO        
+	}
 
-  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
+      if (log_Pb.partial_append.status == LOGPB_APPENDREC_IN_PROGRESS)
+	{
+	  /* success, fall through */
+	}
+      else if (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG)
+	{
+	  /* we need to flush the correct version now */
+	  log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_ENDED;
+	  logpb_flush_all_append_pages (thread_p);
+	  assert (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL);
+
+	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
+	}
+      else
+	{
+	  /* invalid state */
+	  assert_release (false);
+	}
+      log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS;
+    }
 
   return NO_ERROR;
 }

@@ -994,6 +994,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   LOG_PAGEID request_start_pageid = start_pageid;
   size_t remaining_page_cnt = total_page_count;
   size_t request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
+  size_t receive_page_cnt = 0;
   auto req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
   int error = NO_ERROR;
 
@@ -1010,8 +1011,9 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  break;
 	}
 
-      remaining_page_cnt -= request_page_cnt;
-      request_start_pageid += request_page_cnt;
+      receive_page_cnt = request_page_cnt;
+      remaining_page_cnt -= receive_page_cnt;
+      request_start_pageid += receive_page_cnt;
 
       log_pgptr_vec.swap (log_pgptr_recv_vec);
 
@@ -1021,7 +1023,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
 	}
       // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
-      for (size_t i = 0; i < request_page_cnt; i++)
+      for (size_t i = 0; i < receive_page_cnt; i++)
 	{
 	  logpb_append_catchup_page (&entry, log_pgptr_vec[i]);
 	}
