@@ -836,9 +836,9 @@ namespace cubschema
       {"started", INTEGER, "0"},
       {"class_name", "string"},
       {"att_name", "string"},
+      {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method", ""},
       {"cached_num", INTEGER, "0"},
       {"comment", VARCHAR_1024},
-      {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method", ""}
     },
 // constraints
     {
@@ -851,8 +851,12 @@ namespace cubschema
     },
 // authorization
     {
-      // owner, grants
-      Au_dba_user, {}
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
     },
 // initializer
     nullptr
