@@ -21,8 +21,9 @@
  * schema_system_catalog_install.cpp
  */
 
-#include "schema_system_catalog_install.hpp"
+#include "schema_system_catalog.hpp"
 
+#include "cnv.h"
 #include "db.h"
 #include "dbtype_function.h"
 #include "transform.h"
@@ -33,30 +34,7 @@
 #include "authenticate.h"
 #include "locator_cl.h"
 
-// system classes
-static int boot_define_attribute (MOP class_mop);
-static int boot_define_domain (MOP class_mop);
-static int boot_define_method (MOP class_mop);
-static int boot_define_meth_sig (MOP class_mop);
-static int boot_define_meth_argument (MOP class_mop);
-static int boot_define_meth_file (MOP class_mop);
-static int boot_define_query_spec (MOP class_mop);
-static int boot_define_index (MOP class_mop);
-static int boot_define_index_key (MOP class_mop);
-static int boot_define_class_authorization (MOP class_mop);
-static int boot_define_partition (MOP class_mop);
-static int boot_add_data_type (MOP class_mop);
-static int boot_define_data_type (MOP class_mop);
-static int boot_define_stored_procedure (MOP class_mop);
-static int boot_define_stored_procedure_arguments (MOP class_mop);
-static int boot_define_serial (MOP class_mop);
-static int boot_define_ha_apply_info (MOP class_mop);
-static int boot_define_collations (MOP class_mop);
-static int boot_add_charsets (MOP class_mop);
-static int boot_define_charsets (MOP class_mop);
-static int boot_define_dual (MOP class_mop);
-static int boot_define_db_server (MOP class_mop);
-static int boot_define_synonym (MOP class_mop);
+using namespace std::literals;
 
 // system vclasses
 static int boot_define_view_super_class (void);
@@ -82,6 +60,163 @@ static int boot_define_view_synonym (void);
 // query specs
 static const char *sm_define_view_class_spec (void);
 
+/* ========================================================================== */
+/* NEW DEFINITION (initializers for CLASS) */
+/* ========================================================================== */
+int
+catcls_add_data_type (struct db_object *class_mop)
+{
+  DB_OBJECT *obj;
+  DB_VALUE val;
+  int i;
+
+  const char *names[DB_TYPE_LAST] =
+  {
+    "INTEGER", "FLOAT", "DOUBLE", "STRING", "OBJECT",
+    "SET", "MULTISET", "SEQUENCE", "ELO", "TIME",
+    "TIMESTAMP", "DATE", "MONETARY", NULL /* VARIABLE */, NULL /* SUB */,
+    NULL /* POINTER */, NULL /* ERROR */, "SHORT", NULL /* VOBJ */,
+    NULL /* OID */,
+    NULL /* VALUE */, "NUMERIC", "BIT", "VARBIT", "CHAR",
+    "NCHAR", "VARNCHAR", NULL /* RESULTSET */, NULL /* MIDXKEY */,
+    NULL /* TABLE */,
+    "BIGINT", "DATETIME",
+    "BLOB", "CLOB", "ENUM",
+    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
+    "JSON"
+  };
+
+  for (i = 0; i < DB_TYPE_LAST; i++)
+    {
+
+      if (names[i] != NULL)
+	{
+	  obj = db_create_internal (class_mop);
+	  if (obj == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+
+	  db_make_int (&val, i + 1);
+	  db_put_internal (obj, "type_id", &val);
+
+	  db_make_varchar (&val, 16, names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+	  db_put_internal (obj, "type_name", &val);
+	}
+    }
+
+  return NO_ERROR;
+}
+
+int
+catcls_add_collations (struct db_object *class_mop)
+{
+  int i;
+  int count_collations;
+  int found_coll = 0;
+
+  count_collations = lang_collation_count ();
+
+  for (i = 0; i < LANG_MAX_COLLATIONS; i++)
+    {
+      LANG_COLLATION *lang_coll = lang_get_collation (i);
+      DB_OBJECT *obj;
+      DB_VALUE val;
+
+      assert (lang_coll != NULL);
+
+      if (i != 0 && lang_coll->coll.coll_id == LANG_COLL_DEFAULT)
+	{
+	  /* iso88591 binary collation added only once */
+	  continue;
+	}
+      found_coll++;
+
+      obj = db_create_internal (class_mop);
+      if (obj == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
+      assert (lang_coll->coll.coll_id == i);
+
+      db_make_int (&val, i);
+      db_put_internal (obj, CT_DBCOLL_COLL_ID_COLUMN, &val);
+
+      db_make_varchar (&val, 32, lang_coll->coll.coll_name, strlen (lang_coll->coll.coll_name), LANG_SYS_CODESET,
+		       LANG_SYS_COLLATION);
+      db_put_internal (obj, CT_DBCOLL_COLL_NAME_COLUMN, &val);
+
+      db_make_int (&val, (int) (lang_coll->codeset));
+      db_put_internal (obj, CT_DBCOLL_CHARSET_ID_COLUMN, &val);
+
+      db_make_int (&val, lang_coll->built_in);
+      db_put_internal (obj, CT_DBCOLL_BUILT_IN_COLUMN, &val);
+
+      db_make_int (&val, lang_coll->coll.uca_opt.sett_expansions ? 1 : 0);
+      db_put_internal (obj, CT_DBCOLL_EXPANSIONS_COLUMN, &val);
+
+      db_make_int (&val, lang_coll->coll.count_contr);
+      db_put_internal (obj, CT_DBCOLL_CONTRACTIONS_COLUMN, &val);
+
+      db_make_int (&val, (int) (lang_coll->coll.uca_opt.sett_strength));
+      db_put_internal (obj, CT_DBCOLL_UCA_STRENGTH, &val);
+
+      assert (strlen (lang_coll->coll.checksum) == 32);
+      db_make_varchar (&val, 32, lang_coll->coll.checksum, 32, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_put_internal (obj, CT_DBCOLL_CHECKSUM_COLUMN, &val);
+    }
+
+  assert (found_coll == count_collations);
+
+  return NO_ERROR;
+}
+
+int
+catcls_add_charsets (struct db_object *class_mop)
+{
+  int i;
+  int count_collations;
+
+  count_collations = lang_collation_count ();
+
+  for (i = INTL_CODESET_BINARY; i <= INTL_CODESET_LAST; i++)
+    {
+      DB_OBJECT *obj;
+      DB_VALUE val;
+      char *charset_name;
+
+      obj = db_create_internal (class_mop);
+      if (obj == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
+      db_make_int (&val, i);
+      db_put_internal (obj, CT_DBCHARSET_CHARSET_ID, &val);
+
+      charset_name = (char *) lang_charset_cubrid_name ((INTL_CODESET) i);
+      if (charset_name == NULL)
+	{
+	  return ER_LANG_CODESET_NOT_AVAILABLE;
+	}
+
+      db_make_varchar (&val, 32, charset_name, strlen (charset_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_put_internal (obj, CT_DBCHARSET_CHARSET_NAME, &val);
+
+      db_make_int (&val, LANG_GET_BINARY_COLLATION (i));
+      db_put_internal (obj, CT_DBCHARSET_DEFAULT_COLLATION, &val);
+
+      db_make_int (&val, INTL_CODESET_MULT (i));
+      db_put_internal (obj, CT_DBCHARSET_CHAR_SIZE, &val);
+    }
+
+  return NO_ERROR;
+}
+
 namespace cubschema
 {
   /* ========================================================================== */
@@ -99,6 +234,16 @@ namespace cubschema
     return s;
   }
 
+  const inline std::string format_numeric (const int prec, const int scale)
+  {
+    std::string s ("numeric(");
+    s += std::to_string (prec);
+    s += ",";
+    s += std::to_string (scale);
+    s += ")";
+    return s;
+  }
+
   const inline std::string format_sequence (const std::string_view type)
   {
     std::string s ("sequence of ");
@@ -109,13 +254,37 @@ namespace cubschema
   const std::string OBJECT {"object"};
   const std::string INTEGER {"integer"};
   const std::string VARCHAR_255 {format_varchar (255)};
+  const std::string VARCHAR_1024 {format_varchar (1024)};
   const std::string VARCHAR_2048 {format_varchar (2048)}; // for comment
+  const std::string STRING {format_varchar (1073741823)};
 
   class system_catalog_initializer
   {
     public:
       // classes
       static const system_catalog_definition &init_class ();
+      static const system_catalog_definition &init_attribute ();
+      static const system_catalog_definition &init_domain ();
+      static const system_catalog_definition &init_method ();
+      static const system_catalog_definition &init_method_sig ();
+      static const system_catalog_definition &init_meth_argument ();
+      static const system_catalog_definition &init_meth_file ();
+      static const system_catalog_definition &init_query_spec ();
+      static const system_catalog_definition &init_index ();
+      static const system_catalog_definition &init_index_key ();
+      static const system_catalog_definition &init_class_authorization ();
+      static const system_catalog_definition &init_partition ();
+      static const system_catalog_definition &init_data_type ();
+      static const system_catalog_definition &init_stored_procedure ();
+      static const system_catalog_definition &init_stored_procedure_arguments ();
+      static const system_catalog_definition &init_serial ();
+
+      static const system_catalog_definition &init_ha_apply_info ();
+      static const system_catalog_definition &init_collations ();
+      static const system_catalog_definition &init_charsets ();
+      static const system_catalog_definition &init_dual ();
+      static const system_catalog_definition &init_db_server ();
+      static const system_catalog_definition &init_synonym ();
 
       // views
       static const system_catalog_definition &init_vclass ();
@@ -124,7 +293,6 @@ namespace cubschema
   const system_catalog_definition &
   system_catalog_initializer::init_class ()
   {
-// _db_class
     static system_catalog_definition sm_define_class (
 	    // name
 	    CT_CLASS_NAME,
@@ -185,10 +353,756 @@ namespace cubschema
     {
       // owner, grants
       Au_dba_user, {}
-    }
+    },
+// initializer
+    nullptr
     );
 
     return sm_define_class;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_attribute ()
+  {
+
+    static system_catalog_definition sm_define_attribute (
+	    // name
+	    CT_ATTRIBUTE_NAME,
+	    // columns
+    {
+      {"class_of", CT_CLASS_NAME},
+      {"attr_name", VARCHAR_255},
+      {"attr_type", INTEGER},
+      {"from_class_of", CT_CLASS_NAME},
+      {"from_attr_name", VARCHAR_255},
+      {"def_order", INTEGER},
+      {"data_type", INTEGER},
+      {"default_value", VARCHAR_255},
+      {"domains", format_sequence (CT_DOMAIN_NAME)},
+      {"is_nullable", INTEGER},
+      {"comment", VARCHAR_2048}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"class_of", "attr_name", "attr_type", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_attribute;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_domain ()
+  {
+
+    static system_catalog_definition sm_define_domain (
+	    // name
+	    CT_DOMAIN_NAME,
+	    // columns
+    {
+      {"object_of", OBJECT},
+      {"data_type", INTEGER},
+      {"prec", INTEGER},
+      {"scale", INTEGER},
+      {"class_of", CT_CLASS_NAME},
+      {"code_set", INTEGER},
+      {"collation_id", INTEGER},
+      {"enumeration", format_sequence ("character varying")},
+      {"set_domains", format_sequence (CT_DOMAIN_NAME)},
+      {"json_schema", STRING},
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"object_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"data_type", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_domain;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_method ()
+  {
+
+    static system_catalog_definition sm_define_method (
+	    // name
+	    CT_METHOD_NAME,
+	    // columns
+    {
+      {"class_of", CT_CLASS_NAME},
+      {"meth_name", VARCHAR_255},
+      {"meth_type", INTEGER},
+      {"from_class_of", CT_CLASS_NAME},
+      {"from_meth_name", VARCHAR_255},
+      {"signatures", format_sequence (CT_METHSIG_NAME)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"class_of", "meth_name", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_method;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_method_sig ()
+  {
+
+    static system_catalog_definition sm_define_method_sig (
+	    // name
+	    CT_METHSIG_NAME,
+	    // columns
+    {
+      {"meth_of", CT_METHOD_NAME},
+      {"func_name", VARCHAR_255},
+      {"arg_count", INTEGER},
+      {"return_value", format_sequence (CT_METHARG_NAME)},
+      {"arguments", format_sequence (CT_METHARG_NAME)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"meth_of", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_method_sig;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_meth_argument ()
+  {
+
+    static system_catalog_definition sm_define_meth_argument (
+	    // name
+	    CT_METHARG_NAME,
+	    // columns
+    {
+      {"meth_sig_of", CT_METHSIG_NAME},
+      {"data_type", INTEGER},
+      {"index_of", INTEGER},
+      {"domains", format_sequence (CT_DOMAIN_NAME)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"meth_sig_of", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_meth_argument;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_meth_file ()
+  {
+
+    static system_catalog_definition sm_define_meth_file (
+	    // name
+	    CT_METHFILE_NAME,
+	    // columns
+    {
+      {"class_of", CT_CLASS_NAME},
+      {"from_class_of", CT_CLASS_NAME},
+      {"path_name", VARCHAR_255}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_meth_file;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_query_spec ()
+  {
+
+    static system_catalog_definition sm_define_query_spec (
+	    // name
+	    CT_QUERYSPEC_NAME,
+	    // columns
+    {
+      {"class_of", CT_CLASS_NAME},
+      {"spec", STRING}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_query_spec;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_index ()
+  {
+
+    static system_catalog_definition sm_define_index (
+	    // name
+	    CT_QUERYSPEC_NAME,
+	    // columns
+    {
+      {"class_of", CT_CLASS_NAME},
+      {"index_name", VARCHAR_255},
+      {"is_unique", INTEGER},
+      {"key_count", INTEGER},
+      {"key_attrs", format_sequence (CT_INDEXKEY_NAME)},
+      {"is_reverse", INTEGER},
+      {"is_primary_key", INTEGER},
+      {"is_foreign_key", INTEGER},
+      {"filter_expression", VARCHAR_255},
+      {"have_function", INTEGER},
+      {"comment", VARCHAR_1024},
+      {"status", INTEGER}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_index;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_index_key ()
+  {
+
+    static system_catalog_definition sm_define_index_key (
+	    // name
+	    CT_QUERYSPEC_NAME,
+	    // columns
+    {
+      {"index_of", CT_INDEX_NAME},
+      {"key_attr_name", VARCHAR_255},
+      {"key_order", INTEGER},
+      {"asc_desc", INTEGER},
+      {"key_prefix_length", INTEGER, "-1"},
+      {"func", format_varchar (1023)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"index_of", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_index_key;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_class_authorization ()
+  {
+
+    static system_catalog_definition sm_define_class_authorization (
+	    // name
+	    CT_CLASSAUTH_NAME,
+	    // columns
+    {
+      {"grantor", AU_USER_CLASS_NAME},
+      {"grantee", AU_USER_CLASS_NAME},
+      {"class_of", CT_CLASS_NAME},
+      {"auth_type", format_varchar (7)},
+      {"is_grantable", INTEGER}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"grantee", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_class_authorization;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_partition ()
+  {
+
+    static system_catalog_definition sm_define_partition (
+	    // name
+	    CT_PARTITION_NAME,
+	    // columns
+    {
+      {"class_of", CT_CLASS_NAME},
+      {"pname", VARCHAR_255},
+      {"ptype", INTEGER},
+      {"pexpr", format_varchar (2048)},
+      {"pvalues", format_sequence ("")},
+      {"comment", VARCHAR_1024},
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"class_of", "pname", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_partition;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_data_type ()
+  {
+
+    static system_catalog_definition sm_define_data_type (
+	    // name
+	    CT_PARTITION_NAME,
+	    // columns
+    {
+      {"type_id", INTEGER},
+      {"type_name", format_varchar (16)}
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    catcls_add_data_type
+    );
+
+    return sm_define_data_type;
+  }
+
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_stored_procedure ()
+  {
+
+    static system_catalog_definition sm_define_stored_procedure (
+	    // name
+	    CT_STORED_PROC_NAME,
+	    // columns
+    {
+      {"sp_name", VARCHAR_255},
+      {"sp_type", INTEGER},
+      {"return_type", INTEGER},
+      {"arg_count", INTEGER},
+      {"args", format_sequence (CT_STORED_PROC_ARGS_NAME)},
+      {"lang", INTEGER},
+      {"target", format_varchar (4096)},
+      {"owner", AU_USER_CLASS_NAME},
+      {"comment", VARCHAR_1024}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"sp_name", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_stored_procedure;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_stored_procedure_arguments ()
+  {
+
+    static system_catalog_definition sm_define_stored_procedure_arguments (
+	    // name
+	    CT_STORED_PROC_ARGS_NAME,
+	    // columns
+    {
+      {"sp_name", VARCHAR_255},
+      {"index_of", INTEGER},
+      {"arg_name", VARCHAR_255},
+      {"data_type", INTEGER},
+      {"mode", INTEGER},
+      {"comment", VARCHAR_1024},
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"sp_name", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_stored_procedure_arguments;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_serial ()
+  {
+
+    static system_catalog_definition sm_define_serial (
+	    // name
+	    CT_SERIAL_NAME,
+	    // columns
+    {
+      {"unique_name", "string"},
+      {"name", "string"},
+      {"owner", AU_USER_CLASS_NAME},
+      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), "1"},
+      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), "1"},
+      {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"cyclic", INTEGER, "0"},
+      {"started", INTEGER, "0"},
+      {"class_name", "string"},
+      {"att_name", "string"},
+      {"cached_num", INTEGER, "0"},
+      {"comment", VARCHAR_1024}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_unique_name", {"unique_name", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "", {"name", "owner", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"current_val", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"increment_val", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"max_val", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"min_val", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_serial;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_ha_apply_info ()
+  {
+
+    static system_catalog_definition sm_define_ha_apply_info (
+	    // name
+	    CT_HA_APPLY_INFO_NAME,
+	    // columns
+    {
+      {"db_name", VARCHAR_255},
+      {"db_creation_time", "datetime"},
+      {"copied_log_path", format_varchar (4096)},
+      {"committed_lsa_pageid", "bigint"},
+      {"committed_lsa_offset", INTEGER},
+      {"committed_rep_pageid", "bigint"},
+      {"committed_rep_offset", INTEGER},
+      {"append_lsa_pageid", "bigint"},
+      {"append_lsa_offset", INTEGER},
+      {"eof_lsa_pageid", "bigint"},
+      {"eof_lsa_offset", INTEGER},
+      {"final_lsa_pageid", "bigint"},
+      {"final_lsa_offset", INTEGER},
+      {"required_lsa_pageid", "bigint"},
+      {"required_lsa_offset", INTEGER},
+      {"log_record_time", "datetime"},
+      {"log_commit_time", "datetime"},
+      {"last_access_time", "datetime"},
+      {"status", INTEGER},
+      {"insert_counter", "bigint"},
+      {"update_counter", "bigint"},
+      {"delete_counter", "bigint"},
+      {"schema_counter", "bigint"},
+      {"commit_counter", "bigint"},
+      {"fail_counter", "bigint"},
+      {"start_time", "datetime"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"committed_lsa_pageid", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"committed_lsa_offset", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"required_lsa_pageid", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"required_lsa_offset", nullptr}, false},
+    },
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_ha_apply_info;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_collations ()
+  {
+
+    static system_catalog_definition sm_define_collations (
+	    // name
+	    CT_COLLATION_NAME,
+	    // columns
+    {
+      {CT_DBCOLL_COLL_ID_COLUMN, INTEGER},
+      {CT_DBCOLL_COLL_NAME_COLUMN, format_varchar (32)},
+      {CT_DBCOLL_CHARSET_ID_COLUMN, INTEGER},
+      {CT_DBCOLL_BUILT_IN_COLUMN, INTEGER},
+      {CT_DBCOLL_EXPANSIONS_COLUMN, INTEGER},
+      {CT_DBCOLL_CONTRACTIONS_COLUMN, INTEGER},
+      {CT_DBCOLL_UCA_STRENGTH, INTEGER},
+      {CT_DBCOLL_CHECKSUM_COLUMN, format_varchar (32)}
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    catcls_add_collations
+    );
+
+    return sm_define_collations;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_charsets ()
+  {
+
+    static system_catalog_definition sm_define_charsets (
+	    // name
+	    CT_CHARSET_NAME,
+	    // columns
+    {
+      {CT_DBCHARSET_CHARSET_ID, INTEGER},
+      {CT_DBCHARSET_CHARSET_NAME, format_varchar (32)},
+      {CT_DBCHARSET_DEFAULT_COLLATION, INTEGER},
+      {CT_DBCHARSET_CHAR_SIZE, INTEGER}
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    catcls_add_charsets
+    );
+
+    return sm_define_charsets;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_dual ()
+  {
+#define CT_DUAL_DUMMY   "dummy"
+    static system_catalog_definition sm_define_dual (
+	    // name
+	    CT_DUAL_NAME,
+	    // columns
+    {
+      {CT_DUAL_DUMMY, format_varchar (1)}
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner, grants
+      Au_dba_user,
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    [] (MOP class_mop)
+    {
+      DB_VALUE val;
+      int error_code = NO_ERROR;
+      DB_OBJECT *obj = db_create_internal (class_mop);
+      const char *dummy = "X";
+      if (obj == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      error_code = db_make_varchar (&val, 1, dummy, strlen (dummy), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      error_code = db_put_internal (obj, CT_DUAL_DUMMY, &val);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      return error_code;
+    }
+    );
+
+    return sm_define_dual;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_synonym ()
+  {
+
+    static system_catalog_definition sm_define_synonym (
+	    // name
+	    CT_SYNONYM_NAME,
+	    // columns
+    {
+      {"unique_name", VARCHAR_255},
+      {"name", VARCHAR_255},
+      {"owner", AU_USER_CLASS_NAME},
+      {"is_public", "integer", "0"},
+      {"target_unique_name", VARCHAR_255},
+      {"target_name", VARCHAR_255},
+      {"target_owner", AU_USER_CLASS_NAME},
+      {"comment", VARCHAR_2048},
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"name", "owner", "is_public", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"name", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"owner", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"is_public", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"target_unique_name", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"target_name", nullptr}, false},
+      {DB_CONSTRAINT_NOT_NULL, "", {"target_owner", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_synonym;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::init_db_server ()
+  {
+
+    static system_catalog_definition sm_define_db_server (
+	    // name
+	    CT_DB_SERVER_NAME,
+	    // columns
+    {
+      {"link_name", VARCHAR_255},
+      {"host", VARCHAR_255},
+      {"port", INTEGER},
+      {"db_name", VARCHAR_255},
+      {"user_name", VARCHAR_255},
+      {"password", "string"},
+      {"properties", VARCHAR_2048},
+      {"owner", AU_USER_CLASS_NAME},
+      {"comment", VARCHAR_1024}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_define_db_server;
   }
 
   /* ========================================================================== */
@@ -242,12 +1156,12 @@ namespace cubschema
       {"partitioned", "varchar(3)"},
       {"is_reuse_oid_class", "varchar(3)"},
       {"collation", "varchar(32)"},
-      {"comment", VARCHAR_2048}
+      {"comment", VARCHAR_2048},
+      // query specs
+      {attribute_kind::QUERY_SPEC, "", "", sm_define_view_class_spec ()}
     },
-// query specs
-    {
-      sm_define_view_class_spec ()
-    },
+// constraint
+    {},
 // authorization
     {
       // owner
@@ -256,43 +1170,20 @@ namespace cubschema
       {
 	{Au_public_user, AU_SELECT, false}
       }
-    }
+    },
+// initializer
+    nullptr
     );
     return sm_define_view_class;
   }
 }
 
 // for backward compatibility
-using COLUMN = cubschema::column;
+using COLUMN = cubschema::attribute;
 
 /* ========================================================================== */
 /* MAIN APIS */
 /* ========================================================================== */
-
-static cubschema::catcls_function clist[] =
-{
-  {CT_ATTRIBUTE_NAME, boot_define_attribute},
-  {CT_DOMAIN_NAME, boot_define_domain},
-  {CT_METHOD_NAME, boot_define_method},
-  {CT_METHSIG_NAME, boot_define_meth_sig},
-  {CT_METHARG_NAME, boot_define_meth_argument},
-  {CT_METHFILE_NAME, boot_define_meth_file},
-  {CT_QUERYSPEC_NAME, boot_define_query_spec},
-  {CT_INDEX_NAME, boot_define_index},
-  {CT_INDEXKEY_NAME, boot_define_index_key},
-  {CT_DATATYPE_NAME, boot_define_data_type},
-  {CT_CLASSAUTH_NAME, boot_define_class_authorization},
-  {CT_PARTITION_NAME, boot_define_partition},
-  {CT_STORED_PROC_NAME, boot_define_stored_procedure},
-  {CT_STORED_PROC_ARGS_NAME, boot_define_stored_procedure_arguments},
-  {CT_SERIAL_NAME, boot_define_serial},
-  {CT_HA_APPLY_INFO_NAME, boot_define_ha_apply_info},
-  {CT_COLLATION_NAME, boot_define_collations},
-  {CT_CHARSET_NAME, boot_define_charsets},
-  {CT_DUAL_NAME, boot_define_dual},
-  {CT_DB_SERVER_NAME, boot_define_db_server},
-  {CT_SYNONYM_NAME, boot_define_synonym}
-};
 
 static cubschema::catcls_function vclist[] =
 {
@@ -324,14 +1215,37 @@ void
 catcls_init (void)
 {
   // TODO: for late initialization (for au_init () to retrieve MOPs: Au_dba_user and Au_public_user)
+
+  using namespace cubschema;
   static std::vector<cubschema::catcls_function_ng> cl =
   {
-    {CT_CLASS_NAME, cubschema::system_catalog_initializer::init_class ()}
+    {CT_CLASS_NAME, system_catalog_initializer::init_class ()},
+    {CT_ATTRIBUTE_NAME, system_catalog_initializer::init_attribute ()},
+    {CT_DOMAIN_NAME, system_catalog_initializer::init_domain ()},
+    {CT_METHOD_NAME, system_catalog_initializer::init_method ()},
+    {CT_METHSIG_NAME, system_catalog_initializer::init_method_sig ()},
+    {CT_METHARG_NAME, system_catalog_initializer::init_meth_argument ()},
+    {CT_METHFILE_NAME, system_catalog_initializer::init_meth_file ()},
+    {CT_QUERYSPEC_NAME, system_catalog_initializer::init_query_spec ()},
+    {CT_INDEX_NAME, system_catalog_initializer::init_index ()},
+    {CT_INDEXKEY_NAME, system_catalog_initializer::init_index_key ()},
+    {CT_CLASSAUTH_NAME, system_catalog_initializer::init_class_authorization ()},
+    {CT_PARTITION_NAME, system_catalog_initializer::init_partition()},
+    {CT_DATATYPE_NAME, system_catalog_initializer::init_data_type()},
+    {CT_STORED_PROC_NAME, system_catalog_initializer::init_stored_procedure()},
+    {CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::init_stored_procedure_arguments()},
+    {CT_SERIAL_NAME, system_catalog_initializer::init_serial()},
+    {CT_HA_APPLY_INFO_NAME, system_catalog_initializer::init_ha_apply_info()},
+    {CT_COLLATION_NAME, system_catalog_initializer::init_collations()},
+    {CT_CHARSET_NAME, system_catalog_initializer::init_charsets()},
+    {CT_DUAL_NAME, system_catalog_initializer::init_dual()},
+    {CT_SYNONYM_NAME, system_catalog_initializer::init_synonym()},
+    {CT_DB_SERVER_NAME, system_catalog_initializer::init_db_server()}
   };
 
   static std::vector<cubschema::catcls_function_ng> vcl =
   {
-    {CTV_CLASS_NAME, cubschema::system_catalog_initializer::init_vclass ()}
+    {CTV_CLASS_NAME, system_catalog_initializer::init_vclass ()}
   };
 
   clist_new = &cl;
@@ -343,55 +1257,33 @@ catcls_install_class (void)
 {
   int error_code = NO_ERROR;
 
-  const size_t num_classes_old = sizeof (clist) / sizeof (clist[0]);
-  const size_t num_classes_new = clist_new->size ();
-  const size_t num_classes_total = num_classes_old + num_classes_new;
-
-  std::vector<MOP> class_mop (num_classes_total, nullptr);
+  const size_t num_classes = clist_new->size ();
+  std::vector<MOP> class_mop (num_classes, nullptr);
   int save;
   size_t i;
   AU_DISABLE (save);
 
   using catalog_builder = cubschema::system_catalog_builder;
 
-  for (i = 0; i < num_classes_total; i++)
+  for (i = 0; i < num_classes; i++)
     {
-      if (i < num_classes_new)
-	{
-	  // new routine
-	  class_mop[i] = catalog_builder::create_and_mark_system_class ((*clist_new)[i].name);
-	}
-      else
-	{
-	  // old routine
-	  int idx = i - num_classes_new;
-	  class_mop[i] = catalog_builder::create_and_mark_system_class (clist[idx].name);
-	}
+      // new routine
+      class_mop[i] = catalog_builder::create_and_mark_system_class ((*clist_new)[i].name);
       if (class_mop[i] == nullptr)
 	{
-	  assert (er_errid () != NO_ERROR);
+	  assert (false);
 	  error_code = er_errid ();
 	  goto end;
 	}
     }
 
-  for (i = 0; i < num_classes_total; i++)
+  for (i = 0; i < num_classes; i++)
     {
-      if (i < num_classes_new)
-	{
-	  // new routine
-	  error_code = catalog_builder::build_class (class_mop[i], (*clist_new)[i].definition);
-	}
-      else
-	{
-	  // old routine
-	  int idx = i - num_classes_new;
-	  error_code = (clist[idx].class_func) (class_mop[i]);
-	}
-
+      // new routine
+      error_code = catalog_builder::build_class (class_mop[i], (*clist_new)[i].definition);
       if (error_code != NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
+	  assert (false);
 	  error_code = er_errid ();
 	  goto end;
 	}
@@ -458,2291 +1350,6 @@ end:
   AU_ENABLE (save);
 
   return error_code;
-}
-
-/* ========================================================================== */
-/* LEGACY FUNCTIONS (SYSTEM CLASS) */
-/* ========================================================================== */
-
-/*
- * boot_define_attribute :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_attribute (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char domain_string[32];
-  int error_code = NO_ERROR;
-  const char *index_col_names[4] = { "class_of", "attr_name", "attr_type", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "attr_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "attr_type", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "from_class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "from_attr_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "def_order", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "data_type", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "default_value", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_DOMAIN_NAME);
-
-  error_code = smt_add_attribute (def, "domains", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "is_nullable", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_domain :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- *
- * Note:
- *
- */
-static int
-boot_define_domain (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char domain_string[32];
-  int error_code = NO_ERROR;
-  const char *index_col_names1[2] = { "object_of", NULL };
-  const char *index_col_names2[2] = { "data_type", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "object_of", "object", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "data_type", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "prec", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "scale", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "code_set", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "collation_id", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "enumeration", "sequence of character varying", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_DOMAIN_NAME);
-
-  error_code = smt_add_attribute (def, "set_domains", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "json_schema", "string", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names1, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names2, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_method :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_method (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char domain_string[32];
-  int error_code = NO_ERROR;
-  const char *names[3] = { "class_of", "meth_name", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "meth_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "meth_type", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "from_class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "from_meth_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_METHSIG_NAME);
-
-  error_code = smt_add_attribute (def, "signatures", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_meth_sig :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_meth_sig (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char domain_string[32];
-  int error_code = NO_ERROR;
-  const char *names[2] = { "meth_of", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "meth_of", CT_METHOD_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "func_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "arg_count", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_METHARG_NAME);
-
-  error_code = smt_add_attribute (def, "return_value", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "arguments", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_meth_argument :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_meth_argument (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char domain_string[32];
-  int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "meth_sig_of", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "meth_sig_of", CT_METHSIG_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "data_type", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "index_of", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_DOMAIN_NAME);
-
-  error_code = smt_add_attribute (def, "domains", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_meth_file :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_meth_file (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "class_of", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "from_class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "path_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_query_spec :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_query_spec (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "class_of", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "spec", "varchar(1073741823)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_index :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_index (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char domain_string[32];
-  int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "class_of", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "index_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "is_unique", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "key_count", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "sequence of %s", CT_INDEXKEY_NAME);
-
-  error_code = smt_add_attribute (def, "key_attrs", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "is_reverse", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "is_primary_key", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "is_foreign_key", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "filter_expression", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "have_function", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "status", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_meth_argument :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_index_key (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  DB_VALUE prefix_default;
-  int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "index_of", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-  if (def == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = smt_add_attribute (def, "index_of", CT_INDEX_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "key_attr_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "key_order", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "asc_desc", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "key_prefix_length", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  db_make_int (&prefix_default, -1);
-
-  error_code = smt_set_attribute_default (def, "key_prefix_length", 0, &prefix_default, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "func", "varchar(1023)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_class_authorization :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_class_authorization (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "grantee", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "grantor", AU_USER_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "grantee", AU_USER_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "auth_type", "varchar(7)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "is_grantable", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_partition :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_partition (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-  const char *index_col_names[] = { "class_of", "pname", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "class_of", CT_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "pname", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "ptype", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "pexpr", "varchar(2048)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "pvalues", "sequence of", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_add_data_type :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- *
- * Note:
- *
- */
-static int
-boot_add_data_type (MOP class_mop)
-{
-  DB_OBJECT *obj;
-  DB_VALUE val;
-  int i;
-
-  const char *names[DB_TYPE_LAST] =
-  {
-    "INTEGER", "FLOAT", "DOUBLE", "STRING", "OBJECT",
-    "SET", "MULTISET", "SEQUENCE", "ELO", "TIME",
-    "TIMESTAMP", "DATE", "MONETARY", NULL /* VARIABLE */, NULL /* SUB */,
-    NULL /* POINTER */, NULL /* ERROR */, "SHORT", NULL /* VOBJ */,
-    NULL /* OID */,
-    NULL /* VALUE */, "NUMERIC", "BIT", "VARBIT", "CHAR",
-    "NCHAR", "VARNCHAR", NULL /* RESULTSET */, NULL /* MIDXKEY */,
-    NULL /* TABLE */,
-    "BIGINT", "DATETIME",
-    "BLOB", "CLOB", "ENUM",
-    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
-    "JSON"
-  };
-
-  for (i = 0; i < DB_TYPE_LAST; i++)
-    {
-
-      if (names[i] != NULL)
-	{
-	  obj = db_create_internal (class_mop);
-	  if (obj == NULL)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-
-	  db_make_int (&val, i + 1);
-	  db_put_internal (obj, "type_id", &val);
-
-	  db_make_varchar (&val, 16, names[i], strlen (names[i]), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	  db_put_internal (obj, "type_name", &val);
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_data_type :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_data_type (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "type_id", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* TODO : DB migration tool */
-  error_code = smt_add_attribute (def, "type_name", "varchar(16)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = boot_add_data_type (class_mop);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_stored_procedure :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_stored_procedure (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char args_string[64];
-  int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "sp_name", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "sp_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "sp_type", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "return_type", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "arg_count", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (args_string, "sequence of %s", CT_STORED_PROC_ARGS_NAME);
-  error_code = smt_add_attribute (def, "args", args_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "lang", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "target", "varchar(4096)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "owner", AU_USER_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_stored_procedure_arguments :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_stored_procedure_arguments (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-  const char *index_col_names[2] = { "sp_name", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "sp_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "index_of", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "arg_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "data_type", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "mode", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_serial :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_serial (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char domain_string[32];
-  unsigned char num[DB_NUMERIC_BUF_SIZE];	/* Copy of a DB_C_NUMERIC */
-  DB_VALUE default_value;
-  int error_code = NO_ERROR;
-  const char *index1_col_names[] = { "unique_name", NULL };
-  const char *index2_col_names[] = { "name", "owner", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "unique_name", "string", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "name", "string", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "owner", AU_USER_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  sprintf (domain_string, "numeric(%d,0)", DB_MAX_NUMERIC_PRECISION);
-  numeric_coerce_int_to_num (1, num);
-  db_make_numeric (&default_value, num, DB_MAX_NUMERIC_PRECISION, 0);
-
-  error_code = smt_add_attribute (def, "current_val", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-  error_code = smt_set_attribute_default (def, "current_val", 0, &default_value, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "increment_val", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-  error_code = smt_set_attribute_default (def, "increment_val", 0, &default_value, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "max_val", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "min_val", domain_string, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  db_make_int (&default_value, 0);
-
-  error_code = smt_add_attribute (def, "cyclic", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-  error_code = smt_set_attribute_default (def, "cyclic", 0, &default_value, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "started", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-  error_code = smt_set_attribute_default (def, "started", 0, &default_value, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "class_name", "string", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "att_name", "string", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_class_method (def, "change_serial_owner", "au_change_serial_owner_method");
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "cached_num", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-  error_code = smt_set_attribute_default (def, "cached_num", 0, &default_value, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code =
-	  db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_unique_name", index1_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index2_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "current_val", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "increment_val", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "max_val", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "min_val", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_ha_apply_info :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_ha_apply_info (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-  const char *index_col_names[] = { "db_name", "copied_log_path", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "db_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "db_creation_time", "datetime", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "copied_log_path", "varchar(4096)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "committed_lsa_pageid", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "committed_lsa_offset", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "committed_rep_pageid", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "committed_rep_offset", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "append_lsa_pageid", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "append_lsa_offset", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "eof_lsa_pageid", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "eof_lsa_offset", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "final_lsa_pageid", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "final_lsa_offset", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "required_lsa_pageid", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "required_lsa_offset", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "log_record_time", "datetime", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "log_commit_time", "datetime", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "last_access_time", "datetime", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "status", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "insert_counter", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "update_counter", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "delete_counter", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "schema_counter", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "commit_counter", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "fail_counter", "bigint", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "start_time", "datetime", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add constraints */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_UNIQUE, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "db_name", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "copied_log_path", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "committed_lsa_pageid", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "committed_lsa_offset", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "required_lsa_pageid", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "required_lsa_offset", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_add_collations :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- *
- * Note:
- *
- */
-int
-boot_add_collations (MOP class_mop)
-{
-  int i;
-  int count_collations;
-  int found_coll = 0;
-
-  count_collations = lang_collation_count ();
-
-  for (i = 0; i < LANG_MAX_COLLATIONS; i++)
-    {
-      LANG_COLLATION *lang_coll = lang_get_collation (i);
-      DB_OBJECT *obj;
-      DB_VALUE val;
-
-      assert (lang_coll != NULL);
-
-      if (i != 0 && lang_coll->coll.coll_id == LANG_COLL_DEFAULT)
-	{
-	  /* iso88591 binary collation added only once */
-	  continue;
-	}
-      found_coll++;
-
-      obj = db_create_internal (class_mop);
-      if (obj == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-
-      assert (lang_coll->coll.coll_id == i);
-
-      db_make_int (&val, i);
-      db_put_internal (obj, CT_DBCOLL_COLL_ID_COLUMN, &val);
-
-      db_make_varchar (&val, 32, lang_coll->coll.coll_name, strlen (lang_coll->coll.coll_name), LANG_SYS_CODESET,
-		       LANG_SYS_COLLATION);
-      db_put_internal (obj, CT_DBCOLL_COLL_NAME_COLUMN, &val);
-
-      db_make_int (&val, (int) (lang_coll->codeset));
-      db_put_internal (obj, CT_DBCOLL_CHARSET_ID_COLUMN, &val);
-
-      db_make_int (&val, lang_coll->built_in);
-      db_put_internal (obj, CT_DBCOLL_BUILT_IN_COLUMN, &val);
-
-      db_make_int (&val, lang_coll->coll.uca_opt.sett_expansions ? 1 : 0);
-      db_put_internal (obj, CT_DBCOLL_EXPANSIONS_COLUMN, &val);
-
-      db_make_int (&val, lang_coll->coll.count_contr);
-      db_put_internal (obj, CT_DBCOLL_CONTRACTIONS_COLUMN, &val);
-
-      db_make_int (&val, (int) (lang_coll->coll.uca_opt.sett_strength));
-      db_put_internal (obj, CT_DBCOLL_UCA_STRENGTH, &val);
-
-      assert (strlen (lang_coll->coll.checksum) == 32);
-      db_make_varchar (&val, 32, lang_coll->coll.checksum, 32, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      db_put_internal (obj, CT_DBCOLL_CHECKSUM_COLUMN, &val);
-    }
-
-  assert (found_coll == count_collations);
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_collations :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_collations (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, CT_DBCOLL_COLL_ID_COLUMN, "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCOLL_COLL_NAME_COLUMN, "varchar(32)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCOLL_CHARSET_ID_COLUMN, "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCOLL_BUILT_IN_COLUMN, "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCOLL_EXPANSIONS_COLUMN, "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCOLL_CONTRACTIONS_COLUMN, "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCOLL_UCA_STRENGTH, "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCOLL_CHECKSUM_COLUMN, "varchar(32)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = boot_add_collations (class_mop);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-#define CT_DBCHARSET_CHARSET_ID		  "charset_id"
-#define CT_DBCHARSET_CHARSET_NAME	  "charset_name"
-#define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
-#define CT_DBCHARSET_CHAR_SIZE		  "char_size"
-
-/*
- * boot_add_charsets :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- *
- * Note:
- *
- */
-static int
-boot_add_charsets (MOP class_mop)
-{
-  int i;
-  int count_collations;
-
-  count_collations = lang_collation_count ();
-
-  for (i = INTL_CODESET_BINARY; i <= INTL_CODESET_LAST; i++)
-    {
-      DB_OBJECT *obj;
-      DB_VALUE val;
-      char *charset_name;
-
-      obj = db_create_internal (class_mop);
-      if (obj == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-
-      db_make_int (&val, i);
-      db_put_internal (obj, CT_DBCHARSET_CHARSET_ID, &val);
-
-      charset_name = (char *) lang_charset_cubrid_name ((INTL_CODESET) i);
-      if (charset_name == NULL)
-	{
-	  return ER_LANG_CODESET_NOT_AVAILABLE;
-	}
-
-      db_make_varchar (&val, 32, charset_name, strlen (charset_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      db_put_internal (obj, CT_DBCHARSET_CHARSET_NAME, &val);
-
-      db_make_int (&val, LANG_GET_BINARY_COLLATION (i));
-      db_put_internal (obj, CT_DBCHARSET_DEFAULT_COLLATION, &val);
-
-      db_make_int (&val, INTL_CODESET_MULT (i));
-      db_put_internal (obj, CT_DBCHARSET_CHAR_SIZE, &val);
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_charsets :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_charsets (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, CT_DBCHARSET_CHARSET_ID, "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCHARSET_CHARSET_NAME, "varchar(32)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCHARSET_DEFAULT_COLLATION, "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, CT_DBCHARSET_CHAR_SIZE, "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = boot_add_charsets (class_mop);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-#define CT_DUAL_DUMMY   "dummy"
-
-/*
- * boot_define_dual :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-
-static int
-boot_define_dual (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  int error_code = NO_ERROR;
-  DB_OBJECT *obj;
-  DB_VALUE val;
-  const char *dummy = "X";
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-  if (def == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = smt_add_attribute (def, CT_DUAL_DUMMY, "varchar(1)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  obj = db_create_internal (class_mop);
-  if (obj == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-  error_code = db_make_varchar (&val, 1, dummy, strlen (dummy), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_put_internal (obj, CT_DUAL_DUMMY, &val);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-static int
-boot_define_synonym (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  DB_VALUE default_value;
-  int error_code = NO_ERROR;
-  const char *primary_key_col_names[] = { "unique_name", NULL };
-  const char *index1_col_names[] = { "name", "owner", "is_public", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "unique_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "owner", AU_USER_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "is_public", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  db_make_int (&default_value, 0);
-
-  error_code = smt_set_attribute_default (def, "is_public", 0, &default_value, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "target_unique_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "target_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "target_owner", AU_USER_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "comment", "varchar(2048)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add constraints */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, primary_key_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_INDEX, NULL, index1_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "name", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "owner", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "is_public", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "target_unique_name", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "target_name", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_constrain_non_null (class_mop, "target_owner", 0, 1);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * boot_define_db_server :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   class(IN) :
- */
-static int
-boot_define_db_server (MOP class_mop)
-{
-  SM_TEMPLATE *def;
-  char args_string[64];
-  int error_code = NO_ERROR;
-  const char *index_col_names[3] = { "link_name", "owner", NULL };
-
-  def = smt_edit_class_mop (class_mop, AU_ALTER);
-
-  error_code = smt_add_attribute (def, "link_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "host", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "port", "integer", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "db_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "user_name", "varchar(255)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "password", "string", (DB_DOMAIN *) 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "properties", "varchar(2048)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "owner", AU_USER_CLASS_NAME, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = smt_add_attribute (def, "comment", "varchar(1024)", NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sm_update_class (def, NULL);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  /* add index */
-  error_code = db_add_constraint (class_mop, DB_CONSTRAINT_PRIMARY_KEY, NULL, index_col_names, 0);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  if (locator_has_heap (class_mop) == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
 }
 
 /* ========================================================================== */

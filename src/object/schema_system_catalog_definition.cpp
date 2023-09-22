@@ -23,11 +23,28 @@
 
 namespace cubschema
 {
-  column::column (const std::string &n, const std::string &t)
-    : name {n}, type {t}
+  attribute::attribute (const std::string &n, const std::string &t)
+    : kind {attribute_kind::COLUMN}
+    , name {n}
+    , type {t}
+    , value {}
   {
-    db_make_null (&default_value);
-    db_value_clear (&default_value);
+  }
+
+  attribute::attribute (const std::string &n, const std::string &t, const std::string &dval)
+    : kind {attribute_kind::COLUMN}
+    , name {n}
+    , type {t}
+    , value {}
+  {
+  }
+
+  attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t, const std::string &dval)
+    : kind {k}
+    , name {n}
+    , type {t}
+    , value {dval}
+  {
   }
 
   constraint::constraint (const DB_CONSTRAINT_TYPE &t, const std::string_view n,
@@ -51,24 +68,13 @@ namespace cubschema
 
   system_catalog_definition::system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
       const cstr_vec_type &cts,
-      const authorization &au)
+      const authorization &au,
+      row_init_type ri = nullptr)
     : name {n}
     , attributes {attrs}
     , constraints {cts}
-    , query_specs {}
     , auth {au}
-  {
-    //
-  }
-
-  system_catalog_definition::system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
-      const qs_vec_type &qs,
-      const authorization &au)
-    : name {n}
-    , attributes {attrs}
-    , constraints {}
-    , query_specs {qs}
-    , auth {au}
+    , row_initializer {ri}
   {
     //
   }
