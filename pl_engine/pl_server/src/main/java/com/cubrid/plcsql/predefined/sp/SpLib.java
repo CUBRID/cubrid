@@ -185,8 +185,8 @@ public class SpLib {
         }
     }
 
-    public static Object throwInvalidCursor(String subMsg) {
-        throw new INVALID_CURSOR(subMsg);
+    public static Object throwInvalidCursor(String msg) {
+        throw new INVALID_CURSOR(msg);
     }
 
     public static <T> T checkNotNull(T val) {
@@ -213,10 +213,8 @@ public class SpLib {
             super(CODE_CASE_NOT_FOUND, MSG_CASE_NOT_FOUND);
         }
 
-        public CASE_NOT_FOUND(String subMsg) {
-            super(
-                    CODE_CASE_NOT_FOUND,
-                    isEmptyStr(subMsg) ? MSG_CASE_NOT_FOUND : (MSG_CASE_NOT_FOUND + ": " + subMsg));
+        public CASE_NOT_FOUND(String msg) {
+            super(CODE_CASE_NOT_FOUND, isEmptyStr(msg) ? MSG_CASE_NOT_FOUND : msg);
         }
     }
 
@@ -225,12 +223,8 @@ public class SpLib {
             super(CODE_CURSOR_ALREADY_OPEN, MSG_CURSOR_ALREADY_OPEN);
         }
 
-        public CURSOR_ALREADY_OPEN(String subMsg) {
-            super(
-                    CODE_CURSOR_ALREADY_OPEN,
-                    isEmptyStr(subMsg)
-                            ? MSG_CURSOR_ALREADY_OPEN
-                            : (MSG_CURSOR_ALREADY_OPEN + ": " + subMsg));
+        public CURSOR_ALREADY_OPEN(String msg) {
+            super(CODE_CURSOR_ALREADY_OPEN, isEmptyStr(msg) ? MSG_CURSOR_ALREADY_OPEN : msg);
         }
     }
 
@@ -239,10 +233,8 @@ public class SpLib {
             super(CODE_INVALID_CURSOR, MSG_INVALID_CURSOR);
         }
 
-        public INVALID_CURSOR(String subMsg) {
-            super(
-                    CODE_INVALID_CURSOR,
-                    isEmptyStr(subMsg) ? MSG_INVALID_CURSOR : (MSG_INVALID_CURSOR + ": " + subMsg));
+        public INVALID_CURSOR(String msg) {
+            super(CODE_INVALID_CURSOR, isEmptyStr(msg) ? MSG_INVALID_CURSOR : msg);
         }
     }
 
@@ -251,10 +243,8 @@ public class SpLib {
             super(CODE_NO_DATA_FOUND, MSG_NO_DATA_FOUND);
         }
 
-        public NO_DATA_FOUND(String subMsg) {
-            super(
-                    CODE_NO_DATA_FOUND,
-                    isEmptyStr(subMsg) ? MSG_NO_DATA_FOUND : (MSG_NO_DATA_FOUND + ": " + subMsg));
+        public NO_DATA_FOUND(String msg) {
+            super(CODE_NO_DATA_FOUND, isEmptyStr(msg) ? MSG_NO_DATA_FOUND : msg);
         }
     }
 
@@ -263,10 +253,8 @@ public class SpLib {
             super(CODE_PROGRAM_ERROR, MSG_PROGRAM_ERROR);
         }
 
-        public PROGRAM_ERROR(String subMsg) {
-            super(
-                    CODE_PROGRAM_ERROR,
-                    isEmptyStr(subMsg) ? MSG_PROGRAM_ERROR : (MSG_PROGRAM_ERROR + ": " + subMsg));
+        public PROGRAM_ERROR(String msg) {
+            super(CODE_PROGRAM_ERROR, isEmptyStr(msg) ? MSG_PROGRAM_ERROR : msg);
         }
     }
 
@@ -275,10 +263,8 @@ public class SpLib {
             super(CODE_STORAGE_ERROR, MSG_STORAGE_ERROR);
         }
 
-        public STORAGE_ERROR(String subMsg) {
-            super(
-                    CODE_STORAGE_ERROR,
-                    isEmptyStr(subMsg) ? MSG_STORAGE_ERROR : (MSG_STORAGE_ERROR + ": " + subMsg));
+        public STORAGE_ERROR(String msg) {
+            super(CODE_STORAGE_ERROR, isEmptyStr(msg) ? MSG_STORAGE_ERROR : msg);
         }
     }
 
@@ -287,10 +273,8 @@ public class SpLib {
             super(CODE_STORAGE_ERROR, MSG_SQL_ERROR);
         }
 
-        public SQL_ERROR(String subMsg) {
-            super(
-                    CODE_STORAGE_ERROR,
-                    isEmptyStr(subMsg) ? MSG_SQL_ERROR : (MSG_SQL_ERROR + ": " + subMsg));
+        public SQL_ERROR(String msg) {
+            super(CODE_STORAGE_ERROR, isEmptyStr(msg) ? MSG_SQL_ERROR : msg);
         }
     }
 
@@ -299,10 +283,8 @@ public class SpLib {
             super(CODE_TOO_MANY_ROWS, MSG_TOO_MANY_ROWS);
         }
 
-        public TOO_MANY_ROWS(String subMsg) {
-            super(
-                    CODE_TOO_MANY_ROWS,
-                    isEmptyStr(subMsg) ? MSG_TOO_MANY_ROWS : (MSG_TOO_MANY_ROWS + ": " + subMsg));
+        public TOO_MANY_ROWS(String msg) {
+            super(CODE_TOO_MANY_ROWS, isEmptyStr(msg) ? MSG_TOO_MANY_ROWS : msg);
         }
     }
 
@@ -311,10 +293,8 @@ public class SpLib {
             super(CODE_VALUE_ERROR, MSG_VALUE_ERROR);
         }
 
-        public VALUE_ERROR(String subMsg) {
-            super(
-                    CODE_VALUE_ERROR,
-                    isEmptyStr(subMsg) ? MSG_VALUE_ERROR : (MSG_VALUE_ERROR + ": " + subMsg));
+        public VALUE_ERROR(String msg) {
+            super(CODE_VALUE_ERROR, isEmptyStr(msg) ? MSG_VALUE_ERROR : msg);
         }
     }
 
@@ -323,10 +303,8 @@ public class SpLib {
             super(CODE_ZERO_DIVIDE, MSG_ZERO_DIVIDE);
         }
 
-        public ZERO_DIVIDE(String subMsg) {
-            super(
-                    CODE_ZERO_DIVIDE,
-                    isEmptyStr(subMsg) ? MSG_ZERO_DIVIDE : (MSG_ZERO_DIVIDE + ": " + subMsg));
+        public ZERO_DIVIDE(String msg) {
+            super(CODE_ZERO_DIVIDE, isEmptyStr(msg) ? MSG_ZERO_DIVIDE : msg);
         }
     }
 
@@ -336,14 +314,12 @@ public class SpLib {
 
     // user defined exception
     public static class $APP_ERROR extends PlcsqlRuntimeError {
-        public $APP_ERROR(int code, String subMsg) {
-            super(code, isEmptyStr(subMsg) ? MSG_APP_ERROR : (MSG_APP_ERROR + ": " + subMsg));
+        public $APP_ERROR(int code, String msg) {
+            super(code, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
         }
 
-        public $APP_ERROR(String subMsg) {
-            super(
-                    CODE_APP_ERROR,
-                    isEmptyStr(subMsg) ? MSG_APP_ERROR : (MSG_APP_ERROR + ": " + subMsg));
+        public $APP_ERROR(String msg) {
+            super(CODE_APP_ERROR, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
         }
 
         public $APP_ERROR() {
