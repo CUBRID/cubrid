@@ -5881,7 +5881,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     }
 
   size += OR_INT_SIZE * 5;	/* sha1 */
-  size += OR_INT_SIZE; 		/* for CTE host variable count */
+  size += OR_INT_SIZE;		/* for CTE host variable count */
 
   for (i = 0; i < xasl->cte_host_var_count; i++)
     {

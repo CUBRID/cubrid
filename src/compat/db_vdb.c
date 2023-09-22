@@ -2368,7 +2368,9 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
     {
       PT_NODE *cte_query;
 
-      cte_query = parser_copy_tree(prepared_session->parser, prepared_stmt->info.query.with->info.with_clause.cte_definition_list);
+      cte_query =
+	parser_copy_tree (prepared_session->parser,
+			  prepared_stmt->info.query.with->info.with_clause.cte_definition_list);
       prepare_info.cte_list = cte_query;
     }
   else

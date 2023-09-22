@@ -2131,11 +2131,11 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->cte_host_var_count);
   if (xasl->cte_host_var_count > 0)
     {
-      xasl->cte_host_var_index = (int *)malloc (sizeof(int) * xasl->cte_host_var_count);
+      xasl->cte_host_var_index = (int *) malloc (sizeof (int) * xasl->cte_host_var_count);
       for (i = 0; i < xasl->cte_host_var_count; i++)
-        {
-          ptr = or_unpack_int (ptr, &xasl->cte_host_var_index[i]);
-        }
+	{
+	  ptr = or_unpack_int (ptr, &xasl->cte_host_var_index[i]);
+	}
     }
 
 #if defined (ENABLE_COMPOSITE_LOCK)

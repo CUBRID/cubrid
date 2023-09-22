@@ -14302,8 +14302,7 @@ pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
-static int
-do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
+static int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 /*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
@@ -14907,14 +14906,15 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  stmt = cte_list->info.cte.non_recursive_part;
 	  if (stmt)
 	    {
-	      host_variables = (DB_VALUE *) malloc (sizeof(DB_VALUE) * stmt->cte_host_var_count);
+	      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
 	      for (i = 0; i < stmt->cte_host_var_count; i++)
 		{
 		  copy_db_value (&host_variables[i], &parser->host_variables[stmt->cte_host_var_index[i]]);
 		}
-	      
-              err =
-                execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id, 0, &clt_cache_time, &stmt->cache_time);
+
+	      err =
+		execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id, 0,
+			       &clt_cache_time, &stmt->cache_time);
 	    }
 	  cte_list = cte_list->next;
 	}
