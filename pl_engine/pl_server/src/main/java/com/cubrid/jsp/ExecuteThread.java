@@ -47,7 +47,6 @@ import com.cubrid.jsp.value.Value;
 import com.cubrid.jsp.value.ValueUtilities;
 import com.cubrid.plcsql.compiler.PlcsqlCompilerMain;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
-import com.cubrid.plcsql.predefined.sp.SpLib.SQL_ERROR;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -228,8 +227,12 @@ public class ExecuteThread extends Thread {
                             sendError(throwable.toString());
                         } else if (throwable instanceof PlcsqlRuntimeError) {
                             PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
-                            String errMsg = String.format("\n  (line %d, column %d) %s",
-                                plcsqlError.getLine(), plcsqlError.getColumn(), plcsqlError.getMessage());
+                            String errMsg =
+                                    String.format(
+                                            "\n  (line %d, column %d) %s",
+                                            plcsqlError.getLine(),
+                                            plcsqlError.getColumn(),
+                                            plcsqlError.getMessage());
                             sendError(errMsg);
                         } else {
                             sendError(throwable.toString());
