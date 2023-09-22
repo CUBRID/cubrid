@@ -246,8 +246,12 @@ namespace cubschema
 
   const inline std::string format_sequence (const std::string_view type)
   {
-    std::string s ("sequence of ");
-    s.append (type);
+    std::string s ("sequence of");
+    if (type.empty ())
+      {
+	s.append (" ");
+	s.append (type);
+      }
     return s;
   }
 
@@ -416,7 +420,7 @@ namespace cubschema
       {"collation_id", INTEGER},
       {"enumeration", format_sequence ("character varying")},
       {"set_domains", format_sequence (CT_DOMAIN_NAME)},
-      {"json_schema", STRING},
+      {"json_schema", "string"},
     },
 // constraints
     {
