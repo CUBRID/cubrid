@@ -176,11 +176,6 @@ namespace cubschema
 					    is_class_attribute);
 	  }
 	  break;
-	  //case DB_CONSTRAINT_NOT_NULL:
-	  //{
-	  // error_code = db_constrain_non_null (class_mop, name, is_class_attribute, 1);
-	  //}
-	  //break;
 
 	  default:
 	    // TODO: error handling, there is no such a cases in the legacy code
