@@ -228,10 +228,8 @@ public class ExecuteThread extends Thread {
                             sendError(throwable.toString());
                         } else if (throwable instanceof PlcsqlRuntimeError) {
                             PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
-                            String errMsg = plcsqlError.getMessage();
-                            if (plcsqlError instanceof SQL_ERROR) {
-                                errMsg = "sql error <" + errMsg + ">";
-                            }
+                            String errMsg = String.format("\n  (line %d, column %d) %s",
+                                plcsqlError.getLine(), plcsqlError.getColumn(), plcsqlError.getMessage());
                             sendError(errMsg);
                         } else {
                             sendError(throwable.toString());
