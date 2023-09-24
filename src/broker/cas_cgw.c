@@ -474,8 +474,16 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 		}
 	      break;
 	    case SQL_TINYINT:
-	      net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
-	      net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
+	      if (this_col_binding->col_unsigned_type)
+		{
+		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+		  net_buf_cp_short (net_buf, *((unsigned char *) this_col_binding->data_buffer));
+		}
+	      else
+		{
+		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+		  net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
+		}
 	      break;
 	    case SQL_FLOAT:
 	    case SQL_REAL:
@@ -1055,11 +1063,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
 	  if (col_unsigned_type)
 	    {
-	      if (col_data_type == SQL_TINYINT)
-		{
-		  col_data_type = SQL_SMALLINT;
-		}
-	      else if (col_data_type == SQL_SMALLINT)
+	      if (col_data_type == SQL_SMALLINT)
 		{
 		  col_data_type = SQL_INTEGER;
 		}
