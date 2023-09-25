@@ -1716,7 +1716,7 @@ cgw_sql_prepare (SQLCHAR * sql_stmt)
 		   err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &local_odbc_handle->hstmt));
     }
 
-  out_length = strlen (in_string) * sizeof (wchar_t);
+  out_length = strlen (in_string) * sizeof (wchar_t) + 1;
   out_string = (wchar_t *) malloc (out_length);
   if (out_string == NULL)
     {
