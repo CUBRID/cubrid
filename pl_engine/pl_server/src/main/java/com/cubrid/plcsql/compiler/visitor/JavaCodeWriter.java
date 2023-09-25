@@ -288,7 +288,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "final %'TYPE'% %'NAME'% = checkNotNull(",
                 "  %'+VAL'%, \"NOT NULL constraint violated\");"
-                };
+            };
     private static final String[] tmplNullableConst =
             new String[] {"final %'TYPE'% %'NAME'% =", "  %'+VAL'%;"};
 
@@ -902,9 +902,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final String[] tmplAssignNotNull =
             new String[] {
-                "%'VAR'% = checkNotNull(",
-                "  %'+VAL'%, \"NOT NULL constraint violated\");"
-                };
+                "%'VAR'% = checkNotNull(", "  %'+VAL'%, \"NOT NULL constraint violated\");"
+            };
     private static final String[] tmplAssignNullable = new String[] {"%'VAR'% =", "  %'+VAL'%;"};
 
     @Override
