@@ -1445,6 +1445,10 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
 	    file_print_name_of_class (thread_p, fp, &fhead->descriptor.btree.class_oid);
 	    fprintf (fp, ", %s, ATTRID: %5d \n", index_name != NULL ? index_name : "*UNKNOWN-INDEX*",
 		     fhead->descriptor.btree.attr_id);
+	    if (index_name != NULL)
+	      {
+		free_and_init (index_name);
+	      }
 	  }
       }
       break;

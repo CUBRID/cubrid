@@ -1103,6 +1103,9 @@ mht_rehash (MHT_TABLE * ht)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+#ifdef SERVER_MODE
+  mmon_resize_stat_with_tracking_tag (ht->size * DB_SIZEOF (*hvector), size);
+#endif
 
   /* Initialize all entries */
   memset (new_hvector, 0x00, size);
@@ -1153,7 +1156,7 @@ mht_destroy (MHT_TABLE * ht)
 {
   assert (ht != NULL);
 #ifdef SERVER_MODE
-  mmon_sub_stat_with_tracking_tag (ht->size + DB_SIZEOF (MHT_TABLE));
+  mmon_sub_stat_with_tracking_tag (ht->size * DB_SIZEOF (HENTRY_PTR));
 #endif
   free_and_init (ht->table);
 
@@ -1700,9 +1703,6 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
       ht->nprealloc_entries--;
       hentry = ht->prealloc_entries;
       ht->prealloc_entries = ht->prealloc_entries->next;
-#ifdef SERVER_MODE
-      mmon_move_stat_with_tracking_tag (DB_SIZEOF (HENTRY), false);
-#endif
     }
   else
     {
@@ -1711,9 +1711,6 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	{
 	  return NULL;
 	}
-#ifdef SERVER_MODE
-      mmon_add_stat_with_tracking_tag (DB_SIZEOF (HENTRY));
-#endif
     }
 
   if (ht->build_lru_list)
@@ -2111,9 +2108,6 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 	  ht->nprealloc_entries++;
 	  hentry->next = ht->prealloc_entries;
 	  ht->prealloc_entries = hentry;
-#ifdef SERVER_MODE
-	  mmon_move_stat_with_tracking_tag (DB_SIZEOF (HENTRY), true);
-#endif
 
 	  return NO_ERROR;
 	}
@@ -2232,9 +2226,6 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
 	  ht->nprealloc_entries++;
 	  hentry->next = ht->prealloc_entries;
 	  ht->prealloc_entries = hentry;
-#ifdef SERVER_MODE
-	  mmon_move_stat_with_tracking_tag (DB_SIZEOF (HENTRY), true);
-#endif
 
 	  return NO_ERROR;
 	}

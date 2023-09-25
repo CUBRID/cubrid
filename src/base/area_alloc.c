@@ -129,6 +129,9 @@ area_final (void)
     {
       next = area->next;
       area_flush (area);
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (AREA));
+#endif
       free_and_init (area);
     }
   area_List = NULL;
@@ -157,14 +160,21 @@ area_create (const char *name, size_t element_size, size_t alloc_count)
   size_t adjust;
 #if defined (SERVER_MODE)
   int rv;
+  MMON_STAT_ID prev_tag = mmon_set_tracking_tag (MMON_COMMON);
 #endif /* SERVER_MODE */
 
   area = (AREA *) malloc (sizeof (AREA));
   if (area == NULL)
     {
+#ifdef SERVER_MODE
+      (void) mmon_set_tracking_tag (prev_tag);
+#endif
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (AREA));
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (AREA));
+#endif
   area->blockset_list = NULL;
 
   if (name == NULL)
@@ -179,6 +189,9 @@ area_create (const char *name, size_t element_size, size_t alloc_count)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (name) + 1));
 	  goto error;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (strlen (name) + 1);
+#endif
     }
 
 #if !defined (NDEBUG)
@@ -227,21 +240,38 @@ area_create (const char *name, size_t element_size, size_t alloc_count)
   area_List = area;
   pthread_mutex_unlock (&area_List_lock);
 
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
+
   return area;
 
 error:
 
   if (area->name)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (area->name) + 1);
+#endif
       free_and_init (area->name);
     }
 
   if (area->blockset_list != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (AREA_BLOCKSET_LIST));
+#endif
       free_and_init (area->blockset_list);
     }
 
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (AREA));
+#endif
   free_and_init (area);
+
+#ifdef SERVER_MODE
+  (void) mmon_set_tracking_tag (prev_tag);
+#endif
 
   return NULL;
 }
@@ -285,6 +315,9 @@ area_destroy (AREA * area)
 
   area_flush (area);
 
+#ifdef SERVER_MODE
+  mmon_sub_stat_with_tracking_tag (sizeof (AREA));
+#endif
   free_and_init (area);
 #if defined(SERVER_MODE)
   (void) mmon_set_tracking_tag (prev_tag);
@@ -354,6 +387,9 @@ area_alloc_blockset (AREA * area)
 
       return NULL;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (sizeof (AREA_BLOCKSET_LIST));
+#endif
 
   new_blockset->next = NULL;
   new_blockset->used_count = 0;
@@ -456,6 +492,9 @@ area_alloc (AREA * area)
   if (area_insert_block (area, block) != NO_ERROR)
     {
       block->bitmap.destroy ();
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (area->block_size + sizeof (AREA_BLOCK));
+#endif
       free_and_init (block);
 
       pthread_mutex_unlock (&area->area_mutex);
@@ -633,7 +672,8 @@ area_flush (AREA * area)
       next_blockset = blockset->next;
 
 #ifdef SERVER_MODE
-      mmon_sub_stat_with_tracking_tag (sizeof (AREA_BLOCK) * blockset->used_count);
+      mmon_sub_stat_with_tracking_tag ((area->block_size + sizeof (AREA_BLOCK)) * blockset->used_count +
+				       sizeof (AREA_BLOCKSET_LIST));
 #endif
       for (i = 0; i < blockset->used_count; i++)
 	{
@@ -652,6 +692,9 @@ area_flush (AREA * area)
 
   if (area->name != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (strlen (area->name) + 1);
+#endif
       free_and_init (area->name);
     }
 

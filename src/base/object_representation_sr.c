@@ -3835,6 +3835,9 @@ or_free_classrep (OR_CLASSREP * rep)
 #endif
 	      free_and_init (att->btids);
 	    }
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (std::atomic < or_aligned_oid >));
+#endif
 	}
 #ifdef SERVER_MODE
       mmon_sub_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_attributes);

@@ -2053,6 +2053,13 @@ db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
 
   raw_schema_body = db_private_strdup (NULL, src->schema_raw);
 
+#ifdef SERVER_MODE
+  if (raw_schema_body != NULL)
+    {
+      mmon_add_stat_with_tracking_tag (strlen (raw_schema_body) + 1);
+    }
+#endif
+
   doc_copy = db_json_get_copy_of_doc (src->document);
 
   dst->schema_raw = raw_schema_body;

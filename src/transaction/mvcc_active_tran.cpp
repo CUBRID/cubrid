@@ -41,6 +41,16 @@ mvcc_active_tran::mvcc_active_tran ()
 
 mvcc_active_tran::~mvcc_active_tran ()
 {
+#ifdef SERVER_MODE
+  if (m_bit_area)
+    {
+      mmon_sub_stat_with_tracking_tag (sizeof (unit_type) * BITAREA_MAX_SIZE);
+    }
+  if (m_long_tran_mvccids)
+    {
+      mmon_sub_stat_with_tracking_tag (sizeof (UINT64) * long_tran_max_size ());
+    }
+#endif
   delete [] m_bit_area;
   delete [] m_long_tran_mvccids;
 }
@@ -68,8 +78,14 @@ void
 mvcc_active_tran::finalize ()
 {
 #ifdef SERVER_MODE
-  mmon_sub_stat_with_tracking_tag (sizeof (unit_type) * BITAREA_MAX_SIZE +
-				   sizeof (UINT64) * long_tran_max_size ());
+  if (m_bit_area)
+    {
+      mmon_sub_stat_with_tracking_tag (sizeof (unit_type) * BITAREA_MAX_SIZE);
+    }
+  if (m_long_tran_mvccids)
+    {
+      mmon_sub_stat_with_tracking_tag (sizeof (UINT64) * long_tran_max_size ());
+    }
 #endif
   delete [] m_bit_area;
   m_bit_area = NULL;

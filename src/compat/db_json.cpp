@@ -1383,12 +1383,22 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
 {
   JSON_STRING_BUFFER buffer;
   rapidjson::Writer<JSON_STRING_BUFFER> json_default_writer (buffer);
+  char *ret = NULL;
 
   buffer.Clear ();
 
   doc->Accept (json_default_writer);
 
-  return db_private_strdup (NULL, buffer.GetString ());
+  ret = db_private_strdup (NULL, buffer.GetString ());
+
+#ifdef SERVER_MODE
+  if (ret != NULL)
+    {
+      mmon_add_stat_with_tracking_tag (strlen (ret) + 1);
+    }
+#endif
+
+  return ret;
 }
 
 char *

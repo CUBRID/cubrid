@@ -1871,6 +1871,9 @@ pr_make_value (void)
 
   if (value != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (DB_VALUE));
+#endif
       db_value_domain_init (value, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
 
@@ -2020,7 +2023,7 @@ pr_clear_value (DB_VALUE * value)
 	  if (value->need_clear)
 	    {
 #ifdef SERVER_MODE
-	      mmon_sub_stat_with_tracking_tag (value->data.ch.medium.size);
+	      mmon_sub_stat_with_tracking_tag (value->data.ch.medium.size + 1);
 #endif
 	      // here is safe to const_cast since the ownership was handed over by setting need_clear flag to true
 	      char *temp = CONST_CAST (char *, char_medium_buf);
@@ -2042,7 +2045,7 @@ pr_clear_value (DB_VALUE * value)
 	      if (value->data.ch.info.compressed_need_clear != 0)
 		{
 #ifdef SERVER_MODE
-		  mmon_sub_stat_with_tracking_tag (value->data.ch.medium.compressed_size);
+		  mmon_sub_stat_with_tracking_tag (value->data.ch.medium.compressed_size + 1);
 #endif
 		  // here is safe to const_cast since the ownership was handed over by setting need_clear flag to true
 		  db_private_free_and_init (NULL, compressed_str);
@@ -2059,7 +2062,7 @@ pr_clear_value (DB_VALUE * value)
 	      if (value->data.ch.info.compressed_need_clear != 0)
 		{
 #ifdef SERVER_MODE
-		  mmon_sub_stat_with_tracking_tag (value->data.ch.medium.compressed_size);
+		  mmon_sub_stat_with_tracking_tag (value->data.ch.medium.compressed_size + 1);
 #endif
 		  db_private_free_and_init (NULL, compressed_str);
 		}
@@ -2084,7 +2087,7 @@ pr_clear_value (DB_VALUE * value)
 	  if (temp != NULL)
 	    {
 #ifdef SERVER_MODE
-	      mmon_sub_stat_with_tracking_tag (value->data.enumeration.str_val.medium.size);
+	      mmon_sub_stat_with_tracking_tag (value->data.enumeration.str_val.medium.size + 1);
 #endif
 	      db_private_free_and_init (NULL, temp);
 	    }
@@ -2135,6 +2138,9 @@ pr_free_value (DB_VALUE * value)
     {
       /* some redundant checking but I want the semantics isolated */
       error = pr_clear_value (value);
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (sizeof (DB_VALUE));
+#endif
       db_private_free_and_init (NULL, value);
     }
   return error;
@@ -5699,11 +5705,17 @@ mr_setmem_elo (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	    {
 	      return ((er_errid () == NO_ERROR) ? ER_FAILED : er_errid ());
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (sizeof (DB_ELO));
+#endif
 	  rc = elo_copy_structure (e, elo);
 	  if (rc != NO_ERROR)
 	    {
 	      if (elo != NULL)
 		{
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (sizeof (DB_ELO));
+#endif
 		  db_private_free_and_init (NULL, elo);
 		}
 	      return rc;
@@ -6015,11 +6027,17 @@ mr_data_readmem_elo (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
     }
   else
     {
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (sizeof (DB_ELO));
+#endif
       peekmem_elo (buf, &e);
 
       rc = elo_copy_structure (&e, elo);
       if (rc != NO_ERROR)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (DB_ELO));
+#endif
 	  db_private_free_and_init (NULL, elo);
 	  or_abort (buf);
 	}
@@ -6061,6 +6079,9 @@ readval_elo_with_type (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
 	  rc = db_make_elo (value, type, e);
 	  if (e != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (sizeof (DB_ELO));
+#endif
 	      db_private_free_and_init (NULL, e);
 	    }
 
@@ -6114,6 +6135,9 @@ mr_freemem_elo (void *memptr)
       if (elo != NULL)
 	{
 	  elo_free_structure (elo);
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (sizeof (DB_ELO));
+#endif
 	  db_private_free_and_init (NULL, elo);
 	}
     }
@@ -7602,6 +7626,9 @@ mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (dst_idx.size);
+#endif
 
       memcpy (dst_idx.buf, src_idx->buf, dst_idx.size);
       error = db_make_midxkey (dest, &dst_idx);
@@ -7693,6 +7720,12 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	   * do not include the kludge NULL terminator
 	   */
 	  new_ = (char *) db_private_alloc (NULL, size);
+#ifdef SERVER_MODE
+	  if (new_ != NULL)
+	    {
+	      mmon_add_stat_with_tracking_tag (size);
+	    }
+#endif
 	}
 
       if (new_ == NULL)
@@ -7714,6 +7747,9 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	    {
 	      if (new_ != copy_buf)
 		{
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (size);
+#endif
 		  db_private_free_and_init (NULL, new_);
 		}
 	      return rc;
@@ -9015,6 +9051,12 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 
   midx_result.size = offset_prefix + (midx_postfix->size - offset_postfix);
   midx_result.buf = (char *) db_private_alloc (NULL, midx_result.size);
+#ifdef SERVER_MODE
+  if (midx_result.buf != NULL)
+    {
+      mmon_add_stat_with_tracking_tag (midx_result.size);
+    }
+#endif
   midx_result.domain = midx_postfix->domain;
   midx_result.ncolumns = midx_postfix->ncolumns;
 
@@ -9338,6 +9380,9 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (result_size);
+#endif
 
       (void) memcpy (result_midxkey.buf, result_buf, result_size);
       result_midxkey.size = result_size;
@@ -9681,6 +9726,9 @@ pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (str_val_size + 1);
+#endif
       memcpy (str_val_tmp, DB_GET_ENUM_ELEM_STRING (db_elem), str_val_size);
       str_val_tmp[str_val_size] = 0;
       str_val = str_val_tmp;
@@ -9876,6 +9924,9 @@ mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       /* remove the current value */
       if (cur != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (cur + sizeof (int)) + 1 + sizeof (int));
+#endif
 	  db_private_free_and_init (NULL, cur);
 	  mr_initmem_string (memptr, domain);
 	}
@@ -9906,8 +9957,14 @@ mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	}
       else
 	{
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (new_length);
+#endif
 	  if (cur != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (cur + sizeof (int)) + 1 + sizeof (int));
+#endif
 	      db_private_free_and_init (NULL, cur);
 	    }
 
@@ -9970,6 +10027,9 @@ mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    }
 	  else
 	    {
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (mem_length + 1);
+#endif
 	      memcpy (new_, cur, mem_length);
 	      new_[mem_length] = '\0';
 	      db_make_varchar (value, domain->precision, new_, mem_length, TP_DOMAIN_CODESET (domain),
@@ -10158,6 +10218,9 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	    }
 	  else
 	    {
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (mem_length);
+#endif
 	      /* store the length in our memory prefix */
 	      *(int *) new_ = len;
 	      cur = new_ + sizeof (int);
@@ -10166,6 +10229,9 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	      rc = pr_get_compressed_data_from_buffer (buf, cur, compressed_size, len);
 	      if (rc != NO_ERROR)
 		{
+#ifdef SERVER_MODE
+		  mmon_sub_stat_with_tracking_tag (mem_length);
+#endif
 		  db_private_free (NULL, new_);
 		  or_abort (buf);
 		  return;
@@ -10196,7 +10262,12 @@ mr_freemem_string (void *memptr)
     {
       cur = *(char **) memptr;
       if (cur != NULL)
-	db_private_free_and_init (NULL, cur);
+	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (cur + sizeof (int)) + 1 + sizeof (int));
+#endif
+	  db_private_free_and_init (NULL, cur);
+	}
     }
 }
 
@@ -10265,6 +10336,9 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	  else
 	    {
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (src_length + 1);
+#endif
 	      memcpy (new_, src_str, src_length);
 	      new_[src_length] = '\0';
 	      db_make_varchar (dest, src_precision, new_, src_length, db_get_string_codeset (src),
@@ -10288,6 +10362,9 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 	      else
 		{
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (src->data.ch.medium.compressed_size + 1);
+#endif
 		  memcpy (new_compressed_buf, src->data.ch.medium.compressed_buf, src->data.ch.medium.compressed_size);
 		  new_compressed_buf[src->data.ch.medium.compressed_size] = '\0';
 		  dest->data.ch.medium.compressed_buf = new_compressed_buf;
@@ -10560,6 +10637,9 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (expected_decompressed_size + 1);
+#endif
 
 	      start = buf->ptr;
 
@@ -10581,6 +10661,9 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (compressed_size + 1);
+#endif
 
 	      memcpy (compressed_string, start, compressed_size);
 	      compressed_string[compressed_size] = '\0';
@@ -10645,6 +10728,12 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	       * NULL terminator
 	       */
 	      new_ = (char *) db_private_alloc (NULL, str_length + 1);
+#ifdef SERVER_MODE
+	      if (new_ != NULL)
+		{
+		  mmon_add_stat_with_tracking_tag (str_length + 1);
+		}
+#endif
 	    }
 
 	  if (new_ == NULL)
@@ -10679,6 +10768,9 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		{
 		  if (new_ != copy_buf)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (str_length + 1);
+#endif
 		      db_private_free_and_init (NULL, new_);
 		    }
 		  return ER_FAILED;
@@ -10701,6 +10793,9 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (expected_decompressed_size + 1);
+#endif
 
 		  /* decompressing the string */
 		  decompressed_size =
@@ -10721,6 +10816,9 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (compressed_size + 1);
+#endif
 
 		  memcpy (compressed_string, new_, compressed_size);
 		  compressed_string[compressed_size] = '\0';
@@ -10728,6 +10826,9 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 
 		  if (new_ != copy_buf)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (str_length + 1);
+#endif
 		      db_private_free_and_init (NULL, new_);
 		    }
 
@@ -10777,16 +10878,25 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 cleanup:
   if (new_ != NULL && new_ != copy_buf && rc != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str_length + 1);
+#endif
       db_private_free_and_init (NULL, new_);
     }
 
   if (decompressed_string != NULL && rc != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (expected_decompressed_size + 1);
+#endif
       db_private_free_and_init (NULL, decompressed_string);
     }
 
   if (rc != NO_ERROR && compressed_string != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (compressed_size + 1);
+#endif
       db_private_free_and_init (NULL, compressed_string);
     }
 
@@ -10861,6 +10971,9 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
 	  goto cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (str1_decompressed_length + 1);
+#endif
 
       alloced_string1 = true;
 
@@ -10904,6 +11017,9 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
 	  goto cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (str2_decompressed_length + 1);
+#endif
 
       alloced_string2 = true;
 
@@ -10937,11 +11053,17 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   /* Clean up the strings */
   if (string1 != NULL && alloced_string1 == true)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str1_decompressed_length + 1);
+#endif
       db_private_free_and_init (NULL, string1);
     }
 
   if (string2 != NULL && alloced_string2 == true)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str2_decompressed_length + 1);
+#endif
       db_private_free_and_init (NULL, string2);
     }
 
@@ -10950,11 +11072,17 @@ mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str1_decompressed_length + 1);
+#endif
       db_private_free_and_init (NULL, string1);
     }
 
   if (string2 != NULL && alloced_string2 == true)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str2_decompressed_length + 1);
+#endif
       db_private_free_and_init (NULL, string2);
     }
 
@@ -11217,6 +11345,9 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (mem_length + 1);
+#endif
       memcpy (new_, (char *) mem, mem_length);
       /* make sure that all outgoing strings are NULL terminated */
       new_[mem_length] = '\0';
@@ -11392,6 +11523,9 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 	      else
 		{
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (src_length + 1);
+#endif
 		  memcpy (new_, src_string, src_length);
 		  new_[src_length] = '\0';
 		  db_make_char (dest, src_precision, new_, src_length, db_get_string_codeset (src),
@@ -11626,6 +11760,12 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	    {
 	      /* Allocate storage for the string including the kludge NULL terminator */
 	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
+#ifdef SERVER_MODE
+	      if (new_ != NULL)
+		{
+		  mmon_add_stat_with_tracking_tag (mem_length + 1);
+		}
+#endif
 	    }
 
 	  if (new_ == NULL)
@@ -11643,6 +11783,9 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 		{
 		  if (new_ != copy_buf)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (mem_length + 1);
+#endif
 		      db_private_free_and_init (NULL, new_);
 		    }
 		  return rc;
@@ -11707,6 +11850,12 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	       * terminator
 	       */
 	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
+#ifdef SERVER_MODE
+	      if (new_ != NULL)
+		{
+		  mmon_add_stat_with_tracking_tag (mem_length + 1);
+		}
+#endif
 	    }
 	  if (new_ == NULL)
 	    {
@@ -11724,6 +11873,9 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 		{
 		  if (new_ != copy_buf)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (mem_length + 1);
+#endif
 		      db_private_free_and_init (NULL, new_);
 		    }
 		  return rc;
@@ -12080,6 +12232,9 @@ mr_getmem_nchar (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (mem_length + 1);
+#endif
       memcpy (new_, (char *) mem, mem_length);
       /* make sure that all outgoing strings are NULL terminated */
       new_[mem_length] = '\0';
@@ -12249,6 +12404,9 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 	      else
 		{
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (src_length + 1);
+#endif
 		  memcpy (new_, src_string, src_length);
 		  new_[src_length] = '\0';
 		  db_make_nchar (dest, src_precision, new_, src_length, db_get_string_codeset (src),
@@ -12548,6 +12706,12 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	       * terminator
 	       */
 	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
+#ifdef SERVER_MODE
+	      if (new_ != NULL)
+		{
+		  mmon_add_stat_with_tracking_tag (mem_length + 1);
+		}
+#endif
 	    }
 
 	  if (new_ == NULL)
@@ -12565,6 +12729,9 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 		{
 		  if (new_ != copy_buf)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (mem_length + 1);
+#endif
 		      db_private_free_and_init (NULL, new_);
 		    }
 		  return rc;
@@ -12624,6 +12791,12 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	       * terminator
 	       */
 	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
+#ifdef SERVER_MODE
+	      if (new_ != NULL)
+		{
+		  mmon_add_stat_with_tracking_tag (mem_length + 1);
+		}
+#endif
 	    }
 
 	  if (new_ == NULL)
@@ -12643,6 +12816,9 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 		{
 		  if (new_ != copy_buf)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (mem_length + 1);
+#endif
 		      db_private_free_and_init (NULL, new_);
 		    }
 
@@ -12889,6 +13065,9 @@ mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       /* remove the current value */
       if (cur != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (cur + sizeof (int)) + 1 + sizeof (int));
+#endif
 	  db_private_free_and_init (NULL, cur);
 	  mr_initmem_varnchar (memptr, domain);
 	}
@@ -12922,8 +13101,14 @@ mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	}
       else
 	{
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (new_length);
+#endif
 	  if (cur != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (cur + sizeof (int)) + 1 + sizeof (int));
+#endif
 	      db_private_free_and_init (NULL, cur);
 	    }
 
@@ -12986,6 +13171,9 @@ mr_getmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool cop
 	    }
 	  else
 	    {
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (mem_length + 1);
+#endif
 	      memcpy (new_, cur, mem_length);
 	      new_[mem_length] = '\0';
 	      db_make_varnchar (value, domain->precision, new_, mem_length, TP_DOMAIN_CODESET (domain),
@@ -13089,6 +13277,9 @@ mr_freemem_varnchar (void *memptr)
       cur = *(char **) memptr;
       if (cur != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (cur + sizeof (int)) + 1 + sizeof (int));
+#endif
 	  db_private_free_and_init (NULL, cur);
 	}
     }
@@ -13145,6 +13336,9 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	  else
 	    {
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (src_length + 1);
+#endif
 	      memcpy (new_, src_str, src_length);
 	      new_[src_length] = '\0';
 	      db_make_varnchar (dest, src_precision, new_, src_length, db_get_string_codeset (src),
@@ -13168,6 +13362,9 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 	      else
 		{
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (src->data.ch.medium.compressed_size + 1);
+#endif
 		  memcpy (new_compressed_buf, src->data.ch.medium.compressed_buf, src->data.ch.medium.compressed_size);
 		  new_compressed_buf[src->data.ch.medium.compressed_size] = '\0';
 		  dest->data.ch.medium.compressed_buf = new_compressed_buf;
@@ -13486,6 +13683,9 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  return rc;
 		}
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (expected_decompressed_size + 1);
+#endif
 
 	      start = buf->ptr;
 
@@ -13509,6 +13709,9 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (compressed_size + 1);
+#endif
 
 	      memcpy (compressed_string, start, compressed_size);
 	      compressed_string[compressed_size] = '\0';
@@ -13574,6 +13777,12 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 	       * NULL terminator
 	       */
 	      new_ = (char *) db_private_alloc (NULL, str_length + 1);
+#ifdef SERVER_MODE
+	      if (new_ != NULL)
+		{
+		  mmon_add_stat_with_tracking_tag (str_length + 1);
+		}
+#endif
 	    }
 
 	  if (new_ == NULL)
@@ -13607,6 +13816,9 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		{
 		  if (new_ != copy_buf)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (str_length + 1);
+#endif
 		      db_private_free_and_init (NULL, new_);
 		    }
 		  return ER_FAILED;
@@ -13629,6 +13841,9 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (expected_decompressed_size + 1);
+#endif
 
 		  /* decompressing the string */
 		  decompressed_size =
@@ -13653,6 +13868,9 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto cleanup;
 		    }
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (compressed_size + 1);
+#endif
 
 		  memcpy (compressed_string, new_, compressed_size);
 		  compressed_string[compressed_size] = '\0';
@@ -13735,16 +13953,25 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 cleanup:
   if (decompressed_string != NULL && rc != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (expected_decompressed_size + 1);
+#endif
       db_private_free_and_init (NULL, decompressed_string);
     }
 
   if (new_ != NULL && new_ != copy_buf && rc != NO_ERROR)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str_length + 1);
+#endif
       db_private_free_and_init (NULL, new_);
     }
 
   if (rc != NO_ERROR && compressed_string != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (compressed_size + 1);
+#endif
       db_private_free_and_init (NULL, compressed_string);
     }
   return rc;
@@ -13810,6 +14037,10 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
 	  goto cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (str1_decompressed_length + 1);
+#endif
+
       alloced_string1 = true;
 
       rc = pr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
@@ -13850,6 +14081,9 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
 	  goto cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (str2_decompressed_length + 1);
+#endif
 
       alloced_string2 = true;
 
@@ -13881,11 +14115,17 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
   /* Clean up the strings */
   if (string1 != NULL && alloced_string1 == true)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str1_decompressed_length + 1);
+#endif
       db_private_free_and_init (NULL, string1);
     }
 
   if (string2 != NULL && alloced_string2 == true)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str2_decompressed_length + 1);
+#endif
       db_private_free_and_init (NULL, string2);
     }
 
@@ -13894,11 +14134,17 @@ mr_data_cmpdisk_varnchar (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str1_decompressed_length + 1);
+#endif
       db_private_free_and_init (NULL, string1);
     }
 
   if (string2 != NULL && alloced_string2 == true)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (str2_decompressed_length + 1);
+#endif
       db_private_free_and_init (NULL, string2);
     }
 
@@ -14119,6 +14365,9 @@ mr_getmem_bit (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (mem_length + 1);
+#endif
       memcpy (new_, (char *) mem, mem_length);
     }
 
@@ -14256,6 +14505,9 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		}
 	      else
 		{
+#ifdef SERVER_MODE
+		  mmon_add_stat_with_tracking_tag (src_length + 1);
+#endif
 		  memcpy (new_, src_string, src_length);
 		  db_make_bit (dest, src_precision, new_, src_number_of_bits);
 		  dest->need_clear = true;
@@ -14490,6 +14742,12 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	       * terminator
 	       */
 	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
+#ifdef SERVER_MODE
+	      if (new_ != NULL)
+		{
+		  mmon_add_stat_with_tracking_tag (mem_length + 1);
+		}
+#endif
 	    }
 
 	  if (new_ == NULL)
@@ -14507,6 +14765,9 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 		{
 		  if (new_ != copy_buf)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (mem_length + 1);
+#endif
 		      db_private_free_and_init (NULL, new_);
 		    }
 
@@ -14559,6 +14820,12 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	       * terminator
 	       */
 	      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
+#ifdef SERVER_MODE
+	      if (new_ != NULL)
+		{
+		  mmon_add_stat_with_tracking_tag (mem_length + 1);
+		}
+#endif
 	    }
 
 	  if (new_ == NULL)
@@ -14576,6 +14843,9 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 		{
 		  if (new_ != copy_buf)
 		    {
+#ifdef SERVER_MODE
+		      mmon_sub_stat_with_tracking_tag (mem_length + 1);
+#endif
 		      db_private_free_and_init (NULL, new_);
 		    }
 
@@ -14764,6 +15034,9 @@ mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       /* remove the current value */
       if (cur != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (cur + sizeof (int)) + 1 + sizeof (int));
+#endif
 	  db_private_free_and_init (NULL, cur);
 	  mr_initmem_varbit (memptr, domain);
 	}
@@ -14788,8 +15061,14 @@ mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	}
       else
 	{
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (new_length);
+#endif
 	  if (cur != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (cur + sizeof (int)) + 1 + sizeof (int));
+#endif
 	      db_private_free_and_init (NULL, cur);
 	    }
 
@@ -14843,6 +15122,9 @@ mr_getmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    }
 	  else
 	    {
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (BITS_TO_BYTES (mem_bit_length) + 1);
+#endif
 	      memcpy (new_, cur, BITS_TO_BYTES (mem_bit_length));
 	      db_make_varbit (value, domain->precision, new_, mem_bit_length);
 	      value->need_clear = true;
@@ -14979,6 +15261,9 @@ mr_data_readmem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	    }
 	  else
 	    {
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (mem_length);
+#endif
 	      /* store the length in our memory prefix */
 	      *(int *) new_ = bit_len;
 	      cur = new_ + sizeof (int);
@@ -15015,6 +15300,9 @@ mr_freemem_varbit (void *memptr)
       cur = *(char **) memptr;
       if (cur != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (cur + sizeof (int)) + 1 + sizeof (int));
+#endif
 	  db_private_free_and_init (NULL, cur);
 	}
     }
@@ -15067,6 +15355,9 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	  else
 	    {
+#ifdef SERVER_MODE
+	      mmon_add_stat_with_tracking_tag (src_length + 1);
+#endif
 	      memcpy (new_, src_str, src_length);
 	      db_make_varbit (dest, src_precision, new_, src_bit_length);
 	      dest->need_clear = true;
@@ -15256,6 +15547,12 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		   * terminator
 		   */
 		  new_ = (char *) db_private_alloc (NULL, str_length + 1);
+#ifdef SERVER_MODE
+		  if (new_ != NULL)
+		    {
+		      mmon_add_stat_with_tracking_tag (str_length + 1);
+		    }
+#endif
 		}
 
 	      if (new_ == NULL)
@@ -15282,6 +15579,9 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		    {
 		      if (new_ != copy_buf)
 			{
+#ifdef SERVER_MODE
+			  mmon_sub_stat_with_tracking_tag (str_length + 1);
+#endif
 			  db_private_free_and_init (NULL, new_);
 			}
 		      return ER_FAILED;
@@ -15483,6 +15783,9 @@ mr_setval_enumeration (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (db_get_enum_string_size (src) + 1);
+#endif
 	  memcpy (str_tmp, db_get_enum_string (src), db_get_enum_string_size (src));
 	  str_tmp[db_get_enum_string_size (src)] = 0;
 	  need_clear = true;
@@ -15580,6 +15883,9 @@ mr_setval_enumeration_internal (DB_VALUE * value, TP_DOMAIN * domain, unsigned s
 	    {
 	      return ER_FAILED;
 	    }
+#ifdef SERVER_MODE
+	  mmon_add_stat_with_tracking_tag (str_size + 1);
+#endif
 	  need_clear = true;
 	}
 
@@ -15767,6 +16073,9 @@ pr_get_compression_length (const char *string, int str_length)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) compress_buffer_size);
       return str_length;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (compress_buffer_size);
+#endif
 
   /* Compress the string */
   compressed_length = LZ4_compress_default (string, compressed_string, str_length, compress_buffer_size);
@@ -15798,6 +16107,9 @@ cleanup:
 
   if (compressed_string != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (compress_buffer_size);
+#endif
       free_and_init (compressed_string);
     }
 
@@ -15857,6 +16169,9 @@ pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALU
       rc = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (compress_buffer_size);
+#endif
 
   compression_length = LZ4_compress_default (string, compressed_string, str_length, compress_buffer_size);
   if (compression_length <= 0)
@@ -15929,6 +16244,9 @@ cleanup:
 
   if (compressed_string != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (compress_buffer_size);
+#endif
       free_and_init (compressed_string);
     }
 
@@ -16163,6 +16481,9 @@ pr_clear_compressed_string (DB_VALUE * value)
   data = value->data.ch.medium.compressed_buf;
   if (data != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (value->data.ch.medium.compressed_size);
+#endif
       db_private_free_and_init (NULL, data);
     }
 
@@ -16227,6 +16548,9 @@ pr_do_db_value_string_compression (DB_VALUE * value)
       rc = ER_OUT_OF_VIRTUAL_MEMORY;
       return rc;
     }
+#ifdef SERVER_MODE
+  mmon_add_stat_with_tracking_tag (compressed_size);
+#endif
 
   rc = pr_data_compress_string (string, src_size, compressed_string, compressed_size, &compressed_length);
   if (rc != NO_ERROR)
@@ -16251,6 +16575,9 @@ pr_do_db_value_string_compression (DB_VALUE * value)
 error:
   if (compressed_string != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (compressed_size);
+#endif
       db_private_free_and_init (NULL, compressed_string);
     }
 
@@ -16474,6 +16801,9 @@ mr_freemem_json (void *memptr)
     {
       if (cur->schema_raw != NULL)
 	{
+#ifdef SERVER_MODE
+	  mmon_sub_stat_with_tracking_tag (strlen (cur->schema_raw) + 1);
+#endif
 	  db_private_free (NULL, const_cast < char *>(cur->schema_raw));
 	  cur->schema_raw = NULL;
 	}
@@ -16515,6 +16845,12 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	{
 	  dest->data.json.document = db_json_get_copy_of_doc (src->data.json.document);
 	  dest->data.json.schema_raw = db_private_strdup (NULL, src->data.json.schema_raw);
+#ifdef SERVER_MODE
+	  if (dest->data.json.schema_raw != NULL)
+	    {
+	      mmon_add_stat_with_tracking_tag (strlen (dest->data.json.schema_raw) + 1);
+	    }
+#endif
 	  dest->need_clear = true;
 	}
       else

@@ -39,9 +39,9 @@ typedef enum mmon_module_id
 // The order of module name MUST be the same with MMON_MODULE_ID
 // starting from MMON_MODULE_ALL + 1
 constexpr char module_names[MMON_MODULE_LAST][DB_MAX_IDENTIFIER_LENGTH] = {
-  "heap",
-  "common",
-  "others"
+  "HEAP",
+  "COMMON",
+  "OTHERS"
 };
 
 typedef struct mmon_output_mem_stat

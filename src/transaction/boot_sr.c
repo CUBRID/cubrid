@@ -2265,6 +2265,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   event_log_init (db_name);
 
+#if defined(SERVER_MODE)
+  error_code = mmon_initialize (db_name);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+#endif
+
   /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
   area_init ();
   error_code = set_area_init ();
@@ -2317,14 +2325,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
   /* *INDENT-ON* */
-
-#if defined(SERVER_MODE)
-  error_code = mmon_initialize (db_name);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-#endif
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 

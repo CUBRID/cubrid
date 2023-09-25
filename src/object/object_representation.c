@@ -1009,6 +1009,9 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto cleanup;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (compress_buffer_size);
+#endif
 
       /* Compress the string */
       compressed_length = LZ4_compress_default (string, compressed_string, charlen, compress_buffer_size);
@@ -1095,6 +1098,9 @@ cleanup:
 
   if (compressed_string != NULL)
     {
+#ifdef SERVER_MODE
+      mmon_sub_stat_with_tracking_tag (compress_buffer_size);
+#endif
       free_and_init (compressed_string);
     }
 

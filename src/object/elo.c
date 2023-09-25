@@ -160,6 +160,9 @@ elo_copy_structure (const DB_ELO * elo, DB_ELO * dest)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
+#endif
     }
 
   if (elo->meta_data != NULL)
@@ -169,10 +172,16 @@ elo_copy_structure (const DB_ELO * elo, DB_ELO * dest)
 	{
 	  if (locator != NULL)
 	    {
+#ifdef SERVER_MODE
+	      mmon_sub_stat_with_tracking_tag (strlen (locator) + 1);
+#endif
 	      db_private_free_and_init (NULL, locator);
 	    }
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+#ifdef SERVER_MODE
+      mmon_add_stat_with_tracking_tag (strlen (meta_data) + 1);
+#endif
     }
 
   *dest = *elo;

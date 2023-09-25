@@ -83,6 +83,11 @@ mmon_print_module_info (std::vector<MMON_MODULE_INFO> &module_info)
 
   for (const auto &m_info : module_info)
     {
+      // It's a temporary measure for hiding MMON_OTHERS
+      if (!strcmp (m_info.name, "OTHERS"))
+	{
+	  continue;
+	}
       fprintf (stdout, "Module Name: %s\n\n", m_info.name);
       fprintf (stdout, "%-19s\t: %17lu\n", init_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.init_stat));
       fprintf (stdout, "%-19s\t: %17lu\n", cur_size_str.c_str (), MMON_CONVERT_TO_KB_SIZE (m_info.stat.cur_stat));
@@ -126,6 +131,11 @@ mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODU
 
   for (const auto &m_info : module_info)
     {
+      // It's a temporary measure for hiding MMON_OTHERS
+      if (!strcmp (m_info.name, "OTHERS"))
+	{
+	  continue;
+	}
       if (server_mem_usage != 0)
 	{
 	  cur_stat_ratio = m_info.stat.cur_stat / (double) server_mem_usage;
