@@ -6834,6 +6834,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->node.classname = NULL;
   scan_cache->cache_last_fix_page = cache_last_fix_page;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&(scan_cache->old_page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
   scan_cache->start_area ();
   scan_cache->num_btids = 0;
   scan_cache->m_index_stats = NULL;
@@ -6991,6 +6992,11 @@ heap_scancache_force_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
       pgbuf_ordered_unfix (thread_p, &(scan_cache->page_watcher));
     }
 
+  if (scan_cache->old_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &(scan_cache->old_page_watcher));
+    }
+
   return NO_ERROR;
 }
 
@@ -7123,11 +7129,13 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
     {
       scan_cache->node.hfid.vfid.volid = NULL_VOLID;
       PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+      PGBUF_INIT_WATCHER (&(scan_cache->old_page_watcher), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
     }
   else
     {
       HFID_COPY (&scan_cache->node.hfid, hfid);
       PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
+      PGBUF_INIT_WATCHER (&(scan_cache->old_page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
     }
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->node.classname = NULL;
@@ -7176,6 +7184,10 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	  if (scan_cache->page_watcher.pgptr != NULL)
 	    {
 	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	    }
+          if (scan_cache->old_page_watcher.pgptr != NULL)
+	    {
+	      pgbuf_ordered_unfix (thread_p, &scan_cache->old_page_watcher);
 	    }
 	}
 
@@ -8015,6 +8027,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      (void) heap_vpid_next (thread_p, hfid, scan_cache->page_watcher.pgptr, &vpid);
 		    }
+                  PGBUF_INIT_WATCHER (&scan_cache->old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &scan_cache->old_page_watcher);
 		  oid.volid = vpid.volid;
 		  oid.pageid = vpid.pageid;
