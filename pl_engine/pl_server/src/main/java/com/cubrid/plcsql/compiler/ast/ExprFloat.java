@@ -52,14 +52,14 @@ public class ExprFloat extends Expr {
 
     public String javaCode() {
         switch (ty.simpleTypeIdx) {
-        case TypeSpecSimple.IDX_DOUBLE:
-            return "new Double(\"" + val + "\")";
-        case TypeSpecSimple.IDX_FLOAT:
-            return "new Float(\"" + val + "\")";
-        case TypeSpecSimple.IDX_NUMERIC:
-            return "new BigDecimal(\"" + val + "\")";
-        default:
-            throw new RuntimeException("unreachable");
+            case TypeSpecSimple.IDX_DOUBLE:
+                return "new Double(\"" + val + "\")";
+            case TypeSpecSimple.IDX_FLOAT:
+                return "new Float(\"" + val + "\")";
+            case TypeSpecSimple.IDX_NUMERIC:
+                return "new BigDecimal(\"" + val + "\")";
+            default:
+                throw new RuntimeException("unreachable");
         }
     }
 }
