@@ -189,9 +189,13 @@ public class SpLib {
         throw new INVALID_CURSOR(msg);
     }
 
-    public static <T> T checkNotNull(T val) {
+    // ---------------------------------------------------------------------------------------
+    // various check functions
+    //
+
+    public static <T> T checkNotNull(T val, String errMsg) {
         if (val == null) {
-            throw new VALUE_ERROR("NOT NULL constraint violation");
+            throw new VALUE_ERROR(errMsg);
         }
 
         return val;
