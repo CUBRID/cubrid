@@ -7915,13 +7915,13 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      else
 		{
 		  /* Keep previous scan page fixed until we fixed the current one */
-                  PGBUF_INIT_WATCHER (&scan_cache->old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+		  PGBUF_INIT_WATCHER (&scan_cache->old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &scan_cache->old_page_watcher);
 		}
 	    }
 	  if (scan_cache->page_watcher.pgptr == NULL)
 	    {
-              PGBUF_INIT_WATCHER (&scan_cache->page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+	      PGBUF_INIT_WATCHER (&scan_cache->page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 	      scan_cache->page_watcher.pgptr =
 		heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, scan_cache,
 					     &scan_cache->page_watcher);
@@ -7949,18 +7949,21 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      if (reversed_direction)
 		{
 		  scan =
-		    spage_previous_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		    spage_previous_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+							   PEEK);
 		}
 	      else
 		{
 		  scan =
-		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+						       PEEK);
 		}
 	      if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		{
 		  /* skip the header */
 		  scan =
-		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+						       PEEK);
 		}
 	    }
 	  else
@@ -8049,8 +8052,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       if (get_rec_info)
 	{
 	  scan =
-	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &scan_cache->page_watcher, scan_cache, ispeeking,
-				  cache_recordinfo);
+	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &scan_cache->page_watcher, scan_cache,
+				  ispeeking, cache_recordinfo);
 	}
       else
 	{
@@ -12504,7 +12507,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	    {
 	      func_domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-             not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	    }
 
 	  if (key_domain != NULL)
@@ -12556,7 +12559,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	    {
 	      atts[i]->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-             not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	    }
 
 	  if (DB_NEED_CLEAR (&value))
@@ -12703,7 +12706,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      TP_DOMAIN *domain = tp_domain_resolve_default ((DB_TYPE) func_res->domain.general_info.type);
 	      domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-             not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	    }
 
 	  if (++k == num_vals)
@@ -12732,7 +12735,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	    {
 	      att->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-              not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	    }
 
 	  if (DB_NEED_CLEAR (&value))
