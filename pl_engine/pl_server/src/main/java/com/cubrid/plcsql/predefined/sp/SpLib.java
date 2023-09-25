@@ -1587,6 +1587,9 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATE)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
 
         LocalDate lld = l.toLocalDate();
         return Date.valueOf(lld.plusDays(r.longValue()));
@@ -1602,6 +1605,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDateTime lldt = l.toLocalDateTime();
         return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.MILLIS));
     }
@@ -1698,6 +1705,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATE) || r.equals(NULL_DATE)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDate lld = l.toLocalDate();
         LocalDate rld = r.toLocalDate();
         return rld.until(lld, ChronoUnit.DAYS);
@@ -1708,6 +1719,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATETIME) || r.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDateTime lldt = l.toLocalDateTime();
         LocalDateTime rldt = r.toLocalDateTime();
         return rldt.until(lldt, ChronoUnit.MILLIS);
@@ -1734,6 +1749,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATE)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDate lld = l.toLocalDate();
         return Date.valueOf(lld.minusDays(r.longValue()));
     }
@@ -1743,6 +1762,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDateTime lldt = l.toLocalDateTime();
         return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.MILLIS));
     }
@@ -1850,6 +1873,9 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATETIME)) {
+            return NULL_DATE;
+        }
 
         return new Date(e.getYear(), e.getMonth(), e.getDate());
     }
@@ -1865,6 +1891,9 @@ public class SpLib {
     public static Timestamp convDatetimeToTimestamp(Timestamp e) {
         if (e == null) {
             return null;
+        }
+        if (e.equals(NULL_DATETIME)) {
+            return NULL_TIMESTAMP;
         }
 
         return new Timestamp(
@@ -1895,6 +1924,9 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATE)) {
+            return NULL_DATETIME;
+        }
 
         return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
     }
@@ -1902,6 +1934,9 @@ public class SpLib {
     public static Timestamp convDateToTimestamp(Date e) {
         if (e == null) {
             return null;
+        }
+        if (e.equals(NULL_DATE)) {
+            return NULL_TIMESTAMP;
         }
 
         return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
@@ -1932,6 +1967,9 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_TIMESTAMP)) {
+            return NULL_DATETIME;
+        }
 
         return new Timestamp(
                 e.getYear(),
@@ -1946,6 +1984,9 @@ public class SpLib {
     public static Date convTimestampToDate(Timestamp e) {
         if (e == null) {
             return null;
+        }
+        if (e.equals(NULL_TIMESTAMP)) {
+            return NULL_DATE;
         }
 
         return new Date(e.getYear(), e.getMonth(), e.getDate());
