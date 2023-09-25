@@ -137,7 +137,7 @@ VARYING:                      V A R Y I N G ;
 PERIOD2:  '..';
 PERIOD:   '.';
 
-FLOATING_POINT_NUM: BASIC_UINT? '.' [0-9]+ ([eE] ('+'|'-')? BASIC_UINT)?;
+FLOATING_POINT_NUM: BASIC_UINT? '.' [0-9]+ ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
 UNSIGNED_INTEGER:    BASIC_UINT ([eE] ('+'|'-')? BASIC_UINT)?;
 
 DELIMITED_ID: ('"' | '[' | '`') REGULAR_ID ('"' | ']' | '`') ;
