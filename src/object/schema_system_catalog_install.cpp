@@ -247,7 +247,7 @@ namespace cubschema
   const inline std::string format_sequence (const std::string_view type)
   {
     std::string s ("sequence of");
-    if (type.empty ())
+    if (!type.empty ())
       {
 	s.append (" ");
 	s.append (type);
@@ -819,7 +819,6 @@ namespace cubschema
   const system_catalog_definition &
   system_catalog_initializer::init_serial ()
   {
-
     static system_catalog_definition sm_define_serial (
 	    // name
 	    CT_SERIAL_NAME,
