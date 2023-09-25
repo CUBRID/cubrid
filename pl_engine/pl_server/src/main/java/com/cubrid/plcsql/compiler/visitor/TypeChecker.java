@@ -591,7 +591,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprFloat(ExprFloat node) {
-        return TypeSpecSimple.NUMERIC; // TODO: apply precision and scale
+        return node.ty;
     }
 
     @Override

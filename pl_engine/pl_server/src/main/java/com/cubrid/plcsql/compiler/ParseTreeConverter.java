@@ -687,11 +687,24 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public ExprFloat visitFp_num_exp(Fp_num_expContext ctx) {
         try {
             addToImports("java.math.BigDecimal");
-            BigDecimal bd = new BigDecimal(ctx.FLOATING_POINT_NUM().getText());
-            return new ExprFloat(ctx, bd.toString());
+
+            String text = ctx.FLOATING_POINT_NUM().getText().toLowerCase();
+
+            if (text.indexOf("e") >= 0) {
+                Double d = new Double(text);
+                return new ExprFloat(ctx, text, TypeSpecSimple.DOUBLE);
+            } else if (text.endsWith("f")) {
+                Float f = new Float(text);
+                return new ExprFloat(ctx, text, TypeSpecSimple.FLOAT);
+            } else {
+                BigDecimal bd = new BigDecimal(text);
+                return new ExprFloat(ctx, text, TypeSpecSimple.NUMERIC);
+            }
+
         } catch (NumberFormatException e) {
-            assert false : "unreachable"; // by syntax
-            throw new RuntimeException("unreachable");
+            throw new SemanticError(
+                    Misc.getLineColumnOf(ctx), // s067
+                    "failed to parse the floating point literal");
         }
     }
 
