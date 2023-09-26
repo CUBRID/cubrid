@@ -3418,11 +3418,17 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
 	}
       else if (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG)
 	{
+	  LOG_RECORD_HEADER *origin_append_log_record = LOG_GET_LOG_RECORD_HEADER (pgptr, &log_Gl.hdr.append_lsa);
 	  /* we need to flush the correct version now */
 	  log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_ENDED;
 	  logpb_flush_all_append_pages (thread_p);
 	  assert (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL);
 
+	  LOG_RECORD_HEADER *append_log_rec =
+	    LOG_GET_LOG_RECORD_HEADER (log_Gl.append.log_pgptr, &log_Gl.hdr.append_lsa);
+	  assert (append_log_rec->type == LOG_END_OF_LOG);
+	  assert (log_Gl.append.log_pgptr->hdr.logical_pageid == pgptr->hdr.logical_pageid);
+	  memcpy (append_log_rec, origin_append_log_record, sizeof (LOG_RECORD_HEADER));
 	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 	}
       else
