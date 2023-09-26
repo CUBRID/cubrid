@@ -1734,10 +1734,11 @@
 #define ER_FILE_NOT_FOUND                           -1355
 #define ER_CGW_INVALID_DBLINT_HINT                  -1356
 #define ER_CGW_SQL_CONV_ERROR                       -1357
+#define ER_CGW_UNKNOWN_AFFECTED_ROWS                -1358
 
-#define ER_SP_COMPILE_ERROR                         -1358
+#define ER_SP_COMPILE_ERROR                         -1359
 
-#define ER_LAST_ERROR                               -1359
+#define ER_LAST_ERROR                               -1360
 
 /*
  * CAUTION!
