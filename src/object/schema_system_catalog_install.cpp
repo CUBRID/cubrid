@@ -640,7 +640,8 @@ namespace cubschema
       {"key_attr_name", VARCHAR_255},
       {"key_order", INTEGER},
       {"asc_desc", INTEGER},
-      {"key_prefix_length", INTEGER, [] (DB_VALUE* val)
+      {
+	"key_prefix_length", INTEGER, [] (DB_VALUE* val)
 	{
 	  return db_make_int (val, -1);
 	}
@@ -831,24 +832,28 @@ namespace cubschema
       {"unique_name", "string"},
       {"name", "string"},
       {"owner", AU_USER_CLASS_NAME},
-      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
+      {
+	"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
 	{
 	  return db_make_numeric (val, (DB_C_NUMERIC) "1", DB_MAX_NUMERIC_PRECISION, 0);
 	}
       },
-      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
+      {
+	"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
 	{
 	  return db_make_numeric (val, (DB_C_NUMERIC) "1", DB_MAX_NUMERIC_PRECISION, 0);
 	}
       },
       {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
       {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"cyclic", INTEGER, [] (DB_VALUE* val)
+      {
+	"cyclic", INTEGER, [] (DB_VALUE* val)
 	{
 	  return db_make_int (val, 0);
 	}
       },
-      {"started", INTEGER, [] (DB_VALUE* val)
+      {
+	"started", INTEGER, [] (DB_VALUE* val)
 	{
 	  return db_make_int (val, 0);
 	}
@@ -856,7 +861,8 @@ namespace cubschema
       {"class_name", "string"},
       {"att_name", "string"},
       {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
-      {"cached_num", INTEGER, [] (DB_VALUE* val)
+      {
+	"cached_num", INTEGER, [] (DB_VALUE* val)
 	{
 	  return db_make_int (val, 0);
 	}
@@ -1073,7 +1079,8 @@ namespace cubschema
       {"unique_name", VARCHAR_255},
       {"name", VARCHAR_255},
       {"owner", AU_USER_CLASS_NAME},
-      {"is_public", "integer", [] (DB_VALUE* val)
+      {
+	"is_public", "integer", [] (DB_VALUE* val)
 	{
 	  return db_make_int (val, 0);
 	}
