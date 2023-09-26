@@ -1971,9 +1971,11 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+
         if (e.equals(NULL_TIMESTAMP)) {
             return NULL_DATETIME;
         }
+        assert e.getNanos() == 0;
 
         return new Timestamp(
                 e.getYear(),
@@ -1989,9 +1991,11 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+
         if (e.equals(NULL_TIMESTAMP)) {
             return NULL_DATE;
         }
+        assert e.getNanos() == 0;
 
         return new Date(e.getYear(), e.getMonth(), e.getDate());
     }
@@ -2000,6 +2004,7 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        assert e.getNanos() == 0;
 
         return new Time(e.getHours(), e.getMinutes(), e.getSeconds());
     }
@@ -2008,11 +2013,13 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+
         if (e.equals(NULL_TIMESTAMP)) {
             // must be calculated everytime because the AM/PM indicator can change according to the
             // locale change
             return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
         }
+        assert e.getNanos() == 0;
 
         return TIMESTAMP_FORMAT.format(e);
     }
@@ -2417,7 +2424,7 @@ public class SpLib {
         }
 
         if (dt.equals(DateTimeParser.nullDatetime)) {
-            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+            return NULL_DATETIME;
         } else {
             return new Timestamp(
                     dt.getYear() - 1900,
@@ -2474,7 +2481,7 @@ public class SpLib {
         }
 
         if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
-            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+            return NULL_TIMESTAMP;
         } else {
             assert zdt.getNano() == 0;
             return new Timestamp(
@@ -2599,7 +2606,7 @@ public class SpLib {
             return (Date) e;
         } else if (e instanceof Timestamp) {
             // e is DATETIME or TIMESTAMP
-            return convTimestampToDate((Timestamp) e);
+            return convDatetimeToDate((Timestamp) e);
         }
 
         throw new VALUE_ERROR("not compatible with DATE");
@@ -2626,7 +2633,7 @@ public class SpLib {
             return (Time) e;
         } else if (e instanceof Timestamp) {
             // e is DATETIME or TIMESTAMP
-            return convTimestampToTime((Timestamp) e);
+            return convDatetimeToTime((Timestamp) e);
         }
 
         throw new VALUE_ERROR("not compatible with TIME");
@@ -3123,6 +3130,7 @@ public class SpLib {
             } else if (r instanceof Time) {
                 // not applicable
             } else if (r instanceof Timestamp) {
+                // not applicable
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3159,7 +3167,7 @@ public class SpLib {
                 lConv = convStringToTime((String) l);
                 rConv = (Time) r;
             } else if (r instanceof Timestamp) {
-                lConv = convStringToTimestamp((String) l);
+                lConv = convStringToDatetime((String) l);
                 rConv = (Timestamp) r;
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
@@ -3195,11 +3203,10 @@ public class SpLib {
             } else if (r instanceof Time) {
                 lConv = convShortToTime((Short) l);
                 rConv = (Time) r;
-            } else if (r
-                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
-                // CoercionScheme
+            } else if (r instanceof Timestamp) {
+                // NOTE: r must be a TIMESTAMP
                 lConv = convShortToTimestamp((Short) l);
-                rConv = (Timestamp) r;
+                rConv = convDatetimeToTimestamp((Timestamp) r);
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3234,11 +3241,10 @@ public class SpLib {
             } else if (r instanceof Time) {
                 lConv = convIntToTime((Integer) l);
                 rConv = (Time) r;
-            } else if (r
-                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
-                // CoercionScheme
+            } else if (r instanceof Timestamp) {
+                // NOTE: r must be a TIMESTAMP
                 lConv = convIntToTimestamp((Integer) l);
-                rConv = (Timestamp) r;
+                rConv = convDatetimeToTimestamp((Timestamp) r);
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3273,11 +3279,10 @@ public class SpLib {
             } else if (r instanceof Time) {
                 lConv = convBigintToTime((Long) l);
                 rConv = (Time) r;
-            } else if (r
-                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
-                // CoercionScheme
+            } else if (r instanceof Timestamp) {
+                // NOTE: r must be a TIMESTAMP
                 lConv = convBigintToTimestamp((Long) l);
-                rConv = (Timestamp) r;
+                rConv = convDatetimeToTimestamp((Timestamp) r);
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3412,7 +3417,8 @@ public class SpLib {
             } else if (r instanceof Time) {
                 // not applicable
             } else if (r instanceof Timestamp) {
-                // not applicable
+                lConv = convDateToDatetime((Date) l);
+                rConv = (Timestamp) r;
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3456,15 +3462,18 @@ public class SpLib {
                 // not applicable
             } else if (r instanceof String) {
                 lConv = (Timestamp) l;
-                rConv = convStringToTimestamp((String) r);
+                rConv = convStringToDatetime((String) r);
             } else if (r instanceof Short) {
-                lConv = (Timestamp) l;
+                // l must be a TIMESTAMP
+                lConv = convDatetimeToTimestamp((Timestamp) l);
                 rConv = convShortToTimestamp((Short) r);
             } else if (r instanceof Integer) {
-                lConv = (Timestamp) l;
+                // l must be a TIMESTAMP
+                lConv = convDatetimeToTimestamp((Timestamp) l);
                 rConv = convIntToTimestamp((Integer) r);
             } else if (r instanceof Long) {
-                lConv = (Timestamp) l;
+                // l must be a TIMESTAMP
+                lConv = convDatetimeToTimestamp((Timestamp) l);
                 rConv = convBigintToTimestamp((Long) r);
             } else if (r instanceof BigDecimal) {
                 // not applicable
@@ -3474,7 +3483,7 @@ public class SpLib {
                 // not applicable
             } else if (r instanceof Date) {
                 lConv = (Timestamp) l;
-                rConv = convDateToTimestamp((Date) r);
+                rConv = convDateToDatetime((Date) r);
             } else if (r instanceof Time) {
                 // not applicable
             } else if (r instanceof Timestamp) {
