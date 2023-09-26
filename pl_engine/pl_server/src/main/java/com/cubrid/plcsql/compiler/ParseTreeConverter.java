@@ -2195,7 +2195,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         return visitNonFuncIdentifier(name, ctx, true);
     }
 
-    private ExprId visitNonFuncIdentifier(String name, ParserRuleContext ctx, boolean throwIfNotFound) {
+    private ExprId visitNonFuncIdentifier(
+            String name, ParserRuleContext ctx, boolean throwIfNotFound) {
         ExprId ret;
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
@@ -2391,8 +2392,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
                     ExprId id = visitNonFuncIdentifier(col, ctx, false);
                     if (id == null) {
-                        // col is not a host variable, but an expression which has a host variable as a subexpression
-                        typeSpec = TypeSpecSimple.OBJECT;   // unknown some type. best offort to give a type
+                        // col is not a host variable, but an expression which has a host variable
+                        // as a subexpression
+                        typeSpec =
+                                TypeSpecSimple
+                                        .OBJECT; // unknown some type. best offort to give a type
                     } else {
                         // col is a single identifier, which is almost of no use and stupid
                         DeclId decl = id.decl;
@@ -2403,7 +2407,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         } else if (decl instanceof DeclForRecord) {
                             throw new SemanticError(
                                     Misc.getLineColumnOf(ctx), // s423
-                                    "for-loop iterator record " + id.name + " cannot be in a select list");
+                                    "for-loop iterator record "
+                                            + id.name
+                                            + " cannot be in a select list");
                         } else if (decl instanceof DeclCursor) {
                             throw new SemanticError(
                                     Misc.getLineColumnOf(ctx), // s424
