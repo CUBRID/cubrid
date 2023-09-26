@@ -33,6 +33,7 @@ package com.cubrid.plcsql.compiler;
 import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
 
 import com.cubrid.jsp.data.ColumnInfo;
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
@@ -2191,6 +2192,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     }
 
     private ExprId visitNonFuncIdentifier(String name, ParserRuleContext ctx) {
+        return visitNonFuncIdentifier(name, ctx, true);
+    }
+
+    private ExprId visitNonFuncIdentifier(
+            String name, ParserRuleContext ctx, boolean throwIfNotFound) {
         ExprId ret;
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
@@ -2201,11 +2207,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         } else if (decl instanceof DeclFunc) {
             ret = null; // the name represents a function in its scope
         } else {
-            assert false : "unreachable";
             throw new RuntimeException("unreachable");
         }
 
-        if (ret == null) {
+        if (ret == null && throwIfNotFound) {
             throw new SemanticError(Misc.getLineColumnOf(ctx), "undeclared id " + name);
         } else {
             return ret;
@@ -2380,7 +2385,43 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             for (ColumnInfo ci : sws.selectList) {
                 String col = Misc.getNormalizedText(getColumnNameInSelectList(ci));
 
-                if (!DBTypeAdapter.isSupported(ci.type)) {
+                // get type of the column
+                TypeSpec typeSpec;
+                if (ci.type == DBType.DB_VARIABLE) {
+                    // Maybe, the column contains a host variable
+
+                    ExprId id = visitNonFuncIdentifier(col, ctx, false);
+                    if (id == null) {
+                        // col is not a host variable, but an expression which has a host variable
+                        // as a subexpression
+                        typeSpec =
+                                TypeSpecSimple
+                                        .OBJECT; // unknown some type. best offort to give a type
+                    } else {
+                        // col is a single identifier, which is almost of no use and stupid
+                        DeclId decl = id.decl;
+                        if (decl instanceof DeclIdTyped) {
+                            typeSpec = ((DeclIdTyped) decl).typeSpec();
+                        } else if (decl instanceof DeclForIter) {
+                            typeSpec = TypeSpecSimple.INT;
+                        } else if (decl instanceof DeclForRecord) {
+                            throw new SemanticError(
+                                    Misc.getLineColumnOf(ctx), // s423
+                                    "for-loop iterator record "
+                                            + id.name
+                                            + " cannot be in a select list");
+                        } else if (decl instanceof DeclCursor) {
+                            throw new SemanticError(
+                                    Misc.getLineColumnOf(ctx), // s424
+                                    "cursor " + id.name + " cannot be in a select list");
+                        } else {
+                            throw new RuntimeException("unreachable");
+                        }
+                    }
+
+                } else if (DBTypeAdapter.isSupported(ci.type)) {
+                    typeSpec = DBTypeAdapter.getTypeSpec(ci.type);
+                } else {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s426
                             "the SELECT statement contains a column "
@@ -2388,7 +2429,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                     + " of an unsupported type "
                                     + DBTypeAdapter.getSqlTypeName(ci.type));
                 }
-                TypeSpec typeSpec = DBTypeAdapter.getTypeSpec(ci.type);
                 assert typeSpec != null;
 
                 TypeSpec old = selectList.put(col, typeSpec);
