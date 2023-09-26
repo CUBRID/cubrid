@@ -2628,7 +2628,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
       return (-1);
     }
 
-  if (in_size <= 0)
+  if (in_size < 0)
     {
       return (-1);
     }
