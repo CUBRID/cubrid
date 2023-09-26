@@ -1441,9 +1441,11 @@ $ LOADDB
 1355 Datei "%1$s" wurde nicht gefunden.
 1356 Die DBLink-Abfrage enthält keinen Hinweis oder der Anweisungstyp ist falsch. %1$s
 1357 Konvertieren der SQL-Zeichenfolge in eine breite Zeichenfolge ist fehlgeschlagen.
+1358 Die Anzahl der betroffenen Zeilen ist unbekannt.
 
-1358 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1359 Letzter Fehler
+1359 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+
+1360 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
