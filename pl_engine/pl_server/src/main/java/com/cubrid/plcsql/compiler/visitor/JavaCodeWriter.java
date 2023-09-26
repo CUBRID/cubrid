@@ -253,7 +253,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final String[] tmplNotNullVar =
             new String[] {
-                "%'TYPE'%[] %'NAME'% = new %'TYPE'%[] { checkNotNull(", "  %'+VAL'%", ") };"
+                "%'TYPE'%[] %'NAME'% = new %'TYPE'%[] { checkNotNull(",
+                "  %'+VAL'%, \"NOT NULL constraint violated\") };"
             };
     private static final String[] tmplNullableVar =
             new String[] {"%'TYPE'%[] %'NAME'% = new %'TYPE'%[] {", "  %'+VAL'%", "};"};
@@ -284,7 +285,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static final String[] tmplNotNullConst =
-            new String[] {"final %'TYPE'% %'NAME'% = checkNotNull(", "  %'+VAL'%", ");"};
+            new String[] {
+                "final %'TYPE'% %'NAME'% = checkNotNull(",
+                "  %'+VAL'%, \"NOT NULL constraint violated\");"
+            };
     private static final String[] tmplNullableConst =
             new String[] {"final %'TYPE'% %'NAME'% =", "  %'+VAL'%;"};
 
@@ -897,7 +901,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static final String[] tmplAssignNotNull =
-            new String[] {"%'VAR'% = checkNotNull(", "  %'+VAL'%", ");"};
+            new String[] {
+                "%'VAR'% = checkNotNull(", "  %'+VAL'%, \"NOT NULL constraint violated\");"
+            };
     private static final String[] tmplAssignNullable = new String[] {"%'VAR'% =", "  %'+VAL'%;"};
 
     @Override
@@ -1208,8 +1214,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "{ // %'KIND'% SQL statement",
                 "  PreparedStatement stmt_%'LEVEL'% = null;",
                 "  try {",
-                "    String dynSql_%'LEVEL'% =",
-                "      %'+SQL'%;",
+                "    String dynSql_%'LEVEL'% = checkNotNull(",
+                "      %'+SQL'%, \"SQL part was evaluated to NULL\");",
                 "    stmt_%'LEVEL'% = conn.prepareStatement(dynSql_%'LEVEL'%);",
                 "    %'+BAN-INTO-CLAUSE'%",
                 "    %'+SET-USED-EXPR'%",
@@ -1298,7 +1304,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             if (checkNotNull) {
                 sbuf.append(
                         String.format(
-                                "%s = checkNotNull(%s);", id.javaCode(), c.javaCode(resultStr)));
+                                "%s = checkNotNull(%s, \"NOT NULL constraint violated\");",
+                                id.javaCode(), c.javaCode(resultStr)));
             } else {
                 sbuf.append(String.format("%s = %s;", id.javaCode(), c.javaCode(resultStr)));
             }
@@ -1513,8 +1520,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "{ // FOR loop with %'KIND'% SQL",
                 "  PreparedStatement stmt_%'LEVEL'% = null;",
                 "  try {",
-                "    String sql_%'LEVEL'% =",
-                "      %'+SQL'%;",
+                "    String sql_%'LEVEL'% = checkNotNull(",
+                "      %'+SQL'%, \"SQL part was evaluated to NULL\");",
                 "    stmt_%'LEVEL'% = conn.prepareStatement(sql_%'LEVEL'%);",
                 "    ResultSetMetaData rsmd_%'LEVEL'% = stmt_%'LEVEL'%.getMetaData();",
                 "    if (rsmd_%'LEVEL'% == null || rsmd_%'LEVEL'%.getColumnCount() < 1) {",
