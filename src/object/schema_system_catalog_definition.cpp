@@ -27,23 +27,32 @@ namespace cubschema
     : kind {attribute_kind::COLUMN}
     , name {n}
     , type {t}
-    , value {}
+    , dvalue_func {nullptr}
   {
   }
 
-  attribute::attribute (const std::string &n, const std::string &t, const std::string &dval)
+  attribute::attribute (const std::string &n, const std::string &t, default_value_init_type dval_f = nullptr)
     : kind {attribute_kind::COLUMN}
     , name {n}
     , type {t}
-    , value {}
+    , dvalue_func {dval_f}
   {
   }
 
-  attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t, const std::string &dval)
+  attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t)
     : kind {k}
     , name {n}
     , type {t}
-    , value {dval}
+    , dvalue_func {nullptr}
+  {
+  }
+
+  attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t,
+			default_value_init_type dval_f = nullptr)
+    : kind {k}
+    , name {n}
+    , type {t}
+    , dvalue_func {dval_f}
   {
   }
 

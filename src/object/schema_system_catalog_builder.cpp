@@ -19,7 +19,6 @@
 #include "schema_system_catalog_builder.hpp"
 
 // #include "dbi.h" /* db_create_class () */
-#include "cnv.h"
 #include "db.h"
 #include "dbtype.h"
 // #include "dbtype_function.h" /* DB_IS_NULL () */
@@ -32,29 +31,6 @@
 
 namespace cubschema
 {
-  int
-  system_catalog_builder::convert_string_to_value (const std::string &type, const std::string &dval, DB_VALUE *out)
-  {
-    if (out == nullptr)
-      {
-	return ER_FAILED;
-      }
-
-    DB_TYPE db_type = db_type_from_string (type.data ());
-    out->domain.general_info.type = db_type;
-
-    // clear
-    db_value_clear (out);
-
-    if (db_string_value (dval.data (), dval.size (), "", out) == NULL)
-      {
-	assert (false);
-	return ER_FAILED;
-      }
-
-    return NO_ERROR;
-  }
-
   MOP
   system_catalog_builder::create_and_mark_system_class (const std::string_view name)
   {
@@ -117,16 +93,12 @@ namespace cubschema
 		return error_code;
 	      }
 
-	    if (!attr.value.empty ())
+	    if (attr.dvalue_func)
 	      {
-		DB_VALUE tmp_default_value;
-		db_make_null (&tmp_default_value);
-		error_code = convert_string_to_value (attr.type, attr.value, &tmp_default_value);
-		if (error_code == NO_ERROR)
-		  {
-		    error_code = smt_set_attribute_default (def, name, 0, (DB_VALUE *) &tmp_default_value, NULL);
-		    db_value_clear (&tmp_default_value);
-		  }
+		DB_VALUE default_value;
+		db_make_null (&default_value);
+		attr.dvalue_func (&default_value);
+		error_code = smt_set_attribute_default (def, name, 0, (DB_VALUE *) &default_value, NULL);
 	      }
 	  }
 	else if (attr.kind == attribute_kind::CLASS_METHOD)
@@ -256,7 +228,7 @@ namespace cubschema
 	  }
 	else if (attr.kind == attribute_kind::QUERY_SPEC)
 	  {
-	    error_code = db_add_query_spec (class_mop, attr.value.data ());
+	    error_code = db_add_query_spec (class_mop, attr.name.data ());
 	  }
 	else
 	  {

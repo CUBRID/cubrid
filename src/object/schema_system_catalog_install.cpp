@@ -640,7 +640,11 @@ namespace cubschema
       {"key_attr_name", VARCHAR_255},
       {"key_order", INTEGER},
       {"asc_desc", INTEGER},
-      {"key_prefix_length", INTEGER, "-1"},
+      {"key_prefix_length", INTEGER, [] (DB_VALUE* val)
+	{
+	  return db_make_int (val, -1);
+	}
+      },
       {"func", format_varchar (1023)}
     },
 // constraints
@@ -827,16 +831,36 @@ namespace cubschema
       {"unique_name", "string"},
       {"name", "string"},
       {"owner", AU_USER_CLASS_NAME},
-      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), "1"},
-      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), "1"},
+      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
+	{
+	  return db_make_numeric (val, (DB_C_NUMERIC) "1", DB_MAX_NUMERIC_PRECISION, 0);
+	}
+      },
+      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
+	{
+	  return db_make_numeric (val, (DB_C_NUMERIC) "1", DB_MAX_NUMERIC_PRECISION, 0);
+	}
+      },
       {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
       {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"cyclic", INTEGER, "0"},
-      {"started", INTEGER, "0"},
+      {"cyclic", INTEGER, [] (DB_VALUE* val)
+	{
+	  return db_make_int (val, 0);
+	}
+      },
+      {"started", INTEGER, [] (DB_VALUE* val)
+	{
+	  return db_make_int (val, 0);
+	}
+      },
       {"class_name", "string"},
       {"att_name", "string"},
-      {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method", ""},
-      {"cached_num", INTEGER, "0"},
+      {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
+      {"cached_num", INTEGER, [] (DB_VALUE* val)
+	{
+	  return db_make_int (val, 0);
+	}
+      },
       {"comment", VARCHAR_1024},
     },
 // constraints
@@ -1049,7 +1073,11 @@ namespace cubschema
       {"unique_name", VARCHAR_255},
       {"name", VARCHAR_255},
       {"owner", AU_USER_CLASS_NAME},
-      {"is_public", "integer", "0"},
+      {"is_public", "integer", [] (DB_VALUE* val)
+	{
+	  return db_make_int (val, 0);
+	}
+      },
       {"target_unique_name", VARCHAR_255},
       {"target_name", VARCHAR_255},
       {"target_owner", AU_USER_CLASS_NAME},
@@ -1166,7 +1194,7 @@ namespace cubschema
       {"collation", "varchar(32)"},
       {"comment", VARCHAR_2048},
       // query specs
-      {attribute_kind::QUERY_SPEC, "", "", sm_define_view_class_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_class_spec (), ""}
     },
 // constraint
     {},

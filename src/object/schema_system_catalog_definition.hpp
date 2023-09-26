@@ -45,14 +45,17 @@ namespace cubschema
 
   struct attribute
   {
+    using default_value_init_type = std::function<int (DB_VALUE *)>;
+
     attribute_kind kind;
     std::string name;
     std::string type;
-    std::string value;
+    default_value_init_type dvalue_func;
 
     attribute (const std::string &n, const std::string &t); // column
-    attribute (const std::string &name, const std::string &type, const std::string &dval);
-    attribute (const attribute_kind kind, const std::string &name, const std::string &type, const std::string &dval);
+    attribute (const std::string &name, const std::string &type, default_value_init_type dval_f);
+    attribute (const attribute_kind kind, const std::string &name, const std::string &type);
+    attribute (const attribute_kind kind, const std::string &name, const std::string &type, default_value_init_type dval_f);
   };
 
   struct constraint

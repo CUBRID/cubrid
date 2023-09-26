@@ -68,8 +68,6 @@ namespace cubschema
       system_catalog_builder () = default;
       ~system_catalog_builder () = default;
 
-      static int convert_string_to_value (const std::string &type, const std::string &dval, DB_VALUE *out);
-
     public:
       static MOP create_and_mark_system_class (const std::string_view name);
       static int build_class (const MOP class_mop, const system_catalog_definition &def);
