@@ -47,15 +47,15 @@ public class ExprSqlCode extends Expr {
         this.exHandlerDepth = exHandlerDepth;
     }
 
-    @Override
-    public String exprToJavaCode() {
+    public String javaCode() {
 
         if (exHandlerDepth > 0) {
             return String.format("e%d.code", exHandlerDepth);
         } else {
             assert exHandlerDepth == 0;
-            return "0"; // SQLCODEs that do not belong to an exception handler evaluates to zero (rf
-            // Oracle Spec.)
+            // SQLCODEs that do not belong to an exception handler evaluates to zero (see Oracle
+            // Spec.)
+            return "0";
         }
     }
 }

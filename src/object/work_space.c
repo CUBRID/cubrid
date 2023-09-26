@@ -2443,9 +2443,7 @@ ws_final (void)
   MOP mop, next;
   unsigned int slot;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   dk_deduplicate_key_attribute_finalized ();
-#endif
 
   tr_final ();
 

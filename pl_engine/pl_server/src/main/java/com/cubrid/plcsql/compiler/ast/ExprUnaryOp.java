@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -50,16 +49,4 @@ public class ExprUnaryOp extends Expr {
         this.opStr = opStr;
         this.operand = operand;
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return tmpl.replace("%'OPERATION'%", opStr)
-                .replace("  %'OPERAND'%", Misc.indentLines(operand.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl = Misc.combineLines("op%'OPERATION'%(", "  %'OPERAND'%", ")");
 }

@@ -31,9 +31,7 @@
 #include "schema_manager.h"
 
 #include "language_support.h"
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 #include "deduplicate_key.h"
-#endif
 
 namespace cubmethod
 {
@@ -961,9 +959,7 @@ namespace cubmethod
   {
     int error = NO_ERROR;
     int num_fk_info = 0, i = 0;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
     int fk_i;
-#endif
     DB_OBJECT *fktable_obj = db_find_class (fktable_name.c_str ());
     if (fktable_obj == NULL)
       {
@@ -1050,14 +1046,9 @@ namespace cubmethod
 
 	/* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
 	 * null, it means that they have different number of attributes. */
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
 	assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
 	if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
-#else
-	assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
-	if (pk_attr[i] != NULL || fk_attr[i] != NULL)
-#endif
 	  {
 	    m_error_ctx.set_error (ER_FK_NOT_MATCH_KEY_COUNT,
 				   "The number of keys of the foreign key is different from that of the primary key.", __FILE__, __LINE__);

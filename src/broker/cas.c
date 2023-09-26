@@ -870,7 +870,7 @@ cas_main (void)
   char tmp_name[SRV_CON_DBNAME_SIZE] = { 0, };
   char tmp_user[SRV_CON_DBUSER_SIZE] = { 0, };
   char tmp_passwd[SRV_CON_DBPASSWD_SIZE] = { 0, };
-  SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;
+  T_DBMS_TYPE dbms_type = CAS_DBMS_NONE;
   char *find_gateway = NULL;
   char errplog_path[BROKER_PATH_MAX] = { 0, };
   char errlog_file[BROKER_PATH_MAX] = { 0, };
@@ -1273,7 +1273,7 @@ cas_main (void)
 	    strncpy (tmp_user, db_user, SRV_CON_DBUSER_SIZE);
 	    strncpy (tmp_passwd, db_passwd, SRV_CON_DBUSER_SIZE);
 
-	    if (dbms_type == SUPPORTED_DBMS_ORACLE)
+	    if (dbms_type == CAS_CGW_DBMS_ORACLE)
 	      {
 		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
@@ -1287,7 +1287,7 @@ cas_main (void)
 			  shm_appl->cgw_link_server_port,
 			  tmp_name, tmp_user, "********", shm_appl->cgw_link_connect_url_property);
 	      }
-	    else if (dbms_type == SUPPORTED_DBMS_MYSQL || dbms_type == SUPPORTED_DBMS_MARIADB)
+	    else if (dbms_type == CAS_CGW_DBMS_MYSQL || dbms_type == CAS_CGW_DBMS_MARIADB)
 	      {
 		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
@@ -1406,6 +1406,10 @@ cas_main (void)
 				   cas_default_isolation_level, cas_default_lock_timeout);
 
 	    as_info->cur_keep_con = shm_appl->keep_connection;
+#if defined(CAS_FOR_CGW)
+	    cas_bi_set_dbms_type (dbms_type);
+#endif /* CAS_FOR_MYSQL */
+
 	    cas_bi_set_statement_pooling (shm_appl->statement_pooling);
 	    if (shm_appl->statement_pooling)
 	      {
@@ -1416,6 +1420,11 @@ cas_main (void)
 		as_info->cur_statement_pooling = OFF;
 	      }
 	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
+
+	    if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version, PROTOCOL_V12))
+	      {
+		cas_bi_set_oracle_compat_number_behavior (prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR));
+	      }
 
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 	    /* todo: casting T_BROKER_VERSION to T_CAS_PROTOCOL */

@@ -45,7 +45,7 @@ public class TypeSpecPercent extends TypeSpec {
     public final String column;
 
     public TypeSpecPercent(String table, String column) {
-        super(null, null, null, -1);
+        super(null, null, -1, null);
         this.table = table;
         this.column = column;
     }
@@ -61,12 +61,12 @@ public class TypeSpecPercent extends TypeSpec {
     }
 
     @Override
-    public String toJavaCode() {
+    public String javaCode() {
         if (resolvedType == null) {
             assert false;
             throw new RuntimeException("unreachable");
         } else {
-            return resolvedType.toJavaCode();
+            return resolvedType.javaCode();
         }
     }
 
@@ -80,12 +80,12 @@ public class TypeSpecPercent extends TypeSpec {
     }
 
     @Override
-    public String getNameOfGetMethod() {
+    public String getTypicalValueStr() {
         if (resolvedType == null) {
             assert false;
             throw new RuntimeException("unreachable");
         } else {
-            return resolvedType.getNameOfGetMethod();
+            return resolvedType.getTypicalValueStr();
         }
     }
 }

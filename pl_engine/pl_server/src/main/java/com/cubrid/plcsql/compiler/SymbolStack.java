@@ -36,7 +36,6 @@ import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.ast.*;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -46,140 +45,445 @@ import java.util.stream.Collectors;
 
 public class SymbolStack {
 
+    public static final int LEVEL_PREDEFINED = 0;
+    public static final int LEVEL_MAIN = 1;
+
     // -------------------------------------------------------
     // Static area - common to all symbol stack instances
     //
 
-    private static List<String> predefinedExceptions =
-            Arrays.asList(
-                    "$APP_ERROR", // for raise_application_error
-                    "CASE_NOT_FOUND",
-                    "CURSOR_ALREADY_OPEN",
-                    "INVALID_CURSOR",
-                    "NO_DATA_FOUND",
-                    "PROGRAM_ERROR",
-                    "STORAGE_ERROR",
-                    "SQL_ERROR",
-                    "TOO_MANY_ROWS",
-                    "VALUE_ERROR",
-                    "ZERO_DIVIDE");
-
     private static final Map<String, FuncOverloads> operators = new HashMap<>();
-    private static final Map<String, FuncOverloads> cubridFuncs = new HashMap<>();
     private static SymbolTable predefinedSymbols =
-            new SymbolTable(new Scope(null, null, "%predefined_0", 0));
+            new SymbolTable(new Scope(null, null, "%predefined_0", LEVEL_PREDEFINED));
 
-    static {
+    private static void addOperatorDecls() {
 
         // add SpLib staic methods corresponding to operators
-        {
-            Class c = null;
-            try {
-                c = Class.forName("com.cubrid.plcsql.predefined.sp.SpLib");
-            } catch (ClassNotFoundException e) {
-                assert false : "SpLib class not found";
-            }
 
-            Method[] methods = c.getMethods();
-            for (Method m : methods) {
-                if ((m.getModifiers() & Modifier.STATIC) > 0) {
-                    String name = m.getName();
-                    if (name.startsWith("op")) {
-                        // System.out.println("temp: " + m.getName());
+        Class c = null;
+        try {
+            c = Class.forName("com.cubrid.plcsql.predefined.sp.SpLib");
+        } catch (ClassNotFoundException e) {
+            assert false : "SpLib class not found";
+        }
 
-                        Operator opAnnot = m.getAnnotation(Operator.class);
-                        assert opAnnot != null;
+        Method[] methods = c.getMethods();
+        for (Method m : methods) {
+            if ((m.getModifiers() & Modifier.STATIC) > 0) {
+                String name = m.getName();
+                if (name.startsWith("op")) {
+                    // System.out.println("temp: " + m.getName());
 
-                        // parameter types
-                        Class[] paramTypes = m.getParameterTypes();
-                        NodeList<DeclParam> params = new NodeList<>();
+                    Operator opAnnot = m.getAnnotation(Operator.class);
+                    assert opAnnot != null;
 
-                        int i = 0;
-                        for (Class pt : paramTypes) {
-                            String typeName = pt.getTypeName();
-                            // System.out.println("  " + typeName);
-                            TypeSpec paramType = TypeSpec.ofJavaName(typeName);
-                            assert paramType != null;
+                    // parameter types
+                    Class[] paramTypes = m.getParameterTypes();
+                    NodeList<DeclParam> params = new NodeList<>();
 
-                            DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
-                            params.addNode(p);
-                            i++;
-                        }
+                    int i = 0;
+                    for (Class pt : paramTypes) {
+                        String typeName = pt.getTypeName();
+                        // System.out.println("  " + typeName);
+                        TypeSpec paramType = TypeSpec.ofJavaName(typeName);
+                        assert paramType != null;
 
-                        // return type
-                        String typeName = m.getReturnType().getTypeName();
-                        // System.out.println("  =>" + typeName);
-                        TypeSpec retType = TypeSpec.ofJavaName(typeName);
-                        assert retType != null;
-
-                        // add op
-                        DeclFunc op = new DeclFunc(null, name, params, retType);
-                        putOperator(name, op, opAnnot.coercionScheme());
+                        DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
+                        params.addNode(p);
+                        i++;
                     }
+
+                    // return type
+                    String typeName = m.getReturnType().getTypeName();
+                    // System.out.println("  =>" + typeName);
+                    TypeSpec retType = TypeSpec.ofJavaName(typeName);
+                    assert retType != null;
+
+                    // add op
+                    DeclFunc op = new DeclFunc(null, name, params, retType);
+                    putOperator(name, op, opAnnot.coercionScheme());
                 }
             }
-
-            // add exceptions
-            DeclException de;
-            for (String s : predefinedExceptions) {
-                de = new DeclException(null, s);
-                putDeclTo(predefinedSymbols, de.name, de);
-            }
-
-            // add procedures
-            DeclProc dp;
-
-            dp = new DeclProc(null, "DBMS_OUTPUT$DISABLE", new NodeList<DeclParam>());
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$DISABLE", dp);
-
-            dp =
-                    new DeclProc(
-                            null,
-                            "DBMS_OUTPUT$ENABLE",
-                            new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn(null, "size", TypeSpecSimple.INT)));
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
-
-            dp =
-                    new DeclProc(
-                            null,
-                            "DBMS_OUTPUT$GET_LINE",
-                            new NodeList<DeclParam>()
-                                    .addNode(new DeclParamOut(null, "line", TypeSpecSimple.STRING))
-                                    .addNode(new DeclParamOut(null, "status", TypeSpecSimple.INT)));
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
-
-            dp = new DeclProc(null, "DBMS_OUTPUT$NEW_LINE", new NodeList<DeclParam>());
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$NEW_LINE", dp);
-
-            dp =
-                    new DeclProc(
-                            null,
-                            "DBMS_OUTPUT$PUT_LINE",
-                            new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
-
-            dp =
-                    new DeclProc(
-                            null,
-                            "DBMS_OUTPUT$PUT",
-                            new NodeList<DeclParam>()
-                                    .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
-            putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
-
-            // add constants TODO implement SQLERRM and SQLCODE properly
-            DeclConst dc =
-                    new DeclConst(
-                            null, "SQLERRM", TypeSpecSimple.STRING, false, new ExprNull(null));
-            putDeclTo(predefinedSymbols, "SQLERRM", dc);
-
-            dc = new DeclConst(null, "SQLCODE", TypeSpecSimple.INT, false, new ExprNull(null));
-            putDeclTo(predefinedSymbols, "SQLCODE", dc);
-
-            dc = new DeclConst(null, "SYSDATE", TypeSpecSimple.DATE, false, new ExprNull(null));
-            putDeclTo(predefinedSymbols, "SYSDATE", dc);
         }
+    }
+
+    private static void addDbmsOutputProcedures() {
+
+        DeclProc dp;
+
+        // disable
+        dp = new DeclProc(null, "DBMS_OUTPUT$DISABLE", new NodeList<DeclParam>());
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$DISABLE", dp);
+
+        // enable
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$ENABLE",
+                        new NodeList<DeclParam>()
+                                .addNode(new DeclParamIn(null, "size", TypeSpecSimple.INT)));
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$ENABLE", dp);
+
+        // get_line
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$GET_LINE",
+                        new NodeList<DeclParam>()
+                                .addNode(
+                                        new DeclParamOut(
+                                                null, "line", TypeSpecSimple.STRING, false))
+                                .addNode(
+                                        new DeclParamOut(
+                                                null, "status", TypeSpecSimple.INT, true)));
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
+
+        // new_line
+        dp = new DeclProc(null, "DBMS_OUTPUT$NEW_LINE", new NodeList<DeclParam>());
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$NEW_LINE", dp);
+
+        // put_line
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$PUT_LINE",
+                        new NodeList<DeclParam>()
+                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
+
+        // put
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$PUT",
+                        new NodeList<DeclParam>()
+                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+        putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
+    }
+
+    private static void addBuiltinFunctions() {
+
+        List<String> funcNames =
+                Arrays.asList(
+
+                        // bit
+                        "BIT_AND",
+                        "BIT_COUNT",
+                        "BIT_OR",
+                        "BIT_XOR",
+
+                        // string
+                        "ASCII",
+                        "BIN",
+                        "BIT_LENGTH",
+                        "CHAR_LENGTH",
+                        "CHARACTER_LENGTH",
+                        "LENGTHB",
+                        "LENGTH",
+                        "CHR",
+                        "CONCAT",
+                        "CONCAT_WS",
+                        "ELT",
+                        "FIELD",
+                        "FIND_IN_SET",
+                        "FROM_BASE64",
+                        "INSERT",
+                        "INSTR",
+                        "LCASE",
+                        "LOWER",
+                        "LEFT",
+                        "LOCATE",
+                        "LPAD",
+                        "LTRIM",
+                        "MID",
+                        "OCTET_LENGTH",
+                        "POSITION",
+                        "REPEAT",
+                        "REPLACE",
+                        "REVERSE",
+                        "RIGHT",
+                        "RPAD",
+                        "RTRIM",
+                        "SPACE",
+                        "STRCMP",
+                        "SUBSTR",
+                        "SUBSTRING",
+                        "SUBSTRING_INDEX",
+                        "TO_BASE64",
+                        "TRANSLATE",
+                        "TRIM",
+                        "UCASE",
+                        "UPPER",
+
+                        // regular expression
+                        "REGEXP_COUNT",
+                        "REGEXP_INSTR",
+                        "REGEXP_LIKE",
+                        "REGEXP_REPLACE",
+                        "REGEXP_SUBSTR",
+
+                        // numeric/mathematical
+                        "ABS",
+                        "ACOS",
+                        "ASIN",
+                        "ATAN",
+                        "ATAN2",
+                        "CEIL",
+                        "CONV",
+                        "COS",
+                        "COT",
+                        "CRC32",
+                        "DEGREES",
+                        "DRANDOM",
+                        "DRAND",
+                        "EXP",
+                        "FLOOR",
+                        "HEX",
+                        "LN",
+                        "LOG2",
+                        "LOG10",
+                        "MOD",
+                        "PI",
+                        "POW",
+                        "POWER",
+                        "RADIANS",
+                        "RANDOM",
+                        "RAND",
+                        "ROUND",
+                        "SIGN",
+                        "SIN",
+                        "SQRT",
+                        "TAN",
+                        "TRUNC",
+                        "TRUNCATE",
+                        "WIDTH_BUCKET",
+
+                        // date/time
+                        "ADD_MONTHS",
+                        "ADDDATE",
+                        "ADDTIME",
+                        "CURDATE",
+                        "CURRENT_DATE",
+                        "CURRENT_DATETIME",
+                        "CURRENT_TIME",
+                        "CURRENT_TIMESTAMP",
+                        "CURTIME",
+                        "DATE",
+                        "DATE_ADD",
+                        "DATE_SUB",
+                        "DATEDIFF",
+                        "DAY",
+                        "DAYOFMONTH",
+                        "DAYOFWEEK",
+                        "DAYOFYEAR",
+                        "EXTRACT",
+                        "FROM_DAYS",
+                        "FROM_TZ",
+                        "FROM_UNIXTIME",
+                        "HOUR",
+                        "LAST_DAY",
+                        "LOCALTIME",
+                        "LOCALTIMESTAMP",
+                        "MAKEDATE",
+                        "MAKETIME",
+                        "MINUTE",
+                        "MONTH",
+                        "MONTHS_BETWEEN",
+                        "NEW_TIME",
+                        "NOW",
+                        "QUARTER", /* "ROUND", dup */
+                        "SEC_TO_TIME",
+                        "SECOND",
+                        "SUBDATE",
+                        "SYS_DATE",
+                        "SYS_DATETIME",
+                        "SYS_TIME",
+                        "SYS_TIMESTAMP",
+                        "SYSDATE",
+                        "SYSDATETIME",
+                        "SYSTIME",
+                        "SYSTIMESTAMP",
+                        "TIME",
+                        "TIME_TO_SEC",
+                        "TIMEDIFF",
+                        "TIMESTAMP",
+                        "TO_DAYS", /* "TRUNC", dup */
+                        "TZ_OFFSET",
+                        "UNIX_TIMESTAMP",
+                        "UTC_DATE",
+                        "UTC_TIME",
+                        "WEEK",
+                        "WEEKDAY",
+                        "YEAR",
+
+                        // json
+                        "JSON_ARRAY",
+                        "JSON_ARRAY_APPEND",
+                        "JSON_ARRAY_INSERT",
+                        "JSON_CONTAINS",
+                        "JSON_CONTAINS_PATH",
+                        "JSON_DEPTH",
+                        "JSON_EXTRACT",
+                        "JSON_INSERT",
+                        "JSON_KEYS",
+                        "JSON_LENGTH",
+                        "JSON_MERGE",
+                        "JSON_MERGE_PATCH",
+                        "JSON_MERGE_PRESERVE",
+                        "JSON_OBJECT",
+                        "JSON_PRETTY",
+                        "JSON_QUOTE",
+                        "JSON_REMOVE",
+                        "JSON_REPLACE",
+                        "JSON_SEARCH",
+                        "JSON_SET",
+                        "JSON_TABLE",
+                        "JSON_TYPE",
+                        "JSON_UNQUOTE",
+                        "JSON_VALID",
+
+                        // lob
+                        "BIT_TO_BLOB",
+                        "BLOB_FROM_FILE",
+                        "BLOB_LENGTH",
+                        "BLOB_TO_BIT",
+                        "CHAR_TO_BLOB",
+                        "CHAR_TO_CLOB",
+                        "CLOB_FROM_FILE",
+                        "CLOB_LENGTH",
+                        "CLOB_TO_CHAR",
+
+                        // data type casting
+                        "CAST",
+                        "DATE_FORMAT",
+                        "FORMAT",
+                        "STR_TO_DATE",
+                        "TIME_FORMAT",
+                        "TO_CHAR",
+                        "TO_DATE",
+                        "TO_DATETIME",
+                        "TO_DATETIME_TZ",
+                        "TO_NUMBER",
+                        "TO_TIME",
+                        "TO_TIMESTAMP",
+                        "TO_TIMESTAMP_TZ",
+
+                        // aggregate and analytic
+                        "AVG",
+                        "COUNT",
+                        "CUME_DIST",
+                        "DENSE_RANK",
+                        "FIRST_VALUE",
+                        "GROUP_CONCAT",
+                        "JSON_ARRAYAGG",
+                        "JSON_OBJECTAGG",
+                        "LAG",
+                        "LAST_VALUE",
+                        "LEAD",
+                        "MAX",
+                        "MEDIAN",
+                        "MIN",
+                        "NTH_VALUE",
+                        "NTILE",
+                        "PERCENTILE_CONT",
+                        "PERCENTILE_DISC",
+                        "PERCENT_RANK",
+                        "RANK",
+                        "ROW_NUMBER",
+                        "STDDEV",
+                        "STDDEV_POP",
+                        "STDDEV_SAMP",
+                        "SUM",
+                        "VARIANCE",
+                        "VAR_POP",
+                        "VAR_SAMP",
+
+                        // click counter
+                        "DECR",
+                        "INCR",
+
+                        // rownum
+                        "GROUPBY_NUM",
+                        "INST_NUM",
+                        "ORDERBY_NUM",
+                        "ROWNUM",
+
+                        // information
+                        "CHARSET",
+                        "COERCIBILITY",
+                        "COLLATION",
+                        "CURRENT_USER",
+                        "DATABASE",
+                        "DBTIMEZONE",
+                        "DEFAULT",
+                        "DISK_SIZE",
+                        "INDEX_CARDINALITY",
+                        "INET_ATON",
+                        "INET_NTOA",
+                        "LAST_INSERT_ID",
+                        "LIST_DBS",
+                        "ROW_COUNT",
+                        "SCHEMA",
+                        "SESSIONTIMEZONE",
+                        "SYSTEM_USER",
+                        "USER",
+                        "VERSION",
+
+                        // encryption
+                        "MD5",
+                        "SHA1",
+                        "SHA2",
+
+                        // comparison
+                        "COALESCE",
+                        "DECODE",
+                        "GREATEST",
+                        "IF",
+                        "IFNULL",
+                        "ISNULL",
+                        "LEAST",
+                        "NULLIF",
+                        "NVL",
+                        "NVL2",
+
+                        // others
+                        "SLEEP",
+                        "SYS_GUID");
+
+        for (String s : funcNames) {
+            DeclFunc df =
+                    new DeclFunc(null, s, null, null); // only name is used for builtin functions
+            putDeclTo(predefinedSymbols, df.name, df);
+        }
+    }
+
+    private static void addPredefinedExceptions() {
+
+        List<String> predefinedExceptions =
+                Arrays.asList(
+                        "$APP_ERROR", // for raise_application_error
+                        "CASE_NOT_FOUND",
+                        "CURSOR_ALREADY_OPEN",
+                        "INVALID_CURSOR",
+                        "NO_DATA_FOUND",
+                        "PROGRAM_ERROR",
+                        "STORAGE_ERROR",
+                        "SQL_ERROR",
+                        "TOO_MANY_ROWS",
+                        "VALUE_ERROR",
+                        "ZERO_DIVIDE");
+
+        for (String s : predefinedExceptions) {
+            DeclException de = new DeclException(null, s);
+            putDeclTo(predefinedSymbols, de.name, de);
+        }
+    }
+
+    static {
+        addOperatorDecls();
+        addDbmsOutputProcedures();
+        addBuiltinFunctions();
+        addPredefinedExceptions();
     }
 
     public static DeclFunc getOperator(
@@ -187,22 +491,19 @@ public class SymbolStack {
         return getFuncOverload(outCoercions, operators, name, argTypes);
     }
 
-    /*
-    public static DeclFunc
-    getCubridFunc(List<Coercion> outCoercions, String name, TypeSpec... argTypes) {
-        return getFuncOverload(outCoercions, cubridFuncs, name, argTypes);
-    }
-     */
-
-    // -----------------------------------------------------------------------------
-    // end of Static
     //
+    // end of Static
+    // -----------------------------------------------------------------------------
 
     SymbolStack() {
         symbolTableStack.addFirst(predefinedSymbols);
         currSymbolTable =
                 new SymbolTable(
-                        new Scope(null, null, "unit_1", 1)); // for the main procedure/function
+                        new Scope(
+                                null,
+                                null,
+                                "unit_1",
+                                LEVEL_MAIN)); // for the main procedure/function
         symbolTableStack.addFirst(currSymbolTable);
     }
 
@@ -257,7 +558,7 @@ public class SymbolStack {
         putDeclTo(currSymbolTable, name, decl);
     }
 
-    static <D extends Decl> void putDeclTo(SymbolTable symbolTable, String name, D decl) {
+    private static <D extends Decl> void putDeclTo(SymbolTable symbolTable, String name, D decl) {
         assert decl != null;
 
         Map<String, D> map = symbolTable.<D>map((Class<D>) decl.getClass());
@@ -283,7 +584,7 @@ public class SymbolStack {
 
                 assert map == symbolTable.procs
                         || map == symbolTable.funcs; // top-level procedure/function
-                if (cubridFuncs.containsKey(name)) {
+                if (predefinedSymbols.funcs.containsKey(name)) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(decl.ctx), // s063
                             "procedure/function cannot be created with the same name as a built-in function");
@@ -310,45 +611,6 @@ public class SymbolStack {
     DeclFunc getDeclFunc(String name) {
         DeclFunc ret = getDecl(DeclFunc.class, name);
         return ret;
-        /* TODO: restore
-        if (ret == null) {
-            // search the predefined functions too
-            FuncOverloads overloaded = cubridFuncs.get(name);
-            if (overloaded == null) {
-                return null;
-            } else {
-                assert overloaded.overloads.size() == 1
-                        : "getting an overloaded function "
-                                + name
-                                + " only by its name is ambiguous";
-                return overloaded.overloads.values().iterator().next();
-            }
-        } else {
-            return ret;
-        }
-         */
-    }
-
-    DeclFunc getDeclFunc(String name, List<TypeSpec> argTypes) {
-        DeclFunc ret = getDecl(DeclFunc.class, name);
-        return ret;
-        /* TODO: restore
-        if (ret == null) {
-            // search the predefined functions too
-            FuncOverloads overloaded = cubridFuncs.get(name);
-            if (overloaded == null) {
-                return null;
-            } else {
-                return overloaded.get(argTypes);
-            }
-        } else {
-            if (argTypes.equals(ret.getParamTypes())) {
-                return ret;
-            } else {
-                return null;
-            }
-        }
-         */
     }
 
     DeclException getDeclException(String name) {
@@ -362,7 +624,7 @@ public class SymbolStack {
     // return DeclId or DeclFunc for an identifier expression
     Decl getDeclForIdExpr(String name) {
         DeclId declId = getDeclId(name);
-        DeclFunc declFunc = getDeclFunc(name, EMPTY_TYPE_SPEC); // one with no parameters
+        DeclFunc declFunc = getDeclFunc(name);
 
         if (declFunc == null) {
             return declId;
@@ -383,8 +645,6 @@ public class SymbolStack {
     // Private
     // ----------------------------------------------------
 
-    private static final List<TypeSpec> EMPTY_TYPE_SPEC = new ArrayList<TypeSpec>();
-
     private SymbolTable currSymbolTable;
 
     private LinkedList<SymbolTable> symbolTableStack = new LinkedList<>();
@@ -392,12 +652,6 @@ public class SymbolStack {
     private static void putOperator(String name, DeclFunc df, CoercionScheme cs) {
         putFuncOverload(operators, name, df, cs);
     }
-
-    /*
-    private static void putCubridFunc(String name, DeclFunc df) {
-        putFuncOverload(cubridFuncs, name, df, CoercionScheme.Individual);
-    }
-     */
 
     private static DeclFunc getFuncOverload(
             List<Coercion> outCoercions,

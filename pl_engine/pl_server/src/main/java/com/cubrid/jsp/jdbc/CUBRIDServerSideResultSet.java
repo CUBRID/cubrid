@@ -77,8 +77,6 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     /* For findColumn */
     protected HashMap<String, Integer> colNameToIdx;
 
-    private boolean wasNullValue = false;
-
     private boolean isInserting;
     private int currentRowIndex = -1;
 
@@ -234,7 +232,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
 
     @Override
     public boolean wasNull() throws SQLException {
-        return wasNullValue;
+        return statementHandler.getWasNull();
     }
 
     @Override
@@ -453,7 +451,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     public int findColumn(String columnName) throws SQLException {
         Integer index = statementHandler.getColNameIndex().get(columnName.toLowerCase());
         if (index == null) {
-            CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
                     CUBRIDServerSideJDBCErrorCode.ER_INVALID_COLUMN_NAME, null);
         }
 

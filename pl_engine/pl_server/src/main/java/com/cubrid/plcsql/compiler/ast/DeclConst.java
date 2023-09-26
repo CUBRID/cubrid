@@ -65,13 +65,4 @@ public class DeclConst extends DeclIdTyped {
     public String kind() {
         return "constant";
     }
-
-    @Override
-    public String toJavaCode() {
-        return String.format("final %s %s = %s;", typeSpec.toJavaCode(), name, val.toJavaCode());
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

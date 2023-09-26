@@ -84,9 +84,7 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitExprLike(ExprLike node);
 
-    /* TODO: restore later
-    public abstract R visitExprList(ExprList node);
-     */
+    public abstract R visitExprBuiltinFuncCall(ExprBuiltinFuncCall node);
 
     public abstract R visitExprLocalFuncCall(ExprLocalFuncCall node);
 
@@ -173,8 +171,6 @@ public abstract class AstVisitor<R> {
     public abstract R visitExHandler(ExHandler node);
 
     public abstract R visitExName(ExName node);
-
-    // public abstract R visitTypeSpecNumeric(TypeSpecNumeric node); // TODO: restore
 
     public abstract R visitTypeSpecPercent(TypeSpecPercent node);
 

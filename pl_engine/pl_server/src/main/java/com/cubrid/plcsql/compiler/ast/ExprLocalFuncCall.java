@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.Scope;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -58,20 +57,4 @@ public class ExprLocalFuncCall extends Expr {
         this.decl = decl;
         prefixDeclBlock = decl.scope().declDone;
     }
-
-    @Override
-    public String exprToJavaCode() {
-
-        String block = prefixDeclBlock ? decl.scope().block + "." : "";
-
-        if (args.nodes.size() == 0) {
-            return block + name + "()";
-        } else {
-            return block + name + "(\n" + Misc.indentLines(decl.argsToJavaCode(args), 1) + "\n)";
-        }
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

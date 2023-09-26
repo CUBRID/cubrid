@@ -43,9 +43,4 @@ public class StmtNull extends Stmt {
     public StmtNull(ParserRuleContext ctx) {
         super(ctx);
     }
-
-    @Override
-    public String toJavaCode() {
-        return ";";
-    }
 }

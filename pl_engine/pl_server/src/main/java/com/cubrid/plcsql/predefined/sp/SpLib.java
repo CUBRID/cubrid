@@ -49,14 +49,176 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    // -------------------------------------------------------------------------------
+    // To provide line and column numbers for run-time exceptions
+    //
+
+    private static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
+
+    public static int[] getPlcLineColumn(
+            List<CodeRangeMarker> crmList, Throwable thrown, String fileName) {
+
+        StackTraceElement[] stackTrace = thrown.getStackTrace();
+
+        // get exception line number in the generated Java class
+        int exceptionJavaLine = 0;
+        for (StackTraceElement e : stackTrace) {
+            if (e.getFileName().equals(fileName)) {
+                exceptionJavaLine = e.getLineNumber();
+                break;
+            }
+        }
+        if (exceptionJavaLine == 0) {
+            return UNKNOWN_LINE_COLUMN;
+        }
+
+        // find the innermost code range that contains the Java line number
+        Stack<CodeRangeMarker> stack = new Stack<>();
+        for (CodeRangeMarker crm : crmList) {
+
+            if (exceptionJavaLine < crm.javaLine) {
+                CodeRangeMarker innermost = stack.peek();
+                assert innermost != null;
+                return new int[] {innermost.plcLine, innermost.plcColumn};
+            }
+
+            if (crm.isBegin) {
+                stack.push(crm);
+            } else {
+                stack.pop();
+            }
+        }
+        throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static List<CodeRangeMarker> buildCodeRangeMarkerList(String markers) {
+
+        String[] split = markers.split(" ");
+        assert split[0].length() == 0 && split[1].charAt(0) == '(';
+
+        List<CodeRangeMarker> ret = new LinkedList<>();
+
+        int stackHeight = 0; // to check the validity of generated code range markers
+        int len = split.length;
+        for (int i = 1; i < len; i++) {
+
+            String s = split[i];
+
+            boolean isBegin = (s.charAt(0) == '(');
+            assert isBegin || (s.charAt(0) == ')');
+            if (isBegin) {
+                // beginning marker of the form '(<java-line>,<pcs-line>,<pcs-column>'
+                stackHeight++;
+                String[] split2 = s.substring(1).split(",");
+                assert split2.length == 3;
+                ret.add(
+                        new CodeRangeMarker(
+                                true,
+                                Integer.parseInt(split2[0]),
+                                Integer.parseInt(split2[1]),
+                                Integer.parseInt(split2[2])));
+            } else {
+                // ending marker of the form ')<java-line>'
+                stackHeight--;
+                ret.add(new CodeRangeMarker(false, Integer.parseInt(s.substring(1)), -1, -1));
+            }
+        }
+        assert stackHeight == 0;
+
+        return ret;
+    }
+
+    public static class CodeRangeMarker {
+
+        public final boolean isBegin;
+        public final int javaLine;
+        public final int plcLine;
+        public final int plcColumn;
+
+        public CodeRangeMarker(boolean isBegin, int javaLine, int plcLine, int plcColumn) {
+            this.isBegin = isBegin;
+            this.javaLine = javaLine;
+            this.plcLine = plcLine;
+            this.plcColumn = plcColumn;
+        }
+    }
+
+    //
+    // To provide line and column numbers for run-time exceptions
+    // -------------------------------------------------------------------------------
+
+    public static Object invokeBuiltinFunc(Connection conn, String name, Object... args) {
+
+        int argsLen = args.length;
+        String hostVars = getHostVarsStr(argsLen);
+        String query = String.format("select %s(%s) from dual", name, hostVars);
+        try {
+            PreparedStatement pstmt = conn.prepareStatement(query);
+            for (int i = 0; i < argsLen; i++) {
+                pstmt.setObject(i + 1, args[i]);
+            }
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                Object ret = rs.getObject(1);
+                assert !rs.next(); // it must have only one record
+
+                Statement stmt = rs.getStatement();
+                if (stmt != null) {
+                    stmt.close();
+                }
+
+                return ret;
+            } else {
+                throw new PROGRAM_ERROR(); // unreachable
+            }
+        } catch (SQLException e) {
+            Server.log(e);
+            throw new SQL_ERROR(e.getMessage());
+        }
+    }
+
+    public static Object throwInvalidCursor(String msg) {
+        throw new INVALID_CURSOR(msg);
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // various check functions
+    //
+
+    public static <T> T checkNotNull(T val, String errMsg) {
+        if (val == null) {
+            throw new VALUE_ERROR(errMsg);
+        }
+
+        return val;
+    }
+
+    public static Integer checkForLoopIterStep(Integer step) {
+        if (step <= 0) {
+            throw new VALUE_ERROR("FOR loop iteration steps must be positive integers");
+        }
+
+        return step;
+    }
+
+    // ---------------------------------------------------------------------------------------
     // builtin exceptions
+    //
     public static class CASE_NOT_FOUND extends PlcsqlRuntimeError {
         public CASE_NOT_FOUND() {
             super(CODE_CASE_NOT_FOUND, MSG_CASE_NOT_FOUND);
+        }
+
+        public CASE_NOT_FOUND(String msg) {
+            super(CODE_CASE_NOT_FOUND, isEmptyStr(msg) ? MSG_CASE_NOT_FOUND : msg);
         }
     }
 
@@ -64,11 +226,19 @@ public class SpLib {
         public CURSOR_ALREADY_OPEN() {
             super(CODE_CURSOR_ALREADY_OPEN, MSG_CURSOR_ALREADY_OPEN);
         }
+
+        public CURSOR_ALREADY_OPEN(String msg) {
+            super(CODE_CURSOR_ALREADY_OPEN, isEmptyStr(msg) ? MSG_CURSOR_ALREADY_OPEN : msg);
+        }
     }
 
     public static class INVALID_CURSOR extends PlcsqlRuntimeError {
         public INVALID_CURSOR() {
             super(CODE_INVALID_CURSOR, MSG_INVALID_CURSOR);
+        }
+
+        public INVALID_CURSOR(String msg) {
+            super(CODE_INVALID_CURSOR, isEmptyStr(msg) ? MSG_INVALID_CURSOR : msg);
         }
     }
 
@@ -76,11 +246,19 @@ public class SpLib {
         public NO_DATA_FOUND() {
             super(CODE_NO_DATA_FOUND, MSG_NO_DATA_FOUND);
         }
+
+        public NO_DATA_FOUND(String msg) {
+            super(CODE_NO_DATA_FOUND, isEmptyStr(msg) ? MSG_NO_DATA_FOUND : msg);
+        }
     }
 
     public static class PROGRAM_ERROR extends PlcsqlRuntimeError {
         public PROGRAM_ERROR() {
             super(CODE_PROGRAM_ERROR, MSG_PROGRAM_ERROR);
+        }
+
+        public PROGRAM_ERROR(String msg) {
+            super(CODE_PROGRAM_ERROR, isEmptyStr(msg) ? MSG_PROGRAM_ERROR : msg);
         }
     }
 
@@ -88,11 +266,19 @@ public class SpLib {
         public STORAGE_ERROR() {
             super(CODE_STORAGE_ERROR, MSG_STORAGE_ERROR);
         }
+
+        public STORAGE_ERROR(String msg) {
+            super(CODE_STORAGE_ERROR, isEmptyStr(msg) ? MSG_STORAGE_ERROR : msg);
+        }
     }
 
     public static class SQL_ERROR extends PlcsqlRuntimeError {
-        public SQL_ERROR(String s) {
-            super(CODE_STORAGE_ERROR, (s == null || s.length() == 0) ? MSG_SQL_ERROR : s);
+        public SQL_ERROR() {
+            super(CODE_STORAGE_ERROR, MSG_SQL_ERROR);
+        }
+
+        public SQL_ERROR(String msg) {
+            super(CODE_STORAGE_ERROR, isEmptyStr(msg) ? MSG_SQL_ERROR : msg);
         }
     }
 
@@ -100,11 +286,19 @@ public class SpLib {
         public TOO_MANY_ROWS() {
             super(CODE_TOO_MANY_ROWS, MSG_TOO_MANY_ROWS);
         }
+
+        public TOO_MANY_ROWS(String msg) {
+            super(CODE_TOO_MANY_ROWS, isEmptyStr(msg) ? MSG_TOO_MANY_ROWS : msg);
+        }
     }
 
     public static class VALUE_ERROR extends PlcsqlRuntimeError {
         public VALUE_ERROR() {
             super(CODE_VALUE_ERROR, MSG_VALUE_ERROR);
+        }
+
+        public VALUE_ERROR(String msg) {
+            super(CODE_VALUE_ERROR, isEmptyStr(msg) ? MSG_VALUE_ERROR : msg);
         }
     }
 
@@ -112,26 +306,30 @@ public class SpLib {
         public ZERO_DIVIDE() {
             super(CODE_ZERO_DIVIDE, MSG_ZERO_DIVIDE);
         }
+
+        public ZERO_DIVIDE(String msg) {
+            super(CODE_ZERO_DIVIDE, isEmptyStr(msg) ? MSG_ZERO_DIVIDE : msg);
+        }
     }
+
+    //
+    // builtin exceptions
+    // ---------------------------------------------------------------------------------------
 
     // user defined exception
     public static class $APP_ERROR extends PlcsqlRuntimeError {
         public $APP_ERROR(int code, String msg) {
-            super(code, msg);
+            super(code, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
         }
 
         public $APP_ERROR(String msg) {
-            super(CODE_APP_ERROR, msg);
+            super(CODE_APP_ERROR, isEmptyStr(msg) ? MSG_APP_ERROR : msg);
         }
 
         public $APP_ERROR() {
-            super(CODE_APP_ERROR, "a user defined exception");
+            super(CODE_APP_ERROR, MSG_APP_ERROR);
         }
     }
-
-    public static String SQLERRM = null;
-    public static Integer SQLCODE = null;
-    public static Date SYSDATE = null;
 
     // --------------------------------------------------------
     // DBMS_OUTPUT procedures
@@ -142,7 +340,7 @@ public class SpLib {
 
     public static void DBMS_OUTPUT$ENABLE(Integer size) {
         if (size == null) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("size must be non-null");
         }
         DBMS_OUTPUT.enable(size);
     }
@@ -194,7 +392,7 @@ public class SpLib {
         public void close() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR();
+                    throw new INVALID_CURSOR("attempted to close an unopened cursor");
                 }
                 if (rs != null) {
                     Statement stmt = rs.getStatement();
@@ -221,7 +419,8 @@ public class SpLib {
         public boolean found() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR();
+                    throw new INVALID_CURSOR(
+                            "attempted to read an attribute of an unopened cursor");
                 }
                 return rs.getRow() > 0;
             } catch (SQLException e) {
@@ -233,7 +432,8 @@ public class SpLib {
         public boolean notFound() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR();
+                    throw new INVALID_CURSOR(
+                            "attempted to read an attribute of an unopened cursor");
                 }
                 return rs.getRow() == 0;
             } catch (SQLException e) {
@@ -245,7 +445,8 @@ public class SpLib {
         public long rowCount() {
             try {
                 if (!isOpen()) {
-                    throw new INVALID_CURSOR();
+                    throw new INVALID_CURSOR(
+                            "attempted to read an attribute of an unopened cursor");
                 }
                 return (long) rs.getRow();
             } catch (SQLException e) {
@@ -331,7 +532,6 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -366,7 +566,6 @@ public class SpLib {
         if (l == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -462,7 +661,6 @@ public class SpLib {
     public static Boolean opEq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -536,7 +734,6 @@ public class SpLib {
     public static Boolean opNullSafeEq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -613,7 +810,6 @@ public class SpLib {
     public static Boolean opNeq(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -688,7 +884,6 @@ public class SpLib {
     public static Boolean opLe(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -761,7 +956,6 @@ public class SpLib {
     public static Boolean opGe(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -834,7 +1028,6 @@ public class SpLib {
     public static Boolean opLt(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -908,7 +1101,6 @@ public class SpLib {
     public static Boolean opGt(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1015,7 +1207,6 @@ public class SpLib {
     public static Boolean opBetween(ZonedDateTime o, ZonedDateTime lower, ZonedDateTime upper) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1090,7 +1281,6 @@ public class SpLib {
     public static Boolean opIn(ZonedDateTime o, ZonedDateTime... arr) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1167,7 +1357,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1244,7 +1433,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1288,7 +1476,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1332,7 +1519,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1405,6 +1591,9 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATE)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
 
         LocalDate lld = l.toLocalDate();
         return Date.valueOf(lld.plusDays(r.longValue()));
@@ -1420,6 +1609,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDateTime lldt = l.toLocalDateTime();
         return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.MILLIS));
     }
@@ -1433,7 +1626,6 @@ public class SpLib {
     public static ZonedDateTime opAdd(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1441,7 +1633,6 @@ public class SpLib {
     public static ZonedDateTime opAdd(Long l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1450,7 +1641,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1519,6 +1709,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATE) || r.equals(NULL_DATE)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDate lld = l.toLocalDate();
         LocalDate rld = r.toLocalDate();
         return rld.until(lld, ChronoUnit.DAYS);
@@ -1529,6 +1723,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATETIME) || r.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDateTime lldt = l.toLocalDateTime();
         LocalDateTime rldt = r.toLocalDateTime();
         return rldt.until(lldt, ChronoUnit.MILLIS);
@@ -1538,7 +1736,6 @@ public class SpLib {
     public static Long opSubtract(ZonedDateTime l, ZonedDateTime r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1556,6 +1753,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATE)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDate lld = l.toLocalDate();
         return Date.valueOf(lld.minusDays(r.longValue()));
     }
@@ -1565,6 +1766,10 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+
         LocalDateTime lldt = l.toLocalDateTime();
         return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.MILLIS));
     }
@@ -1573,7 +1778,6 @@ public class SpLib {
     public static ZonedDateTime opSubtract(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1582,7 +1786,6 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        assert false : "unreachable";
         throw new PROGRAM_ERROR(); // unreachable
     }
 
@@ -1661,7 +1864,6 @@ public class SpLib {
         try {
             return s.matches(regex);
         } catch (PatternSyntaxException e) {
-            assert false;
             throw new PROGRAM_ERROR(); // unreachable
         }
     }
@@ -1674,6 +1876,9 @@ public class SpLib {
     public static Date convDatetimeToDate(Timestamp e) {
         if (e == null) {
             return null;
+        }
+        if (e.equals(NULL_DATETIME)) {
+            return NULL_DATE;
         }
 
         return new Date(e.getYear(), e.getMonth(), e.getDate());
@@ -1691,6 +1896,9 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATETIME)) {
+            return NULL_TIMESTAMP;
+        }
 
         return new Timestamp(
                 e.getYear(),
@@ -1706,14 +1914,22 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATETIME)) {
+            // must be calculated everytime because the AM/PM indicator can change according to the
+            // locale change
+            return String.format("00:00:00.000 %s 00/00/0000", AM_PM.format(ZERO_DATE));
+        }
 
-        return datetimeFormat.format(e);
+        return DATETIME_FORMAT.format(e);
     }
 
     // from date
     public static Timestamp convDateToDatetime(Date e) {
         if (e == null) {
             return null;
+        }
+        if (e.equals(NULL_DATE)) {
+            return NULL_DATETIME;
         }
 
         return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
@@ -1723,6 +1939,9 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATE)) {
+            return NULL_TIMESTAMP;
+        }
 
         return new Timestamp(e.getYear(), e.getMonth(), e.getDate(), 0, 0, 0, 0);
     }
@@ -1731,8 +1950,11 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_DATE)) {
+            return "00/00/0000";
+        }
 
-        return dateFormat.format(e);
+        return DATE_FORMAT.format(e);
     }
 
     // from time
@@ -1741,13 +1963,16 @@ public class SpLib {
             return null;
         }
 
-        return timeFormat.format(e);
+        return TIME_FORMAT.format(e);
     }
 
     // from timestamp
     public static Timestamp convTimestampToDatetime(Timestamp e) {
         if (e == null) {
             return null;
+        }
+        if (e.equals(NULL_TIMESTAMP)) {
+            return NULL_DATETIME;
         }
 
         return new Timestamp(
@@ -1763,6 +1988,9 @@ public class SpLib {
     public static Date convTimestampToDate(Timestamp e) {
         if (e == null) {
             return null;
+        }
+        if (e.equals(NULL_TIMESTAMP)) {
+            return NULL_DATE;
         }
 
         return new Date(e.getYear(), e.getMonth(), e.getDate());
@@ -1780,8 +2008,13 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        if (e.equals(NULL_TIMESTAMP)) {
+            // must be calculated everytime because the AM/PM indicator can change according to the
+            // locale change
+            return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
+        }
 
-        return timestampFormat.format(e);
+        return TIMESTAMP_FORMAT.format(e);
     }
 
     // from double
@@ -1824,7 +2057,7 @@ public class SpLib {
             return null;
         }
 
-        return e.toString();
+        return String.format("%.15e", e);
     }
 
     public static Float convDoubleToFloat(Double e) {
@@ -1891,7 +2124,7 @@ public class SpLib {
             return null;
         }
 
-        return e.toString();
+        return String.format("%.6e", e);
     }
 
     public static Double convFloatToDouble(Float e) {
@@ -2180,7 +2413,7 @@ public class SpLib {
         LocalDateTime dt = DateTimeParser.DatetimeLiteral.parse(e);
         if (dt == null) {
             // invalid string
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a DATETIME format");
         }
 
         if (dt.equals(DateTimeParser.nullDatetime)) {
@@ -2205,7 +2438,7 @@ public class SpLib {
         LocalDate d = DateTimeParser.DateLiteral.parse(e);
         if (d == null) {
             // invalid string
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a DATE format");
         }
 
         if (d.equals(DateTimeParser.nullDate)) {
@@ -2223,7 +2456,7 @@ public class SpLib {
         LocalTime t = DateTimeParser.TimeLiteral.parse(e);
         if (t == null) {
             // invalid string
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a TIME format");
         }
 
         return new Time(t.getHour(), t.getMinute(), t.getSecond());
@@ -2237,7 +2470,7 @@ public class SpLib {
         ZonedDateTime zdt = DateTimeParser.TimestampLiteral.parse(e);
         if (zdt == null) {
             // invalid string
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a TIMESTAMP format");
         }
 
         if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
@@ -2295,7 +2528,7 @@ public class SpLib {
         try {
             return Double.valueOf(e);
         } catch (NumberFormatException ex) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a DOUBLE format");
         }
     }
 
@@ -2311,7 +2544,7 @@ public class SpLib {
         try {
             return Float.valueOf(e);
         } catch (NumberFormatException ex) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a FLOAT format");
         }
     }
 
@@ -2352,7 +2585,7 @@ public class SpLib {
             return (Timestamp) e;
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with DATETIME");
     }
 
     public static Date convObjectToDate(Object e) {
@@ -2369,7 +2602,7 @@ public class SpLib {
             return convTimestampToDate((Timestamp) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with DATE");
     }
 
     public static Time convObjectToTime(Object e) {
@@ -2396,7 +2629,7 @@ public class SpLib {
             return convTimestampToTime((Timestamp) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with TIME");
     }
 
     public static Timestamp convObjectToTimestamp(Object e) {
@@ -2425,7 +2658,7 @@ public class SpLib {
             return convDatetimeToTimestamp((Timestamp) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with TIMESTAMP");
     }
 
     public static Integer convObjectToInt(Object e) {
@@ -2449,7 +2682,7 @@ public class SpLib {
             return convDoubleToInt((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with INTEGER");
     }
 
     public static Short convObjectToShort(Object e) {
@@ -2473,7 +2706,7 @@ public class SpLib {
             return convDoubleToShort((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with SHORT");
     }
 
     public static String convObjectToString(Object e) {
@@ -2506,7 +2739,7 @@ public class SpLib {
             */
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with STRING");
     }
 
     public static Double convObjectToDouble(Object e) {
@@ -2530,7 +2763,7 @@ public class SpLib {
             return (Double) e;
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with DOUBLE");
     }
 
     public static Float convObjectToFloat(Object e) {
@@ -2554,7 +2787,7 @@ public class SpLib {
             return convDoubleToFloat((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with FLOAT");
     }
 
     public static BigDecimal convObjectToNumeric(Object e) {
@@ -2578,7 +2811,7 @@ public class SpLib {
             return convDoubleToNumeric((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with NUMERIC");
     }
 
     public static Long convObjectToBigint(Object e) {
@@ -2602,7 +2835,7 @@ public class SpLib {
             return convDoubleToBigint((Double) e);
         }
 
-        throw new VALUE_ERROR();
+        throw new VALUE_ERROR("not compatible with BIGINT");
     }
 
     // ------------------------------------------------
@@ -2619,7 +2852,6 @@ public class SpLib {
     private static final int CODE_TOO_MANY_ROWS = 7;
     private static final int CODE_VALUE_ERROR = 8;
     private static final int CODE_ZERO_DIVIDE = 9;
-
     private static final int CODE_APP_ERROR = 99;
 
     private static final String MSG_CASE_NOT_FOUND = "case not found";
@@ -2628,10 +2860,11 @@ public class SpLib {
     private static final String MSG_NO_DATA_FOUND = "no data found";
     private static final String MSG_PROGRAM_ERROR = "internal server error";
     private static final String MSG_STORAGE_ERROR = "storage error";
-    private static final String MSG_SQL_ERROR = "error while running SQL";
+    private static final String MSG_SQL_ERROR = "SQL error";
     private static final String MSG_TOO_MANY_ROWS = "too many rows";
     private static final String MSG_VALUE_ERROR = "value error";
     private static final String MSG_ZERO_DIVIDE = "division by zero";
+    private static final String MSG_APP_ERROR = "user defined exception";
 
     private static final Short SHORT_ZERO = Short.valueOf((short) 0);
     private static final Integer INT_ZERO = Integer.valueOf(0);
@@ -2639,11 +2872,15 @@ public class SpLib {
     private static final Float FLOAT_ZERO = Float.valueOf(0.0f);
     private static final Double DOUBLE_ZERO = Double.valueOf(0.0);
 
-    private static final DateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy");
-    private static final DateFormat timeFormat = new SimpleDateFormat("hh:mm:ss a");
-    private static final DateFormat datetimeFormat =
+    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy");
+    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a");
+    private static final DateFormat DATETIME_FORMAT =
             new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy");
-    private static final DateFormat timestampFormat = new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+    private static final DateFormat TIMESTAMP_FORMAT =
+            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+
+    private static final DateFormat AM_PM = new SimpleDateFormat("a");
+    private static final Date ZERO_DATE = new Date(0L);
 
     private static Boolean commonOpEq(Object l, Object r) {
         if (l == null || r == null) {
@@ -2781,7 +3018,7 @@ public class SpLib {
         try {
             return bd.longValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not fit in a BIGINT: " + bd);
         }
     }
 
@@ -2791,7 +3028,7 @@ public class SpLib {
         try {
             return bd.intValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not fit in an INTEGER: " + bd);
         }
     }
 
@@ -2801,7 +3038,7 @@ public class SpLib {
         try {
             return bd.shortValueExact();
         } catch (ArithmeticException e) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not fit in a SHORT: " + bd);
         }
     }
 
@@ -2815,7 +3052,7 @@ public class SpLib {
             // <00001>  cast( cast(-1 as bigint) as time): 12:00:0/ AM
             //
             // 1 row selected. (0.004910 sec) Committed. (0.000020 sec)
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("negative values not allowed");
         }
 
         int totalSec = (int) (l % 86400L);
@@ -2830,11 +3067,11 @@ public class SpLib {
         if (l < 0L) {
             //   select cast(cast(-100 as bigint) as timestamp);
             //   ERROR: Cannot coerce value of domain "bigint" to domain "timestamp"
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("negative values not allowed");
         } else if (l
                 > 2147483647L) { // 2147483647L : see section 'implicit type conversion' in the user
             // manual
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("values over 2,147,483,647 not allowed");
         } else {
             return new Timestamp(l * 1000L); // * 1000 : converts it to milli-seconds
         }
@@ -2852,7 +3089,7 @@ public class SpLib {
         try {
             return new BigDecimal(s);
         } catch (NumberFormatException e) {
-            throw new VALUE_ERROR();
+            throw new VALUE_ERROR("not in a NUMERIC format");
         }
     }
 
@@ -2887,7 +3124,6 @@ public class SpLib {
                 // not applicable
             } else if (r instanceof Timestamp) {
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -2926,7 +3162,6 @@ public class SpLib {
                 lConv = convStringToTimestamp((String) l);
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -2966,7 +3201,6 @@ public class SpLib {
                 lConv = convShortToTimestamp((Short) l);
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3006,7 +3240,6 @@ public class SpLib {
                 lConv = convIntToTimestamp((Integer) l);
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3046,7 +3279,6 @@ public class SpLib {
                 lConv = convBigintToTimestamp((Long) l);
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3082,7 +3314,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3118,7 +3349,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3154,7 +3384,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3185,7 +3414,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3219,7 +3447,6 @@ public class SpLib {
             } else if (r instanceof Timestamp) {
                 // not applicable
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
@@ -3254,21 +3481,34 @@ public class SpLib {
                 lConv = (Timestamp) l;
                 rConv = (Timestamp) r;
             } else {
-                assert false : "unreachable";
                 throw new PROGRAM_ERROR(); // unreachable
             }
 
         } else {
-            assert false : "unreachable";
             throw new PROGRAM_ERROR(); // unreachable
         }
 
         if (lConv == null) {
             assert rConv == null;
-            throw new VALUE_ERROR(); // cannot compare two values of unsupported types
+            throw new VALUE_ERROR(
+                    "imcomparable types"); // cannot compare two values of unsupported types
         } else {
             assert rConv != null;
             return lConv.compareTo(rConv);
         }
+    }
+
+    private static String getHostVarsStr(int len) {
+        String[] arr = new String[len];
+        Arrays.fill(arr, "?");
+        return String.join(", ", arr);
+    }
+
+    private static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);
+    private static final Timestamp NULL_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+    private static final Timestamp NULL_TIMESTAMP = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+
+    private static boolean isEmptyStr(String s) {
+        return s == null || s.length() == 0;
     }
 }

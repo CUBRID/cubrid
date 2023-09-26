@@ -30,14 +30,19 @@
 
 package com.cubrid.plcsql.compiler.visitor;
 
+import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.CoercionScheme;
+import com.cubrid.plcsql.compiler.DBTypeAdapter;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.SemanticError;
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
+import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
+import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -65,13 +70,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         visitNodeList(node.stmts);
         return null;
     }
-
-    /* TODO: restore
-    @Override
-    public TypeSpec visitTypeSpecNumeric(TypeSpecNumeric node) {
-        return null; // nothing to do
-    }
-     */
 
     @Override
     public TypeSpec visitTypeSpecPercent(TypeSpecPercent node) {
@@ -390,17 +388,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert (idType.equals(TypeSpecSimple.CURSOR)
                 || idType.equals(TypeSpecSimple.SYS_REFCURSOR)); // by earlier check
 
-        switch (node.attr) {
-            case ISOPEN:
-            case FOUND:
-            case NOTFOUND:
-                return TypeSpecSimple.BOOLEAN;
-            case ROWCOUNT:
-                return TypeSpecSimple.BIGINT;
-            default:
-                assert false : "unreachable";
-                throw new RuntimeException("unreachable");
-        }
+        return node.attr.ty;
     }
 
     @Override
@@ -437,15 +425,17 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
                 node.setType(ret);
 
-                int i = 1;
+                int i = 1, found = -1;
                 for (String c : declForRecord.fieldTypes.keySet()) {
                     if (c.equals(node.fieldName)) {
-                        break;
+                        assert found < 0;
+                        found = i;
                     }
                     i++;
                 }
-                assert i <= declForRecord.fieldTypes.size();
-                node.setColIndex(i);
+                assert found > 0;
+
+                node.setColIndex(found);
             }
         } else {
             // this record is for a dynamic SQL
@@ -531,13 +521,47 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         return TypeSpecSimple.BOOLEAN;
     }
 
-    /* TODO: restore later
     @Override
-    public TypeSpec visitExprList(ExprList node) {
-        visitNodeList(node.elems);
-        return TypeSpecSimple.LIST;
+    public TypeSpec visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
+
+        String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
+        String sql = String.format("select %s(%s) from dual", node.name, tvStr);
+
+        List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(sql));
+        assert sqlSemantics.size() == 1;
+        SqlSemantics ss = sqlSemantics.get(0);
+        assert ss.seqNo == 0;
+
+        if (ss.errCode == 0) {
+            assert ss.selectList.size() == 1;
+            ColumnInfo ci = ss.selectList.get(0);
+
+            TypeSpecSimple ret;
+            if (DBTypeAdapter.isSupported(ci.type)) {
+                ret = DBTypeAdapter.getTypeSpec(ci.type);
+                assert !ret.equals(TypeSpecSimple.NULL);
+            } else {
+                // Allow the other types too, which can lead to run-time type errors,
+                // but accepts some more working programs. For example,
+                //
+                // create or replace procedure poo(i int) as
+                // begin
+                //     for r in (execute immediate 'select * from db_collation') loop
+                //         dbms_output.put_line(nvl2(i, r.coll_id, 2.7));
+                //     end loop;
+                // end;
+
+                ret = TypeSpecSimple.OBJECT;
+            }
+
+            node.setResultType(ret);
+            return ret;
+        } else {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(node.ctx), // s230
+                    "typing function " + node.name + " call failed: " + ss.errMsg);
+        }
     }
-     */
 
     @Override
     public TypeSpec visitExprLocalFuncCall(ExprLocalFuncCall node) {
@@ -567,7 +591,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprFloat(ExprFloat node) {
-        return TypeSpecSimple.NUMERIC; // TODO: apply precision and scale
+        return node.ty;
     }
 
     @Override
@@ -637,6 +661,15 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitStmtAssign(StmtAssign node) {
         TypeSpec valType = visit(node.val);
         TypeSpec varType = ((DeclIdTyped) node.var.decl).typeSpec();
+
+        boolean checkNotNull =
+                (node.var.decl instanceof DeclVar) && ((DeclVar) node.var.decl).notNull;
+        if (checkNotNull && valType.equals(TypeSpecSimple.NULL)) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(node.val.ctx), // s231
+                    "NOT NULL constraint violation");
+        }
+
         Coercion c = Coercion.getCoercion(valType, varType);
         if (c == null) {
             throw new SemanticError(
@@ -807,10 +840,16 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                     "SQL in the EXECUTE IMMEDIATE statement must be of STRING type");
         }
 
-        // check types of expressions in USING clause
+        // check types of expressions in the USING clause
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
-                visit(e); // s420
+                TypeSpec tyUsedExpr = visit(e); // s420
+                if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(e.ctx), // s428
+                            "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
+                }
             }
         }
 
@@ -884,27 +923,37 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtForIterLoop(StmtForIterLoop node) {
         TypeSpec ty;
+        Coercion c;
 
         ty = visit(node.lowerBound);
-        if (!TypeSpecSimple.INT.equals(ty)) {
+        c = Coercion.getCoercion(ty, TypeSpecSimple.INT);
+        if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.lowerBound.ctx), // s222
-                    "lower bounds of for loops must be of INT type");
+                    "lower bounds of FOR loops must have a type compatible with INT");
+        } else {
+            node.lowerBound.setCoercion(c);
         }
 
         ty = visit(node.upperBound);
-        if (!TypeSpecSimple.INT.equals(ty)) {
+        c = Coercion.getCoercion(ty, TypeSpecSimple.INT);
+        if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.upperBound.ctx), // s223
-                    "upper bounds of for loops must be of INT type");
+                    "upper bounds of FOR loops must have a type compatible with INT");
+        } else {
+            node.upperBound.setCoercion(c);
         }
 
         if (node.step != null) {
             ty = visit(node.step);
-            if (!TypeSpecSimple.INT.equals(ty)) {
+            c = Coercion.getCoercion(ty, TypeSpecSimple.INT);
+            if (c == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.step.ctx), // s224
-                        "steps of for loops must be of INT type");
+                        "steps of FOR loops must have a type compatible with INT");
+            } else {
+                node.step.setCoercion(c);
             }
         }
 
@@ -921,6 +970,19 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.sql.ctx), // s225
                     "SQL in EXECUTE IMMEDIATE statements must be of STRING type");
+        }
+
+        // check types of expressions in the USING clause
+        if (node.usedExprList != null) {
+            for (Expr e : node.usedExprList) {
+                TypeSpec tyUsedExpr = visit(e); // s429
+                if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(e.ctx), // s430
+                            "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
+                }
+            }
         }
 
         visitNodeList(node.stmts);
@@ -1074,6 +1136,32 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert node.body != null; // syntactically guaranteed
         visitBody(node.body);
         return null;
+    }
+
+    private String checkArgsAndConvertToTypicalValuesStr(List<Expr> args, String funcName) {
+        StringBuilder sb = new StringBuilder();
+
+        int len = args.size();
+        for (int i = 0; i < len; i++) {
+            Expr arg = args.get(i);
+            TypeSpec argType = visit(arg);
+
+            String typicalValueStr = argType.getTypicalValueStr();
+            if (typicalValueStr == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(arg.ctx), // s229
+                        String.format(
+                                "argument %d to the built-in function %s has an invalid type",
+                                i + 1, funcName));
+            }
+
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(typicalValueStr);
+        }
+
+        return sb.toString();
     }
 
     private void checkRoutineCall(DeclRoutine decl, List<Expr> args) {

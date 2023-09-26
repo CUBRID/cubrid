@@ -36,16 +36,18 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public class ExprCursorAttr extends Expr {
 
     public enum Attr {
-        ISOPEN("isOpen"),
-        FOUND("found"),
-        NOTFOUND("notFound"),
-        ROWCOUNT("rowCount");
+        ISOPEN(TypeSpecSimple.BOOLEAN, "isOpen"),
+        FOUND(TypeSpecSimple.BOOLEAN, "found"),
+        NOTFOUND(TypeSpecSimple.BOOLEAN, "notFound"),
+        ROWCOUNT(TypeSpecSimple.BIGINT, "rowCount");
 
-        Attr(String method) {
+        Attr(TypeSpecSimple ty, String method) {
+            this.ty = ty;
             this.method = method;
         }
 
-        private String method;
+        public final TypeSpecSimple ty;
+        public final String method;
     }
 
     @Override
@@ -62,13 +64,4 @@ public class ExprCursorAttr extends Expr {
         this.id = id;
         this.attr = attr;
     }
-
-    @Override
-    public String exprToJavaCode() {
-        return id.toJavaCode() + "." + attr.method + "()";
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

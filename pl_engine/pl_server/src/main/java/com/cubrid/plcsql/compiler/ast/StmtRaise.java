@@ -41,25 +41,12 @@ public class StmtRaise extends Stmt {
     }
 
     public final ExName exName;
+    public final int exHandlerDepth;
 
-    public StmtRaise(ParserRuleContext ctx, ExName exName) {
+    public StmtRaise(ParserRuleContext ctx, ExName exName, int exHandlerDepth) {
         super(ctx);
 
         this.exName = exName;
+        this.exHandlerDepth = exHandlerDepth;
     }
-
-    @Override
-    public String toJavaCode() {
-        if (exName == null) {
-            return "throw new Exception();";
-        } else if (exName.prefixDeclBlock) {
-            return String.format("throw %s.new %s();", exName.decl.scope().block, exName.name);
-        } else {
-            return String.format("throw new %s();", exName.name);
-        }
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

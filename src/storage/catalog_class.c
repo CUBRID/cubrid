@@ -870,7 +870,6 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	    }
 
 	  id = db_get_int (&key_atts[1].value);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  if (IS_DEDUPLICATE_KEY_ATTR_ID (id))
 	    {
 	      DB_VALUE tmp_val;
@@ -884,7 +883,6 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 		}
 	    }
 	  else
-#endif
 	    {
 	      for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
 		{

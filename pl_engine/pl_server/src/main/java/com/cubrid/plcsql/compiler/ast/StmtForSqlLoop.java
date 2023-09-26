@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -60,37 +59,4 @@ public abstract class StmtForSqlLoop extends Stmt {
         this.usedExprList = usedExprList;
         this.stmts = stmts;
     }
-
-    @Override
-    public String toJavaCode() {
-        String setUsedValuesStr = Common.getSetUsedExprStr(usedExprList);
-        return tmplStmt.replace("%'KIND'%", dynamic ? "dynamic" : "static")
-                .replace("%'SQL'%", sql.toJavaCode())
-                .replace("  %'SET-USED-VALUES'%", Misc.indentLines(setUsedValuesStr, 1))
-                .replace("%'RECORD'%", record.name)
-                .replace("%'LABEL'%", label == null ? "// no label" : label + "_%'LEVEL'%:")
-                .replace("%'LEVEL'%", "" + record.scope.level)
-                .replace("    %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 2));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmplStmt =
-            Misc.combineLines(
-                    "try { // for-loop with %'KIND'% SQL",
-                    "  String sql_%'LEVEL'% = %'SQL'%;",
-                    "  PreparedStatement stmt_%'LEVEL'% = conn.prepareStatement(sql_%'LEVEL'%);",
-                    "  %'SET-USED-VALUES'%",
-                    "  ResultSet %'RECORD'%_r%'LEVEL'% = stmt_%'LEVEL'%.executeQuery();",
-                    "  %'LABEL'%",
-                    "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
-                    "    %'STATEMENTS'%",
-                    "  }",
-                    "  stmt_%'LEVEL'%.close();",
-                    "} catch (SQLException e) {",
-                    "  Server.log(e);",
-                    "  throw new SQL_ERROR(e.getMessage());",
-                    "}");
 }

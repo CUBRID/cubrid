@@ -30,58 +30,29 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
-import java.util.List;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import org.antlr.v4.runtime.ParserRuleContext;
 
-class Common {
+public class ExprBuiltinFuncCall extends Expr {
 
-    static String getSetUsedExprStr(List<? extends Expr> exprList) {
-        return getSetUsedExprStr(exprList, 1);
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitExprBuiltinFuncCall(this);
     }
 
-    static String getSetUsedExprStr(List<? extends Expr> exprList, int startIndex) {
+    public final String name;
+    public final NodeList<Expr> args;
 
-        if (exprList == null || exprList.size() == 0) {
-            return "// no used values";
-        }
+    public TypeSpecSimple resultType;
 
-        StringBuffer sbuf = new StringBuffer();
-        int size = exprList.size();
-        for (int i = 0; i < size; i++) {
-            if (i > 0) {
-                sbuf.append("\n");
-            }
-            Expr expr = exprList.get(i);
-            sbuf.append(
-                    tmplSetObject
-                            .replace("%'INDEX'%", "" + (i + startIndex))
-                            .replace("  %'VALUE'%", Misc.indentLines(expr.toJavaCode(), 1)));
-        }
+    public ExprBuiltinFuncCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
+        super(ctx);
 
-        return sbuf.toString();
+        this.name = name;
+        this.args = args;
     }
 
-    static String getQuestionMarks(int n) {
-        StringBuffer sbuf = new StringBuffer();
-        boolean first = true;
-        for (int i = 0; i < n; i++) {
-
-            if (first) {
-                first = false;
-            } else {
-                sbuf.append(", ");
-            }
-
-            sbuf.append("?");
-        }
-
-        return sbuf.toString();
+    public void setResultType(TypeSpecSimple resultType) {
+        this.resultType = resultType;
     }
-
-    // ----------------------------------------------------
-    // Private
-    // ----------------------------------------------------
-
-    private static final String tmplSetObject =
-            Misc.combineLines("stmt_%'LEVEL'%.setObject(", "  %'INDEX'%,", "  %'VALUE'%", ");");
 }

@@ -35,13 +35,16 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclParamOut extends DeclParam {
 
+    public final boolean alsoIn;
+
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitDeclParamOut(this);
     }
 
-    public DeclParamOut(ParserRuleContext ctx, String name, TypeSpec typeSpec) {
+    public DeclParamOut(ParserRuleContext ctx, String name, TypeSpec typeSpec, boolean alsoIn) {
         super(ctx, name, typeSpec);
+        this.alsoIn = alsoIn;
     }
 
     @Override
@@ -49,16 +52,7 @@ public class DeclParamOut extends DeclParam {
         return "out-parameter";
     }
 
-    @Override
-    public String toJavaCode() {
-        return String.format("%s[] %s", typeSpec.toJavaCode(), name);
-    }
-
     public String toJavaSignature() {
         return String.format("%s[]", typeSpec.toJavaSignature());
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

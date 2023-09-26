@@ -31,7 +31,6 @@ package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.StaticSql;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.Arrays;
 import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -47,7 +46,7 @@ public class DeclCursor extends DeclId {
     public final StaticSql staticSql;
 
     public int[] paramRefCounts;
-    public int[] paramMarks;
+    public int[] paramNumOfHostExpr;
 
     public DeclCursor(
             ParserRuleContext ctx,
@@ -69,16 +68,6 @@ public class DeclCursor extends DeclId {
         return "cursor";
     }
 
-    @Override
-    public String toJavaCode() {
-        return String.format(
-                "final Query %s = new Query(\"%s\");\n  // param-ref-counts: %s\n  // param-marks: %s",
-                name,
-                staticSql.rewritten,
-                Arrays.toString(paramRefCounts),
-                Arrays.toString(paramMarks));
-    }
-
     // --------------------------------------------------
     // Private
     // --------------------------------------------------
@@ -91,7 +80,7 @@ public class DeclCursor extends DeclId {
         int hostExprSize = hostExprs == null ? 0 : hostExprs.size();
 
         paramRefCounts = new int[paramSize]; // NOTE: filled with zeros
-        paramMarks = new int[hostExprSize]; // NOTE: filled with zeros
+        paramNumOfHostExpr = new int[hostExprSize]; // NOTE: filled with zeros
 
         if (paramSize > 0 && hostExprSize > 0) {
             for (int i = 0; i < paramSize; i++) {
@@ -102,7 +91,7 @@ public class DeclCursor extends DeclId {
                         ExprId var = (ExprId) e;
                         DeclId dj = var.decl;
                         if (di == dj) { // NOTE: reference equality
-                            paramMarks[j] = (i + 1);
+                            paramNumOfHostExpr[j] = (i + 1);
                             paramRefCounts[i]++;
                         }
                     }

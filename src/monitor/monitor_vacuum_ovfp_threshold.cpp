@@ -560,7 +560,7 @@ ovfp_threshold_mgr::ovfp_threshold_mgr()
       m_ovfp_threshold[worker_idx].set_worker_idx (worker_idx, &m_ovfp_lock);
     }
 
-  m_over_secs = 2678400; // 31 day
+  m_over_secs = 45000 /* min */ * 60; // sec
   m_threshold_pages = 1000;
   m_since_time[0] = '\0';
 }
@@ -571,6 +571,7 @@ ovfp_threshold_mgr::init()
   time_to_string (time (NULL), m_since_time, sizeof (m_since_time));
 
   m_over_secs = prm_get_integer_value (PRM_ID_VACUUM_OVFP_CHECK_DURATION);
+  m_over_secs *= 60; // to second
   m_threshold_pages = prm_get_integer_value (PRM_ID_VACUUM_OVFP_CHECK_THRESHOLD);
 }
 

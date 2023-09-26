@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -54,17 +53,4 @@ public class CondStmt extends AstNode {
     public CondStmt(ParserRuleContext ctx, Expr cond, Stmt stmt) {
         this(ctx, cond, new NodeList<Stmt>().addNode(stmt));
     }
-
-    @Override
-    public String toJavaCode() {
-        return tmpl.replace("%'CONDITION'%", cond.toJavaCode())
-                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmpl =
-            Misc.combineLines("if (Boolean.TRUE.equals(%'CONDITION'%)) {", "  %'STATEMENTS'%", "}");
 }

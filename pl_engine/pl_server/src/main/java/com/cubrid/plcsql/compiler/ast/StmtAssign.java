@@ -49,13 +49,4 @@ public class StmtAssign extends Stmt {
         this.var = var;
         this.val = val;
     }
-
-    @Override
-    public String toJavaCode() {
-        return String.format("%s = %s;", var.toJavaCode(), val.toJavaCode());
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }
