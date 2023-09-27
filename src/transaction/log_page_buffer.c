@@ -3383,32 +3383,16 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
   if (log_Gl.append.log_pgptr->hdr.logical_pageid == pgptr->hdr.logical_pageid)
     {
       memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
-      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
     }
   else
     {
       assert (log_Gl.append.log_pgptr->hdr.logical_pageid + 1 == pgptr->hdr.logical_pageid);
 
       log_Gl.append.prev_lsa = log_Gl.hdr.append_lsa;
-
       logpb_next_append_page (thread_p, LOG_SET_DIRTY);
-      memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
-
-      // TODO Comment about why it should be set;
-      if (pgptr->hdr.offset != NULL_LOG_OFFSET)
-	{
-	  assert (log_Gl.hdr.append_lsa.pageid == pgptr->hdr.logical_pageid);
-	  log_Gl.hdr.append_lsa.offset = pgptr->hdr.offset;
-
-	  LOG_RECORD_HEADER *log_rec = LOG_GET_LOG_RECORD_HEADER (pgptr, &log_Gl.hdr.append_lsa);
-	  log_Gl.append.prev_lsa = log_rec->back_lsa;
-	}
-      else
-	{
-	  assert (false);	// TODO        
-	}
     }
 
+  memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
   logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 
   logpb_catchup_end_append (thread_p, pgptr);
@@ -3429,6 +3413,20 @@ static void
 logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr)
 {
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  // TODO Comment about why it should be set;
+  if (pgptr->hdr.offset != NULL_LOG_OFFSET)
+    {
+      assert (log_Gl.hdr.append_lsa.pageid == pgptr->hdr.logical_pageid);
+      log_Gl.hdr.append_lsa.offset = pgptr->hdr.offset;
+
+      LOG_RECORD_HEADER *log_rec = LOG_GET_LOG_RECORD_HEADER (pgptr, &log_Gl.hdr.append_lsa);
+      log_Gl.append.prev_lsa = log_rec->back_lsa;
+    }
+  else
+    {
+      assert (false);		// TODO        
+    }
 
   if (log_Pb.partial_append.status == LOGPB_APPENDREC_IN_PROGRESS)
     {
