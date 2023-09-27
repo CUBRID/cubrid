@@ -363,6 +363,9 @@ static int logpb_write_append_pages_to_disk (THREAD_ENTRY * thread_p);
 static void logpb_skip_flush_append_pages ();
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
 
+static void logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr);
+static void logpb_catchup_start_append (THREAD_ENTRY * thread_p);
+
 static void logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header);
 static void logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header);
 static void logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data);
@@ -3375,6 +3378,8 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (log_Gl.append.log_pgptr != NULL);
 
+  logpb_catchup_start_append (thread_p);
+
   if (log_Gl.append.log_pgptr->hdr.logical_pageid == pgptr->hdr.logical_pageid)
     {
       memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
@@ -3384,16 +3389,10 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
     {
       assert (log_Gl.append.log_pgptr->hdr.logical_pageid + 1 == pgptr->hdr.logical_pageid);
 
-      assert (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS);
-
-      log_Pb.partial_append.status = LOGPB_APPENDREC_IN_PROGRESS;
-
       log_Gl.append.prev_lsa = log_Gl.hdr.append_lsa;
 
       logpb_next_append_page (thread_p, LOG_SET_DIRTY);
       memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
-
-      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 
       // TODO Comment about why it should be set;
       if (pgptr->hdr.offset != NULL_LOG_OFFSET)
@@ -3403,43 +3402,62 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
 
 	  LOG_RECORD_HEADER *log_rec = LOG_GET_LOG_RECORD_HEADER (pgptr, &log_Gl.hdr.append_lsa);
 	  log_Gl.append.prev_lsa = log_rec->back_lsa;
-
-	  // We don't need to set log_Gl.hdr.append_lsa correctly here.
-	  // It will be set at the end of the catch-up in logpb_finish_catchup ().
 	}
       else
 	{
 	  assert (false);	// TODO        
 	}
-
-      if (log_Pb.partial_append.status == LOGPB_APPENDREC_IN_PROGRESS)
-	{
-	  /* success, fall through */
-	}
-      else if (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG)
-	{
-	  LOG_RECORD_HEADER *origin_append_log_record = LOG_GET_LOG_RECORD_HEADER (pgptr, &log_Gl.hdr.append_lsa);
-	  /* we need to flush the correct version now */
-	  log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_ENDED;
-	  logpb_flush_all_append_pages (thread_p);
-	  assert (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL);
-
-	  LOG_RECORD_HEADER *append_log_rec =
-	    LOG_GET_LOG_RECORD_HEADER (log_Gl.append.log_pgptr, &log_Gl.hdr.append_lsa);
-	  assert (append_log_rec->type == LOG_END_OF_LOG);
-	  assert (log_Gl.append.log_pgptr->hdr.logical_pageid == pgptr->hdr.logical_pageid);
-	  memcpy (append_log_rec, origin_append_log_record, sizeof (LOG_RECORD_HEADER));
-	  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
-	}
-      else
-	{
-	  /* invalid state */
-	  assert_release (false);
-	}
-      log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS;
     }
 
+  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
+
+  logpb_catchup_end_append (thread_p, pgptr);
+
   return NO_ERROR;
+}
+
+static void
+logpb_catchup_start_append (THREAD_ENTRY * thread_p)
+{
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS);
+
+  log_Pb.partial_append.status = LOGPB_APPENDREC_IN_PROGRESS;
+}
+
+static void
+logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr)
+{
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  if (log_Pb.partial_append.status == LOGPB_APPENDREC_IN_PROGRESS)
+    {
+      /* success, fall through */
+    }
+  else if (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG)
+    {
+      LOG_RECORD_HEADER *origin_append_log_record = LOG_GET_LOG_RECORD_HEADER (pgptr, &log_Gl.hdr.append_lsa);
+      /* 
+         1. The temporary EOF log record at the prev_lsa should be removed
+         2. A new EOF is appened at the append_lsa in logpb_flush_all_append_pages.
+       */
+      log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_ENDED;
+      logpb_flush_all_append_pages (thread_p);
+      assert (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL);
+
+      LOG_RECORD_HEADER *append_log_rec = LOG_GET_LOG_RECORD_HEADER (log_Gl.append.log_pgptr, &log_Gl.hdr.append_lsa);
+      assert (append_log_rec->type == LOG_END_OF_LOG);
+      assert (log_Gl.append.log_pgptr->hdr.logical_pageid == pgptr->hdr.logical_pageid);
+      memcpy (append_log_rec, origin_append_log_record, sizeof (LOG_RECORD_HEADER));
+
+      logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
+    }
+  else
+    {
+      /* invalid state */
+      assert_release (false);
+    }
+  log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS;
 }
 
 /*
