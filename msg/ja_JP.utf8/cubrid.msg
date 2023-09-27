@@ -1441,9 +1441,11 @@ $ LOADDB
 1355 ファイル "%1$s" が見つかりませんでした。
 1356 DBLink クエリにヒントがないか、ステートメントのタイプが正しくありません。 %1$s
 1357 SQL 文字列からワイド文字列への変換に失敗しました。
+1358 影響を受ける行数は不明です。
 
-1358 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1359 ラストエラー
+1359 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+
+1360 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

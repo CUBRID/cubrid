@@ -1441,9 +1441,11 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1355 "%1$s" dosyası bulunamadı.
 1356 DBLink sorgusunda ipucu yok veya ifade türü yanlış. %1$s
 1357 SQL dizesini geniş dizeye dönüştürme işlemi başarısız oldu.
+1358 Etkilenen satır sayısı bilinmiyor.
 
-1358 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1359 Son Hata
+1359 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+
+1360 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
