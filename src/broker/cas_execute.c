@@ -887,16 +887,14 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  goto prepare_error;
 	}
 
-      if (session->statements && (statement = session->statements[0]))
+      stmt_id = db_compile_statement (session);
+      // This is reached when calling an SP function or method using CallableStatement.       
+      if (session->statements && session->statements[0])
 	{
-	  if (logddl_set_stmt_type (statement->node_type) && session->parser->original_buffer)
-	    {
-	      logddl_set_sql_text ((char *) session->parser->original_buffer,
-				   strlen (session->parser->original_buffer));
-	    }
+	  int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
+	  logddl_check_and_set_query_text (session->statements[0], t_type, session->parser->pwd_offset_ptr);
 	}
 
-      stmt_id = db_compile_statement (session);
       if (stmt_id < 0)
 	{
 	  err_code = ERROR_INFO_SET (stmt_id, DBMS_ERROR_INDICATOR);
@@ -925,14 +923,6 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       goto prepare_error;
     }
 
-  if (session->statements && (statement = session->statements[0]))
-    {
-      if (logddl_set_stmt_type (statement->node_type) && session->parser->original_buffer)
-	{
-	  logddl_set_sql_text ((char *) session->parser->original_buffer, strlen (session->parser->original_buffer));
-	}
-    }
-
   updatable_flag = flag & CCI_PREPARE_UPDATABLE;
   if (updatable_flag)
     {
@@ -950,6 +940,12 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     }
 
   stmt_id = db_compile_statement (session);
+  if (session->statements && session->statements[0])
+    {
+      int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
+      logddl_check_and_set_query_text (session->statements[0], t_type, session->parser->pwd_offset_ptr);
+    }
+
   if (stmt_id < 0)
     {
       stmt_type = get_stmt_type (sql_stmt);
@@ -1509,6 +1505,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
        * file. */
       srv_handle->is_prepared = FALSE;
       recompile = true;
+      logddl_reset_query_text ();
     }
 
   if (srv_handle->is_prepared == FALSE)
@@ -1569,6 +1566,12 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 	}
 
       stmt_id = db_compile_statement (session);
+      if (session->statements && session->statements[0])
+	{
+	  int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
+	  logddl_check_and_set_query_text (session->statements[0], t_type, session->parser->pwd_offset_ptr);
+	}
+
       if (stmt_id < 0)
 	{
 	  err_code = ERROR_INFO_SET (stmt_id, DBMS_ERROR_INDICATOR);
@@ -1814,6 +1817,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   T_QUERY_RESULT *q_result;
   char savepoint[BROKER_PATH_MAX];
   char is_savepoint = FALSE;
+  int query_index = 0;
 
   srv_handle->query_info_flag = FALSE;
 
@@ -1886,11 +1890,21 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	      db_session_set_xasl_cache_pinned (session, true, false);
 	    }
 
+	  query_index = session->stmt_ndx;
 	  stmt_id = db_compile_statement (session);
 	  if (stmt_id == 0)
 	    {
 	      break;
 	    }
+
+	  if (session->statements && session->statements[query_index])
+	    {
+	      int t_type =
+		(stmt_id < 0) ? session->statements[query_index]->node_type : db_get_statement_type (session, stmt_id);
+	      logddl_check_and_set_query_text (session->statements[query_index], t_type,
+					       session->parser->pwd_offset_ptr);
+	    }
+
 	  if (stmt_id < 0)
 	    {
 	      err_code = ERROR_INFO_SET (stmt_id, DBMS_ERROR_INDICATOR);
@@ -2404,33 +2418,31 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
       net_arg_get_str (&sql_stmt, &sql_size, argv[query_index]);
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
-      if (sql_stmt != NULL)
-	{
-#if 0				// ctshim
-	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt));
-#endif
-	}
 
       session = db_open_buffer (sql_stmt);
       if (!session)
 	{
-#if 1				// ctshim
 	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt), NULL);
-#endif
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
-#if 1				// ctshim
       else
 	{
 	  assert (session->parser);
 	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt), session->parser->pwd_offset_ptr);
 	}
-#endif
 
       SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, sql_stmt);
 
       stmt_id = db_compile_statement (session);
+
+      assert ((stmt_id < 0) || (stmt_id == 1));
+      if (session->statements && session->statements[0])
+	{
+	  int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
+	  logddl_check_and_set_query_text (session->statements[0], t_type, session->parser->pwd_offset_ptr);
+	}
+
       if (stmt_id < 0)
 	{
 	  cas_log_write2 ("");
@@ -2442,10 +2454,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	{
 	  cas_log_write2 ("");
 	  goto batch_error;
-	}
-      if (logddl_set_stmt_type (stmt_type) && sql_stmt)
-	{
-	  logddl_set_sql_text (sql_stmt, sql_size /*(int) strlen (sql_stmt) */ );
 	}
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
@@ -2686,6 +2694,15 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 
 	  stmt_id = db_compile_statement (session);
+
+	  // TODO: It is not clear which route to take to reach here.
+	  if (session->statements && session->statements[0])
+	    {
+	      int tmp_type;
+	      tmp_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
+	      logddl_check_and_set_query_text (session->statements[0], tmp_type, session->parser->pwd_offset_ptr);
+	    }
+
 	  if (stmt_id < 0)
 	    {
 	      goto exec_db_error;

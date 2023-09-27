@@ -198,6 +198,7 @@ CHidePassword::get_token (char *&in, int &len)
 	case '(':
 	case ')':
 	case ';':
+	case '\'':
 	  if (ps == in)
 	    {
 	      in++;
@@ -647,7 +648,7 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
       else
 	{
 	  length +=
-		  snprintf (msg + length, size - length, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : "'****'"));
+		  snprintf (msg + length, size - length, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'"));
 	}
       qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
     }
@@ -655,11 +656,6 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
   if (*qryptr)
     {
       length += snprintf (msg + length, size - length, "%s", qryptr);
-    }
-
-  if (length < (size - 1))
-    {
-      msg[length++] = '\n';
     }
 
   return length;
@@ -714,7 +710,7 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
 	}
       else
 	{
-	  cas_fprintf (fp, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : "'****'"));
+	  cas_fprintf (fp, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'"));
 	}
       qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
     }
@@ -725,66 +721,17 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
     }
 }
 
-#if 0
-void
-check_have_password_func (char *query, int *pwd_offset_ptr)
-{
-  fprintf (stdout, "\nORIG [%s]\n", query);
-  fflush (stdout);
-
-  char *bufptr = (char *) query;
-  int *offset_ptr = pwd_offset_ptr;
-  char *tmp = bufptr;
-  char chbk;
-  int pos;
-
-  fprintf (stdout, "CVRT [");
-
-  for (int x = 2; x < offset_ptr[1]; x += 2)
-    {
-      pos = offset_ptr[x];
-      chbk = bufptr[pos];
-      bufptr[pos] = '\0';
-      fprintf (stdout, "%s", tmp);
-      bufptr[pos] = chbk;
-
-      if (IS_PWD_NEED_PASSWORD (offset_ptr + x))
-	{
-	  fprintf (stdout, "%s", " PASSWORD '****'");
-	}
-      else
-	{
-	  fprintf (stdout, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : "'****'"));
-	}
-
-      tmp = bufptr + GET_END_PWD_OFFSET (offset_ptr + x);
-    }
-
-  if (*tmp)
-    {
-      fprintf (stdout, "%s", tmp);
-    }
-
-  fprintf (stdout, "]\n****************************************************************\n");
-}
-
-#define check_have_password_debug check_have_password_func
-#else
-#define check_have_password_debug(a, b)
-#endif
-
 #ifndef DEFAULT_PWD_OFFSET_CNT
 #define DEFAULT_PWD_OFFSET_CNT (10)
 #endif
 
 void
-fprintf_password (FILE *fp, char *query, int *pwd_offset_ptr, int (*cas_fprintf) (FILE *, const char *, ...))
+password_fprintf (FILE *fp, char *query, int *pwd_offset_ptr, int (*cas_fprintf) (FILE *, const char *, ...))
 {
   CHidePassword chp;
 
   if (pwd_offset_ptr)
     {
-      check_have_password_debug (query, pwd_offset_ptr);
       chp.fprintf_password (fp, query, pwd_offset_ptr, cas_fprintf);
     }
   else
@@ -799,7 +746,6 @@ fprintf_password (FILE *fp, char *query, int *pwd_offset_ptr, int (*cas_fprintf)
 
       chp.find_password_positions (&offset_ptr, query);
 
-      check_have_password_debug (query, offset_ptr);
       chp.fprintf_password (fp, query, offset_ptr, cas_fprintf);
 
       QUIT_PASSWORD_OFFSET (offset, offset_ptr, DEFAULT_PWD_OFFSET_CNT);
@@ -807,14 +753,13 @@ fprintf_password (FILE *fp, char *query, int *pwd_offset_ptr, int (*cas_fprintf)
 }
 
 int
-snprint_password (char *msg, int size, char *query, int *pwd_offset_ptr)
+password_snprint (char *msg, int size, char *query, int *pwd_offset_ptr)
 {
   CHidePassword chp;
   int ret;
 
   if (pwd_offset_ptr)
     {
-      check_have_password_debug (query, pwd_offset_ptr);
       ret = chp.snprint_password (msg, size, query, pwd_offset_ptr);
     }
   else
@@ -826,7 +771,6 @@ snprint_password (char *msg, int size, char *query, int *pwd_offset_ptr)
 
       chp.find_password_positions (&offset_ptr, query);
 
-      check_have_password_debug (query, offset_ptr);
       ret = chp.snprint_password (msg, size, query, offset_ptr);
       QUIT_PASSWORD_OFFSET (offset, offset_ptr, DEFAULT_PWD_OFFSET_CNT);
     }
@@ -839,7 +783,7 @@ snprint_password (char *msg, int size, char *query, int *pwd_offset_ptr)
 #endif
 
 /*
- * add_offset_password () -
+ * password_add_offset () -
  *   fixed_array(in):
  *   pwd_offset_ptr(in/out)
  *   start(in)
@@ -849,7 +793,7 @@ snprint_password (char *msg, int size, char *query, int *pwd_offset_ptr)
  */
 // count, {start offset, end offset, is_add_comma}, ...
 int
-add_offset_password (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma,
+password_add_offset (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma,
 		     bool is_add_pwd_string)
 {
   /* pwd_offset_ptr:
@@ -892,3 +836,33 @@ add_offset_password (int *fixed_array, int **pwd_offset_ptr, int start, int end,
 
   return 0;
 }
+
+bool
+password_mk_offset_for_one_query (int *new_offset_arr, int *orig_offset_ptr, int start_pos, int end_pos)
+{
+  if (orig_offset_ptr)
+    {
+      // offset_ptr[0] : size of offset_ptr
+      // offset_ptr[1] : used count
+      assert (new_offset_arr[0] == 4);
+      assert (new_offset_arr[1] == 2);
+
+      for (int x = 2; x < orig_offset_ptr[1]; x += 2)
+	{
+	  if (orig_offset_ptr[x] > end_pos)
+	    {
+	      break;
+	    }
+
+	  if (orig_offset_ptr[x] >= start_pos && orig_offset_ptr[x] <= end_pos)
+	    {
+	      new_offset_arr[1] = 4;
+	      new_offset_arr[2] = orig_offset_ptr[x] - start_pos;
+	      new_offset_arr[3] = orig_offset_ptr[x + 1];
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
+

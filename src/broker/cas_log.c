@@ -706,7 +706,7 @@ cas_log_write_query_string (char *query, int size, int *pwd_offset_ptr)
 static void
 cas_fprintf_password (FILE * fp, char *query, int *pwd_offset_ptr)
 {
-  fprintf_password (fp, query, pwd_offset_ptr, cas_fprintf);
+  password_fprintf (fp, query, pwd_offset_ptr, cas_fprintf);
 }
 
 static void

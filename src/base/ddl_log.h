@@ -26,6 +26,8 @@
 
 #ident "$Id$"
 
+#include "parse_tree.h"
+
 #define LOGDDL_RUN_EXECUTE_FUNC              (1)
 #define LOGDDL_RUN_EXECUTE_BATCH_FUNC        (2)
 
@@ -71,8 +73,6 @@ extern void logddl_set_db_name (const char *db_name);
 extern void logddl_set_user_name (const char *user_name);
 extern void logddl_set_ip (const char *ip_addr);
 extern void logddl_set_broker_info (const int index, const char *br_name);
-extern void logddl_set_sql_text (char *sql_text, int len);
-extern bool logddl_set_stmt_type (int stmt_type);
 extern void logddl_set_loaddb_file_type (T_LOADDB_FILE_TYPE file_type);
 extern void logddl_set_csql_input_type (T_CSQL_INPUT_TYPE input_type);
 extern void logddl_set_load_filename (const char *load_filename);
@@ -84,12 +84,13 @@ extern void logddl_set_execute_type (char type);
 extern void logddl_set_commit_count (int count);
 extern void logddl_write ();
 extern void logddl_write_end ();
-extern bool logddl_is_ddl_type (int node_type);
 extern void logddl_set_commit_mode (bool mode);
 extern void logddl_write_tran_str (const char *fmt, ...);
 extern void logddl_write_end_for_csql_fileinput (const char *fmt, ...);
-extern void logddl_set_jsp_mode (bool mode);
-extern bool logddl_get_jsp_mode ();
+
+extern void logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, int *pwd_offset_ptr);
+extern void logddl_set_callback_stmt (int stmt_type, char *sql, int len, int err_code);
+extern void logddl_reset_query_text ();
 
 /**
  *  ddl_audit_handle.err_msg is set only and is not used anywhere.

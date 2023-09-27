@@ -67,6 +67,7 @@ typedef struct t_ddl_audit_handle T_DDL_AUDIT_HANDLE;
 struct t_ddl_audit_handle
 {
   char *sql_text;
+  int sql_text_len;		// Not include null terminated character 
   int alloc_size;		// Allocated size of sql_text  
   char zsql_text[SQL_TEXT_SIZE];
 
@@ -80,7 +81,7 @@ struct t_ddl_audit_handle
   int br_index;
   char ip_addr[16];
   int pid;
-  char stmt_type;
+  int ddl_stmt_cnt;
   char str_qry_exec_begin_time[DDL_TIME_LEN];
   struct timeval qry_exec_begin_time;
   char elapsed_time[DDL_TIME_LEN];
@@ -114,7 +115,7 @@ static void logddl_backup (const char *path);
 static void unix_style_path (char *path);
 #endif /* WINDOWS */
 static int logddl_create_dir (const char *new_dir);
-static int logddl_create_log_msg (char *msg, int *pwd_offset_ptr);
+static bool logddl_create_log_msg (FILE * fp);
 static int logddl_get_current_date_time_string (char *buf, size_t size);
 static int logddl_file_copy (char *src_file, char *dest_file);
 static bool logddl_file_backup (T_APP_NAME app_name, T_CSQL_INPUT_TYPE csql_input_type);
@@ -124,12 +125,15 @@ static void logddl_remove_char (char *string, char ch);
 static FILE *logddl_open (T_APP_NAME app_name);
 static int logddl_get_time_string (char *buf, struct timeval *time_val);
 static FILE *logddl_fopen_and_lock (const char *path, const char *mode);
-static void logddl_set_elapsed_time (long sec, long msec);
-static void logddl_timeval_diff (struct timeval *start, struct timeval *end, long *res_sec, long *res_msec);
+static void logddl_timeval_diff (struct timeval *start, struct timeval *end);
 static const char *logddl_get_app_name (T_APP_NAME app_name);
+static bool logddl_is_ddl_type (int node_type, PT_NODE * node);
+static void logddl_set_sql_text_internal (char *sql_text, int sql_len, int *pwd_offset_ptr);
+static bool logddl_set_stmt_type_internal (int stmt_type, PT_NODE * statement);
 
 static bool is_executed_ddl_for_trans = false;
 static bool is_executed_ddl_for_csql = false;
+static bool has_password_type = false;
 
 void
 logddl_init (T_APP_NAME app_name)
@@ -137,6 +141,7 @@ logddl_init (T_APP_NAME app_name)
   if (!is_first_initialized)
     {
       ddl_audit_handle.sql_text[0] = '\0';
+      ddl_audit_handle.sql_text_len = 0;
 #ifdef _USE_ERR_MSG_IN_LOGDDL_
       FREE_MEM (ddl_audit_handle.err_msg);
 #endif
@@ -144,7 +149,7 @@ logddl_init (T_APP_NAME app_name)
 
   memset (&ddl_audit_handle, 0x00, sizeof (T_DDL_AUDIT_HANDLE));
 
-  ddl_audit_handle.stmt_type = -1;
+  ddl_audit_handle.ddl_stmt_cnt = 0;
   ddl_audit_handle.execute_type = LOGDDL_RUN_EXECUTE_FUNC;
   ddl_audit_handle.loaddb_file_type = LOADDB_FILE_TYPE_NONE;
   ddl_audit_handle.csql_input_type = CSQL_INPUT_TYPE_NONE;
@@ -179,11 +184,12 @@ logddl_free (bool all_free)
       ddl_audit_handle.alloc_size = SQL_TEXT_SIZE;
     }
   ddl_audit_handle.sql_text[0] = '\0';
+  ddl_audit_handle.sql_text_len = 0;
 #ifdef _USE_ERR_MSG_IN_LOGDDL_
   FREE_MEM (ddl_audit_handle.err_msg);
 #endif
 
-  ddl_audit_handle.stmt_type = -1;
+  ddl_audit_handle.ddl_stmt_cnt = 0;
   ddl_audit_handle.execute_type = LOGDDL_RUN_EXECUTE_FUNC;
   ddl_audit_handle.loaddb_file_type = LOADDB_FILE_TYPE_NONE;
   ddl_audit_handle.str_qry_exec_begin_time[0] = '\0';
@@ -291,69 +297,99 @@ logddl_set_broker_info (const int index, const char *br_name)
     }
 }
 
-void
-logddl_set_sql_text (char *sql_text, int len)
+static void
+logddl_set_sql_text_internal (char *sql_text, int sql_len, int *pwd_offset_ptr)
 {
-  if (ddl_logging_enabled)
+  const static char *delim_str = "; ";
+  const static int delim_len = 2;
+  const static int append_pwd_len = strlen (" PASSWORD '****'");
+
+  assert (ddl_logging_enabled == true);
+
+  if (!sql_text || sql_len <= 0)
     {
-      if (!sql_text || len <= 0)
-	{
-	  ddl_audit_handle.sql_text[0] = '\0';
-	}
-      else
-	{
-	  if (ddl_audit_handle.alloc_size <= len)
-	    {
-	      int new_size = ddl_audit_handle.alloc_size;
-	      char *ptr;
-
-	      while (new_size < len)
-		{
-		  new_size += SQL_TEXT_INCR;
-		}
-
-	      ptr = (char *) MALLOC (new_size + 1);
-	      if (!ptr)
-		{		/* It's a failure, but let's copy as much space as we can */
-		  memcpy (ddl_audit_handle.sql_text, sql_text, ddl_audit_handle.alloc_size);
-
-		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 5] = ' ';
-		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 4] = '.';
-		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 3] = '.';
-		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 2] = '.';
-		  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 1] = '\0';
-		  return;
-		}
-
-	      if (ddl_audit_handle.sql_text != ddl_audit_handle.zsql_text)
-		{
-		  FREE_MEM (ddl_audit_handle.sql_text);
-		}
-
-	      ddl_audit_handle.sql_text = ptr;
-	      ddl_audit_handle.alloc_size = new_size;
-	    }
-
-	  memcpy (ddl_audit_handle.sql_text, sql_text, len);
-	  ddl_audit_handle.sql_text[len] = '\0';
-	}
+      return;
     }
+
+  int tlen = ddl_audit_handle.sql_text_len + sql_len + delim_len + append_pwd_len;
+
+  if (ddl_audit_handle.alloc_size <= tlen)
+    {
+      int new_size = ddl_audit_handle.alloc_size;
+      char *ptr = NULL;
+
+      while (new_size < tlen)
+	{
+	  new_size += SQL_TEXT_INCR;
+	}
+
+      ptr = (char *) MALLOC (new_size + 1);
+      if (!ptr)
+	{			/* It's a failure, but let's copy as much space as we can */
+	  memcpy (ddl_audit_handle.sql_text, sql_text, ddl_audit_handle.alloc_size);
+
+	  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 5] = ' ';
+	  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 4] = '.';
+	  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 3] = '.';
+	  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 2] = '.';
+	  ddl_audit_handle.sql_text[ddl_audit_handle.alloc_size - 1] = '\0';
+	  ddl_audit_handle.sql_text_len = ddl_audit_handle.alloc_size - 1;
+	  return;
+	}
+
+      if (ddl_audit_handle.sql_text != ddl_audit_handle.zsql_text)
+	{
+	  if (ddl_audit_handle.sql_text_len > 0)
+	    {
+	      memcpy (ptr, ddl_audit_handle.sql_text, ddl_audit_handle.sql_text_len);
+	      ptr[ddl_audit_handle.sql_text_len] = '\0';
+	    }
+	  FREE_MEM (ddl_audit_handle.sql_text);
+	}
+
+      ddl_audit_handle.sql_text = ptr;
+      ddl_audit_handle.alloc_size = new_size;
+    }
+
+  if (ddl_audit_handle.sql_text_len > 0)
+    {
+      memcpy (ddl_audit_handle.sql_text + ddl_audit_handle.sql_text_len, delim_str, delim_len);
+      ddl_audit_handle.sql_text_len += delim_len;
+    }
+
+  if (has_password_type == false)
+    {
+      memcpy (ddl_audit_handle.sql_text + ddl_audit_handle.sql_text_len, sql_text, sql_len);
+      ddl_audit_handle.sql_text_len += sql_len;
+    }
+  else
+    {
+      char chBk = sql_text[sql_len];
+
+      sql_text[sql_len] = '\0';
+      tlen =
+	password_snprint (ddl_audit_handle.sql_text + ddl_audit_handle.sql_text_len,
+			  (ddl_audit_handle.alloc_size - ddl_audit_handle.sql_text_len), sql_text, pwd_offset_ptr);
+      sql_text[sql_len] = chBk;
+
+      ddl_audit_handle.sql_text_len += tlen;
+    }
+
+  ddl_audit_handle.sql_text[ddl_audit_handle.sql_text_len] = '\0';
 }
 
-
 bool
-logddl_set_stmt_type (int stmt_type)
+logddl_set_stmt_type_internal (int stmt_type, PT_NODE * statement)
 {
-  if (ddl_logging_enabled)
-    {
-      ddl_audit_handle.stmt_type = stmt_type;
+  assert (ddl_logging_enabled == true);
 
-      if (logddl_is_ddl_type (stmt_type) == true)
-	{
-	  is_executed_ddl_for_trans = true;
-	  is_executed_ddl_for_csql = true;
-	  return true;
-	}
+  if (logddl_is_ddl_type (stmt_type, statement) == true)
+    {
+      is_executed_ddl_for_trans = true;
+      is_executed_ddl_for_csql = true;
+
+      ddl_audit_handle.ddl_stmt_cnt++;
+      return true;
     }
 
   return false;
@@ -477,30 +513,6 @@ logddl_set_commit_mode (bool mode)
   if (ddl_logging_enabled)
     {
       ddl_audit_handle.auto_commit_mode = mode;
-    }
-}
-
-void
-logddl_set_jsp_mode (bool mode)
-{
-  if (ddl_logging_enabled)
-    {
-      ddl_audit_handle.jsp_mode = mode;
-    }
-}
-
-bool
-logddl_get_jsp_mode ()
-{
-  return ddl_audit_handle.jsp_mode;
-}
-
-static void
-logddl_set_elapsed_time (long sec, long msec)
-{
-  if (ddl_logging_enabled)
-    {
-      snprintf (ddl_audit_handle.elapsed_time, 20, "elapsed time %ld.%03ld", sec, msec);
     }
 }
 
@@ -735,7 +747,7 @@ is_need_write ()
       return true;
     }
 
-  return logddl_is_ddl_type (ddl_audit_handle.stmt_type);
+  return (bool) (ddl_audit_handle.ddl_stmt_cnt > 0);
 }
 
 void
@@ -759,8 +771,6 @@ void
 logddl_write ()
 {
   FILE *fp = NULL;
-  char buf[DDL_LOG_BUFFER_SIZE];
-  int len = 0;
 
   if (ddl_logging_enabled == false)
     {
@@ -781,8 +791,7 @@ logddl_write ()
 	  goto write_error;
 	}
 
-      len = logddl_create_log_msg (buf, NULL /* pwd_offset_ptr */ );
-      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != (size_t) len)
+      if (logddl_create_log_msg (fp) == false)
 	{
 	  goto write_error;
 	}
@@ -908,8 +917,6 @@ void
 logddl_write_end_for_csql_fileinput (const char *fmt, ...)
 {
   FILE *fp = NULL;
-  char buf[DDL_LOG_BUFFER_SIZE];
-  int len = 0;
   struct timeval time_val;
   va_list args;
   if (ddl_logging_enabled == false)
@@ -943,8 +950,7 @@ logddl_write_end_for_csql_fileinput (const char *fmt, ...)
 	  goto write_error;
 	}
 
-      len = logddl_create_log_msg (buf, NULL);
-      if (len < 0 || fwrite (buf, sizeof (char), len, fp) != (size_t) len)
+      if (logddl_create_log_msg (fp) == false)
 	{
 	  goto write_error;
 	}
@@ -971,24 +977,15 @@ write_error:
   logddl_free (true);
 }
 
-static int
-logddl_create_log_msg (char *msg, int *pwd_offset_ptr)
+static bool
+logddl_create_log_msg (FILE * fp)
 {
-  int retval = 0;
   char result[20] = { 0 };
   struct timeval exec_end, log_time;
-  long elapsed_sec = 0;
-  long elapsed_msec = 0;
 
-  *msg = '\0';
-  if (ddl_logging_enabled == false)
-    {
-      return -1;
-    }
-
+  assert (ddl_logging_enabled == true);
   gettimeofday (&exec_end, NULL);
-  logddl_timeval_diff (&ddl_audit_handle.qry_exec_begin_time, &exec_end, &elapsed_sec, &elapsed_msec);
-  logddl_set_elapsed_time (elapsed_sec, elapsed_msec);
+  logddl_timeval_diff (&ddl_audit_handle.qry_exec_begin_time, &exec_end);
 
   if (strlen (ddl_audit_handle.str_qry_exec_begin_time) == 0)
     {
@@ -1009,10 +1006,10 @@ logddl_create_log_msg (char *msg, int *pwd_offset_ptr)
 	  strcpy (result, "OK");
 	}
 
-      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s\n",
-			 ddl_audit_handle.str_qry_exec_begin_time,
-			 ddl_audit_handle.pid, ddl_audit_handle.user_name, result, ddl_audit_handle.msg,
-			 ddl_audit_handle.copy_filename);
+      fprintf (fp, "%s %d|%s|%s|%s|%s\n",
+	       ddl_audit_handle.str_qry_exec_begin_time,
+	       ddl_audit_handle.pid, ddl_audit_handle.user_name, result, ddl_audit_handle.msg,
+	       ddl_audit_handle.copy_filename);
     }
   else if (ddl_audit_handle.app_name == APP_NAME_CSQL)
     {
@@ -1024,22 +1021,22 @@ logddl_create_log_msg (char *msg, int *pwd_offset_ptr)
 	      snprintf (ddl_audit_handle.msg, DDL_LOG_MSG, "Error line %d", ddl_audit_handle.file_line_number);
 	      ddl_audit_handle.elapsed_time[0] = '\0';
 
-	      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
-				 ddl_audit_handle.str_qry_exec_begin_time,
-				 ddl_audit_handle.pid,
-				 ddl_audit_handle.user_name,
-				 (ddl_audit_handle.auto_commit_mode) ? "autocommit mode on" : "autocommit mode off",
-				 result, ddl_audit_handle.msg, ddl_audit_handle.copy_filename);
+	      fprintf (fp, "%s %d|%s|%s|%s|%s|%s\n",
+		       ddl_audit_handle.str_qry_exec_begin_time,
+		       ddl_audit_handle.pid,
+		       ddl_audit_handle.user_name,
+		       (ddl_audit_handle.auto_commit_mode) ? "autocommit mode on" : "autocommit mode off",
+		       result, ddl_audit_handle.msg, ddl_audit_handle.copy_filename);
 	    }
 	  else
 	    {
 	      strcpy (result, "OK");
-	      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
-				 ddl_audit_handle.str_qry_exec_begin_time,
-				 ddl_audit_handle.pid,
-				 ddl_audit_handle.user_name,
-				 (ddl_audit_handle.auto_commit_mode) ? "autocommit mode on" : "autocommit mode off",
-				 result, ddl_audit_handle.msg, ddl_audit_handle.copy_filename);
+	      fprintf (fp, "%s %d|%s|%s|%s|%s|%s\n",
+		       ddl_audit_handle.str_qry_exec_begin_time,
+		       ddl_audit_handle.pid,
+		       ddl_audit_handle.user_name,
+		       (ddl_audit_handle.auto_commit_mode) ? "autocommit mode on" : "autocommit mode off",
+		       result, ddl_audit_handle.msg, ddl_audit_handle.copy_filename);
 	    }
 	}
       else
@@ -1054,11 +1051,11 @@ logddl_create_log_msg (char *msg, int *pwd_offset_ptr)
 	      strcpy (result, "OK");
 	    }
 
-	  retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %d|%s|%s|%s|%s|%s\n",
-			     ddl_audit_handle.str_qry_exec_begin_time,
-			     ddl_audit_handle.pid,
-			     ddl_audit_handle.user_name,
-			     result, ddl_audit_handle.elapsed_time, ddl_audit_handle.msg, ddl_audit_handle.sql_text);
+	  fprintf (fp, "%s %d|%s|%s|%s|%s|%s\n",
+		   ddl_audit_handle.str_qry_exec_begin_time,
+		   ddl_audit_handle.pid,
+		   ddl_audit_handle.user_name, result, ddl_audit_handle.elapsed_time, ddl_audit_handle.msg,
+		   ddl_audit_handle.sql_text);
 	}
     }
   else
@@ -1077,20 +1074,14 @@ logddl_create_log_msg (char *msg, int *pwd_offset_ptr)
 	  snprintf (ddl_audit_handle.elapsed_time, sizeof (ddl_audit_handle.elapsed_time), "elapsed time 0.000");
 	}
 
-      retval = snprintf (msg, DDL_LOG_BUFFER_SIZE, "%s %s|%s|%s|%s|%s|%s\n",
-			 ddl_audit_handle.str_qry_exec_begin_time,
-			 ddl_audit_handle.ip_addr,
-			 ddl_audit_handle.user_name,
-			 result, ddl_audit_handle.elapsed_time, ddl_audit_handle.msg, ddl_audit_handle.sql_text);
+      fprintf (fp, "%s %s|%s|%s|%s|%s|%s\n",
+	       ddl_audit_handle.str_qry_exec_begin_time,
+	       ddl_audit_handle.ip_addr,
+	       ddl_audit_handle.user_name, result, ddl_audit_handle.elapsed_time, ddl_audit_handle.msg,
+	       ddl_audit_handle.sql_text);
     }
 
-  if (retval >= DDL_LOG_BUFFER_SIZE)
-    {
-      msg[DDL_LOG_BUFFER_SIZE - 2] = '\n';
-      msg[DDL_LOG_BUFFER_SIZE - 1] = '\0';
-      retval = (DDL_LOG_BUFFER_SIZE - 1);
-    }
-  return retval;
+  return true;
 }
 
 static void
@@ -1308,26 +1299,22 @@ logddl_remove_char (char *string, char ch)
 #endif
 
 bool
-logddl_is_ddl_type (int node_type)
+logddl_is_ddl_type (int node_type, PT_NODE * node)
 {
   switch (node_type)
     {
     case PT_ALTER:
     case PT_ALTER_INDEX:
     case PT_ALTER_SERIAL:
-    case PT_ALTER_SERVER:
     case PT_ALTER_STORED_PROCEDURE:
     case PT_ALTER_SYNONYM:
     case PT_ALTER_TRIGGER:
-    case PT_ALTER_USER:
     case PT_CREATE_ENTITY:
     case PT_CREATE_INDEX:
     case PT_CREATE_SERIAL:
-    case PT_CREATE_SERVER:
     case PT_CREATE_STORED_PROCEDURE:
     case PT_CREATE_SYNONYM:
     case PT_CREATE_TRIGGER:
-    case PT_CREATE_USER:
     case PT_DROP:
     case PT_DROP_INDEX:
     case PT_DROP_SERIAL:
@@ -1346,7 +1333,33 @@ logddl_is_ddl_type (int node_type)
     case PT_UPDATE_STATS:
     case PT_TRUNCATE:
       /* TODO: check it  */
+      has_password_type = false;
       return true;
+
+    case PT_CREATE_SERVER:
+    case PT_ALTER_SERVER:
+    case PT_ALTER_USER:
+    case PT_CREATE_USER:
+      has_password_type = true;
+      return true;
+
+    case PT_METHOD_CALL:
+      if (node)
+	{
+	  PT_METHOD_CALL_INFO *call = &node->info.method_call;
+	  if (call->call_or_expr == PT_IS_CALL_STMT)
+	    {
+	      if ((strcasecmp (call->method_name->info.name.original, "set_password") == 0)
+		  /* ||(strcasecmp(call->method_name->info.name.original, "login")==0) */
+		  || (strcasecmp (call->method_name->info.name.original, "add_user") == 0))
+		{
+		  has_password_type = true;
+		  return true;
+		}
+	    }
+	}
+      break;
+
     default:
       break;
     }
@@ -1355,11 +1368,11 @@ logddl_is_ddl_type (int node_type)
 }
 
 static void
-logddl_timeval_diff (struct timeval *start, struct timeval *end, long *res_sec, long *res_msec)
+logddl_timeval_diff (struct timeval *start, struct timeval *end)
 {
   long sec, msec;
 
-  assert (start != NULL && end != NULL && res_sec != NULL && res_msec != NULL);
+  assert (start != NULL && end != NULL);
 
   sec = end->tv_sec - start->tv_sec;
   msec = (end->tv_usec / 1000) - (start->tv_usec / 1000);
@@ -1368,8 +1381,8 @@ logddl_timeval_diff (struct timeval *start, struct timeval *end, long *res_sec, 
       msec += 1000;
       sec--;
     }
-  *res_sec = sec;
-  *res_msec = msec;
+
+  snprintf (ddl_audit_handle.elapsed_time, DDL_TIME_LEN, "elapsed time %ld.%03ld", sec, msec);
 }
 
 static const char *
@@ -1385,5 +1398,67 @@ logddl_get_app_name (T_APP_NAME app_name)
       return "loaddb";
     default:
       return "";
+    }
+}
+
+void
+logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, int *pwd_offset_ptr)
+{
+  if (ddl_logging_enabled == false)
+    {
+      return;
+    }
+
+  if (statement && logddl_set_stmt_type_internal (stmt_type, statement))
+    {
+      logddl_set_file_line (statement->line_number);
+
+      if (statement->node_type == PT_EXECUTE_PREPARE)
+	{
+	  assert (statement->info.execute.query->node_type == PT_VALUE);
+	  assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
+
+	  logddl_set_sql_text_internal ((char *) statement->info.execute.query->info.value.data_value.str->bytes,
+					statement->info.execute.query->info.value.data_value.str->length, NULL);
+	  if (statement->info.execute.using_list)
+	    {
+	      has_password_type = false;
+	      logddl_set_sql_text_internal (statement->sql_user_text, statement->sql_user_text_len, NULL);
+	    }
+	}
+      else if (statement->sql_user_text && statement->sql_user_text_len > 0)
+	{
+	  int pwd_arr[4] = { 4, 2, };
+	  int *pwd_arr_ptr;
+
+	  INIT_PASSWORD_OFFSET (pwd_arr, pwd_arr_ptr, 4);
+	  password_mk_offset_for_one_query (pwd_arr, pwd_offset_ptr,
+					    statement->buffer_pos - statement->sql_user_text_len,
+					    statement->buffer_pos);
+
+	  logddl_set_sql_text_internal (statement->sql_user_text, statement->sql_user_text_len, pwd_arr);
+	}
+    }
+}
+
+void
+logddl_reset_query_text ()
+{
+  ddl_audit_handle.sql_text[0] = '\0';
+  ddl_audit_handle.sql_text_len = 0;
+  ddl_audit_handle.ddl_stmt_cnt = 0;
+}
+
+// only used in callback_handler::prepare()
+void
+logddl_set_callback_stmt (int stmt_type, char *sql, int len, int err_code)
+{
+  if (ddl_logging_enabled)
+    {
+      if (logddl_set_stmt_type_internal (stmt_type, NULL))
+	{
+	  logddl_set_sql_text_internal (sql, len, NULL);
+	  logddl_set_err_code (err_code);
+	}
     }
 }

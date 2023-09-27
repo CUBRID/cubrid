@@ -60,11 +60,7 @@ extern void cas_log_write2 (const char *fmt, ...);
 extern void cas_log_write_value_string (char *value, int size);
 extern void cas_log_write_query_string (char *query, int size, int *pwd_offset_ptr);
 extern void cas_log_write_client_ip (const unsigned char *ip_addr);
-#if 1				// ctshim
 extern void cas_log_write_query_string_nonl (char *query, int size, int *pwd_offset_ptr);
-#else
-extern void cas_log_write_query_string_nonl (char *query, int size);
-#endif
 extern void cas_log_open_and_write (char *br_name, unsigned int seq_num, bool unit_start, const char *fmt, ...);
 extern CAS_LOG_FD_STATUS cas_log_get_fd_status (void);
 

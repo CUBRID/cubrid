@@ -1410,35 +1410,7 @@ pt_add_password_offset (int start, int end, bool is_add_comma, bool is_add_pwd_s
       return;
     }
 
-  char *qry = (char *) this_parser->original_buffer + start;
 
-  // adjust start offset
-  if (start == end)
-    {
-      while (*qry)
-	{
-	  if (*qry != ' ' && *qry != '\t' && *qry != '\r' && *qry != '\n')
-	    {
-	      break;
-	    }
-
-	  qry++;
-	  start++;
-	}
-      end = start;
-    }
-
-  while (*qry && (start < end))
-    {
-      if (*qry != ' ' && *qry != '\t' && *qry != '\r' && *qry != '\n')
-	{
-	  break;
-	}
-
-      qry++;
-      start++;
-    }
-
-  (void) add_offset_password (this_parser->pwd_offset, &(this_parser->pwd_offset_ptr), start, end, is_add_comma,
+  (void) password_add_offset (this_parser->pwd_offset, &(this_parser->pwd_offset_ptr), start, end, is_add_comma,
 			      is_add_pwd_string);
 }
