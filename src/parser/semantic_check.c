@@ -9587,10 +9587,32 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
   const char *username;
   PT_FLAT_SPEC_INFO info;
 
-  /* Replace each Entity Spec with an Equivalent flat list */
-  info.spec_parent = NULL;
-  info.for_update = false;
-  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+  bool is_for_table = true;
+  PT_NODE *auth_cmd_list = node->info.grant.auth_cmd_list;
+  while (auth_cmd_list)
+    {
+      PT_PRIV_TYPE pt_auth = auth_cmd_list->info.auth_cmd.auth_cmd;
+      if (pt_auth == PT_EXECUTE_PROCEDURE_PRIV || pt_auth == PT_EXECUTE_FUNCTION_PRIV)
+	{
+	  is_for_table = false;
+	  break;
+	}
+
+      auth_cmd_list = auth_cmd_list->next;
+    }
+
+  if (is_for_table == true)
+    {
+      /* Replace each Entity Spec with an Equivalent flat list */
+      info.spec_parent = NULL;
+      info.for_update = false;
+      parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+    }
+  else
+    {
+      PT_NODE *
+	/* do nothing */
+    }
 
   /* make sure the grantees/revokees exist */
   for ((user = (node->node_type == PT_GRANT ? node->info.grant.user_list : node->info.revoke.user_list)); user;

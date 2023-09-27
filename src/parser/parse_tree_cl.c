@@ -4015,6 +4015,10 @@ pt_show_priv (PT_PRIV_TYPE t)
       return "drop";
     case PT_EXECUTE_PRIV:
       return "execute";
+    case PT_EXECUTE_PROCEDURE_PRIV:
+      return "execute on procedure";
+    case PT_EXECUTE_FUNCTION_PRIV:
+      return "execute on function";
     case PT_INDEX_PRIV:
       return "index";
     case PT_INSERT_PRIV:
