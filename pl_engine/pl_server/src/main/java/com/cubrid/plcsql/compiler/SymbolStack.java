@@ -75,33 +75,34 @@ public class SymbolStack {
                     // System.out.println("temp: " + m.getName());
 
                     Operator opAnnot = m.getAnnotation(Operator.class);
-                    assert opAnnot != null;
+                    if (opAnnot != null) {
 
-                    // parameter types
-                    Class[] paramTypes = m.getParameterTypes();
-                    NodeList<DeclParam> params = new NodeList<>();
+                        // parameter types
+                        Class[] paramTypes = m.getParameterTypes();
+                        NodeList<DeclParam> params = new NodeList<>();
 
-                    int i = 0;
-                    for (Class pt : paramTypes) {
-                        String typeName = pt.getTypeName();
-                        // System.out.println("  " + typeName);
-                        TypeSpec paramType = TypeSpec.ofJavaName(typeName);
-                        assert paramType != null;
+                        int i = 0;
+                        for (Class pt : paramTypes) {
+                            String typeName = pt.getTypeName();
+                            // System.out.println("  " + typeName);
+                            TypeSpec paramType = TypeSpec.ofJavaName(typeName);
+                            assert paramType != null;
 
-                        DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
-                        params.addNode(p);
-                        i++;
+                            DeclParamIn p = new DeclParamIn(null, "p" + i, paramType);
+                            params.addNode(p);
+                            i++;
+                        }
+
+                        // return type
+                        String typeName = m.getReturnType().getTypeName();
+                        // System.out.println("  =>" + typeName);
+                        TypeSpec retType = TypeSpec.ofJavaName(typeName);
+                        assert retType != null;
+
+                        // add op
+                        DeclFunc op = new DeclFunc(null, name, params, retType);
+                        putOperator(name, op, opAnnot.coercionScheme());
                     }
-
-                    // return type
-                    String typeName = m.getReturnType().getTypeName();
-                    // System.out.println("  =>" + typeName);
-                    TypeSpec retType = TypeSpec.ofJavaName(typeName);
-                    assert retType != null;
-
-                    // add op
-                    DeclFunc op = new DeclFunc(null, name, params, retType);
-                    putOperator(name, op, opAnnot.coercionScheme());
                 }
             }
         }

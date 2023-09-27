@@ -56,6 +56,19 @@ public abstract class DeclRoutine extends Decl {
         this.body = body;
     }
 
+    public boolean hasTimestampParam() {
+
+        if (paramList != null) {
+            for (DeclParam dp: paramList.nodes) {
+                if (dp.typeSpec.equals(TypeSpecSimple.TIMESTAMP)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     public String getDeclBlockName() {
         return name.toLowerCase() + '_' + (scope.level + 1);
     }

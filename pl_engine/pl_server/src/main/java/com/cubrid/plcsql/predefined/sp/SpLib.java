@@ -663,6 +663,15 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+    public static Boolean opEqTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return commonOpEq(l, r);
+    }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Object l, Object r) {
@@ -735,6 +744,15 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+    public static Boolean opNullSafeEqTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return commonOpNullSafeEq(l, r);
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -812,6 +830,15 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+    public static Boolean opNeqTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return commonOpNeq(l, r);
+    }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(Object l, Object r) {
@@ -886,6 +913,15 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+    public static Boolean opLeTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return commonOpLe(l, r);
+    }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Object l, Object r) {
@@ -957,6 +993,15 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+    public static Boolean opGeTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return commonOpGe(l, r);
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1030,6 +1075,15 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+    public static Boolean opLtTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return commonOpLt(l, r);
+    }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Object l, Object r) {
@@ -1102,6 +1156,15 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+    public static Boolean opGtTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return commonOpGt(l, r);
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1209,6 +1272,16 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+    public static Boolean opBetweenTimestamp(Timestamp o, Timestamp lower, Timestamp upper) {
+        if (o == null || lower == null || upper == null) {
+            return null;
+        }
+        assert o.getNanos() == 0;
+        assert lower.getNanos() == 0;
+        assert upper.getNanos() == 0;
+
+        return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
+    }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Object o, Object lower, Object upper) {
@@ -1282,6 +1355,26 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+    public static Boolean opInTimestamp(Timestamp o, Timestamp... arr) {
+        assert arr != null; // guaranteed by the syntax
+        if (o == null) {
+            return null;
+        }
+        assert o.getNanos() == 0;
+
+        boolean nullFound = false;
+        for (Timestamp p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                assert p.getNanos() == 0;
+                if (o.equals(p)) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null : false;
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -1618,15 +1711,28 @@ public class SpLib {
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
-    public static Timestamp opAdd(Long l, Timestamp r) {
-        return opAdd(r, l);
-    }
-
-    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static ZonedDateTime opAdd(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+    public static Timestamp opAddTimestamp(Timestamp l, Long r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+        assert l.getNanos() == 0;
+
+        LocalDateTime lldt = l.toLocalDateTime();
+        return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.SECONDS));
+    }
+
+
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Timestamp opAdd(Long l, Timestamp r) {
+        return opAdd(r, l);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1635,6 +1741,10 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+    public static Timestamp opAddTimestamp(Long l, Timestamp r) {
+        return opAdd(r, l);
+    }
+
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opAdd(Object l, Object r) {
@@ -1738,6 +1848,21 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+    public static Long opSubtractTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        if (l.equals(NULL_DATETIME) || r.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        LocalDateTime lldt = l.toLocalDateTime();
+        LocalDateTime rldt = r.toLocalDateTime();
+        return rldt.until(lldt, ChronoUnit.SECONDS);
+    }
+
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Time opSubtract(Time l, Long r) {
@@ -1780,6 +1905,19 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+    public static Timestamp opSubtractTimestamp(Timestamp l, Long r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+        assert l.getNanos() == 0;
+
+        LocalDateTime lldt = l.toLocalDateTime();
+        return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.SECONDS));
+    }
+
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opSubtract(Object l, Object r) {

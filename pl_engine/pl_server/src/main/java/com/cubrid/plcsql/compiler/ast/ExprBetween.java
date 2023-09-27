@@ -44,6 +44,12 @@ public class ExprBetween extends Expr {
     public final Expr lowerBound;
     public final Expr upperBound;
 
+    public boolean forTimestampParam;
+
+    public void setForTimestampParam() {
+        forTimestampParam = true;
+    }
+
     public ExprBetween(ParserRuleContext ctx, Expr target, Expr lowerBound, Expr upperBound) {
         super(ctx);
 
