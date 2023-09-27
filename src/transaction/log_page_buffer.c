@@ -3405,7 +3405,7 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
 	  log_Gl.append.prev_lsa = log_rec->back_lsa;
 
 	  // We don't need to set log_Gl.hdr.append_lsa correctly here.
-	  // It will be set at the end of the catch-up in logpb_end_catchup ().
+	  // It will be set at the end of the catch-up in logpb_finish_catchup ().
 	}
       else
 	{
@@ -3443,14 +3443,14 @@ logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
 }
 
 /*
- * logpb_end_catchup -
+ * logpb_finish_catchup -
  *
  * return: NO_ERROR
  *
  *   node(in):
  */
 int
-logpb_end_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
+logpb_finish_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 {
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 

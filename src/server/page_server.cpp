@@ -1033,7 +1033,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
     {
       assert (remaining_page_cnt == 0);
 
-      logpb_end_catchup (&entry, catchup_lsa);
+      logpb_finish_catchup (&entry, catchup_lsa);
 
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 		     start_pageid, end_pageid, total_page_count);

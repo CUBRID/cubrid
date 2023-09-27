@@ -1265,7 +1265,7 @@ extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
 #if defined(SERVER_MODE)
 extern int logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr);
-extern int logpb_end_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa);
+extern int logpb_finish_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa);
 #endif // SERVER_MODE
 
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
