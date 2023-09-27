@@ -56,6 +56,7 @@ public class DBType {
     public static final int DB_TIMESTAMP = 11;
     public static final int DB_DATE = 12;
     public static final int DB_MONETARY = 13;
+    public static final int DB_VARIABLE = 14;
     public static final int DB_SHORT = 18;
     public static final int DB_NUMERIC = 22;
     public static final int DB_OID = 20;
