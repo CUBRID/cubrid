@@ -31,7 +31,6 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.Server;
-import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
 import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
