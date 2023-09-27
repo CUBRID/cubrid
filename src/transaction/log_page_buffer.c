@@ -3366,14 +3366,12 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
 
 #if defined(SERVER_MODE)
 /*
- * logpb_append_catchup_page -
+ * logpb_catchup_append_page -
  *
- * return: NO_ERROR
- *
- *   node(in):
+ *   pgptr(in): a log page pointer to append
  */
-int
-logpb_append_catchup_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr)
+void
+logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr)
 {
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (log_Gl.append.log_pgptr != NULL);
@@ -3420,6 +3418,11 @@ logpb_catchup_start_append (THREAD_ENTRY * thread_p)
     }
 }
 
+/*
+ * logpb_catchup_end_append -
+ *
+ *   pgptr(in): a log page pointer appended
+ */
 static void
 logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr)
 {
@@ -3470,16 +3473,17 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr)
 }
 
 /*
- * logpb_finish_catchup -
+ * logpb_catchup_finish -
  *
  * return: NO_ERROR
  *
- *   node(in):
+ *   catchup_lsa(in): catchup_lsa, until which we pull pages, and from which new log records are given.
  */
 int
-logpb_finish_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
+logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 {
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS);
 
   char log_pgbuf[LOG_PAGESIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
@@ -3504,11 +3508,7 @@ logpb_finish_catchup (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 	    }
 	}
 
-      /*
-       * If offset is missing, it is because we archive an incomplete
-       * log record or we start dumping the log not from its first page. We
-       * have to find the offset by searching for the next log_record in the page
-       */
+      // If offset is missing, it is because we archive an incomplete log record.
       if (nav_lsa.offset == NULL_OFFSET)
 	{
 	  nav_lsa.offset = log_pgptr->hdr.offset;

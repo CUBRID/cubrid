@@ -1025,7 +1025,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
       // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
       for (size_t i = 0; i < receive_page_cnt; i++)
 	{
-	  logpb_append_catchup_page (&entry, log_pgptr_vec[i]);
+	  logpb_catchup_append_page (&entry, log_pgptr_vec[i]);
 	}
     }
 
@@ -1033,7 +1033,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
     {
       assert (remaining_page_cnt == 0);
 
-      logpb_finish_catchup (&entry, catchup_lsa);
+      logpb_catchup_finish (&entry, catchup_lsa);
 
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 		     start_pageid, end_pageid, total_page_count);
