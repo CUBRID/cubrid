@@ -3394,8 +3394,6 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
   logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
 
   logpb_catchup_end_append (thread_p, pgptr);
-
-  return NO_ERROR;
 }
 
 static void
