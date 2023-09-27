@@ -3531,12 +3531,14 @@ logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 
   assert (nav_lsa == catchup_lsa);
 
-  // prior_info 변경할때 race condition이 있을 수 있나?
   log_Gl.append.prev_lsa = prev_lsa;
-  log_Gl.prior_info.prev_lsa = prev_lsa;
   log_Gl.hdr.append_lsa = catchup_lsa;
-  log_Gl.prior_info.prior_lsa = catchup_lsa;
   log_Gl.get_log_prior_sender ().reset_unsent_lsa (catchup_lsa);
+  {
+    auto lockg = std::lock_guard { log_Gl.prior_info.prior_lsa_mutex };
+    log_Gl.prior_info.prev_lsa = prev_lsa;
+    log_Gl.prior_info.prior_lsa = catchup_lsa;
+  }
 
   logpb_flush_all_append_pages (thread_p);
 
