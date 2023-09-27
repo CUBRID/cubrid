@@ -84,4 +84,3 @@ public class ExprStr extends Expr {
 
     private static final int MAX_STR_LITERAL_LEN = 65535;
 }
-
