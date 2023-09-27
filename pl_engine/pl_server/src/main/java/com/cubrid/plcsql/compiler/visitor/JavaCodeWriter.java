@@ -405,7 +405,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeTemplate tmpl;
 
         if (node.resultType.equals(TypeSpecSimple.NULL)) {
-            // in this case, every branch including else has null as its expression.
+            // in this case, every branch including else-part has null as its expression.
             tmpl = new CodeTemplate("ExprCase", Misc.getLineColumnOf(node.ctx), "null");
         } else {
             tmpl =
