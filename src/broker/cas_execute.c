@@ -1401,7 +1401,16 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
     }
   else
     {
-      srv_handle->total_tuple_count = (int) row_count;
+      if (row_count == -1)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_UNKNOWN_AFFECTED_ROWS, 0);
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+      else
+	{
+	  srv_handle->total_tuple_count = (int) row_count;
+	}
     }
 
   if (do_commit_after_execute (*srv_handle))

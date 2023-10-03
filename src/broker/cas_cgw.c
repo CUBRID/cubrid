@@ -474,8 +474,16 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 		}
 	      break;
 	    case SQL_TINYINT:
-	      net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
-	      net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
+	      if (this_col_binding->col_unsigned_type)
+		{
+		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+		  net_buf_cp_short (net_buf, *((unsigned char *) this_col_binding->data_buffer));
+		}
+	      else
+		{
+		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+		  net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
+		}
 	      break;
 	    case SQL_FLOAT:
 	    case SQL_REAL:
@@ -1055,11 +1063,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
 	  if (col_unsigned_type)
 	    {
-	      if (col_data_type == SQL_TINYINT)
-		{
-		  col_data_type = SQL_SMALLINT;
-		}
-	      else if (col_data_type == SQL_SMALLINT)
+	      if (col_data_type == SQL_SMALLINT)
 		{
 		  col_data_type = SQL_INTEGER;
 		}
@@ -1712,7 +1716,7 @@ cgw_sql_prepare (SQLCHAR * sql_stmt)
 		   err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &local_odbc_handle->hstmt));
     }
 
-  out_length = strlen (in_string) * sizeof (wchar_t);
+  out_length = strlen (in_string) * sizeof (wchar_t) + 1;
   out_string = (wchar_t *) malloc (out_length);
   if (out_string == NULL)
     {
@@ -2624,7 +2628,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
       return (-1);
     }
 
-  if (in_size <= 0)
+  if (in_size < 0)
     {
       return (-1);
     }

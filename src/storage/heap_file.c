@@ -1307,6 +1307,19 @@ heap_is_big_length (int length)
 }
 
 /*
+ * xheap_get_maxslotted_reclength () -
+ *   return: NO_ERROR
+ *   maxslotted_reclength(out)
+ */
+int
+xheap_get_maxslotted_reclength (int &maxslotted_reclength)
+{
+  maxslotted_reclength = heap_Maxslotted_reclength;
+
+  return NO_ERROR;
+}
+
+/*
  * heap_get_spage_type () -
  *   return: the type of the slotted page of the heap file.
  */
