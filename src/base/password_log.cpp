@@ -104,12 +104,12 @@ class CHidePassword
     bool check_lead_string_in_query (char **query, char **method_name, bool *is_create_user);
     void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
 
-    bool  use_backslash_escape;
+    bool  m_use_backslash_escape;
 
   public:
     CHidePassword ()
     {
-      use_backslash_escape = ! prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES);
+      m_use_backslash_escape = ! prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES);
     };
     ~CHidePassword ()
     {
@@ -160,7 +160,7 @@ CHidePassword::get_quot_string (char *ps)
 
   for (ps++; *ps; ps++)
     {
-      if (*ps == '\\' && use_backslash_escape)
+      if (*ps == '\\' && m_use_backslash_escape)
 	{
 	  ps++;
 	}
@@ -199,6 +199,7 @@ CHidePassword::get_token (char *&in, int &len)
 	case ')':
 	case ';':
 	case '\'':
+	case '"':
 	  if (ps == in)
 	    {
 	      in++;
@@ -392,7 +393,7 @@ CHidePassword::get_passowrd_end_position (char *ps, bool is_server)
     {
       for (; *tp; tp++)
 	{
-	  if (*tp == '\\' && use_backslash_escape)
+	  if (*tp == '\\' && m_use_backslash_escape)
 	    {
 	      tp++;
 	    }
