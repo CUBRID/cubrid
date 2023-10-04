@@ -3378,16 +3378,16 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr
 
   logpb_catchup_start_append (thread_p);
 
-  if (log_Gl.append.log_pgptr->hdr.logical_pageid == pgptr->hdr.logical_pageid)
+  if (log_Gl.append.log_pgptr->hdr.logical_pageid + 1 == pgptr->hdr.logical_pageid)
     {
-      memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
+      log_Gl.append.prev_lsa = log_Gl.hdr.append_lsa;
+      logpb_next_append_page (thread_p, LOG_SET_DIRTY);
     }
   else
     {
-      assert (log_Gl.append.log_pgptr->hdr.logical_pageid + 1 == pgptr->hdr.logical_pageid);
-
-      log_Gl.append.prev_lsa = log_Gl.hdr.append_lsa;
-      logpb_next_append_page (thread_p, LOG_SET_DIRTY);
+      // Only for the first page. Just overwrite the page, 
+      // and DON'T change meta data like log_Gl.append.prev_lsa. They don't go backward.
+      assert_release (log_Gl.append.log_pgptr->hdr.logical_pageid == pgptr->hdr.logical_pageid);
     }
 
   memcpy (log_Gl.append.log_pgptr, pgptr, LOG_PAGESIZE);
