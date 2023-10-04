@@ -3397,8 +3397,19 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_p
 }
 
 /*
- * logpb_catchup_start_append - Append a page during catch-up.
- *
+ * logpb_catchup_start_append - Start appending a page during catch-up.
+ *      LOGPB_APPENDREC_SUCCESS: 
+ *        A normal case. The previous appending has been successfully.
+ *      LOGPB_APPENDREC_IN_PROGRESS:
+ *        The previous appended page doesn't have a start of a record. It only constains a middle part 
+ *        or the last part of a record. In this case, the prev_lsa has not been advanced, 
+ *        and the EOF will be appended when flushing log pages halfway through appending a page.
+ *      LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG:
+ *        Log pages are flushed during appending a page including only a partial record, and the temporary EOF 
+ *        has been appended at the prev_lsa. We will remove this at logpb_catchup_end_append() when the partial record completes.
+ *      
+ *      See logpb_catchup_end_append() and logpb_flush_all_append_pages() as well for the complete picture.
+ *     
  *   log_pgptr(in): a log page pointer to append
  */
 static void
@@ -3422,7 +3433,12 @@ logpb_catchup_start_append (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logpb_catchup_end_append -
+ * logpb_catchup_end_append - Finish appending a page during catch-up.
+ *      If the appended page has only parital record in it, keep partial appending status.
+ *      Otherwise, complete appending pages, in the partial appending case, or a page.
+ *        - Set the append_lsa and prev_lsa to valid ones.
+ *        - Remove the temporary EOF If log pages are flushed halfway through.
+ *        - Set the partial appending status to LOGPB_APPENDREC_SUCCESS.
  *
  *   log_pgptr(in): a log page pointer appended
  */
@@ -3435,6 +3451,7 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
 
   if (have_only_partial_record_in_page)
     {
+      // Do nothing. It will be finished up at a following call.
       return;
     }
 
@@ -3452,14 +3469,13 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
     case LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG:
       {
 	LOG_RECORD_HEADER *origin_append_log_record = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_Gl.hdr.append_lsa);
-	/* 
-	   1. The temporary EOF log record at the prev_lsa should be removed
-	   2. A new EOF is appened at the append_lsa in logpb_flush_all_append_pages.
-	 */
+
+	// The temporary EOF log record at the prev_lsa has to be removed.
 	log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_ENDED;
 	logpb_flush_all_append_pages (thread_p);
 	assert (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL);
 
+	// A new EOF has been appened at the append_lsa in logpb_flush_all_append_pages. Remove it as well.
 	LOG_RECORD_HEADER *append_log_rec = LOG_GET_LOG_RECORD_HEADER (log_Gl.append.log_pgptr, &log_Gl.hdr.append_lsa);
 	assert (append_log_rec->type == LOG_END_OF_LOG);
 	assert (log_Gl.append.log_pgptr->hdr.logical_pageid == log_pgptr->hdr.logical_pageid);
@@ -3476,11 +3492,11 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
 }
 
 /*
- * logpb_catchup_finish -
+ * logpb_catchup_finish - finish the catch-up job. This sets the prev_lsa and append_lsa to the latest ones.
  *
  * return: NO_ERROR
  *
- *   catchup_lsa(in): catchup_lsa, until which we pull pages, and from which new log records are given.
+ *   catchup_lsa(in): catchup_lsa, until which we pull pages, and from which new log records will be appended.
  */
 int
 logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
