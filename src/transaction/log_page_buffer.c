@@ -3412,6 +3412,34 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_p
  *        Log pages are flushed during appending a page including only a partial record, and the temporary EOF 
  *        has been appended at the prev_lsa. We will remove this at logpb_catchup_end_append() when the partial record completes.
  *      
+ *      The status transition:
+ *   
+ *       ┌──► ┌─►_SUCCESS
+ *       │    │      │
+ *       │    │ (*)  │ start appending a page
+ *       │    │      ▼
+ *       │    └──_IN_PROGRESS
+ *       │           │
+ *       │           │ It happens to flush log pages during the catch-up.
+ *       │           │ so EOF is appended at the prev_lsa.
+ *       │           ▼
+ *       │       _PARTIAL_FLUSHED_END_OF_LOG
+ *       │           │
+ *       │           │ It's done to append log pages containing an incomplete log record.
+ *       │           │ If there is no incomplete log record, just a page has been appended.
+ *       │           ▼
+ *       │       _PARTIAL_ENDED
+ *       │           │
+ *       │           │ flush log pages to remove the EOF.
+ *       │           │ It appends the EOF at the append_lsa instead.
+ *       │           ▼
+ *       │       _PARTIAL_FLUSHED_ORIGINAL
+ *       │           │
+ *       │           │ Remove the EOF at the append_lsa on the memory buffer.
+ *       └───────────┘ This will be flushed in the next time.
+ *
+ * (*): It's done to append log pages containing an incomplete log record without flushing in the middle.
+ * 
  *      See logpb_catchup_end_append() and logpb_flush_all_append_pages() as well for the complete picture.
  *     
  *   log_pgptr(in): a log page pointer to append
@@ -3443,6 +3471,8 @@ logpb_catchup_start_append (THREAD_ENTRY * thread_p)
  *        - Set the append_lsa and prev_lsa to valid ones.
  *        - Remove the temporary EOF If log pages are flushed halfway through.
  *        - Set the partial appending status to LOGPB_APPENDREC_SUCCESS.
+ * 
+ *    See logpb_catchup_start_append() for details of the status transition.
  *
  *   log_pgptr(in): a log page pointer appended
  */
@@ -3479,7 +3509,7 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
 	logpb_flush_all_append_pages (thread_p);
 	assert (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL);
 
-	// A new EOF has been appened at the append_lsa in logpb_flush_all_append_pages. Remove it as well.
+	// A new EOF has been appended at the append_lsa in logpb_flush_all_append_pages. Remove it as well.
 	LOG_RECORD_HEADER *append_log_rec = LOG_GET_LOG_RECORD_HEADER (log_Gl.append.log_pgptr, &log_Gl.hdr.append_lsa);
 	assert (append_log_rec->type == LOG_END_OF_LOG);
 	assert (log_Gl.append.log_pgptr->hdr.logical_pageid == log_pgptr->hdr.logical_pageid);
