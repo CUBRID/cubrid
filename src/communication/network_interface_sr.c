@@ -2585,6 +2585,32 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 }
 
 /*
+ * shf_get_maxslotted_reclength -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+shf_get_maxslotted_reclength (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int maxslotted_reclength;
+
+  (void) xheap_get_maxslotted_reclength (maxslotted_reclength);
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  (void) or_pack_int (reply, maxslotted_reclength);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * sfile_apply_tde_to_class_files -
  *
  * return:
@@ -4038,6 +4064,8 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   OID class_oid;
   int attr_id, unique_pk;
   char *ptr;
+  int deduplicate_key_pos = -1;
+
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4046,8 +4074,10 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
+  ptr = or_unpack_int (ptr, &deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-  return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0);
+  return_btid =
+    xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -10432,10 +10462,12 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
     {
       /* 3) make out arguments */
 
-      // *INDENT-OFF*
-      std::vector<std::reference_wrapper<DB_VALUE>> out_args;
-      // *INDENT-ON*
       method_sig_node *sig = sig_list.method_sig;
+      // *INDENT-OFF*
+      DB_VALUE dummy_null;
+      db_make_null (&dummy_null);
+      std::vector<std::reference_wrapper<DB_VALUE>> out_args (sig->num_method_args, dummy_null);
+      // *INDENT-ON*
       for (int i = 0; i < sig->num_method_args; i++)
 	{
 	  if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
@@ -10444,7 +10476,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 	    }
 
 	  int pos = sig->method_arg_pos[i];
-	  out_args.push_back (std::ref (args[pos]));
+	  out_args[pos] = std::ref (args[pos]);
 	}
 
       /* 4) pack */

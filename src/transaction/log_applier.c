@@ -349,6 +349,8 @@ struct la_info
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
   int tde_sock_for_dks;		/* unix socket for sharing TDE Data keys with copylogd */
 #endif				/* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+
+  int maxslotted_reclength;	/* get heap_Maxslotted_reclength from server */
 };
 
 typedef struct la_ovf_first_part LA_OVF_FIRST_PART;
@@ -498,6 +500,7 @@ static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
+static void la_make_room_for_mvcc_delid_and_prev_ver (RECDES * recdes);
 static int la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key);
 static char *la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo_zip, bool is_overflow,
 				 char **rec_type, char **data, int *length);
@@ -3686,7 +3689,40 @@ la_make_room_for_mvcc_insid (RECDES * recdes)
 
   assert (recdes->area_size >= recdes->length + OR_MVCCID_SIZE);
 
-  LA_MOVE_INSIDE_RECORD (recdes, OR_INT_SIZE + OR_MVCCID_SIZE, OR_INT_SIZE);
+  LA_MOVE_INSIDE_RECORD (recdes, OR_MVCC_INSERT_ID_OFFSET + OR_MVCC_INSERT_ID_SIZE, OR_MVCC_INSERT_ID_OFFSET);
+
+  return;
+}
+
+/*
+ * la_make_room_for_mvcc_delid_and_prev_ver() - preserve space for mvcc delete id and previous version lsa
+ *   return:
+ *
+ * Note:
+ *     This function should only be called after la_make_room_for_mvcc_insid() has been called.
+ *
+ *     The record type is changed to REC_BIGONE due to la_make_room_for_mvcc_insid() processing.
+ *     The record header of this type additionally contains mvcc delete id and previous version lsa information.
+ */
+static void
+la_make_room_for_mvcc_delid_and_prev_ver (RECDES * recdes)
+{
+  int repid_and_flag_bits = 0;
+  char mvcc_flag;
+
+  assert (recdes->type != REC_BIGONE);
+
+  repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (recdes->data);
+  mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+
+  assert ((mvcc_flag & OR_MVCC_FLAG_VALID_INSID) && (mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
+	  && (mvcc_flag & OR_MVCC_FLAG_VALID_PREV_VERSION));
+
+  assert (recdes->area_size >= recdes->length + OR_MVCC_DELETE_ID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE);
+
+  LA_MOVE_INSIDE_RECORD (recdes,
+			 OR_MVCC_DELETE_ID_OFFSET (mvcc_flag) + OR_MVCC_DELETE_ID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE,
+			 OR_MVCC_DELETE_ID_OFFSET (mvcc_flag));
 
   return;
 }
@@ -4678,8 +4714,18 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
       OR_PUT_INT (recdes->data, repid_and_flag_bits);
 
       la_make_room_for_mvcc_insid (recdes);
-    }
 
+      // It will be coverted to REC_BIGONE which contains all mvcc flags on. 
+      if (recdes->length > la_Info.maxslotted_reclength)
+	{
+	  repid_and_flag_bits |=
+	    ((OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+
+	  OR_PUT_INT (recdes->data, repid_and_flag_bits);
+
+	  la_make_room_for_mvcc_delid_and_prev_ver (recdes);
+	}
+    }
 
   return error;
 }
@@ -6927,6 +6973,8 @@ la_init (const char *log_path, const int max_mem_size)
   la_Info.tde_sock_for_dks = -1;
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 
+  la_Info.maxslotted_reclength = 0;
+
   return;
 }
 
@@ -7038,6 +7086,8 @@ la_shutdown (void)
   la_destroy_repl_filter ();
 
   la_Info.reinit_copylog = false;
+
+  la_Info.maxslotted_reclength = 0;
 
   return;
 }
@@ -8144,6 +8194,10 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	}
     }
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
+
+  (void) heap_get_maxslotted_reclength (la_Info.maxslotted_reclength);
+
+  er_log_debug (ARG_FILE_LINE, "la_Info.maxslotted_reclength=%d\n", la_Info.maxslotted_reclength);
 
   /* start the main loop */
   do

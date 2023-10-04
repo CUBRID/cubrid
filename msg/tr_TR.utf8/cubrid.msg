@@ -1437,15 +1437,13 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s", "%4$s" dosyasının %3$d satırında geçersiz biçim.
-1356 "%1$s" ana bilgisayar adı çok uzun, "%3$s" dosyasının %2$d satırında 256'dan küçük veya buna eşit olmalıdır.
-1357 "%1$s" ana bilgisayar adı zaten var, bir ana bilgisayar adı "%3$s" dosyasının %2$d satırındaki diğer IP adresleriyle çoğaltılamaz.
-1358 Hem IP adresi hem de ana bilgisayar adı, "%2$s" dosyasının %1$d satırına tamamen yazılmalıdır.
-1359 cubrid_hosts.conf dosyasında "%1$s" aranamıyor.
 
-1360 "%1$s" dosyası bulunamadı.
+1355 "%1$s" dosyası bulunamadı.
+1356 DBLink sorgusunda ipucu yok veya ifade türü yanlış. %1$s
+1357 SQL dizesini geniş dizeye dönüştürme işlemi başarısız oldu.
+1358 Etkilenen satır sayısı bilinmiyor.
 
-1361 Son Hata
+1359 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
@@ -1611,6 +1609,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 ALTER SYNONYM için herhangi bir seçenek belirtilmedi.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.

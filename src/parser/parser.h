@@ -31,6 +31,7 @@
 #include "system.h"
 #include "dbtype_def.h"
 #include "parse_tree.h"
+#include "deduplicate_key.h"
 
 #if defined (SERVER_MODE)
 #error Does not belong to server module
@@ -357,7 +358,6 @@ extern "C"
   extern void pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node);
   extern int pt_resolved (const PT_NODE * expr);
   extern bool pt_false_where (PARSER_CONTEXT * parser, PT_NODE * statement);
-  extern PT_NODE *pt_do_where_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where);
   extern PT_NODE *pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where);
   extern bool pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
@@ -612,6 +612,7 @@ extern "C"
   extern PT_NODE *pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_parens_inside,
 					      bool use_parens_outside);
   extern bool pt_is_operator_logical (PT_OP_TYPE op);
+  extern bool pt_is_operator_arith (PT_OP_TYPE op);
   extern bool pt_list_has_logical_nodes (PT_NODE * list);
   extern bool pt_is_pseudo_const (PT_NODE * expr);
   extern bool pt_is_op_hv_late_bind (PT_OP_TYPE op);
@@ -687,6 +688,8 @@ extern "C"
 
   extern int pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec);
 
+  extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
+  extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
 #ifdef __cplusplus
 }
 #endif

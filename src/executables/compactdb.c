@@ -147,7 +147,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   if ((error = db_login ("DBA", NULL)) || (error = db_restart (arg->argv0, TRUE, database_name)))
     {
-      PRINT_AND_LOG_ERR_MSG ("%s: %s.\n\n", exec_name, db_error_string (3));
+      PRINT_AND_LOG_ERR_MSG ("%s: %s\n\n", exec_name, db_error_string (3));
       status = error;
     }
   else
@@ -159,7 +159,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
 	}
       if ((error = db_shutdown ()))
 	{
-	  PRINT_AND_LOG_ERR_MSG ("%s: %s.\n", exec_name, db_error_string (3));
+	  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", exec_name, db_error_string (3));
 	  status = error;
 	}
     }
