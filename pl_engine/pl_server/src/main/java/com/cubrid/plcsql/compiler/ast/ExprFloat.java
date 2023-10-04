@@ -41,19 +41,25 @@ public class ExprFloat extends Expr {
     }
 
     public final String val;
+    public final TypeSpecSimple ty;
 
-    public ExprFloat(ParserRuleContext ctx, String val) {
+    public ExprFloat(ParserRuleContext ctx, String val, TypeSpecSimple ty) {
         super(ctx);
 
         this.val = val;
+        this.ty = ty;
     }
 
-    @Override
-    public String exprToJavaCode() {
-        return "new BigDecimal(" + val + ")";
+    public String javaCode() {
+        switch (ty.simpleTypeIdx) {
+            case TypeSpecSimple.IDX_DOUBLE:
+                return "new Double(\"" + val + "\")";
+            case TypeSpecSimple.IDX_FLOAT:
+                return "new Float(\"" + val + "\")";
+            case TypeSpecSimple.IDX_NUMERIC:
+                return "new BigDecimal(\"" + val + "\")";
+            default:
+                throw new RuntimeException("unreachable");
+        }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

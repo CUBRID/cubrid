@@ -30,16 +30,27 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.ast.NodeList;
 import java.io.PrintStream;
+import java.util.HashMap;
+import java.util.Map;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
 
 public class Misc {
 
+    public static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
+    public static final String INDENT = "  "; // two spaces
+    public static final int INDENT_SIZE = INDENT.length();
+
     public enum RoutineType {
         FUNC,
         PROC,
+    }
+
+    public static boolean isEmpty(NodeList nl) {
+        return (nl == null || nl.nodes.size() == 0);
     }
 
     public static String detachPkgName(String routineName) {
@@ -90,9 +101,9 @@ public class Misc {
         return peelId(s.toUpperCase());
     }
 
-    public static void printIndent(PrintStream out, int indents) {
+    public static void printIndent(PrintStream out, int indentLevel) {
 
-        for (int i = 0; i < indents; i++) {
+        for (int i = 0; i < indentLevel; i++) {
             out.print(INDENT);
         }
     }
@@ -101,20 +112,21 @@ public class Misc {
         return String.join("\n", lines);
     }
 
-    public static String indentLines(String lines, int indents) {
-        return indentLines(lines, indents, false);
+    public static String indentLines(String lines, int indentLevel) {
+        return indentLines(lines, indentLevel, false);
     }
 
-    public static String indentLines(String lines, int indents, boolean skipFirstLine) {
+    public static String indentLines(String lines, int indentLevel, boolean skipFirstLine) {
 
         assert lines != null;
-        assert indents >= 0;
+        assert indentLevel >= 0;
 
-        if (indents == 0) {
+        if (indentLevel == 0) {
             return lines;
         }
 
         String[] split = lines.split("\n");
+        String indent = getIndent(indentLevel);
         for (int i = 0; i < split.length; i++) {
 
             if (skipFirstLine && i == 0) {
@@ -122,7 +134,7 @@ public class Misc {
             }
 
             if (split[i].length() > 0) {
-                split[i] = getIndents(indents) + split[i];
+                split[i] = indent + split[i];
             }
         }
 
@@ -154,17 +166,33 @@ public class Misc {
         return id;
     }
 
+    public static String getIndent(int indentLevel) {
+        if (indentLevel < 10) {
+            return smallIndents[indentLevel];
+        } else {
+            String ret = bigIndents.get(indentLevel);
+            if (ret == null) {
+                ret = makeIndent(indentLevel);
+                bigIndents.put(indentLevel, ret);
+            }
+            return ret;
+        }
+    }
+
     // ----------------------------------------------
     // Private
     // ----------------------------------------------
 
-    private static final String INDENT = "  "; // two spaces
+    private static final String[] smallIndents =
+            new String[] {
+                makeIndent(0), makeIndent(1), makeIndent(2), makeIndent(3), makeIndent(4),
+                makeIndent(5), makeIndent(6), makeIndent(7), makeIndent(8), makeIndent(9)
+            };
+    private static final Map<Integer, String> bigIndents = new HashMap<Integer, String>();
 
-    private static final int[] UNKNOWN_LINE_COLUMN = new int[] {0, 0};
-
-    private static String getIndents(int indents) {
+    private static String makeIndent(int indentLevel) {
         StringBuffer sbuf = new StringBuffer();
-        for (int i = 0; i < indents; i++) {
+        for (int i = 0; i < indentLevel; i++) {
             sbuf.append(INDENT);
         }
 

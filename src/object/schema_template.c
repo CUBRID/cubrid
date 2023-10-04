@@ -1992,9 +1992,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   SM_ATTRIBUTE_FLAG constraint;
   bool has_nulls = false;
   bool is_secondary_index = false;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   int deduplicate_key_col_pos = -1;
-#endif
+
   assert (template_ != NULL);
 
   error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
@@ -2012,21 +2011,15 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     {
       while (att_names[n_atts] != NULL)
 	{
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_names[n_atts]))
 	    {
 	      deduplicate_key_col_pos = n_atts;
 	    }
-#endif
 	  n_atts++;
 	}
     }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   if ((n_atts == 0) || ((n_atts == 1) && (deduplicate_key_col_pos != -1)))
-#else
-  if (n_atts == 0)
-#endif
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_return;
@@ -2069,13 +2062,12 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
       if (deduplicate_key_col_pos == i)
 	{
 	  atts[i] = dk_find_sm_deduplicate_key_attribute (-1, att_names[i]);
 	  continue;
 	}
-#endif
+
       error = smt_find_attribute (template_, att_names[i], class_attribute, &atts[i]);
       if (error == ER_SM_INHERITED_ATTRIBUTE)
 	{
@@ -2212,13 +2204,9 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
       if (constraint == SM_ATTFLAG_FOREIGN_KEY)
 	{
-	  error = smt_check_foreign_key (template_, constraint_name, atts,
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-					 ((deduplicate_key_col_pos == -1) ? n_atts : (n_atts - 1)),
-#else
-					 n_atts,
-#endif
-					 fk_info);
+	  error =
+	    smt_check_foreign_key (template_, constraint_name, atts,
+				   ((deduplicate_key_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_return;

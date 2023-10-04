@@ -47,13 +47,4 @@ public class StmtCursorClose extends Stmt {
 
         this.id = id;
     }
-
-    @Override
-    public String toJavaCode() {
-        return id.toJavaCode() + ".close();";
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

@@ -63,14 +63,4 @@ public class DeclVar extends DeclIdTyped {
     public String kind() {
         return "variable";
     }
-
-    @Override
-    public String toJavaCode() {
-        String ty = typeSpec.toJavaCode();
-        if (val == null) {
-            return String.format("%s[] %s = new %s[] { null };", ty, name, ty);
-        } else {
-            return String.format("%s[] %s = new %s[] { %s };", ty, name, ty, val.toJavaCode());
-        }
-    }
 }

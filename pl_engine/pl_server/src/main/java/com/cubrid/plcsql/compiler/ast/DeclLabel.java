@@ -53,12 +53,7 @@ public class DeclLabel extends Decl {
         return "label";
     }
 
-    @Override
-    public String toJavaCode() {
+    public String javaCode() {
         return String.format("%s_%d:", name, scope.level);
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

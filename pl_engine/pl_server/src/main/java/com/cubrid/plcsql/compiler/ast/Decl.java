@@ -35,6 +35,8 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class Decl extends AstNode {
 
+    public Scope scope;
+
     public abstract String kind();
 
     public Decl(ParserRuleContext ctx) {
@@ -48,10 +50,4 @@ public abstract class Decl extends AstNode {
     public Scope scope() {
         return scope;
     }
-
-    // -----------------------------------------
-    // Private
-    // -----------------------------------------
-
-    protected Scope scope;
 }

@@ -48,8 +48,7 @@ public class StmtExit extends Stmt {
         this.declLabel = declLabel;
     }
 
-    @Override
-    public String toJavaCode() {
+    public String javaCode() {
 
         if (declLabel == null) {
             return "break;";
@@ -57,9 +56,4 @@ public class StmtExit extends Stmt {
             return String.format("break %s_%d;", declLabel.name, declLabel.scope.level);
         }
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
 }

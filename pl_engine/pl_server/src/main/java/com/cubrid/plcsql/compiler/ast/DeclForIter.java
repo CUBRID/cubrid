@@ -54,14 +54,4 @@ public class DeclForIter extends DeclId {
     public String kind() {
         return "for-loop-iterator";
     }
-
-    @Override
-    public String toJavaCode() {
-        assert false; // must not be called directly
-        return null;
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

@@ -1439,9 +1439,13 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 
 
 1355 No se encontró el archivo "%1$s".
+1356 No hay ninguna pista en la consulta de DBLink o el tipo de instrucción es incorrecto. %1$s
+1357 Error al convertir una cadena SQL a una cadena ancha.
+1358 Se desconoce el número de filas afectadas.
 
-1356 In line %1$d, column %2$d\nStored procedure compile error: %3$s
-1357 Ultimo error
+1359 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+
+1360 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

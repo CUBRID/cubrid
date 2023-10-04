@@ -5673,7 +5673,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   /* function */
   ptr = or_unpack_int (ptr, &tmp);
-  aggregate->function = (FUNC_TYPE) tmp;
+  aggregate->function = (FUNC_CODE) tmp;
 
   /* option */
   ptr = or_unpack_int (ptr, &tmp);
@@ -5791,7 +5791,7 @@ stx_build_function_type (THREAD_ENTRY * thread_p, char *ptr, FUNCTION_TYPE * fun
     }
 
   ptr = or_unpack_int (ptr, &tmp);
-  function->ftype = (FUNC_TYPE) tmp;
+  function->ftype = (FUNC_CODE) tmp;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5897,7 +5897,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 
   /* function */
   ptr = or_unpack_int (ptr, &tmp_i);
-  analytic->function = (FUNC_TYPE) tmp_i;
+  analytic->function = (FUNC_CODE) tmp_i;
 
   /* option */
   ptr = or_unpack_int (ptr, &tmp_i);

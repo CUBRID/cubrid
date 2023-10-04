@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -46,6 +45,8 @@ public class StmtCase extends Stmt {
     public final NodeList<CaseStmt> whenParts;
     public final NodeList<Stmt> elsePart;
 
+    public TypeSpec selectorType;
+
     public StmtCase(
             ParserRuleContext ctx,
             int level,
@@ -60,43 +61,7 @@ public class StmtCase extends Stmt {
         this.elsePart = elsePart;
     }
 
-    @Override
-    public String toJavaCode() {
-
-        assert selectorType != null;
-
-        String elseCode;
-        if (elsePart == null) {
-            elseCode = "throw new CASE_NOT_FOUND();";
-        } else {
-            elseCode = elsePart.toJavaCode();
-        }
-
-        return tmplStmtCase
-                .replace("%'SELECTOR-TYPE'%", selectorType.toJavaCode())
-                .replace("%'SELECTOR-VALUE'%", selector.toJavaCode())
-                .replace("  %'WHEN-PARTS'%", Misc.indentLines(whenParts.toJavaCode(" else "), 1))
-                .replace("    %'ELSE-PART'%", Misc.indentLines(elseCode, 2))
-                .replace("%'LEVEL'%", "" + level) // level replacement must go last
-        ;
-    }
-
     public void setSelectorType(TypeSpec ty) {
         this.selectorType = ty;
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private TypeSpec selectorType;
-
-    private static final String tmplStmtCase =
-            Misc.combineLines(
-                    "{",
-                    "  %'SELECTOR-TYPE'% selector_%'LEVEL'% = %'SELECTOR-VALUE'%;",
-                    "  %'WHEN-PARTS'% else {",
-                    "    %'ELSE-PART'%",
-                    "  }",
-                    "}");
 }

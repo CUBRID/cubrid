@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -68,45 +67,4 @@ public class StmtForIterLoop extends Stmt {
         this.step = step;
         this.stmts = stmts;
     }
-
-    @Override
-    public String toJavaCode() {
-
-        String labelStr = declLabel == null ? "// no label" : declLabel.toJavaCode();
-
-        return (reverse ? tmplForIterReverse : tmplForIter)
-                .replace("%'LEVEL'%", "" + iter.scope.level)
-                .replace("  %'OPT-LABEL'%", Misc.indentLines(labelStr, 1))
-                .replace("%'ITER'%", iter.name)
-                .replace("%'LOWER-BOUND'%", lowerBound.toJavaCode())
-                .replace("%'UPPER-BOUND'%", upperBound.toJavaCode())
-                .replace("%'STEP'%", step == null ? "1" : step.toJavaCode())
-                .replace("    %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 2));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    private static final String tmplForIter =
-            Misc.combineLines(
-                    "{",
-                    "  int upper_%'LEVEL'% = %'UPPER-BOUND'%;",
-                    "  int step_%'LEVEL'% = %'STEP'%;",
-                    "  %'OPT-LABEL'%",
-                    "  for (int %'ITER'%_i%'LEVEL'% = %'LOWER-BOUND'%; %'ITER'%_i%'LEVEL'% <= upper_%'LEVEL'%; %'ITER'%_i%'LEVEL'% += step_%'LEVEL'%) {",
-                    "    %'STATEMENTS'%",
-                    "  }",
-                    "}");
-
-    private static final String tmplForIterReverse =
-            Misc.combineLines(
-                    "{",
-                    "  int lower_%'LEVEL'% = %'LOWER-BOUND'%;",
-                    "  int step_%'LEVEL'% = %'STEP'%;",
-                    "  %'OPT-LABEL'%",
-                    "  for (int %'ITER'%_i%'LEVEL'% = %'UPPER-BOUND'%; %'ITER'%_i%'LEVEL'% >= lower_%'LEVEL'%; %'ITER'%_i%'LEVEL'% -= step_%'LEVEL'%) {",
-                    "    %'STATEMENTS'%",
-                    "  }",
-                    "}");
 }

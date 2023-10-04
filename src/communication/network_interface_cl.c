@@ -1750,6 +1750,110 @@ heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const bool
 }
 
 /*
+ * heap_get_class_num_objects_pages -
+ *
+ * return:
+ *
+ *   hfid(in):
+ *   approximation(in):
+ *   nobjs(in):
+ *   npages(in):
+ *
+ * NOTE:
+ */
+int
+heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages)
+{
+#if defined(CS_MODE)
+  int req_error, status = ER_FAILED, num_objs, num_pages;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
+  char *reply;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_hfid (request, hfid);
+  ptr = or_pack_int (ptr, approximation);
+
+  req_error =
+    net_client_request (NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &status);
+      ptr = or_unpack_int (ptr, &num_objs);
+      ptr = or_unpack_int (ptr, &num_pages);
+      *nobjs = (int) num_objs;
+      *npages = (int) num_pages;
+    }
+
+  return status;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xheap_get_class_num_objects_pages (thread_p, hfid, approximation, nobjs, npages);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * heap_has_instance -
+ *
+ * return:
+ *
+ *   hfid(in):
+ *   class_oid(in):
+ *   has_visible_instance(in): true if we need to check for a visible record
+ *
+ * NOTE:
+ */
+int
+heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance)
+{
+#if defined(CS_MODE)
+  int req_error, status = ER_FAILED;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE + OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_hfid (request, hfid);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, has_visible_instance);
+
+  req_error =
+    net_client_request (NET_SERVER_HEAP_HAS_INSTANCE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &status);
+    }
+
+  return status;
+#else /* CS_MODE */
+  int r = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+  r = xheap_has_instance (thread_p, hfid, class_oid, has_visible_instance);
+  exit_server (*thread_p);
+
+  return r;
+#endif /* !CS_MODE */
+}
+
+/*
  * heap_reclaim_addresses -
  *
  * return:
@@ -1791,6 +1895,47 @@ heap_reclaim_addresses (const HFID * hfid)
   THREAD_ENTRY *thread_p = enter_server ();
 
   success = xheap_reclaim_addresses (thread_p, hfid);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * heap_get_maxslotted_reclength -
+ *
+ * return:
+ *
+ *   maxslotted_reclength(out):
+ *
+ * NOTE:
+ */
+int
+heap_get_maxslotted_reclength (int &maxslotted_reclength)
+{
+#if defined(CS_MODE)
+  int req_error, success = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  req_error =
+    net_client_request (NET_SERVER_HEAP_GET_MAXSLOTTED_RECLENGTH, NULL, 0, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &maxslotted_reclength);
+      success = NO_ERROR;
+    }
+
+  return success;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xheap_get_maxslotted_reclength (maxslotted_reclength);
 
   exit_server (*thread_p);
 
@@ -5729,11 +5874,8 @@ stats_update_all_statistics (int with_fullscan)
  * NOTE:
  */
 int
-btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-		 , int deduplicate_key_pos
-#endif
-  )
+btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk,
+		 int deduplicate_key_pos)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -5747,9 +5889,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_BTID_ALIGNED_SIZE + domain_size + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  request_size += OR_INT_SIZE;
-#endif
+  request_size += OR_INT_SIZE;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -5763,9 +5903,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, unique_pk);
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-  ptr = or_pack_int (ptr, deduplicate_key_pos);
-#endif
+  ptr = or_pack_int (ptr, deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
   req_error =
     net_client_request (NET_SERVER_BTREE_ADDINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -5792,11 +5930,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-			   , deduplicate_key_pos
-#endif
-    );
+  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -8139,61 +8273,6 @@ logtb_dump_trantable (FILE * outfp)
 }
 
 /*
- * heap_get_class_num_objects_pages -
- *
- * return:
- *
- *   hfid(in):
- *   approximation(in):
- *   nobjs(in):
- *   npages(in):
- *
- * NOTE:
- */
-int
-heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages)
-{
-#if defined(CS_MODE)
-  int req_error, status = ER_FAILED, num_objs, num_pages;
-  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
-  char *reply;
-  char *ptr;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_pack_hfid (request, hfid);
-  ptr = or_pack_int (ptr, approximation);
-
-  req_error =
-    net_client_request (NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &status);
-      ptr = or_unpack_int (ptr, &num_objs);
-      ptr = or_unpack_int (ptr, &num_pages);
-      *nobjs = (int) num_objs;
-      *npages = (int) num_pages;
-    }
-
-  return status;
-#else /* CS_MODE */
-  int success = ER_FAILED;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  success = xheap_get_class_num_objects_pages (thread_p, hfid, approximation, nobjs, npages);
-
-  exit_server (*thread_p);
-
-  return success;
-#endif /* !CS_MODE */
-}
-
-/*
  * btree_get_statistics -
  *
  * return:
@@ -8674,55 +8753,6 @@ sysprm_dump_server_parameters (FILE * outfp)
   xsysprm_dump_server_parameters (outfp);
 
   exit_server (*thread_p);
-#endif /* !CS_MODE */
-}
-
-/*
- * heap_has_instance -
- *
- * return:
- *
- *   hfid(in):
- *   class_oid(in):
- *   has_visible_instance(in): true if we need to check for a visible record
- *
- * NOTE:
- */
-int
-heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance)
-{
-#if defined(CS_MODE)
-  int req_error, status = ER_FAILED;
-  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_OID_SIZE + OR_INT_SIZE) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-  char *ptr;
-
-  request = OR_ALIGNED_BUF_START (a_request);
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_pack_hfid (request, hfid);
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_int (ptr, has_visible_instance);
-
-  req_error =
-    net_client_request (NET_SERVER_HEAP_HAS_INSTANCE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      ptr = or_unpack_int (reply, &status);
-    }
-
-  return status;
-#else /* CS_MODE */
-  int r = ER_FAILED;
-
-  THREAD_ENTRY *thread_p = enter_server ();
-  r = xheap_has_instance (thread_p, hfid, class_oid, has_visible_instance);
-  exit_server (*thread_p);
-
-  return r;
 #endif /* !CS_MODE */
 }
 

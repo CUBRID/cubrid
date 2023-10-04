@@ -152,6 +152,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "db_elo.h"
 #include "storage_common.h"
 #include "jsp_cl.h"
+#include "db_function.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -313,10 +314,10 @@ FUNCTION_MAP *keyword_offset (const char *name);
 
 static PT_NODE* pt_create_string_literal_node_w_charset_coll(const char* str, const int opt_str_size);
 
-static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
-static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list);
+static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                                  size_t min_args, size_t max_args);
-static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                                       size_t min_args, size_t max_args, size_t mod2);
 
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
@@ -444,7 +445,6 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 #define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
    if((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
@@ -453,9 +453,6 @@ static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * n
                                      (nm)->info.name.original, DEDUPLICATE_KEY_ATTR_NAME_PREFIX);  \
    } \
 } while(0)
-#else // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-#define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)
-#endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 
 #define push_msg(a) _push_msg(a, __LINE__)
 
@@ -2859,13 +2856,13 @@ create_stmt
                        
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+
                             node->info.index.deduplicate_level = CONTAINER_AT_1($13);
                              if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
                               {
                                   PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");
                               }
-#endif                            
+
 			    node->info.index.comment = $15;
 
                             int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
@@ -9773,9 +9770,8 @@ foreign_key_constraint
 			    node->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
                             node->info.constraint.un.foreign_key.deduplicate_level = $7;
-#endif
+
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
 			    node->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($11));	/* delete_action */
@@ -10551,9 +10547,9 @@ attr_index_def
 				  }
 			      }
 			  }
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+
                         node->info.index.deduplicate_level = $5;
-#endif                            
+
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
 			if ($6)
@@ -10947,9 +10943,7 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
 			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
                             constraint->info.constraint.un.foreign_key.deduplicate_level = $3;
-#endif  
 
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    constraint->info.constraint.un.foreign_key.attrs = parser_copy_tree (this_parser, node->info.attr_def.attr_name);
@@ -24668,7 +24662,7 @@ int parser_function_code = PT_EMPTY;
 size_t json_table_column_count = 0;
 
 static PT_NODE *
-parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code,
+parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_CODE func_code,
 			    PT_NODE * args_list)
 {
   PT_NODE *node = NULL;
@@ -24688,7 +24682,7 @@ parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code,
 }
 
 static PT_NODE *
-parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                  size_t min_args, size_t max_args)
 {
   size_t count = (size_t) parser_count_list (args_list);
@@ -24703,7 +24697,7 @@ parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, P
 }
 
 static PT_NODE *
-parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_CODE func_code, PT_NODE * args_list,
                                       size_t min_args, size_t max_args, size_t mod2)
 {
   size_t count = (size_t) parser_count_list (args_list);

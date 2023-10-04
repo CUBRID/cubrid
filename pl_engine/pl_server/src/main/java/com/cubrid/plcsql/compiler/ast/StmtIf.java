@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -56,28 +55,4 @@ public class StmtIf extends Stmt {
         this.condStmtParts = condStmtParts;
         this.elsePart = elsePart;
     }
-
-    @Override
-    public String toJavaCode() {
-        if (forIfStmt && elsePart == null) {
-            return condStmtParts.toJavaCode(" else ");
-        } else {
-
-            String elseCode;
-            if (elsePart == null) {
-                elseCode = "throw new CASE_NOT_FOUND();";
-            } else {
-                elseCode = elsePart.toJavaCode();
-            }
-
-            return condStmtParts.toJavaCode(" else ")
-                    + " else {\n"
-                    + Misc.indentLines(elseCode, 1)
-                    + "\n}";
-        }
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

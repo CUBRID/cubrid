@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -50,31 +49,4 @@ public class StmtBasicLoop extends Stmt {
         this.declLabel = declLabel;
         this.stmts = stmts;
     }
-
-    @Override
-    public String toJavaCode() {
-        return tmpl.replace(
-                        "%'OPT-LABEL'%", declLabel == null ? "// no label" : declLabel.toJavaCode())
-                .replace("  %'STATEMENTS'%", Misc.indentLines(stmts.toJavaCode(), 1));
-    }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
-
-    // NOTE: why I use 'while(opNot(false))' instead of simpler 'while(true)':
-    // Compiling Java code below with javac causes 'unreachable statement' error
-    //     while (true) {
-    //         ... // no break
-    //     }
-    //     ... // a statement
-    // However, compiling the following does not
-    //     while (opNot(false)) {
-    //         ... // no break
-    //     }
-    //     ... // a statement
-    // It seems that static analysis of javac does not go beyond method call boundaries
-
-    private static final String tmpl =
-            Misc.combineLines("%'OPT-LABEL'%", "while (opNot(false)) {", "  %'STATEMENTS'%", "}");
 }

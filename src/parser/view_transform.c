@@ -220,8 +220,6 @@ static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE *
 					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
 					      PT_NODE * class_);
 static PUSHABLE_TYPE mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery);
-static PT_NODE *pt_remove_cast_wrap_for_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg,
-						int *continue_walk);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
 static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
@@ -3383,6 +3381,14 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 	  cinfop->method_found = true;	/* not pushable */
 	}
       break;
+
+    case PT_EXPR:
+      if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (tree))
+	{
+	  cinfop->method_found = true;
+	}
+      break;
+
     default:
       break;
     }				/* switch (tree->node_type) */
@@ -3501,6 +3507,13 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 	      case PT_METHOD_CALL:
 		cinfo.method_found = true;	/* not pushable */
 		break;
+
+	      case PT_EXPR:
+		if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (list))
+		  {
+		    cinfo.method_found = true;
+		    break;
+		  }
 
 	      default:		/* do traverse */
 		parser_walk_leaves (parser, list, pt_check_pushable, &cinfo, NULL, NULL);
@@ -3836,10 +3849,13 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       /* copy terms */
       query->info.dblink_table.pushed_pred = parser_copy_tree_list (parser, term_list);
+
       /* remove the cast wrap from pushed predicate */
       query->info.dblink_table.pushed_pred =
 	parser_walk_tree (parser, query->info.dblink_table.pushed_pred, pt_remove_cast_wrap_for_dblink, NULL, NULL,
 			  NULL);
+
+      /* print the pushed predicates */
       save_custom = parser->custom_print;
       parser->custom_print |=
 	PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX | PT_PRINT_SUPPRESS_FOR_DBLINK;
@@ -4135,7 +4151,11 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
 	  /* wrapped cast should be pushed and it will be removed while rewriting the dblink query */
 	  if (term->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_CAST_WRAP))
 	    {
-	      return true;
+	      /* it needs to check if the argument is pushable */
+	      if (mq_is_dblink_pushable_term (parser, term->info.expr.arg1))
+		{
+		  return true;
+		}
 	    }
 
 	  /* other expression like built-in and stored function and etc. */
