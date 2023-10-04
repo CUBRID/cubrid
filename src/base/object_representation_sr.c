@@ -4241,6 +4241,7 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
 {
   OR_BUF buf;
   int rc = NO_ERROR;
+  int re = NO_ERROR;
   int repid_and_flag_bits;
 
   assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE && mvcc_header != NULL);
@@ -4248,33 +4249,22 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
   or_init (&buf, record->data, record->length);
 
   repid_and_flag_bits = or_mvcc_get_repid_and_flags (&buf, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+  re|=rc;
   mvcc_header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
   mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
   mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+  re|=rc;
 
   mvcc_header->mvcc_ins_id = or_mvcc_get_insid (&buf, mvcc_header->mvcc_flag, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+  re|=rc;
 
   mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
-  if (rc != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
+  re|=rc;
 
   rc = or_mvcc_get_prev_version_lsa (&buf, mvcc_header->mvcc_flag, &(mvcc_header->prev_version_lsa));
-  if (rc != NO_ERROR)
+  re|=rc;
+  if (re != NO_ERROR)
     {
       goto exit_on_error;
     }
