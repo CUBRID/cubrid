@@ -1027,7 +1027,7 @@ struct xasl_node
 				 * DELETE in the generated SELECT statement) */
   int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added to the select list in case of
 				 * UPDATE/DELETE in MVCC */
-  SHA1Hash sha1;
+  XASL_ID *cte_cached;		/* for CTE's query cache */
   int cte_host_var_count;
   int *cte_host_var_index;
 

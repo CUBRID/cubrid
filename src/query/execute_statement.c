@@ -14555,7 +14555,6 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   for (cte_def_list = statement; cte_def_list; cte_def_list = cte_def_list->next)
     {
-
       if (cte_def_list->info.cte.non_recursive_part->info.query.hint & PT_HINT_QUERY_CACHE)
 	{
 	  cte_statement = cte_def_list->info.cte.non_recursive_part;
@@ -14567,11 +14566,11 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  var_count = parser->host_var_count + parser->auto_param_count;
 	  cte_context.host_variables = (DB_VALUE *) malloc (var_count * sizeof (DB_VALUE));
 	  cte_context.cte_host_var_index = (int *) malloc (var_count * sizeof (int));
+	  cte_context.host_var_count = 0;
 
 	  parser_walk_tree (&cte_context, cte_statement, pt_cte_host_vars_index, parser, NULL, NULL);
 
-	  cte_statement->sha1 = cte_context.context.sha1;
-	  cte_statement->cte_host_var_count = var_count;
+	  cte_statement->cte_host_var_count = cte_context.host_var_count;
 	  cte_statement->cte_host_var_index = cte_context.cte_host_var_index;
 
 	  error = do_prepare_select (&cte_context, cte_statement);
@@ -14788,7 +14787,7 @@ copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
 int
 do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  int err;
+  int err = NO_ERROR;
   QFILE_LIST_ID *list_id;
   int query_flag, into_cnt, i, au_save;
   PT_NODE *into;
@@ -14904,7 +14903,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       while (cte_list)
 	{
 	  stmt = cte_list->info.cte.non_recursive_part;
-	  if (stmt)
+	  if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
 	    {
 	      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
 	      for (i = 0; i < stmt->cte_host_var_count; i++)

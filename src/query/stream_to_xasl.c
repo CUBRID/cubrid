@@ -84,6 +84,7 @@ static char *stx_build_filter_pred_node (THREAD_ENTRY * thread_p, char *ptr, PRE
 static char *stx_build_func_pred (THREAD_ENTRY * thread_p, char *tmp, FUNC_PRED * ptr);
 static char *stx_build_cache_attrinfo (char *tmp);
 static char *stx_build_list_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_ID * ptr);
+static char *stx_build_cte_cached (THREAD_ENTRY * thread_p, char *tmp, XASL_ID * ptr);
 static char *stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG_LIST * ptr);
 static char *stx_build_method_sig (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG * ptr, int size);
 static char *stx_build_union_proc (THREAD_ENTRY * thread_p, char *tmp, UNION_PROC_NODE * ptr);
@@ -1385,6 +1386,40 @@ stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
   return oid_array;
 }
 
+static XASL_ID *
+stx_restore_cte_cached (THREAD_ENTRY * thread_p, char *ptr)
+{
+  int i, offset;
+  XASL_ID *cte_cached;
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  cte_cached = (XASL_ID *) stx_get_struct_visited_ptr (thread_p, ptr);
+  if (cte_cached != NULL)
+    {
+      return cte_cached;
+    }
+
+  cte_cached = (XASL_ID *) stx_alloc_struct (thread_p, sizeof (XASL_ID));
+  if (cte_cached == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+
+  if (stx_mark_struct_visited (thread_p, ptr, cte_cached) == ER_FAILED
+      || stx_build_cte_cached (thread_p, ptr, cte_cached) == NULL)
+    {
+      return NULL;
+    }
+
+  return cte_cached;
+}
+
 static KEY_VAL_RANGE *
 stx_restore_key_val_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
 {
@@ -2122,11 +2157,19 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   ptr = or_unpack_int (ptr, &xasl->mvcc_reev_extra_cls_cnt);
 
-  ptr = or_unpack_int (ptr, &xasl->sha1.h[0]);
-  ptr = or_unpack_int (ptr, &xasl->sha1.h[1]);
-  ptr = or_unpack_int (ptr, &xasl->sha1.h[2]);
-  ptr = or_unpack_int (ptr, &xasl->sha1.h[3]);
-  ptr = or_unpack_int (ptr, &xasl->sha1.h[4]);
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      xasl->cte_cached = NULL;
+    }
+  else
+    {
+      xasl->cte_cached = stx_restore_cte_cached (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->cte_cached == NULL)
+	{
+	  goto error;
+	}
+    }
 
   ptr = or_unpack_int (ptr, &xasl->cte_host_var_count);
   if (xasl->cte_host_var_count > 0)
@@ -2348,6 +2391,29 @@ stx_build_cache_attrinfo (char *ptr)
 
   /* unpack the zero int that is sent mainly as a placeholder */
   ptr = or_unpack_int (ptr, &dummy);
+
+  return ptr;
+}
+
+static char *
+stx_build_cte_cached (THREAD_ENTRY * thread_p, char *ptr, XASL_ID * cte_cached)
+{
+  int i;
+
+  for (i = 0; i < 5; i++)
+    {
+      cte_cached->sha1.h[i] = OR_GET_INT (ptr);
+      ptr += OR_INT_SIZE;
+    }
+
+  cte_cached->cache_flag = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  cte_cached->time_stored.sec = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  cte_cached->time_stored.usec = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
 
   return ptr;
 }

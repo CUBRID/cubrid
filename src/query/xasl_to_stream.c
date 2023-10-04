@@ -1454,6 +1454,81 @@ end:
   return offset;
 }
 
+static char *
+xts_process_cte_xasl_id (char *ptr, const XASL_ID * cte_cached)
+{
+  int i;
+
+  for (i = 0; i < 5; i++)
+    {
+      OR_PUT_INT (ptr, cte_cached->sha1.h[i]);
+      ptr += OR_INT_SIZE;
+    }
+
+  OR_PUT_INT (ptr, cte_cached->cache_flag);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, cte_cached->time_stored.sec);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, cte_cached->time_stored.usec);
+  ptr += OR_INT_SIZE;
+
+  return ptr;
+}
+
+static int
+xts_save_cte_cached (const XASL_ID * cte_cached)
+{
+  int offset, i;
+  int size, nelements = 8;
+  char *ptr;
+
+  OR_ALIGNED_BUF (sizeof (*cte_cached)) a_buf;
+  char *buf = OR_ALIGNED_BUF_START (a_buf);
+
+  char *buf_p = NULL;
+  bool is_buf_alloced = false;
+
+  if (cte_cached == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  offset = xts_get_offset_visited_ptr (cte_cached);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  size = OR_INT_SIZE * nelements;
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (cte_cached, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
+    {
+      buf_p = buf;
+    }
+  else
+    {
+      buf_p = (char *) malloc (size);
+      if (buf_p == NULL)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+
+      is_buf_alloced = true;
+    }
+
+  buf = xts_process_cte_xasl_id (buf_p, cte_cached);
+  memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+  return offset;
+}
+
 static int
 xts_save_db_value (const DB_VALUE * value)
 {
@@ -3034,11 +3109,19 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->mvcc_reev_extra_cls_cnt);
 
-  ptr = or_pack_int (ptr, xasl->sha1.h[0]);
-  ptr = or_pack_int (ptr, xasl->sha1.h[1]);
-  ptr = or_pack_int (ptr, xasl->sha1.h[2]);
-  ptr = or_pack_int (ptr, xasl->sha1.h[3]);
-  ptr = or_pack_int (ptr, xasl->sha1.h[4]);
+  if (xasl->cte_cached == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_cte_cached (xasl->cte_cached);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
 
   ptr = or_pack_int (ptr, xasl->cte_host_var_count);
 
@@ -5880,7 +5963,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       size += xts_sizeof_access_spec_type (access_spec);
     }
 
-  size += OR_INT_SIZE * 5;	/* sha1 */
+  size += OR_INT_SIZE * 8;	/* cte_cached(xasl_id) = sha1(5) + flag(1) + time(2)... */
   size += OR_INT_SIZE;		/* for CTE host variable count */
 
   for (i = 0; i < xasl->cte_host_var_count; i++)
