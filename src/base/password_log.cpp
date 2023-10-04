@@ -103,6 +103,7 @@ class CHidePassword
     char *skip_one_query (char *query);
     bool check_lead_string_in_query (char **query, char **method_name, bool *is_create_user);
     void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
+    bool check_capatalized_create (char *query);
 
     bool  m_use_backslash_escape;
 
@@ -624,6 +625,22 @@ CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
   return 0;
 }
 
+bool
+CHidePassword::check_capatalized_create (char *query)
+{
+  char *ps = query;
+  int len;
+  char *token;
+
+  // "create user ~" or " ~; create user ~"
+  token = get_token (ps, len);
+  if ((len == 6) &&  (strncmp (token, "CREATE", len) == 0))
+    {
+      return true;
+    }
+  return false;
+}
+
 int
 CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_ptr)
 {
@@ -639,18 +656,18 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
       chbk = query[pos];
       query[pos] = '\0';
       length += snprintf (msg + length, size - length, "%s", qryptr);
-      query[pos] = chbk;
 
       if (IS_PWD_NEED_PASSWORD (offset_ptr + x))
 	{
-	  length +=
-		  snprintf (msg + length, size - length, "%s", " PASSWORD '****'");
+	  bool is_capatalized = check_capatalized_create (qryptr);
+	  length += snprintf (msg + length, size - length, "%s%s", (is_capatalized ? " PASSWORD" : " password"), " '****'");
 	}
       else
 	{
 	  length +=
 		  snprintf (msg + length, size - length, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'"));
 	}
+      query[pos] = chbk;
       qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
     }
 
@@ -703,16 +720,18 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
       chbk = query[pos];
       query[pos] = '\0';
       fprintf_replace_newline (fp, qryptr, cas_fprintf);
-      query[pos] = chbk;
 
       if (IS_PWD_NEED_PASSWORD (offset_ptr + x))
 	{
-	  cas_fprintf (fp, "%s", " PASSWORD '****'");
+	  bool is_capatalized = check_capatalized_create (qryptr);
+	  cas_fprintf (fp, "%s%s", (is_capatalized ? " PASSWORD" : " password"), " '****'");
 	}
       else
 	{
 	  cas_fprintf (fp, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'"));
 	}
+
+      query[pos] = chbk;
       qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
     }
 
