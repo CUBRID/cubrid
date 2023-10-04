@@ -1350,7 +1350,7 @@ logddl_is_ddl_type (int node_type, PT_NODE * node)
 	  if (call->call_or_expr == PT_IS_CALL_STMT)
 	    {
 	      if ((strcasecmp (call->method_name->info.name.original, "set_password") == 0)
-		  /* ||(strcasecmp(call->method_name->info.name.original, "login")==0) */
+		  || (strcasecmp (call->method_name->info.name.original, "login") == 0)
 		  || (strcasecmp (call->method_name->info.name.original, "add_user") == 0))
 		{
 		  has_password_type = true;
