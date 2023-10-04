@@ -962,8 +962,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
   const size_t total_page_count = end_pageid - start_pageid + 1;
 
-  // Request pages to the followee
-  auto request_pages_to_buffer = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t request_page_cnt) -> int
+  // A functor to request pages to the followee
+  auto request_pages_to_buffer = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t request_page_cnt)
   {
     auto lockg = std::lock_guard <std::mutex> (m_followee_conn_mutex);
     if (m_followee_conn == nullptr)
@@ -994,14 +994,11 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   LOG_PAGEID request_start_pageid = start_pageid;
   size_t remaining_page_cnt = total_page_count;
   size_t request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
-  size_t receive_page_cnt = 0;
   auto req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
   int error = NO_ERROR;
 
   LOG_CS_ENTER (&entry);
-
   logpb_flush_pages_direct (&entry);
-  logpb_flush_header (&entry);
 
   while (remaining_page_cnt > 0)
     {
@@ -1011,7 +1008,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  break;
 	}
 
-      receive_page_cnt = request_page_cnt;
+      auto receive_page_cnt = request_page_cnt;
       remaining_page_cnt -= receive_page_cnt;
       request_start_pageid += receive_page_cnt;
 
