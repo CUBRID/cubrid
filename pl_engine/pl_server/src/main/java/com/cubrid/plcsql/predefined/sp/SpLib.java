@@ -746,13 +746,23 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
     public static Boolean opNullSafeEqTimestamp(Timestamp l, Timestamp r) {
-        if (l == null || r == null) {
-            return null;
-        }
-        assert l.getNanos() == 0;
-        assert r.getNanos() == 0;
+        if (l == null) {
+            if (r == null) {
+                return true;
+            } else {
+                assert r.getNanos() == 0;
+                return false;
+            }
+        } else {
+            assert l.getNanos() == 0;
 
-        return commonOpNullSafeEq(l, r);
+            if (r == null) {
+                return false;
+            } else {
+                assert r.getNanos() == 0;
+                return l.equals(r);
+            }
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1742,7 +1752,7 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
     public static Timestamp opAddTimestamp(Long l, Timestamp r) {
-        return opAdd(r, l);
+        return opAddTimestamp(r, l);
     }
 
 
