@@ -49,6 +49,38 @@ public class ExprStr extends Expr {
     }
 
     public String javaCode() {
-        return '"' + val + '"';
+
+        int len = val.length();
+        if (len <= MAX_STR_LITERAL_LEN) {
+            return "(\"" + val + "\")";
+        } else {
+            StringBuilder sbuilder = new StringBuilder();
+            boolean first = true;
+            sbuilder.append("String.join(\"\", new String[] { ");
+
+            int b;
+            for (b = 0; b + MAX_STR_LITERAL_LEN < len; b += MAX_STR_LITERAL_LEN) {
+                if (first) {
+                    first = false;
+                } else {
+                    sbuilder.append(", ");
+                }
+                sbuilder.append('"' + val.substring(b, b + MAX_STR_LITERAL_LEN) + '"');
+            }
+            if (!first) {
+                sbuilder.append(", ");
+            }
+            sbuilder.append('"' + val.substring(b, len) + '"');
+
+            sbuilder.append(" })");
+
+            return sbuilder.toString();
+        }
     }
+
+    // -------------------------------------------------------------------
+    // Private
+    // -------------------------------------------------------------------
+
+    private static final int MAX_STR_LITERAL_LEN = 65535;
 }
