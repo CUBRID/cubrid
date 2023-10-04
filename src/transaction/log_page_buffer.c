@@ -3380,14 +3380,18 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_p
 
   if (log_Gl.append.log_pgptr->hdr.logical_pageid + 1 == log_pgptr->hdr.logical_pageid)
     {
+      // The normal case. Only exception is the first page. 
       log_Gl.append.prev_lsa = log_Gl.hdr.append_lsa;
       logpb_next_append_page (thread_p, LOG_SET_DIRTY);
     }
+  else if (log_Gl.append.log_pgptr->hdr.logical_pageid == log_pgptr->hdr.logical_pageid)
+    {
+      // For the first page, just overwrite the page.
+      // DON'T change meta data like log_Gl.append.prev_lsa. They don't go backward
+    }
   else
     {
-      // Only for the first page. Just overwrite the page, 
-      // and DON'T change meta data like log_Gl.append.prev_lsa. They don't go backward.
-      assert_release (log_Gl.append.log_pgptr->hdr.logical_pageid == log_pgptr->hdr.logical_pageid);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_catchup_append_page");
     }
 
   memcpy (log_Gl.append.log_pgptr, log_pgptr, LOG_PAGESIZE);
@@ -3492,7 +3496,8 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
 }
 
 /*
- * logpb_catchup_finish - finish the catch-up job. This sets the prev_lsa and append_lsa to the latest ones.
+ * logpb_catchup_finish - finish the catch-up job. 
+ *      This sets the prev_lsa and append_lsa to the latest ones traversing log pages from known log record.
  *
  * return: NO_ERROR
  *
