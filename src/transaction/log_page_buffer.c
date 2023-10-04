@@ -3513,22 +3513,25 @@ logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
   LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
   LOG_LSA nav_lsa = log_Gl.append.prev_lsa;
   LOG_PAGE *log_pgptr = NULL;
+  int error = NO_ERROR;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
-  if (logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+  error = logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr);
+  if (error != NO_ERROR)
     {
-      assert (false);		// TODO error handling
+      return error;
     }
 
   while (nav_lsa < catchup_lsa)
     {
       if (nav_lsa.pageid != prev_lsa.pageid)
 	{
-	  if (logpb_fetch_page (thread_p, &nav_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+	  error = logpb_fetch_page (thread_p, &nav_lsa, LOG_CS_FORCE_USE, log_pgptr);
+	  if (error != NO_ERROR)
 	    {
-	      assert (false);	// TODO error handling
+	      return error;
 	    }
 	}
 
@@ -3538,7 +3541,9 @@ logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 	  nav_lsa.offset = log_pgptr->hdr.offset;
 	  if (nav_lsa.offset == NULL_OFFSET)
 	    {
-	      assert (false);
+	      // There is nothing in thie page. Here is a part of incomplete log record.
+	      nav_lsa.pageid++;
+	      continue;
 	    }
 	}
 
@@ -3555,7 +3560,7 @@ logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 	}
     }
 
-  assert (nav_lsa == catchup_lsa);
+  assert_release (nav_lsa == catchup_lsa);
 
   log_Gl.append.prev_lsa = prev_lsa;
   log_Gl.hdr.append_lsa = catchup_lsa;

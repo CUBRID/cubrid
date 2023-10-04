@@ -1026,28 +1026,33 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	}
     }
 
+  bool with_disc_msg;
   if (error == NO_ERROR)
     {
       assert (remaining_page_cnt == 0);
 
-      logpb_catchup_finish (&entry, catchup_lsa);
+      error = logpb_catchup_finish (&entry, catchup_lsa);
+      if (error != NO_ERROR)
+	{
+	  // not reachable.
+	  assert_release (false);
+	}
 
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 		     start_pageid, end_pageid, total_page_count);
       // TODO: send CATCHUP_DONE_MSG to the ATS
       // TODO: start appending log prior nodes from the ATS.
-
-      constexpr bool with_disc_msg = true;
-      disconnect_followee_page_server (with_disc_msg);
+      with_disc_msg = true;
     }
   else
     {
       assert (remaining_page_cnt > 0);
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
 		     error, remaining_page_cnt, total_page_count);
-      constexpr bool with_disc_msg = false;
-      disconnect_followee_page_server (with_disc_msg);
+      with_disc_msg = false;
     }
+
+  disconnect_followee_page_server (with_disc_msg);
 
   LOG_CS_EXIT (&entry);
 }
