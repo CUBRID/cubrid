@@ -512,6 +512,11 @@ namespace cubperf
   {
     strncpy (info.name, m_mmon->m_server_name.c_str (), m_mmon->m_server_name.size ());
     info.total_mem_usage = m_mmon->m_total_mem_usage.load ();
+
+    // TODO: It's a temporary measure for hiding MMON_OTHERS
+    MMON_MODULE_INFO module_info;
+    m_mmon->m_module[MMON_MODULE_OTHERS]->aggregate_stats (true, module_info);
+    info.total_mem_usage -= module_info.stat.cur_stat;
   }
 
   void memory_monitor::aggregater::get_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const

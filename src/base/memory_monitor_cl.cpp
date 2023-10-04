@@ -83,7 +83,7 @@ mmon_print_module_info (std::vector<MMON_MODULE_INFO> &module_info)
 
   for (const auto &m_info : module_info)
     {
-      // It's a temporary measure for hiding MMON_OTHERS
+      // TODO: It's a temporary measure for hiding MMON_OTHERS
       if (!strcmp (m_info.name, "OTHERS"))
 	{
 	  continue;
@@ -131,7 +131,7 @@ mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODU
 
   for (const auto &m_info : module_info)
     {
-      // It's a temporary measure for hiding MMON_OTHERS
+      // TODO: It's a temporary measure for hiding MMON_OTHERS
       if (!strcmp (m_info.name, "OTHERS"))
 	{
 	  continue;
