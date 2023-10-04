@@ -1034,7 +1034,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
       error = logpb_catchup_finish (&entry, catchup_lsa);
       if (error != NO_ERROR)
 	{
-	  // not reachable.
+	  // unacceptable.
 	  assert_release (false);
 	}
 
