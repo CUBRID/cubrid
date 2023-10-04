@@ -337,7 +337,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplExprBetween =
             new String[] {
-                "opBetween%'TIMESTAMP'%(", "  %'+TARGET'%,", "  %'+LOWER-BOUND'%,", "  %'+UPPER-BOUND'%", ")"
+                "opBetween%'TIMESTAMP'%(",
+                "  %'+TARGET'%,",
+                "  %'+LOWER-BOUND'%,",
+                "  %'+UPPER-BOUND'%",
+                ")"
             };
 
     @Override
@@ -364,7 +368,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplExprBinaryOp =
-            new String[] {"op%'OPERATION'%%'TIMESTAMP'%(", "  %'+LEFT-OPERAND'%,", "  %'+RIGHT-OPERAND'%", ")"};
+            new String[] {
+                "op%'OPERATION'%%'TIMESTAMP'%(", "  %'+LEFT-OPERAND'%,", "  %'+RIGHT-OPERAND'%", ")"
+            };
 
     @Override
     public CodeToResolve visitExprBinaryOp(ExprBinaryOp node) {

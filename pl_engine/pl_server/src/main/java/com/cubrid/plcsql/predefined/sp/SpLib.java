@@ -663,6 +663,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Boolean opEqTimestamp(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -745,6 +746,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Boolean opNullSafeEqTimestamp(Timestamp l, Timestamp r) {
         if (l == null) {
             if (r == null) {
@@ -840,6 +842,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Boolean opNeqTimestamp(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -923,6 +926,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Boolean opLeTimestamp(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -1004,6 +1008,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Boolean opGeTimestamp(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -1085,6 +1090,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Boolean opLtTimestamp(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -1167,6 +1173,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Boolean opGtTimestamp(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -1282,6 +1289,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Boolean opBetweenTimestamp(Timestamp o, Timestamp lower, Timestamp upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1366,6 +1374,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Boolean opInTimestamp(Timestamp o, Timestamp... arr) {
         assert arr != null; // guaranteed by the syntax
         if (o == null) {
@@ -1726,6 +1735,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Timestamp opAddTimestamp(Timestamp l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1739,7 +1749,6 @@ public class SpLib {
         return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.SECONDS));
     }
 
-
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Timestamp opAdd(Long l, Timestamp r) {
         return opAdd(r, l);
@@ -1751,10 +1760,10 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Timestamp opAddTimestamp(Long l, Timestamp r) {
         return opAddTimestamp(r, l);
     }
-
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opAdd(Object l, Object r) {
@@ -1858,6 +1867,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Long opSubtractTimestamp(Timestamp l, Timestamp r) {
         if (l == null || r == null) {
             return null;
@@ -1872,7 +1882,6 @@ public class SpLib {
         LocalDateTime rldt = r.toLocalDateTime();
         return rldt.until(lldt, ChronoUnit.SECONDS);
     }
-
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Time opSubtract(Time l, Long r) {
@@ -1915,6 +1924,7 @@ public class SpLib {
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
     }
+
     public static Timestamp opSubtractTimestamp(Timestamp l, Long r) {
         if (l == null || r == null) {
             return null;
@@ -1927,7 +1937,6 @@ public class SpLib {
         LocalDateTime lldt = l.toLocalDateTime();
         return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.SECONDS));
     }
-
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Object opSubtract(Object l, Object r) {

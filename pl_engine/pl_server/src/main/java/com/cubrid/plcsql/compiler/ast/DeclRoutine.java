@@ -59,7 +59,7 @@ public abstract class DeclRoutine extends Decl {
     public boolean hasTimestampParam() {
 
         if (paramList != null) {
-            for (DeclParam dp: paramList.nodes) {
+            for (DeclParam dp : paramList.nodes) {
                 if (dp.typeSpec.equals(TypeSpecSimple.TIMESTAMP)) {
                     return true;
                 }
