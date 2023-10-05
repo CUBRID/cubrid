@@ -32,7 +32,10 @@ namespace cublog
 
   prior_recver::~prior_recver ()
   {
-    stop_thread ();
+    if (m_thread.get_id () != std::thread::id ())
+      {
+	stop_thread ();
+      }
   }
 
   void
