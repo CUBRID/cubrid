@@ -287,7 +287,7 @@ class page_server
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
-    void disconnect_follower_server_async (const follower_connection_handler *conn);
+    void disconnect_follower_page_server_async (const follower_connection_handler *conn);
 
     bool is_active_tran_server_connected () const;
 

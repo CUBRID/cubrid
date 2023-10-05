@@ -496,21 +496,21 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
 void
 page_server::follower_connection_handler::send_error_handler (css_error_code error_code, bool &abort_further_processing)
 {
-  m_ps.disconnect_follower_server_async (this);
+  m_ps.disconnect_follower_page_server_async (this);
   // Don't access any members below here. This will be destroyed anytime soon.
 }
 
 void
 page_server::follower_connection_handler::recv_error_handler (css_error_code error_code)
 {
-  m_ps.disconnect_follower_server_async (this);
+  m_ps.disconnect_follower_page_server_async (this);
   // Don't access any members below here. This will be destroyed anytime soon.
 }
 
 void
 page_server::follower_connection_handler::receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp)
 {
-  m_ps.disconnect_follower_server_async (this);
+  m_ps.disconnect_follower_page_server_async (this);
   // Don't access any members below here. This will be destroyed anytime soon.
 }
 
@@ -1025,7 +1025,7 @@ page_server::disconnect_followee_page_server (const bool with_disc_msg)
 }
 
 void
-page_server::disconnect_follower_server_async (const follower_connection_handler *conn)
+page_server::disconnect_follower_page_server_async (const follower_connection_handler *conn)
 {
   follower_connection_handler_uptr_t disconnecting_conn_uptr;
   {
