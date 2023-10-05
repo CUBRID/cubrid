@@ -1042,7 +1042,6 @@ page_server::disconnect_follower_page_server_async (const follower_connection_ha
 	// It's already been disconnected or in progress by another thread.
 	return;
       }
-    er_log_debug (ARG_FILE_LINE, "disconnect_follower_server_async 요청");
     disconnecting_conn_uptr = std::move (*it);
     m_follower_conn_vec.erase (it);
     m_follower_conn_vec_cv.notify_one ();
