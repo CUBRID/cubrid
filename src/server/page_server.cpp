@@ -224,10 +224,14 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   _er_log_debug (ARG_FILE_LINE,
 		 "[CATCH_UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
 		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
+
   if (port == -1)
     {
       // TODO: It means that the ATS is booting up.
       // it will be set properly after ATS recovery is implemented.
+
+      // TODO reply the catchup_done msg.
+      log_Gl.get_log_prior_receiver ().start_thread ();
       return;
     }
 
@@ -238,11 +242,12 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   if (log_Gl.hdr.append_lsa == catchup_lsa)
     {
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] There is nothing to catch up.\n");
+      log_Gl.get_log_prior_receiver ().start_thread ();
       return; // TODO the cold-start case. No need to catch up. Just send a catchup_done msg to the ATS
     }
 
-  // Establish a connection with the PS to catch up with, and start the cathup asynchronously.
-  // The connection will be destoryed at the end of the catch-up.
+  // Establish a connection with the PS to catch up with, and start the catch-up asynchronously.
+  // The connection will be destroyed at the end of the catch-up.
   m_ps.connect_to_followee_page_server (std::move (host), port);
   m_ps.start_catchup (catchup_lsa);
 }
@@ -1023,6 +1028,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 		     start_pageid, end_pageid, total_page_count);
       // TODO: send CATCHUP_DONE_MSG to the ATS
       // TODO: start appneding log prior nodes from the ATS.
+
+      log_Gl.get_log_prior_receiver ().start_thread ();
 
       constexpr bool with_disc_msg = true;
       disconnect_followee_page_server (with_disc_msg);
