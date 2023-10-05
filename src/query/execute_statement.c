@@ -14905,6 +14905,7 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       QUERY_ID query_id;
       QFILE_LIST_ID *list_id;
       DB_VALUE *host_variables;
+      int flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
 
       while (cte_list)
 	{
@@ -14918,8 +14919,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 		}
 
 	      err =
-		execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id, 0,
-			       &clt_cache_time, &stmt->cache_time);
+		execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
+			       flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
 	    }
 	  cte_list = cte_list->next;
 	}
