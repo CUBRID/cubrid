@@ -31,6 +31,13 @@ extern "C"
 {
 #endif
 
+  typedef enum
+  {
+    en_none_password = 0,
+    en_user_password = 1,
+    en_server_password = 2
+  } EN_ADD_PWD_STRING;
+
 #define INIT_PASSWORD_OFFSET(static_ptr, dynamic_ptr, size)  do { \
    (static_ptr)[0] = (size);                                      \
    (static_ptr)[1] = 2;                                           \
@@ -49,7 +56,7 @@ extern "C"
 
 
   int password_add_offset (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma,
-			   bool is_add_pwd_string);
+			   EN_ADD_PWD_STRING en_add_pwd_string);
   bool password_mk_offset_for_one_query (int *new_offset_arr, int *orig_offset_ptr, int start_pos, int end_pos);
   void password_fprintf (FILE * fp, char *query, int *pwd_offset_ptr, int (*cas_fprintf) (FILE *, const char *, ...));
   int password_snprint (char *msg, int size, char *query, int *pwd_offset_ptr);

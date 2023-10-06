@@ -83,13 +83,12 @@ static unsigned char isSpace[0x100] =
 	    }                                   \
    } while(0)
 
-#define SET_PWD_LENGTH(s, e)  ((e) - (s))
-#define SET_PWD_ADDINFO(comma, pwd)  \
-                 ((comma) ? ((0x01 << 30) | ((pwd) ? (0x01 << 29) : 0)) : ((pwd) ? (0x01 << 29) : 0 ))
+#define SET_PWD_LENGTH(s, e)             ((e) - (s))
+#define SET_PWD_ADDINFO(comma, pwd)      (((comma) ? (0x01 << 30) : 0) | (((pwd) & 0x03) << 28))
 #define SET_PWD_LENGTH_N_ADDINFO(s, e, comma, pwd)  (SET_PWD_ADDINFO((comma), (pwd)) | SET_PWD_LENGTH((s), (e)))
 #define IS_PWD_NEED_COMMA(offset_ptr)    (((offset_ptr)[1] >> 30) & 0x01)
-#define IS_PWD_NEED_PASSWORD(offset_ptr) (((offset_ptr)[1] >> 29) & 0x01)
-#define GET_END_PWD_OFFSET(offset_ptr)  ((offset_ptr)[0] + ((offset_ptr)[1] & 0x0FFFFFFF))
+#define IS_PWD_NEED_PASSWORD(offset_ptr) (((offset_ptr)[1] >> 28) & 0x03)
+#define GET_END_PWD_OFFSET(offset_ptr)   ((offset_ptr)[0] + ((offset_ptr)[1] & 0x0FFFFFFF))
 
 class CHidePassword
 {
@@ -98,10 +97,10 @@ class CHidePassword
     char *get_quot_string (char *ps);
     char *get_token (char *&in, int &len);
     char *get_method_passowrd_start_position (char *ps, char *method_name, int *method_password_len);
-    char *get_passowrd_start_position (char *query, bool *is_server);
-    char *get_passowrd_end_position (char *ps, bool is_server);
+    char *get_passowrd_pos_n_len (char *query, bool is_create, bool is_server, int *password_len,
+				  bool *is_found_pwd_keyword);
     char *skip_one_query (char *query);
-    bool check_lead_string_in_query (char **query, char **method_name, bool *is_create_user);
+    bool check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server);
     void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
     bool check_capatalized_create (char *query);
 
@@ -301,125 +300,97 @@ CHidePassword::get_method_passowrd_start_position (char *ps, char *method_name, 
   return NULL;
 }
 
+
 char *
-CHidePassword::get_passowrd_start_position (char *query, bool *is_server)
+CHidePassword::get_passowrd_pos_n_len (char *query, bool is_create, bool is_server, int *password_len,
+				       bool *is_found_pwd_keyword)
 {
   char *ps = query;
-  char *token;
-  int len;
+  char *token, *prev;
+  int len, tlen;
+  bool is_open = false;
 
-  *is_server = false;
+  /* pattern cases to consider)
+  * CREATE SERVER srv1 (HOST='localhost', PORT=3300, DBNAME=demodb, USER=dev1, PASSWORD='password_string')
+  * CREATE SERVER srv1 (HOST='localhost', PORT=3300, DBNAME=demodb, USER=dev1, PASSWORD=)
+  * CREATE SERVER srv1 (HOST='localhost', PORT=3300, DBNAME=demodb, USER=dev1, PASSWORD='')
+  * CREATE SERVER srv1 (HOST='localhost', PORT=3300, DBNAME=demodb, PASSWORD=, USER=dev1)
+  * CREATE SERVER srv1 (HOST='localhost', PORT=3300, DBNAME=demodb, USER=dev1)
+  *
+  * CREATE USER user_name
+  * CREATE USER user_name PASSWORD 'password_string'
+  * CREATE USER user_name PASSWORD _utf8'password_string'
+  * CREATE USER user_name PASSWORD _euckr'password_string'
+  * ALTER USER user_name PASSWORD 'password_string'
+  * ALTER SERVER srv1 CHANGE PASSWORD='password string'
+  */
+
+  *password_len = 0;
+  *is_found_pwd_keyword = false;
   while (*ps)
     {
       token = get_token (ps, len);
-      if (len == 1 && *token == ';')
+      if (*token == ';' || *token == ')')
 	{
-	  return ps -1;
+	  return token;
 	}
 
-      if (len != 8 || strncasecmp (token, "password", 8) != 0)
+      if (len == 8 && strncasecmp (token, "password", 8) == 0)
 	{
-	  continue;
-	}
-
-      SKIP_SPACE_CHARACTERS (ps);
-      if (*ps == '=')
-	{
-	  /* case)
-	   *    PASSWORD = 'string'   PASSWORD = ''    PASSWORD = )
-	   *    PASSWORD = ,          PASSWORD = ;     PASSWORD = \0
-	   */
-	  ps++;
-	  SKIP_SPACE_CHARACTERS (ps);
-	  if (*ps == '\'' || *ps == '"' || *ps == ')' || *ps == ',' || *ps == ';' || *ps == '\0')
-	    {
-	      *is_server = true;
-	      return ps;
-	    }
-	}
-      else if (*ps == '\'' || *ps == '"')
-	{
-	  return ps;
-	}
-      else if (*ps == '_' && isSpace[ (unsigned char) ps[-1]])	// check "password_???"
-	{
-	  if (strncasecmp (ps, "_utf8'", 6) == 0)
-	    {
-	      return (ps + 5);
-	    }
-	  else if (strncasecmp (ps, "_euckr'", 7) == 0)
-	    {
-	      return (ps + 6);
-	    }
-	  else if (strncasecmp (ps, "_iso88591'", 10) == 0)
-	    {
-	      return (ps + 9);
-	    }
-	  else if (strncasecmp (ps, "_binary'", 8) == 0)
-	    {
-	      return (ps + 7);
-	    }
+	  *is_found_pwd_keyword = true;
+	  break;
 	}
     }
 
-  return ps;
-}
-
-char *
-CHidePassword::get_passowrd_end_position (char *ps, bool is_server)
-{
-  // ps is the start delimiter('\'' or '"').
-  unsigned char *ret_ptr = NULL;
-  unsigned char *tp = (unsigned char *) ps + 1;
-  unsigned char delimiter = * (unsigned char *) ps;
-  // PASSWORD _utf8'abc' 'd''ef' 'gj000' <=> PASSWORD 'abcd'efgj00'
-  // PASSWORD = 'abcd'
-
-  if (*tp == delimiter)
+  if (*ps == '\0')
     {
-      /* case) ''      ''''      '''s' */
-      tp++;
-      if (*tp == delimiter)
+      // check case "CREATE USER user_name"
+      return (is_create && !is_server) ? ps : NULL;
+    }
+
+  prev = NULL;
+  token = get_token (ps, len);
+  if (is_server)
+    {
+      /* pattern cases)
+         *    PASSWORD = 'string'   PASSWORD = ''    PASSWORD = )
+         *    PASSWORD = ,          PASSWORD = ;     PASSWORD = \0
+        */
+      if (*token != '=')
 	{
-	  /* case)  ''''      '''s' */
-	  tp++;
+	  return NULL;
+	}
+
+      token = get_token (ps, len);
+      if (*token == ';' || *token == ')' || *token == ',' )
+	{
+	  return token;
+	}
+    }
+  else if (*token == '_')
+    {
+      prev = token;
+      tlen = len;
+      if ((len == 5 && strncasecmp (token + 1, "utf8'", len) == 0)
+	  || (len == 6 && strncasecmp (token + 1, "euckr'", len) == 0)
+	  || (len == 9 && strncasecmp (token + 1, "iso88591'", len) == 0)
+	  || (len == 7 && strncasecmp (token + 1, "binary'", len) == 0))
+	{
+	  token = get_token (ps, len);
 	}
       else
 	{
-	  ret_ptr = tp;
+	  return NULL;
 	}
     }
 
-  if (ret_ptr == NULL)
+  if (len >= 2 && (*token == '\'' || *token == '"'))
     {
-      for (; *tp; tp++)
-	{
-	  if (*tp == '\\' && m_use_backslash_escape)
-	    {
-	      tp++;
-	    }
-	  else if (*tp == delimiter)
-	    {
-	      tp++;
-	      if (*tp != delimiter)
-		{
-		  ret_ptr = tp;
-		  break;
-		}
-	    }
-	}
+      *password_len = (prev ? (len + tlen) : len);
+      return (prev ? prev : token);
     }
 
-  if (ret_ptr && !is_server)
-    {
-      SKIP_SPACE_CHARACTERS (tp);
-      if (*tp == delimiter)
-	{
-	  ret_ptr = (unsigned char *) get_passowrd_end_position ((char *) tp, false);
-	}
-    }
-
-  return (ret_ptr) ? (char *) ret_ptr : (char *) tp;
+  return NULL;
 }
 
 char *
@@ -461,7 +432,7 @@ CHidePassword::skip_one_query (char *query)
   return ps;
 }
 
-bool CHidePassword::check_lead_string_in_query (char **query, char **method_name, bool *is_create_user)
+bool CHidePassword::check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server)
 {
   char   *ps;
   const char *first_cmd_str[] = { "call", "create", "alter", NULL };
@@ -477,6 +448,9 @@ bool CHidePassword::check_lead_string_in_query (char **query, char **method_name
   char *token;
   int len;
 
+  *is_create = false;
+  *is_server = false;
+
   token = get_token (*query, len);
   if (!token)
     {
@@ -489,8 +463,14 @@ bool CHidePassword::check_lead_string_in_query (char **query, char **method_name
     {
       if (*len_ptr == len && strncasecmp (token, *str_ptr, *len_ptr) == 0)
 	{
-	  is_call_stmt = (str_ptr == first_cmd_str) ? true : false;
-	  *is_create_user = (str_ptr == &first_cmd_str[1]) ? true : false;
+	  if (str_ptr == first_cmd_str)
+	    {
+	      is_call_stmt = true;
+	    }
+	  else
+	    {
+	      *is_create = (str_ptr == &first_cmd_str[1]) ? true : false;
+	    }
 	  break;
 	}
     }
@@ -518,8 +498,14 @@ bool CHidePassword::check_lead_string_in_query (char **query, char **method_name
 	{
 	  if (*len_ptr == len && strncasecmp (token, *str_ptr, *len_ptr) == 0)
 	    {
-	      *method_name = (char *) (is_call_stmt ? *str_ptr : NULL);
-	      *is_create_user = (*is_create_user && (str_ptr == &second_cmd_str[1])) ? true : false;
+	      if (is_call_stmt)
+		{
+		  *method_name = (char *) *str_ptr;
+		}
+	      else
+		{
+		  *is_server = (str_ptr == &second_cmd_str[0]) ? true : false;
+		}
 	      return true;
 	    }
 	}
@@ -531,12 +517,13 @@ bool CHidePassword::check_lead_string_in_query (char **query, char **method_name
 int
 CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
 {
-  int start, end, is_add_comma, is_add_pwd_string = 0;
+  int start, end;
+  bool is_add_comma;
   int alloc_szie, used_size;
-  int *offset_ptr;
-  int *pwd_offset_ptr;
-  bool is_create_user;
+  int *offset_ptr, *pwd_offset_ptr;
+  bool is_create, is_server, has_password_keyword;
   char *newptr = query;
+  EN_ADD_PWD_STRING en_add_pwd_string = en_none_password;
 
   assert (fixed_pwd_offset_ptr != NULL);
   assert (*fixed_pwd_offset_ptr != NULL);
@@ -549,47 +536,40 @@ CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
   while (*newptr)
     {
       char *tp, *ps;
-      bool is_server;
       int password_len;
       char *method_name = NULL;
 
-      if (check_lead_string_in_query (&newptr, &method_name, &is_create_user))
+      if (check_lead_string_in_query (&newptr, &method_name, &is_create, &is_server))
 	{
 	  if (method_name)
 	    {
 	      if ((ps = get_method_passowrd_start_position (newptr, method_name, &password_len)) == NULL)
 		{
-		  break;
+		  newptr = skip_one_query (newptr);
+		  continue;
 		}
 
 	      start = (int) (ps - query);
 	      end = (int) (ps - query) + password_len;
-	      is_add_comma = ((password_len > 0) ? 0 : 1);
-	      is_add_pwd_string = 0;
+	      is_add_comma = (bool) (password_len == 0);
+	      en_add_pwd_string = en_none_password;
 	      newptr = ps + password_len;
 	    }
 	  else
 	    {
-	      if ((ps = get_passowrd_start_position (newptr, &is_server)) == NULL)
+	      if ((ps = get_passowrd_pos_n_len (newptr, is_create, is_server, &password_len, &has_password_keyword)) == NULL)
 		{
-		  break;
+		  newptr = skip_one_query (newptr);
+		  continue;
 		}
 
 	      start = (int) (ps - query);
-	      if (*ps == '\'' || *ps == '"')
-		{
-		  tp = get_passowrd_end_position (ps, is_server);
-		  end = (int) (tp - query);
-		  newptr = (*tp == *ps) ? (tp + 1) : tp;
-		  is_add_pwd_string = 0;
-		}
-	      else
-		{
-		  end = (int) (ps - query);
-		  newptr = ps;
-		  is_add_pwd_string = (is_create_user ? 1 : 0);
-		}
-	      is_add_comma = 0;	// no add comma
+	      end = (int) (ps - query) + password_len;
+	      en_add_pwd_string = (is_create
+				   && !has_password_keyword) ? (is_server ? en_server_password : en_user_password) : en_none_password;
+	      is_add_comma = (bool) (is_create && is_server && !has_password_keyword);
+
+	      newptr = ps + password_len;
 	    }
 
 	  if (alloc_szie < (used_size + 2))
@@ -614,7 +594,7 @@ CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
 	    }
 
 	  offset_ptr[used_size++] = start;
-	  offset_ptr[used_size++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, is_add_pwd_string);
+	  offset_ptr[used_size++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, en_add_pwd_string);
 	  offset_ptr[1] = used_size;
 	}
 
@@ -648,6 +628,8 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
   char chbk;
   int pos;
   int length = 0;
+  EN_ADD_PWD_STRING en_pwd_string;
+  const char *pwd_str;
   // offset_ptr[0] : size of offset_ptr
   // offset_ptr[1] : used count
   for (int x = 2; x < offset_ptr[1]; x += 2)
@@ -657,16 +639,27 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
       query[pos] = '\0';
       length += snprintf (msg + length, size - length, "%s", qryptr);
 
-      if (IS_PWD_NEED_PASSWORD (offset_ptr + x))
+      en_pwd_string = (EN_ADD_PWD_STRING)IS_PWD_NEED_PASSWORD (offset_ptr + x);
+      if (en_pwd_string == en_none_password)
 	{
-	  bool is_capatalized = check_capatalized_create (qryptr);
-	  length += snprintf (msg + length, size - length, "%s%s", (is_capatalized ? " PASSWORD" : " password"), " '****'");
+	  pwd_str = (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'");
 	}
       else
 	{
-	  length +=
-		  snprintf (msg + length, size - length, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'"));
+	  bool is_capatalized = check_capatalized_create (qryptr);
+
+	  if (en_pwd_string == en_user_password)
+	    {
+	      pwd_str = is_capatalized ? " PASSWORD '****'" : " password '****'";
+	    }
+	  else /* if(en_pwd_string == en_server_password) */
+	    {
+	      pwd_str = is_capatalized ? ", PASSWORD='****'" : " password='****'";
+	    }
 	}
+
+      length += snprintf (msg + length, size - length, "%s", pwd_str);
+
       query[pos] = chbk;
       qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
     }
@@ -711,6 +704,8 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
   char *qryptr = query;
   char chbk;
   int pos;
+  EN_ADD_PWD_STRING en_pwd_string;
+  const char *pwd_str;
 
   // offset_ptr[0] : size of offset_ptr
   // offset_ptr[1] : used count
@@ -721,15 +716,24 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
       query[pos] = '\0';
       fprintf_replace_newline (fp, qryptr, cas_fprintf);
 
-      if (IS_PWD_NEED_PASSWORD (offset_ptr + x))
+      en_pwd_string = (EN_ADD_PWD_STRING)IS_PWD_NEED_PASSWORD (offset_ptr + x);
+      if (en_pwd_string == en_none_password)
 	{
-	  bool is_capatalized = check_capatalized_create (qryptr);
-	  cas_fprintf (fp, "%s%s", (is_capatalized ? " PASSWORD" : " password"), " '****'");
+	  pwd_str = (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'");
 	}
       else
 	{
-	  cas_fprintf (fp, "%s", (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'"));
+	  bool is_capatalized = check_capatalized_create (qryptr);
+	  if (en_pwd_string == en_user_password)
+	    {
+	      pwd_str = is_capatalized ? " PASSWORD '****'" : " password '****'";
+	    }
+	  else /* if(en_pwd_string == en_server_password) */
+	    {
+	      pwd_str = is_capatalized ? ", PASSWORD='****'" : " password='****'";
+	    }
 	}
+      cas_fprintf (fp, "%s",  pwd_str);
 
       query[pos] = chbk;
       qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
@@ -814,7 +818,7 @@ password_snprint (char *msg, int size, char *query, int *pwd_offset_ptr)
 // count, {start offset, end offset, is_add_comma}, ...
 int
 password_add_offset (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma,
-		     bool is_add_pwd_string)
+		     EN_ADD_PWD_STRING en_add_pwd_string)
 {
   /* pwd_offset_ptr:
    * [0] : number of alloced.
@@ -851,7 +855,7 @@ password_add_offset (int *fixed_array, int **pwd_offset_ptr, int start, int end,
     }
 
   offset_ptr[used_size++] = start;
-  offset_ptr[used_size++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, is_add_pwd_string);
+  offset_ptr[used_size++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, en_add_pwd_string);
   offset_ptr[1] = used_size;
 
   return 0;
