@@ -3583,7 +3583,7 @@ logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 
       nav_lsa = log_rec->forw_lsa;
 
-      if (nav_lsa.is_null () && logpb_is_page_in_archive (nav_lsa.pageid))
+      if (nav_lsa.is_null () && logpb_is_page_in_archive (prev_lsa.pageid))
 	{
 	  nav_lsa.pageid = prev_lsa.pageid + 1;
 	  nav_lsa.offset = NULL_OFFSET;
