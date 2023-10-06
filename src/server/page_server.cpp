@@ -62,6 +62,8 @@ page_server::~page_server ()
 
   cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
   assert (m_worker_pool == nullptr);
+
+  assert (m_follower_disc_future.valid() == false);
 }
 
 page_server::tran_server_connection_handler::tran_server_connection_handler (cubcomm::channel &&chn,
