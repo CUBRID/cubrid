@@ -24110,7 +24110,7 @@ heap_hfid_table_entry_alloc (void)
     }
 
 #ifdef SERVER_MODE
-  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE, sizeof (HEAP_HFID_TABLE_ENTRY));
+  mmon_add_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE_HASH, sizeof (HEAP_HFID_TABLE_ENTRY));
 #endif
 
   new_entry->classname = NULL;
@@ -24141,7 +24141,7 @@ heap_hfid_table_entry_free (void *entry)
 	}
 
 #ifdef SERVER_MODE
-      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE, sizeof (HEAP_HFID_TABLE_ENTRY));
+      mmon_sub_stat (thread_get_thread_entry_info (), MMON_HEAP_HFIDTABLE_HASH, sizeof (HEAP_HFID_TABLE_ENTRY));
 #endif
       free (entry);
       return NO_ERROR;
