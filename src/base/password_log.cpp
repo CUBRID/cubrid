@@ -102,7 +102,7 @@ class CHidePassword
     char *skip_one_query (char *query);
     bool check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server);
     void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
-    bool check_capatalized_create (char *query);
+    bool check_capitalized_keyword_create (char *query);
 
     bool  m_use_backslash_escape;
 
@@ -606,7 +606,7 @@ CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
 }
 
 bool
-CHidePassword::check_capatalized_create (char *query)
+CHidePassword::check_capitalized_keyword_create (char *query)
 {
   char *ps = query;
   int len;
@@ -646,7 +646,7 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
 	}
       else
 	{
-	  bool is_capatalized = check_capatalized_create (qryptr);
+	  bool is_capatalized = check_capitalized_keyword_create (qryptr);
 
 	  if (en_pwd_string == en_user_password)
 	    {
@@ -723,7 +723,7 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
 	}
       else
 	{
-	  bool is_capatalized = check_capatalized_create (qryptr);
+	  bool is_capatalized = check_capitalized_keyword_create (qryptr);
 	  if (en_pwd_string == en_user_password)
 	    {
 	      pwd_str = is_capatalized ? " PASSWORD '****'" : " password '****'";
