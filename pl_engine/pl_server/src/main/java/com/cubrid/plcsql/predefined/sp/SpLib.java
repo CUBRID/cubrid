@@ -671,7 +671,7 @@ public class SpLib {
         assert l.getNanos() == 0;
         assert r.getNanos() == 0;
 
-        return commonOpEq(l, r);
+        return l.equals(r);
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -850,7 +850,7 @@ public class SpLib {
         assert l.getNanos() == 0;
         assert r.getNanos() == 0;
 
-        return commonOpNeq(l, r);
+        return !l.equals(r);
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -934,7 +934,7 @@ public class SpLib {
         assert l.getNanos() == 0;
         assert r.getNanos() == 0;
 
-        return commonOpLe(l, r);
+        return l.compareTo(r) <= 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1016,7 +1016,7 @@ public class SpLib {
         assert l.getNanos() == 0;
         assert r.getNanos() == 0;
 
-        return commonOpGe(l, r);
+        return l.compareTo(r) >= 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1098,7 +1098,7 @@ public class SpLib {
         assert l.getNanos() == 0;
         assert r.getNanos() == 0;
 
-        return commonOpLt(l, r);
+        return l.compareTo(r) < 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1181,7 +1181,7 @@ public class SpLib {
         assert l.getNanos() == 0;
         assert r.getNanos() == 0;
 
-        return commonOpGt(l, r);
+        return l.compareTo(r) > 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
