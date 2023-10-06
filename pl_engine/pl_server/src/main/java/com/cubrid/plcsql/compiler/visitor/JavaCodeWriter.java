@@ -2202,10 +2202,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {"stmt_%'LEVEL'%.setObject(%'INDEX'%,", "  %'+VALUE'%", ");"};
 
     private Object getSetUsedExpr(List<? extends Expr> exprList) {
-        return getSetUsedExpr(exprList, 1);
-    }
-
-    private Object getSetUsedExpr(List<? extends Expr> exprList, int startIndex) {
 
         if (exprList == null || exprList.size() == 0) {
             return "// no used values";
@@ -2223,7 +2219,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             Misc.getLineColumnOf(expr.ctx),
                             tmplSetObject,
                             "%'INDEX'%",
-                            "" + (i + startIndex),
+                            "" + (i + 1),
                             "%'+VALUE'%",
                             visit(expr));
             ret.addElement(tmpl);
