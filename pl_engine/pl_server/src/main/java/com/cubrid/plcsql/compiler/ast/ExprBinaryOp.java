@@ -44,6 +44,12 @@ public class ExprBinaryOp extends Expr {
     public final Expr left;
     public final Expr right;
 
+    public boolean forTimestampParam;
+
+    public void setForTimestampParam() {
+        forTimestampParam = true;
+    }
+
     public ExprBinaryOp(ParserRuleContext ctx, String opStr, Expr left, Expr right) {
         super(ctx);
 
