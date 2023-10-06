@@ -3416,12 +3416,12 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_p
  *   
  *       ┌──► ┌─►_SUCCESS
  *       │    │      │
- *       │    │ (*)  │ start appending a page
+ *       │    │ (*)  │ Start appending a page
  *       │    │      ▼
  *       │    └──_IN_PROGRESS
  *       │           │
  *       │           │ It happens to flush log pages during the catch-up.
- *       │           │ so EOF is appended at the prev_lsa.
+ *       │           │ So, EOF is appended at the prev_lsa.
  *       │           ▼
  *       │       _PARTIAL_FLUSHED_END_OF_LOG
  *       │           │
@@ -3430,7 +3430,7 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_p
  *       │           ▼
  *       │       _PARTIAL_ENDED
  *       │           │
- *       │           │ flush log pages to remove the EOF.
+ *       │           │ Flush log pages to remove the EOF.
  *       │           │ It appends the EOF at the append_lsa instead.
  *       │           ▼
  *       │       _PARTIAL_FLUSHED_ORIGINAL
