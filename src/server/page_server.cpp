@@ -998,7 +998,6 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   int error = NO_ERROR;
 
   LOG_CS_ENTER (&entry);
-  logpb_flush_pages_direct (&entry);
 
   while (remaining_page_cnt > 0)
     {
