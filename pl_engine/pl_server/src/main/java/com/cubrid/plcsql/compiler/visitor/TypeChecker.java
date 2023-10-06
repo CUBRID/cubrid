@@ -230,6 +230,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         }
         assert outCoercions.size() == 3;
 
+        if (op.hasTimestampParam()) {
+            node.setForTimestampParam();
+        }
+
         node.target.setCoercion(outCoercions.get(0));
         node.lowerBound.setCoercion(outCoercions.get(1));
         node.upperBound.setCoercion(outCoercions.get(2));
@@ -252,6 +256,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                     "operands do not have compatible types");
         }
         assert outCoercions.size() == 2;
+
+        if (binOp.hasTimestampParam()) {
+            node.setForTimestampParam();
+        }
 
         node.left.setCoercion(outCoercions.get(0));
         node.right.setCoercion(outCoercions.get(1));
@@ -497,6 +505,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         }
         assert outCoercions.size() == len;
 
+        if (op.hasTimestampParam()) {
+            node.setForTimestampParam();
+        }
+
         for (int i = 0; i < len; i++) {
             Expr arg = args.get(i);
             Coercion c = outCoercions.get(i);
@@ -631,6 +643,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                     Misc.getLineColumnOf(node.ctx), // s215
                     "argument does not have a compatible type");
         }
+        assert !unaryOp.hasTimestampParam();
 
         node.operand.setCoercion(outCoercions.get(0));
 

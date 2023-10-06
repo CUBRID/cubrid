@@ -664,6 +664,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opEqTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.equals(r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(Object l, Object r) {
         if (l == null || r == null) {
@@ -735,6 +745,26 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Boolean opNullSafeEqTimestamp(Timestamp l, Timestamp r) {
+        if (l == null) {
+            if (r == null) {
+                return true;
+            } else {
+                assert r.getNanos() == 0;
+                return false;
+            }
+        } else {
+            assert l.getNanos() == 0;
+
+            if (r == null) {
+                return false;
+            } else {
+                assert r.getNanos() == 0;
+                return l.equals(r);
+            }
+        }
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -813,6 +843,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opNeqTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return !l.equals(r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(Object l, Object r) {
         if (l == null || r == null) {
@@ -887,6 +927,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opLeTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.compareTo(r) <= 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Object l, Object r) {
         if (l == null || r == null) {
@@ -957,6 +1007,16 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Boolean opGeTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.compareTo(r) >= 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1031,6 +1091,16 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opLtTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.compareTo(r) < 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Object l, Object r) {
         if (l == null || r == null) {
@@ -1102,6 +1172,16 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Boolean opGtTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        return l.compareTo(r) > 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1210,6 +1290,17 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Boolean opBetweenTimestamp(Timestamp o, Timestamp lower, Timestamp upper) {
+        if (o == null || lower == null || upper == null) {
+            return null;
+        }
+        assert o.getNanos() == 0;
+        assert lower.getNanos() == 0;
+        assert upper.getNanos() == 0;
+
+        return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opBetween(Object o, Object lower, Object upper) {
         if (o == null || lower == null || upper == null) {
@@ -1282,6 +1373,27 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Boolean opInTimestamp(Timestamp o, Timestamp... arr) {
+        assert arr != null; // guaranteed by the syntax
+        if (o == null) {
+            return null;
+        }
+        assert o.getNanos() == 0;
+
+        boolean nullFound = false;
+        for (Timestamp p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                assert p.getNanos() == 0;
+                if (o.equals(p)) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null : false;
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -1618,15 +1730,28 @@ public class SpLib {
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
-    public static Timestamp opAdd(Long l, Timestamp r) {
-        return opAdd(r, l);
-    }
-
-    @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static ZonedDateTime opAdd(ZonedDateTime l, Long r) {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Timestamp opAddTimestamp(Timestamp l, Long r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+        assert l.getNanos() == 0;
+
+        LocalDateTime lldt = l.toLocalDateTime();
+        return Timestamp.valueOf(lldt.plus(r.longValue(), ChronoUnit.SECONDS));
+    }
+
+    @Operator(coercionScheme = CoercionScheme.ArithOp)
+    public static Timestamp opAdd(Long l, Timestamp r) {
+        return opAdd(r, l);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1634,6 +1759,10 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Timestamp opAddTimestamp(Long l, Timestamp r) {
+        return opAddTimestamp(r, l);
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1739,6 +1868,21 @@ public class SpLib {
         throw new PROGRAM_ERROR(); // unreachable
     }
 
+    public static Long opSubtractTimestamp(Timestamp l, Timestamp r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        if (l.equals(NULL_DATETIME) || r.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+        assert l.getNanos() == 0;
+        assert r.getNanos() == 0;
+
+        LocalDateTime lldt = l.toLocalDateTime();
+        LocalDateTime rldt = r.toLocalDateTime();
+        return rldt.until(lldt, ChronoUnit.SECONDS);
+    }
+
     @Operator(coercionScheme = CoercionScheme.ArithOp)
     public static Time opSubtract(Time l, Long r) {
         if (l == null || r == null) {
@@ -1779,6 +1923,19 @@ public class SpLib {
         // cannot be called actually, but only to register this operator with a parameter type
         // TIMESTAMP
         throw new PROGRAM_ERROR(); // unreachable
+    }
+
+    public static Timestamp opSubtractTimestamp(Timestamp l, Long r) {
+        if (l == null || r == null) {
+            return null;
+        }
+        if (l.equals(NULL_DATETIME)) {
+            throw new VALUE_ERROR("attempt to use 'zero date'");
+        }
+        assert l.getNanos() == 0;
+
+        LocalDateTime lldt = l.toLocalDateTime();
+        return Timestamp.valueOf(lldt.minus(r.longValue(), ChronoUnit.SECONDS));
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1971,9 +2128,11 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+
         if (e.equals(NULL_TIMESTAMP)) {
             return NULL_DATETIME;
         }
+        assert e.getNanos() == 0;
 
         return new Timestamp(
                 e.getYear(),
@@ -1989,9 +2148,11 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+
         if (e.equals(NULL_TIMESTAMP)) {
             return NULL_DATE;
         }
+        assert e.getNanos() == 0;
 
         return new Date(e.getYear(), e.getMonth(), e.getDate());
     }
@@ -2000,6 +2161,7 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+        assert e.getNanos() == 0;
 
         return new Time(e.getHours(), e.getMinutes(), e.getSeconds());
     }
@@ -2008,11 +2170,13 @@ public class SpLib {
         if (e == null) {
             return null;
         }
+
         if (e.equals(NULL_TIMESTAMP)) {
             // must be calculated everytime because the AM/PM indicator can change according to the
             // locale change
             return String.format("00:00:00 %s 00/00/0000", AM_PM.format(ZERO_DATE));
         }
+        assert e.getNanos() == 0;
 
         return TIMESTAMP_FORMAT.format(e);
     }
@@ -2417,7 +2581,7 @@ public class SpLib {
         }
 
         if (dt.equals(DateTimeParser.nullDatetime)) {
-            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+            return NULL_DATETIME;
         } else {
             return new Timestamp(
                     dt.getYear() - 1900,
@@ -2474,7 +2638,7 @@ public class SpLib {
         }
 
         if (zdt.equals(DateTimeParser.nullDatetimeUTC)) {
-            return new Timestamp(-1900, -1, 0, 0, 0, 0, 0);
+            return NULL_TIMESTAMP;
         } else {
             assert zdt.getNano() == 0;
             return new Timestamp(
@@ -2599,7 +2763,7 @@ public class SpLib {
             return (Date) e;
         } else if (e instanceof Timestamp) {
             // e is DATETIME or TIMESTAMP
-            return convTimestampToDate((Timestamp) e);
+            return convDatetimeToDate((Timestamp) e);
         }
 
         throw new VALUE_ERROR("not compatible with DATE");
@@ -2626,7 +2790,7 @@ public class SpLib {
             return (Time) e;
         } else if (e instanceof Timestamp) {
             // e is DATETIME or TIMESTAMP
-            return convTimestampToTime((Timestamp) e);
+            return convDatetimeToTime((Timestamp) e);
         }
 
         throw new VALUE_ERROR("not compatible with TIME");
@@ -2732,11 +2896,10 @@ public class SpLib {
             return convDateToString((Date) e);
         } else if (e instanceof Time) {
             return convTimeToString((Time) e);
-            /*
-            } else if (e instanceof Timestamp) {
-                // e is DATETIME or TIMESTAMP. impossible to figure out for now
-                // TODO: match different Java types to DATETIME and TIMESTAMP, respectively
-            */
+        } else if (e instanceof Timestamp) {
+            // e is DATETIME or TIMESTAMP. impossible to figure out for now
+            // TODO: match different Java types to DATETIME and TIMESTAMP, respectively
+            throw new PROGRAM_ERROR("ambiguous run-time type: TIMESTAMP or DATETIME");
         }
 
         throw new VALUE_ERROR("not compatible with STRING");
@@ -3123,6 +3286,7 @@ public class SpLib {
             } else if (r instanceof Time) {
                 // not applicable
             } else if (r instanceof Timestamp) {
+                // not applicable
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3159,7 +3323,8 @@ public class SpLib {
                 lConv = convStringToTime((String) l);
                 rConv = (Time) r;
             } else if (r instanceof Timestamp) {
-                lConv = convStringToTimestamp((String) l);
+                // compare as DATETIMEs
+                lConv = convStringToDatetime((String) l);
                 rConv = (Timestamp) r;
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
@@ -3195,11 +3360,10 @@ public class SpLib {
             } else if (r instanceof Time) {
                 lConv = convShortToTime((Short) l);
                 rConv = (Time) r;
-            } else if (r
-                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
-                // CoercionScheme
+            } else if (r instanceof Timestamp) {
+                // compare as TIMESTAMPs
                 lConv = convShortToTimestamp((Short) l);
-                rConv = (Timestamp) r;
+                rConv = convDatetimeToTimestamp((Timestamp) r);
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3234,11 +3398,10 @@ public class SpLib {
             } else if (r instanceof Time) {
                 lConv = convIntToTime((Integer) l);
                 rConv = (Time) r;
-            } else if (r
-                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
-                // CoercionScheme
+            } else if (r instanceof Timestamp) {
+                // compare as TIMESTAMPs
                 lConv = convIntToTimestamp((Integer) l);
-                rConv = (Timestamp) r;
+                rConv = convDatetimeToTimestamp((Timestamp) r);
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3273,11 +3436,10 @@ public class SpLib {
             } else if (r instanceof Time) {
                 lConv = convBigintToTime((Long) l);
                 rConv = (Time) r;
-            } else if (r
-                    instanceof Timestamp) { // NOTE: r cannot be a DATETIME by compile time check in
-                // CoercionScheme
+            } else if (r instanceof Timestamp) {
+                // compare as TIMESTAMPs
                 lConv = convBigintToTimestamp((Long) l);
-                rConv = (Timestamp) r;
+                rConv = convDatetimeToTimestamp((Timestamp) r);
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3412,7 +3574,9 @@ public class SpLib {
             } else if (r instanceof Time) {
                 // not applicable
             } else if (r instanceof Timestamp) {
-                // not applicable
+                // compare as DATETIMEs
+                lConv = convDateToDatetime((Date) l);
+                rConv = (Timestamp) r;
             } else {
                 throw new PROGRAM_ERROR(); // unreachable
             }
@@ -3456,15 +3620,18 @@ public class SpLib {
                 // not applicable
             } else if (r instanceof String) {
                 lConv = (Timestamp) l;
-                rConv = convStringToTimestamp((String) r);
+                rConv = convStringToDatetime((String) r);
             } else if (r instanceof Short) {
-                lConv = (Timestamp) l;
+                // l must be a TIMESTAMP
+                lConv = convDatetimeToTimestamp((Timestamp) l);
                 rConv = convShortToTimestamp((Short) r);
             } else if (r instanceof Integer) {
-                lConv = (Timestamp) l;
+                // l must be a TIMESTAMP
+                lConv = convDatetimeToTimestamp((Timestamp) l);
                 rConv = convIntToTimestamp((Integer) r);
             } else if (r instanceof Long) {
-                lConv = (Timestamp) l;
+                // l must be a TIMESTAMP
+                lConv = convDatetimeToTimestamp((Timestamp) l);
                 rConv = convBigintToTimestamp((Long) r);
             } else if (r instanceof BigDecimal) {
                 // not applicable
@@ -3474,10 +3641,11 @@ public class SpLib {
                 // not applicable
             } else if (r instanceof Date) {
                 lConv = (Timestamp) l;
-                rConv = convDateToTimestamp((Date) r);
+                rConv = convDateToDatetime((Date) r);
             } else if (r instanceof Time) {
                 // not applicable
             } else if (r instanceof Timestamp) {
+                // compare as DATETIMEs
                 lConv = (Timestamp) l;
                 rConv = (Timestamp) r;
             } else {

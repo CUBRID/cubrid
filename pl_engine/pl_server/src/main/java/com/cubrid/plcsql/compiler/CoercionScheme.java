@@ -82,12 +82,10 @@ public enum CoercionScheme {
             int len = argTypes.size();
 
             TypeSpec headTy = argTypes.get(0);
-            boolean hasDatetime = headTy.equals(TypeSpecSimple.DATETIME);
 
             TypeSpec wholeCommonTy = null;
             for (int i = 1; i < len; i++) {
                 TypeSpec argType = argTypes.get(i);
-                hasDatetime = hasDatetime || argType.equals(TypeSpecSimple.DATETIME);
 
                 TypeSpec commonTy = getCommonTypeInner(headTy, argType, compOpCommonType);
                 if (commonTy == null) {
@@ -112,17 +110,7 @@ public enum CoercionScheme {
             } else if (wholeCommonTy.equals(TypeSpecSimple.OBJECT)) {
                 // In this case, pairwise common types are not equal to a single type, and
                 // pairwise coomparison in opBetween and opIn in SpLib uses runtime type check and
-                // conversion.
-                if (hasDatetime) {
-                    // This case is not supported because the Java types of DATETIME and TIMESTAMP
-                    // are the same Timestamp,
-                    // which causes ambiguity in runtime type check in compareWithRuntimeConv in
-                    // SpLib.
-                    // TODO: This can be improved by a different code generation of operator between
-                    // and in,
-                    //       or by using a different Java class for DATETIME type.
-                    return null;
-                }
+                // conversion, that is, compareWithRuntimeTypeConv().
             }
 
             List<TypeSpec> ret = new ArrayList<>();

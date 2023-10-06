@@ -43,6 +43,12 @@ public class ExprIn extends Expr {
     public final Expr target;
     public final NodeList<Expr> inElements;
 
+    public boolean forTimestampParam;
+
+    public void setForTimestampParam() {
+        forTimestampParam = true;
+    }
+
     public ExprIn(ParserRuleContext ctx, Expr target, NodeList<Expr> inElements) {
         super(ctx);
 
