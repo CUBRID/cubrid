@@ -3405,12 +3405,12 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_p
  *      LOGPB_APPENDREC_SUCCESS: 
  *        A normal case. The previous appending has been successfully.
  *      LOGPB_APPENDREC_IN_PROGRESS:
- *        The previous appended page doesn't have a start of a record. It only constains a middle part 
- *        or the last part of a record. In this case, the prev_lsa has not been advanced, 
+ *        The previous appended page doesn't have a start of a log record. It only constains a middle part 
+ *        or the last part of a log record. In this case, the prev_lsa has not been advanced, 
  *        and the EOF will be appended when flushing log pages halfway through appending a page.
  *      LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG:
- *        Log pages are flushed during appending a page including only a partial record, and the temporary EOF 
- *        has been appended at the prev_lsa. We will remove this at logpb_catchup_end_append() when the partial record completes.
+ *        Log pages are flushed during appending a page including only a partial log record, and the temporary EOF 
+ *        has been appended at the prev_lsa. We will remove this at logpb_catchup_end_append() when the partial log record completes.
  *      
  *      The status transition:
  *   
@@ -3571,7 +3571,7 @@ logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
 	  nav_lsa.offset = log_pgptr->hdr.offset;
 	  if (nav_lsa.offset == NULL_OFFSET)
 	    {
-	      // There is nothing in thie page. Here is a part of incomplete log record.
+	      // There is nothing in this page. Here is a part of incomplete log record.
 	      nav_lsa.pageid++;
 	      continue;
 	    }
