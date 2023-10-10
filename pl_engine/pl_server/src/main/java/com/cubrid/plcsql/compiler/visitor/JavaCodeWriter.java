@@ -34,6 +34,7 @@ import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ast.*;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -56,7 +57,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         + "\");");
         codeLines.add("}");
 
-        return String.join("\n", codeLines.toArray(dummyStrArr));
+        return String.join("\n", codeLines.toArray(DUMMY_STRING_ARRAY));
     }
 
     @Override
@@ -113,14 +114,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         // get connection, if necessary
         String strGetConn =
-                node.connectionRequired
-                        ? String.format(tmplGetConn, node.autonomousTransaction)
-                        : "// connection not required";
+                node.connectionRequired ? String.format(tmplGetConn, node.autonomousTransaction) : "";
 
         // declarations
         Object codeDeclClass =
                 node.routine.decls == null
-                        ? "// no declarations"
+                        ? ""
                         : new CodeTemplate(
                                 "DeclClass of Unit",
                                 Misc.UNKNOWN_LINE_COLUMN,
@@ -139,12 +138,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         // parameters
         Object strParamArr =
-                Misc.isEmpty(node.routine.paramList)
-                        ? "// no parameters"
-                        : visitNodeList(node.routine.paramList).setDelimiter(",");
+                Misc.isEmpty(node.routine.paramList) ? "" : visitNodeList(node.routine.paramList).setDelimiter(",");
 
         // nullify OUT parameters
-        String strNullifyOutParam = getNullifyOutParamStr(node.routine.paramList);
+        String[] strNullifyOutParam = getNullifyOutParamCode(node.routine.paramList);
 
         return new CodeTemplate(
                 "Unit",
@@ -161,7 +158,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+PARAMETERS'%",
                 strParamArr,
                 "%'+NULLIFY-OUT-PARAMETERS'%",
-                strNullifyOutParam.split("\n"),
+                strNullifyOutParam,
                 "%'GET-CONNECTION'%",
                 strGetConn,
                 "%'+DECL-CLASS'%",
@@ -195,7 +192,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         // declarations
         Object codeDeclClass =
                 node.decls == null
-                        ? "// no declarations"
+                        ? ""
                         : new CodeTemplate(
                                 "DeclClass of Routine",
                                 Misc.UNKNOWN_LINE_COLUMN,
@@ -205,7 +202,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                 "%'+DECLARATIONS'%",
                                 visitNodeList(node.decls));
 
-        String strNullifyOutParam = getNullifyOutParamStr(node.paramList);
+        String[] strNullifyOutParam = getNullifyOutParamCode(node.paramList);
 
         return new CodeTemplate(
                 "DeclRoutine",
@@ -216,7 +213,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+PARAMETERS'%",
                 visitNodeList(node.paramList).setDelimiter(","),
                 "%'+NULLIFY-OUT-PARAMETERS'%",
-                strNullifyOutParam.split("\n"),
+                strNullifyOutParam,
                 "%'+DECL-CLASS'%",
                 codeDeclClass,
                 "%'+BODY'%",
@@ -601,46 +598,43 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return sbuf.toString();
     }
 
-    private static String getGlobalFuncArgsSetStr(int size, NodeList<DeclParam> paramList) {
+    private static String[] getGlobalFuncArgsSetCode(int size, NodeList<DeclParam> paramList) {
 
-        if (size == 0) {
-            return "// no arguments";
-        }
+        List<String> ret = new LinkedList<>();
 
-        StringBuffer sbuf = new StringBuffer();
-        sbuf.append("// set function arguments");
         for (int i = 0; i < size; i++) {
 
             DeclParam param = paramList.nodes.get(i);
 
             if (param instanceof DeclParamOut) {
-                sbuf.append(String.format("\nstmt.registerOutParameter(%d, java.sql.Types.OTHER);", i + 2));
+                ret.add(String.format("stmt.registerOutParameter(%d, java.sql.Types.OTHER);", i + 2));
             }
 
             if (param instanceof DeclParamIn) {
-                sbuf.append(String.format("\nstmt.setObject(%d, o%d);", i + 2, i));
+                ret.add(String.format("stmt.setObject(%d, o%d);", i + 2, i));
             } else if (((DeclParamOut) param).alsoIn) {
-                sbuf.append(String.format("\nstmt.setObject(%d, o%d[0]);", i + 2, i));
+                ret.add(String.format("stmt.setObject(%d, o%d[0]);", i + 2, i));
             }
 
         }
 
-        return sbuf.toString();
+        return ret.toArray(DUMMY_STRING_ARRAY);
     }
 
-    private static String getUpdateGlobalFuncOutArgsStr(int size, NodeList<DeclParam> paramList) {
+    private static String[] getUpdateGlobalFuncOutArgsCode(int size, NodeList<DeclParam> paramList) {
 
-        StringBuffer sbuf = new StringBuffer();
+        List<String> ret = new LinkedList<>();
+
         for (int i = 0; i < size; i++) {
 
             DeclParam param = paramList.nodes.get(i);
 
             if (param instanceof DeclParamOut) {
-                sbuf.append(String.format("\no%d[0] = (%s) stmt.getObject(%d);", i, param.typeSpec.javaCode, i + 2));
+                ret.add(String.format("o%d[0] = (%s) stmt.getObject(%d);", i, param.typeSpec.javaCode, i + 2));
             }
         }
 
-        return (sbuf.length() == 0) ? "// no out arguments" : ("// update out arguments" + sbuf.toString());
+        return ret.toArray(DUMMY_STRING_ARRAY);
     }
 
     @Override
@@ -651,8 +645,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         int argSize = node.args.nodes.size();
         String dynSql = String.format("?= call %s(%s)", node.name, getQuestionMarks(argSize));
         String paramStr = getGlobalFuncParamStr(argSize, node.decl.paramList);
-        String setUsedArgsStr = getGlobalFuncArgsSetStr(argSize, node.decl.paramList);
-        String updateGlobalFuncOutArgsStr = getUpdateGlobalFuncOutArgsStr(argSize, node.decl.paramList);
+        String[] setGlobalFuncArgs = getGlobalFuncArgsSetCode(argSize, node.decl.paramList);
+        String[] updateGlobalFuncOutArgs = getUpdateGlobalFuncOutArgsCode(argSize, node.decl.paramList);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -668,9 +662,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'PARAMETERS'%",
                         paramStr,
                         "%'+SET-GLOBAL-FUNC-ARGS'%",
-                        setUsedArgsStr.split("\n"),
+                        setGlobalFuncArgs,
                         "%'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
-                        updateGlobalFuncOutArgsStr.split("\n"),
+                        updateGlobalFuncOutArgs,
                         "%'+ARGUMENTS'%",
                         visitArguments(node.args, node.decl.paramList));
 
@@ -1030,7 +1024,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 Misc.getLineColumnOf(node.ctx),
                 tmplStmtBasicLoop,
                 "%'OPT-LABEL'%",
-                node.declLabel == null ? "// no label" : node.declLabel.javaCode(),
+                node.declLabel == null ? "" : node.declLabel.javaCode(),
                 "%'+STATEMENTS'%",
                 visitNodeList(node.stmts));
     }
@@ -1047,7 +1041,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         Object declClass =
                 node.decls == null
-                        ? "// no declarations"
+                        ? ""
                         : new CodeTemplate(
                                 "DeclClass of Block",
                                 Misc.UNKNOWN_LINE_COLUMN,
@@ -1177,13 +1171,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
-    private static String getSetIntoVarsStr(StmtCursorFetch node) {
+    private static String[] getSetIntoVarsCode(StmtCursorFetch node) {
+
+        List<String> ret = new LinkedList<>();
 
         assert node.coercions != null;
         assert node.coercions.size() == node.intoVarList.size();
 
         int i = 0;
-        StringBuffer sbuf = new StringBuffer();
         for (ExprId id : node.intoVarList) {
 
             String resultStr;
@@ -1196,22 +1191,19 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                 node.columnTypeList.get(i).javaCode(), i + 1);
             }
 
-            if (i > 0) {
-                sbuf.append("\n");
-            }
-
             Coercion c = node.coercions.get(i);
-            sbuf.append(String.format("%s = %s;", id.javaCode(), c.javaCode(resultStr)));
+            ret.add(String.format("%s = %s;", id.javaCode(), c.javaCode(resultStr)));
 
             i++;
         }
-        return sbuf.toString();
+
+        return ret.toArray(DUMMY_STRING_ARRAY);
     }
 
     @Override
     public CodeToResolve visitStmtCursorFetch(StmtCursorFetch node) {
 
-        String setIntoVarsStr = getSetIntoVarsStr(node);
+        String[] setIntoVars = getSetIntoVarsCode(node);
         return new CodeTemplate(
                 "StmtCursorFetch",
                 Misc.getLineColumnOf(node.ctx),
@@ -1219,7 +1211,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'CURSOR'%",
                 node.id.javaCode(),
                 "%'+SET-INTO-VARIABLES'%",
-                setIntoVarsStr.split("\n") // TODO: move setIntoVarStr into this class
+                setIntoVars
                 );
     }
 
@@ -1229,7 +1221,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtCursorOpenWithoutHostExprs =
             new String[] {
-                "{ // cursor open", "  %'CURSOR'%.open(conn /* no host expressions */);", "}"
+                "{ // cursor open", "  %'CURSOR'%.open(conn);", "}"
             };
 
     private static String[] tmplStmtCursorOpenWithHostExprs =
@@ -1327,7 +1319,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "} else if (i%'LEVEL'% == 1) {",
                 "  sql_rowcount[0] = 1L;",
                 "} else {",
-                "  sql_rowcount[0] = 1L; // Surprise? Refer to the Spec.",
+                "  sql_rowcount[0] = 1L;", // Surprise? Refer to the Spec.
                 "  throw new TOO_MANY_ROWS();",
                 "}"
             };
@@ -1340,9 +1332,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
-    private String getSetResultsStr(StmtSql node, List<ExprId> intoVarList) { // TODO: rewrite
+    private String[] getSetResultsCode(StmtSql node, List<ExprId> intoVarList) {
 
-        StringBuffer sbuf = new StringBuffer();
+        List<String> ret = new LinkedList<>();
 
         int size = intoVarList.size();
         assert node.coercions.size() == size;
@@ -1364,25 +1356,21 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                 node.columnTypeList.get(i).javaCode(), i + 1);
             }
 
-            if (i > 0) {
-                sbuf.append("\n");
-            }
-
             Coercion c = node.coercions.get(i);
             boolean checkNotNull = (id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull;
             if (checkNotNull) {
-                sbuf.append(
+                ret.add(
                         String.format(
                                 "%s = checkNotNull(%s, \"NOT NULL constraint violated\");",
                                 id.javaCode(), c.javaCode(resultStr)));
             } else {
-                sbuf.append(String.format("%s = %s;", id.javaCode(), c.javaCode(resultStr)));
+                ret.add(String.format("%s = %s;", id.javaCode(), c.javaCode(resultStr)));
             }
 
             i++;
         }
 
-        return sbuf.toString();
+        return ret.toArray(DUMMY_STRING_ARRAY);
     }
 
     private CodeToResolve visitStmtSql(StmtSql node) {
@@ -1392,17 +1380,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         Object handleIntoClause, banIntoClause;
         if (node.intoVarList == null) {
             assert node.coercions == null;
-            handleIntoClause = banIntoClause = "// no INTO clause";
+            handleIntoClause = banIntoClause = "";
         } else {
             assert node.coercions != null;
-            String strSetResults = getSetResultsStr(node, node.intoVarList);
+            String[] setResults = getSetResultsCode(node, node.intoVarList);
             handleIntoClause =
                     new CodeTemplate(
                             "into clause in SQL",
                             Misc.UNKNOWN_LINE_COLUMN,
                             tmplHandleIntoClause,
                             "%'+SET-RESULTS'%",
-                            strSetResults.split("\n"));
+                            setResults);
             banIntoClause = tmplBanIntoClause;
         }
 
@@ -1441,7 +1429,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplStmtForCursorLoopWithoutHostExprs =
             new String[] {
                 "try { // for loop with a cursor",
-                "  %'CURSOR'%.open(conn /* node host expressions */);",
+                "  %'CURSOR'%.open(conn);",
                 "  ResultSet %'RECORD'%_r%'LEVEL'% = %'CURSOR'%.rs;",
                 "  %'LABEL'%",
                 "  while (%'RECORD'%_r%'LEVEL'%.next()) {",
@@ -1487,7 +1475,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'RECORD'%",
                     node.record,
                     "%'LABEL'%",
-                    node.label == null ? "// no label" : node.label + "_%'LEVEL'%:",
+                    node.label == null ? "" : node.label + "_%'LEVEL'%:",
                     "%'LEVEL'%",
                     "" + node.cursor.scope.level,
                     "%'+STATEMENTS'%",
@@ -1511,7 +1499,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'RECORD'%",
                     node.record,
                     "%'LABEL'%",
-                    node.label == null ? "// no label" : node.label + "_%'LEVEL'%:",
+                    node.label == null ? "" : node.label + "_%'LEVEL'%:",
                     "%'LEVEL'%",
                     "" + node.cursor.scope.level,
                     "%'+STATEMENTS'%",
@@ -1525,7 +1513,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtForIterLoop =
             new String[] {
-                "{ // FOR loop with integer iterator",
+                "{ // for loop with integer iterator",
                 "  int l%'LVL'% =",
                 "    %'+LOWER-BOUND'%;",
                 "  int u%'LVL'% =",
@@ -1541,7 +1529,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtForIterLoopReverse =
             new String[] {
-                "{ // FOR loop with integer iterator (reverse)",
+                "{ // for loop with integer iterator (reverse)",
                 "  int l%'LVL'% =",
                 "    %'+LOWER-BOUND'%;",
                 "  int u%'LVL'% =",
@@ -1558,7 +1546,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitStmtForIterLoop(StmtForIterLoop node) {
 
-        String labelStr = node.declLabel == null ? "// no label" : node.declLabel.javaCode();
+        String labelStr = node.declLabel == null ? "" : node.declLabel.javaCode();
 
         return new CodeTemplate(
                 "StmtForIterLoop",
@@ -1586,7 +1574,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtForSqlLoop =
             new String[] {
-                "{ // FOR loop with %'KIND'% SQL",
+                "{ // for loop with %'KIND'% SQL",
                 "  PreparedStatement stmt_%'LEVEL'% = null;",
                 "  try {",
                 "    String sql_%'LEVEL'% = checkNotNull(",
@@ -1637,7 +1625,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'RECORD'%",
                 node.record.name,
                 "%'LABEL'%",
-                node.label == null ? "// no label" : node.label + "_%'LEVEL'%:",
+                node.label == null ? "" : node.label + "_%'LEVEL'%:",
                 "%'LEVEL'%",
                 "" + node.record.scope.level,
                 "%'+STATEMENTS'%",
@@ -1676,7 +1664,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private Object getSetGlobalProcArgsCode(int size, List<? extends Expr> args, NodeList<DeclParam> paramList) {
 
         if (size == 0) {
-            return "// no arguments";
+            return "";
         }
 
         CodeTemplateList ret = new CodeTemplateList();
@@ -1712,10 +1700,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return ret;
     }
 
-    private static String getUpdateGlobalProcOutArgsStr(
+    private static String[] getUpdateGlobalProcOutArgsCode(
             int size, List<? extends Expr> args, NodeList<DeclParam> paramList) {
 
-        StringBuffer sbuf = new StringBuffer();
+        List<String> ret = new LinkedList<>();
+
         for (int i = 0; i < size; i++) {
 
             DeclParam param = paramList.nodes.get(i);
@@ -1723,12 +1712,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             if (param instanceof DeclParamOut) {
                 Expr arg = args.get(i);
                 assert arg instanceof ExprId;
-                sbuf.append(String.format("\n%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
+                ret.add(String.format("\n%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
                     ((ExprId) arg).javaCode(), param.typeSpec.javaCode, i + 1));
             }
         }
 
-        return (sbuf.length() == 0) ? "// no out arguments" : ("// update out arguments" + sbuf.toString());
+        return ret.toArray(DUMMY_STRING_ARRAY);
     }
 
     @Override
@@ -1739,7 +1728,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         int argSize = node.args.nodes.size();
         String dynSql = String.format("call %s(%s)", node.name, getQuestionMarks(argSize));
         Object setGlobalProcArgs = getSetGlobalProcArgsCode(argSize, node.args.nodes, node.decl.paramList);
-        String updateGlobalProcOutArgs = getUpdateGlobalProcOutArgsStr(argSize, node.args.nodes, node.decl.paramList);
+        String[] updGlobalProcOutArgs = getUpdateGlobalProcOutArgsCode(argSize, node.args.nodes, node.decl.paramList);
 
         return new CodeTemplate(
                 "StmtGlobalProcCall",
@@ -1752,7 +1741,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+SET-GLOBAL-PROC-ARGS'%",
                 setGlobalProcArgs,
                 "%'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
-                updateGlobalProcOutArgs.split("\n"),
+                updGlobalProcOutArgs,
                 "%'LEVEL'%",
                 "" + node.level);
     }
@@ -1976,7 +1965,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 Misc.getLineColumnOf(node.cond.ctx),
                 tmplStmtWhileLoop,
                 "%'OPT-LABEL'%",
-                node.declLabel == null ? "// no label" : node.declLabel.javaCode(),
+                node.declLabel == null ? "" : node.declLabel.javaCode(),
                 "%'+EXPRESSION'%",
                 node.cond instanceof ExprTrue ? "opNot(Boolean.FALSE)" : visit(node.cond),
                 "%'+STATEMENTS'%",
@@ -2162,7 +2151,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // -----------------------------------------------------------------
 
     private static final int[] POSITION_IGNORED = new int[] {-1, -1};
-    private static final String[] dummyStrArr = new String[0];
+    private static final String[] DUMMY_STRING_ARRAY = new String[0];
 
     // -----------------------------------------------------------------
 
@@ -2191,7 +2180,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
         }
 
-        return ret.elements.isEmpty() ? "// no duplicate cursor arguments" : ret;
+        return ret.elements.isEmpty() ? "" : ret;
     }
 
     public CodeTemplateList getHostExprs(
@@ -2266,31 +2255,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return ret.setDelimiter(",");
     }
 
-    public static String getNullifyOutParamStr(NodeList<DeclParam> paramList) {
+    private static String[] getNullifyOutParamCode(NodeList<DeclParam> paramList) {
 
-        if (paramList == null) {
-            return "// no OUT parameters\n";
-        }
+        List<String> ret = new LinkedList<>();
 
-        StringBuilder sb = new StringBuilder();
-
-        boolean first = true;
         for (DeclParam dp : paramList.nodes) {
             if (dp instanceof DeclParamOut && !((DeclParamOut) dp).alsoIn) {
-
-                if (first) {
-                    first = false;
-                    sb.append("// nullifying OUT parameters\n");
-                }
-
-                sb.append(String.format("%s[0] = null;\n", ((DeclParamOut) dp).name));
+                ret.add(String.format("%s[0] = null;", ((DeclParamOut) dp).name));
             }
         }
-        if (first) {
-            sb.append("// no OUT parameters\n");
-        }
 
-        return sb.toString();
+        return ret.toArray(DUMMY_STRING_ARRAY);
     }
 
     private static String getQuestionMarks(int n) {
@@ -2320,7 +2295,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private Object getSetUsedExpr(List<? extends Expr> exprList) {
 
         if (exprList == null || exprList.size() == 0) {
-            return "// no used values";
+            return "";
         }
 
         CodeTemplateList ret = new CodeTemplateList();
@@ -2600,16 +2575,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 if (substitute instanceof String) {
                     String l = (String) substitute;
                     if (l.indexOf("%'") == -1) {
-                        codeLines.add(l.length() == 0 ? "" : indent + l);
+                        if (l.length() > 0) {
+                            codeLines.add(indent + l);
+                        }
                     } else {
-                        resolveTemplateLine(l, indentLevel, codeLines, codeRangeMarkers);
+                        resolveTemplateLine(l, indentLevel + indentLevelDelta, codeLines, codeRangeMarkers);
                     }
                 } else if (substitute instanceof String[]) {
                     for (String l : (String[]) substitute) {
                         if (l.indexOf("%'") == -1) {
-                            codeLines.add(l.length() == 0 ? "" : indent + l);
+                            if (l.length() > 0) {
+                                codeLines.add(indent + l);
+                            }
                         } else {
-                            resolveTemplateLine(l, indentLevel, codeLines, codeRangeMarkers);
+                            resolveTemplateLine(l, indentLevel + indentLevelDelta, codeLines, codeRangeMarkers);
                         }
                     }
                 } else if (substitute instanceof CodeToResolve) {
