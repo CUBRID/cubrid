@@ -309,7 +309,7 @@ CHidePassword::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
 {
   char *ps = query;
   char *token, *prev;
-  int len, tlen;
+  int len, tlen = 0;
   bool is_open = false;
 
   /* pattern cases to consider)
