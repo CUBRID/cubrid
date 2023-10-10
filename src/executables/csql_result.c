@@ -166,8 +166,7 @@ static jmp_buf csql_Jmp_buf;
 
 static const char *csql_cmd_string (CUBRID_STMT_TYPE stmt_type, const char *default_string);
 static void display_empty_result (int stmt_type, int line_no);
-static char **get_current_result (int **len, const CUR_RESULT_INFO * result_info, bool plain_output, bool query_output,
-				  bool loaddb_output, char column_enclosure);
+static char **get_current_result (int **len, const CUR_RESULT_INFO * result_info, const CSQL_ARGUMENT * csql_arg);
 static int write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RESULT_INFO * result_info);
 static char *uncontrol_strdup (const char *from);
 static char *uncontrol_strndup (const char *from, int length);
@@ -500,8 +499,7 @@ display_empty_result (int stmt_type, int line_no)
  *   Caller should be responsible for free the return array and its elements.
  */
 static char **
-get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool plain_output, bool query_output,
-		    bool loaddb_output, char column_enclosure)
+get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CSQL_ARGUMENT * csql_arg)
 {
   int i;
   char **val = NULL;		/* temporary array for values */
@@ -637,22 +635,8 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 	  else
 	    {
 	      char *temp;
-	      CSQL_OUTPUT_TYPE output_type;
 
-	      if (query_output == true)
-		{
-		  output_type = CSQL_QUERY_OUTPUT;
-		}
-	      else if (loaddb_output == true)
-		{
-		  output_type = CSQL_LOADDB_OUTPUT;;
-		}
-	      else
-		{
-		  output_type = CSQL_UNKNOWN_OUTPUT;
-		}
-
-	      temp = csql_db_value_as_string (&db_value, &len[i], plain_output, output_type, column_enclosure);
+	      temp = csql_db_value_as_string (&db_value, &len[i], csql_arg);
 	      if (temp == NULL)
 		{
 		  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
@@ -878,9 +862,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 		}
 	      int *len = NULL;
 
-	      val =
-		get_current_result (&len, result_info, csql_arg->plain_output, csql_arg->query_output,
-				    csql_arg->loaddb_output, csql_arg->column_enclosure);
+	      val = get_current_result (&len, result_info, csql_arg);
 	      if (val == NULL)
 		{
 		  csql_Error_code = CSQL_ERR_SQL_ERROR;
