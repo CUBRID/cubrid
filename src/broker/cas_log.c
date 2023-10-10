@@ -85,7 +85,8 @@ static void cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, 
 static FILE *access_log_open (char *log_file_name);
 static bool cas_log_begin_hang_check_time (void);
 static void cas_log_end_hang_check_time (bool is_prev_time_set);
-static void cas_log_write_query_string_internal (char *query, int size, bool newline, int *pwd_offset_ptr);
+static void cas_log_write_query_string_internal (char *query, int size, bool newline,
+						 HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 
 #ifdef CAS_ERROR_LOG
 static int error_file_offset;
@@ -692,25 +693,25 @@ cas_log_write_value_string (char *value, int size)
 }
 
 void
-cas_log_write_query_string_nonl (char *query, int size, int *pwd_offset_ptr)
+cas_log_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
-  cas_log_write_query_string_internal (query, size, false, pwd_offset_ptr);
+  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr);
 }
 
 void
-cas_log_write_query_string (char *query, int size, int *pwd_offset_ptr)
+cas_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
-  cas_log_write_query_string_internal (query, size, true, pwd_offset_ptr);
+  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr);
 }
 
 static void
-cas_fprintf_password (FILE * fp, char *query, int *pwd_offset_ptr)
+cas_fprintf_password (FILE * fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
-  password_fprintf (fp, query, pwd_offset_ptr, cas_fprintf);
+  password_fprintf (fp, query, hide_pwd_info_ptr, cas_fprintf);
 }
 
 static void
-cas_log_write_query_string_internal (char *query, int size, bool newline, int *pwd_offset_ptr)
+cas_log_write_query_string_internal (char *query, int size, bool newline, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
@@ -720,7 +721,7 @@ cas_log_write_query_string_internal (char *query, int size, bool newline, int *p
 
   if (log_fp != NULL && query != NULL)
     {
-      cas_fprintf_password (log_fp, query, pwd_offset_ptr);
+      cas_fprintf_password (log_fp, query, hide_pwd_info_ptr);
       if (newline)
 	{
 	  fputc ('\n', log_fp);
@@ -1175,7 +1176,7 @@ cas_slow_log_write_value_string (char *value, int size)
 }
 
 void
-cas_slow_log_write_query_string (char *query, int size, int *pwd_offset_ptr)
+cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
 
   if (slow_log_fp == NULL && as_info->cur_slow_log_mode != SLOW_LOG_MODE_OFF)
@@ -1185,7 +1186,7 @@ cas_slow_log_write_query_string (char *query, int size, int *pwd_offset_ptr)
 
   if (slow_log_fp != NULL && query != NULL)
     {
-      cas_fprintf_password (slow_log_fp, query, pwd_offset_ptr);
+      cas_fprintf_password (slow_log_fp, query, hide_pwd_info_ptr);
       cas_fputc ('\n', slow_log_fp);
     }
 

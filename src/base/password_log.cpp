@@ -83,12 +83,13 @@ static unsigned char isSpace[0x100] =
 	    }                                   \
    } while(0)
 
+#define MAX_PWD_LENGTH                   (0x0FFFFFFF)
 #define SET_PWD_LENGTH(s, e)             ((e) - (s))
-#define SET_PWD_ADDINFO(comma, pwd)      (((comma) ? (0x01 << 30) : 0) | (((pwd) & 0x03) << 28))
-#define SET_PWD_LENGTH_N_ADDINFO(s, e, comma, pwd)  (SET_PWD_ADDINFO((comma), (pwd)) | SET_PWD_LENGTH((s), (e)))
-#define IS_PWD_NEED_COMMA(offset_ptr)    (((offset_ptr)[1] >> 30) & 0x01)
-#define IS_PWD_NEED_PASSWORD(offset_ptr) (((offset_ptr)[1] >> 28) & 0x03)
-#define GET_END_PWD_OFFSET(offset_ptr)   ((offset_ptr)[0] + ((offset_ptr)[1] & 0x0FFFFFFF))
+#define SET_PWD_ADDINFO(comma, en_pwd)      (((comma) ? (0x01 << 30) : 0) | (((en_pwd) & 0x03) << 28))
+#define SET_PWD_LENGTH_N_ADDINFO(s, e, comma, en_pwd)  (SET_PWD_ADDINFO((comma), (en_pwd)) | SET_PWD_LENGTH((s), (e)))
+#define IS_PWD_NEED_COMMA(pwd_info_ptr)    (((pwd_info_ptr)[1] >> 30) & 0x01)
+#define IS_PWD_NEED_PASSWORD(pwd_info_ptr) ((EN_ADD_PWD_STRING)(((pwd_info_ptr)[1] >> 28) & 0x03))
+#define GET_END_PWD_OFFSET(pwd_info_ptr)   ((pwd_info_ptr)[0] + ((pwd_info_ptr)[1] & MAX_PWD_LENGTH))
 
 class CHidePassword
 {
@@ -115,9 +116,10 @@ class CHidePassword
     {
     };
 
-    int find_password_positions (int **pplist, char *query);
-    int snprint_password (char *msg, int size, char *query, int *offset_ptr);
-    void fprintf_password (FILE *fp, char *query, int *offset_ptr, int (*cas_fprintf) (FILE *, const char *, ...));
+    void find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr);
+    int snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr);
+    void fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
+			   int (*cas_fprintf) (FILE *, const char *, ...));
 };
 
 char *
@@ -514,24 +516,17 @@ bool CHidePassword::check_lead_string_in_query (char **query, char **method_name
   return false;
 }
 
-int
-CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
+void
+CHidePassword::find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr)
 {
   int start, end;
   bool is_add_comma;
-  int alloc_szie, used_size;
-  int *offset_ptr, *pwd_offset_ptr;
   bool is_create, is_server, has_password_keyword;
   char *newptr = query;
   EN_ADD_PWD_STRING en_add_pwd_string = en_none_password;
 
-  assert (fixed_pwd_offset_ptr != NULL);
-  assert (*fixed_pwd_offset_ptr != NULL);
-
-  pwd_offset_ptr = *fixed_pwd_offset_ptr;
-  alloc_szie = pwd_offset_ptr[0];
-  used_size = pwd_offset_ptr[1];
-  offset_ptr = pwd_offset_ptr;
+  assert (hide_pwd_ptr != NULL);
+  assert (hide_pwd_ptr->pwd_info_ptr != NULL);
 
   while (*newptr)
     {
@@ -572,37 +567,36 @@ CHidePassword::find_password_positions (int **fixed_pwd_offset_ptr, char *query)
 	      newptr = ps + password_len;
 	    }
 
-	  if (alloc_szie < (used_size + 2))
+	  if (hide_pwd_ptr->size < (hide_pwd_ptr->used + 2))
 	    {
-	      int new_size = (int) (alloc_szie * 1.5);
+	      int *pwd_info_ptr = NULL;
+	      int new_size = hide_pwd_ptr->size + (DEFAULT_PWD_INFO_CNT * 2);
 
-	      offset_ptr = (int *) malloc (new_size * sizeof (int));
-	      if (!offset_ptr)
+	      pwd_info_ptr = (int *) malloc (new_size * sizeof (int));
+	      if (!pwd_info_ptr)
 		{
 		  assert (0);
-		  return -1;
+		  return;
 		}
 
-	      memcpy (offset_ptr, pwd_offset_ptr, used_size * sizeof (int));
-	      if (pwd_offset_ptr != *fixed_pwd_offset_ptr)
+	      memcpy (pwd_info_ptr, hide_pwd_ptr->pwd_info_ptr, hide_pwd_ptr->used * sizeof (int));
+	      if (hide_pwd_ptr->pwd_info_ptr != hide_pwd_ptr->pwd_info)
 		{
-		  free (pwd_offset_ptr);
+		  free (hide_pwd_ptr->pwd_info_ptr);
 		}
 
-	      offset_ptr[0] = new_size;
-	      pwd_offset_ptr = offset_ptr;
+	      hide_pwd_ptr->size = new_size;
+	      hide_pwd_ptr->pwd_info_ptr = pwd_info_ptr;
 	    }
 
-	  offset_ptr[used_size++] = start;
-	  offset_ptr[used_size++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, en_add_pwd_string);
-	  offset_ptr[1] = used_size;
+	  assert (SET_PWD_LENGTH (start, end) < MAX_PWD_LENGTH);
+	  hide_pwd_ptr->pwd_info_ptr[hide_pwd_ptr->used++] = start;
+	  hide_pwd_ptr->pwd_info_ptr[hide_pwd_ptr->used++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma,
+	      en_add_pwd_string);
 	}
 
       newptr = skip_one_query (newptr);
     }
-
-  *fixed_pwd_offset_ptr = pwd_offset_ptr;
-  return 0;
 }
 
 bool
@@ -622,7 +616,7 @@ CHidePassword::check_capitalized_keyword_create (char *query)
 }
 
 int
-CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_ptr)
+CHidePassword::snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr)
 {
   char *qryptr = query;
   char chbk;
@@ -630,19 +624,21 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
   int length = 0;
   EN_ADD_PWD_STRING en_pwd_string;
   const char *pwd_str;
-  // offset_ptr[0] : size of offset_ptr
-  // offset_ptr[1] : used count
-  for (int x = 2; x < offset_ptr[1]; x += 2)
+
+  assert (hide_pwd_ptr);
+  int *pwd_info_ptr = hide_pwd_ptr->pwd_info_ptr;
+
+  for (int x = 0; x < hide_pwd_ptr->used; x += 2)
     {
-      pos = offset_ptr[x];
+      pos = pwd_info_ptr[x];
       chbk = query[pos];
       query[pos] = '\0';
       length += snprintf (msg + length, size - length, "%s", qryptr);
 
-      en_pwd_string = (EN_ADD_PWD_STRING)IS_PWD_NEED_PASSWORD (offset_ptr + x);
+      en_pwd_string = IS_PWD_NEED_PASSWORD (pwd_info_ptr + x);
       if (en_pwd_string == en_none_password)
 	{
-	  pwd_str = (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'");
+	  pwd_str = (IS_PWD_NEED_COMMA (pwd_info_ptr + x) ? ", '****'" : " '****'");
 	}
       else
 	{
@@ -661,7 +657,7 @@ CHidePassword::snprint_password (char *msg, int size, char *query, int *offset_p
       length += snprintf (msg + length, size - length, "%s", pwd_str);
 
       query[pos] = chbk;
-      qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
+      qryptr = query + GET_END_PWD_OFFSET (pwd_info_ptr + x);
     }
 
   if (*qryptr)
@@ -698,7 +694,7 @@ CHidePassword::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf
 }
 
 void
-CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
+CHidePassword::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
 				 int (*cas_fprintf) (FILE *, const char *, ...))
 {
   char *qryptr = query;
@@ -707,19 +703,20 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
   EN_ADD_PWD_STRING en_pwd_string;
   const char *pwd_str;
 
-  // offset_ptr[0] : size of offset_ptr
-  // offset_ptr[1] : used count
-  for (int x = 2; x < offset_ptr[1]; x += 2)
+  assert (hide_pwd_ptr);
+  int *pwd_info_ptr = hide_pwd_ptr->pwd_info_ptr;
+
+  for (int x = 0; x < hide_pwd_ptr->used; x += 2)
     {
-      pos = offset_ptr[x];
+      pos = pwd_info_ptr[x];
       chbk = query[pos];
       query[pos] = '\0';
       fprintf_replace_newline (fp, qryptr, cas_fprintf);
 
-      en_pwd_string = (EN_ADD_PWD_STRING)IS_PWD_NEED_PASSWORD (offset_ptr + x);
+      en_pwd_string = IS_PWD_NEED_PASSWORD (pwd_info_ptr + x);
       if (en_pwd_string == en_none_password)
 	{
-	  pwd_str = (IS_PWD_NEED_COMMA (offset_ptr + x) ? ", '****'" : " '****'");
+	  pwd_str = (IS_PWD_NEED_COMMA (pwd_info_ptr + x) ? ", '****'" : " '****'");
 	}
       else
 	{
@@ -736,7 +733,7 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
       cas_fprintf (fp, "%s",  pwd_str);
 
       query[pos] = chbk;
-      qryptr = query + GET_END_PWD_OFFSET (offset_ptr + x);
+      qryptr = query + GET_END_PWD_OFFSET (pwd_info_ptr + x);
     }
 
   if (*qryptr)
@@ -745,144 +742,122 @@ CHidePassword::fprintf_password (FILE *fp, char *query, int *offset_ptr,
     }
 }
 
-#ifndef DEFAULT_PWD_OFFSET_CNT
-#define DEFAULT_PWD_OFFSET_CNT (10)
-#endif
-
 void
-password_fprintf (FILE *fp, char *query, int *pwd_offset_ptr, int (*cas_fprintf) (FILE *, const char *, ...))
+password_fprintf (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
+		  int (*cas_fprintf) (FILE *, const char *, ...))
 {
   CHidePassword chp;
 
-  if (pwd_offset_ptr)
+  if (hide_pwd_info_ptr && hide_pwd_info_ptr->pwd_info_ptr)
     {
-      chp.fprintf_password (fp, query, pwd_offset_ptr, cas_fprintf);
+      chp.fprintf_password (fp, query, hide_pwd_info_ptr, cas_fprintf);
     }
   else
     {
-      int offset[DEFAULT_PWD_OFFSET_CNT];
-      int *offset_ptr;
+      HIDE_PWD_INFO t_pwd_info;
 
-      INIT_PASSWORD_OFFSET (offset, offset_ptr, DEFAULT_PWD_OFFSET_CNT);
-
-      offset_ptr[0] = DEFAULT_PWD_OFFSET_CNT;
-      offset_ptr[1] = 2;
-
-      chp.find_password_positions (&offset_ptr, query);
-
-      chp.fprintf_password (fp, query, offset_ptr, cas_fprintf);
-
-      QUIT_PASSWORD_OFFSET (offset, offset_ptr, DEFAULT_PWD_OFFSET_CNT);
+      INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
+      chp.find_password_positions (query, &t_pwd_info);
+      chp.fprintf_password (fp, query, &t_pwd_info, cas_fprintf);
+      QUIT_HIDE_PASSWORD_INFO (&t_pwd_info);
     }
 }
 
 int
-password_snprint (char *msg, int size, char *query, int *pwd_offset_ptr)
+password_snprint (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
   CHidePassword chp;
   int ret;
 
-  if (pwd_offset_ptr)
+  if (hide_pwd_info_ptr && hide_pwd_info_ptr->pwd_info_ptr)
     {
-      ret = chp.snprint_password (msg, size, query, pwd_offset_ptr);
+      ret = chp.snprint_password (msg, size, query, hide_pwd_info_ptr);
     }
   else
     {
-      int offset[DEFAULT_PWD_OFFSET_CNT];
-      int *offset_ptr;
+      HIDE_PWD_INFO t_pwd_info;
 
-      INIT_PASSWORD_OFFSET (offset, offset_ptr, DEFAULT_PWD_OFFSET_CNT);
-
-      chp.find_password_positions (&offset_ptr, query);
-
-      ret = chp.snprint_password (msg, size, query, offset_ptr);
-      QUIT_PASSWORD_OFFSET (offset, offset_ptr, DEFAULT_PWD_OFFSET_CNT);
+      INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
+      chp.find_password_positions (query, &t_pwd_info);
+      ret = chp.snprint_password (msg, size, query, &t_pwd_info);
+      QUIT_HIDE_PASSWORD_INFO (&t_pwd_info);
     }
 
   return ret;
 }
 
-#ifndef DEFAULT_PWD_OFFSET_CNT
-#undef DEFAULT_PWD_OFFSET_CNT
-#endif
-
 /*
  * password_add_offset () -
- *   fixed_array(in):
- *   pwd_offset_ptr(in/out)
+ *   hide_pwd_info_ptr(in/out):
  *   start(in)
  *   end(in)
  *   is_add_comma(in)
+ *   en_add_pwd_string(in)
  *   return:
  */
-// count, {start offset, end offset, is_add_comma}, ...
-int
-password_add_offset (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma,
+void
+password_add_offset (HIDE_PWD_INFO_PTR hide_pwd_info_ptr, int start, int end, bool is_add_comma,
 		     EN_ADD_PWD_STRING en_add_pwd_string)
 {
-  /* pwd_offset_ptr:
-   * [0] : number of alloced.
-   * [1] : used count.
+  assert (hide_pwd_info_ptr);
+
+  /* hide_pwd_info_ptr->pwd_info_ptr:
    * [even] : Start offset of password
    * [odd] : Length of the password string(Including the need for comma)
    */
-  int alloc_szie, used_size;
-  int *offset_ptr = *pwd_offset_ptr;
 
-  alloc_szie = offset_ptr[0];
-  used_size = offset_ptr[1];
-  assert (used_size >= 2);
-
-  if (alloc_szie < (used_size + 2))
+  if (hide_pwd_info_ptr->size < (hide_pwd_info_ptr->used + 2))
     {
-      int new_size = (int) (alloc_szie * 1.5);
+      int *pwd_info_ptr = NULL;
+      int new_size = hide_pwd_info_ptr->size + (DEFAULT_PWD_INFO_CNT * 2);
 
-      offset_ptr = (int *) malloc (new_size * sizeof (int));
-      if (!offset_ptr)
+      pwd_info_ptr = (int *) malloc (new_size * sizeof (int));
+      if (!pwd_info_ptr)
 	{
 	  assert (0);
-	  return -1;
+	  return;
 	}
 
-      memcpy (offset_ptr, *pwd_offset_ptr, used_size * sizeof (int));
-      if (*pwd_offset_ptr != fixed_array)
+      memcpy (pwd_info_ptr, hide_pwd_info_ptr->pwd_info_ptr, hide_pwd_info_ptr->used * sizeof (int));
+      if (hide_pwd_info_ptr->pwd_info_ptr != hide_pwd_info_ptr->pwd_info)
 	{
-	  free (*pwd_offset_ptr);
+	  free (hide_pwd_info_ptr->pwd_info_ptr);
 	}
 
-      offset_ptr[0] = new_size;
-      *pwd_offset_ptr = offset_ptr;
+      hide_pwd_info_ptr->size = new_size;
+      hide_pwd_info_ptr->pwd_info_ptr = pwd_info_ptr;
     }
 
-  offset_ptr[used_size++] = start;
-  offset_ptr[used_size++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, en_add_pwd_string);
-  offset_ptr[1] = used_size;
-
-  return 0;
+  assert (SET_PWD_LENGTH (start, end) < MAX_PWD_LENGTH);
+  hide_pwd_info_ptr->pwd_info_ptr[hide_pwd_info_ptr->used++] = start;
+  hide_pwd_info_ptr->pwd_info_ptr[hide_pwd_info_ptr->used++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma,
+      en_add_pwd_string);
 }
 
 bool
-password_mk_offset_for_one_query (int *new_offset_arr, int *orig_offset_ptr, int start_pos, int end_pos)
+password_remake_offset_for_one_query (HIDE_PWD_INFO_PTR new_hide_pwd_info_ptr, HIDE_PWD_INFO_PTR orig_hide_pwd_info_ptr,
+				      int start_pos, int end_pos)
 {
-  if (orig_offset_ptr)
-    {
-      // offset_ptr[0] : size of offset_ptr
-      // offset_ptr[1] : used count
-      assert (new_offset_arr[0] == 4);
-      assert (new_offset_arr[1] == 2);
+  int *new_pwd_info_ptr = (new_hide_pwd_info_ptr ? new_hide_pwd_info_ptr->pwd_info_ptr : NULL);
+  int *orig_pwd_info_ptr = (orig_hide_pwd_info_ptr ? orig_hide_pwd_info_ptr->pwd_info_ptr : NULL);
 
-      for (int x = 2; x < orig_offset_ptr[1]; x += 2)
+  assert (new_pwd_info_ptr);
+  assert (new_hide_pwd_info_ptr);
+  assert (new_hide_pwd_info_ptr->used == 0);
+
+  if (orig_pwd_info_ptr)
+    {
+      for (int x = 0; x < orig_hide_pwd_info_ptr->used; x += 2)
 	{
-	  if (orig_offset_ptr[x] > end_pos)
+	  if (orig_pwd_info_ptr[x] > end_pos)
 	    {
 	      break;
 	    }
 
-	  if (orig_offset_ptr[x] >= start_pos && orig_offset_ptr[x] <= end_pos)
+	  if (orig_pwd_info_ptr[x] >= start_pos && orig_pwd_info_ptr[x] <= end_pos)
 	    {
-	      new_offset_arr[1] = 4;
-	      new_offset_arr[2] = orig_offset_ptr[x] - start_pos;
-	      new_offset_arr[3] = orig_offset_ptr[x + 1];
+	      new_pwd_info_ptr[new_hide_pwd_info_ptr->used++] = orig_pwd_info_ptr[x] - start_pos;
+	      new_pwd_info_ptr[new_hide_pwd_info_ptr->used++] = orig_pwd_info_ptr[x + 1];
 	      return true;
 	    }
 	}

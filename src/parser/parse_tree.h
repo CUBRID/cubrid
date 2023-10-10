@@ -3848,10 +3848,6 @@ struct parser_context
   int id;			/* internal parser id */
   int statement_number;		/* user-initialized, incremented by parser */
 
-#define DEFAULT_PWD_OFFSET_CNT  (10)
-  int pwd_offset[DEFAULT_PWD_OFFSET_CNT];
-  int *pwd_offset_ptr;
-
   const char *original_buffer;	/* pointer to the original parse buffer */
   const char *buffer;		/* for parse buffer */
   FILE *file;			/* for parse file */
@@ -3914,6 +3910,8 @@ struct parser_context
   int max_print_len;		/* for pt_short_print */
 
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
+
+  HIDE_PWD_INFO hide_pwd_info;
 
   struct
   {

@@ -1410,6 +1410,5 @@ pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING
       return;
     }
 
-  (void) password_add_offset (this_parser->pwd_offset, &(this_parser->pwd_offset_ptr), start, end, is_add_comma,
-			      en_add_pwd_string);
+  password_add_offset (&this_parser->hide_pwd_info, start, end, is_add_comma, en_add_pwd_string);
 }

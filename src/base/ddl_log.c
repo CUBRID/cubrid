@@ -128,7 +128,7 @@ static FILE *logddl_fopen_and_lock (const char *path, const char *mode);
 static void logddl_timeval_diff (struct timeval *start, struct timeval *end);
 static const char *logddl_get_app_name (T_APP_NAME app_name);
 static bool logddl_is_ddl_type (int node_type, PT_NODE * node);
-static void logddl_set_sql_text_internal (char *sql_text, int sql_len, int *pwd_offset_ptr);
+static void logddl_set_sql_text_internal (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 static bool logddl_set_stmt_type_internal (int stmt_type, PT_NODE * statement);
 
 static bool is_executed_ddl_for_trans = false;
@@ -298,7 +298,7 @@ logddl_set_broker_info (const int index, const char *br_name)
 }
 
 static void
-logddl_set_sql_text_internal (char *sql_text, int sql_len, int *pwd_offset_ptr)
+logddl_set_sql_text_internal (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
   const static char *delim_str = "; ";
   const static int delim_len = 2;
@@ -369,7 +369,7 @@ logddl_set_sql_text_internal (char *sql_text, int sql_len, int *pwd_offset_ptr)
       sql_text[sql_len] = '\0';
       tlen =
 	password_snprint (ddl_audit_handle.sql_text + ddl_audit_handle.sql_text_len,
-			  (ddl_audit_handle.alloc_size - ddl_audit_handle.sql_text_len), sql_text, pwd_offset_ptr);
+			  (ddl_audit_handle.alloc_size - ddl_audit_handle.sql_text_len), sql_text, hide_pwd_info_ptr);
       sql_text[sql_len] = chBk;
 
       ddl_audit_handle.sql_text_len += tlen;
@@ -1402,7 +1402,7 @@ logddl_get_app_name (T_APP_NAME app_name)
 }
 
 void
-logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, int *pwd_offset_ptr)
+logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
   if (ddl_logging_enabled == false)
     {
@@ -1428,15 +1428,15 @@ logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, int *pwd_of
 	}
       else if (statement->sql_user_text && statement->sql_user_text_len > 0)
 	{
-	  int pwd_arr[4] = { 4, 2, };
-	  int *pwd_arr_ptr;
+	  HIDE_PWD_INFO t_hide_pwd_info;
 
-	  INIT_PASSWORD_OFFSET (pwd_arr, pwd_arr_ptr, 4);
-	  password_mk_offset_for_one_query (pwd_arr, pwd_offset_ptr,
-					    statement->buffer_pos - statement->sql_user_text_len,
-					    statement->buffer_pos);
+	  INIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
+	  password_remake_offset_for_one_query (&t_hide_pwd_info, hide_pwd_info_ptr,
+						statement->buffer_pos - statement->sql_user_text_len,
+						statement->buffer_pos);
 
-	  logddl_set_sql_text_internal (statement->sql_user_text, statement->sql_user_text_len, pwd_arr);
+	  logddl_set_sql_text_internal (statement->sql_user_text, statement->sql_user_text_len, &t_hide_pwd_info);
+	  QUIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
 	}
     }
 }

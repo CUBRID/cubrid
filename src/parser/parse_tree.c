@@ -1183,7 +1183,7 @@ parser_create_parser (void)
       return NULL;
     }
 
-  INIT_PASSWORD_OFFSET (parser->pwd_offset, parser->pwd_offset_ptr, DEFAULT_PWD_OFFSET_CNT);
+  INIT_HIDE_PASSWORD_INFO (&parser->hide_pwd_info);
 
 #if !defined (SERVER_MODE)
   parser_init_func_vectors ();
@@ -1247,7 +1247,7 @@ parser_free_parser (PARSER_CONTEXT * parser)
 
   assert (parser != NULL);
 
-  QUIT_PASSWORD_OFFSET (parser->pwd_offset, parser->pwd_offset_ptr, DEFAULT_PWD_OFFSET_CNT);
+  QUIT_HIDE_PASSWORD_INFO (&parser->hide_pwd_info);
 
   /* free remote dblink cols */
   pt_free_dblink_remote_cols (parser);

@@ -38,28 +38,37 @@ extern "C"
     en_server_password = 2
   } EN_ADD_PWD_STRING;
 
-#define INIT_PASSWORD_OFFSET(static_ptr, dynamic_ptr, size)  do { \
-   (static_ptr)[0] = (size);                                      \
-   (static_ptr)[1] = 2;                                           \
-   (dynamic_ptr) = (static_ptr);                                  \
+  typedef struct
+  {
+#define DEFAULT_PWD_INFO_CNT  (5)
+    int pwd_info[DEFAULT_PWD_INFO_CNT * 2];
+    int *pwd_info_ptr;
+    int size;
+    int used;
+  } HIDE_PWD_INFO;
+  typedef HIDE_PWD_INFO *HIDE_PWD_INFO_PTR;
+
+#define INIT_HIDE_PASSWORD_INFO(ptr)      do {     \
+       (ptr)->size = (DEFAULT_PWD_INFO_CNT * 2);   \
+       (ptr)->used = 0;                            \
+       (ptr)->pwd_info_ptr = (ptr)->pwd_info;      \
 } while(0)
 
-#define QUIT_PASSWORD_OFFSET(static_ptr, dynamic_ptr, size)  do { \
-            if((dynamic_ptr) != (static_ptr))                     \
-              {                                                   \
-                 free((dynamic_ptr));                             \
-                 (dynamic_ptr) = (static_ptr);                    \
-              }                                                   \
-            (static_ptr)[0] = (size);                             \
-            (static_ptr)[1] = 2;                                  \
-        } while(0)
+#define QUIT_HIDE_PASSWORD_INFO(ptr)     do {                            \
+    if((ptr)->pwd_info_ptr && ((ptr)->pwd_info_ptr != (ptr)->pwd_info))  \
+      {                                                                  \
+        free((ptr)->pwd_info_ptr);                                       \
+      }                                                                  \
+    INIT_HIDE_PASSWORD_INFO((ptr));                                      \
+} while(0)
 
-
-  int password_add_offset (int *fixed_array, int **pwd_offset_ptr, int start, int end, bool is_add_comma,
-			   EN_ADD_PWD_STRING en_add_pwd_string);
-  bool password_mk_offset_for_one_query (int *new_offset_arr, int *orig_offset_ptr, int start_pos, int end_pos);
-  void password_fprintf (FILE * fp, char *query, int *pwd_offset_ptr, int (*cas_fprintf) (FILE *, const char *, ...));
-  int password_snprint (char *msg, int size, char *query, int *pwd_offset_ptr);
+  void password_add_offset (HIDE_PWD_INFO_PTR hide_pwd_info_ptr, int start, int end, bool is_add_comma,
+			    EN_ADD_PWD_STRING en_add_pwd_string);
+  bool password_remake_offset_for_one_query (HIDE_PWD_INFO_PTR new_hide_pwd_info_ptr,
+					     HIDE_PWD_INFO_PTR orig_hide_pwd_info_ptr, int start_pos, int end_pos);
+  void password_fprintf (FILE * fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
+			 int (*cas_fprintf) (FILE *, const char *, ...));
+  int password_snprint (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 
 #ifdef __cplusplus
 }

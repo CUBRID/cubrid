@@ -892,7 +892,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       if (session->statements && session->statements[0])
 	{
 	  int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-	  logddl_check_and_set_query_text (session->statements[0], t_type, session->parser->pwd_offset_ptr);
+	  logddl_check_and_set_query_text (session->statements[0], t_type, &session->parser->hide_pwd_info);
 	}
 
       if (stmt_id < 0)
@@ -943,7 +943,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   if (session->statements && session->statements[0])
     {
       int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-      logddl_check_and_set_query_text (session->statements[0], t_type, session->parser->pwd_offset_ptr);
+      logddl_check_and_set_query_text (session->statements[0], t_type, &session->parser->hide_pwd_info);
     }
 
   if (stmt_id < 0)
@@ -1578,7 +1578,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       if (session->statements && session->statements[0])
 	{
 	  int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-	  logddl_check_and_set_query_text (session->statements[0], t_type, session->parser->pwd_offset_ptr);
+	  logddl_check_and_set_query_text (session->statements[0], t_type, &session->parser->hide_pwd_info);
 	}
 
       if (stmt_id < 0)
@@ -1911,7 +1911,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	      int t_type =
 		(stmt_id < 0) ? session->statements[query_index]->node_type : db_get_statement_type (session, stmt_id);
 	      logddl_check_and_set_query_text (session->statements[query_index], t_type,
-					       session->parser->pwd_offset_ptr);
+					       &session->parser->hide_pwd_info);
 	    }
 
 	  if (stmt_id < 0)
@@ -2438,7 +2438,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       else
 	{
 	  assert (session->parser);
-	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt), session->parser->pwd_offset_ptr);
+	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt), &session->parser->hide_pwd_info);
 	}
 
       SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, sql_stmt);
@@ -2449,7 +2449,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       if (session->statements && session->statements[0])
 	{
 	  int t_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-	  logddl_check_and_set_query_text (session->statements[0], t_type, session->parser->pwd_offset_ptr);
+	  logddl_check_and_set_query_text (session->statements[0], t_type, &session->parser->hide_pwd_info);
 	}
 
       if (stmt_id < 0)
@@ -2709,7 +2709,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    {
 	      int tmp_type;
 	      tmp_type = (stmt_id < 0) ? session->statements[0]->node_type : db_get_statement_type (session, stmt_id);
-	      logddl_check_and_set_query_text (session->statements[0], tmp_type, session->parser->pwd_offset_ptr);
+	      logddl_check_and_set_query_text (session->statements[0], tmp_type, &session->parser->hide_pwd_info);
 	    }
 
 	  if (stmt_id < 0)
