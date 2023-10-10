@@ -1232,6 +1232,52 @@ exit_on_error:
   goto end;
 }
 
+QFILE_LIST_ID *
+xqmgr_get_result_cache (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, int dbval_count, void *dbval_p)
+{
+  XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
+  XASL_CLONE xclone = XASL_CLONE_INITIALIZER;
+  QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
+  QFILE_LIST_ID *list_id;
+  DB_VALUE_ARRAY params;
+  DB_VALUE *dbvals_p;
+  bool do_not_cache, cached_result;
+  int tran_index;
+
+  if (xcache_find_xasl_id_for_execute (thread_p, xasl_id_p, &xasl_cache_entry_p, &xclone) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+  dbvals_p = (DB_VALUE *) dbval_p;
+
+  params.size = dbval_count;
+  params.vals = dbvals_p;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (!qmgr_is_related_class_modified (thread_p, xasl_cache_entry_p, tran_index))
+    {
+      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, xasl_cache_entry_p, &params, &cached_result);
+    }
+
+  xcache_retire_clone (thread_p, xasl_cache_entry_p, &xclone);
+  if (xasl_cache_entry_p != NULL)
+    {
+      xcache_unfix (thread_p, xasl_cache_entry_p);
+    }
+
+  if (list_cache_entry_p)
+    {
+      return &list_cache_entry_p->list_id;
+    }
+  else
+    {
+      return NULL;
+    }
+}
+
 /*
  * xqmgr_execute_query () - Execute a prepared query
  *   return: query result file id

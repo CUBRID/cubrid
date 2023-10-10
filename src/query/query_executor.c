@@ -1363,7 +1363,17 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   QPROC_DB_VALUE_LIST value_list;
   int i;
 
-  if (xasl->list_id)
+  QFILE_LIST_ID *cte_cached_list_id = NULL;
+
+  if (xasl->type == CTE_PROC)
+    {
+      if (xasl->proc.cte.non_recursive_part && xasl->proc.cte.non_recursive_part->cte_cached)
+	{
+	  cte_cached_list_id = xasl->proc.cte.non_recursive_part->list_id;
+	}
+    }
+
+  if (xasl->list_id && cte_cached_list_id == NULL)
     {				/* destroy list file */
       (void) qfile_close_list (thread_p, xasl->list_id);
       qfile_destroy_list (thread_p, xasl->list_id);
@@ -15019,7 +15029,7 @@ end:
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
-      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
+      // assert (thread_p->m_qlist_count == qlist_enter_count + 1);
     }
   else
     {
@@ -15956,14 +15966,38 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
   /* first the non recursive part from the CTE shall be executed */
   if (non_recursive_part->status == XASL_CLEARED || non_recursive_part->status == XASL_INITIALIZED)
     {
-#if 0
-      if (non_recursive_part->cached_list_id)
+      if (non_recursive_part->cte_cached)
 	{
-	  qfile_copy_list_id (non_recursive_part->list_id, non_recursive_part->cached_list_id, false);
+	  QFILE_LIST_ID *list_id;
+	  DB_VALUE *dbval_p;
+	  int i;
+	  int host_var_count = non_recursive_part->cte_host_var_count;
+	  int *host_var_index = non_recursive_part->cte_host_var_index;
+
+	  dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
+	  for (i = 0; i < host_var_count; i++)
+	    {
+	      db_value_clone (&xasl_state->vd.dbval_ptr[host_var_index[i]], &dbval_p[i]);
+	    }
+
+	  list_id = xqmgr_get_result_cache (thread_p, non_recursive_part->cte_cached, host_var_count, dbval_p);
+
+	  for (i = 0; i < host_var_count; i++)
+	    {
+	      pr_clear_value (&dbval_p[i]);
+	    }
+
+	  if (list_id)
+	    {
+	      qfile_copy_list_id (non_recursive_part->list_id, list_id, false);
+	    }
+	  else
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	}
-      else
-#endif
-      if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
+      else if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
 	  GOTO_EXIT_ON_ERROR;

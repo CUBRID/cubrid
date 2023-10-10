@@ -220,6 +220,8 @@ extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id
 /* new query interface */
 extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, compile_context * ctx, xasl_stream * stream);
 
+extern QFILE_LIST_ID *xqmgr_get_result_cache (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, int dbval_count,
+					      void *dbval_p);
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd, const XASL_ID * xasl_id, QUERY_ID * query_idp,
 					   int dbval_cnt, void *data, QUERY_FLAG * flagp, CACHE_TIME * clt_cache_time,
 					   CACHE_TIME * srv_cache_time, int query_timeout,

@@ -14294,7 +14294,8 @@ pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     {
       if (node->info.host_var.index >= 0)
 	{
-	  parser->host_variables[parser->host_var_count] = query->host_variables[node->info.host_var.index];
+	  pr_clone_value (&query->host_variables[node->info.host_var.index],
+			  &parser->host_variables[parser->host_var_count]);
 	  parser->cte_host_var_index[parser->host_var_count] = node->info.host_var.index;
 	  node->info.host_var.index = parser->host_var_count;
 	  parser->dbval_cnt++;
@@ -14915,12 +14916,13 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
 	      for (i = 0; i < stmt->cte_host_var_count; i++)
 		{
-		  copy_db_value (&host_variables[i], &parser->host_variables[stmt->cte_host_var_index[i]]);
+		  pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
 		}
 
 	      err =
 		execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
 			       flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+
 	    }
 	  cte_list = cte_list->next;
 	}
