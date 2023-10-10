@@ -84,15 +84,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "      %'+PARAMETERS'%",
                 "    ) throws Exception {",
-                "",
                 "    %'+NULLIFY-OUT-PARAMETERS'%",
-                "",
                 "    try {",
                 "      Long[] sql_rowcount = new Long[] { null };",
                 "      %'GET-CONNECTION'%",
-                "",
                 "      %'+DECL-CLASS'%",
-                "",
                 "      %'+BODY'%",
                 "    } catch (OutOfMemoryError e) {",
                 "      Server.log(e);",
@@ -180,11 +176,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "    %'+PARAMETERS'%",
                 "  ) throws Exception {",
-                "",
                 "  %'+NULLIFY-OUT-PARAMETERS'%",
-                "",
                 "  %'+DECL-CLASS'%",
-                "",
                 "  %'+BODY'%",
                 "}"
             };
@@ -1724,7 +1717,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 assert arg instanceof ExprId;
                 ret.add(
                         String.format(
-                                "\n%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
+                                "%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
                                 ((ExprId) arg).javaCode(), param.typeSpec.javaCode, i + 1));
             }
         }
@@ -2572,8 +2565,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 if (smallHoles.size() > 0) {
                     line = substituteSmallHolesInLine(line);
                 }
-                String indent = Misc.getIndent(indentLevel);
-                codeLines.add(line.length() == 0 ? "" : indent + line);
+                if (line.trim().length() > 0) {
+                    String indent = Misc.getIndent(indentLevel);
+                    codeLines.add(indent + line);
+                }
             } else {
                 assert smallHoles.size() == 0;
 
