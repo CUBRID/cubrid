@@ -34,10 +34,10 @@ import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ast.*;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
@@ -114,7 +114,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         // get connection, if necessary
         String strGetConn =
-                node.connectionRequired ? String.format(tmplGetConn, node.autonomousTransaction) : "";
+                node.connectionRequired
+                        ? String.format(tmplGetConn, node.autonomousTransaction)
+                        : "";
 
         // declarations
         Object codeDeclClass =
@@ -138,7 +140,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         // parameters
         Object strParamArr =
-                Misc.isEmpty(node.routine.paramList) ? "" : visitNodeList(node.routine.paramList).setDelimiter(",");
+                Misc.isEmpty(node.routine.paramList)
+                        ? ""
+                        : visitNodeList(node.routine.paramList).setDelimiter(",");
 
         // nullify OUT parameters
         String[] strNullifyOutParam = getNullifyOutParamCode(node.routine.paramList);
@@ -607,7 +611,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             DeclParam param = paramList.nodes.get(i);
 
             if (param instanceof DeclParamOut) {
-                ret.add(String.format("stmt.registerOutParameter(%d, java.sql.Types.OTHER);", i + 2));
+                ret.add(
+                        String.format(
+                                "stmt.registerOutParameter(%d, java.sql.Types.OTHER);", i + 2));
             }
 
             if (param instanceof DeclParamIn) {
@@ -615,13 +621,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             } else if (((DeclParamOut) param).alsoIn) {
                 ret.add(String.format("stmt.setObject(%d, o%d[0]);", i + 2, i));
             }
-
         }
 
         return ret.toArray(DUMMY_STRING_ARRAY);
     }
 
-    private static String[] getUpdateGlobalFuncOutArgsCode(int size, NodeList<DeclParam> paramList) {
+    private static String[] getUpdateGlobalFuncOutArgsCode(
+            int size, NodeList<DeclParam> paramList) {
 
         List<String> ret = new LinkedList<>();
 
@@ -630,7 +636,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             DeclParam param = paramList.nodes.get(i);
 
             if (param instanceof DeclParamOut) {
-                ret.add(String.format("o%d[0] = (%s) stmt.getObject(%d);", i, param.typeSpec.javaCode, i + 2));
+                ret.add(
+                        String.format(
+                                "o%d[0] = (%s) stmt.getObject(%d);",
+                                i, param.typeSpec.javaCode, i + 2));
             }
         }
 
@@ -646,7 +655,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String dynSql = String.format("?= call %s(%s)", node.name, getQuestionMarks(argSize));
         String paramStr = getGlobalFuncParamStr(argSize, node.decl.paramList);
         String[] setGlobalFuncArgs = getGlobalFuncArgsSetCode(argSize, node.decl.paramList);
-        String[] updateGlobalFuncOutArgs = getUpdateGlobalFuncOutArgsCode(argSize, node.decl.paramList);
+        String[] updateGlobalFuncOutArgs =
+                getUpdateGlobalFuncOutArgsCode(argSize, node.decl.paramList);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -1211,8 +1221,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'CURSOR'%",
                 node.id.javaCode(),
                 "%'+SET-INTO-VARIABLES'%",
-                setIntoVars
-                );
+                setIntoVars);
     }
 
     // -------------------------------------------------------------------------
@@ -1220,9 +1229,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplStmtCursorOpenWithoutHostExprs =
-            new String[] {
-                "{ // cursor open", "  %'CURSOR'%.open(conn);", "}"
-            };
+            new String[] {"{ // cursor open", "  %'CURSOR'%.open(conn);", "}"};
 
     private static String[] tmplStmtCursorOpenWithHostExprs =
             new String[] {
@@ -1661,7 +1668,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
-    private Object getSetGlobalProcArgsCode(int size, List<? extends Expr> args, NodeList<DeclParam> paramList) {
+    private Object getSetGlobalProcArgsCode(
+            int size, List<? extends Expr> args, NodeList<DeclParam> paramList) {
 
         if (size == 0) {
             return "";
@@ -1673,13 +1681,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             DeclParam param = paramList.nodes.get(i);
 
-            if (param instanceof DeclParamOut){
+            if (param instanceof DeclParamOut) {
 
                 ret.addElement(
-                    new CodeTemplate(
-                        "global procedure out argument",
-                        Misc.UNKNOWN_LINE_COLUMN,
-                        String.format("stmt_%%'LEVEL'%%.registerOutParameter(%d, java.sql.Types.OTHER);", i + 1)));
+                        new CodeTemplate(
+                                "global procedure out argument",
+                                Misc.UNKNOWN_LINE_COLUMN,
+                                String.format(
+                                        "stmt_%%'LEVEL'%%.registerOutParameter(%d, java.sql.Types.OTHER);",
+                                        i + 1)));
             }
 
             if (param instanceof DeclParamIn || ((DeclParamOut) param).alsoIn) {
@@ -1712,8 +1722,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             if (param instanceof DeclParamOut) {
                 Expr arg = args.get(i);
                 assert arg instanceof ExprId;
-                ret.add(String.format("\n%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
-                    ((ExprId) arg).javaCode(), param.typeSpec.javaCode, i + 1));
+                ret.add(
+                        String.format(
+                                "\n%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
+                                ((ExprId) arg).javaCode(), param.typeSpec.javaCode, i + 1));
             }
         }
 
@@ -1727,8 +1739,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         int argSize = node.args.nodes.size();
         String dynSql = String.format("call %s(%s)", node.name, getQuestionMarks(argSize));
-        Object setGlobalProcArgs = getSetGlobalProcArgsCode(argSize, node.args.nodes, node.decl.paramList);
-        String[] updGlobalProcOutArgs = getUpdateGlobalProcOutArgsCode(argSize, node.args.nodes, node.decl.paramList);
+        Object setGlobalProcArgs =
+                getSetGlobalProcArgsCode(argSize, node.args.nodes, node.decl.paramList);
+        String[] updGlobalProcOutArgs =
+                getUpdateGlobalProcOutArgsCode(argSize, node.args.nodes, node.decl.paramList);
 
         return new CodeTemplate(
                 "StmtGlobalProcCall",
@@ -2579,7 +2593,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             codeLines.add(indent + l);
                         }
                     } else {
-                        resolveTemplateLine(l, indentLevel + indentLevelDelta, codeLines, codeRangeMarkers);
+                        resolveTemplateLine(
+                                l, indentLevel + indentLevelDelta, codeLines, codeRangeMarkers);
                     }
                 } else if (substitute instanceof String[]) {
                     for (String l : (String[]) substitute) {
@@ -2588,7 +2603,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                 codeLines.add(indent + l);
                             }
                         } else {
-                            resolveTemplateLine(l, indentLevel + indentLevelDelta, codeLines, codeRangeMarkers);
+                            resolveTemplateLine(
+                                    l, indentLevel + indentLevelDelta, codeLines, codeRangeMarkers);
                         }
                     }
                 } else if (substitute instanceof CodeToResolve) {
