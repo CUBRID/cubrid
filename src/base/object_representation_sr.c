@@ -2620,9 +2620,6 @@ or_get_current_representation (RECDES * record, int do_indexes)
       // *INDENT-OFF*
       new (&att->auto_increment.serial_obj) std::atomic<or_aligned_oid> (oid_Null_oid);
       // *INDENT-ON*
-#ifdef SERVER_MODE
-      mmon_add_stat_with_tracking_tag (sizeof (std::atomic < or_aligned_oid >));
-#endif
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
@@ -3835,9 +3832,6 @@ or_free_classrep (OR_CLASSREP * rep)
 #endif
 	      free_and_init (att->btids);
 	    }
-#ifdef SERVER_MODE
-	  mmon_sub_stat_with_tracking_tag (sizeof (std::atomic < or_aligned_oid >));
-#endif
 	}
 #ifdef SERVER_MODE
       mmon_sub_stat_with_tracking_tag (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
