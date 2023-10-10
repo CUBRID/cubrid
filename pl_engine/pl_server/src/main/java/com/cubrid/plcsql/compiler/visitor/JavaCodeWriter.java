@@ -557,9 +557,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      String dynSql = \"%'DYNAMIC-SQL'%\";",
                 "      CallableStatement stmt = conn.prepareCall(dynSql);",
                 "      stmt.registerOutParameter(1, java.sql.Types.OTHER);",
-                "      %'+SET-USED-ARGS'%",
+                "      %'+SET-GLOBAL-FUNC-ARGS'%",
                 "      stmt.execute();",
                 "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) stmt.getObject(1);",
+                "      %'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
                 "      stmt.close();",
                 "      return ret;",
                 "    } catch (SQLException e) {",
@@ -572,21 +573,74 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "))"
             };
 
-    private static String getSetUsedArgsStr(int size) {
+    private static String getGlobalFuncParamStr(int size, NodeList<DeclParam> paramList) {
+
+        if (size == 0) {
+            return "";
+        }
 
         StringBuffer sbuf = new StringBuffer();
         boolean first = true;
         for (int i = 0; i < size; i++) {
+
+            DeclParam param = paramList.nodes.get(i);
+
             if (first) {
                 first = false;
             } else {
-                sbuf.append(";\n");
+                sbuf.append(", ");
             }
 
-            sbuf.append(String.format("stmt.setObject(%d, o%d);", i + 2, i));
+            if (param instanceof DeclParamOut) {
+                sbuf.append(String.format("%s[] o%d", param.typeSpec.javaCode, i));
+            } else {
+                sbuf.append(String.format("%s o%d", param.typeSpec.javaCode, i));
+            }
         }
 
         return sbuf.toString();
+    }
+
+    private static String getGlobalFuncArgsSetStr(int size, NodeList<DeclParam> paramList) {
+
+        if (size == 0) {
+            return "// no arguments";
+        }
+
+        StringBuffer sbuf = new StringBuffer();
+        sbuf.append("// set function arguments");
+        for (int i = 0; i < size; i++) {
+
+            DeclParam param = paramList.nodes.get(i);
+
+            if (param instanceof DeclParamOut) {
+                sbuf.append(String.format("\nstmt.registerOutParameter(%d, java.sql.Types.OTHER);", i + 2));
+            }
+
+            if (param instanceof DeclParamIn) {
+                sbuf.append(String.format("\nstmt.setObject(%d, o%d);", i + 2, i));
+            } else if (((DeclParamOut) param).alsoIn) {
+                sbuf.append(String.format("\nstmt.setObject(%d, o%d[0]);", i + 2, i));
+            }
+
+        }
+
+        return sbuf.toString();
+    }
+
+    private static String getUpdateGlobalFuncOutArgsStr(int size, NodeList<DeclParam> paramList) {
+
+        StringBuffer sbuf = new StringBuffer();
+        for (int i = 0; i < size; i++) {
+
+            DeclParam param = paramList.nodes.get(i);
+
+            if (param instanceof DeclParamOut) {
+                sbuf.append(String.format("\no%d[0] = (%s) stmt.getObject(%d);", i, param.typeSpec.javaCode, i + 2));
+            }
+        }
+
+        return (sbuf.length() == 0) ? "// no out arguments" : ("// update out arguments" + sbuf.toString());
     }
 
     @Override
@@ -596,8 +650,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         int argSize = node.args.nodes.size();
         String dynSql = String.format("?= call %s(%s)", node.name, getQuestionMarks(argSize));
-        String paramStr = getParametersStr(argSize);
-        String setUsedArgsStr = getSetUsedArgsStr(argSize);
+        String paramStr = getGlobalFuncParamStr(argSize, node.decl.paramList);
+        String setUsedArgsStr = getGlobalFuncArgsSetStr(argSize, node.decl.paramList);
+        String updateGlobalFuncOutArgsStr = getUpdateGlobalFuncOutArgsStr(argSize, node.decl.paramList);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -612,8 +667,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         node.decl.retType.javaCode(),
                         "%'PARAMETERS'%",
                         paramStr,
-                        "%'+SET-USED-ARGS'%",
+                        "%'+SET-GLOBAL-FUNC-ARGS'%",
                         setUsedArgsStr.split("\n"),
+                        "%'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
+                        updateGlobalFuncOutArgsStr.split("\n"),
                         "%'+ARGUMENTS'%",
                         visitArguments(node.args, node.decl.paramList));
 
@@ -1606,8 +1663,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "try { // global procedure call: %'PROC-NAME'%",
                 "  String dynSql_%'LEVEL'% = \"%'DYNAMIC-SQL'%\";",
                 "  CallableStatement stmt_%'LEVEL'% = conn.prepareCall(dynSql_%'LEVEL'%);",
-                "  %'+SET-USED-EXPR'%",
+                "  %'+SET-GLOBAL-PROC-ARGS'%",
                 "  stmt_%'LEVEL'%.execute();",
+                "  %'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
                 "  stmt_%'LEVEL'%.close();",
                 "} catch (SQLException e) {",
                 "  Server.log(e);",
@@ -1615,12 +1673,73 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
+    private Object getSetGlobalProcArgsCode(int size, List<? extends Expr> args, NodeList<DeclParam> paramList) {
+
+        if (size == 0) {
+            return "// no arguments";
+        }
+
+        CodeTemplateList ret = new CodeTemplateList();
+
+        for (int i = 0; i < size; i++) {
+
+            DeclParam param = paramList.nodes.get(i);
+
+            if (param instanceof DeclParamOut){
+
+                ret.addElement(
+                    new CodeTemplate(
+                        "global procedure out argument",
+                        Misc.UNKNOWN_LINE_COLUMN,
+                        String.format("stmt_%%'LEVEL'%%.registerOutParameter(%d, java.sql.Types.OTHER);", i + 1)));
+            }
+
+            if (param instanceof DeclParamIn || ((DeclParamOut) param).alsoIn) {
+
+                Expr arg = args.get(i);
+                ret.addElement(
+                        new CodeTemplate(
+                                "global procedure argument",
+                                Misc.getLineColumnOf(arg.ctx),
+                                tmplSetObject,
+                                "%'INDEX'%",
+                                "" + (i + 1),
+                                "%'+VALUE'%",
+                                visit(arg)));
+            }
+        }
+
+        return ret;
+    }
+
+    private static String getUpdateGlobalProcOutArgsStr(
+            int size, List<? extends Expr> args, NodeList<DeclParam> paramList) {
+
+        StringBuffer sbuf = new StringBuffer();
+        for (int i = 0; i < size; i++) {
+
+            DeclParam param = paramList.nodes.get(i);
+
+            if (param instanceof DeclParamOut) {
+                Expr arg = args.get(i);
+                assert arg instanceof ExprId;
+                sbuf.append(String.format("\n%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
+                    ((ExprId) arg).javaCode(), param.typeSpec.javaCode, i + 1));
+            }
+        }
+
+        return (sbuf.length() == 0) ? "// no out arguments" : ("// update out arguments" + sbuf.toString());
+    }
+
     @Override
     public CodeToResolve visitStmtGlobalProcCall(StmtGlobalProcCall node) {
 
+        assert node.decl != null;
+
         int argSize = node.args.nodes.size();
         String dynSql = String.format("call %s(%s)", node.name, getQuestionMarks(argSize));
-        Object setUsedExpr = getSetUsedExpr(node.args.nodes); // TODO: consider OUT parameters
+        Object setGlobalProcArgs = getSetGlobalProcArgsCode(argSize, node.args.nodes, node.decl.paramList);
+        String updateGlobalProcOutArgs = getUpdateGlobalProcOutArgsStr(argSize, node.args.nodes, node.decl.paramList);
 
         return new CodeTemplate(
                 "StmtGlobalProcCall",
@@ -1630,8 +1749,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 node.name,
                 "%'DYNAMIC-SQL'%",
                 dynSql,
-                "%'+SET-USED-EXPR'%",
-                setUsedExpr,
+                "%'+SET-GLOBAL-PROC-ARGS'%",
+                setGlobalProcArgs,
+                "%'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
+                updateGlobalProcOutArgs.split("\n"),
                 "%'LEVEL'%",
                 "" + node.level);
     }
@@ -2112,23 +2233,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
 
         return ret.setDelimiter(",");
-    }
-
-    private static String getParametersStr(int size) {
-
-        StringBuffer sbuf = new StringBuffer();
-        boolean first = true;
-        for (int i = 0; i < size; i++) {
-            if (first) {
-                first = false;
-            } else {
-                sbuf.append(", ");
-            }
-
-            sbuf.append("Object o" + i);
-        }
-
-        return sbuf.toString();
     }
 
     private CodeTemplateList visitArguments(NodeList<Expr> args, NodeList<DeclParam> paramList) {
