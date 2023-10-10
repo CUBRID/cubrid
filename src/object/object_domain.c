@@ -671,9 +671,7 @@ tp_init (void)
 
   tp_Initialized = true;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   dk_deduplicate_key_attribute_initialized ();
-#endif
 
   return NO_ERROR;
 }
