@@ -567,7 +567,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "))"
             };
 
-    private static String[] getGlobalFuncArgsSetCode(int size, NodeList<DeclParam> paramList) {
+    private static String[] getGlobalFuncArgsSetCode(int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
 
         List<String> ret = new LinkedList<>();
 
@@ -584,7 +584,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             if (param instanceof DeclParamIn) {
                 ret.add(String.format("stmt.setObject(%d, o%d);", i + 2, i));
             } else if (((DeclParamOut) param).alsoIn) {
-                ret.add(String.format("stmt.setObject(%d, o%d[0]);", i + 2, i));
+                Expr arg = args.nodes.get(i);
+                Coercion c = arg.coercion;
+                assert c != null;
+                String paramVal = "o" + i + "[0]";
+                ret.add(String.format("stmt.setObject(%d, %s);", i + 2, c.javaCode(paramVal)));
             }
         }
 
@@ -601,15 +605,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             DeclParam param = paramList.nodes.get(i);
 
             if (param instanceof DeclParamOut) {
-                ret.add(
-                        String.format(
-                                "o%d[0] = (%s) stmt.getObject(%d);",
-                                i, param.typeSpec.javaCode, i + 2));
+
+                ExprId id = (ExprId) args.nodes.get(i);
+                Coercion c = id.coercion;
+                assert c != null;
+                Coercion cRev = c.getReversion();
+                assert cRev != null;   // by earlier check
+
+                String outVal = String.format("(%s) stmt.getObject(%d)", param.typeSpec.javaCode, i + 2);
+                ret.add(String.format("o%d[0] = %s;", i, cRev.javaCode(outVal)));
 
                 // add code to check if a not-null variable was set null by this function call
-                Expr arg = args.nodes.get(i);
-                assert arg instanceof ExprId; // by earlier check
-                ExprId id = (ExprId) arg;
                 DeclId declId = id.decl;
                 if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
                     ret.add(
@@ -630,8 +636,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         int argSize = node.args.nodes.size();
         String dynSql = String.format("?= call %s(%s)", node.name, getQuestionMarks(argSize));
-        String paramStr = getFuncParamStr(argSize, node.decl.paramList);
-        String[] setGlobalFuncArgs = getGlobalFuncArgsSetCode(argSize, node.decl.paramList);
+        String paramStr = getFuncParamStr(argSize, node.args, node.decl.paramList);
+        String[] setGlobalFuncArgs = getGlobalFuncArgsSetCode(argSize, node.args, node.decl.paramList);
         String[] updateGlobalFuncOutArgs =
                 getUpdateGlobalFuncOutArgsCode(argSize, node.args, node.decl.paramList);
 
@@ -830,7 +836,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         assert node.decl != null;
 
         int argSize = node.args.nodes.size();
-        String paramStr = getFuncParamStr(argSize, node.decl.paramList);
+        String paramStr = getFuncParamStr(argSize, node.args, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
         String args = getLocalFuncArgsStr(argSize);
         String[] checkNotNullOutArgs =
@@ -2520,7 +2526,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
     }
 
-    private static String getFuncParamStr(int size, NodeList<DeclParam> paramList) {
+    private static String getFuncParamStr(int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
 
         if (size == 0) {
             return "";
@@ -2539,7 +2545,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
 
             if (param instanceof DeclParamOut) {
-                sbuf.append(String.format("%s[] o%d", param.typeSpec.javaCode, i));
+                ExprId id = (ExprId) args.nodes.get(i);
+                DeclIdTyped declId = (DeclIdTyped) id.decl;
+                sbuf.append(String.format("%s[] o%d", declId.typeSpec().javaCode, i));
             } else {
                 sbuf.append(String.format("%s o%d", param.typeSpec.javaCode, i));
             }
