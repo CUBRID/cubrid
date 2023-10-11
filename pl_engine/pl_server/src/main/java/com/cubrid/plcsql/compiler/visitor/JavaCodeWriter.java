@@ -1857,7 +1857,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplStmtLocalProcCall =
-            new String[] {"%'BLOCK'%%'NAME'%(", "  %'+ARGS'%", ");", "%'+CHECK-NOT-NULL-OUTS'%"};
+            new String[] {
+                "{ // local procedure call: %'PROC-NAME'%",
+                "  %'BLOCK'%%'PROC-NAME'%(",
+                "    %'+ARGS'%", ");",
+                "  %'+CHECK-NOT-NULL-OUTS'%",
+                "}"
+            };
 
     private static String[] getCheckNotNullOutArgsCode(
             NodeList<Expr> args, NodeList<DeclParam> paramList) {
@@ -1905,7 +1911,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         tmplStmtLocalProcCall,
                         "%'BLOCK'%",
                         block,
-                        "%'NAME'%",
+                        "%'PROC-NAME'%",
                         node.name,
                         "%'+ARGS'%",
                         visitArguments(node.args, node.decl.paramList),
@@ -2432,21 +2438,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();"
             };
 
-    private static final String[] tmplNoCoercion = new String[] {"// no coercion", "%'+EXPR'%"};
     private static final String[] tmplCastCoercion = new String[] {"(%'TYPE'%)", "  %'+EXPR'%"};
     private static final String[] tmplConvCoercion =
             new String[] {"conv%'SRC-TYPE'%To%'DST-TYPE'%(", "  %'+EXPR'%)"};
 
     private CodeToResolve applyCoercion(Coercion c, CodeTemplate exprCode) {
 
-        if (c == null) {
-            return new CodeTemplate(
-                    "null coercion",
-                    Misc.UNKNOWN_LINE_COLUMN,
-                    tmplNoCoercion,
-                    "%'+EXPR'%",
-                    exprCode);
-        } else if (c instanceof Coercion.Identity) {
+        if (c == null || c instanceof Coercion.Identity) {
             return exprCode;
         } else if (c instanceof Coercion.Cast) {
             Coercion.Cast cast = (Coercion.Cast) c;
@@ -2455,7 +2453,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     Misc.UNKNOWN_LINE_COLUMN,
                     tmplCastCoercion,
                     "%'TYPE'%",
-                    cast.to.javaCode(),
+                    cast.dst.javaCode(),
                     "%'+EXPR'%",
                     exprCode);
         } else if (c instanceof Coercion.Conversion) {
@@ -2465,9 +2463,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     Misc.UNKNOWN_LINE_COLUMN,
                     tmplConvCoercion,
                     "%'SRC-TYPE'%",
-                    conv.from,
+                    conv.src.pcsName,
                     "%'DST-TYPE'%",
-                    conv.to,
+                    conv.dst.pcsName,
                     "%'+EXPR'%",
                     exprCode);
         } else {

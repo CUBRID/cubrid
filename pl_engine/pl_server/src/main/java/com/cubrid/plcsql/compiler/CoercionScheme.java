@@ -176,7 +176,7 @@ public enum CoercionScheme {
                             // date/time + string/number, or
                             // date/time - number
 
-                            outCoercions.add(Coercion.IDENTITY);
+                            outCoercions.add(Coercion.Identity.getInstance((TypeSpecSimple) lType));
                             Coercion c = Coercion.getCoercion(rType, TypeSpecSimple.BIGINT);
                             assert c != null;
                             outCoercions.add(c);
@@ -201,7 +201,7 @@ public enum CoercionScheme {
                             Coercion c = Coercion.getCoercion(lType, TypeSpecSimple.BIGINT);
                             assert c != null;
                             outCoercions.add(c);
-                            outCoercions.add(Coercion.IDENTITY);
+                            outCoercions.add(Coercion.Identity.getInstance((TypeSpecSimple) rType));
 
                             List<TypeSpec> ret = new ArrayList<>();
                             ret.add(TypeSpecSimple.BIGINT);
@@ -213,7 +213,7 @@ public enum CoercionScheme {
                             Coercion c = Coercion.getCoercion(lType, rType);
                             assert c != null;
                             outCoercions.add(c);
-                            outCoercions.add(Coercion.IDENTITY);
+                            outCoercions.add(Coercion.Identity.getInstance((TypeSpecSimple) rType));
 
                             List<TypeSpec> ret = new ArrayList<>();
                             ret.add(rType);
