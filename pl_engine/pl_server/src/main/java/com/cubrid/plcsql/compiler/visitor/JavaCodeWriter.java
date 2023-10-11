@@ -553,8 +553,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      stmt.registerOutParameter(1, java.sql.Types.OTHER);",
                 "      %'+SET-GLOBAL-FUNC-ARGS'%",
                 "      stmt.execute();",
-                "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) stmt.getObject(1);",
                 "      %'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
+                "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) stmt.getObject(1);",
                 "      stmt.close();",
                 "      return ret;",
                 "    } catch (SQLException e) {",
@@ -566,34 +566,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'+ARGUMENTS'%",
                 "))"
             };
-
-    private static String getGlobalFuncParamStr(int size, NodeList<DeclParam> paramList) {
-
-        if (size == 0) {
-            return "";
-        }
-
-        StringBuffer sbuf = new StringBuffer();
-        boolean first = true;
-        for (int i = 0; i < size; i++) {
-
-            DeclParam param = paramList.nodes.get(i);
-
-            if (first) {
-                first = false;
-            } else {
-                sbuf.append(", ");
-            }
-
-            if (param instanceof DeclParamOut) {
-                sbuf.append(String.format("%s[] o%d", param.typeSpec.javaCode, i));
-            } else {
-                sbuf.append(String.format("%s o%d", param.typeSpec.javaCode, i));
-            }
-        }
-
-        return sbuf.toString();
-    }
 
     private static String[] getGlobalFuncArgsSetCode(int size, NodeList<DeclParam> paramList) {
 
@@ -620,7 +592,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     private static String[] getUpdateGlobalFuncOutArgsCode(
-            int size, NodeList<DeclParam> paramList) {
+            int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
 
         List<String> ret = new LinkedList<>();
 
@@ -633,6 +605,16 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         String.format(
                                 "o%d[0] = (%s) stmt.getObject(%d);",
                                 i, param.typeSpec.javaCode, i + 2));
+
+                // add code to check if a not-null variable was set null by this function call
+                Expr arg = args.nodes.get(i);
+                assert arg instanceof ExprId;   // by earlier check
+                ExprId id = (ExprId ) arg;
+                DeclId declId = id.decl;
+                if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
+                    ret.add(String.format(
+                        "checkNotNull(o%d[0], \"a not-null variable %s was set NULL by this function call\");", i, id.name));
+                }
             }
         }
 
@@ -646,10 +628,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         int argSize = node.args.nodes.size();
         String dynSql = String.format("?= call %s(%s)", node.name, getQuestionMarks(argSize));
-        String paramStr = getGlobalFuncParamStr(argSize, node.decl.paramList);
+        String paramStr = getFuncParamStr(argSize, node.decl.paramList);
         String[] setGlobalFuncArgs = getGlobalFuncArgsSetCode(argSize, node.decl.paramList);
         String[] updateGlobalFuncOutArgs =
-                getUpdateGlobalFuncOutArgsCode(argSize, node.decl.paramList);
+                getUpdateGlobalFuncOutArgsCode(argSize, node.args, node.decl.paramList);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -673,6 +655,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return applyCoercion(node.coercion, tmpl);
     }
+
+    // -------------------------------------------------------------------------
+    // ExprId
+    //
 
     @Override
     public CodeToResolve visitExprId(ExprId node) {
@@ -778,39 +764,99 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplExprLocalFuncCall =
-            new String[] {"%'BLOCK'%%'NAME'%(", "  %'+ARGS'%", ")"};
+            new String[] {
+                "(new Object() { // local function call: %'FUNC-NAME'%",
+                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
+                "    %'RETURN-TYPE'% ret = %'BLOCK'%%'FUNC-NAME'%(%'ARGS'%);",
+                "    %'+CHECK-NOT-NULL-OUT-ARGS'%",
+                "    return ret;",
+                "  }",
+                "}.invoke(",
+                "  %'+ARGUMENTS'%",
+                "))"
+            };
+
+    private static String getLocalFuncArgsStr(int size) {
+
+        StringBuffer sbuf = new StringBuffer();
+        boolean first = true;
+        for (int i = 0; i < size; i++) {
+
+            if (first) {
+                first = false;
+            } else {
+                sbuf.append(", ");
+            }
+
+            sbuf.append("o" + i);
+        }
+
+        return sbuf.toString();
+    }
+
+    private static String[] getCheckNotNullOutArgsCode(int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
+
+        List<String> ret = new LinkedList<>();
+
+        for (int i = 0; i < size; i++) {
+
+            DeclParam param = paramList.nodes.get(i);
+
+            if (param instanceof DeclParamOut) {
+
+                // add code to check if a not-null variable was set null by this function call
+                Expr arg = args.nodes.get(i);
+                assert arg instanceof ExprId;   // by earlier check
+                ExprId id = (ExprId ) arg;
+                DeclId declId = id.decl;
+                if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
+                    ret.add(String.format(
+                        "checkNotNull(o%d[0], \"a not-null variable %s was set NULL by this function call\");",
+                        i, id.name));
+                }
+            }
+        }
+
+        return ret.toArray(DUMMY_STRING_ARRAY);
+    }
 
     @Override
     public CodeToResolve visitExprLocalFuncCall(ExprLocalFuncCall node) {
 
-        CodeTemplate tmpl;
+        assert node.decl != null;
 
+        int argSize = node.args.nodes.size();
+        String paramStr = getFuncParamStr(argSize, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
+        String args = getLocalFuncArgsStr(argSize);
+        String[] checkNotNullOutArgs = getCheckNotNullOutArgsCode(argSize, node.args, node.decl.paramList);
 
-        if (node.args.nodes.size() == 0) {
-
-            tmpl =
-                    new CodeTemplate(
-                            "ExprLocalFuncCall",
-                            Misc.getLineColumnOf(node.ctx),
-                            block + node.name + "()");
-        } else {
-
-            tmpl =
-                    new CodeTemplate(
-                            "ExprLocalFuncCall",
-                            Misc.getLineColumnOf(node.ctx),
-                            tmplExprLocalFuncCall,
-                            "%'BLOCK'%",
-                            block,
-                            "%'NAME'%",
-                            node.name,
-                            "%'+ARGS'%",
-                            visitArguments(node.args, node.decl.paramList));
-        }
+        CodeTemplate tmpl =
+                new CodeTemplate(
+                        "ExprLocalFuncCall",
+                        Misc.getLineColumnOf(node.ctx),
+                        tmplExprLocalFuncCall,
+                        "%'FUNC-NAME'%",
+                        node.name,
+                        "%'RETURN-TYPE'%",
+                        node.decl.retType.javaCode(),
+                        "%'PARAMETERS'%",
+                        paramStr,
+                        "%'BLOCK'%",
+                        block,
+                        "%'ARGS'%",
+                        args,
+                        "%'+CHECK-NOT-NULL-OUT-ARGS'%",
+                        checkNotNullOutArgs,
+                        "%'+ARGUMENTS'%",
+                        visitArguments(node.args, node.decl.paramList));
 
         return applyCoercion(node.coercion, tmpl);
     }
+
+    // -------------------------------------------------------------------------
+    // ExprNull
+    //
 
     @Override
     public CodeToResolve visitExprNull(ExprNull node) {
@@ -968,9 +1014,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final String[] tmplAssignNotNull =
             new String[] {
-                "%'VAR'% = checkNotNull(", "  %'+VAL'%, \"NOT NULL constraint violated\");"
+                "%'VAR'% = checkNotNull(",
+                "  %'+VAL'%, \"NOT NULL constraint violated\");"
             };
-    private static final String[] tmplAssignNullable = new String[] {"%'VAR'% =", "  %'+VAL'%;"};
+    private static final String[] tmplAssignNullable =
+            new String[] {
+                "%'VAR'% =",
+                "  %'+VAL'%;"
+            };
 
     @Override
     public CodeToResolve visitStmtAssign(StmtAssign node) {
@@ -1713,12 +1764,21 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             DeclParam param = paramList.nodes.get(i);
 
             if (param instanceof DeclParamOut) {
+
                 Expr arg = args.get(i);
                 assert arg instanceof ExprId;
+                ExprId id = (ExprId) arg;
                 ret.add(
-                        String.format(
-                                "%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
-                                ((ExprId) arg).javaCode(), param.typeSpec.javaCode, i + 1));
+                        String.format("%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
+                                id.javaCode(), param.typeSpec.javaCode, i + 1));
+
+                // add code to check if a not-null variable was set null by this function call
+                DeclId declId = id.decl;
+                if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
+                    ret.add(String.format(
+                        "checkNotNull(%s, \"a not-null variable %s was set NULL by this procedure call\");",
+                        id.javaCode(), id.name));
+                }
             }
         }
 
@@ -1795,12 +1855,45 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplStmtLocalProcCall =
-            new String[] {"%'BLOCK'%%'NAME'%(", "  %'+ARGS'%", ");"};
+            new String[] {
+                "%'BLOCK'%%'NAME'%(",
+                "  %'+ARGS'%",
+                ");",
+                "%'+CHECK-NOT-NULL-OUTS'%"
+            };
+
+    private static String[] getCheckNotNullOutArgsCode(NodeList<Expr> args, NodeList<DeclParam> paramList) {
+
+        List<String> ret = new LinkedList<>();
+
+        int i = 0;
+        for (DeclParam dp: paramList.nodes) {
+
+            if (dp instanceof DeclParamOut) {
+
+                // add code to check if a not-null variable was set null by this function call
+                Expr arg = args.nodes.get(i);
+                assert arg instanceof ExprId;   // by earlier check
+                ExprId id = (ExprId) arg;
+                DeclId declId = id.decl;
+                if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
+                    ret.add(String.format(
+                        "checkNotNull(%s, \"a not-null variable %s was set NULL by this procedure call\");",
+                        id.javaCode(), id.name));
+                }
+            }
+
+            i++;
+        }
+
+        return ret.toArray(DUMMY_STRING_ARRAY);
+    }
 
     @Override
     public CodeToResolve visitStmtLocalProcCall(StmtLocalProcCall node) {
 
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
+        String[] checkNotNullOutArgs = getCheckNotNullOutArgsCode(node.args, node.decl.paramList);
 
         return Misc.isEmpty(node.args)
                 ? new CodeTemplate(
@@ -1816,7 +1909,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'NAME'%",
                         node.name,
                         "%'+ARGS'%",
-                        visitArguments(node.args, node.decl.paramList));
+                        visitArguments(node.args, node.decl.paramList),
+                        "%'+CHECK-NOT-NULL-OUTS'%",
+                        checkNotNullOutArgs);
     }
 
     @Override
@@ -1992,7 +2087,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return node.exHandlers.nodes.size() == 0
                 ? visitNodeList(node.stmts)
                 : new CodeTemplate(
-                        "ExprLocalFuncCall",
+                        "Body",
                         Misc.getLineColumnOf(node.ctx),
                         tmplBody,
                         "%'+STATEMENTS'%",
@@ -2428,6 +2523,33 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
     }
 
+    private static String getFuncParamStr(int size, NodeList<DeclParam> paramList) {
+
+        if (size == 0) {
+            return "";
+        }
+
+        StringBuffer sbuf = new StringBuffer();
+        boolean first = true;
+        for (int i = 0; i < size; i++) {
+
+            DeclParam param = paramList.nodes.get(i);
+
+            if (first) {
+                first = false;
+            } else {
+                sbuf.append(", ");
+            }
+
+            if (param instanceof DeclParamOut) {
+                sbuf.append(String.format("%s[] o%d", param.typeSpec.javaCode, i));
+            } else {
+                sbuf.append(String.format("%s o%d", param.typeSpec.javaCode, i));
+            }
+        }
+
+        return sbuf.toString();
+    }
     private static class CodeTemplate implements CodeToResolve {
 
         boolean resolved;
@@ -2687,4 +2809,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             return null;
         }
     }
+
+
 }
