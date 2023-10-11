@@ -608,12 +608,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
                 // add code to check if a not-null variable was set null by this function call
                 Expr arg = args.nodes.get(i);
-                assert arg instanceof ExprId;   // by earlier check
-                ExprId id = (ExprId ) arg;
+                assert arg instanceof ExprId; // by earlier check
+                ExprId id = (ExprId) arg;
                 DeclId declId = id.decl;
                 if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
-                    ret.add(String.format(
-                        "checkNotNull(o%d[0], \"a not-null variable %s was set NULL by this function call\");", i, id.name));
+                    ret.add(
+                            String.format(
+                                    "checkNotNull(o%d[0], \"a not-null variable %s was set NULL by this function call\");",
+                                    i, id.name));
                 }
             }
         }
@@ -794,7 +796,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return sbuf.toString();
     }
 
-    private static String[] getCheckNotNullOutArgsCode(int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
+    private static String[] getCheckNotNullOutArgsCode(
+            int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
 
         List<String> ret = new LinkedList<>();
 
@@ -806,13 +809,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
                 // add code to check if a not-null variable was set null by this function call
                 Expr arg = args.nodes.get(i);
-                assert arg instanceof ExprId;   // by earlier check
-                ExprId id = (ExprId ) arg;
+                assert arg instanceof ExprId; // by earlier check
+                ExprId id = (ExprId) arg;
                 DeclId declId = id.decl;
                 if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
-                    ret.add(String.format(
-                        "checkNotNull(o%d[0], \"a not-null variable %s was set NULL by this function call\");",
-                        i, id.name));
+                    ret.add(
+                            String.format(
+                                    "checkNotNull(o%d[0], \"a not-null variable %s was set NULL by this function call\");",
+                                    i, id.name));
                 }
             }
         }
@@ -829,7 +833,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String paramStr = getFuncParamStr(argSize, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
         String args = getLocalFuncArgsStr(argSize);
-        String[] checkNotNullOutArgs = getCheckNotNullOutArgsCode(argSize, node.args, node.decl.paramList);
+        String[] checkNotNullOutArgs =
+                getCheckNotNullOutArgsCode(argSize, node.args, node.decl.paramList);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -1014,14 +1019,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final String[] tmplAssignNotNull =
             new String[] {
-                "%'VAR'% = checkNotNull(",
-                "  %'+VAL'%, \"NOT NULL constraint violated\");"
+                "%'VAR'% = checkNotNull(", "  %'+VAL'%, \"NOT NULL constraint violated\");"
             };
-    private static final String[] tmplAssignNullable =
-            new String[] {
-                "%'VAR'% =",
-                "  %'+VAL'%;"
-            };
+    private static final String[] tmplAssignNullable = new String[] {"%'VAR'% =", "  %'+VAL'%;"};
 
     @Override
     public CodeToResolve visitStmtAssign(StmtAssign node) {
@@ -1769,15 +1769,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 assert arg instanceof ExprId;
                 ExprId id = (ExprId) arg;
                 ret.add(
-                        String.format("%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
+                        String.format(
+                                "%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
                                 id.javaCode(), param.typeSpec.javaCode, i + 1));
 
                 // add code to check if a not-null variable was set null by this function call
                 DeclId declId = id.decl;
                 if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
-                    ret.add(String.format(
-                        "checkNotNull(%s, \"a not-null variable %s was set NULL by this procedure call\");",
-                        id.javaCode(), id.name));
+                    ret.add(
+                            String.format(
+                                    "checkNotNull(%s, \"a not-null variable %s was set NULL by this procedure call\");",
+                                    id.javaCode(), id.name));
                 }
             }
         }
@@ -1855,31 +1857,28 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplStmtLocalProcCall =
-            new String[] {
-                "%'BLOCK'%%'NAME'%(",
-                "  %'+ARGS'%",
-                ");",
-                "%'+CHECK-NOT-NULL-OUTS'%"
-            };
+            new String[] {"%'BLOCK'%%'NAME'%(", "  %'+ARGS'%", ");", "%'+CHECK-NOT-NULL-OUTS'%"};
 
-    private static String[] getCheckNotNullOutArgsCode(NodeList<Expr> args, NodeList<DeclParam> paramList) {
+    private static String[] getCheckNotNullOutArgsCode(
+            NodeList<Expr> args, NodeList<DeclParam> paramList) {
 
         List<String> ret = new LinkedList<>();
 
         int i = 0;
-        for (DeclParam dp: paramList.nodes) {
+        for (DeclParam dp : paramList.nodes) {
 
             if (dp instanceof DeclParamOut) {
 
                 // add code to check if a not-null variable was set null by this function call
                 Expr arg = args.nodes.get(i);
-                assert arg instanceof ExprId;   // by earlier check
+                assert arg instanceof ExprId; // by earlier check
                 ExprId id = (ExprId) arg;
                 DeclId declId = id.decl;
                 if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
-                    ret.add(String.format(
-                        "checkNotNull(%s, \"a not-null variable %s was set NULL by this procedure call\");",
-                        id.javaCode(), id.name));
+                    ret.add(
+                            String.format(
+                                    "checkNotNull(%s, \"a not-null variable %s was set NULL by this procedure call\");",
+                                    id.javaCode(), id.name));
                 }
             }
 
@@ -2550,6 +2549,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return sbuf.toString();
     }
+
     private static class CodeTemplate implements CodeToResolve {
 
         boolean resolved;
@@ -2809,6 +2809,4 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             return null;
         }
     }
-
-
 }
