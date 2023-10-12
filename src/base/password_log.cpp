@@ -91,7 +91,7 @@ static unsigned char isSpace[0x100] =
 #define IS_PWD_NEED_PASSWORD(pwd_info_ptr) ((EN_ADD_PWD_STRING)(((pwd_info_ptr)[1] >> 28) & 0x03))
 #define GET_END_PWD_OFFSET(pwd_info_ptr)   ((pwd_info_ptr)[0] + ((pwd_info_ptr)[1] & MAX_PWD_LENGTH))
 
-class CHidePassword
+class hide_password
 {
   private:
     char *skip_comment_string (char *query);
@@ -104,15 +104,16 @@ class CHidePassword
     bool check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server);
     void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
     bool check_capitalized_keyword_create (char *query);
+    const char *get_password_string (char *qryptr, int *pwd_info_ptr);
 
     bool  m_use_backslash_escape;
 
   public:
-    CHidePassword ()
+    hide_password ()
     {
       m_use_backslash_escape = ! prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES);
     };
-    ~CHidePassword ()
+    ~hide_password ()
     {
     };
 
@@ -123,7 +124,7 @@ class CHidePassword
 };
 
 char *
-CHidePassword::skip_comment_string (char *query)
+hide_password::skip_comment_string (char *query)
 {
   query += 2;
   if (query[-1] != '*')
@@ -156,7 +157,7 @@ CHidePassword::skip_comment_string (char *query)
 }
 
 char *
-CHidePassword::get_quot_string (char *ps)
+hide_password::get_quot_string (char *ps)
 {
   char quot_char = *ps;
 
@@ -176,7 +177,7 @@ CHidePassword::get_quot_string (char *ps)
 }
 
 char *
-CHidePassword::get_token (char *&in, int &len)
+hide_password::get_token (char *&in, int &len)
 {
   char *ps, check_char;
   int quoted_single = 0;
@@ -243,7 +244,7 @@ CHidePassword::get_token (char *&in, int &len)
 }
 
 char *
-CHidePassword::get_method_passowrd_start_position (char *ps, char *method_name, int *method_password_len)
+hide_password::get_method_passowrd_start_position (char *ps, char *method_name, int *method_password_len)
 {
   /*
      set_password('password_string')
@@ -304,7 +305,7 @@ CHidePassword::get_method_passowrd_start_position (char *ps, char *method_name, 
 
 
 char *
-CHidePassword::get_passowrd_pos_n_len (char *query, bool is_create, bool is_server, int *password_len,
+hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_server, int *password_len,
 				       bool *is_found_pwd_keyword)
 {
   char *ps = query;
@@ -396,7 +397,7 @@ CHidePassword::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
 }
 
 char *
-CHidePassword::skip_one_query (char *query)
+hide_password::skip_one_query (char *query)
 {
   char *ps;
 
@@ -434,7 +435,7 @@ CHidePassword::skip_one_query (char *query)
   return ps;
 }
 
-bool CHidePassword::check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server)
+bool hide_password::check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server)
 {
   char   *ps;
   const char *first_cmd_str[] = { "call", "create", "alter", NULL };
@@ -517,7 +518,7 @@ bool CHidePassword::check_lead_string_in_query (char **query, char **method_name
 }
 
 void
-CHidePassword::find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr)
+hide_password::find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr)
 {
   int start, end;
   bool is_add_comma;
@@ -600,7 +601,7 @@ CHidePassword::find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_
 }
 
 bool
-CHidePassword::check_capitalized_keyword_create (char *query)
+hide_password::check_capitalized_keyword_create (char *query)
 {
   char *ps = query;
   int len;
@@ -615,15 +616,47 @@ CHidePassword::check_capitalized_keyword_create (char *query)
   return false;
 }
 
+const char *
+hide_password::get_password_string (char *qryptr, int *pwd_info_ptr)
+{
+  EN_ADD_PWD_STRING en_pwd_string;
+  // *INDENT-OFF*
+  static const char* password_string[6] = { 
+        ", '****'" ,          " '****'",
+        " PASSWORD '****'" ,  " password '****'",
+        ", PASSWORD='****'" , " password='****'"
+  };
+  // *INDENT-ON*
+
+  en_pwd_string = IS_PWD_NEED_PASSWORD (pwd_info_ptr);
+  if (en_pwd_string == en_none_password)
+    {
+      return (IS_PWD_NEED_COMMA (pwd_info_ptr) ? password_string[0] : password_string[1]);
+    }
+  else
+    {
+      bool is_capatalized = check_capitalized_keyword_create (qryptr);
+
+      if (en_pwd_string == en_user_password)
+	{
+	  return (is_capatalized ? password_string[2] : password_string[3]);
+	}
+      else
+	{
+	  assert (en_pwd_string == en_server_password);
+	  return (is_capatalized ? password_string[4] : password_string[5]);
+	}
+    }
+}
+
 int
-CHidePassword::snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr)
+hide_password::snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr)
 {
   char *qryptr = query;
   char chbk;
   int pos;
   int length = 0;
   EN_ADD_PWD_STRING en_pwd_string;
-  const char *pwd_str;
 
   assert (hide_pwd_ptr);
   int *pwd_info_ptr = hide_pwd_ptr->pwd_info_ptr;
@@ -633,28 +666,9 @@ CHidePassword::snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO
       pos = pwd_info_ptr[x];
       chbk = query[pos];
       query[pos] = '\0';
+
       length += snprintf (msg + length, size - length, "%s", qryptr);
-
-      en_pwd_string = IS_PWD_NEED_PASSWORD (pwd_info_ptr + x);
-      if (en_pwd_string == en_none_password)
-	{
-	  pwd_str = (IS_PWD_NEED_COMMA (pwd_info_ptr + x) ? ", '****'" : " '****'");
-	}
-      else
-	{
-	  bool is_capatalized = check_capitalized_keyword_create (qryptr);
-
-	  if (en_pwd_string == en_user_password)
-	    {
-	      pwd_str = is_capatalized ? " PASSWORD '****'" : " password '****'";
-	    }
-	  else /* if(en_pwd_string == en_server_password) */
-	    {
-	      pwd_str = is_capatalized ? ", PASSWORD='****'" : " password='****'";
-	    }
-	}
-
-      length += snprintf (msg + length, size - length, "%s", pwd_str);
+      length += snprintf (msg + length, size - length, "%s", get_password_string (qryptr, pwd_info_ptr + x));
 
       query[pos] = chbk;
       qryptr = query + GET_END_PWD_OFFSET (pwd_info_ptr + x);
@@ -669,7 +683,7 @@ CHidePassword::snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO
 }
 
 void
-CHidePassword::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...))
+hide_password::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...))
 {
   int offset;
   char chbk;
@@ -694,14 +708,13 @@ CHidePassword::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf
 }
 
 void
-CHidePassword::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
+hide_password::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
 				 int (*cas_fprintf) (FILE *, const char *, ...))
 {
   char *qryptr = query;
   char chbk;
   int pos;
   EN_ADD_PWD_STRING en_pwd_string;
-  const char *pwd_str;
 
   assert (hide_pwd_ptr);
   int *pwd_info_ptr = hide_pwd_ptr->pwd_info_ptr;
@@ -711,26 +724,9 @@ CHidePassword::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_p
       pos = pwd_info_ptr[x];
       chbk = query[pos];
       query[pos] = '\0';
-      fprintf_replace_newline (fp, qryptr, cas_fprintf);
 
-      en_pwd_string = IS_PWD_NEED_PASSWORD (pwd_info_ptr + x);
-      if (en_pwd_string == en_none_password)
-	{
-	  pwd_str = (IS_PWD_NEED_COMMA (pwd_info_ptr + x) ? ", '****'" : " '****'");
-	}
-      else
-	{
-	  bool is_capatalized = check_capitalized_keyword_create (qryptr);
-	  if (en_pwd_string == en_user_password)
-	    {
-	      pwd_str = is_capatalized ? " PASSWORD '****'" : " password '****'";
-	    }
-	  else /* if(en_pwd_string == en_server_password) */
-	    {
-	      pwd_str = is_capatalized ? ", PASSWORD='****'" : " password='****'";
-	    }
-	}
-      cas_fprintf (fp, "%s",  pwd_str);
+      fprintf_replace_newline (fp, qryptr, cas_fprintf);
+      cas_fprintf (fp, "%s",  get_password_string (qryptr, pwd_info_ptr + x));
 
       query[pos] = chbk;
       qryptr = query + GET_END_PWD_OFFSET (pwd_info_ptr + x);
@@ -746,7 +742,7 @@ void
 password_fprintf (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
 		  int (*cas_fprintf) (FILE *, const char *, ...))
 {
-  CHidePassword chp;
+  hide_password chp;
 
   if (hide_pwd_info_ptr && hide_pwd_info_ptr->pwd_info_ptr)
     {
@@ -766,7 +762,7 @@ password_fprintf (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
 int
 password_snprint (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
-  CHidePassword chp;
+  hide_password chp;
   int ret;
 
   if (hide_pwd_info_ptr && hide_pwd_info_ptr->pwd_info_ptr)
