@@ -1451,13 +1451,13 @@ logddl_reset_query_text ()
 
 // only used in callback_handler::prepare()
 void
-logddl_set_callback_stmt (int stmt_type, char *sql, int len, int err_code)
+logddl_set_callback_stmt (int stmt_type, char *sql, int len, int err_code, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
   if (ddl_logging_enabled)
     {
       if (logddl_set_stmt_type_internal (stmt_type, NULL))
 	{
-	  logddl_set_sql_text_internal (sql, len, NULL);
+	  logddl_set_sql_text_internal (sql, len, hide_pwd_info_ptr);
 	  logddl_set_err_code (err_code);
 	}
     }
