@@ -14753,36 +14753,6 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   return err;
 }
 
-static int
-copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
-{
-  PR_TYPE *pr_type_p;
-  DB_TYPE src_type;
-
-  /* check if there is nothing to do, so we don't clobber a db_value if we happen to try to copy it to itself */
-  if (dest_p == src_p)
-    {
-      return NO_ERROR;
-    }
-
-  /* clear any value from a previous iteration */
-  (void) pr_clear_value (dest_p);
-
-  src_type = DB_VALUE_DOMAIN_TYPE (src_p);
-  pr_type_p = pr_type_from_id (src_type);
-  if (pr_type_p == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  if (pr_type_p->setval (dest_p, src_p, true) == NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
 /*
  * do_execute_select() - Execute the prepared SELECT statement
  *   return: Error code

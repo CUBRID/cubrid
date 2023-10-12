@@ -3750,7 +3750,6 @@ struct parser_node
   PARSER_VARCHAR *expr_before_const_folding;	/* text before constant folding (used by value, host var nodes) */
   PT_TYPE_ENUM type_enum;	/* type enumeration tag PT_TYPE_??? */
   CACHE_TIME cache_time;	/* client or server cache time */
-  SHA1Hash sha1;
   int cte_host_var_count;	/* CTE host variable count */
   int *cte_host_var_index;	/* CTE host variable index in non_recursive CTE node */
 

@@ -15029,7 +15029,7 @@ end:
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
-      // assert (thread_p->m_qlist_count == qlist_enter_count + 1);
+      assert (thread_p->m_qlist_count == qlist_enter_count + 1);
     }
   else
     {

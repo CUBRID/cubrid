@@ -2428,10 +2428,10 @@ stx_build_list_id (THREAD_ENTRY * thread_p, char *ptr, QFILE_LIST_ID * listid)
       goto error;
     }
 
-  //assert_release (listid->type_list.type_cnt == 0);
-  //assert_release (listid->type_list.domp == NULL);
+  assert_release (listid->type_list.type_cnt == 0);
+  assert_release (listid->type_list.domp == NULL);
 
-#if 1				/* DEAD CODE - for defense code */
+#if 0				/* DEAD CODE - for defense code */
   if (listid->type_list.type_cnt > 0)
     {
       int count, i;
