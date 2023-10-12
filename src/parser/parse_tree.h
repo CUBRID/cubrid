@@ -3837,7 +3837,7 @@ typedef struct remote_cols
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
-#include "password_log.h"
+#include "hide_password.h"
 
 struct parser_context
 {

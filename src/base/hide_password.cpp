@@ -18,7 +18,7 @@
 
 
 /*
- * password_log.c -
+ * hide_password.cpp -
  */
 
 #ident "$Id$"
@@ -43,7 +43,7 @@
 
 #include "porting.h"
 #include "cas_common.h"
-#include "password_log.h"
+#include "hide_password.h"
 //#include "parse_tree.h"
 #include "system_parameter.h"
 //#include "environment_variable.h"

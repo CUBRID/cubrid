@@ -49,7 +49,7 @@
 #include "environment_variable.h"
 #include "broker_config.h"
 #include "util_func.h"
-#include "password_log.h"
+#include "hide_password.h"
 
 #define DDL_LOG_MSG 	            (256)
 #define DDL_LOG_PATH    	    "log/ddl_audit"

@@ -55,7 +55,7 @@
 #include "cas_db_inc.h"
 #endif
 #include "chartype.h"
-#include "password_log.h"
+#include "hide_password.h"
 
 
 #if defined(WINDOWS)

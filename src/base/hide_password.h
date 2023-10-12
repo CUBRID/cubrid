@@ -18,7 +18,7 @@
 
 
 /*
- * password_log.h -
+ * hide_password.h -
  */
 
 #ifndef	_PASSWORD_LOG_H_

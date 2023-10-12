@@ -195,6 +195,7 @@ struct _s_passwd{
   bool pwd_comma_offset;
 };
 static struct _s_passwd pwd_info = { -1, -1, false, false, 0, -1, false };
+static void pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING en_add_pwd_string);
 
 static int parser_groupby_exception = 0;
 
@@ -27931,3 +27932,20 @@ pt_ct_check_select (char* p, char *perr_msg)
    return false;
 }
 
+void
+pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING en_add_pwd_string)
+{
+  if (this_parser->original_buffer == NULL)
+    {
+      // In the case of coming through the following three functions, original_buffer is null.
+      // db_open_file_name(), db_open_file(), db_make_session_for_one_statement_execution()
+      return;
+    }
+
+  if (start < 0 || end < 0)
+    {
+      return;
+    }
+
+  password_add_offset (&this_parser->hide_pwd_info, start, end, is_add_comma, en_add_pwd_string);
+}

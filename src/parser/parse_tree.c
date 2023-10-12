@@ -37,7 +37,7 @@
 #include "parser.h"
 #include "jansson.h"
 #include "memory_alloc.h"
-#include "password_log.h"
+#include "hide_password.h"
 
 #if defined(SERVER_MODE)
 #include "connection_error.h"

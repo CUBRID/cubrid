@@ -26,7 +26,7 @@
 
 #ident "$Id$"
 
-#include "password_log.h"
+#include "hide_password.h"
 typedef enum
 {
   NEW_CONNECTION,
