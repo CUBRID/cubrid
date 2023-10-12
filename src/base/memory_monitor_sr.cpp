@@ -30,6 +30,11 @@
 #include "memory_monitor_sr.hpp"
 #include "log_impl.h"
 
+#if !defined (NDEBUG)
+thread_local char mmon_err_msg[DB_MAX_IDENTIFIER_LENGTH];
+thread_local int mmon_err_msg_size = 0;
+#endif
+
 namespace cubperf
 {
   class memory_monitor;
@@ -177,6 +182,7 @@ namespace cubperf
       void aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const;
       void aggregate_module_info_summary (std::vector<MMON_MODULE_INFO> &info) const;
       void aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info) const;
+      void stat_dump_debug () const;
 
     private:
       inline int get_module_idx (MMON_STAT_ID stat_id) const;
@@ -246,6 +252,12 @@ namespace cubperf
     assert ((size >= 0) || ((uint64_t) (-size) <= m_cur_stat));
 
     m_cur_stat += size;
+
+#if !defined (NDEBUG)
+    mmon_err_msg_size += sprintf (mmon_err_msg + mmon_err_msg_size,
+				  "_%s", m_subcomp_name.c_str ());
+#endif
+
   }
 
   void mmon_subcomponent::get_stat (MMON_SUBCOMP_INFO &info) const
@@ -264,6 +276,11 @@ namespace cubperf
     assert ((size >= 0) || ((uint64_t) (-size) <= m_stat.cur_stat));
 
     m_stat.cur_stat += size;
+
+#if !defined (NDEBUG)
+    mmon_err_msg_size += sprintf (mmon_err_msg + mmon_err_msg_size,
+				  "_%s", m_comp_name.c_str ());
+#endif
 
     if (m_stat.cur_stat > m_stat.peak_stat)
       {
@@ -410,6 +427,10 @@ namespace cubperf
 
     m_stat.cur_stat += size;
 
+#if !defined (NDEBUG)
+    mmon_err_msg_size = sprintf (mmon_err_msg, "[MMON-ADD] %s", m_module_name.c_str ());
+#endif
+
     if (m_stat.cur_stat > m_stat.peak_stat)
       {
 	m_stat.peak_stat = m_stat.cur_stat.load ();
@@ -421,6 +442,11 @@ namespace cubperf
 	assert ((size_t)comp_idx < m_component.size ());
 	m_component[comp_idx]->add_stat (subcomp_idx, size);
       }
+#if !defined (NDEBUG)
+    mmon_err_msg_size += sprintf (mmon_err_msg + mmon_err_msg_size, ": %ld\n", size);
+    er_log_debug (ARG_FILE_LINE, mmon_err_msg);
+    memset (mmon_err_msg, 0, DB_MAX_IDENTIFIER_LENGTH);
+#endif
   }
 
   void mmon_module::add_expand_resize_count (MMON_STAT_ID stat_id)
@@ -618,6 +644,78 @@ namespace cubperf
   {
     m_aggregater.get_transaction_info (tran_count, info);
   }
+
+  void memory_monitor::stat_dump_debug () const
+  {
+    MMON_SERVER_INFO server_info;
+    std::vector<MMON_MODULE_INFO> module_info;
+    MMON_TRAN_INFO tran_info;
+    const auto init_size_str = std::string {"Initial Size(KB)"};
+    const auto cur_size_str = std::string {"Current Size(KB)"};
+    const auto peak_size_str = std::string {"Peak Size(KB)"};
+    const auto resize_expand_str = std::string {"Resize Expand Count"};
+    char temp[256];
+    std::string result;
+
+    auto MMON_CONVERT_TO_KB_SIZE = [] (uint64_t size)
+    {
+      return ((size) / 1024);
+    };
+
+    module_info.resize (MMON_MODULE_LAST);
+
+    m_aggregater.get_server_info (server_info);
+    m_aggregater.get_module_info ((int) MMON_MODULE_ALL, module_info);
+
+    sprintf (temp, "====================cubrid memmon====================\n");
+    result += temp;
+    sprintf (temp, "Server Name: %s\n", server_info.name);
+    result += temp;
+    sprintf (temp, "Total Memory Usage(KB): %lu\n\n", server_info.total_mem_usage);
+    result += temp;
+    sprintf (temp, "-----------------------------------------------------\n");
+    result += temp;
+
+    for (const auto &m_info : module_info)
+      {
+	sprintf (temp, "Module Name: %s\n\n", m_info.name);
+	result += temp;
+	sprintf (temp, "%-19s\t: %17lu\n", init_size_str.c_str (), m_info.stat.init_stat);
+	result += temp;
+	sprintf (temp, "%-19s\t: %17lu\n", cur_size_str.c_str (), m_info.stat.cur_stat);
+	result += temp;
+	sprintf (temp, "%-19s\t: %17lu\n", peak_size_str.c_str (), m_info.stat.peak_stat);
+	result += temp;
+	sprintf (temp, "%-19s\t: %17u\n\n", resize_expand_str.c_str (), m_info.stat.expand_resize_count);
+	result += temp;
+
+	for (const auto &comp_info : m_info.comp_info)
+	  {
+	    sprintf (temp, "%s\n", comp_info.name);
+	    result += temp;
+	    sprintf (temp, "\t%-23s\t: %17lu\n", init_size_str.c_str (), comp_info.stat.init_stat);
+	    result += temp;
+	    sprintf (temp, "\t%-23s\t: %17lu\n", cur_size_str.c_str (), comp_info.stat.cur_stat);
+	    result += temp;
+
+	    for (const auto &subcomp_info : comp_info.subcomp_info)
+	      {
+		auto out_name = std::string {subcomp_info.name};
+		out_name += "(KB)";
+		sprintf (temp, "\t  %-20s\t: %17lu\n", out_name.c_str (), subcomp_info.cur_stat);
+		result += temp;
+	      }
+	    sprintf (temp, "\t%-23s\t: %17lu\n", peak_size_str.c_str (), comp_info.stat.peak_stat);
+	    result += temp;
+	    sprintf (temp, "\t%-23s\t: %17u\n\n", resize_expand_str.c_str (), comp_info.stat.expand_resize_count);
+	    result += temp;
+	  }
+	sprintf (temp, "\n-----------------------------------------------------\n\n");
+	result += temp;
+      }
+
+    er_log_debug (ARG_FILE_LINE, result.c_str());
+  }
 } // namespace cubperf
 
 /* APIs */
@@ -639,6 +737,9 @@ int mmon_initialize (const char *server_name)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (memory_monitor));
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+#if !defined (NDEBUG)
+      memset (mmon_err_msg, 0, DB_MAX_IDENTIFIER_LENGTH);
+#endif
     }
   return error;
 }
@@ -655,6 +756,9 @@ void mmon_finalize ()
 {
   if (mmon_Gl != nullptr)
     {
+#if !defined (NDEBUG)
+      mmon_Gl->stat_dump_debug ();
+#endif
       delete mmon_Gl;
     }
 }
