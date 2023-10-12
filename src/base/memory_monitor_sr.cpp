@@ -182,7 +182,9 @@ namespace cubperf
       void aggregate_module_info (int module_index, std::vector<MMON_MODULE_INFO> &info) const;
       void aggregate_module_info_summary (std::vector<MMON_MODULE_INFO> &info) const;
       void aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info) const;
+#if !defined (NDEBUG)
       void stat_dump_debug () const;
+#endif
 
     private:
       inline int get_module_idx (MMON_STAT_ID stat_id) const;
@@ -645,6 +647,7 @@ namespace cubperf
     m_aggregater.get_transaction_info (tran_count, info);
   }
 
+#if !defined (NDEBUG)
   void memory_monitor::stat_dump_debug () const
   {
     MMON_SERVER_INFO server_info;
@@ -716,6 +719,7 @@ namespace cubperf
 
     er_log_debug (ARG_FILE_LINE, result.c_str());
   }
+#endif
 } // namespace cubperf
 
 /* APIs */
