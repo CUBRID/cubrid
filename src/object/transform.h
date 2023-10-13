@@ -177,6 +177,11 @@ typedef struct tf_ct_class
 #define CT_DBCOLL_UCA_STRENGTH		   "uca_strength"
 #define CT_DBCOLL_CHECKSUM_COLUMN	   "checksum"
 
+#define CT_DBCHARSET_CHARSET_ID		  "charset_id"
+#define CT_DBCHARSET_CHARSET_NAME	  "charset_name"
+#define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
+#define CT_DBCHARSET_CHAR_SIZE		  "char_size"
+
 #define SET_AUTO_INCREMENT_SERIAL_NAME(SR_NAME, CL_NAME, AT_NAME)  \
                          sprintf(SR_NAME, "%s_ai_%s", CL_NAME, AT_NAME)
 

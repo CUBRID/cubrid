@@ -79,30 +79,48 @@ namespace cubschema
     // define
     SM_TEMPLATE *def = smt_edit_class_mop (class_mop, AU_ALTER);
 
-    const std::vector <column> &attributes = catalog_def.attributes;
+    const std::vector <attribute> &attributes = catalog_def.attributes;
     for (const auto &attr: attributes)
       {
 	const char *name = attr.name.data ();
 	const char *type = attr.type.data ();
-	error_code = smt_add_attribute (def, name, type, NULL);
-	if (error_code != NO_ERROR)
-	  {
-	    return error_code;
-	  }
 
-	if (!DB_IS_NULL (&attr.default_value))
+	if (attr.kind == attribute_kind::COLUMN)
 	  {
-	    error_code = smt_set_attribute_default (def, name, 0, (DB_VALUE *) &attr.default_value, NULL);
+	    error_code = smt_add_attribute (def, name, type, NULL);
 	    if (error_code != NO_ERROR)
 	      {
 		return error_code;
 	      }
+
+	    if (attr.dvalue_func)
+	      {
+		DB_VALUE default_value;
+		db_make_null (&default_value);
+		attr.dvalue_func (&default_value);
+		error_code = smt_set_attribute_default (def, name, 0, (DB_VALUE *) &default_value, NULL);
+	      }
+	  }
+	else if (attr.kind == attribute_kind::CLASS_METHOD)
+	  {
+	    error_code = smt_add_class_method (def, name, type);
+	  }
+	else
+	  {
+	    error_code = ER_FAILED;
+	  }
+
+	if (error_code != NO_ERROR)
+	  {
+	    assert (false);
+	    return error_code;
 	  }
       }
 
     error_code = sm_update_class (def, NULL);
     if (error_code != NO_ERROR)
       {
+	assert (false);
 	return error_code;
       }
 
@@ -111,26 +129,36 @@ namespace cubschema
       {
 	DB_CONSTRAINT_TYPE type = c.type;
 
-	const char *name = c.name.data();
+	const char *name = nullptr;
+	if (!c.name.empty ())
+	  {
+	    name = c.name.data();
+	  }
+
 	int is_class_attribute = c.is_class_attributes ? 1 : 0;
-	if (type == DB_CONSTRAINT_INDEX)
+
+	switch (type)
+	  {
+	  case DB_CONSTRAINT_INDEX:
+	  case DB_CONSTRAINT_PRIMARY_KEY:
+	  case DB_CONSTRAINT_UNIQUE:
+	  case DB_CONSTRAINT_NOT_NULL:
 	  {
 	    error_code = db_add_constraint (class_mop, type, name, (const char **) c.attribute_names.data(),
 					    is_class_attribute);
 	  }
-	else if (type == DB_CONSTRAINT_NOT_NULL)
-	  {
-	    error_code = db_constrain_non_null (class_mop, name, is_class_attribute, 1);
-	  }
-	else
-	  {
+	  break;
+
+	  default:
 	    // TODO: error handling, there is no such a cases in the legacy code
 	    assert (false);
 	    error_code = ER_GENERIC_ERROR;
+	    break;
 	  }
 
 	if (error_code != NO_ERROR)
 	  {
+	    assert (false);
 	    return error_code;
 	  }
       }
@@ -147,6 +175,7 @@ namespace cubschema
 	error_code = au_change_owner (class_mop, auth.owner);
 	if (error_code != NO_ERROR)
 	  {
+	    assert (false);
 	    return error_code;
 	  }
       }
@@ -156,6 +185,17 @@ namespace cubschema
 	error_code = au_grant (g.target_user, class_mop, g.auth, g.with_grant_option);
 	if (error_code != NO_ERROR)
 	  {
+	    assert (false);
+	    return error_code;
+	  }
+      }
+
+    if (catalog_def.row_initializer)
+      {
+	error_code = catalog_def.row_initializer (class_mop);
+	if (error_code != NO_ERROR)
+	  {
+	    assert (false);
 	    return error_code;
 	  }
       }
@@ -176,25 +216,28 @@ namespace cubschema
       }
 
     // attributes
-    const std::vector <column> &attributes = def.attributes;
+    const std::vector <attribute> &attributes = def.attributes;
     for (const auto &attr: attributes)
       {
 	const char *name = attr.name.data ();
 	const char *type = attr.type.data ();
-	error_code = db_add_attribute (class_mop, name, type, NULL);
-	if (error_code != NO_ERROR)
-	  {
-	    return error_code;
-	  }
-      }
 
-    // query spec
-    const std::vector <std::string> &query_specs = def.query_specs;
-    for (const auto &qs: query_specs)
-      {
-	error_code = db_add_query_spec (class_mop, qs.data ());
+	if (attr.kind == attribute_kind::COLUMN)
+	  {
+	    error_code = db_add_attribute (class_mop, name, type, NULL);
+	  }
+	else if (attr.kind == attribute_kind::QUERY_SPEC)
+	  {
+	    error_code = db_add_query_spec (class_mop, attr.name.data ());
+	  }
+	else
+	  {
+	    error_code = ER_FAILED;
+	  }
+
 	if (error_code != NO_ERROR)
 	  {
+	    assert (false);
 	    return error_code;
 	  }
       }

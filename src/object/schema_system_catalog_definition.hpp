@@ -34,14 +34,28 @@ namespace cubschema
 {
   using nullable_string = std::optional<std::string>;
 
-  struct column
+  enum class attribute_kind
   {
+    COLUMN,
+    CLASS_METHOD,
+
+    /* TODO: for system view */
+    QUERY_SPEC
+  };
+
+  struct attribute
+  {
+    using default_value_init_type = std::function<int (DB_VALUE *)>;
+
+    attribute_kind kind;
     std::string name;
     std::string type;
-    DB_VALUE default_value;
+    default_value_init_type dvalue_func;
 
-    column (const std::string &n, const std::string &t);
-    // column (const std::string &name, const std::string &type, const DB_VALUE &default_val);
+    attribute (const std::string &n, const std::string &t); // column
+    attribute (const std::string &name, const std::string &type, default_value_init_type dval_f);
+    attribute (const attribute_kind kind, const std::string &name, const std::string &type);
+    attribute (const attribute_kind kind, const std::string &name, const std::string &type, default_value_init_type dval_f);
   };
 
   struct constraint
@@ -74,25 +88,20 @@ namespace cubschema
 
   struct system_catalog_definition
   {
-    using attr_vec_type = std::vector <column>;
+    using attr_vec_type = std::vector <attribute>;
     using cstr_vec_type = std::vector <constraint>;
-    using qs_vec_type = std::vector <std::string>;
+    using row_init_type = std::function<int (struct db_object *)>;
 
     const std::string name;
     const attr_vec_type attributes;
-
-    const cstr_vec_type constraints; // for class
-    const qs_vec_type query_specs; // for vclass
-
+    const cstr_vec_type constraints;
     const authorization auth;
+    const row_init_type row_initializer;
 
     system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
 			       const cstr_vec_type &cts,
-			       const authorization &au);
-
-    system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
-			       const qs_vec_type &qs,
-			       const authorization &au);
+			       const authorization &au,
+			       row_init_type ri);
   };
 }
 
