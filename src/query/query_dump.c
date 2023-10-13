@@ -3217,9 +3217,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     case DELETE_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, ioread: %lld)\n", qdump_xasl_type_string (xasl_p),
+      fprintf (fp, "%s (time: %d, fetch: %lld, ioread: %lld, fetch_time: %lld)\n", qdump_xasl_type_string (xasl_p),
 	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), (long long int) xasl_p->xasl_stats.fetches,
-	       (long long int) xasl_p->xasl_stats.ioreads);
+	       (long long int) xasl_p->xasl_stats.ioreads, (long long int) xasl_p->xasl_stats.fetch_time);
       indent += 2;
       break;
 

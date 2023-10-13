@@ -920,6 +920,7 @@ struct xasl_stat
   struct timeval elapsed_time;
   UINT64 fetches;
   UINT64 ioreads;
+  UINT64 fetch_time;
 };
 
 /* top-n sorting object */
