@@ -37,7 +37,7 @@
 
 #include "deduplicate_key.h"
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
 // The higher the level, the more severe the deduplicate.
 #define CALC_MOD_VALUE_FROM_LEVEL(lv)   (((unsigned int)1) << (lv))
@@ -383,5 +383,3 @@ dk_deduplicate_key_attribute_finalized ()
   dk_sm_attribute_finalized ();
 #endif
 }
-
-#endif // #if defined(SUPPORT_DEDUPLICATE_KEY_MODE)

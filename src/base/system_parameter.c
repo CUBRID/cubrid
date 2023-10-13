@@ -1213,7 +1213,7 @@ bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
 static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
 static unsigned int prm_deduplicate_key_level_flag = 0;
@@ -1223,7 +1223,7 @@ static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MAX;
 bool PRM_USE_WITH_OPTION_PRINT = false;
 static bool prm_use_print_index_detail_default = false;
 static unsigned int prm_use_print_index_detail_flag = 0;
-#endif
+
 
 int PRM_DEFAULT_WEEK_FORMAT = 0;
 static int prm_week_format_default = 0;
@@ -6311,7 +6311,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   {PRM_ID_DEDUPLICATE_KEY_LEVEL,
    PRM_NAME_DEDUPLICATE_KEY_LEVEL,
    // It is not specified in the manual that it can be changed in the session.
@@ -6336,7 +6335,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#endif
   {PRM_ID_HA_SQL_LOG_MAX_COUNT,
    PRM_NAME_HA_SQL_LOG_MAX_COUNT,
    (PRM_FOR_CLIENT | PRM_FOR_HA),

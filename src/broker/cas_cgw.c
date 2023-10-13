@@ -61,7 +61,7 @@
 #define CONV_STRING_BUF_SIZE    (STRING_MAX_SIZE)
 
 #if defined (WINDOWS)
-#define CONV_M_TO_W(M, W, LEN)	MultiByteToWideChar(CP_ACP, 0, M, -1, W, LEN)
+#define CONV_M_TO_W(M, W, LEN)	MultiByteToWideChar(CP_UTF8, 0, M, -1, W, LEN)
 #else
 #define CONV_M_TO_W(M, W, LEN)      mbstowcs(W, M, LEN)
 #endif
@@ -75,7 +75,7 @@ struct t_supported_dbms
 };
 
 static INTL_CODESET client_charset = INTL_CODESET_UTF8;
-static char conv_out_string[CONV_STRING_BUF_SIZE + 1];
+static char conv_str_buff[CONV_STRING_BUF_SIZE + 1];
 static T_SUPPORTED_DBMS supported_dbms_list[] =
   { {"oracle", CAS_CGW_DBMS_ORACLE}, {"mysql", CAS_CGW_DBMS_MYSQL}, {"mariadb", CAS_CGW_DBMS_MARIADB},
 {"not supported db", CAS_DBMS_NONE}
@@ -113,11 +113,11 @@ static char *cgw_utype_to_string (int type);
 static void cgw_free_string_array (char **array);
 static char **cgw_split_string (const char *str, const char *delim, int *num);
 static int cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_length);
+static int cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen);
 static int cgw_conv_mtow (wchar_t * destStr, char *sourStr);
 static int cgw_uint32_to_uni16 (uint32_t i, uint16_t * u);
 static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t * src, size_t len);
 static char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
-
 
 int
 cgw_init ()
@@ -218,7 +218,7 @@ cgw_database_connect (T_DBMS_TYPE dbms_type, const char *connect_url, char *db_n
 	  goto ODBC_ERROR;
 	}
 
-      wconn_url = CONV_WCS_TO_SQLWCS (wcs_url, wcslen (wcs_url));
+      wconn_url = CONV_WCS_TO_SQLWCS (wcs_url, wcslen (wcs_url) + 1);
 
       if (wconn_url == NULL)
 	{
@@ -474,8 +474,16 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 		}
 	      break;
 	    case SQL_TINYINT:
-	      net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
-	      net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
+	      if (this_col_binding->col_unsigned_type)
+		{
+		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+		  net_buf_cp_short (net_buf, *((unsigned char *) this_col_binding->data_buffer));
+		}
+	      else
+		{
+		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
+		  net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
+		}
 	      break;
 	    case SQL_FLOAT:
 	    case SQL_REAL:
@@ -1055,11 +1063,7 @@ cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_bind
 
 	  if (col_unsigned_type)
 	    {
-	      if (col_data_type == SQL_TINYINT)
-		{
-		  col_data_type = SQL_SMALLINT;
-		}
-	      else if (col_data_type == SQL_SMALLINT)
+	      if (col_data_type == SQL_SMALLINT)
 		{
 		  col_data_type = SQL_INTEGER;
 		}
@@ -1699,6 +1703,11 @@ int
 cgw_sql_prepare (SQLCHAR * sql_stmt)
 {
   SQLRETURN err_code;
+  wchar_t *out_string = NULL;
+  char *in_string = NULL;
+  int out_length = 0;
+
+  in_string = (char *) sql_stmt;
 
   if (local_odbc_handle->hstmt == NULL)
     {
@@ -1707,12 +1716,32 @@ cgw_sql_prepare (SQLCHAR * sql_stmt)
 		   err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &local_odbc_handle->hstmt));
     }
 
-  SQL_CHK_ERR (local_odbc_handle->hstmt, SQL_HANDLE_STMT, err_code =
-	       SQLPrepare (local_odbc_handle->hstmt, sql_stmt, SQL_NTS));
+  out_length = strlen (in_string) * sizeof (wchar_t) + 1;
+  out_string = (wchar_t *) malloc (out_length);
+  if (out_string == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
+      return ER_INTERFACE_NO_MORE_MEMORY;
+    }
 
+  memset (out_string, 0x0, out_length);
+
+  err_code = cgw_utf8_to_unicode (in_string, out_string, out_length);
+
+  if (err_code < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_SQL_CONV_ERROR, 0);
+      goto ODBC_ERROR;
+    }
+
+  SQL_CHK_ERR (local_odbc_handle->hstmt, SQL_HANDLE_STMT, err_code =
+	       SQLPrepareW (local_odbc_handle->hstmt, (SQLWCHAR *) out_string, SQL_NTS));
+
+  FREE_MEM (out_string);
   return (int) err_code;
 
 ODBC_ERROR:
+  FREE_MEM (out_string);
   return ER_FAILED;
 }
 
@@ -2599,19 +2628,12 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
       return (-1);
     }
 
-  if (in_size <= 0)
+  if (in_size < 0)
     {
       return (-1);
     }
 
-
-  length = WideCharToMultiByte (CP_UTF8, 0, in_src, -1, NULL, 0, NULL, NULL);
-  if (length <= 0)
-    {
-      return -1;
-    }
-
-  length = WideCharToMultiByte (CP_UTF8, 0, in_src, -1, conv_out_string, length, NULL, NULL);
+  length = WideCharToMultiByte (CP_UTF8, 0, in_src, -1, conv_str_buff, CONV_STRING_BUF_SIZE, NULL, NULL);
   if (length <= 0)
     {
       return -1;
@@ -2619,7 +2641,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
 
   if (out_target)
     {
-      *out_target = conv_out_string;
+      *out_target = conv_str_buff;
     }
 
   if (out_length)
@@ -2633,7 +2655,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
   size_t ret = 0;
 
   uint16_t *iconv_in = (uint16_t *) in_src;
-  char *iconv_out = conv_out_string;
+  char *iconv_out = conv_str_buff;
 
   size_t inlen = in_size;
   size_t outlen_org = CONV_STRING_BUF_SIZE;
@@ -2662,8 +2684,8 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
 
   if (out_target)
     {
-      conv_out_string[outlen_org - outlen] = '\0';
-      *out_target = conv_out_string;
+      conv_str_buff[outlen_org - outlen] = '\0';
+      *out_target = conv_str_buff;
     }
 
   if (out_length)
@@ -2672,6 +2694,43 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
     }
 
 #endif
+  return 0;
+}
+
+
+static int
+cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen)
+{
+#if defined(WINDOWS)
+  int result = MultiByteToWideChar (CP_UTF8, 0, in_utf8_str, -1, out_unicode_str, out_unicode_strLen);
+
+  if (result == 0)
+    {
+      return -1;
+    }
+
+#else
+  char *in_buf = (char *) in_utf8_str;
+  char *out_buf = (char *) out_unicode_str;
+
+  size_t in_strlen = strlen (in_utf8_str);
+  size_t out_strlen = out_unicode_strLen;
+
+  iconv_t conv = iconv_open (UNICODE_CODE_PAGE, UTF8_CODE_PAGE);
+  if (conv == (iconv_t) - 1)
+    {
+      return -1;
+    }
+
+  if (iconv (conv, &in_buf, &in_strlen, &out_buf, &out_strlen) == -1)
+    {
+      iconv_close (conv);
+      return -1;
+    }
+
+  iconv_close (conv);
+#endif
+
   return 0;
 }
 
