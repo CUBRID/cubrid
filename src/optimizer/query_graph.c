@@ -2195,20 +2195,14 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		  lhs_indexable = true;
 		}
 	    }
-	  else if (pt_is_multi_col_term (lhs_expr))
+	  else if (pt_is_multi_col_term (lhs_expr) && lhs_expr->flag.is_paren)
 	    {
-	      /* multi column case (attr,attr,...) is indexable for RANGE, EQ operation */
+	      /* multi column case (attr,attr,...) is indexable for RANGE operation */
 	      func_arg = lhs_expr->info.function.arg_list;
 	      op_type = pt_expr->info.expr.op;
 
 	      switch (op_type)
 		{
-		case PT_EQ:
-		  if (!PT_IS_CONST (rhs_expr) || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
-		    {
-		      lhs_indexable = false;
-		    }
-		  break;
 		case PT_RANGE:
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 		    {
@@ -2249,7 +2243,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 			}
 		      segs++;
 		    }
-		  if (!is_find_local_name)
+		  if (!is_find_local_name || segs <= 1)
 		    {
 		      lhs_indexable = false;
 		    }
@@ -5048,14 +5042,13 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	      && !intl_identifier_casecmp (expr_str, consp->func_index_info->expr_str))
 	    {
 	      attr_id = consp->attributes[0]->id;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+
 	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
 		{
 		  // If a function index is defined in the first position, the second position is the actual column.
 		  // ex) create index idx on tbl(abs(val));
 		  attr_id = consp->attributes[1]->id;
 		}
-#endif
 
 	      for (j = 0; j < n_attrs; j++, attr_statsp++)
 		{
@@ -5512,12 +5505,10 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    {
 	      /* function index with the function expression as the first attribute */
 	      attr_id = index_entryp->constraints->attributes[0]->id;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
 		{
 		  attr_id = index_entryp->constraints->attributes[1]->id;
 		}
-#endif
 	    }
 
 	  for (k = 0; k < n_attrs; k++, attr_statsp++)

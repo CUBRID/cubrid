@@ -1203,7 +1203,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	   */
 	  PT_NODE *table;
 
-	  assert (!PT_SPEC_IS_CTE (spec));
+	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_CTE (spec));
 	  table = spec->info.spec.derived_table;
 	  if (table->node_type == PT_JSON_TABLE)
 	    {
@@ -4577,7 +4577,7 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      node->info.spec.flat_entity_list = q;
 	    }
 
-	  if (!PT_SPEC_IS_DERIVED (node) && PT_SPEC_IS_ENTITY (node))
+	  if (PT_SPEC_IS_ENTITY (node))
 	    {
 	      /* entity_spec list are not allowed to have derived column names (for now) */
 	      if (node->info.spec.as_attr_list)
@@ -4885,8 +4885,18 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
   bool need_precision = true;
 
   attr_def_node->data_type = NULL;
-  /* it needs to convert ext type to CCI_U_TYPE */
-  attr_def_node->type_enum = pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+
+  if (attr->type_idx > PT_TYPE_NONE)
+    {
+      /* this is the case of loaddb */
+      attr_def_node->type_enum = (PT_TYPE_ENUM) attr->type_idx;
+    }
+  else
+    {
+      /* it needs to convert ext type to CCI_U_TYPE */
+      attr_def_node->type_enum = pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+    }
+
   switch (attr_def_node->type_enum)
     {
     case PT_TYPE_JSON:
@@ -5233,6 +5243,24 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     }
   else
     {
+      int client_type = db_get_client_type ();
+
+      /* in the case of loaddb, it can just check the column from the attr_def node. */
+      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	{
+	  PT_NODE *cols;
+
+	  for (cols = dblink_table->cols; cols; cols = cols->next)
+	    {
+	      rmt_attr = rmt_tbl_cols->get_col_attr ((char *) cols->info.attr_def.attr_name->info.name.original);
+	      rmt_attr->type_idx = cols->type_enum;
+	      rmt_attr->dec_precision = (cols->data_type) ? cols->info.data_type.dec_precision : 0;
+	      rmt_attr->precision = (cols->data_type) ? cols->info.data_type.precision : 0;
+	      rmt_attr->charset = (cols->data_type) ? cols->info.data_type.units : 0;
+	    }
+	  return NO_ERROR;
+	}
+
       /* for collecting column info from "SELECT sel-list form dblink(server, 'SELECT ...') */
       sql =
 	pt_append_string (parser, "/* DBLINK SELECT */ ",

@@ -589,8 +589,6 @@ configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
 
-add_definitions(-DSUPPORT_DEDUPLICATE_KEY_MODE)
-
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
@@ -835,6 +833,7 @@ endif(WIN32)
 # for cmserver
 if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   include(ExternalProject)
+  set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/3rdparty")
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
   get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
@@ -891,7 +890,7 @@ if(USE_CUBRID_ENV)
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS
-    ${CMAKE_SOURCE_DIR}/README
+    ${CMAKE_SOURCE_DIR}/README.md
     ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
     DESTINATION ${CUBRID_PREFIXDIR})
 # on Windows, databases.txt is create from 'make_cubrid_demo.bat' because databases.txt is deleted in MSI file for install.

@@ -4043,11 +4043,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-					      , true
-#endif
-    );
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, true);
 
   if (num_found <= 0)
     {
@@ -4073,11 +4069,8 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
       /* must be updated when key_prefix_length will be added for FK and PK */
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				, inst_oid, true
-#endif
-	);
+	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
+				inst_oid, true);
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -4093,7 +4086,6 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
        */
       if (index->n_atts > 1)
 	{
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  /* If (index->n_atts > 1), it must be multiple keys, 
 	   * but it can be a single key except for deduplicate_key_attr. */
 
@@ -4108,9 +4100,6 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	      assert (DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_MIDXKEY || DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_NULL);
 	      has_null = btree_multicol_key_has_null (key_dbvalue);
 	    }
-#else
-	  has_null = btree_multicol_key_has_null (key_dbvalue);
-#endif
 	}
       else
 	{
@@ -4236,9 +4225,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   bool is_newly = false;
-#endif
 
   oid_list.oidp = NULL;
 
@@ -4291,7 +4278,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      goto error3;
 	    }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  is_newly = false;
 	  // We cannot make a PK with a function. Therefore, only the last member is checked.
 	  if (num_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (attr_ids[num_attrs - 1]))
@@ -4308,7 +4294,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		}
 	      num_attrs--;	/* ignore deduplicate_key_attr */
 	    }
-#endif
 	  assert (num_attrs == index->n_atts);
 
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
@@ -4344,16 +4329,12 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 	  is_upd_scan_init = false;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  if (!is_newly)
 	    {
 	      pr_clone_value (key, &key_val_range.key1);
 	      pr_clone_value (key, &key_val_range.key2);
 	    }
-#else
-	  pr_clone_value (key, &key_val_range.key1);
-	  pr_clone_value (key, &key_val_range.key2);
-#endif
+
 	  key_val_range.range = GE_LE;
 	  key_val_range.num_index_term = 0;
 	  BTREE_INIT_SCAN (&bt_scan);
@@ -4623,9 +4604,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   bool is_newly = false;
-#endif
 
   oid_list.oidp = NULL;
 
@@ -4677,7 +4656,6 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      goto error3;
 	    }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  is_newly = false;
 	  // We cannot make a PK with a function. Therefore, only the last member is checked.
 	  if (num_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (attr_ids[num_attrs - 1]))
@@ -4694,7 +4672,6 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		}
 	      num_attrs--;	/* ignore deduplicate_key_attr */
 	    }
-#endif
 	  assert (num_attrs == index->n_atts);
 
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
@@ -4731,16 +4708,12 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 
 	  is_upd_scan_init = false;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  if (!is_newly)
 	    {
 	      pr_clone_value (key, &key_val_range.key1);
 	      pr_clone_value (key, &key_val_range.key2);
 	    }
-#else
-	  pr_clone_value (key, &key_val_range.key1);
-	  pr_clone_value (key, &key_val_range.key2);
-#endif
+
 	  key_val_range.range = GE_LE;
 	  key_val_range.num_index_term = 0;
 	  BTREE_INIT_SCAN (&bt_scan);
@@ -7837,11 +7810,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
    *  Populate the index_attrinfo structure.
    *  Return the number of indexed attributes found.
    */
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-					      , false
-#endif
-    );
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
   num_btids = idx_info.num_btids;
 
   if (num_found == 0)
@@ -7908,11 +7877,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        */
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf,
-				(func_preds ? &func_preds[i] : NULL), NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				, inst_oid, false
-#endif
-	);
+				(func_preds ? &func_preds[i] : NULL), NULL, inst_oid, false);
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -8362,11 +8327,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
 
-  new_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[0], &new_idx_info
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-						  , false
-#endif
-    );
+  new_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[0], &new_idx_info, false);
   num_btids = new_idx_info.num_btids;
   if (new_num_found < 0)
     {
@@ -8374,11 +8335,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     }
   new_attrinfo = &space_attrinfo[0];
 
-  old_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[1], &old_idx_info
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-						  , false
-#endif
-    );
+  old_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[1], &old_idx_info, false);
   old_num_btids = old_idx_info.num_btids;
   if (old_num_found < 0)
     {
@@ -8535,18 +8492,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
       new_key =
 	heap_attrvalue_get_key (thread_p, i, new_attrinfo, new_recdes, &new_btid, &new_dbvalue, aligned_newbuf, NULL,
-				NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				, oid, false
-#endif
-	);
+				NULL, oid, false);
       old_key =
 	heap_attrvalue_get_key (thread_p, i, old_attrinfo, old_recdes, &old_btid, &old_dbvalue, aligned_oldbuf, NULL,
-				&key_domain
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				, oid, false
-#endif
-	);
+				&key_domain, oid, false);
 
       if ((new_key == NULL) || (old_key == NULL))
 	{
@@ -8824,11 +8773,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  key_domain = NULL;
 	  repl_old_key =
 	    heap_attrvalue_get_key (thread_p, pk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
-				    aligned_oldbuf, NULL, &key_domain
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				    , oid, false
-#endif
-	    );
+				    aligned_oldbuf, NULL, &key_domain, oid, false);
 	  if (repl_old_key == NULL)
 	    {
 	      error_code = ER_FAILED;
@@ -9013,11 +8958,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
    *  Populate the index_attrinfo structure.
    *  Return the number of indexed attributes found.
    */
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-					      , false
-#endif
-    );
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
   num_btids = idx_info.num_btids;
   if (num_found < 1)
     {
@@ -9080,11 +9021,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 
 	      dbvalue_ptr =
 		heap_attrvalue_get_key (thread_p, i, &index_attrinfo, &copy_rec, &inst_btid, &dbvalue, aligned_buf,
-					NULL, NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-					, &inst_oid, false
-#endif
-		);
+					NULL, NULL, &inst_oid, false);
 	      if (dbvalue_ptr == NULL)
 		{
 		  continue;
@@ -9107,11 +9044,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	{
 	  dbvalue_ptr =
 	    heap_attrvalue_get_key (thread_p, key_index, &index_attrinfo, &copy_rec, &inst_btid, &dbvalue, aligned_buf,
-				    NULL, NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				    , &inst_oid, false
-#endif
-	    );
+				    NULL, NULL, &inst_oid, false);
 	}
 
       /* Delete the instance from the B-tree */
@@ -9528,11 +9461,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
       /* Make sure that the index entry exist */
       if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, &attr_info) != NO_ERROR)
 	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &record, &btid_info, &dbvalue, aligned_buf,
-					    NULL, NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-					    , &inst_oid, false
-#endif
-	      )) == NULL)
+					    NULL, NULL, &inst_oid, false)) == NULL)
 	{
 	  if (isallvalid != DISK_INVALID)
 	    {
@@ -9982,11 +9911,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, &attr_info) != NO_ERROR)
 	      ||
 	      ((key =
-		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-					, &inst_oid, false
-#endif
-		)) == NULL))
+		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL, NULL,
+					&inst_oid, false)) == NULL))
 	    {
 	      if (isallvalid != DISK_INVALID)
 		{
@@ -10445,11 +10371,7 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * peek, HF
   char *btname = NULL;
   int *attrs_prefix_length = NULL;
 
-  if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info, &idx_info
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				      , false
-#endif
-      ) < 0)
+  if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info, &idx_info, false) < 0)
     {
       return DISK_ERROR;
     }
@@ -12537,11 +12459,9 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID 
       goto free_and_return;
     }
 
-  key = heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes, &tmp_btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				, NULL
-#endif
-    );
+  key =
+    heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes, &tmp_btid, &dbvalue, aligned_buf, NULL, NULL,
+			    NULL);
   if (key == NULL)
     {
       error = ER_FAILED;

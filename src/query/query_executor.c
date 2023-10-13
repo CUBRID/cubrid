@@ -10396,11 +10396,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				, NULL, false
-#endif
-	);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
+				NULL, false);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -10630,11 +10627,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       is_global_index = false;
 
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-				, NULL, false
-#endif
-	);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
+				NULL, false);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
@@ -11076,11 +11070,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->has_uniques && (insert->do_replace || odku_assignments != NULL))
     {
-      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-					  , false
-#endif
-	  ) < 0)
+      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info, false) < 0)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -21999,13 +21989,12 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  att_id = index_att->id;
 	  assert (att_id >= 0 || IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
 	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
 	    {
 	      assert ((j + 1) == num_idx_att);
 	      break;
 	    }
-#endif
+
 	  if (index_position == function_index_pos)
 	    {
 	      /* function position in index founded, compute attribute position in index */

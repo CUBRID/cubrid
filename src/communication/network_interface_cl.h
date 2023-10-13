@@ -120,12 +120,17 @@ extern int locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA *
 extern int locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int n_attrs, int *attr_ids,
 				      OID * pk_cls_oid, BTID * pk_btid, char *fk_name);
 extern int locator_prefetch_repl_insert (OID * class_oid, RECDES * recdes);
+
 extern int heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int heap_destroy (const HFID * hfid);
 #endif
 extern int heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const bool force = false);
+extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages);
+extern int heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance);
 extern int heap_reclaim_addresses (const HFID * hfid);
+extern int heap_get_maxslotted_reclength (int &maxslotted_reclength);
+
 extern int file_apply_tde_to_class_files (const OID * class_oid);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern int tde_get_data_keys ();
@@ -233,11 +238,8 @@ extern int stats_get_statistics_from_server (OID * classoid, unsigned int timest
 extern int stats_update_statistics (MOP classop, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
 
-extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-			    , int deduplicate_key_pos
-#endif
-  );
+extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk,
+			    int deduplicate_key_pos);
 extern int btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * class_oids, int n_classes,
 			     int n_attrs, int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk,
 			     int not_null_flag, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
@@ -288,13 +290,10 @@ extern void logtb_free_trans_info (TRANS_INFO * info);
 extern TRANS_INFO *logtb_get_trans_info (bool include_query_exec_info);
 extern void logtb_dump_trantable (FILE * outfp);
 
-extern int heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, int *npages);
-
 extern int btree_get_statistics (BTID * btid, BTREE_STATS * stat_info);
 extern int btree_get_index_key_type (BTID btid, TP_DOMAIN ** key_type_p);
 extern int db_local_transaction_id (DB_VALUE * trid);
 extern int qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits);
-extern int heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance);
 extern int locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_list);
 
 extern int jsp_get_server_port (void);

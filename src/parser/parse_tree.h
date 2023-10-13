@@ -2122,9 +2122,7 @@ struct pt_index_info
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   short deduplicate_level;	/* -1: Not set yet, 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
-#endif
 };
 
 /* CREATE USER INFO */
@@ -3277,9 +3275,7 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   short deduplicate_level;	/* 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
-#endif
 };
 
 /* Info for the CONSTRAINT node */

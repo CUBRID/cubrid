@@ -45,14 +45,7 @@
 #define DEDUPLICATE_OPTION_AUTO        (-2)
 
 /* ******************************************************** */
-#if !defined(SUPPORT_DEDUPLICATE_KEY_MODE)
-/* ******************************************************** */
-
-#define IS_DEDUPLICATE_KEY_ATTR_ID(id)      (false)
-#define IS_DEDUPLICATE_KEY_ATTR_NAME(name)  (false)
-
-/* ******************************************************** */
-#else /* #if !defined(SUPPORT_DEDUPLICATE_KEY_MODE) */
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 /* ******************************************************** */
 
 #define DEDUPLICATE_KEY_ATTR_ID_BASE    (0x8A8B8C90)	//  (-1970566000)
@@ -109,10 +102,6 @@ extern int dk_sm_deduplicate_key_position (int n_attrs, SM_ATTRIBUTE ** attrs, S
 extern char *dk_get_deduplicate_key_attr_name (int level);
 extern void dk_deduplicate_key_attribute_initialized ();
 extern void dk_deduplicate_key_attribute_finalized ();
-
-/* ******************************************************** */
-#endif /* #if !defined(SUPPORT_DEDUPLICATE_KEY_MODE) */
-/* ******************************************************** */
 
 
 #endif /* _DEDUPLICATE_KEY_H_ */
