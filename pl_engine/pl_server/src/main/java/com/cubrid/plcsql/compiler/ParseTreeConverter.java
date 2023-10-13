@@ -50,7 +50,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
+import java.util.HashMap;
 import java.util.TreeSet;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.commons.text.StringEscapeUtils;
@@ -59,6 +59,7 @@ import org.apache.commons.text.StringEscapeUtils;
 public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
+    private Map<String, ParserRuleContext> idUsedInCurrentDeclPart;
 
     public ParseTreeConverter(Map<ParserRuleContext, SqlSemantics> staticSqls) {
         this.staticSqls = staticSqls;
@@ -948,6 +949,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return null;
         }
 
+        Map<String, ParserRuleContext> saved = idUsedInCurrentDeclPart;
+        idUsedInCurrentDeclPart = new HashMap<>();
+
         // scan the declarations for the procedures and functions
         // in order for the effect of their forward declarations
         for (Declare_specContext ds : ctx.declare_spec()) {
@@ -970,6 +974,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         symbolStack.getCurrentScope().setDeclDone();
+
+        idUsedInCurrentDeclPart = saved;
 
         if (ret.nodes.size() == 0) {
             return null;
@@ -999,8 +1005,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitConstant_declaration(Constant_declarationContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.identifier());
+
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         Expr val = visitDefault_value_part(ctx.default_value_part());
+
+        checkRedefinitionOfUsedName(name, ctx);
 
         DeclConst ret = new DeclConst(ctx, name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
@@ -1012,6 +1021,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitException_declaration(Exception_declarationContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.identifier());
+        checkRedefinitionOfUsedName(name, ctx);
 
         DeclException ret = new DeclException(ctx, name);
         symbolStack.putDecl(name, ret);
@@ -1023,8 +1033,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitVariable_declaration(Variable_declarationContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.identifier());
+
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         Expr val = visitDefault_value_part(ctx.default_value_part());
+
+        checkRedefinitionOfUsedName(name, ctx);
 
         DeclVar ret = new DeclVar(ctx, name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
@@ -1063,6 +1076,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         symbolStack.popSymbolTable();
 
+        checkRedefinitionOfUsedName(name, ctx);
+
         DeclCursor ret = new DeclCursor(ctx, name, paramList, staticSql);
         symbolStack.putDecl(name, ret);
 
@@ -1081,7 +1096,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         String name = Misc.getNormalizedText(ctx.identifier());
-
         boolean isFunction = (ctx.PROCEDURE() == null);
 
         symbolStack.pushSymbolTable(
@@ -1116,6 +1130,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert ret != null; // by the previsit
         ret.decls = decls;
         ret.body = body;
+
+        if (symbolStack.getCurrentScope().level > 1) {
+            // check it only for local routines
+            checkRedefinitionOfUsedName(name, ctx);
+        }
 
         return ret;
     }
@@ -1198,6 +1217,10 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     @Override
     public Expr visitIdentifier(IdentifierContext ctx) {
         String name = Misc.getNormalizedText(ctx);
+
+        if (idUsedInCurrentDeclPart != null) {
+            idUsedInCurrentDeclPart.put(name, ctx);
+        }
 
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
@@ -2104,7 +2127,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         && ((DeclIdTyped) decl).typeSpec().equals(TypeSpecSimple.SYS_REFCURSOR)));
     }
 
-    private static final Map<String, TypeSpecSimple> typeSpecs = new TreeMap<>();
+    private static final Map<String, TypeSpecSimple> typeSpecs = new HashMap<>();
 
     static {
         typeSpecs.put("BOOLEAN", TypeSpecSimple.BOOLEAN);
@@ -2186,6 +2209,18 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private boolean connectionRequired = false;
 
     private boolean controlFlowBlocked;
+
+    private void checkRedefinitionOfUsedName(String name, ParserRuleContext declCtx) {
+
+        assert idUsedInCurrentDeclPart != null;
+        ParserRuleContext saved = idUsedInCurrentDeclPart.get(name);
+        if (saved != null) {
+            int[] pos = Misc.getLineColumnOf(saved);
+            throw new SemanticError(
+                    Misc.getLineColumnOf(declCtx), // s068
+                    String.format("name %s has already been used at line %d and column %d", name, pos[0], pos[1]));
+        }
+    }
 
     private ExprId visitNonFuncIdentifier(IdentifierContext ctx) {
         return visitNonFuncIdentifier(Misc.getNormalizedText(ctx), ctx);
