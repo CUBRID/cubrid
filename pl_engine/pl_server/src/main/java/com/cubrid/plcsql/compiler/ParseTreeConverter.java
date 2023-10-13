@@ -45,12 +45,12 @@ import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashMap;
 import java.util.TreeSet;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.commons.text.StringEscapeUtils;
@@ -2218,7 +2218,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             int[] pos = Misc.getLineColumnOf(saved);
             throw new SemanticError(
                     Misc.getLineColumnOf(declCtx), // s068
-                    String.format("name %s has already been used at line %d and column %d", name, pos[0], pos[1]));
+                    String.format(
+                            "name %s has already been used at line %d and column %d",
+                            name, pos[0], pos[1]));
         }
     }
 
