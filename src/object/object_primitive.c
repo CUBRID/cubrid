@@ -9494,7 +9494,7 @@ error:
   return ER_FAILED;
 }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 int
 pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 				   struct tp_domain *dbvals_domain_list, int tail_null_cnt)
@@ -9556,7 +9556,6 @@ pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num
 
   return NO_ERROR;
 }
-#endif
 
 /*
  * pr_data_writeval_disk_size - returns the number of bytes that will be
