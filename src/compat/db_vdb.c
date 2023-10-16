@@ -2364,6 +2364,20 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
       goto cleanup;
     }
 
+  if (prepared_stmt->info.query.with)
+    {
+      PT_NODE *cte_query;
+
+      cte_query =
+	parser_copy_tree (prepared_session->parser,
+			  prepared_stmt->info.query.with->info.with_clause.cte_definition_list);
+      prepare_info.cte_list = cte_query;
+    }
+  else
+    {
+      prepare_info.cte_list = NULL;
+    }
+
   /* set statement literal */
   prepare_info.statement = (char *) statement_literal;
   /* set columns */
@@ -2488,6 +2502,8 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
     }
   statement->info.execute.recompile = prepare_info.recompile;
   statement->info.execute.oids_included = prepare_info.oids_included;
+
+  statement->info.execute.cte_list = (PT_NODE *) prepare_info.cte_list;
 
   XASL_ID_COPY (&statement->info.execute.xasl_id, &xasl_id);
 

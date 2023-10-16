@@ -151,6 +151,7 @@ extern "C"
     int oids_included;
     char **into_list;		/* names of the "into" variables */
     int into_count;		/* count of elements from the into array */
+    void *cte_list;		/* for CTE query */
   };
 
   extern SM_DOMAIN *db_query_format_src_domain (DB_QUERY_TYPE * query_type);
