@@ -316,7 +316,6 @@ extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int nu
 extern int pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 					      struct tp_domain *dbvals_domain_list, int tail_null_cnt);
 
-extern int pr_midxkey_init_boundbits (char *bufptr, int n_atts);
 extern int pr_index_writeval_disk_size (DB_VALUE * value);
 extern int pr_data_writeval_disk_size (DB_VALUE * value);
 extern void pr_data_writeval (struct or_buf *buf, DB_VALUE * value);

@@ -699,9 +699,6 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_MULTI_GET_BOUND_BIT(bitptr, element) \
   ((*OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element)) & OR_MULTI_BOUND_BIT_MASK(element))
 
-#define OR_MULTI_GET_BOUND_BITS(bitptr, fsize) \
-  (char *) (((char *) (bitptr)) + fsize)
-
 #define OR_MULTI_ATT_IS_BOUND(bitptr, element) \
   OR_MULTI_GET_BOUND_BIT(bitptr, element)
 #define OR_MULTI_ATT_IS_UNBOUND(bitptr, element) \

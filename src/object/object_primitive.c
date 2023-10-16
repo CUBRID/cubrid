@@ -7545,7 +7545,7 @@ mr_setval_midxkey (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
   if (src_idx->size < 0)
     {
-      dst_idx.size = strlen (src_idx->buf);
+      dst_idx.size = strlen (src_idx->buf);	/* 정말 문제가 없나? */
     }
   else
     {
@@ -7627,17 +7627,7 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 
   if (size == -1)
     {				/* unknown size */
-      size = OR_GET_SHORT (buf->ptr);
-#if !defined(NDEBUG)
-      if (size != mr_index_lengthmem_midxkey (buf->ptr, domain))
-	{
-	  assert (false);
-	}
-#endif
-      if (size == OR_MAX_SHORT_UNSIGNED)
-	{
-	  size = mr_index_lengthmem_midxkey (buf->ptr, domain);
-	}
+      size = mr_index_lengthmem_midxkey (buf->ptr, domain);
     }
 
   if (size <= 0)
@@ -7652,7 +7642,6 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
     }
 
   midxkey.size = size;
-  midxkey.ncolumns = 0;
   midxkey.domain = domain;
   midxkey.min_max_val.position = -1;
   midxkey.min_max_val.type = MIN_COLUMN;
@@ -7775,7 +7764,9 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
   TP_DOMAIN *dom1, *dom2;
-  char *bitptr1, *bitptr2;
+  char *nullmap_ptr1, *offset_ptr1;
+  char *nullmap_ptr2, *offset_ptr2;
+  int nullmap_size, offset_size, header_size, element_offset, element_size;
   char *mem1, *mem2;
   int last;
 
@@ -7836,13 +7827,18 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   }
 #endif /* NDEBUG */
 
-  bitptr1 = mul1->buf + OR_SHORT_SIZE;
-  bitptr2 = mul2->buf + OR_SHORT_SIZE;
+  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (mul1->domain->precision);
+  offset_size = mul1->domain->precision + 1;
+  header_size = nullmap_size + offset_size;
 
-  last = OR_MULTI_BOUND_BIT_BYTES (mul1->domain->precision);
+  nullmap_ptr1 = mul1->buf;
+  nullmap_ptr2 = mul2->buf;
 
-  mem1 = bitptr1 + last;
-  mem2 = bitptr2 + last;
+  offset_ptr1 = nullmap_ptr1 + nullmap_size;
+  offset_ptr2 = nullmap_ptr2 + nullmap_size;
+
+  mem1 = nullmap_ptr1 + header_size;
+  mem2 = nullmap_ptr2 + header_size;
 
   dom1 = mul1->domain->setdomain;
   dom2 = mul2->domain->setdomain;
@@ -7850,24 +7846,50 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   last = (num_index_term > 0) ? num_index_term : mul1->ncolumns;
 
   i = 0;
-  if (start_colp)
+
+  if (start_colp && *start_colp > 0)
     {
-      for ( /* blank */ ; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+      element_offset = OR_GET_BYTE (offset_ptr1 + *start_colp);
+      assert (element_offset > 0);
+      if (element_offset < OR_MAX_BYTE_UNSIGNED)
 	{
-	  if (dom1 == NULL || dom2 == NULL || dom1->is_desc != dom2->is_desc)
-	    {
-	      assert (false);
-	      return DB_UNK;
-	    }
+	  mem1 = nullmap_ptr1 + element_offset;
 
-	  if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+	  for (i = 0; i < *start_colp; i++, dom1 = dom1->next)
 	    {
-	      mem1 += pr_midxkey_element_disk_size (mem1, dom1);
+	      ;
 	    }
-
-	  if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	}
+      else
+	{
+	  for (i = 0; i < *start_colp; i++, dom1 = dom1->next)
 	    {
-	      mem2 += pr_midxkey_element_disk_size (mem2, dom2);
+	      if (OR_MULTI_ATT_IS_BOUND (nullmap_ptr1, i))
+		{
+		  mem1 += pr_midxkey_element_disk_size (mem1, dom1);
+		}
+	    }
+	}
+
+      element_offset = OR_GET_BYTE (offset_ptr2 + *start_colp);
+      assert (element_offset > 0);
+      if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	{
+	  mem2 = nullmap_ptr2 + element_offset;
+
+	  for (i = 0; i < *start_colp; i++, dom2 = dom2->next)
+	    {
+	      ;
+	    }
+	}
+      else
+	{
+	  for (i = 0; i < *start_colp; i++, dom2 = dom1->next)
+	    {
+	      if (OR_MULTI_ATT_IS_BOUND (nullmap_ptr2, i))
+		{
+		  mem2 += pr_midxkey_element_disk_size (mem2, dom2);
+		}
 	    }
 	}
     }
@@ -7880,9 +7902,9 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	  return DB_UNK;
 	}
 
-      if (OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+      if (OR_MULTI_ATT_IS_BOUND (nullmap_ptr1, i))
 	{
-	  if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	  if (OR_MULTI_ATT_IS_BOUND (nullmap_ptr2, i))
 	    {
 	      /* check for val1 and val2 same domain */
 	      if (dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
@@ -7899,8 +7921,27 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 
 	      if (c == DB_EQ)
 		{
-		  mem1 += pr_midxkey_element_disk_size (mem1, dom1);
-		  mem2 += pr_midxkey_element_disk_size (mem2, dom2);
+		  element_offset = OR_GET_BYTE ((offset_ptr1 + 1) + i);
+		  assert (element_offset > 0);
+		  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+		    {
+		      mem1 = nullmap_ptr1 + element_offset;
+		    }
+		  else
+		    {
+		      mem1 += pr_midxkey_element_disk_size (mem1, dom1);
+		    }
+
+		  element_offset = OR_GET_BYTE ((offset_ptr2 + 1) + i);
+		  assert (element_offset > 0);
+		  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+		    {
+		      mem2 = nullmap_ptr2 + element_offset;
+		    }
+		  else
+		    {
+		      mem2 += pr_midxkey_element_disk_size (mem2, dom2);
+		    }
 		  continue;
 		}
 	    }
@@ -7919,7 +7960,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		}
 	    }
 	}
-      else if (OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+      else if (OR_MULTI_ATT_IS_BOUND (nullmap_ptr2, i))
 	{
 	  /* val 1 unbound, val 2 bound */
 	  if (mul1->min_max_val.position == i)
@@ -7977,19 +8018,25 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 
   if (result_size)
     {
-      result_size[0] = CAST_BUFLEN (mem1 - mul1->buf);
-      result_size[1] = CAST_BUFLEN (mem2 - mul2->buf);
+      // result_size[0] = CAST_BUFLEN (mem1 - mul1->buf);
+      // result_size[1] = CAST_BUFLEN (mem2 - mul2->buf);
 
       if (c != DB_EQ)
 	{
-	  if (dom1 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr1, i))
+	  if (dom1 != NULL && OR_MULTI_ATT_IS_BOUND (nullmap_ptr1, i))
 	    {
-	      result_size[0] += pr_midxkey_element_disk_size (mem1, dom1);
+	      element_size = OR_GET_BYTE ((offset_ptr1 + 1) + i);
+	      assert (element_size > 0);
+	      result_size[0] =
+		(element_size < OR_MAX_BYTE_UNSIGNED) ? element_size : pr_midxkey_element_disk_size (mem1, dom1);
 	    }
 
-	  if (dom2 != NULL && OR_MULTI_ATT_IS_BOUND (bitptr2, i))
+	  if (dom2 != NULL && OR_MULTI_ATT_IS_BOUND (nullmap_ptr2, i))
 	    {
-	      result_size[1] += pr_midxkey_element_disk_size (mem2, dom2);
+	      element_size = OR_GET_BYTE ((offset_ptr2 + 1) + i);
+	      assert (element_size > 0);
+	      result_size[1] =
+		(element_size < OR_MAX_BYTE_UNSIGNED) ? element_size : pr_midxkey_element_disk_size (mem2, dom2);
 	    }
 	}
     }
@@ -8128,23 +8175,12 @@ mr_data_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk)
 static int
 mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
 {
-  char *buf, *bitptr;
+  char *buf;
+  char *nullmap_ptr, *offset_ptr;
+  int nullmap_size, offset_size, header_size, element_size;
   TP_DOMAIN *dom;
   int idx_ncols = 0, i, adv_size;
   int len;
-
-  /* There is no difference between the disk & memory sizes. */
-  bitptr = (char *) memptr;
-
-  len = OR_GET_SHORT (bitptr);
-#if defined(NDEBUG)
-  if (len < OR_MAX_SHORT_UNSIGNED && len > 0)
-    {
-      return len;
-    }
-#endif
-
-  bitptr += OR_SHORT_SIZE;
 
   idx_ncols = domain->precision;
   if (idx_ncols <= 0)
@@ -8170,13 +8206,28 @@ mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
   }
 #endif /* NDEBUG */
 
-  buf = bitptr + OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-  assert (CAST_BUFLEN (buf - bitptr) > 0);
+  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
+  assert (nullmap_size > 0);
+  offset_size = idx_ncols + 1;
+  header_size = nullmap_size + offset_size;
+
+  /* There is no difference between the disk & memory sizes. */
+  nullmap_ptr = (char *) memptr;
+  offset_ptr = nullmap_ptr + nullmap_size;
+  element_size = OR_GET_BYTE (offset_ptr + idx_ncols);
+  assert (element_size > 0);
+  if (element_size < OR_MAX_BYTE_UNSIGNED)
+    {
+      len = element_size;
+      goto exit_on_end;
+    }
+
+  buf = nullmap_ptr + header_size;
 
   for (i = 0, dom = domain->setdomain; i < idx_ncols; i++, dom = dom->next)
     {
       /* check for val is NULL */
-      if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
+      if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr, i))
 	{
 	  continue;		/* zero size; go ahead */
 	}
@@ -8187,9 +8238,7 @@ mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
     }
 
   /* set buf size */
-  assert (len == (CAST_BUFLEN (buf - bitptr) + OR_SHORT_SIZE));
-  len = CAST_BUFLEN (buf - bitptr);
-  len += OR_SHORT_SIZE;
+  len = CAST_BUFLEN (buf - nullmap_ptr);
 
 exit_on_end:
 
@@ -8912,7 +8961,8 @@ pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
 
   OR_BUF buf_space;
   OR_BUF *buf;
-  char *bitptr;
+  char *nullmap_ptr, *offset_ptr;
+  int buf_size, nullmap_size, offset_size, header_size, element_offset;
 
   idx_ncols = midxkey->domain->precision;
   if (idx_ncols <= 0)
@@ -8927,29 +8977,29 @@ pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
       goto exit_on_error;
     }
 
-  /* get bit-mask */
-  bitptr = midxkey->buf + OR_SHORT_SIZE;
   /* get domain list, attr number */
   domain = midxkey->domain->setdomain;	/* first element's domain */
 
   buf = &buf_space;
   or_init (buf, midxkey->buf, midxkey->size);
+  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
+  offset_size = idx_ncols + 1;
+  header_size = nullmap_size + offset_size;
+  nullmap_ptr = midxkey->buf;
+  offset_ptr = nullmap_ptr + nullmap_size;
+  buf->ptr += header_size;
+  assert (midxkey->size > header_size);
 
-  if (or_advance (buf, OR_SHORT_SIZE) != NO_ERROR)
+  element_offset = OR_GET_BYTE (offset_ptr + index);
+  if (element_offset < OR_MAX_BYTE_UNSIGNED)
     {
-      goto exit_on_error;
-    }
-
-  advance_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-  if (or_advance (buf, advance_size) != NO_ERROR)
-    {
-      goto exit_on_error;
+      return element_offset;
     }
 
   for (i = 0; i < index; i++, domain = domain->next)
     {
       /* check for element is NULL */
-      if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
+      if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr, i))
 	{
 	  continue;		/* skip and go ahead */
 	}
@@ -8987,6 +9037,9 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   DB_MIDXKEY *midx_postfix, *midx_prefix;
   DB_MIDXKEY midx_result;
 
+  char *nullmap_ptr1, *nullmap_ptr2, *offset_ptr1, *offset_ptr2;
+  int nullmap_size, offset_size, header_size, element_offset;
+
   assert (DB_VALUE_TYPE (prefix) == DB_TYPE_MIDXKEY);
   assert (DB_VALUE_TYPE (postfix) == DB_TYPE_MIDXKEY);
 
@@ -9006,31 +9059,47 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 #if !defined(NDEBUG)
   for (i = 0; i < n_prefix; i++)
     {
-      assert (!OR_MULTI_ATT_IS_BOUND (midx_postfix->buf + OR_SHORT_SIZE, i));
+      assert (!OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, i));
     }
 #endif
 
   for (i = n_prefix; i < midx_result.ncolumns; i++)
     {
-      if (OR_MULTI_ATT_IS_BOUND (midx_postfix->buf + OR_SHORT_SIZE, i))
+      if (OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, i))
 	{
-	  OR_MULTI_ENABLE_BOUND_BIT (midx_result.buf + OR_SHORT_SIZE, i);
+	  OR_MULTI_ENABLE_BOUND_BIT (midx_result.buf, i);
 	}
       else
 	{
-	  OR_MULTI_CLEAR_BOUND_BIT (midx_result.buf + OR_SHORT_SIZE, i);
+	  OR_MULTI_CLEAR_BOUND_BIT (midx_result.buf, i);
 	}
     }
 
   memcpy (midx_result.buf + offset_prefix, midx_postfix->buf + offset_postfix, midx_postfix->size - offset_postfix);
-  if (midx_result.size < OR_MAX_SHORT_UNSIGNED)
+
+  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (midx_postfix->ncolumns);
+  offset_size = midx_postfix->ncolumns + 1;
+
+  nullmap_ptr1 = midx_postfix->buf;
+  offset_ptr1 = nullmap_ptr1 + nullmap_size;
+
+  nullmap_ptr2 = midx_result.buf;
+  offset_ptr2 = nullmap_ptr2 + nullmap_size;
+
+  for (i = n_prefix; i < midx_result.ncolumns; i++)
     {
-      OR_PUT_SHORT (midx_result.buf, midx_result.size);
+      element_offset = OR_GET_BYTE ((offset_ptr1 + 1) + i);
+      if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	{
+	  OR_PUT_BYTE ((offset_ptr2 + 1) + i, element_offset + (offset_prefix - offset_postfix));
+	}
+      else
+	{
+	  break;
+	}
     }
-  else
-    {
-      OR_PUT_SHORT (midx_result.buf, 0xFFFF);
-    }
+
+  /* offset을 최신화하는 코드가 필요하다. */
   midx_result.min_max_val.position = -1;
   midx_result.min_max_val.type = MIN_COLUMN;
   db_make_midxkey (result, &midx_result);
@@ -9049,32 +9118,47 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 int
 pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 {
-  DB_MIDXKEY *midx_key;
+  DB_MIDXKEY *midxkey;
   int i, start, offset;
-  char *bitptr;
 
-  midx_key = db_get_midxkey (key);
-  bitptr = midx_key->buf + OR_SHORT_SIZE;
+  char *nullmap_ptr, *offset_ptr;
+  int nullmap_size, offset_size, header_size, element_offset;
 
-  start = pr_midxkey_get_element_offset (midx_key, 0);
-  offset = pr_midxkey_get_element_offset (midx_key, prefix);
+  midxkey = db_get_midxkey (key);
+  assert (midxkey->ncolumns > 0);
 
-  memmove (midx_key->buf + start, midx_key->buf + offset, midx_key->size - offset);
+  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
+  offset_size = midxkey->ncolumns + 1;
+  header_size = nullmap_size + offset_size;
+
+  nullmap_ptr = midxkey->buf;
+  offset_ptr = nullmap_ptr + nullmap_size;
+
+  start = header_size;		/* pr_midxkey_get_element_offset (midxkey, 0); */
+  offset = pr_midxkey_get_element_offset (midxkey, prefix);
+
+  memmove (midxkey->buf + start, midxkey->buf + offset, midxkey->size - offset);
 
   for (i = 0; i < prefix; i++)
     {
-      OR_MULTI_CLEAR_BOUND_BIT (bitptr, i);
+      OR_MULTI_CLEAR_BOUND_BIT (nullmap_ptr, i);
+      OR_PUT_BYTE ((offset_ptr + 1) + i, start);
     }
 
-  midx_key->size = midx_key->size - offset + start;
-  if (midx_key->size < OR_MAX_SHORT_UNSIGNED)
+  for (; i < midxkey->ncolumns; i++)
     {
-      OR_PUT_SHORT (midx_key->buf, midx_key->size);
+      element_offset = OR_GET_BYTE ((offset_ptr + 1) + i);
+      if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	{
+	  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset - (offset - start));
+	}
+      else
+	{
+	  break;
+	}
     }
-  else
-    {
-      OR_PUT_SHORT (midx_key->buf, 0xFFFF);
-    }
+
+  midxkey->size = midxkey->size - (offset - start);
 
   return NO_ERROR;
 }
@@ -9134,7 +9218,9 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
 
   OR_BUF buf_space;
   OR_BUF *buf;
-  char *bitptr;
+
+  char *nullmap_ptr, *offset_ptr;
+  int nullmap_size, offset_size, header_size, element_offset;
 
   idx_ncols = midxkey->domain->precision;
   if (idx_ncols <= 0)
@@ -9167,71 +9253,82 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
   }
 #endif /* NDEBUG */
 
-  /* get bit-mask */
-  bitptr = midxkey->buf + OR_SHORT_SIZE;
-  /* get domain list, attr number */
-  domain = midxkey->domain->setdomain;	/* first element's domain */
+  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
+  offset_size = midxkey->ncolumns + 1;
+  header_size = nullmap_size + offset_size;
 
-  if (OR_MULTI_ATT_IS_UNBOUND (bitptr, index))
+  nullmap_ptr = midxkey->buf;
+  offset_ptr = nullmap_ptr + nullmap_size;
+
+  if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr, index))
     {
       db_make_null (value);
     }
   else
     {
       buf = NULL;		/* init */
-      i = 0;			/* init */
 
-      /* 1st phase: check for prev info */
-      if (prev_indexp && prev_ptrp)
-	{
-	  int j, offset;
-
-	  j = *prev_indexp;
-	  offset = CAST_BUFLEN (*prev_ptrp - midxkey->buf);
-	  if (j <= 0 || j > index || offset <= 0)
-	    {			/* invalid info */
-	      /* nop */
-	    }
-	  else
-	    {
-	      buf = &buf_space;
-	      or_init (buf, *prev_ptrp, midxkey->size - offset);
-
-	      /* consume prev domain */
-	      for (; i < j; i++)
-		{
-		  domain = domain->next;
-		}
-	    }
-	}
+      /* get domain list, attr number */
+      domain = midxkey->domain->setdomain;	/* first element's domain */
 
       /* 2nd phase: need to set buf info */
       if (buf == NULL)
 	{
 	  buf = &buf_space;
 	  or_init (buf, midxkey->buf, midxkey->size);
-	  if (or_advance (buf, OR_SHORT_SIZE) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  advance_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-	  if (or_advance (buf, advance_size) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
 	}
 
-      for (; i < index; i++, domain = domain->next)
+      element_offset = OR_GET_BYTE (offset_ptr + index);
+      assert (element_offset > 0);
+      if (element_offset < OR_MAX_BYTE_UNSIGNED)
 	{
-	  /* check for element is NULL */
-	  if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
+	  or_advance (buf, element_offset);
+
+	  /* consume prev domain */
+	  for (i = 0; i < index; i++)
 	    {
-	      continue;		/* skip and go ahead */
+	      domain = domain->next;
+	    }
+	}
+      else
+	{
+	  i = 0;
+
+	  /* 1st phase: check for prev info */
+	  if (prev_indexp && prev_ptrp)
+	    {
+	      int j, offset;
+
+	      j = *prev_indexp;
+	      offset = CAST_BUFLEN (*prev_ptrp - midxkey->buf);
+	      if (j <= 0 || j > index || offset <= 0)
+		{		/* invalid info */
+		  /* nop */
+		}
+	      else
+		{
+		  buf = &buf_space;
+		  or_init (buf, *prev_ptrp, midxkey->size - offset);
+
+		  /* consume prev domain */
+		  for (; i < j; i++)
+		    {
+		      domain = domain->next;
+		    }
+		}
 	    }
 
-	  advance_size = pr_midxkey_element_disk_size (buf->ptr, domain);
-	  or_advance (buf, advance_size);
+	  for (; i < index; i++, domain = domain->next)
+	    {
+	      /* check for element is NULL */
+	      if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr, i))
+		{
+		  continue;	/* skip and go ahead */
+		}
+
+	      advance_size = pr_midxkey_element_disk_size (buf->ptr, domain);
+	      or_advance (buf, advance_size);
+	    }
 	}
 
       error = domain->type->index_readval (buf, value, domain, -1, copy, NULL, 0);
@@ -9283,9 +9380,11 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
   bool dom_is_desc[2];
   int result_size = 0;
   char *result_buf;
-  char *bitptr;
   DB_MIDXKEY *midxkey1, *midxkey2;
   DB_MIDXKEY result_midxkey;
+
+  char *nullmap_ptr, *offset_ptr;
+  int nullmap_size, offset_size, header_size, element_offset;
 
   /* Assertions */
   assert (db_midxkey1 != (DB_VALUE *) NULL);
@@ -9314,8 +9413,8 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
     }
 
   if (size_buf[0] == midxkey1->size || size_buf[1] == midxkey2->size
-      || OR_MULTI_ATT_IS_UNBOUND (midxkey1->buf + OR_SHORT_SIZE, diff_column + 1)
-      || OR_MULTI_ATT_IS_UNBOUND (midxkey2->buf + OR_SHORT_SIZE, diff_column + 1))
+      || OR_MULTI_ATT_IS_UNBOUND (midxkey1->buf, diff_column + 1)
+      || OR_MULTI_ATT_IS_UNBOUND (midxkey2->buf, diff_column + 1))
     {
       /* not found separator: give up */
       pr_clone_value (db_midxkey2, db_result);
@@ -9344,23 +9443,23 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
 	  return er_errid ();
 	}
 
-      bitptr = result_midxkey.buf + OR_SHORT_SIZE;
-
       (void) memcpy (result_midxkey.buf, result_buf, result_size);
       result_midxkey.size = result_size;
-      if (result_size < OR_MAX_SHORT_UNSIGNED)
-	{
-	  OR_PUT_SHORT (result_midxkey.buf, result_size);
-	}
-      else
-	{
-	  OR_PUT_SHORT (result_midxkey.buf, 0xFFFF);
-	}
       result_midxkey.domain = midxkey2->domain;
       result_midxkey.ncolumns = midxkey2->ncolumns;
+
+      nullmap_size = OR_MULTI_BOUND_BIT_BYTES (result_midxkey.ncolumns);
+      offset_size = result_midxkey.ncolumns + 1;
+
+      nullmap_ptr = result_midxkey.buf;
+      offset_ptr = nullmap_ptr + nullmap_size;
+
+      element_offset = OR_GET_BYTE ((offset_ptr + 1) + diff_column);
       for (i = diff_column + 1; i < result_midxkey.ncolumns; i++)
 	{
-	  OR_MULTI_CLEAR_BOUND_BIT (bitptr, i);
+	  /* offset을 최신화 해야 한다. */
+	  OR_MULTI_CLEAR_BOUND_BIT (nullmap_ptr, i);
+	  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset);
 	}
 
       result_midxkey.min_max_val.position = -1;
@@ -9413,24 +9512,6 @@ pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE *
 }
 
 /*
- * pr_midxkey_init_boundbits() -
- *      return: int
- *  bufptr(in) :
- *  n_atts(in) :
- *
- */
-
-int
-pr_midxkey_init_boundbits (char *bufptr, int n_atts)
-{
-  int nbytes = OR_MULTI_BOUND_BIT_BYTES (n_atts);
-
-  MIDXKEY_BOUNDBITS_INIT (bufptr, nbytes);
-
-  return nbytes;
-}
-
-/*
  * pr_midxkey_add_elements() -
  *      return:
  *  keyval(in) :
@@ -9449,8 +9530,10 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
   int total_size = 0;
   int bitmap_size = 0;
   char *new_IDXbuf;
-  char *bound_bits;
   OR_BUF buf;
+
+  char *nullmap_ptr, *offset_ptr;
+  int nullmap_size, offset_size, header_size, element_offset;
 
   /* phase 1: find old */
   midxkey = db_get_midxkey (keyval);
@@ -9462,14 +9545,17 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
   if (midxkey->ncolumns > 0 && midxkey->size > 0)
     {
       /* bitmap is always fully sized */
-      bitmap_size = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
+      nullmap_size = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
+      offset_size = midxkey->ncolumns + 1;
+      header_size = nullmap_size + offset_size;
       total_size += midxkey->size;
     }
   else
     {
-      total_size += OR_SHORT_SIZE;
-      bitmap_size = OR_MULTI_BOUND_BIT_BYTES (num_dbvals);
-      total_size += bitmap_size;
+      nullmap_size = OR_MULTI_BOUND_BIT_BYTES (num_dbvals);
+      offset_size = num_dbvals + 1;
+      header_size = nullmap_size + offset_size;
+      total_size += header_size;
     }
 
   /* phase 2: calculate how many bytes need */
@@ -9482,8 +9568,9 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
       goto error;
     }
 
-  or_init (&buf, new_IDXbuf, -1);
-  bound_bits = buf.ptr + OR_SHORT_SIZE;
+  or_init (&buf, new_IDXbuf, total_size);
+  nullmap_ptr = buf.ptr;
+  offset_ptr = nullmap_ptr + nullmap_size;
 
   /* phase 4: copy new_IDXbuf from old */
   if (midxkey->ncolumns > 0 && midxkey->size > 0)
@@ -9492,11 +9579,13 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
     }
   else
     {
-      /* bound bits */
-      MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
-      or_advance (&buf, OR_SHORT_SIZE);
-      or_advance (&buf, bitmap_size);
+      MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, header_size);
+      buf.ptr += header_size;
+      assert (total_size > header_size);
+      OR_PUT_BYTE (offset_ptr, header_size);
     }
+
+  /* nullmap_size 가 추가되는 db_value에 맞게 늘어났어야 하지 않나? */
 
   for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
     {
@@ -9508,7 +9597,16 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
 
       dom->type->index_writeval (&buf, &dbvals[i]);
 
-      OR_ENABLE_BOUND_BIT (bound_bits, midxkey->ncolumns + i);
+      OR_ENABLE_BOUND_BIT (nullmap_ptr, midxkey->ncolumns + i);
+      element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
+      if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	{
+	  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset);
+	}
+      else
+	{
+	  OR_PUT_BYTE ((offset_ptr + 1) + i, OR_MAX_BYTE_UNSIGNED);
+	}
     }				/* for (i = 0, ...) */
 
   assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
@@ -9521,15 +9619,7 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
     }
 
   midxkey->buf = buf.buffer;
-  midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
-  if (midxkey->size < OR_MAX_SHORT_UNSIGNED)
-    {
-      OR_PUT_SHORT (midxkey->buf, midxkey->size);
-    }
-  else
-    {
-      OR_PUT_SHORT (midxkey->buf, 0xFFFF);
-    }
+  midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);	// 왜 total_size가 아니지?
   midxkey->ncolumns += num_dbvals;
 
   return NO_ERROR;

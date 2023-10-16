@@ -3565,22 +3565,25 @@ compare_driver (const void *first, const void *second, void *arg)
   if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
     {
       int i;
-      char *bitptr1, *bitptr2;
-      int bitmap_size;
+      char *nullmap_ptr1, *offset_ptr1;
+      char *nullmap_ptr2, *offset_ptr2;
+      int nullmap_size, offset_size, header_size, element_offset;
       TP_DOMAIN *dom;
 
       /* fast implementation of pr_midxkey_compare (). do not use DB_VALUE container for speed-up */
 
-      mem1 += OR_SHORT_SIZE;
-      mem2 += OR_SHORT_SIZE;
+      nullmap_size = OR_MULTI_BOUND_BIT_BYTES (key_type->precision);
+      offset_size = key_type->precision + 1;
+      header_size = nullmap_size + offset_size;
 
-      bitptr1 = mem1;
-      bitptr2 = mem2;
+      nullmap_ptr1 = mem1;
+      nullmap_ptr2 = mem2;
 
-      bitmap_size = OR_MULTI_BOUND_BIT_BYTES (key_type->precision);
+      offset_ptr1 = nullmap_ptr1 + nullmap_size;
+      offset_ptr2 = nullmap_ptr2 + nullmap_size;
 
-      mem1 += bitmap_size;
-      mem2 += bitmap_size;
+      mem1 = nullmap_ptr1 + header_size;
+      mem2 = nullmap_ptr2 + header_size;
 
 #if !defined(NDEBUG)
       for (i = 0, dom = key_type->setdomain; dom; dom = dom->next, i++);
@@ -3605,9 +3608,9 @@ compare_driver (const void *first, const void *second, void *arg)
 	  /* val1 or val2 is NULL */
 	  if (has_null)
 	    {
-	      if (OR_MULTI_ATT_IS_UNBOUND (bitptr1, i))
+	      if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr1, i))
 		{		/* element val is null? */
-		  if (OR_MULTI_ATT_IS_UNBOUND (bitptr2, i))
+		  if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr2, i))
 		    {
 		      continue;
 		    }
@@ -3615,7 +3618,7 @@ compare_driver (const void *first, const void *second, void *arg)
 		  c = DB_LT;
 		  break;	/* exit for-loop */
 		}
-	      else if (OR_MULTI_ATT_IS_UNBOUND (bitptr2, i))
+	      else if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr2, i))
 		{
 		  c = DB_GT;
 		  break;	/* exit for-loop */
@@ -3631,8 +3634,27 @@ compare_driver (const void *first, const void *second, void *arg)
 	      break;		/* exit for-loop */
 	    }
 
-	  mem1 += pr_midxkey_element_disk_size (mem1, dom);
-	  mem2 += pr_midxkey_element_disk_size (mem2, dom);
+	  element_offset = OR_GET_BYTE ((offset_ptr1 + 1) + i);
+	  assert (element_offset > 0);
+	  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	    {
+	      mem1 = nullmap_ptr1 + element_offset;
+	    }
+	  else
+	    {
+	      mem1 += pr_midxkey_element_disk_size (mem1, dom);
+	    }
+
+	  element_offset = OR_GET_BYTE ((offset_ptr2 + 1) + i);
+	  assert (element_offset > 0);
+	  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	    {
+	      mem2 = nullmap_ptr2 + element_offset;
+	    }
+	  else
+	    {
+	      mem2 += pr_midxkey_element_disk_size (mem2, dom);
+	    }
 	}			/* for (i = 0; ... ) */
       assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
@@ -4125,7 +4147,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	       * To do this, reduce the number of columns.
 	       * Modify bitmap information for btree_multicol_key_is_null() function. */
 	      new_ptr->data.midxkey.ncolumns--;
-	      OR_MULTI_CLEAR_BOUND_BIT (new_ptr->data.midxkey.buf + OR_SHORT_SIZE, new_ptr->data.midxkey.ncolumns);
+	      OR_MULTI_CLEAR_BOUND_BIT (new_ptr->data.midxkey.buf, new_ptr->data.midxkey.ncolumns);
 	      new_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
 	    }
 	  else

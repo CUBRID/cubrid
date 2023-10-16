@@ -18422,7 +18422,6 @@ btree_multicol_key_is_null (DB_VALUE * key)
       if (midxkey && midxkey->ncolumns != -1)
 	{
 	  bits = (unsigned char *) midxkey->buf;
-	  bits += OR_SHORT_SIZE;
 	  nbytes = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
 	  for (i = 0; i < nbytes; i++)
 	    {
@@ -18456,7 +18455,6 @@ btree_multicol_key_has_null (DB_VALUE * key)
   int status = 0;
   DB_MIDXKEY *midxkey;
   int i;
-  char *bitptr;
 
   if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
     {
@@ -18465,14 +18463,12 @@ btree_multicol_key_has_null (DB_VALUE * key)
       midxkey = db_get_midxkey (key);
       assert (midxkey != NULL);
 
-      bitptr = midxkey->buf + OR_SHORT_SIZE;
-
       /* ncolumns == -1 means already constructing step */
       if (midxkey && midxkey->ncolumns != -1)
 	{
 	  for (i = 0; i < midxkey->ncolumns; i++)
 	    {
-	      if (OR_MULTI_ATT_IS_UNBOUND (bitptr, i))
+	      if (OR_MULTI_ATT_IS_UNBOUND (midxkey->buf, i))
 		{
 		  return 1;
 		}

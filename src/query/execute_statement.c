@@ -11664,16 +11664,18 @@ do_set_insert_server_not_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void 
 static int
 do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key)
 {
+  char *nullmap_ptr, *offset_ptr;
+  int buf_size, nullmap_size, offset_size, header_size, element_offset;
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
-  int buf_size = 0, bitmap_size = 0, i, error = NO_ERROR, attr_count = 0;
+  int i, error = NO_ERROR, attr_count = 0;
   unsigned char *bits;
-  char *bound_bits = NULL, *key_ptr = NULL;
   OR_BUF buf;
   DB_VALUE *val = NULL;
   TP_DOMAIN *attr_dom = NULL, *dom = NULL, *setdomain = NULL;
   const int *asc_desc = NULL;
 
+  buf_size = 0;
   midxkey.buf = NULL;
   midxkey.min_max_val.position = -1;
   asc_desc = db_constraint_asc_desc (constraint);
@@ -11715,10 +11717,10 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       dom = attr_dom;
     }
 
-  buf_size += OR_SHORT_SIZE;
-
-  bitmap_size = OR_MULTI_BOUND_BIT_BYTES (attr_count);
-  buf_size += bitmap_size;
+  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (attr_count);
+  offset_size = attr_count + 1;
+  header_size = nullmap_size + offset_size;
+  buf_size += header_size;
 
   midxkey.buf = (char *) db_private_alloc (NULL, buf_size);
   if (midxkey.buf == NULL)
@@ -11727,11 +11729,13 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       goto error_return;
     }
 
-  bound_bits = midxkey.buf + OR_SHORT_SIZE;
-  key_ptr = bound_bits + bitmap_size;
-
-  or_init (&buf, key_ptr, buf_size - bitmap_size - OR_SHORT_SIZE);
-  MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
+  or_init (&buf, midxkey.buf, buf_size);
+  nullmap_ptr = midxkey.buf;
+  offset_ptr = nullmap_ptr + nullmap_size;
+  MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, header_size);
+  buf.ptr += header_size;
+  assert (buf_size > header_size);
+  OR_PUT_BYTE (offset_ptr, header_size);
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
@@ -11745,23 +11749,27 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       if (val != NULL && !DB_IS_NULL (val))
 	{
 	  dom->type->index_writeval (&buf, val);
-	  OR_ENABLE_BOUND_BIT (bound_bits, i);
+	  OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
 	}
       else
 	{
-	  OR_CLEAR_BOUND_BIT (bound_bits, i);
+	  OR_CLEAR_BOUND_BIT (nullmap_ptr, i);
+	}
+
+      element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
+      assert (element_offset > 0);
+      if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	{
+	  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset);
+	}
+      else
+	{
+	  OR_PUT_BYTE ((offset_ptr + 1) + i, OR_MAX_BYTE_UNSIGNED);
 	}
     }
 
   midxkey.size = buf_size;
-  if (buf_size < OR_MAX_SHORT_UNSIGNED)
-    {
-      OR_PUT_SHORT (midxkey.buf, buf_size);
-    }
-  else
-    {
-      OR_PUT_SHORT (midxkey.buf, 0xFFFF);
-    }
+  assert (buf_size == CAST_BUFLEN (buf.ptr - buf.buffer));
   midxkey.ncolumns = attr_count;
   midxkey.domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, attr_count, 0, setdomain);
   if (midxkey.domain == NULL)

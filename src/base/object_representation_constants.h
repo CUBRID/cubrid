@@ -126,8 +126,9 @@
 #define OR_SHA1_SIZE		(5 * OR_INT_SIZE)
 
 /* NUMERIC RANGES */
-#define OR_MAX_BYTE 127
-#define OR_MIN_BYTE -128
+#define OR_MAX_BYTE_UNSIGNED 255	/* 0xFF */
+#define OR_MAX_BYTE 127		/* 0x7F */
+#define OR_MIN_BYTE -128	/* 0x80 */
 
 #define OR_MAX_SHORT_UNSIGNED 65535	/* 0xFFFF */
 #define OR_MAX_SHORT 32767	/* 0x7FFF */
