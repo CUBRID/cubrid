@@ -166,8 +166,11 @@ active_tran_server::connection_handler::get_request_handlers ()
 
   auto saved_lsa_handler = std::bind (&active_tran_server::connection_handler::receive_saved_lsa, this,
 				      std::placeholders::_1);
+  auto catchup_complete_handler = std::bind (&active_tran_server::connection_handler::receive_catchup_complete, this,
+				  std::placeholders::_1);
 
   handlers_map.insert (std::make_pair (page_to_tran_request::SEND_SAVED_LSA, saved_lsa_handler));
+  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_CATCHUP_COMPLETE, catchup_complete_handler));
 
   return handlers_map;
 }
@@ -190,6 +193,13 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 
   quorum_consenesus_er_log ("Received saved LSA = %lld|%d from %s.\n", LSA_AS_ARGS (&saved_lsa),
 			    get_channel_id ().c_str ());
+}
+
+void
+active_tran_server::connection_handler::receive_catchup_complete (page_server_conn_t::sequenced_payload &&a_sp)
+{
+  _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] the catchup has been completed. channel id: %s\n",
+		 get_channel_id ().c_str ());
 }
 
 void

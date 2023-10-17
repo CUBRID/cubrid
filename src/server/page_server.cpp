@@ -230,6 +230,7 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
     {
       // TODO: It means that the ATS is booting up.
       // it will be set properly after ATS recovery is implemented.
+      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
       return;
     }
 
@@ -240,7 +241,9 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   if (log_Gl.hdr.append_lsa == catchup_lsa)
     {
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] There is nothing to catch up.\n");
-      return; // TODO the cold-start case. No need to catch up. Just send a catchup_done msg to the ATS
+
+      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      return;
     }
 
   // Establish a connection with the PS to catch up with, and start the cathup asynchronously.
@@ -1161,8 +1164,9 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
       assert (remaining_page_cnt == 0);
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 		     start_pageid, end_pageid, total_page_count);
-      // TODO: send CATCHUP_DONE_MSG to the ATS
-      // TODO: start appending log prior nodes from the ATS.
+      // TODO: start appneding log prior nodes from the ATS.
+
+      push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
 
       constexpr bool with_disc_msg = true;
       disconnect_followee_page_server (with_disc_msg);

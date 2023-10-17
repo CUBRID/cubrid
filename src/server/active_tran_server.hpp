@@ -57,6 +57,7 @@ class active_tran_server : public tran_server
 
 	// request handlers
 	void receive_saved_lsa (page_server_conn_t::sequenced_payload &&a_sp);
+	void receive_catchup_complete (page_server_conn_t::sequenced_payload &&a_sp);
 
 	// a request only used internally
 	void send_start_catch_up_request (std::string &&host, int32_t port, LOG_LSA &&catchup_lsa);
