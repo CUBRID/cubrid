@@ -704,9 +704,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             }
 
         } catch (NumberFormatException e) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx), // s067
-                    "failed to parse the floating point literal");
+            throw new RuntimeException("unreachable");
         }
     }
 
@@ -2427,7 +2425,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     ExprId id = visitNonFuncIdentifier(col, ctx, false);
                     if (id == null) {
                         // col is not a host variable, but an expression which has a host variable
-                        // as a subexpression
+                        // as a subexpression (TODO: example?)
                         typeSpec =
                                 TypeSpecSimple
                                         .OBJECT; // unknown some type. best offort to give a type
@@ -2443,11 +2441,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                     Misc.getLineColumnOf(ctx), // s423
                                     "for-loop iterator record "
                                             + id.name
-                                            + " cannot be in a select list");
+                                            + " cannot be used in a select list");
                         } else if (decl instanceof DeclCursor) {
                             throw new SemanticError(
                                     Misc.getLineColumnOf(ctx), // s424
-                                    "cursor " + id.name + " cannot be in a select list");
+                                    "cursor " + id.name + " cannot be used in a select list");
                         } else {
                             throw new RuntimeException("unreachable");
                         }

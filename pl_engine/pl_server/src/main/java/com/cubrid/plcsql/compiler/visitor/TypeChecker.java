@@ -286,7 +286,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (commonType == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ce.expr.ctx), // s227
-                        "expression in this case does not have a compatible type " + ty);
+                        "expression in this case has an incompatible type " + ty);
             }
             caseExprTypes.add(ty);
         }
@@ -296,7 +296,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (commonType == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.elsePart.ctx), // s228
-                        "expression in the else part does not have a compatible type " + ty);
+                        "expression in the else part has an incompatible type " + ty);
             }
             caseExprTypes.add(ty);
         }
@@ -353,7 +353,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (commonType == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ce.expr.ctx), // s229
-                        "expression in this case does not have a compatible type " + ty);
+                        "expression in this case has an incompatible type " + ty);
             }
             condExprTypes.add(ty);
         }
@@ -363,7 +363,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (commonType == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.elsePart.ctx), // s230
-                        "expression in the else part does not have a compatible type " + ty);
+                        "expression in the else part has an incompatible type " + ty);
             }
             condExprTypes.add(ty);
         }
@@ -856,7 +856,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         // check types of expressions in the USING clause
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
-                TypeSpec tyUsedExpr = visit(e); // s420
+                TypeSpec tyUsedExpr = visit(e);
                 if (tyUsedExpr == TypeSpecSimple.BOOLEAN
                         || tyUsedExpr == TypeSpecSimple.CURSOR
                         || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
@@ -880,7 +880,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                             Misc.getLineColumnOf(intoVar.ctx),
                             "into-variable "
                                     + intoVar.name
-                                    + " cannot be used there due to its incompatible type");
+                                    + " has an incompatible type " + tyIntoVar.pcsName);
                 } else {
                     coercions.add(c);
                 }
