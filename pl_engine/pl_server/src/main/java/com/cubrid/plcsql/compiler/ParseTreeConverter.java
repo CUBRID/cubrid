@@ -1350,7 +1350,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
         if (declLabel != null) {
-            symbolStack.putDecl(declLabel.name, declLabel);
+            symbolStack.putDeclLabel(declLabel.name, declLabel);
         }
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1381,7 +1381,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
         if (declLabel != null) {
-            symbolStack.putDecl(declLabel.name, declLabel);
+            symbolStack.putDeclLabel(declLabel.name, declLabel);
         }
 
         Expr cond = visitExpression(ctx.expression());
@@ -1413,7 +1413,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
         if (declLabel != null) {
-            symbolStack.putDecl(declLabel.name, declLabel);
+            symbolStack.putDeclLabel(declLabel.name, declLabel);
         }
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1480,7 +1480,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             label = null;
         } else {
             label = declLabel.name;
-            symbolStack.putDecl(label, declLabel);
+            symbolStack.putDeclLabel(label, declLabel);
         }
 
         DeclForRecord declForRecord =
@@ -1530,7 +1530,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             label = null;
         } else {
             label = declLabel.name;
-            symbolStack.putDecl(label, declLabel);
+            symbolStack.putDeclLabel(label, declLabel);
         }
 
         DeclForRecord declForRecord = new DeclForRecord(recNameCtx, record, staticSql.selectList);
@@ -1573,7 +1573,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             label = null;
         } else {
             label = declLabel.name;
-            symbolStack.putDecl(label, declLabel);
+            symbolStack.putDeclLabel(label, declLabel);
         }
 
         DeclForRecord declForRecord =
