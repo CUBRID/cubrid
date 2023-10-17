@@ -125,17 +125,43 @@ tran_server::boot (const char *db_name)
       return error_code;
     }
 
+  /*
+    * At least one PS is given by the configuration.
+    * Even if uses_remote_storage () == false, the remote storage can exist.
+    */
   if (m_page_server_conn_vec.empty () == false)
     {
-      /*
-       * At least one PS is given by the configuration.
-       * Even if uses_remote_storage () == false, the remote storage can exist.
-       */
-      error_code = reset_main_connection ();
-      if (error_code != NO_ERROR)
+      auto start_time = std::chrono::steady_clock::now ();
+      while (true)
 	{
-	  assert (false);
-	  return error_code;
+	  error_code = reset_main_connection ();
+	  if (error_code == NO_ERROR)
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      /*
+	      * TODO: Remove this and just make sure reset_main_connection doesn't fail
+	      *       when the ATS recovery with handshakes with multiple page servers comes in.
+	      *
+	      * For now, the main connection may not be able to be set for a while. It can be after one it set to CONNECTED state.
+	      * When the handshakes comes in, it's guaranteed that at least one connection is trustworthy here
+	      * and it will be the main connection. Until then, we just waits here a conenction is ready.
+	      */
+	      auto current_time = std::chrono::steady_clock::now ();
+	      auto duration = std::chrono::duration_cast<std::chrono::seconds> (current_time - start_time).count();
+	      if (duration > 30) // timeout: 30 seconds
+		{
+		  assert (false);
+		  return error_code;
+		}
+	      else
+		{
+		  auto sleep_time = std::chrono::milliseconds (30);
+		  std::this_thread::sleep_for (sleep_time);
+		}
+	    }
 	}
 
       m_ps_connector.start ();
