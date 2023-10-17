@@ -240,11 +240,10 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
 
   if (log_Gl.hdr.append_lsa == catchup_lsa)
     {
-
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] There is nothing to catch up.\n");
 
       m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
-      return; // TODO the cold-start case. No need to catch up. Just send a catchup_done msg to the ATS
+      return;
     }
 
   // Establish a connection with the PS to catch up with, and start the cathup asynchronously.
