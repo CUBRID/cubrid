@@ -2370,15 +2370,18 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     String[] split = hostExpr.split("\\.");
                     if (split.length == 1) {
 
-                        ExprId id = visitNonFuncIdentifier(hostExpr, ctx); // s408: undeclared id ...
+                        ExprId id =
+                                visitNonFuncIdentifier(hostExpr, ctx); // s408: undeclared id ...
 
                         // TODO: replace the following null with meaningful type information
-                        // (type required in the location of this host var) after augmenting server API
+                        // (type required in the location of this host var) after augmenting server
+                        // API
                         hostExprs.put(id, null);
 
-                    } else if (split.length == 2){
+                    } else if (split.length == 2) {
 
-                        ExprId record = visitNonFuncIdentifier(split[0], ctx); // s432: undeclared id ...
+                        ExprId record =
+                                visitNonFuncIdentifier(split[0], ctx); // s432: undeclared id ...
                         if (!(record.decl instanceof DeclForRecord)) {
                             throw new SemanticError(
                                     Misc.getLineColumnOf(ctx), // s433
