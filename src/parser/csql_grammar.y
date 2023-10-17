@@ -19370,7 +19370,8 @@ predicate_expr_sub
 			int lhs_cnt, rhs_cnt = 0;
 			PT_NODE *v, *lhs, *rhs, *subq;
 			bool found_match = false;
-			bool found_paren_set_expr = false;
+			bool lhs_found_paren_set_expr = false;
+			bool rhs_found_paren_set_expr = false;
 
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 			if (node)
@@ -19383,7 +19384,7 @@ predicate_expr_sub
 				if (lhs->node_type == PT_VALUE && lhs->type_enum == PT_TYPE_EXPR_SET)
 				  {
 				    lhs->type_enum = PT_TYPE_SEQUENCE;
-				    found_paren_set_expr = true;
+				    lhs_found_paren_set_expr = true;
 				  }
 				else if (PT_IS_QUERY_NODE_TYPE (lhs->node_type))
 				  {
@@ -19398,7 +19399,7 @@ predicate_expr_sub
                                             /* If not PT_TYPE_STAR */
                                             pt_select_list_to_one_col (this_parser, lhs, true);     
                                           }                                        
-                                        found_paren_set_expr = true;
+                                        lhs_found_paren_set_expr = true;
 				      }
 				  }
 			      }
@@ -19412,6 +19413,7 @@ predicate_expr_sub
 				    v->type_enum = PT_TYPE_MULTISET;
 				  }			/* if (v) */
 				node->info.expr.arg2 = v;
+				rhs_found_paren_set_expr = true;
 			      }
 			    else
 			      {
@@ -19421,6 +19423,7 @@ predicate_expr_sub
 				  {
 				    is_paren = true;	/* mark as parentheses set expr */
 				    t->type_enum = PT_TYPE_MULTISET;
+				    rhs_found_paren_set_expr = true;
 				  }
 				node->info.expr.arg2 = t;
 			      }
@@ -19447,7 +19450,7 @@ predicate_expr_sub
 				if (t->node_type == PT_VALUE && t->type_enum == PT_TYPE_EXPR_SET)
 				  {
 				    t->type_enum = PT_TYPE_SEQUENCE;
-				    found_paren_set_expr = true;
+				    rhs_found_paren_set_expr = true;
 				  }
 				else if (PT_IS_QUERY_NODE_TYPE (t->node_type))
 				  {
@@ -19462,11 +19465,11 @@ predicate_expr_sub
                                             /* If not PT_TYPE_STAR */
                                             pt_select_list_to_one_col (this_parser, t, true);
                                           }
-					found_paren_set_expr = true;
+					rhs_found_paren_set_expr = true;
 				      }
 				  }
 			      }
-			    if (found_paren_set_expr == true)
+			    if (rhs_found_paren_set_expr && lhs_found_paren_set_expr)
 			      {
 				/* expression number check */
 				if ((lhs_cnt = pt_get_expression_count (lhs)) < 0)
@@ -19516,7 +19519,11 @@ predicate_expr_sub
 				      }
 				  }
 
-				if (found_match == false)
+				if (found_match)
+				  {
+				    lhs->flag.is_paren = true;
+				  }
+				else
 				  {
 				    PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 						 MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE,
