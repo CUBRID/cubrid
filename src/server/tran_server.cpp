@@ -383,15 +383,9 @@ tran_server::connection_handler::connect ()
 		  srv_chn.get_channel_id ().c_str ());
   }
 
-  // Do the preliminary jobs depending on the server type before opening the conneciton to the outisde.
-  on_connecting ();
-
-  {
-    auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
-    assert (m_state == state::CONNECTING);
-
-    m_state = state::CONNECTED;
-  }
+  // Do the preliminary jobs depending on the server type before opening the connection to the outside.
+  // the state will be transitioned to CONNECTED by transition_to_connected().
+  transition_to_connected ();
 
   return NO_ERROR;
 }

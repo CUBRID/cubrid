@@ -124,28 +124,6 @@ class tran_server
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
       protected:
-	connection_handler (tran_server &ts, cubcomm::node &&node)
-	  : m_ts { ts }
-	  , m_node { std::move (node) }
-	  , m_state { state::IDLE }
-	{ }
-
-	virtual request_handlers_map_t get_request_handlers ();
-	void push_request_regardless_of_state (tran_to_page_request reqid, std::string &&payload);
-
-	/*
-	 * Do the server-type-specific jobs before state transtition.
-	 *
-	 * on_connecting:     CONNECTING -> (*) -> CONNECTED
-	 * on_disconnecting:  DISCONNECTING -> (*) -> IDLE
-	 */
-	virtual void on_connecting () = 0;
-	virtual void on_disconnecting () = 0;
-
-      protected:
-	tran_server &m_ts;
-
-      private:
 	/*
 	 * The internal state of connection_handler. A connection_handler must be in one of those states.
 	 *
@@ -175,6 +153,28 @@ class tran_server
 	  DISCONNECTING
 	};
 
+      protected:
+	connection_handler (tran_server &ts, cubcomm::node &&node)
+	  : m_ts { ts }
+	  , m_state { state::IDLE }
+	  , m_node { std::move (node) }
+	{ }
+
+	virtual request_handlers_map_t get_request_handlers ();
+	void push_request_regardless_of_state (tran_to_page_request reqid, std::string &&payload);
+
+	// Do the server-type-specific jobs and transition state from CONNECTING to CONNECTED.
+	// The m_state MUST be changed to CONNECTED either synchronously or asynchronously.
+	virtual void transition_to_connected () = 0;
+	// Do the rver-type-specific jobs before disconnected. DISCONNECTING -> (*) -> IDLE
+	virtual void on_disconnecting () = 0;
+
+      protected:
+	tran_server &m_ts;
+
+	state m_state;
+	std::shared_mutex m_state_mtx;
+
       private:
 	void set_connection (cubcomm::channel &&chn);
 	// The default error handler for sending reqeust
@@ -188,9 +188,6 @@ class tran_server
 
 	std::unique_ptr<page_server_conn_t> m_conn;
 	std::shared_mutex m_conn_mtx;
-
-	state m_state;
-	std::shared_mutex m_state_mtx;
 
 	std::future<void> m_disconn_future; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
     };

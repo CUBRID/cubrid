@@ -64,8 +64,12 @@ passive_tran_server::connection_handler::get_saved_lsa () const
 }
 
 void
-passive_tran_server::connection_handler::on_connecting ()
+passive_tran_server::connection_handler::transition_to_connected ()
 {
+  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+  assert (m_state == state::CONNECTING);
+
+  m_state = state::CONNECTED;
 }
 
 void

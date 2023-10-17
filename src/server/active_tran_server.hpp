@@ -64,7 +64,7 @@ class active_tran_server : public tran_server
 
 	log_lsa get_saved_lsa () const override final;
 
-	void on_connecting () override final;
+	void transition_to_connected () override final;
 	void on_disconnecting () override final;
 
 	// Function used as sink for log transfer

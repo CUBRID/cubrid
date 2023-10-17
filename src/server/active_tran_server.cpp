@@ -200,6 +200,10 @@ active_tran_server::connection_handler::receive_catchup_complete (page_server_co
 {
   _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] the catchup has been completed. channel id: %s\n",
 		 get_channel_id ().c_str ());
+  auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
+  assert (m_state == state::CONNECTING);
+
+  m_state = state::CONNECTED;
 }
 
 void
@@ -230,7 +234,7 @@ active_tran_server::connection_handler::get_saved_lsa () const
 }
 
 void
-active_tran_server::connection_handler::on_connecting ()
+active_tran_server::connection_handler::transition_to_connected ()
 {
   assert (m_prior_sender_sink_hook_func == nullptr);
 
@@ -257,6 +261,7 @@ active_tran_server::connection_handler::on_connecting ()
       // TODO: While booting up, the catchup_lsa is not unsent_lsa, but determined by communicating with PSes.
     }
 
+  // The m_state will be changed to CONNECTED when the catch-up is completed.
   send_start_catch_up_request (std::move (hostname), port, std::move (unsent_lsa));
 }
 
