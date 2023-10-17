@@ -146,8 +146,8 @@ public class TypeSpecSimple extends TypeSpec {
     // ------------------------------------------------------------------
 
     private TypeSpecSimple(
-            String pcsName, String fullJavaType, int simpleTypeIdx, String typicalValueStr) {
-        super(pcsName, getJavaCode(fullJavaType), simpleTypeIdx, typicalValueStr);
+            String plcName, String fullJavaType, int simpleTypeIdx, String typicalValueStr) {
+        super(plcName, getJavaCode(fullJavaType), simpleTypeIdx, typicalValueStr);
         this.fullJavaType = fullJavaType;
     }
 

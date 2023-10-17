@@ -20,14 +20,14 @@
  * limitations under the License.
  */
 
-parser grammar PcsParser;
+parser grammar PlcParser;
 
 @header {
 package com.cubrid.plcsql.compiler.antlrgen;
 }
 
 options {
-    tokenVocab=PcsLexer;
+    tokenVocab=PlcLexer;
 }
 
 sql_script

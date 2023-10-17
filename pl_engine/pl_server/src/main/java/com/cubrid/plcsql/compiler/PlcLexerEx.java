@@ -30,16 +30,16 @@
 
 package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.antlrgen.PcsLexer;
+import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.Token;
 
-public class PcsLexerEx extends PcsLexer {
+public class PlcLexerEx extends PlcLexer {
     private boolean collect = true;
     private boolean putSpace = false;
     private StringBuffer sbuf = new StringBuffer();
 
-    public PcsLexerEx(CharStream input) {
+    public PlcLexerEx(CharStream input) {
         super(input);
     }
 

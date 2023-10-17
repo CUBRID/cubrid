@@ -880,7 +880,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                             Misc.getLineColumnOf(intoVar.ctx),
                             "into-variable "
                                     + intoVar.name
-                                    + " has an incompatible type " + tyIntoVar.pcsName);
+                                    + " has an incompatible type " + tyIntoVar.plcName);
                 } else {
                     coercions.add(c);
                 }

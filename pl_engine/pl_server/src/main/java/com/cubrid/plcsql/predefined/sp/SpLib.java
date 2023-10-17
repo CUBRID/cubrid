@@ -115,7 +115,7 @@ public class SpLib {
             boolean isBegin = (s.charAt(0) == '(');
             assert isBegin || (s.charAt(0) == ')');
             if (isBegin) {
-                // beginning marker of the form '(<java-line>,<pcs-line>,<pcs-column>'
+                // beginning marker of the form '(<java-line>,<plc-line>,<plc-column>'
                 stackHeight++;
                 String[] split2 = s.substring(1).split(",");
                 assert split2.length == 3;

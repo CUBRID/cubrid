@@ -32,7 +32,7 @@ package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.CompileInfo;
-import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
@@ -88,9 +88,9 @@ public class PlcsqlCompilerMain {
             t0 = System.currentTimeMillis();
         }
 
-        PcsLexerEx lexer = new PcsLexerEx(input);
+        PlcLexerEx lexer = new PlcLexerEx(input);
         CommonTokenStream tokens = new CommonTokenStream(lexer);
-        PcsParser parser = new PcsParser(tokens);
+        PlcParser parser = new PlcParser(tokens);
 
         SyntaxErrorIndicator sei = new SyntaxErrorIndicator();
         parser.removeErrorListeners();

@@ -20,7 +20,7 @@
  * limitations under the License.
  */
 
-lexer grammar PcsLexer;
+lexer grammar PlcLexer;
 
 @header {
 package com.cubrid.plcsql.compiler.antlrgen;
@@ -199,7 +199,7 @@ mode STATIC_SQL;
 // ************************
 
 SS_SEMICOLON :  ';' {
-        setType(PcsParser.SEMICOLON);
+        setType(PlcParser.SEMICOLON);
         staticSqlParenMatch = -1;
         checkFirstLParen = false;
         mode(DEFAULT_MODE);
@@ -210,13 +210,13 @@ SS_STR :        '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'' {
 SS_WS :         [ \t\r\n]+ ;
 SS_LPAREN :     '(' {
         if (checkFirstLParen) {
-            setType(PcsParser.LPAREN);
+            setType(PlcParser.LPAREN);
             staticSqlParenMatch = -1;
             checkFirstLParen = false;
             mode(DEFAULT_MODE);
         } else {
             staticSqlParenMatch++;
-            setType(PcsParser.SS_NON_STR);
+            setType(PlcParser.SS_NON_STR);
         }
     };
 SS_RPAREN :     ')' {
@@ -224,9 +224,9 @@ SS_RPAREN :     ')' {
         staticSqlParenMatch--;
         if (staticSqlParenMatch == -1) {
             mode(DEFAULT_MODE);
-            setType(PcsParser.RPAREN);
+            setType(PlcParser.RPAREN);
         } else {
-            setType(PcsParser.SS_NON_STR);
+            setType(PlcParser.SS_NON_STR);
         }
     };
 SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {

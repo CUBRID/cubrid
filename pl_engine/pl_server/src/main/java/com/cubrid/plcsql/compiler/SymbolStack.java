@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler;
 
-import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
+import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
 
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.ast.*;

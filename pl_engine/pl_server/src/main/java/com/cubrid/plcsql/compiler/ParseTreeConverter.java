@@ -30,11 +30,11 @@
 
 package com.cubrid.plcsql.compiler;
 
-import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
+import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
 
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
-import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseVisitor;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import java.math.BigDecimal;
@@ -56,7 +56,7 @@ import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.commons.text.StringEscapeUtils;
 
 // parse tree --> AST converter
-public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
+public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
     private Map<String, ParserRuleContext> idUsedInCurrentDeclPart;
@@ -239,7 +239,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     throw new SemanticError(
                             Misc.getLineColumnOf(pc), // s064
                             "type "
-                                    + dp.typeSpec.pcsName
+                                    + dp.typeSpec.plcName
                                     + " cannot be used as a paramter type of stored procedures");
                 }
                 ret.addNode(dp);
@@ -332,9 +332,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public TypeSpecSimple visitSimple_type(Simple_typeContext ctx) {
-        String pcsType = Misc.getNormalizedText(ctx);
-        TypeSpecSimple ret = getTypeSpec(pcsType);
-        assert ret != null : "invalid PL/CSQL type " + pcsType;
+        String plcType = Misc.getNormalizedText(ctx);
+        TypeSpecSimple ret = getTypeSpec(plcType);
+        assert ret != null : "invalid PL/CSQL type " + plcType;
         return ret;
     }
 
@@ -2251,7 +2251,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.type_spec()), // s065
                             "type "
-                                    + retType.pcsName
+                                    + retType.plcName
                                     + " cannot be used as a return type of stored functions");
                 }
             }
@@ -2285,8 +2285,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
-    private TypeSpecSimple getTypeSpec(String pcsType) {
-        TypeSpecSimple typeSpec = typeSpecs.get(pcsType);
+    private TypeSpecSimple getTypeSpec(String plcType) {
+        TypeSpecSimple typeSpec = typeSpecs.get(plcType);
         if (typeSpec == null) {
             return null;
         }
