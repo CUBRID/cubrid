@@ -119,7 +119,7 @@ statement
     ;
 
 execute_immediate
-    : EXECUTE IMMEDIATE dyn_sql (into_clause? using_clause? | using_clause into_clause)
+    : EXECUTE IMMEDIATE dyn_sql (into_clause? restricted_using_clause? | restricted_using_clause into_clause)
     ;
 
 dyn_sql
@@ -262,7 +262,6 @@ fetch_statement
 
 open_for_statement
     : OPEN identifier FOR static_sql
-    //| OPEN identifier FOR dyn_sql using_clause?   TODO
     ;
 
 transaction_control_statement
@@ -434,14 +433,6 @@ case_statement_else_part
 
 restricted_using_clause
     : USING restricted_using_element (',' restricted_using_element)*
-    ;
-
-using_clause
-    : USING using_element (',' using_element)*
-    ;
-
-using_element
-    : (IN OUT? | OUT | INOUT)? expression
     ;
 
 restricted_using_element

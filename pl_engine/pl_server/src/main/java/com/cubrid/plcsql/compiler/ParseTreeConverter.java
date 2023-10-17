@@ -1973,11 +1973,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         NodeList<Expr> usedExprList;
-        Using_clauseContext usingClause = ctx.using_clause();
+        Restricted_using_clauseContext usingClause = ctx.restricted_using_clause();
         if (usingClause == null) {
             usedExprList = null;
         } else {
-            usedExprList = visitUsing_clause(usingClause);
+            usedExprList = visitRestricted_using_clause(usingClause);
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
@@ -1991,30 +1991,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         for (Restricted_using_elementContext c : ctx.restricted_using_element()) {
             ret.addNode(visitExpression(c.expression()));
-        }
-
-        return ret;
-    }
-
-    @Override
-    public NodeList<Expr> visitUsing_clause(Using_clauseContext ctx) {
-
-        NodeList<Expr> ret = new NodeList<>();
-
-        for (Using_elementContext c : ctx.using_element()) {
-            Expr expr = visitExpression(c.expression());
-            if (c.OUT() != null || c.INOUT() != null) {
-                if (expr instanceof ExprId && isAssignableTo((ExprId) expr)) {
-                    // OK
-                } else {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(c), // s046
-                            "expression '"
-                                    + c.expression().getText()
-                                    + "' may not be used there in the USING clause because it is not assignable to");
-                }
-            }
-            ret.addNode(expr);
         }
 
         return ret;
