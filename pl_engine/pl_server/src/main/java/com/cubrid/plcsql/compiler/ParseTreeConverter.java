@@ -977,7 +977,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             idUsedInCurrentDeclPart = null;
         } else {
             int currLevel = symbolStack.getCurrentScope().level;
-            for (String name: idUsedInCurrentDeclPart.keySet()) {
+            for (String name : idUsedInCurrentDeclPart.keySet()) {
                 UseAndDeclLevel udl = idUsedInCurrentDeclPart.get(name);
                 if (udl.declLevel < currLevel) {
                     saved.put(name, udl);
@@ -1233,7 +1233,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         if (decl == null) {
 
             if (idUsedInCurrentDeclPart != null) {
-                idUsedInCurrentDeclPart.put(name, new UseAndDeclLevel(ctx, symbolStack.LEVEL_PREDEFINED));
+                idUsedInCurrentDeclPart.put(
+                        name, new UseAndDeclLevel(ctx, symbolStack.LEVEL_PREDEFINED));
             }
 
             // this is possibly a global function call
@@ -2193,11 +2194,12 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         ParserRuleContext use;
         int declLevel;
 
-        UseAndDeclLevel (ParserRuleContext use, int declLevel) {
+        UseAndDeclLevel(ParserRuleContext use, int declLevel) {
             this.use = use;
             this.declLevel = declLevel;
         }
     }
+
     private Map<String, UseAndDeclLevel> idUsedInCurrentDeclPart;
 
     private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions =
