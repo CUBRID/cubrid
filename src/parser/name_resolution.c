@@ -945,6 +945,14 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
 	   * such. */
 	  node = pt_bind_parameter_path (parser, in_node);
 
+	  if (node == NULL && parser->flag.is_parsing_static_sql == 1)
+	    {
+	      // clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
+	      pt_reset_error (parser);
+
+	      node = pt_parameterize_for_static_sql (parser, in_node);
+	    }
+
 	  if (node == NULL && !pt_has_error (parser))
 	    {
 	      if (er_errid () != NO_ERROR)
@@ -11460,7 +11468,9 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
 {
   PT_NODE *hostvar = parser_new_node (parser, PT_HOST_VAR);
   hostvar->info.host_var.str = pt_append_string (parser, NULL, "?");
-  hostvar->info.host_var.label = pt_append_string (parser, NULL, name_node->info.name.original);
+
+  // For cursor variable (for example: r.id), use parser_print_tree(name) instead of name.original.
+  hostvar->info.host_var.label = parser_print_tree (parser, name_node);
   hostvar->info.host_var.var_type = PT_HOST_IN;
   hostvar->info.host_var.index = parser->host_var_count;
   hostvar->type_enum = PT_TYPE_NONE;
