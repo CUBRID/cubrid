@@ -24666,8 +24666,8 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 static int
 btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
-  VPID next_vpid;		/* VPID of next leaf. */
   int inc_slot;			/* Slot incremental value to advance to next key. */
+  VPID next_vpid;		/* VPID of next leaf. */
   BTREE_NODE_HEADER *node_header;	/* Leaf node header. */
   int key_count;		/* Node key count. */
   PAGE_PTR next_node_page = NULL;	/* Page pointer to next leaf node. */

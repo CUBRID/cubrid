@@ -12499,6 +12499,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
   OR_PUT_BYTE (offset_ptr, header_size);
 
   k = 0;
+  element_offset = header_size;
   for (i = 0; i < num_atts && k < num_atts; i++)
     {
       if (index->func_index_info && (i == index->func_index_info->col_id))
@@ -12509,17 +12510,18 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	    {
 	      func_domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
-	      assert (element_offset > 0);
-	      if (element_offset < OR_MAX_BYTE_UNSIGNED)
-		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + k, element_offset);
-		}
-	      else
-		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + k, OR_MAX_BYTE_UNSIGNED);
-		}
 	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	    }
+
+	  element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
+	  assert (element_offset > 0);
+	  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	    {
+	      OR_PUT_BYTE ((offset_ptr + 1) + k, element_offset);
+	    }
+	  else
+	    {
+	      OR_PUT_BYTE ((offset_ptr + 1) + k, OR_MAX_BYTE_UNSIGNED);
 	    }
 
 	  if (key_domain != NULL)
@@ -12561,26 +12563,40 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	      dk_get_deduplicate_key_value (rec_oid, atts[i]->id, &value);
 	      atts[i]->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
-	      assert (element_offset > 0);
-	      if (element_offset < OR_MAX_BYTE_UNSIGNED)
-		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + k, element_offset);
-		}
-	      else
-		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + k, OR_MAX_BYTE_UNSIGNED);
-		}
 	      //  In this case, there is no need to clean them up using pr_clear_value().     
+	    }
+
+	  element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
+	  assert (element_offset > 0);
+	  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	    {
+	      OR_PUT_BYTE ((offset_ptr + 1) + k, element_offset);
+	    }
+	  else
+	    {
+	      OR_PUT_BYTE ((offset_ptr + 1) + k, OR_MAX_BYTE_UNSIGNED);
 	    }
 	}
       else
 	{
 	  error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
-	  if (error == NO_ERROR && !db_value_is_null (&value))
+	  if (error == NO_ERROR)
 	    {
-	      atts[i]->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	      if (!db_value_is_null (&value))
+		{
+		  atts[i]->domain->type->index_writeval (&buf, &value);
+		  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+		  not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+
+#if !defined (NDEBUG)
+		  {
+		    int tmp_len1 = pr_index_writeval_disk_size (&value);
+		    int tmp_len2 = CAST_BUFLEN (buf.ptr - buf.buffer);
+		    assert ((element_offset + tmp_len1) == tmp_len2);
+		  }
+#endif
+		}
+
 	      element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
 	      assert (element_offset > 0);
 	      if (element_offset < OR_MAX_BYTE_UNSIGNED)
@@ -12591,7 +12607,6 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 		{
 		  OR_PUT_BYTE ((offset_ptr + 1) + k, OR_MAX_BYTE_UNSIGNED);
 		}
-	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	    }
 
 	  if (DB_NEED_CLEAR (&value))
@@ -12744,17 +12759,18 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      TP_DOMAIN *domain = tp_domain_resolve_default ((DB_TYPE) func_res->domain.general_info.type);
 	      domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
-	      assert (element_offset > 0);
-	      if (element_offset < OR_MAX_BYTE_UNSIGNED)
-		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset);
-		}
-	      else
-		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + i, OR_MAX_BYTE_UNSIGNED);
-		}
 	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	    }
+
+	  element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
+	  assert (element_offset > 0);
+	  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	    {
+	      OR_PUT_BYTE ((offset_ptr + 1) + k, element_offset);
+	    }
+	  else
+	    {
+	      OR_PUT_BYTE ((offset_ptr + 1) + k, OR_MAX_BYTE_UNSIGNED);
 	    }
 
 	  if (++k == num_vals)
@@ -12771,17 +12787,18 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      dk_get_deduplicate_key_value (rec_oid, att_ids[i], &value);
 	      att->domain->type->index_writeval (&buf, &value);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
-	      assert (element_offset > 0);
-	      if (element_offset < OR_MAX_BYTE_UNSIGNED)
-		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset);
-		}
-	      else
-		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + i, OR_MAX_BYTE_UNSIGNED);
-		}
 	      //  In this case, there is no need to clean them up using pr_clear_value().     
+	    }
+
+	  element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
+	  assert (element_offset > 0);
+	  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	    {
+	      OR_PUT_BYTE ((offset_ptr + 1) + k, element_offset);
+	    }
+	  else
+	    {
+	      OR_PUT_BYTE ((offset_ptr + 1) + k, OR_MAX_BYTE_UNSIGNED);
 	    }
 	}
       else
@@ -12789,21 +12806,25 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	  att = heap_locate_attribute (att_ids[i], attrinfo);
 
 	  error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
-	  if (error == NO_ERROR && !db_value_is_null (&value))
+	  if (error == NO_ERROR)
 	    {
-	      att->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	      if (!db_value_is_null (&value))
+		{
+		  att->domain->type->index_writeval (&buf, &value);
+		  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+		  not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+		}
+
 	      element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
 	      assert (element_offset > 0);
 	      if (element_offset < OR_MAX_BYTE_UNSIGNED)
 		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset);
+		  OR_PUT_BYTE ((offset_ptr + 1) + k, element_offset);
 		}
 	      else
 		{
-		  OR_PUT_BYTE ((offset_ptr + 1) + i, OR_MAX_BYTE_UNSIGNED);
+		  OR_PUT_BYTE ((offset_ptr + 1) + k, OR_MAX_BYTE_UNSIGNED);
 		}
-	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	    }
 
 	  if (DB_NEED_CLEAR (&value))

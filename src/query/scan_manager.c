@@ -1768,7 +1768,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   offset_ptr = nullmap_ptr + nullmap_size;
   MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, header_size);
   buf.ptr += header_size;
-  assert (buf_size > header_size);
+  assert (buf_size >= header_size);
   OR_PUT_BYTE (offset_ptr, header_size);
 
   /* generate multi columns key (values -> midxkey.buf) */
@@ -1811,6 +1811,18 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
       element_offset = CAST_BUFLEN (buf.ptr - buf.buffer);
       assert (element_offset > 0);
+      if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	{
+	  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset);
+	}
+      else
+	{
+	  OR_PUT_BYTE ((offset_ptr + 1) + i, OR_MAX_BYTE_UNSIGNED);
+	}
+    }
+
+  for (i = natts; i < idx_ncols; i++)
+    {
       if (element_offset < OR_MAX_BYTE_UNSIGNED)
 	{
 	  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset);

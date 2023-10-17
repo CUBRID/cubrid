@@ -11734,7 +11734,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   offset_ptr = nullmap_ptr + nullmap_size;
   MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, header_size);
   buf.ptr += header_size;
-  assert (buf_size > header_size);
+  assert (buf_size >= header_size);
   OR_PUT_BYTE (offset_ptr, header_size);
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
