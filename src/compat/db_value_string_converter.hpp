@@ -1,5 +1,5 @@
 /*
- *
+ * 
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,23 +16,21 @@
  *
  */
 
-
 /*
- * schema_system_class.h - External definitions for the schema manager
+ * db_value_string_converter.hpp
  */
 
-#ifndef _SCHEMA_SYSTEM_CATALOG_HPP_
-#define _SCHEMA_SYSTEM_CATALOG_HPP_
+#ifndef _DB_VALUE_STRING_CONVERTER_HPP_
+#define _DB_VALUE_STRING_CONVERTER_HPP_
 
-#include <string_view>
+class db_domain_converter 
+{
 
-#include "porting.h"
+};
 
-// test class_name is of system (class/vclass)s for legacy routine
-extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string_view class_name);
+class db_value_converter
+{
+        
+};
 
-extern EXPORT_IMPORT bool sm_is_system_class (const std::string_view name);
-extern EXPORT_IMPORT bool sm_is_system_vclass (const std::string_view name);
-
-
-#endif /* _SCHEMA_SYSTEM_CATALOG_HPP_ */
+#endif
