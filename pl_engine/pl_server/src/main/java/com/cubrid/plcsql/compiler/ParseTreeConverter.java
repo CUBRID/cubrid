@@ -743,7 +743,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         "field lookup is only allowed for records");
             }
 
-            Scope scope = symbolStack.getCurrentScope();
             return new ExprField(ctx, record, fieldName);
 
         } catch (SemanticError e) {
@@ -2411,15 +2410,37 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     hostExprs.put(
                             autoParam,
                             null); // null: type check is not necessary for auto parameters
-
                 } else {
                     // host variable
-                    String varName = Misc.getNormalizedText(pi.name);
-                    ExprId id = visitNonFuncIdentifier(varName, ctx); // s408: undeclared id ...
+                    String hostExpr = Misc.getNormalizedText(pi.name);
+                    String[] split = hostExpr.split("\\.");
+                    if (split.length == 1) {
 
-                    // TODO: replace the following null with meaningful type information
-                    // (type required in the location of this host var) after augmenting server API
-                    hostExprs.put(id, null);
+                        ExprId id =
+                                visitNonFuncIdentifier(hostExpr, ctx); // s408: undeclared id ...
+
+                        // TODO: replace the following null with meaningful type information
+                        // (type required in the location of this host var) after augmenting server
+                        // API
+                        hostExprs.put(id, null);
+
+                    } else if (split.length == 2) {
+
+                        ExprId record =
+                                visitNonFuncIdentifier(split[0], ctx); // s432: undeclared id ...
+                        if (!(record.decl instanceof DeclForRecord)) {
+                            throw new SemanticError(
+                                    Misc.getLineColumnOf(ctx), // s433
+                                    split[0] + " is not a record");
+                        }
+
+                        hostExprs.put(new ExprField(ctx, record, split[1]), null);
+
+                    } else {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(ctx), // s431
+                                "invalid form of a host expression " + hostExpr);
+                    }
                 }
             }
         }
