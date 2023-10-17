@@ -858,10 +858,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             for (Expr e : node.usedExprList) {
                 TypeSpec tyUsedExpr = visit(e); // s420
                 if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.CURSOR
                         || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(e.ctx), // s428
-                            "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
+                            "expressions in a USING clause cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
                 }
             }
         }
@@ -990,10 +991,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             for (Expr e : node.usedExprList) {
                 TypeSpec tyUsedExpr = visit(e); // s429
                 if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.CURSOR
                         || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(e.ctx), // s430
-                            "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
+                            "expressions in a USING clause cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
                 }
             }
         }
@@ -1205,26 +1207,20 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         LinkedHashMap<Expr, TypeSpec> hostExprs = staticSql.hostExprs;
         for (Expr e : hostExprs.keySet()) {
             TypeSpec ty = visit(e);
+            if (ty == TypeSpecSimple.BOOLEAN
+                    || ty == TypeSpecSimple.CURSOR
+                    || ty == TypeSpecSimple.SYS_REFCURSOR) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(e.ctx),
+                        "host expressions cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
+            }
 
+            /* TODO
             TypeSpec tyRequired = hostExprs.get(e);
             if (tyRequired != null) {
-                // NOTE: unreachable for now. but remains for future extension
-                assert e instanceof ExprId;
-
-                ExprId id = (ExprId) e;
-                Coercion c = Coercion.getCoercion(ty, tyRequired);
-                if (c == null) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(staticSql.ctx),
-                            "host variable "
-                                    + id.name
-                                    + " does not have a compatible type in the SQL statement");
-                } else {
-                    // no more use of the coercion: coercion (if not an identity) will be done in
-                    // the
-                    // server
-                }
+                ...
             }
+             */
         }
     }
 }
