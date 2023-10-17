@@ -141,13 +141,14 @@ tran_server::boot (const char *db_name)
 	    }
 	  else
 	    {
-	      /*
+	      /* TEMPORARY waiting and timeout
+	      *
 	      * TODO: Remove this and just make sure reset_main_connection doesn't fail
 	      *       when the ATS recovery with handshakes with multiple page servers comes in.
 	      *
 	      * For now, the main connection may not be able to be set for a while. It can be after one it set to CONNECTED state.
-	      * When the handshakes comes in, it's guaranteed that at least one connection is trustworthy here
-	      * and it will be the main connection. Until then, we just waits here a conenction is ready.
+	      * When the handshakes comes in, it's guaranteed that at least one connection is completely CONNECTED here
+	      * and it will be the main connection. Until then, we just waits here until a conenction is ready.
 	      */
 	      auto current_time = std::chrono::steady_clock::now ();
 	      auto duration = std::chrono::duration_cast<std::chrono::seconds> (current_time - start_time).count();
