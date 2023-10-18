@@ -3636,7 +3636,7 @@ compare_driver (const void *first, const void *second, void *arg)
 
 	  element_offset = OR_GET_BYTE ((offset_ptr1 + 1) + i);
 	  assert (element_offset > 0);
-	  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	  if (element_offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
 	    {
 	      mem1 = nullmap_ptr1 + element_offset;
 	    }
@@ -3647,7 +3647,7 @@ compare_driver (const void *first, const void *second, void *arg)
 
 	  element_offset = OR_GET_BYTE ((offset_ptr2 + 1) + i);
 	  assert (element_offset > 0);
-	  if (element_offset < OR_MAX_BYTE_UNSIGNED)
+	  if (element_offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
 	    {
 	      mem2 = nullmap_ptr2 + element_offset;
 	    }

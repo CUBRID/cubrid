@@ -325,6 +325,9 @@ extern int pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE
 extern int pr_midxkey_remove_prefix (DB_VALUE * key, int prefix);
 extern int pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2);
 
+STATIC_INLINE bool pr_midxkey_element_is_null (char *memptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_midxkey_check_valid_domain (TP_DOMAIN * midxkey_domain) __attribute__ ((ALWAYS_INLINE));
+
 extern int pr_Inhibit_oid_promotion;
 
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
@@ -424,6 +427,56 @@ pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
 		 || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)));
 
   return domain->type->get_index_size_of_mem (mem, domain);
+}
+
+STATIC_INLINE bool
+pr_midxkey_element_is_null (char *memptr, const int index)
+{
+  assert (memptr != NULL);
+  assert (index >= 0);
+  /* OR_MULTI_ATT_IS_UNBOUND */
+  if ((*(memptr + (index >> 3))) & (1 << (index & 7)))
+    {
+      return false;
+    }
+  return true;
+}
+
+STATIC_INLINE int
+pr_midxkey_check_valid_domain (TP_DOMAIN * midxkey_domain)
+{
+  TP_DOMAIN *domain;
+  int precision;
+
+  assert (midxkey_domain != NULL);
+  assert (TP_DOMAIN_TYPE (midxkey_domain) == DB_TYPE_MIDXKEY);
+  assert (midxkey_domain->setdomain != NULL);
+
+  precision = midxkey_domain->precision;
+  if (precision <= 0)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+#if !defined (NDEBUG)
+  {
+    int count = 0;
+
+    for (domain = midxkey_domain->setdomain; domain != NULL; domain = domain->next)
+      {
+	count++;
+      }
+
+    if (count != precision)
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+  }
+#endif /* NDEBUG */
+
+  return NO_ERROR;
 }
 
 //////////////////////////////////////////////////////////////////////////
