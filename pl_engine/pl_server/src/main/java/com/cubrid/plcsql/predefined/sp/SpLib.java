@@ -53,6 +53,7 @@ import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Stack;
+import java.util.Locale;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
@@ -3035,14 +3036,15 @@ public class SpLib {
     private static final Float FLOAT_ZERO = Float.valueOf(0.0f);
     private static final Double DOUBLE_ZERO = Double.valueOf(0.0);
 
-    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy");
-    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a");
+    // TODO: update the locale with the value got from the server
+    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy", Locale.US);
+    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a", Locale.US);
     private static final DateFormat DATETIME_FORMAT =
-            new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy");
+            new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy", Locale.US);
     private static final DateFormat TIMESTAMP_FORMAT =
-            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy", Locale.US);
 
-    private static final DateFormat AM_PM = new SimpleDateFormat("a");
+    private static final DateFormat AM_PM = new SimpleDateFormat("a", Locale.US);
     private static final Date ZERO_DATE = new Date(0L);
 
     private static Boolean commonOpEq(Object l, Object r) {
