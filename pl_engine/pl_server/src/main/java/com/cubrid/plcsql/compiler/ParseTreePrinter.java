@@ -39,20 +39,15 @@ import org.antlr.v4.runtime.tree.TerminalNode;
 
 public class ParseTreePrinter extends PlcParserBaseListener {
 
-    public ParseTreePrinter(PrintStream out, String infile) {
+    public ParseTreePrinter(PrintStream out) {
         super();
         this.out = out;
-        this.infile = infile;
     }
 
     @Override
     public void enterEveryRule(ParserRuleContext ctx) {
 
         String nonTerminal = Misc.ctxToNonTerminalName(ctx);
-        if (nonTerminal.equals("sql_script")) {
-            out.println("# " + infile);
-        }
-
         Misc.printIndent(out, level);
         out.println(nonTerminal);
         level++;
@@ -83,5 +78,4 @@ public class ParseTreePrinter extends PlcParserBaseListener {
 
     private int level = 0;
     private PrintStream out;
-    private String infile;
 }

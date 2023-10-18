@@ -59,7 +59,7 @@ public class PlcsqlCompilerMain {
         int optionFlags = verbose ? OPT_VERBOSE : 0;
         CharStream input = CharStreams.fromString(in);
         try {
-            return compileInner(input, optionFlags, 0, null);
+            return compileInner(input, optionFlags);
         } catch (SyntaxError e) {
             CompileInfo err = new CompileInfo(-1, e.line, e.column, e.getMessage());
             return err;
@@ -80,10 +80,9 @@ public class PlcsqlCompilerMain {
     private static final int OPT_VERBOSE = 1;
     private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
 
-    private static ParseTree parse(CharStream input, boolean verbose, String[] sqlTemplate) {
+    private static ParseTree parse(CharStream input, boolean verbose, String[] sqlTemplate, StringBuilder logStore) {
 
         long t0 = 0L;
-
         if (verbose) {
             t0 = System.currentTimeMillis();
         }
@@ -97,13 +96,13 @@ public class PlcsqlCompilerMain {
         parser.addErrorListener(sei);
 
         if (verbose) {
-            t0 = printElapsedTime("  preparing parser", t0);
+            t0 = logElapsedTime(logStore, "  preparing parser", t0);
         }
 
         ParseTree ret = parser.sql_script();
 
         if (verbose) {
-            printElapsedTime("  calling parser", t0);
+            logElapsedTime(logStore, "  calling parser", t0);
         }
 
         if (sei.hasError) {
@@ -114,7 +113,7 @@ public class PlcsqlCompilerMain {
         return ret;
     }
 
-    private static PrintStream getParseTreePrinterOutStream(int seq) {
+    private static PrintStream getParseTreePrinterOutStream() {
 
         // create a output stream to print parse tree
         String outfile =
@@ -131,33 +130,34 @@ public class PlcsqlCompilerMain {
         }
     }
 
-    private static long printElapsedTime(String msg, long t0) {
+    private static long logElapsedTime(StringBuilder logStore, String msg, long t0) {
         long t = System.currentTimeMillis();
-        System.out.println(String.format("%s: %f sec", msg, (t - t0) / 1000.0));
+        logStore.append(String.format("\n%7d : %s", (t - t0), msg));
         return t;
     }
 
-    private static CompileInfo compileInner(
-            CharStream input, int optionFlags, int seq, String infile) {
+    private static CompileInfo compileInner(CharStream input, int optionFlags) {
 
         boolean verbose = (optionFlags & OPT_VERBOSE) > 0;
 
         long t0 = 0L;
+        StringBuilder logStore = null;
         if (verbose) {
             t0 = System.currentTimeMillis();
+            logStore = new StringBuilder();
         }
 
         // ------------------------------------------
         // parsing
 
         String[] sqlTemplate = new String[1];
-        ParseTree tree = parse(input, verbose, sqlTemplate);
+        ParseTree tree = parse(input, verbose, sqlTemplate, logStore);
         if (tree == null) {
             throw new RuntimeException("parsing failed");
         }
 
         if (verbose) {
-            t0 = printElapsedTime("parsing", t0);
+            t0 = logElapsedTime(logStore, "parsing", t0);
         }
 
         // ------------------------------------------
@@ -165,13 +165,13 @@ public class PlcsqlCompilerMain {
 
         if ((optionFlags & OPT_PRINT_PARSE_TREE) > 0) {
             // walk with a pretty printer to print parse tree
-            PrintStream out = getParseTreePrinterOutStream(seq);
-            ParseTreePrinter pp = new ParseTreePrinter(out, infile);
+            PrintStream out = getParseTreePrinterOutStream();
+            ParseTreePrinter pp = new ParseTreePrinter(out);
             ParseTreeWalker.DEFAULT.walk(pp, tree);
             out.close();
 
             if (verbose) {
-                t0 = printElapsedTime("printing", t0);
+                t0 = logElapsedTime(logStore, "printing parse tree", t0);
             }
         }
 
@@ -182,7 +182,7 @@ public class PlcsqlCompilerMain {
         ParseTreeWalker.DEFAULT.walk(ssc, tree);
 
         if (verbose) {
-            t0 = printElapsedTime("collecting Static SQL", t0);
+            t0 = logElapsedTime(logStore, "collecting Static SQL statements", t0);
         }
 
         // ------------------------------------------
@@ -220,7 +220,7 @@ public class PlcsqlCompilerMain {
         }
 
         if (verbose) {
-            t0 = printElapsedTime("analyzing Static SQL", t0);
+            t0 = logElapsedTime(logStore, "semantics check of Static SQL statements by server", t0);
         }
 
         // ------------------------------------------
@@ -230,7 +230,7 @@ public class PlcsqlCompilerMain {
         Unit unit = (Unit) converter.visit(tree);
 
         if (verbose) {
-            t0 = printElapsedTime("converting", t0);
+            t0 = logElapsedTime(logStore, "converting to AST", t0);
         }
 
         // ------------------------------------------
@@ -241,7 +241,7 @@ public class PlcsqlCompilerMain {
         converter.askServerSemanticQuestions();
 
         if (verbose) {
-            t0 = printElapsedTime("asking server global semantics", t0);
+            t0 = logElapsedTime(logStore, "getting global semantics information from server", t0);
         }
 
         // ------------------------------------------
@@ -251,16 +251,27 @@ public class PlcsqlCompilerMain {
         typeChecker.visitUnit(unit);
 
         if (verbose) {
-            t0 = printElapsedTime("typechecking", t0);
+            t0 = logElapsedTime(logStore, "typechecking", t0);
         }
 
         // ------------------------------------------
-        //
+        // Java code generation
 
-        JavaCodeWriter jcw = new JavaCodeWriter();
+        String javaCode = new JavaCodeWriter().buildCodeLines(unit);
+
+        if (verbose) {
+            logElapsedTime(logStore, "Java code generation", t0);
+        }
+
+        // ------------------------------------------
+
+        if (verbose) {
+            Server.log(unit.getClassName() + logStore.toString());
+        }
+
         CompileInfo info =
                 new CompileInfo(
-                        jcw.buildCodeLines(unit),
+                        javaCode,
                         String.format(sqlTemplate[0], unit.getJavaSignature()),
                         unit.getClassName(),
                         unit.getJavaSignature());
