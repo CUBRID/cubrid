@@ -21,6 +21,7 @@
 #include "log_replication_jobs.hpp"
 
 #include "log_recovery_redo_parallel.hpp"
+#include "heap_file.h"
 
 namespace cublog
 {
@@ -214,6 +215,20 @@ namespace cublog
 	      {
 		m_replicator_mvccid->new_assigned_mvccid (header.trid, log_rec.mvccid);
 	      }
+	    break;
+	  }
+	  case LOG_SCHEMA_MODIFICATION_LOCK:
+	  {
+	    char *classname;
+
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SCHEMA_MODIFICATION_LOCK));
+	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
+
+	    int error = heap_get_class_name (&thread_entry, &log_rec.classoid, &classname);
+	    _er_log_debug (ARG_FILE_LINE,"[REPL LOCK] OID = %d|%d|%d, classname = %s\n", OID_AS_ARGS (&log_rec.classoid),
+			   classname);
+	    free_and_init (classname);
 	    break;
 	  }
 	  default:
