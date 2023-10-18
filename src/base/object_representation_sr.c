@@ -4242,38 +4242,60 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
   OR_BUF buf;
   int rc = NO_ERROR;
   int repid_and_flag_bits;
+  int header_size;
+  int flag;
 
   assert (record != NULL && record->data != NULL && record->length >= OR_MVCC_REP_SIZE && mvcc_header != NULL);
 
   or_init (&buf, record->data, record->length);
 
-  repid_and_flag_bits = or_mvcc_get_repid_and_flags (&buf, &rc);
-  if (rc != NO_ERROR)
+  header_size = OR_HEADER_SIZE(buf.buffer);
+  if ((buf.ptr + header_size) > buf.endptr)
     {
-      goto exit_on_error;
+      rc = or_underflow (&buf);
+      goto underflow_detected;
     }
+
+  repid_and_flag_bits = OR_GET_INT (buf.ptr);
+  buf.ptr += OR_INT_SIZE;
   mvcc_header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
-  mvcc_header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_header->mvcc_flag = flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  
+  mvcc_header->chn = OR_GET_INT (buf.ptr);
+  buf.ptr += OR_INT_SIZE;
 
-  mvcc_header->chn = or_mvcc_get_chn (&buf, &rc);
-  if (rc != NO_ERROR)
+  if (!(flag & OR_MVCC_FLAG_VALID_INSID))
     {
-      goto exit_on_error;
+      mvcc_header->mvcc_ins_id = MVCCID_ALL_VISIBLE;
+    }
+  else
+    {
+      OR_GET_BIGINT(buf.ptr, &(mvcc_header->mvcc_ins_id));
+      buf.ptr += OR_MVCCID_SIZE;
     }
 
-  mvcc_header->mvcc_ins_id = or_mvcc_get_insid (&buf, mvcc_header->mvcc_flag, &rc);
-  if (rc != NO_ERROR)
+  if(!(flag & OR_MVCC_FLAG_VALID_DELID))
     {
-      goto exit_on_error;
+      mvcc_header->mvcc_del_id = MVCCID_NULL;
+    }
+  else
+    {
+      OR_GET_BIGINT(buf.ptr, &(mvcc_header->mvcc_del_id));
+      buf.ptr += OR_MVCCID_SIZE;
     }
 
-  mvcc_header->mvcc_del_id = or_mvcc_get_delid (&buf, mvcc_header->mvcc_flag, &rc);
-  if (rc != NO_ERROR)
+  if (!(flag & OR_MVCC_FLAG_VALID_PREV_VERSION))
     {
-      goto exit_on_error;
+      LSA_SET_NULL (&(mvcc_header->prev_version_lsa));
+    }
+  else
+    {
+      mvcc_header->prev_version_lsa = *(LOG_LSA *) buf.ptr;
+      buf.ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
     }
 
-  rc = or_mvcc_get_prev_version_lsa (&buf, mvcc_header->mvcc_flag, &(mvcc_header->prev_version_lsa));
+  assert(buf.ptr <= buf.endptr);
+
   if (rc != NO_ERROR)
     {
       goto exit_on_error;
@@ -4283,6 +4305,20 @@ or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_header)
 
 exit_on_error:
   return (rc == NO_ERROR && (rc = er_errid ()) == NO_ERROR) ? ER_FAILED : rc;
+
+underflow_detected:
+  mvcc_header->repid = 0;
+  mvcc_header->mvcc_flag = 0;
+  mvcc_header->chn = NULL_CHN;
+  mvcc_header->mvcc_ins_id = MVCCID_NULL;
+  mvcc_header->mvcc_del_id = MVCCID_NULL;
+
+  if (rc != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
+  return NO_ERROR;
 }
 
 /*
