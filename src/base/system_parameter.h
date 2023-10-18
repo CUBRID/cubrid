@@ -474,7 +474,8 @@ enum param_id
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_ID_ORACLE_STYLE_DIVIDE,
   PRM_ID_MEMORY_MONITORING,
-  PRM_LAST_ID = PRM_ID_MEMORY_MONITORING
+  PRM_ID_MEMORY_MONITORING_DEBUG_LOG,
+  PRM_LAST_ID = PRM_ID_MEMORY_MONITORING_DEBUG_LOG
 };
 typedef enum param_id PARAM_ID;
 

@@ -256,8 +256,11 @@ namespace cubperf
     m_cur_stat += size;
 
 #if !defined (NDEBUG)
-    mmon_err_msg_size += sprintf (mmon_err_msg + mmon_err_msg_size,
-				  "_%s", m_subcomp_name.c_str ());
+    if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING_DEBUG_LOG))
+      {
+	mmon_err_msg_size += sprintf (mmon_err_msg + mmon_err_msg_size,
+				      "_%s", m_subcomp_name.c_str ());
+      }
 #endif
 
   }
@@ -280,8 +283,11 @@ namespace cubperf
     m_stat.cur_stat += size;
 
 #if !defined (NDEBUG)
-    mmon_err_msg_size += sprintf (mmon_err_msg + mmon_err_msg_size,
-				  "_%s", m_comp_name.c_str ());
+    if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING_DEBUG_LOG))
+      {
+	mmon_err_msg_size += sprintf (mmon_err_msg + mmon_err_msg_size,
+				      "_%s", m_comp_name.c_str ());
+      }
 #endif
 
     if (m_stat.cur_stat > m_stat.peak_stat)
@@ -430,7 +436,10 @@ namespace cubperf
     m_stat.cur_stat += size;
 
 #if !defined (NDEBUG)
-    mmon_err_msg_size = sprintf (mmon_err_msg, "[MMON-ADD] %s", m_module_name.c_str ());
+    if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING_DEBUG_LOG))
+      {
+	mmon_err_msg_size = sprintf (mmon_err_msg, "[MMON-ADD] %s", m_module_name.c_str ());
+      }
 #endif
 
     if (m_stat.cur_stat > m_stat.peak_stat)
@@ -445,9 +454,12 @@ namespace cubperf
 	m_component[comp_idx]->add_stat (subcomp_idx, size);
       }
 #if !defined (NDEBUG)
-    mmon_err_msg_size += sprintf (mmon_err_msg + mmon_err_msg_size, ": %ld\n", size);
-    er_log_debug (ARG_FILE_LINE, mmon_err_msg);
-    memset (mmon_err_msg, 0, DB_MAX_IDENTIFIER_LENGTH);
+    if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING_DEBUG_LOG))
+      {
+	mmon_err_msg_size += sprintf (mmon_err_msg + mmon_err_msg_size, ": %ld\n", size);
+	er_log_debug (ARG_FILE_LINE, mmon_err_msg);
+	memset (mmon_err_msg, 0, DB_MAX_IDENTIFIER_LENGTH);
+      }
 #endif
   }
 
@@ -742,7 +754,10 @@ int mmon_initialize (const char *server_name)
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 #if !defined (NDEBUG)
-      memset (mmon_err_msg, 0, DB_MAX_IDENTIFIER_LENGTH);
+      if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING_DEBUG_LOG))
+	{
+	  memset (mmon_err_msg, 0, DB_MAX_IDENTIFIER_LENGTH);
+	}
 #endif
     }
   return error;
@@ -761,7 +776,10 @@ void mmon_finalize ()
   if (mmon_Gl != nullptr)
     {
 #if !defined (NDEBUG)
-      mmon_Gl->stat_dump_debug ();
+      if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING_DEBUG_LOG))
+	{
+	  mmon_Gl->stat_dump_debug ();
+	}
 #endif
       delete mmon_Gl;
     }

@@ -731,6 +731,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
 #define PRM_NAME_MEMORY_MONITORING "memory_monitoring"
+#define PRM_NAME_MEMORY_MONITORING_DEBUG_LOG "memory_monitoring_debug_log"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -2391,6 +2392,10 @@ static unsigned int prm_oracle_style_divide_flag = 0;
 bool PRM_MEMORY_MONITORING = false;
 static bool prm_memory_monitoring_default = false;
 static unsigned int prm_memory_monitoring_flag = 0;
+
+bool PRM_MEMORY_MONITORING_DEBUG_LOG = false;
+static bool prm_memory_monitoring_debug_log_default = false;
+static unsigned int prm_memory_monitoring_debug_log_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6296,6 +6301,17 @@ SYSPRM_PARAM prm_Def[] = {
    &prm_memory_monitoring_flag,
    (void *) &prm_memory_monitoring_default,
    (void *) &PRM_MEMORY_MONITORING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MEMORY_MONITORING_DEBUG_LOG,
+   PRM_NAME_MEMORY_MONITORING_DEBUG_LOG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_memory_monitoring_debug_log_flag,
+   (void *) &prm_memory_monitoring_debug_log_default,
+   (void *) &PRM_MEMORY_MONITORING_DEBUG_LOG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
