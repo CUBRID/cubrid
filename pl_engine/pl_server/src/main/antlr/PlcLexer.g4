@@ -54,6 +54,7 @@ CASE:                         C A S E ;
 CHARACTER:                    C H A R A C T E R ;
 CHAR:                         C H A R ;
 CLOSE:                        C L O S E ;
+COMMENT:                      C O M M E N T ;
 COMMIT:                       C O M M I T ;
 CONSTANT:                     C O N S T A N T ;
 CONTINUE:                     C O N T I N U E ;

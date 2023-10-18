@@ -35,7 +35,7 @@ sql_script
     ;
 
 create_routine
-    : CREATE (OR_REPLACE)? routine_definition
+    : CREATE (OR_REPLACE)? routine_definition (COMMENT CHAR_STRING)?
     ;
 
 routine_definition
