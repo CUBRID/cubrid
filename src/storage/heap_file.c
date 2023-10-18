@@ -8057,7 +8057,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  scan_cache->cache_last_fix_page = true;
 	  pgbuf_replace_watcher (thread_p, &curr_page_watcher, &scan_cache->page_watcher);
 
-	  scan = heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN);
+	  scan =
+	    heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
+					   NULL_CHN);
 	  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
 
 	  if (!cache_last_fix_page_save && scan_cache->page_watcher.pgptr)
@@ -24854,6 +24856,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 *   oid (in): Object to be obtained.
 *   class_oid (in):
 *   recdes (out): Record descriptor. NULL if not needed
+*   forward_recdes (in): Record descriptor for heap scan optimizing
 *   scan_cache(in): Heap scan cache.
 *   ispeeking(in): Peek record or copy.
 *   old_chn (in): Cache coherency number for existing record data. It is
@@ -24863,10 +24866,39 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 */
 SCAN_CODE
 heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-			       HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+			       RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
+
+  if (forward_recdes->type == REC_HOME && ispeeking == PEEK)
+    {
+      MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+      if (or_mvcc_get_header (forward_recdes, &mvcc_header) != NO_ERROR)
+	{
+	  /* Unexpected. */
+	  assert (false);
+	}
+      if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL
+	  && scan_cache->mvcc_snapshot->snapshot_fnc != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
+	  && scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
+						      scan_cache->mvcc_snapshot) != SNAPSHOT_SATISFIED)
+	{
+	  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+
+	  scan = heap_get_visible_version_internal (thread_p, &context, true);
+
+	  heap_clean_get_context (thread_p, &context);
+
+	  return scan;
+	}
+      if (recdes != NULL)
+	{
+	  *recdes = *forward_recdes;
+	  return scan;
+	}
+      /*fall through to get visible version... */
+    }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
 
