@@ -131,7 +131,7 @@ tran_server::boot (const char *db_name)
     */
   if (m_page_server_conn_vec.empty () == false)
     {
-      auto start_time = std::chrono::steady_clock::now ();
+      const auto start_time = std::chrono::steady_clock::now ();
       while (true)
 	{
 	  error_code = reset_main_connection ();
@@ -150,8 +150,8 @@ tran_server::boot (const char *db_name)
 	      * When the handshakes comes in, it's guaranteed that at least one connection is completely CONNECTED here
 	      * and it will be the main connection. Until then, we just waits here until a conenction is ready.
 	      */
-	      auto current_time = std::chrono::steady_clock::now ();
-	      auto duration = std::chrono::duration_cast<std::chrono::seconds> (current_time - start_time).count();
+	      const auto current_time = std::chrono::steady_clock::now ();
+	      const auto duration = std::chrono::duration_cast<std::chrono::seconds> (current_time - start_time).count();
 	      if (duration > 30) // timeout: 30 seconds
 		{
 		  assert (false);
@@ -159,7 +159,7 @@ tran_server::boot (const char *db_name)
 		}
 	      else
 		{
-		  auto sleep_time = std::chrono::milliseconds (30);
+		  constexpr auto sleep_time = std::chrono::milliseconds (30);
 		  std::this_thread::sleep_for (sleep_time);
 		}
 	    }
