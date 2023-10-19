@@ -166,8 +166,13 @@ mmon_print_tran_info (MMON_TRAN_INFO &tran_info)
   for (const auto &t_stat : tran_info.tran_stat)
     {
       // There can be some cases that some transactions' cur_stat can have minus value
-      // because they can only free memory (e.g. finalize cache).
-      // So in that case, we just show 0 value to user.
+      // because they can not allocate memory but free memory.
+      // e.g.
+      // 1. A thread get object from pool but the pool is full because other threads return object to pool
+      //    when the thread return its object to pool. In this case the thread have to free the object.
+      // 2. A thread initialize cache(just alloc) and another therad finalize cache(just free).
+      // ...
+      // So in this case, we just show 0 value to user.
       if (t_stat.cur_stat >= 0)
 	{
 	  fprintf (stdout, "\t%14d | %17lu\n", t_stat.tranid, t_stat.cur_stat);

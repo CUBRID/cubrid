@@ -755,8 +755,16 @@ MMON_STAT_ID mmon_set_tracking_tag (MMON_STAT_ID new_tag)
   if (mmon_Gl != nullptr)
     {
       cur_thread_p = thread_get_thread_entry_info ();
-      prev_tag = cur_thread_p->mmon_tracking_tag;
-      cur_thread_p->mmon_tracking_tag = new_tag;
+      if (cur_thread_p != NULL)
+	{
+	  prev_tag = cur_thread_p->mmon_tracking_tag;
+	  cur_thread_p->mmon_tracking_tag = new_tag;
+	}
+      else
+	{
+	  // for checking dump
+	  assert (false);
+	}
     }
 
   return prev_tag;
@@ -769,8 +777,16 @@ void mmon_add_stat_with_tracking_tag (int64_t size)
   if (mmon_Gl != nullptr)
     {
       cur_thread_p = thread_get_thread_entry_info ();
-      assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
-      mmon_add_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+      if (cur_thread_p != NULL)
+	{
+	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+	  mmon_add_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+	}
+      else
+	{
+	  // for checking dump
+	  assert (false);
+	}
     }
 }
 
@@ -781,8 +797,16 @@ void mmon_sub_stat_with_tracking_tag (int64_t size)
   if (mmon_Gl != nullptr)
     {
       cur_thread_p = thread_get_thread_entry_info ();
-      assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
-      mmon_sub_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+      if (cur_thred_p != NULL)
+	{
+	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+	  mmon_sub_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
+	}
+      else
+	{
+	  // for checking dump
+	  assert (false);
+	}
     }
 }
 
@@ -792,16 +816,24 @@ void mmon_move_stat_with_tracking_tag (int64_t size, MMON_STAT_ID stat_id, bool 
 
   if (mmon_Gl != nullptr)
     {
-      cur_thread_p = thread_get_thread_entry_info ();
-      assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
-
-      if (tag_is_src)
+      if (cur_thread_p != NULL)
 	{
-	  mmon_move_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, stat_id, size);
+	  cur_thread_p = thread_get_thread_entry_info ();
+	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+
+	  if (tag_is_src)
+	    {
+	      mmon_move_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, stat_id, size);
+	    }
+	  else
+	    {
+	      mmon_move_stat (cur_thread_p, stat_id, cur_thread_p->mmon_tracking_tag, size);
+	    }
 	}
       else
 	{
-	  mmon_move_stat (cur_thread_p, stat_id, cur_thread_p->mmon_tracking_tag, size);
+	  // for checking dump
+	  assert (false);
 	}
     }
 }
@@ -813,7 +845,15 @@ void mmon_resize_stat_with_tracking_tag (int64_t old_size, int64_t new_size)
   if (mmon_Gl != nullptr)
     {
       cur_thread_p = thread_get_thread_entry_info ();
-      assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
-      mmon_resize_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, old_size, new_size);
+      if (cur_thread_p != NULL)
+	{
+	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
+	  mmon_resize_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, old_size, new_size);
+	}
+      else
+	{
+	  // for checking dump
+	  assert (false);
+	}
     }
 }
