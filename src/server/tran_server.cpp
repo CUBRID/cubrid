@@ -148,7 +148,7 @@ tran_server::boot (const char *db_name)
 	      *
 	      * For now, the main connection may not be able to be set for a while. It can be after one it set to CONNECTED state.
 	      * When the handshakes comes in, it's guaranteed that at least one connection is completely CONNECTED here
-	      * and it will be the main connection. Until then, we just waits here until a conenction is ready.
+	      * and it will be the main connection. Until then, we just wait here until a conenction is ready.
 	      */
 	      const auto current_time = std::chrono::steady_clock::now ();
 	      const auto duration = std::chrono::duration_cast<std::chrono::seconds> (current_time - start_time).count();
