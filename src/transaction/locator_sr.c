@@ -12885,6 +12885,15 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   else
     {
       lock_acquired = true;
+
+      if (OID_IS_ROOTOID (context->class_oid_p) && lock_mode == SCH_M_LOCK)
+	{
+	  /* Lock is acquired to modify the class record (DDL is executed) */
+	  if (is_active_transaction_server ())
+	    {
+	      log_append_schema_modification_lock (thread_p, context->oid_p);
+	    }
+	}
     }
 
   assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
