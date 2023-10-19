@@ -3735,9 +3735,9 @@ log_append_assigned_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 void
-log_append_schema_modification_lock (THREAD_ENTRY * thread_p, const OID classoid)
+log_append_schema_modification_lock (THREAD_ENTRY * thread_p, const OID * classoid)
 {
-  assert (!OID_ISNULL (&classoid));
+  assert (!OID_ISNULL (classoid));
 
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   assert (tdes != nullptr);
@@ -3747,7 +3747,7 @@ log_append_schema_modification_lock (THREAD_ENTRY * thread_p, const OID classoid
   assert (node != nullptr);
 
   auto record = (LOG_REC_SCHEMA_MODIFICATION_LOCK *) node->data_header;
-  COPY_OID (&record->classoid, &classoid);
+  COPY_OID (&record->classoid, classoid);
 
   (void) prior_lsa_next_record (thread_p, node, tdes);
 }
