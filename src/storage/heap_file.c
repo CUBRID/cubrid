@@ -6991,7 +6991,7 @@ heap_scancache_force_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
     {
       pgbuf_ordered_unfix (thread_p, &(scan_cache->page_watcher));
     }
-    if (scan_cache->old_page_watcher.pgptr != NULL)
+  if (scan_cache->old_page_watcher.pgptr != NULL)
     {
       pgbuf_ordered_unfix (thread_p, &(scan_cache->old_page_watcher));
     }
@@ -7184,7 +7184,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	    {
 	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	    }
-            if (scan_cache->old_page_watcher.pgptr != NULL)
+	  if (scan_cache->old_page_watcher.pgptr != NULL)
 	    {
 	      pgbuf_ordered_unfix (thread_p, &scan_cache->old_page_watcher);
 	    }
@@ -7948,18 +7948,21 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      if (reversed_direction)
 		{
 		  scan =
-		    spage_previous_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		    spage_previous_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+							   PEEK);
 		}
 	      else
 		{
 		  scan =
-		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+						       PEEK);
 		}
 	      if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		{
 		  /* skip the header */
 		  scan =
-		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+						       PEEK);
 		}
 	    }
 	  else
@@ -8048,8 +8051,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       if (get_rec_info)
 	{
 	  scan =
-	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &scan_cache->page_watcher, scan_cache, ispeeking,
-				  cache_recordinfo);
+	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &scan_cache->page_watcher, scan_cache,
+				  ispeeking, cache_recordinfo);
 	}
       else
 	{
