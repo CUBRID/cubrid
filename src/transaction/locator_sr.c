@@ -59,6 +59,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "record_descriptor.hpp"
 #include "slotted_page.h"
+#include "server_type.hpp"
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
