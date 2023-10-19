@@ -1493,6 +1493,21 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
 	}
       break;
+
+    case S_CMD_MIDXKEY:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_arg->midxkey_print = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_arg->midxkey_print = false;
+	}
+      if (csql_Is_interactive)
+	{
+	  fprintf (csql_Output_fp, "MIDXKEY IS %s\n", (csql_arg->midxkey_print ? "ON" : "OFF"));
+	}
+      break;
     }
 
   return DO_CMD_SUCCESS;

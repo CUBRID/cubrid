@@ -4126,7 +4126,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   is_agg = pt_is_aggregate_function (parser, tree);
   if (is_agg)
     {
-      FUNC_TYPE code = tree->info.function.function_type;
+      FUNC_CODE code = tree->info.function.function_type;
 
       if (code == PT_GROUPBY_NUM)
 	{
@@ -6809,7 +6809,7 @@ pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABL
   if (regu->value.funcp)
     {
       regu->value.funcp->operand = arg_list;
-      regu->value.funcp->ftype = (FUNC_TYPE) function_code;
+      regu->value.funcp->ftype = (FUNC_CODE) function_code;
       if (node->info.function.hidden_column)
 	{
 	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
@@ -10412,6 +10412,10 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
 	  else
 	    {
 	      /* rhs must be set type and (value or function type) */
+	      goto error;
+	    }
+	  if (rhs == NULL)
+	    {
 	      goto error;
 	    }
 	  for (pos = 0; pos < multi_col_pos[i]; pos++)
