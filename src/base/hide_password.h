@@ -1,5 +1,4 @@
-/*
- * Copyright 2008 Search Solution Corporation
+/* 
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,8 +20,8 @@
  * hide_password.h -
  */
 
-#ifndef	_PASSWORD_LOG_H_
-#define	_PASSWORD_LOG_H_
+#ifndef	_HIDE_PASSWORD_H_
+#define	_HIDE_PASSWORD_H_
 
 #ident "$Id$"
 
@@ -74,4 +73,4 @@ extern "C"
 }
 #endif
 
-#endif				/* _PASSWORD_LOG_H_ */
+#endif				/* _HIDE_PASSWORD_H_ */

@@ -1,5 +1,4 @@
 /*
- * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,7 +52,7 @@
 //extern PARSER_CONTEXT *this_parser;
 //==========================================================================
 
-static unsigned char isSpace[0x100] =
+static unsigned char is_space[0x100] =
 {
   // ' '  '\t'  '\r'  '\n'  '\f'  '\v'
   // 0x20 0x09  0x0d  0x0a  0x0c  0x0b
@@ -77,7 +76,7 @@ static unsigned char isSpace[0x100] =
 
 #define SKIP_SPACE_CHARACTERS(p)                \
   do {                                          \
-        while (isSpace[(unsigned char) *p])     \
+        while (is_space[(unsigned char) *p])     \
 	    {                                   \
 	      p++;                              \
 	    }                                   \
@@ -223,7 +222,7 @@ hide_password::get_token (char *&in, int &len)
 	  break;
 
 	default:
-	  if (isSpace[ (unsigned char) *in])
+	  if (is_space[ (unsigned char) *in])
 	    {
 	      len = (int) (in - ps);
 	      return ps;
@@ -656,7 +655,6 @@ hide_password::snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO
   char chbk;
   int pos;
   int length = 0;
-  EN_ADD_PWD_STRING en_pwd_string;
 
   assert (hide_pwd_ptr);
   int *pwd_info_ptr = hide_pwd_ptr->pwd_info_ptr;
@@ -714,7 +712,6 @@ hide_password::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_p
   char *qryptr = query;
   char chbk;
   int pos;
-  EN_ADD_PWD_STRING en_pwd_string;
 
   assert (hide_pwd_ptr);
   int *pwd_info_ptr = hide_pwd_ptr->pwd_info_ptr;

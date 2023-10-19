@@ -41,7 +41,7 @@
 #include "message_catalog.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
-
+#include "hide_password.h"
 
 // forward definitions
 struct json_t;
@@ -3839,8 +3839,6 @@ typedef struct remote_cols
 
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
-
-#include "hide_password.h"
 
 struct parser_context
 {
