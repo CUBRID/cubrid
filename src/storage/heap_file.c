@@ -24864,6 +24864,14 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
+  /*
+   * Before fetching a record, check forward_recdes to see if the record type is REC_HOME,
+   * and it's being PEEKed (meaning there's no need to COPY the record data to a new space). 
+   * In this case, we can use forward_recdes as the record without executing the
+   * heap_get_visible_version_internal() function. If the conditions above are not met,
+   * or the mvcc_snapshot does not satisfy, then carry out the necessary steps through 
+   * the heap_get_visible_version_internal() function.
+   */
   if (forward_recdes->type == REC_HOME && ispeeking == PEEK)
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
