@@ -166,7 +166,7 @@ mmon_sub_stat_with_tracking_tag (int64_t size)
 }
 
 void
-mmon_move_stat_with_tracking_tag (int64_t size, bool tag_is_src)
+mmon_move_stat_with_tracking_tag (int64_t size, MMON_STAT_ID stat_id, bool tag_is_src)
 {
   return;
 }

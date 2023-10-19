@@ -38,6 +38,7 @@
 
 typedef enum mmon_stat_id:int
 {
+  MMON_COMMON = MMON_MAKE_STAT_ID (MMON_MODULE_COMMON),
   MMON_HEAP_SCAN = MMON_MAKE_STAT_ID (MMON_MODULE_HEAP),
   MMON_HEAP_BESTSPACE,
   MMON_HEAP_CLASSREPR,
@@ -48,7 +49,6 @@ typedef enum mmon_stat_id:int
   MMON_HEAP_CHNGUESS,
   MMON_HEAP_CHNGUESS_HASH,
   MMON_HEAP_OTHERS,
-  MMON_COMMON = MMON_MAKE_STAT_ID (MMON_MODULE_COMMON),
   MMON_OTHERS = MMON_MAKE_STAT_ID (MMON_MODULE_OTHERS),
   MMON_STAT_LAST = MMON_MAKE_STAT_ID (MMON_MODULE_LAST)
 } MMON_STAT_ID;
@@ -69,6 +69,6 @@ void mmon_aggregate_tran_info (int tran_count, MMON_TRAN_INFO &info);
 MMON_STAT_ID mmon_set_tracking_tag (MMON_STAT_ID new_tag);
 void mmon_add_stat_with_tracking_tag (int64_t size);
 void mmon_sub_stat_with_tracking_tag (int64_t size);
-void mmon_move_stat_with_tracking_tag (int64_t size, bool tag_is_src);
+void mmon_move_stat_with_tracking_tag (int64_t size, MMON_STAT_ID stat_id, bool tag_is_src);
 void mmon_resize_stat_with_tracking_tag (int64_t old_size, int64_t new_size);
 #endif /* _MEMORY_MONITOR_SR_HPP_ */

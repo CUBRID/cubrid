@@ -30,8 +30,9 @@
 typedef enum mmon_module_id
 {
   MMON_MODULE_ALL = -1,
-  MMON_MODULE_HEAP,
   MMON_MODULE_COMMON,
+  MMON_MODULE_HEAP,
+  /* Add new modules before this */
   MMON_MODULE_OTHERS,
   MMON_MODULE_LAST
 } MMON_MODULE_ID;
@@ -39,8 +40,8 @@ typedef enum mmon_module_id
 // The order of module name MUST be the same with MMON_MODULE_ID
 // starting from MMON_MODULE_ALL + 1
 constexpr char module_names[MMON_MODULE_LAST][DB_MAX_IDENTIFIER_LENGTH] = {
-  "HEAP",
   "COMMON",
+  "HEAP",
   "OTHERS"
 };
 

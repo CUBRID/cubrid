@@ -84,6 +84,7 @@ mmon_print_module_info (std::vector<MMON_MODULE_INFO> &module_info)
   for (const auto &m_info : module_info)
     {
       // TODO: It's a temporary measure for hiding MMON_OTHERS
+      //       It will be deleted when all other modules in CUBRID are registered in memory_monitor.
       if (!strcmp (m_info.name, "OTHERS"))
 	{
 	  continue;
@@ -132,6 +133,7 @@ mmon_print_module_info_summary (uint64_t server_mem_usage, std::vector<MMON_MODU
   for (const auto &m_info : module_info)
     {
       // TODO: It's a temporary measure for hiding MMON_OTHERS
+      //       It will be deleted when all other modules in CUBRID are registered in memory_monitor.
       if (!strcmp (m_info.name, "OTHERS"))
 	{
 	  continue;
@@ -163,6 +165,9 @@ mmon_print_tran_info (MMON_TRAN_INFO &tran_info)
 
   for (const auto &t_stat : tran_info.tran_stat)
     {
+      // There can be some cases that some transactions' cur_stat can have minus value
+      // because they can only free memory (e.g. finalize cache).
+      // So in that case, we just show 0 value to user.
       if (t_stat.cur_stat >= 0)
 	{
 	  fprintf (stdout, "\t%14d | %17lu\n", t_stat.tranid, t_stat.cur_stat);

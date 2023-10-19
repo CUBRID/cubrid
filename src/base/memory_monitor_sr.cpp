@@ -50,6 +50,12 @@ namespace cubperf
     std::atomic<uint32_t> expand_resize_count;
   } MMON_MEM_STAT;
 
+  MMON_STAT_INFO common_stat_info[] =
+  {
+    {MMON_COMMON, NULL, NULL},
+    {MMON_STAT_LAST, NULL, NULL}
+  };
+
   MMON_STAT_INFO heap_stat_info[] =
   {
     {MMON_HEAP_SCAN, "SCANCACHE", NULL},
@@ -63,12 +69,6 @@ namespace cubperf
     {MMON_HEAP_CHNGUESS_HASH, "CHNGUESS", "HASHTABLE"},
     {MMON_HEAP_OTHERS, "OTHERS", NULL},
     {MMON_STAT_LAST, NULL, NULL} /* for recognizing end */
-  };
-
-  MMON_STAT_INFO common_stat_info[] =
-  {
-    {MMON_COMMON, NULL, NULL},
-    {MMON_STAT_LAST, NULL, NULL}
   };
 
   MMON_STAT_INFO others_stat_info[] =
@@ -489,6 +489,7 @@ namespace cubperf
     info.total_mem_usage = m_mmon->m_total_mem_usage.load ();
 
     // TODO: It's a temporary measure for hiding MMON_OTHERS
+    //       It will be deleted when all other modules in CUBRID are registered in memory_monitor.
     MMON_MODULE_INFO module_info;
     m_mmon->m_module[MMON_MODULE_OTHERS]->aggregate_stats (true, module_info);
     info.total_mem_usage -= module_info.stat.cur_stat;
@@ -559,10 +560,10 @@ namespace cubperf
     , m_total_mem_usage {0}
     , m_aggregater {this}
   {
-    m_module[MMON_MODULE_HEAP] = std::make_unique<mmon_module>
-				 (module_names[MMON_MODULE_HEAP], heap_stat_info);
     m_module[MMON_MODULE_COMMON] = std::make_unique<mmon_module>
 				   (module_names[MMON_MODULE_COMMON], common_stat_info);
+    m_module[MMON_MODULE_HEAP] = std::make_unique<mmon_module>
+				 (module_names[MMON_MODULE_HEAP], heap_stat_info);
     m_module[MMON_MODULE_OTHERS] = std::make_unique<mmon_module>
 				   (module_names[MMON_MODULE_OTHERS], others_stat_info);
   }
@@ -785,7 +786,7 @@ void mmon_sub_stat_with_tracking_tag (int64_t size)
     }
 }
 
-void mmon_move_stat_with_tracking_tag (int64_t size, bool tag_is_src)
+void mmon_move_stat_with_tracking_tag (int64_t size, MMON_STAT_ID stat_id, bool tag_is_src)
 {
   THREAD_ENTRY *cur_thread_p;
 
@@ -794,20 +795,13 @@ void mmon_move_stat_with_tracking_tag (int64_t size, bool tag_is_src)
       cur_thread_p = thread_get_thread_entry_info ();
       assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
 
-      /* WARNING: this function is only for base data structures that can use MMON_COMMON tag
-       * If move is occurred from other modules to MMON_COMMON,
-       * it means that memory is returned to common structures for keeping.
-       * ex) pool, free list, reserved, etc..
-       * In this case, transaction's memory usage will be subtracted. */
       if (tag_is_src)
 	{
-	  mmon_move_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, MMON_COMMON, size);
-	  mmon_Gl->add_tran_stat (cur_thread_p, - (size));
+	  mmon_move_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, stat_id, size);
 	}
       else
 	{
-	  mmon_move_stat (cur_thread_p, MMON_COMMON, cur_thread_p->mmon_tracking_tag, size);
-	  mmon_Gl->add_tran_stat (cur_thread_p, size);
+	  mmon_move_stat (cur_thread_p, stat_id, cur_thread_p->mmon_tracking_tag, size);
 	}
     }
 }

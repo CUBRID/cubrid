@@ -1331,5 +1331,5 @@ valid options:\n\
     -m, --module=TYPE             display detailed memory usage information of the specified TYPE.\n\
                                   TYPE of modules\n\
                                   -1      all modules\n\
-                                   0      heap module\n\
-                                   1      common module\n
+                                   0      common module\n\
+                                   1      heap module\n
