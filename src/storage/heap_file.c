@@ -20433,16 +20433,20 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
       lk_result = lock_object (thread_p, &context->res_oid, &context->class_oid, lock, LK_COND_LOCK);
       if (lk_result == LK_GRANTED)
 	{
-	  /* if lock == SCH_M_LOCK, then it is the class creation */
 	  /* successfully locked! */
+#if defined (SERVER_MODE)
 	  if (lock == SCH_M_LOCK && OID_IS_ROOTOID (&context->class_oid))
 	    {
+	      /* if lock == SCH_M_LOCK, then it is the class creation */
 	      /* Schema modification lock is acquired to create Class or VClass */
+	      assert (!OID_ISNULL (&context->res_oid));
+
 	      if (is_active_transaction_server ())
 		{
 		  log_append_schema_modification_lock (thread_p, &context->res_oid);
 		}
 	    }
+#endif
 
 	  return NO_ERROR;
 	}

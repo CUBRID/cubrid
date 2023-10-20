@@ -2542,6 +2542,19 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 		   * rules. This object must be also locked. */
 		  object_locked = true;
 		}
+
+#if defined (SERVER_MODE)
+	      if (lock == SCH_M_LOCK)
+		{
+		  assert (OID_IS_ROOTOID (class_oid));
+		  assert (!OID_ISNULL (p_oid));
+
+		  if (is_active_transaction_server ())
+		    {
+		      log_append_schema_modification_lock (thread_p, p_oid);
+		    }
+		}
+#endif
 	    }
 	  break;
 	}
@@ -12886,15 +12899,6 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   else
     {
       lock_acquired = true;
-
-      if (OID_IS_ROOTOID (context->class_oid_p) && lock_mode == SCH_M_LOCK)
-	{
-	  /* Lock is acquired to modify the class record (DDL is executed) */
-	  if (is_active_transaction_server ())
-	    {
-	      log_append_schema_modification_lock (thread_p, context->oid_p);
-	    }
-	}
     }
 
   assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
