@@ -505,7 +505,6 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
     {
       ptr = or_pack_string (ptr, info->into_list[i]);
     }
-
   /* parameters */
   if (info->host_variables.size == 0)
     {
@@ -570,7 +569,6 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	  ptr = or_unpack_string_alloc (ptr, &info->into_list[i]);
 	}
     }
-
   /* unpack parameters */
   ptr = or_unpack_int (ptr, &(info->host_variables.size));
   if (info->host_variables.size > 0)
@@ -602,7 +600,6 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
 	  ptr = or_unpack_domain (ptr, &info->host_var_expected_domains[i], NULL);
 	}
     }
-
   return NO_ERROR;
 
 error:
