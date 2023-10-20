@@ -7291,7 +7291,7 @@ log_dump_record_schema_modification_lock (THREAD_ENTRY * thread_p, FILE * out_fp
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*log_rec), log_lsa, log_page_p);
   log_rec = ((LOG_REC_SCHEMA_MODIFICATION_LOCK *) ((char *) log_page_p->area + log_lsa->offset));
-  fprintf (out_fp, "OID = %d|%d|%d \n", OID_AS_ARGS (&log_rec->classoid));
+  fprintf (out_fp, ", CLASSOID = %d|%d|%d\n", OID_AS_ARGS (&log_rec->classoid));
 
   return log_page_p;
 }
