@@ -219,16 +219,24 @@ namespace cublog
 	  }
 	  case LOG_SCHEMA_MODIFICATION_LOCK:
 	  {
-	    char *classname;
+	    char *classname = NULL;
 
 	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SCHEMA_MODIFICATION_LOCK));
 	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
 
+	    /* TODO:
+	     * All these debug logging part will be removed.
+	     * Lock will be acquired for the class that log_rec.classoid indicates
+	     */
 	    int error = heap_get_class_name (&thread_entry, &log_rec.classoid, &classname);
-	    _er_log_debug (ARG_FILE_LINE,"[REPL LOCK] OID = %d|%d|%d, classname = %s\n", OID_AS_ARGS (&log_rec.classoid),
-			   classname);
-	    free_and_init (classname);
+	    _er_log_debug (ARG_FILE_LINE,"[REPL LOCK] Schema modification lock is aquired on %s (OID = %d|%d|%d)\n",
+			   OID_AS_ARGS (&log_rec.classoid), error != NO_ERROR ? "null" : classname);
+
+	    if (classname != NULL)
+	      {
+		free_and_init (classname);
+	      }
 	    break;
 	  }
 	  default:
