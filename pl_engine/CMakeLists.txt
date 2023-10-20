@@ -49,12 +49,12 @@ endif(EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
 
 add_custom_command(TARGET pl_build
   COMMAND ${CMAKE_COMMAND} -E make_directory ${PL_ENGINE_BUILD_DIR}
-  COMMAND ${GRADLE_EXECUTABLE} build -p ${PL_ENGINE_SOURCE_DIR} -PbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
+  COMMAND ${GRADLE_EXECUTABLE} build -x test -p ${PL_ENGINE_SOURCE_DIR} -PbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
 )
 
 add_custom_target(pl_unittest)
 add_custom_command(TARGET pl_unittest
-  COMMAND ${GRADLE_EXECUTABLE} test -p ${PL_ENGINE_SOURCE_DIR} -DbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
+  COMMAND ${GRADLE_EXECUTABLE} cleanTest test -p ${PL_ENGINE_SOURCE_DIR} -DbuildDir=${PL_ENGINE_BUILD_DIR} ${LOCAL_JDBC_PATH_COMMAND}
 )
 add_dependencies(pl_unittest pl_build)
 
