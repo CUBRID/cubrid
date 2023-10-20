@@ -14673,9 +14673,32 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* execute cte query first */
-  if (statement->info.execute.cte_list)
+  if (statement->info.query.with)
     {
-      err = do_execute_cte (parser, statement->info.execute.cte_list);
+      PT_NODE *stmt;
+      PT_NODE *cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
+      QUERY_ID query_id;
+      QFILE_LIST_ID *list_id;
+      DB_VALUE *host_variables;
+
+      while (cte_list)
+	{
+	  stmt = cte_list->info.cte.non_recursive_part;
+	  if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+	    {
+	      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
+	      for (i = 0; i < stmt->cte_host_var_count; i++)
+		{
+		  pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
+		}
+
+	      err =
+		execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id, 0,
+			       &clt_cache_time, &stmt->cache_time);
+	    }
+	  cte_list = cte_list->next;
+	}
+
       if (err != NO_ERROR)
 	{
 	  return err;
