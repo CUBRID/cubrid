@@ -816,9 +816,9 @@ void mmon_move_stat_with_tracking_tag (int64_t size, MMON_STAT_ID stat_id, bool 
 
   if (mmon_Gl != nullptr)
     {
+      cur_thread_p = thread_get_thread_entry_info ();
       if (cur_thread_p != NULL)
 	{
-	  cur_thread_p = thread_get_thread_entry_info ();
 	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
 
 	  if (tag_is_src)
