@@ -95,11 +95,11 @@ class hide_password
 {
   private:
     char *skip_comment_string (char *query);
-    char *get_quot_string (char *ps);
+    char *find_end_of_quot (char *ps);
     char *get_token (char *&in, int &len);
     char *get_method_passowrd_start_position (char *ps, char *method_name, int *method_password_len);
     char *get_passowrd_pos_n_len (char *query, bool is_create, bool is_server, int *password_len,
-				  bool *is_found_pwd_keyword);
+				  bool *is_pwd_keyword_found);
     char *skip_one_query (char *query);
     bool check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server);
     void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
@@ -157,7 +157,7 @@ hide_password::skip_comment_string (char *query)
 }
 
 char *
-hide_password::get_quot_string (char *ps)
+hide_password::find_end_of_quot (char *ps)
 {
   char quot_char = *ps;
 
@@ -187,7 +187,7 @@ hide_password::get_token (char *&in, int &len)
   ps = in;
   if (*in == '\'' || *in == '"')
     {
-      in = get_quot_string (in);
+      in = find_end_of_quot (in);
       len = (int) (in - ps);
       return ps;
     }
@@ -263,7 +263,7 @@ hide_password::get_method_passowrd_start_position (char *ps, char *method_name, 
       return NULL;
     }
 
-  if (strcmp (method_name, "set_password") == 0)
+  if (strcasecmp (method_name, "set_password") == 0)
     {
       token = get_token (ps, len);	// read user_name
       if (len >= 2 && (*token == '\'' || *token == '"'))
@@ -306,7 +306,7 @@ hide_password::get_method_passowrd_start_position (char *ps, char *method_name, 
 
 char *
 hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_server, int *password_len,
-				       bool *is_found_pwd_keyword)
+				       bool *is_pwd_keyword_found)
 {
   char *ps = query;
   char *token, *prev;
@@ -329,7 +329,7 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
   */
 
   *password_len = 0;
-  *is_found_pwd_keyword = false;
+  *is_pwd_keyword_found = false;
   while (*ps)
     {
       token = get_token (ps, len);
@@ -340,7 +340,7 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
 
       if (len == 8 && strncasecmp (token, "password", 8) == 0)
 	{
-	  *is_found_pwd_keyword = true;
+	  *is_pwd_keyword_found = true;
 	  break;
 	}
     }
@@ -405,7 +405,7 @@ hide_password::skip_one_query (char *query)
     {
       if (*ps == '\'' || *ps == '"')
 	{
-	  ps = get_quot_string (ps);
+	  ps = find_end_of_quot (ps);
 	  if (*ps == '\0')
 	    {
 	      break;
@@ -437,19 +437,21 @@ hide_password::skip_one_query (char *query)
 
 bool hide_password::check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server)
 {
-  char   *ps;
-  const char *first_cmd_str[] = { "call", "create", "alter", NULL };
-  int  first_cmd_len[] = { 4, 6, 5, -1 };
-  const char *second_cmd_str[] = { "server", "user", NULL };
-  int  second_cmd_len[] = { 6, 4, -1 };
+#define IDX_CALL_STMT   (0)
+#define IDX_CREATE_STMT (1)
+#define IDX_SERVER_STMT (0)
+  static const char *first_cmd_str[] = { "call", "create", "alter", NULL };  //
+  int  first_cmd_len[] = { 4, 6, 5, -1 };  // first_cmd_len[idx] = strlen(first_cmd_str[idx])
+  static const char *second_cmd_str[] = { "server", "user", NULL };
+  int  second_cmd_len[] = { 6, 4, -1 };    // second_cmd_len[idx] = strlen(second_cmd_str[idx])
   static const char *method_name_str[] = { "add_user", "set_password", "login", NULL };
   int method_name_len[] = { 8, 12, 5, -1 };
-  int *len_ptr = NULL;
-  const char **str_ptr = NULL;
   bool  is_call_stmt = false;
+  int *len_ptr = NULL;
+  char **str_ptr = NULL;
 
-  char *token;
-  int len;
+  char *token, *ps;
+  int len, i;
 
   *is_create = false;
   *is_server = false;
@@ -460,54 +462,47 @@ bool hide_password::check_lead_string_in_query (char **query, char **method_name
       return false;
     }
 
-  len_ptr = first_cmd_len;
-  str_ptr = first_cmd_str;
-  for ( /* empty */ ; *str_ptr; str_ptr++, len_ptr++)
+  for ( i = 0; first_cmd_str[i]; i++)
     {
-      if (*len_ptr == len && strncasecmp (token, *str_ptr, *len_ptr) == 0)
+      if (first_cmd_len[i] == len && strncasecmp (token, first_cmd_str[i], first_cmd_len[i]) == 0)
 	{
-	  if (str_ptr == first_cmd_str)
+	  if (i == IDX_CALL_STMT)
 	    {
 	      is_call_stmt = true;
+	      len_ptr = method_name_len;
+	      str_ptr = (char **)method_name_str;
 	    }
 	  else
 	    {
-	      *is_create = (str_ptr == &first_cmd_str[1]) ? true : false;
+	      *is_create = (i == IDX_CREATE_STMT) ? true : false;
+	      len_ptr = second_cmd_len;
+	      str_ptr = (char **)second_cmd_str;
 	    }
 	  break;
 	}
     }
 
-  if (*str_ptr == NULL || (*query)[0] == '\0')
+  if (first_cmd_str[i] == NULL || (*query)[0] == '\0')
     {
       return false;
     }
 
+  assert (len_ptr && str_ptr);
+
   token = get_token (*query, len);
   if (token)
     {
-      if (is_call_stmt)
+      for ( i = 0; str_ptr[i]; i++)
 	{
-	  len_ptr = method_name_len;
-	  str_ptr = method_name_str;
-	}
-      else
-	{
-	  len_ptr = second_cmd_len;
-	  str_ptr = second_cmd_str;
-	}
-
-      for ( /* empty */ ; *str_ptr; str_ptr++, len_ptr++)
-	{
-	  if (*len_ptr == len && strncasecmp (token, *str_ptr, *len_ptr) == 0)
+	  if (len_ptr[i] == len && strncasecmp (token, str_ptr[i], len_ptr[i]) == 0)
 	    {
 	      if (is_call_stmt)
 		{
-		  *method_name = (char *) *str_ptr;
+		  *method_name = (char *) str_ptr[i];
 		}
 	      else
 		{
-		  *is_server = (str_ptr == &second_cmd_str[0]) ? true : false;
+		  *is_server = (i == IDX_SERVER_STMT) ? true : false;
 		}
 	      return true;
 	    }
@@ -687,6 +682,8 @@ hide_password::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf
   int offset;
   char chbk;
 
+  assert (fp != NULL);
+
   while (*query)
     {
       offset = strcspn (query, "\r\n");
@@ -715,6 +712,8 @@ hide_password::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_p
   int pos;
 
   assert (hide_pwd_ptr);
+  assert (fp != NULL);
+
   int *pwd_info_ptr = hide_pwd_ptr->pwd_info_ptr;
 
   for (int x = 0; x < hide_pwd_ptr->used; x += 2)

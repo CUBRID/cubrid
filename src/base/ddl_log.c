@@ -97,7 +97,6 @@ struct t_ddl_audit_handle
   char log_filepath[PATH_MAX];
   int commit_count;
   bool auto_commit_mode;
-  bool jsp_mode;
 };
 
 static T_DDL_AUDIT_HANDLE ddl_audit_handle;
@@ -128,8 +127,8 @@ static FILE *logddl_fopen_and_lock (const char *path, const char *mode);
 static void logddl_timeval_diff (struct timeval *start, struct timeval *end);
 static const char *logddl_get_app_name (T_APP_NAME app_name);
 static bool logddl_is_ddl_type (int node_type, PT_NODE * node);
-static void logddl_set_sql_text_internal (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
-static bool logddl_set_stmt_type_internal (int stmt_type, PT_NODE * statement);
+static void logddl_set_sql_text (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
+static bool logddl_set_stmt_type (int stmt_type, PT_NODE * statement);
 
 static bool is_executed_ddl_for_trans = false;
 static bool is_executed_ddl_for_csql = false;
@@ -204,7 +203,6 @@ logddl_free (bool all_free)
       is_executed_ddl_for_csql = false;
 
       ddl_audit_handle.auto_commit_mode = false;
-      ddl_audit_handle.jsp_mode = false;
       ddl_audit_handle.csql_input_type = CSQL_INPUT_TYPE_NONE;
       ddl_audit_handle.load_filename[0] = '\0';
       ddl_audit_handle.copy_filename[0] = '\0';
@@ -298,7 +296,7 @@ logddl_set_broker_info (const int index, const char *br_name)
 }
 
 static void
-logddl_set_sql_text_internal (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+logddl_set_sql_text (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
   const static char *delim_str = "; ";
   const static int delim_len = 2;
@@ -378,8 +376,8 @@ logddl_set_sql_text_internal (char *sql_text, int sql_len, HIDE_PWD_INFO_PTR hid
   ddl_audit_handle.sql_text[ddl_audit_handle.sql_text_len] = '\0';
 }
 
-bool
-logddl_set_stmt_type_internal (int stmt_type, PT_NODE * statement)
+static bool
+logddl_set_stmt_type (int stmt_type, PT_NODE * statement)
 {
   assert (ddl_logging_enabled == true);
 
@@ -1298,7 +1296,7 @@ logddl_remove_char (char *string, char ch)
 }
 #endif
 
-bool
+static bool
 logddl_is_ddl_type (int node_type, PT_NODE * node)
 {
   switch (node_type)
@@ -1409,7 +1407,7 @@ logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, HIDE_PWD_IN
       return;
     }
 
-  if (statement && logddl_set_stmt_type_internal (stmt_type, statement))
+  if (statement && logddl_set_stmt_type (stmt_type, statement))
     {
       logddl_set_file_line (statement->line_number);
 
@@ -1418,12 +1416,12 @@ logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, HIDE_PWD_IN
 	  assert (statement->info.execute.query->node_type == PT_VALUE);
 	  assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
-	  logddl_set_sql_text_internal ((char *) statement->info.execute.query->info.value.data_value.str->bytes,
-					statement->info.execute.query->info.value.data_value.str->length, NULL);
+	  logddl_set_sql_text ((char *) statement->info.execute.query->info.value.data_value.str->bytes,
+			       statement->info.execute.query->info.value.data_value.str->length, NULL);
 	  if (statement->info.execute.using_list)
 	    {
 	      has_password_type = false;
-	      logddl_set_sql_text_internal (statement->sql_user_text, statement->sql_user_text_len, NULL);
+	      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len, NULL);
 	    }
 	}
       else if (statement->sql_user_text && statement->sql_user_text_len > 0)
@@ -1435,7 +1433,7 @@ logddl_check_and_set_query_text (PT_NODE * statement, int stmt_type, HIDE_PWD_IN
 						statement->buffer_pos - statement->sql_user_text_len,
 						statement->buffer_pos);
 
-	  logddl_set_sql_text_internal (statement->sql_user_text, statement->sql_user_text_len, &t_hide_pwd_info);
+	  logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len, &t_hide_pwd_info);
 	  QUIT_HIDE_PASSWORD_INFO (&t_hide_pwd_info);
 	}
     }
@@ -1455,9 +1453,9 @@ logddl_set_callback_stmt (int stmt_type, char *sql, int len, int err_code, HIDE_
 {
   if (ddl_logging_enabled)
     {
-      if (logddl_set_stmt_type_internal (stmt_type, NULL))
+      if (logddl_set_stmt_type (stmt_type, NULL))
 	{
-	  logddl_set_sql_text_internal (sql, len, hide_pwd_info_ptr);
+	  logddl_set_sql_text (sql, len, hide_pwd_info_ptr);
 	  logddl_set_err_code (err_code);
 	}
     }
