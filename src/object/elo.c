@@ -272,7 +272,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 	  goto error_return;
 	}
 #ifdef SERVER_MODE
-      mmon_add_stat_with_tracking_tag (strlen (out_uri) + 1);
+      mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
 #endif
     }
   else
@@ -299,7 +299,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		goto error_return;
 	      }
 #ifdef SERVER_MODE
-	    mmon_add_stat_with_tracking_tag (strlen (out_uri) + 1);
+	    mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
 #endif
 	    ret = lob_locator_change_state (elo->locator, locator, LOB_PERMANENT_CREATED);
 	    if (ret != NO_ERROR)
@@ -319,9 +319,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		goto error_return;
 	      }
 #ifdef SERVER_MODE
-	    mmon_add_stat_with_tracking_tag (strlen (elo->locator) + 1);
-	    strcpy (out_uri, elo->locator);
-	    //out_uri = (char *) &(elo->locator[0]); 
+	    mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
 #endif
 	    ret = lob_locator_drop (elo->locator);
 	    if (ret != NO_ERROR)
@@ -346,7 +344,7 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
 		goto error_return;
 	      }
 #ifdef SERVER_MODE
-	    mmon_add_stat_with_tracking_tag (strlen (out_uri) + 1);
+	    mmon_add_stat_with_tracking_tag (strlen (locator) + 1);
 #endif
 	    ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
 	    if (ret != NO_ERROR)
@@ -377,7 +375,7 @@ error_return:
   if (locator != NULL)
     {
 #ifdef SERVER_MODE
-      mmon_add_stat_with_tracking_tag (strlen (out_uri) + 1);
+      mmon_sub_stat_with_tracking_tag (strlen (locator) + 1);
 #endif
       db_private_free_and_init (NULL, locator);
     }

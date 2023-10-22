@@ -797,7 +797,7 @@ void mmon_sub_stat_with_tracking_tag (int64_t size)
   if (mmon_Gl != nullptr)
     {
       cur_thread_p = thread_get_thread_entry_info ();
-      if (cur_thred_p != NULL)
+      if (cur_thread_p != NULL)
 	{
 	  assert (cur_thread_p->mmon_tracking_tag != MMON_STAT_LAST);
 	  mmon_sub_stat (cur_thread_p, cur_thread_p->mmon_tracking_tag, size);
