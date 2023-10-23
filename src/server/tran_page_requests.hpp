@@ -51,6 +51,7 @@ enum class page_to_tran_request
 
   // Active only
   SEND_SAVED_LSA,
+  SEND_CATCHUP_COMPLETE,
 
   // Passive only
   SEND_TO_PTS_LOG_PRIOR_LIST, /* response-less */
@@ -62,7 +63,7 @@ enum class follower_to_followee_request
   // Reserve for responses
   RESPOND,
 
-  // TODO SEND_DISCONNECT, /* response-less */
+  SEND_DISCONNECT_MSG, /* response-less */
   SEND_LOG_PAGES_FETCH, /* synchronously waiting for response */
 };
 

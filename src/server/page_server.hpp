@@ -96,6 +96,8 @@ class page_server
     void set_passive_tran_server_connection (cubcomm::channel &&chn);
     void set_follower_page_server_connection (cubcomm::channel &&chn);
     void disconnect_all_tran_servers ();
+    void disconnect_followee_page_server (bool with_disc_msg);
+    void disconnect_all_follower_page_servers ();
 
     int connect_to_followee_page_server (std::string &&hostname, int32_t port);
 
@@ -197,12 +199,18 @@ class page_server
 	follower_connection_handler &operator= (const follower_connection_handler &) = delete;
 	follower_connection_handler &operator= (follower_connection_handler &&) = delete;
 
+	const std::string get_channel_id () const;
+
 	~follower_connection_handler ();
 
       private:
 	void receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp);
+	void receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp);
 
 	void serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out);
+
+	void send_error_handler (css_error_code error_code, bool &abort_further_processing);
+	void recv_error_handler (css_error_code error_code);
 
 	page_server &m_ps;
 	std::unique_ptr<follower_server_conn_t> m_conn;
@@ -220,14 +228,20 @@ class page_server
 	followee_connection_handler &operator= (const followee_connection_handler &) = delete;
 	followee_connection_handler &operator= (followee_connection_handler &&) = delete;
 
+	const std::string get_channel_id () const;
+
 	int request_log_pages (LOG_PAGEID start_pageid, int count, const std::vector<LOG_PAGE *> &log_pages_out);
+
+	void push_request (follower_to_followee_request reqid, std::string &&msg);
 
       private:
 	using followee_server_conn_t =
 		cubcomm::request_sync_client_server<follower_to_followee_request, followee_to_follower_request, std::string>;
 
-	void push_request (follower_to_followee_request reqid, std::string &&msg);
 	int send_receive (follower_to_followee_request reqid, std::string &&payload_in, std::string &payload_out);
+
+	void send_error_handler (css_error_code error_code, bool &abort_further_processing);
+	void recv_error_handler (css_error_code error_code);
 
       private:
 	page_server &m_ps;
@@ -273,7 +287,8 @@ class page_server
   private: // functions that depend on private types
     void disconnect_active_tran_server ();
     void disconnect_tran_server_async (const tran_server_connection_handler *conn);
-    void disconnect_followee_page_server (bool with_disc_msg);
+    void disconnect_follower_page_server_async (const follower_connection_handler *conn);
+
     bool is_active_tran_server_connected () const;
 
     void start_catchup (const LOG_LSA catchup_lsa);
@@ -300,7 +315,12 @@ class page_server
 
     followee_connection_handler_uptr_t m_followee_conn;
     std::vector<follower_connection_handler_uptr_t> m_follower_conn_vec;
+
     std::mutex m_followee_conn_mutex;
+    std::mutex m_follower_conn_vec_mutex;
+    std::condition_variable m_follower_conn_vec_cv;
+    std::future<void> m_follower_disc_future;
+    std::mutex m_follower_disc_mutex;
 
     cubthread::entry_workpool *m_worker_pool; // a worker_pool to take some background jobs that needs a thread entry
 };
