@@ -29,7 +29,8 @@
 
 #include "external_sort.h"    // SORTKEY_INFO
 #include "query_list.h"
-#include "storage_common.h"   // AGGREGATE_HASH_STATE, SCAN_CODE, FUNC_TYPE
+#include "storage_common.h"   // AGGREGATE_HASH_STATE, SCAN_CODE
+#include "db_function.hpp"  // FUNC_CODE
 
 #include <vector>
 
@@ -117,7 +118,7 @@ using HIERARCHY_AGGREGATE_HELPER = cubquery::hierarchy_aggregate_helper;
 int qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
 				     QUERY_ID query_id);
 int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
-    cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_TYPE func_type,
+    cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_CODE func_type,
     tp_domain *func_domain, cubxasl::aggregate_accumulator *new_acc);
 int qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list, val_descr *vd,
 				   cubxasl::aggregate_accumulator *alt_acc_list);
@@ -131,7 +132,8 @@ int qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregat
 
 cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals);
 void qdata_free_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
-cubquery::aggregate_hash_value *qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggregate_list_node *g_agg_list);
+cubquery::aggregate_hash_value *qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt,
+    cubxasl::aggregate_list_node *g_agg_list);
 void qdata_free_agg_hvalue (cubthread::entry *thread_p, cubquery::aggregate_hash_value *value);
 int qdata_get_agg_hkey_size (cubquery::aggregate_hash_key *key);
 int qdata_get_agg_hvalue_size (cubquery::aggregate_hash_value *value, bool ret_delta);
