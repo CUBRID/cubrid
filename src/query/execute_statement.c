@@ -142,7 +142,8 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
-static int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
+static int do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement);
+static int do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag);
 
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
@@ -14311,7 +14312,7 @@ pt_cte_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 static bool
-pt_is_allowed_result_cache (int flag)
+pt_is_allowed_result_cache ()
 {
   int is_list_cache_disabled =
     ((prm_get_integer_value (PRM_ID_LIST_MAX_QUERY_CACHE_ENTRIES) <= 0)
@@ -14401,12 +14402,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* execute cte query first */
-  if (statement->info.query.with && pt_is_allowed_result_cache (RESULT_CACHE_REQUIRED))
+  if (statement->info.query.with && pt_is_allowed_result_cache ())
     {
       int err;
       PT_NODE *cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
 
-      err = do_execute_cte (parser, cte_list);
+      err = do_prepare_cte (parser, cte_list);
       if (err != NO_ERROR)
 	{
 	  return err;
@@ -14560,13 +14561,13 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * do_execute_cte () - execute a CTE statement in WITH clause
+ * do_prepare_cte () - prepare CTE statements in WITH clause for query cache
  * return : Error code
  * parser (in)	  : parser context
- * statement (in) : statement to execute
+ * statement (in) : statement to prepare
  */
 static int
-do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   PT_NODE *cte_statement;
@@ -14603,6 +14604,56 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return error;
+}
+
+/*
+ * do_execute_cte () - execute CTE statements in WITH clause for query cache
+ * return : Error code
+ * parser (in)	  : parser context
+ * statement (in) : statement to execute
+ * query_flag     : query flag for execution
+ */
+static int
+do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
+{
+  PT_NODE *stmt;
+  PT_NODE *cte_list;
+  QUERY_ID query_id;
+  QFILE_LIST_ID *list_id;
+  DB_VALUE *host_variables;
+  CACHE_TIME clt_cache_time;
+  int err, i, flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
+
+  assert (statement && statement->info.query.with);
+
+  cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
+
+  CACHE_TIME_RESET (&clt_cache_time);
+
+  while (cte_list)
+    {
+      stmt = cte_list->info.cte.non_recursive_part;
+      if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
+	{
+	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
+	  for (i = 0; i < stmt->cte_host_var_count; i++)
+	    {
+	      pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
+	    }
+
+	  err =
+	    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
+			   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	}
+      cte_list = cte_list->next;
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -14673,32 +14724,9 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* execute cte query first */
-  if (statement->info.query.with)
+  if (statement->info.query.with && pt_is_allowed_result_cache ())
     {
-      PT_NODE *stmt;
-      PT_NODE *cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
-      QUERY_ID query_id;
-      QFILE_LIST_ID *list_id;
-      DB_VALUE *host_variables;
-
-      while (cte_list)
-	{
-	  stmt = cte_list->info.cte.non_recursive_part;
-	  if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
-	    {
-	      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
-	      for (i = 0; i < stmt->cte_host_var_count; i++)
-		{
-		  pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
-		}
-
-	      err =
-		execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id, 0,
-			       &clt_cache_time, &stmt->cache_time);
-	    }
-	  cte_list = cte_list->next;
-	}
-
+      err = do_execute_cte (parser, statement, query_flag);
       if (err != NO_ERROR)
 	{
 	  return err;
@@ -14899,34 +14927,9 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* execute cte query first */
-  if (statement->info.query.with && pt_is_allowed_result_cache (RESULT_CACHE_REQUIRED))
+  if (statement->info.query.with && pt_is_allowed_result_cache ())
     {
-      PT_NODE *stmt;
-      PT_NODE *cte_list = statement->info.query.with->info.with_clause.cte_definition_list;
-      QUERY_ID query_id;
-      QFILE_LIST_ID *list_id;
-      DB_VALUE *host_variables;
-      int flag = query_flag & ~EXECUTE_QUERY_WITH_COMMIT;
-
-      while (cte_list)
-	{
-	  stmt = cte_list->info.cte.non_recursive_part;
-	  if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
-	    {
-	      host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
-	      for (i = 0; i < stmt->cte_host_var_count; i++)
-		{
-		  pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
-		}
-
-	      err =
-		execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
-			       flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
-
-	    }
-	  cte_list = cte_list->next;
-	}
-
+      err = do_execute_cte (parser, statement, query_flag);
       if (err != NO_ERROR)
 	{
 	  return err;
