@@ -14401,7 +14401,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  /* execute cte query first */
+  /* prepare cte query first */
   if (statement->info.query.with && pt_is_allowed_result_cache ())
     {
       int err;
