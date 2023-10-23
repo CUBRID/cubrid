@@ -551,17 +551,23 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 
   m_disconn_future = std::async (std::launch::async, [this, with_disc_msg]
   {
-    m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
+    on_disconnecting (); // server-type specific jobs before disconnecting.
+
+    /*
+     * Wake up threads waiting for a response and tell them it won't be served.
+     * This has to be out of the lock of m_conn_mtx because a waitor may hold the lock.
+     * m_conn is not nullptr here since it's only set to nullptr here below.
+     */
+    m_conn->stop_response_broker ();
+
     auto ulock_conn = std::unique_lock<std::shared_mutex> { m_conn_mtx };
     const std::string channel_id = get_channel_id ();
 
-    // This may call this function (disconnect_async) while digesting all requests.
+    // This may call the function (disconnect_async) while digesting all requests since there might be a disconnection msg.
     // In that, the lock of m_state_mtx will be acquired again, leading to a deadlock. We have to clean incoming requests first.
     m_conn->stop_incoming_communication_thread ();
 
-    ulock_conn.unlock ();
-
-    on_disconnecting (); // server-type specific jobs before disconnecting.
+    ulock_conn.unlock (); // To keep the order of locks: m_state_mtx->m_conn_mtx
 
     auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
     ulock_conn.lock ();
