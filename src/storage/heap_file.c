@@ -20437,8 +20437,6 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 #if defined (SERVER_MODE)
 	  if (lock == SCH_M_LOCK && OID_IS_ROOTOID (&context->class_oid))
 	    {
-	      /* if lock == SCH_M_LOCK, then it is the class creation */
-	      /* Schema modification lock is acquired to create Class or VClass */
 	      assert (!OID_ISNULL (&context->res_oid));
 
 	      if (is_active_transaction_server ())
