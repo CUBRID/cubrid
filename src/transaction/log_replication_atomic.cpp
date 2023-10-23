@@ -22,6 +22,7 @@
 
 #include "log_recovery_redo_parallel.hpp"
 #include "heap_file.h"
+#include "oid.h"
 
 namespace cublog
 {
@@ -119,6 +120,13 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
+
+	    if (m_locked_objects.count (header.trid))
+	      {
+		/* unlock the objects that has been locked for DDL replication */
+		release_locks_by_tranid (thread_entry, header.trid);
+	      }
+
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
@@ -148,6 +156,13 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
+
+	    if (m_locked_objects.count (header.trid))
+	      {
+		/* unlock the objects that has been locked for DDL replication */
+		release_locks_by_tranid (thread_entry, header.trid);
+	      }
+
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
@@ -365,6 +380,17 @@ namespace cublog
 	    // if the postpone operation itself will contain a logical (compound) operation guarded
 	    // by an atomic sequence; that will be treated in a standalone fashion
 	  }
+      }
+  }
+
+  void
+  atomic_replicator::release_locks_by_tranid (cubthread::entry &thread_entry, const TRANID trid)
+  {
+    assert (m_locked_objects.count (trid) > 0);
+
+    for (auto it = m_locked_objects.lower_bound (trid); it != m_locked_objects.upper_bound (trid); it++)
+      {
+	lock_unlock_object (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK, true);
       }
   }
 }

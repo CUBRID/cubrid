@@ -90,6 +90,8 @@ namespace cublog
       void set_lowest_unapplied_lsa ();
       void replicate_sysop_start_postpone (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header);
 
+      void release_locks_by_tranid (cubthread::entry &thread_entry, const TRANID trid);
+
     private:
       atomic_replication_helper m_atomic_helper;
 
