@@ -159,6 +159,19 @@ log_global::initialize_log_prior_receiver ()
 {
   assert (m_prior_recver == nullptr);
   m_prior_recver = std::make_unique<cublog::prior_recver> (prior_info);
+  
+  if (is_passive_transaction_server ())
+  {
+    m_prior_recver->start_thread ();
+  }
+  else if (is_page_server ())
+  {
+    // It will be started once the catch-up is completed. See receive_start_catch_up() and execute_catchup().
+  }
+  else 
+  {
+    assert (false);
+  }
 }
 
 void
