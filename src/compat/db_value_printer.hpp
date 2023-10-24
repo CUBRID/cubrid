@@ -28,6 +28,8 @@
 
 #include <cstdio>
 
+#include "porting.h"
+
 struct db_set;
 struct db_midxkey;
 struct db_monetary;
@@ -35,7 +37,7 @@ struct db_value;
 class string_buffer;
 class print_output;
 
-class db_value_printer
+class EXPORT_IMPORT db_value_printer
 {
   private:
     string_buffer &m_buf;

@@ -55,7 +55,7 @@ namespace cubmethod
     METHOD_CALLBACK_ER_NOT_IMPLEMENTED = -10100,
   };
 
-  class error_context : public cubpacking::packable_object
+  class EXPORT_IMPORT error_context : public cubpacking::packable_object
   {
     public:
       error_context ();
