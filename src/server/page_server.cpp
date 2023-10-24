@@ -1049,6 +1049,13 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
     }
   else
     {
+      /*
+       * TODO
+       * In this case, we are going to re-initiate the catch-up with another PS.
+       * Now, we asuume it doesn't happen.
+       */
+      assert (false);
+
       assert (remaining_page_cnt > 0);
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
 		     error, remaining_page_cnt, total_page_count);
