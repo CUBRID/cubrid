@@ -5975,9 +5975,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
       size += xts_sizeof_access_spec_type (access_spec);
     }
 
-  size += OR_INT_SIZE * 8;	/* cte_xasl_id = sha1(5) + flag(1) + time(2)... */
+  size += PTR_SIZE;		/* for cte_xasl_id */
   size += OR_INT_SIZE;		/* for CTE host variable count */
-
   size += (OR_INT_SIZE * xasl->cte_host_var_count);
 
   switch (xasl->type)
