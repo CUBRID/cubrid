@@ -452,6 +452,38 @@ list(APPEND EP_TARGETS ${RE2_TARGET})
 list(APPEND EP_LIBS ${RE2_LIBS})
 list(APPEND EP_INCLUDES ${RE2_INCLUDES})
 
+# catch2
+if(AT_LEAST_ONE_UNIT_TEST)
+  set(CATCH2_TARGET catch2)
+  set(CATCH2_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/catch2/single_include)
+  set(CATCH2_LIBS "") # produces no lib
+  ADD_BY_PRODUCTS_VARIABLE ("CATCH2" ${CATCH2_INCLUDES})
+  externalproject_add(${CATCH2_TARGET}
+    GIT_REPOSITORY       https://github.com/catchorg/Catch2
+    GIT_TAG              42e368dd    # https://github.com/catchorg/Catch2/releases/tag/v2.13.5
+    # don't install
+    INSTALL_COMMAND      ""
+    BUILD_ALWAYS
+    # don't build test, doc and examples
+    CMAKE_CACHE_ARGS    -DCATCH_BUILD_TESTING:STRING=off
+                        -DCATCH_INSTALL_DOCS:STRING=off
+                        -DCATCH_INSTALL_HELPERS:STRING=off
+                        -DBUILD_TESTING:STRING=off
+  )
+
+  # add to external project targets
+  list(APPEND EP_TARGETS ${CATCH2_TARGET})
+  list(APPEND EP_INCLUDES ${CATCH2_INCLUDES})
+
+  # [FIXME!] expose this such that unit tests can use this individually
+  # otherwise, each unit test project that needs to use catch2 will have to
+  # depend on entire EP_TARGETS list which is too much to ask for; I think  this
+  # workaround is needed only because catch2 does not have a "deliverable" (ie: a lib) because
+  # some unit tests depend on lz4 and that one has a lib
+  set (CATCH2_TARGET ${CATCH2_TARGET} PARENT_SCOPE)
+endif(AT_LEAST_ONE_UNIT_TEST)
+
+
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)

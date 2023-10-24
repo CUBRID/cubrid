@@ -47,23 +47,25 @@ option (UNIT_TEST_SERVER "Unit testing: server")
 message("  unit_tests/...")
 
 # Catch2
-set(CATCH2_TARGET catch2)
-externalproject_add(${CATCH2_TARGET}
-  GIT_REPOSITORY       https://github.com/catchorg/Catch2
-  GIT_TAG              255aa5f    # https://github.com/catchorg/Catch2/releases/tag/v2.11.3
-  # don't install
-  INSTALL_COMMAND      ""
-  # don't build test, doc and examples
-  CMAKE_CACHE_ARGS     -DCATCH_BUILD_TESTING:STRING=off
-		       -DCATCH_INSTALL_DOCS:STRING=off
-		       -DCATCH_INSTALL_HELPERS:STRING=off
-		       -DBUILD_TESTING:STRING=off
-)
-# add to include directories
-set (CATCH2_DIR ${CMAKE_BINARY_DIR}/external/Source/catch2)
-include_directories(${CATCH2_DIR}/single_include)
-# add to tests external project targets
-list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
+#set(CATCH2_TARGET catch2)
+#externalproject_add(${CATCH2_TARGET}
+#  GIT_REPOSITORY       https://github.com/catchorg/Catch2
+#  GIT_TAG              42e368dd    # https://github.com/catchorg/Catch2/releases/tag/v2.13.5
+#  # don't install
+#  INSTALL_COMMAND      ""
+#  BUILD_ALWAYS
+#  # don't build test, doc and examples
+#  CMAKE_CACHE_ARGS     -DCATCH_BUILD_TESTING:STRING=off
+#		       -DCATCH_INSTALL_DOCS:STRING=off
+#		       -DCATCH_INSTALL_HELPERS:STRING=off
+#		       -DBUILD_TESTING:STRING=off
+#)
+## add to include directories
+## [FIXME!] Install Catch2 in the new 3rdparty directory
+#set (CATCH2_DIR ${CMAKE_BINARY_DIR}/unit_tests/catch2-prefix/src/catch2)
+#include_directories(${CATCH2_DIR}/single_include)
+## add to tests external project targets
+#list(APPEND TESTS_EXTERNAL_TARGETS ${CATCH2_TARGET})
 
 message("    common and fake")
 add_subdirectory(common)
