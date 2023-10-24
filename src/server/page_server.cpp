@@ -1022,7 +1022,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
 	  req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
 	}
-      // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
+
       for (size_t i = 0; i < receive_page_cnt; i++)
 	{
 	  logpb_catchup_append_page (&entry, log_pgptr_vec[i]);
