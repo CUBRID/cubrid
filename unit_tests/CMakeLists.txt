@@ -50,7 +50,7 @@ message("  unit_tests/...")
 set(CATCH2_TARGET catch2)
 externalproject_add(${CATCH2_TARGET}
   GIT_REPOSITORY       https://github.com/catchorg/Catch2
-  GIT_TAG              255aa5f    # https://github.com/catchorg/Catch2/releases/tag/v2.11.3
+  GIT_TAG              42e368dd    # https://github.com/catchorg/Catch2/releases/tag/v2.13.5
   # don't install
   INSTALL_COMMAND      ""
   # don't build test, doc and examples

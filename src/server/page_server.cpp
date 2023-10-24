@@ -62,6 +62,8 @@ page_server::~page_server ()
 
   cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
   assert (m_worker_pool == nullptr);
+
+  assert (m_follower_disc_future.valid() == false);
 }
 
 page_server::tran_server_connection_handler::tran_server_connection_handler (cubcomm::channel &&chn,
@@ -224,10 +226,15 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   _er_log_debug (ARG_FILE_LINE,
 		 "[CATCH_UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
 		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
+
   if (port == -1)
     {
       // TODO: It means that the ATS is booting up.
       // it will be set properly after ATS recovery is implemented.
+
+      log_Gl.get_log_prior_receiver ().start_thread ();
+
+      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
       return;
     }
 
@@ -238,11 +245,13 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   if (log_Gl.hdr.append_lsa == catchup_lsa)
     {
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] There is nothing to catch up.\n");
-      return; // TODO the cold-start case. No need to catch up. Just send a catchup_done msg to the ATS
+
+      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      return;
     }
 
-  // Establish a connection with the PS to catch up with, and start the cathup asynchronously.
-  // The connection will be destoryed at the end of the catch-up.
+  // Establish a connection with the PS to catch up with, and start the catch-up asynchronously.
+  // The connection will be destroyed at the end of the catch-up.
   m_ps.connect_to_followee_page_server (std::move (host), port);
   m_ps.start_catchup (catchup_lsa);
 }
@@ -405,8 +414,17 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
 
+  auto send_error_handler = std::bind (&page_server::follower_connection_handler::send_error_handler, this,
+				       std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = std::bind (&page_server::follower_connection_handler::recv_error_handler, this,
+				       std::placeholders::_1);
+
   m_conn.reset (new follower_server_conn_t (std::move (chn),
   {
+    {
+      follower_to_followee_request::SEND_DISCONNECT_MSG,
+      std::bind (&page_server::follower_connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+    },
     {
       follower_to_followee_request::SEND_LOG_PAGES_FETCH,
       std::bind (&page_server::follower_connection_handler::receive_log_pages_fetch, std::ref (*this), std::placeholders::_1)
@@ -415,12 +433,18 @@ page_server::follower_connection_handler::follower_connection_handler (cubcomm::
   followee_to_follower_request::RESPOND,
   follower_to_followee_request::RESPOND,
   RESPONSE_PARTITIONING_SIZE,
-  nullptr,
-  nullptr)); // TODO handle abnormal disconnection.
+  send_error_handler,
+  recv_error_handler));
 
   m_ps.get_follower_responder ().register_connection (m_conn.get ());
 
   m_conn->start ();
+}
+
+const std::string
+page_server::follower_connection_handler::get_channel_id () const
+{
+  return m_conn->get_underlying_channel_id ();
 }
 
 void
@@ -478,6 +502,27 @@ page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::
     }
 }
 
+void
+page_server::follower_connection_handler::send_error_handler (css_error_code error_code, bool &abort_further_processing)
+{
+  m_ps.disconnect_follower_page_server_async (this);
+  // Don't access any members below here. This will be destroyed anytime soon.
+}
+
+void
+page_server::follower_connection_handler::recv_error_handler (css_error_code error_code)
+{
+  m_ps.disconnect_follower_page_server_async (this);
+  // Don't access any members below here. This will be destroyed anytime soon.
+}
+
+void
+page_server::follower_connection_handler::receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp)
+{
+  m_ps.disconnect_follower_page_server_async (this);
+  // Don't access any members below here. This will be destroyed anytime soon.
+}
+
 page_server::follower_connection_handler::~follower_connection_handler ()
 {
   // blocking call
@@ -496,15 +541,26 @@ page_server::followee_connection_handler::followee_connection_handler (cubcomm::
 {
   constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
 
+  auto send_error_handler = std::bind (&page_server::followee_connection_handler::send_error_handler, this,
+				       std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = std::bind (&page_server::followee_connection_handler::recv_error_handler, this,
+				       std::placeholders::_1);
+
   m_conn.reset (new followee_server_conn_t (std::move (chn),
 		{}, // followee doesn't request anything
 		follower_to_followee_request::RESPOND,
 		followee_to_follower_request::RESPOND,
 		RESPONSE_PARTITIONING_SIZE,
-		nullptr,
-		nullptr)); // TODO handle abnormal disconnection.
+		send_error_handler,
+		recv_error_handler));
 
   m_conn->start ();
+}
+
+const std::string
+page_server::followee_connection_handler::get_channel_id () const
+{
+  return m_conn->get_underlying_channel_id ();
 }
 
 void
@@ -605,6 +661,20 @@ page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pa
     }
 
   return error_code;
+}
+
+void
+page_server::followee_connection_handler::send_error_handler (css_error_code, bool &)
+{
+  // TODO an arbitrary disconnection from followee is not allowed for now.
+  assert_release (false);
+}
+
+void
+page_server::followee_connection_handler::recv_error_handler (css_error_code)
+{
+  // TODO an arbitrary disconnection from followee is not allowed for now.
+  assert_release (false);
 }
 
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)
@@ -753,7 +823,11 @@ page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
   assert (chn.is_connection_alive ());
   const auto channel_id = chn.get_channel_id ();
 
-  m_follower_conn_vec.emplace_back (new follower_connection_handler (std::move (chn), *this));
+  {
+    auto lockg = std::lock_guard <std::mutex> (m_follower_conn_vec_mutex);
+
+    m_follower_conn_vec.emplace_back (new follower_connection_handler (std::move (chn), *this));
+  }
 
   er_log_debug (ARG_FILE_LINE,
 		"A follower page server connected to this page server to catch up. Channel id: %s.\n",
@@ -915,19 +989,92 @@ page_server::disconnect_all_tran_servers ()
 }
 
 void
+page_server::disconnect_all_follower_page_servers ()
+{
+  /*
+   * TODO it should request to disconnect to all followers and wait until it's done.
+   * It will be addressed when follower has a way to re-start the catch-up with another followee.
+   * For now, this waits until just all the catch-up jobs in progress are done.
+   */
+  constexpr auto millis_20 = std::chrono::milliseconds { 20 };
+
+  er_log_debug (ARG_FILE_LINE, "Wait until all follower connections are disconnected.\n");
+
+  {
+    auto ulock_conn_vec = std::unique_lock { m_follower_conn_vec_mutex };
+
+    while (!m_follower_conn_vec_cv.wait_for (ulock_conn_vec, millis_20, [this]
+    {
+      return m_follower_conn_vec.empty ();
+      }));
+
+    assert (m_follower_conn_vec.empty());
+  }
+
+  {
+    auto lockg_disc = std::lock_guard { m_follower_disc_mutex };
+    if (m_follower_disc_future.valid ())
+      {
+	m_follower_disc_future.get (); // wait until it's done if there is an on-going disconnection.
+      }
+  }
+  er_log_debug (ARG_FILE_LINE, "All follower connections have been disconnected.\n");
+}
+
+void
 page_server::disconnect_followee_page_server (const bool with_disc_msg)
 {
-  auto lockg = std::lock_guard <std::mutex> (m_followee_conn_mutex);
+  auto lockg = std::lock_guard { m_followee_conn_mutex };
   if (m_followee_conn != nullptr)
     {
+      auto channel_id = m_followee_conn->get_channel_id ();
       if (with_disc_msg)
 	{
-	  //TODO send the disconnect msg
+	  m_followee_conn->push_request (follower_to_followee_request::SEND_DISCONNECT_MSG, std::string ());
 	}
       m_followee_conn.reset (nullptr);
 
-      er_log_debug (ARG_FILE_LINE, "The followee page server has been disconnected.\n");
+      er_log_debug (ARG_FILE_LINE, "The followee page server has been disconnected. channel id: %s\n", channel_id.c_str ());
     }
+}
+
+void
+page_server::disconnect_follower_page_server_async (const follower_connection_handler *conn)
+{
+  auto ulock_conn_vec = std::unique_lock { m_follower_conn_vec_mutex };
+
+  auto it = std::find_if (m_follower_conn_vec.begin (), m_follower_conn_vec.end (),
+			  [&conn] (auto & conn_uptr)
+  {
+    return conn_uptr.get () == conn;
+  });
+
+  if (it == m_follower_conn_vec.cend ())
+    {
+      // It's already been disconnected or in progress by another thread.
+      return;
+    }
+
+  auto disconnecting_conn_uptr = std::move (*it);
+  m_follower_conn_vec.erase (it);
+  m_follower_conn_vec_cv.notify_one ();
+
+  auto lockg_disc = std::lock_guard { m_follower_disc_mutex };
+  ulock_conn_vec.unlock ();
+
+  if (m_follower_disc_future.valid ())
+    {
+      m_follower_disc_future.get (); // waits until the previous async is done
+    }
+
+  auto reset_func = [] (auto &&conn_uptr)
+  {
+    auto channel_id = conn_uptr->get_channel_id ();
+    conn_uptr.reset (nullptr);
+    er_log_debug (ARG_FILE_LINE, "The follower page server has been disconnected. channel id: %s\n", channel_id.c_str ());
+  };
+  m_follower_disc_future = std::async (std::launch::async, reset_func, std::move (disconnecting_conn_uptr));
+  assert (m_follower_disc_future.valid ());
 }
 
 void
@@ -1043,9 +1190,13 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 		     start_pageid, end_pageid, total_page_count);
-      // TODO: send CATCHUP_DONE_MSG to the ATS
-      // TODO: start appending log prior nodes from the ATS.
-      with_disc_msg = true;
+
+      log_Gl.get_log_prior_receiver ().start_thread ();
+
+      push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+
+      constexpr bool with_disc_msg = true;
+      disconnect_followee_page_server (with_disc_msg);
     }
   else
     {
