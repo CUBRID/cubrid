@@ -14586,8 +14586,21 @@ do_prepare_cte (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  cte_context.host_var_count = cte_context.auto_param_count = 0;
 
 	  var_count = parser->host_var_count + parser->auto_param_count;
+
 	  cte_context.host_variables = (DB_VALUE *) parser_alloc (parser, var_count * sizeof (DB_VALUE));
+	  if (cte_context.host_variables == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (DB_VALUE));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
 	  cte_context.cte_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+	  if (cte_context.cte_host_var_index == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
 	  cte_context.host_var_count = 0;
 
 	  parser_walk_tree (&cte_context, cte_statement, pt_cte_host_vars_index, parser, NULL, NULL);
@@ -14635,7 +14648,14 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
       stmt = cte_list->info.cte.non_recursive_part;
       if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
 	{
-	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
+	  host_variables = (DB_VALUE *) parser_alloc (parser, sizeof (DB_VALUE) * stmt->cte_host_var_count);
+	  if (host_variables == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (DB_VALUE) * stmt->cte_host_var_count);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
 	  for (i = 0; i < stmt->cte_host_var_count; i++)
 	    {
 	      pr_clone_value (&parser->host_variables[stmt->cte_host_var_index[i]], &host_variables[i]);
@@ -14644,8 +14664,6 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
 	  err =
 	    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
 			   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
-
-	  free (host_variables);
 
 	  if (err != NO_ERROR)
 	    {
