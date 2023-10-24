@@ -3380,6 +3380,7 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_p
 
   if (log_Gl.append.log_pgptr->hdr.logical_pageid + 1 == log_pgptr->hdr.logical_pageid)
     {
+      assert (log_Pb.partial_append.status == LOGPB_APPENDREC_IN_PROGRESS);
       // The normal case. Only exception is the first page. 
       log_Gl.append.prev_lsa = log_Gl.hdr.append_lsa;
       logpb_next_append_page (thread_p, LOG_SET_DIRTY);
