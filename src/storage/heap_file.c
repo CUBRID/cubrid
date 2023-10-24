@@ -20438,11 +20438,9 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	  if (lock == SCH_M_LOCK && OID_IS_ROOTOID (&context->class_oid))
 	    {
 	      assert (!OID_ISNULL (&context->res_oid));
+	      assert (is_active_transaction_server ());
 
-	      if (is_active_transaction_server ())
-		{
-		  log_append_schema_modification_lock (thread_p, &context->res_oid);
-		}
+	      log_append_schema_modification_lock (thread_p, &context->res_oid);
 	    }
 #endif
 
