@@ -555,13 +555,13 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
 
     /*
      * Stop incoming communication and wake up threads waiting for a response and tell them it won't be served.
-     * This has to be out of the lock of m_conn_mtx because a waitor may hold the lock.
+     * This has to be out of the lock of m_conn_mtx because waitors are holding the lock. (send_receive())
      * m_conn is not nullptr here since it's only set to nullptr here below.
      */
     m_conn->stop_incoming_communication_thread ();
 
-    auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
-    auto ulock_conn = std::unique_lock<std::shared_mutex> { m_conn_mtx };
+    auto lockg_state = std::lock_guard { m_state_mtx };
+    auto lockg_conn = std::lock_guard { m_conn_mtx };
     const std::string channel_id = get_channel_id ();
 
     assert (m_state == state::DISCONNECTING);
