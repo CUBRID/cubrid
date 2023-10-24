@@ -8802,79 +8802,155 @@ pr_midxkey_calculate_element_size (TP_DOMAIN * element_domains, DB_VALUE * eleme
  *    n_prefix(in):
  */
 int
-pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix, int n_prefix)
+pr_midxkey_add_prefix (DB_VALUE * result_value, DB_VALUE * prefix_value, DB_VALUE * value, const int prefix_index)
 {
-  int i, offset_postfix, offset_prefix;
-  DB_MIDXKEY *midx_postfix, *midx_prefix;
-  DB_MIDXKEY midx_result;
+  DB_MIDXKEY result_midxkey;
+  DB_MIDXKEY *prefix_midxkey, *midxkey;
+  TP_DOMAIN *domain;
+  char *result_nullmap_ptr, *prefix_nullmap_ptr, *nullmap_ptr;
+  char *result_offset_ptr, *prefix_offset_ptr, *offset_ptr;
+  int prefix_offset, element_offset;
+  int nullmap_size, header_size, prefix_size, element_size;
+  bool has_max_offset;
+  int i;
 
-  char *nullmap_ptr1, *nullmap_ptr2, *offset_ptr1, *offset_ptr2;
-  int nullmap_size, offset_size, header_size, element_offset;
+  assert (result_value != NULL);
+  assert (prefix_value != NULL);
+  assert (value != NULL);
+  assert (DB_VALUE_TYPE (prefix_value) == DB_TYPE_MIDXKEY);
+  assert (DB_VALUE_TYPE (value) == DB_TYPE_MIDXKEY);
 
-  assert (DB_VALUE_TYPE (prefix) == DB_TYPE_MIDXKEY);
-  assert (DB_VALUE_TYPE (postfix) == DB_TYPE_MIDXKEY);
+  prefix_midxkey = db_get_midxkey (prefix_value);
+  midxkey = db_get_midxkey (value);
 
-  midx_prefix = db_get_midxkey (prefix);
-  midx_postfix = db_get_midxkey (postfix);
+  assert (prefix_midxkey != NULL);
+  assert (midxkey != NULL);
+  assert (prefix_midxkey->domain->precision == midxkey->domain->precision);
 
-  offset_prefix = pr_midxkey_get_element_offset (midx_prefix, n_prefix);
-  offset_postfix = pr_midxkey_get_element_offset (midx_postfix, n_prefix);
+  nullmap_size = pr_midxkey_get_nullmap_size (midxkey->domain->precision);
+  header_size = pr_midxkey_get_header_size (midxkey->domain->precision);
 
-  midx_result.size = offset_prefix + (midx_postfix->size - offset_postfix);
-  midx_result.buf = (char *) db_private_alloc (NULL, midx_result.size);
-  midx_result.domain = midx_postfix->domain;
-  midx_result.ncolumns = midx_postfix->ncolumns;
+  prefix_nullmap_ptr = pr_midxkey_get_nullmap_ptr (prefix_midxkey->buf);
+  prefix_offset_ptr = pr_midxkey_get_offset_ptr (prefix_nullmap_ptr, nullmap_size);
 
-  memcpy (midx_result.buf, midx_prefix->buf, offset_prefix);
+  nullmap_ptr = pr_midxkey_get_nullmap_ptr (midxkey->buf);
+  offset_ptr = pr_midxkey_get_offset_ptr (nullmap_ptr, nullmap_size);
 
-#if !defined(NDEBUG)
-  for (i = 0; i < n_prefix; i++)
+  /* step 1 : calculate offset and size for prefix */
+  prefix_offset = pr_midxkey_get_element_offset_internal (prefix_midxkey->buf, prefix_midxkey->domain, prefix_index);
+  prefix_size = prefix_offset - header_size;
+
+  /* step 2 : prepare midxkey for result */
+  result_midxkey.size = prefix_size + midxkey->size;
+  result_midxkey.buf = (char *) db_private_alloc (NULL, result_midxkey.size);
+
+  result_nullmap_ptr = pr_midxkey_get_nullmap_ptr (result_midxkey.buf);
+  result_offset_ptr = pr_midxkey_get_offset_ptr (result_nullmap_ptr, nullmap_size);
+  pr_midxkey_init_header (result_nullmap_ptr, header_size);
+
+  /* step 3 : copy midxkey for prefix to midxkey for result */
+  memcpy (result_midxkey.buf, prefix_midxkey->buf, prefix_offset);
+
+  /* step 4 : copy midxkey for value to midxkey for result */
+  memcpy (result_midxkey.buf + prefix_offset, midxkey->buf + header_size, midxkey->size - header_size);
+
+  /* step 5 : Move domain after prefix and check nullmap before prefix */
+  for (i = 0, domain = midxkey->domain->setdomain; i < prefix_index; i++, domain = domain->next)
     {
-      assert (!OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, i));
-    }
-#endif
-
-  for (i = n_prefix; i < midx_result.ncolumns; i++)
-    {
-      if (OR_MULTI_ATT_IS_BOUND (midx_postfix->buf, i))
-	{
-	  OR_MULTI_ENABLE_BOUND_BIT (midx_result.buf, i);
-	}
-      else
-	{
-	  OR_MULTI_CLEAR_BOUND_BIT (midx_result.buf, i);
-	}
-    }
-
-  memcpy (midx_result.buf + offset_prefix, midx_postfix->buf + offset_postfix, midx_postfix->size - offset_postfix);
-
-  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (midx_postfix->ncolumns);
-  offset_size = midx_postfix->ncolumns + 1;
-
-  nullmap_ptr1 = midx_postfix->buf;
-  offset_ptr1 = nullmap_ptr1 + nullmap_size;
-
-  nullmap_ptr2 = midx_result.buf;
-  offset_ptr2 = nullmap_ptr2 + nullmap_size;
-
-  for (i = n_prefix; i < midx_result.ncolumns; i++)
-    {
-      element_offset = OR_GET_BYTE ((offset_ptr1 + 1) + i);
-      if (element_offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
-	{
-	  OR_PUT_BYTE ((offset_ptr2 + 1) + i, element_offset + (offset_prefix - offset_postfix));
-	}
-      else
-	{
-	  break;
-	}
+      assert (domain != NULL);
+      assert (pr_midxkey_element_is_null (nullmap_ptr, i));
     }
 
-  /* offset을 최신화하는 코드가 필요하다. */
-  midx_result.min_max_val.position = -1;
-  midx_result.min_max_val.type = MIN_COLUMN;
-  db_make_midxkey (result, &midx_result);
-  result->need_clear = true;
+  /* step 6 : update nullmap and offset after prefix */
+  assert (i == prefix_index);
+  assert (domain != midxkey->domain->setdomain);
+
+  has_max_offset = false;
+
+  if (prefix_size < OR_MIDXKEY_MAX_OFFSET_SIZE)
+    {
+      for (i = prefix_index; i < midxkey->domain->precision; i++, domain = domain->next)
+	{
+	  /* update nullmap */
+	  if (pr_midxkey_element_is_enable (nullmap_ptr, i))
+	    {
+	      pr_midxkey_set_enable_nullmap (result_nullmap_ptr, i);
+	    }
+	  else
+	    {
+	      assert (pr_midxkey_element_is_null (result_nullmap_ptr, i));
+	    }
+
+	  /* update offset */
+	  if (has_max_offset)
+	    {
+	      pr_midxkey_set_next_offset (result_offset_ptr, OR_MIDXKEY_MAX_OFFSET_SIZE, i);
+	    }
+	  else
+	    {
+	      element_offset = pr_midxkey_get_next_offset (offset_ptr, i);
+	      if (element_offset > 0)
+		{
+		  if ((element_offset + prefix_size) < OR_MIDXKEY_MAX_OFFSET_SIZE)
+		    {
+		      pr_midxkey_set_next_offset (result_offset_ptr, element_offset + prefix_size, i);
+		    }
+		  else
+		    {
+		      pr_midxkey_set_next_offset (result_offset_ptr, OR_MIDXKEY_MAX_OFFSET_SIZE, i);
+		      has_max_offset = true;
+		    }
+		}
+	      else
+		{
+		  /* recalculate offset */
+		  element_offset = pr_midxkey_get_offset (offset_ptr, i);
+		  assert (element_offset > 0);
+		  assert (element_offset < OR_MIDXKEY_MAX_OFFSET_SIZE);
+
+		  element_size = pr_midxkey_element_disk_size (nullmap_ptr + element_offset, domain);
+		  if ((element_offset + element_size) < OR_MIDXKEY_MAX_OFFSET_SIZE)
+		    {
+		      pr_midxkey_set_next_offset (result_offset_ptr, element_offset + element_size, i);
+		    }
+		  else
+		    {
+		      pr_midxkey_set_next_offset (result_offset_ptr, OR_MIDXKEY_MAX_OFFSET_SIZE, i);
+		      has_max_offset = true;
+		    }
+		}
+	    }
+	}
+    }
+  else
+    {
+      assert (pr_midxkey_get_offset (prefix_offset_ptr, prefix_index) < 0);
+
+      for (i = prefix_index; i < midxkey->domain->precision; i++)
+	{
+	  /* update nullmap */
+	  if (pr_midxkey_element_is_enable (nullmap_ptr, i))
+	    {
+	      pr_midxkey_set_enable_nullmap (result_nullmap_ptr, i);
+	    }
+	  else
+	    {
+	      assert (pr_midxkey_element_is_null (result_nullmap_ptr, i));
+	    }
+
+	  /* update offset */
+	  pr_midxkey_set_next_offset (offset_ptr, OR_MIDXKEY_MAX_OFFSET_SIZE, i);
+	}
+    }
+
+  /* step 7 : make value for result */
+  result_midxkey.domain = midxkey->domain;
+  result_midxkey.ncolumns = midxkey->domain->precision;
+  result_midxkey.min_max_val.position = -1;
+  result_midxkey.min_max_val.type = MIN_COLUMN;
+
+  db_make_midxkey (result_value, &result_midxkey);
+  result_value->need_clear = true;
 
   return NO_ERROR;
 }
@@ -8887,49 +8963,107 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
  *    prefix(in):
  */
 int
-pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
+pr_midxkey_remove_prefix (DB_VALUE * value, const int prefix_index)
 {
   DB_MIDXKEY *midxkey;
-  int i, start, offset;
-
+  TP_DOMAIN *domain;
   char *nullmap_ptr, *offset_ptr;
-  int nullmap_size, offset_size, header_size, element_offset;
+  int i, prefix_offset, element_offset;
+  int nullmap_size, header_size, prefix_size, element_size;
+  bool has_max_offset;
+  int error = NO_ERROR;
 
-  midxkey = db_get_midxkey (key);
-  assert (midxkey->ncolumns > 0);
+  assert (value != NULL);
+  assert (prefix_index > 0);
 
-  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
-  offset_size = midxkey->ncolumns + 1;
-  header_size = nullmap_size + offset_size;
+  midxkey = db_get_midxkey (value);
+  assert (midxkey != NULL);
 
-  nullmap_ptr = midxkey->buf;
-  offset_ptr = nullmap_ptr + nullmap_size;
-
-  start = header_size;		/* pr_midxkey_get_element_offset (midxkey, 0); */
-  offset = pr_midxkey_get_element_offset (midxkey, prefix);
-
-  memmove (midxkey->buf + start, midxkey->buf + offset, midxkey->size - offset);
-
-  for (i = 0; i < prefix; i++)
+  error = pr_midxkey_check_valid_index (midxkey->domain, midxkey->ncolumns, prefix_index);
+  if (error != NO_ERROR)
     {
-      OR_MULTI_CLEAR_BOUND_BIT (nullmap_ptr, i);
-      OR_PUT_BYTE ((offset_ptr + 1) + i, start);
+      assert (false);
+      return ER_FAILED;
     }
 
-  for (; i < midxkey->ncolumns; i++)
+  nullmap_size = pr_midxkey_get_nullmap_size (midxkey->domain->precision);
+  header_size = pr_midxkey_get_header_size (midxkey->domain->precision);
+
+  nullmap_ptr = pr_midxkey_get_nullmap_ptr (midxkey->buf);
+  offset_ptr = pr_midxkey_get_offset_ptr (nullmap_ptr, nullmap_size);
+
+  /* step 1 : calculate offset and size for prefix */
+  prefix_offset = pr_midxkey_get_element_offset_internal (midxkey->buf, midxkey->domain, prefix_index);
+  prefix_size = prefix_offset - header_size;
+
+  /* step 2 : move data after prefix forward by size of prefix */
+  memmove (nullmap_ptr + header_size, nullmap_ptr + prefix_offset, midxkey->size - prefix_offset);
+
+  /* step 3 : clear nullmap and offset before prefix */
+  assert (header_size == pr_midxkey_get_offset (offset_ptr, 0));
+
+  for (i = 0, domain = midxkey->domain->setdomain; i < prefix_index; i++, domain = domain->next)
     {
-      element_offset = OR_GET_BYTE ((offset_ptr + 1) + i);
-      if (element_offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
+      assert (domain != NULL);
+
+      pr_midxkey_set_clear_nullmap (nullmap_ptr, i);
+      pr_midxkey_set_next_offset (offset_ptr, header_size, i);
+    }
+
+  /* step 4 : update offset after prefix */
+  assert (i == prefix_index);
+  assert (domain != midxkey->domain->setdomain);
+
+  has_max_offset = false;
+
+  if (prefix_offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
+    {
+      for (; i < midxkey->domain->precision; i++, domain = domain->next)
 	{
-	  OR_PUT_BYTE ((offset_ptr + 1) + i, element_offset - (offset - start));
+	  element_offset = pr_midxkey_get_next_offset (offset_ptr, i);
+	  if (element_offset > 0)
+	    {
+	      pr_midxkey_set_next_offset (offset_ptr, element_offset - prefix_size, i);
+	    }
+	  else
+	    {
+	      if (has_max_offset)
+		{
+		  pr_midxkey_set_next_offset (offset_ptr, OR_MIDXKEY_MAX_OFFSET_SIZE, i);
+		}
+	      else
+		{
+		  /* recalculate offset */
+		  element_offset = pr_midxkey_get_offset (offset_ptr, i);
+		  assert (element_offset > 0);
+		  assert (element_offset < OR_MIDXKEY_MAX_OFFSET_SIZE);
+
+		  element_size = pr_midxkey_element_disk_size (nullmap_ptr + element_offset, domain);
+		  if ((element_offset + element_size) < OR_MIDXKEY_MAX_OFFSET_SIZE)
+		    {
+		      pr_midxkey_set_next_offset (offset_ptr, element_offset + element_size, i);
+		    }
+		  else
+		    {
+		      pr_midxkey_set_next_offset (offset_ptr, OR_MIDXKEY_MAX_OFFSET_SIZE, i);
+		      has_max_offset = true;
+		    }
+		}
+	    }
 	}
-      else
+    }
+  else
+    {
+      for (i = prefix_index; i < midxkey->domain->precision; i++)
 	{
-	  break;
+	  pr_midxkey_set_next_offset (offset_ptr, OR_MIDXKEY_MAX_OFFSET_SIZE, i);
 	}
     }
 
-  midxkey->size = midxkey->size - (offset - start);
+  /* step 5 : update size of midxkey */
+  assert ((midxkey->size - prefix_size) == pr_midxkey_get_offset (offset_ptr, midxkey->domain->precision));
+
+  midxkey->size = midxkey->size - prefix_size;
 
   return NO_ERROR;
 }

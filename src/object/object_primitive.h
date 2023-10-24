@@ -324,8 +324,9 @@ extern int pr_data_writeval_disk_size (DB_VALUE * value);
 extern int pr_index_writeval_disk_size (DB_VALUE * value);
 
 extern int pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midxkey2, DB_VALUE * db_result);
-extern int pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix, int n_prefix);
-extern int pr_midxkey_remove_prefix (DB_VALUE * key, int prefix);
+extern int pr_midxkey_add_prefix (DB_VALUE * result_value, DB_VALUE * prefix_value, DB_VALUE * value,
+				  const int prefix_index);
+extern int pr_midxkey_remove_prefix (DB_VALUE * value, const int prefix_index);
 extern int pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2);
 
 STATIC_INLINE int pr_midxkey_check_valid_domain (TP_DOMAIN * midxkey_domain) __attribute__ ((ALWAYS_INLINE));
@@ -343,8 +344,9 @@ STATIC_INLINE int pr_midxkey_get_offset_size (const int precision) __attribute__
 STATIC_INLINE int pr_midxkey_get_header_size (const int precision) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE char *pr_midxkey_get_nullmap_ptr (char *nullmap_ptr) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE char *pr_midxkey_get_offset_ptr (char *nullmap_ptr, int nullmap_size) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE char *pr_midxkey_get_key_ptr (char *offset_ptr, int offset_size) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE char *pr_midxkey_get_offset_ptr (char *nullmap_ptr, const int nullmap_size)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE char *pr_midxkey_get_key_ptr (char *offset_ptr, const int offset_size) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE void pr_midxkey_init_header (char *nullmap_ptr, const int header_size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool pr_midxkey_element_is_enable (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
@@ -358,6 +360,8 @@ STATIC_INLINE void pr_midxkey_set_current_offset (char *nullmap_ptr, char *offse
 STATIC_INLINE int pr_midxkey_calculate_offset (char *nullmap_ptr, char *current_ptr) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE void pr_midxkey_set_offset (char *offset_ptr, int offset, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pr_midxkey_set_next_offset (char *offset_ptr, int offset, const int index)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pr_midxkey_get_next_offset (char *offset_ptr, const int index);
 STATIC_INLINE int pr_midxkey_get_offset (char *offset_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
@@ -561,8 +565,10 @@ pr_midxkey_check_valid_index (TP_DOMAIN * domain, const int ncolumns, const int 
 {
   assert (domain != NULL);
   assert (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY);
+  assert (domain->precision == ncolumns);
+  assert (ncolumns > 0);
 
-  if (index >= domain->precision)
+  if (index < 0)
     {
       assert (false);
       return ER_FAILED;
@@ -576,7 +582,6 @@ pr_midxkey_check_valid_index (TP_DOMAIN * domain, const int ncolumns, const int 
 
   return NO_ERROR;
 }
-
 
 STATIC_INLINE int
 pr_midxkey_get_size (void *memptr, TP_DOMAIN * domain)
@@ -687,7 +692,7 @@ pr_midxkey_get_nullmap_ptr (char *nullmap_ptr)
 }
 
 STATIC_INLINE char *
-pr_midxkey_get_offset_ptr (char *nullmap_ptr, int nullmap_size)
+pr_midxkey_get_offset_ptr (char *nullmap_ptr, const int nullmap_size)
 {
   assert (nullmap_ptr != NULL);
   assert (nullmap_size > 0);
@@ -696,7 +701,7 @@ pr_midxkey_get_offset_ptr (char *nullmap_ptr, int nullmap_size)
 }
 
 STATIC_INLINE char *
-pr_midxkey_get_key_ptr (char *offset_ptr, int offset_size)
+pr_midxkey_get_key_ptr (char *offset_ptr, const int offset_size)
 {
   assert (offset_ptr != NULL);
   assert (offset_size > 0);
@@ -814,6 +819,12 @@ pr_midxkey_set_offset (char *offset_ptr, int offset, const int index)
     {
       OR_PUT_BYTE (offset_ptr + index, OR_MIDXKEY_MAX_OFFSET_SIZE);
     }
+}
+
+STATIC_INLINE void
+pr_midxkey_set_next_offset (char *offset_ptr, int offset, const int index)
+{
+  pr_midxkey_set_offset (offset_ptr, offset, index + 1);
 }
 
 STATIC_INLINE int
