@@ -33,6 +33,7 @@
 
 #include "dbtype_def.h"
 #include "object_domain.h"
+#include "object_representation.h"
 #include "porting_inline.hpp"
 
 #include <cassert>
@@ -311,22 +312,64 @@ extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY
 STATIC_INLINE int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);
-extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
-				    struct tp_domain *dbvals_domain_list);
+extern int pr_midxkey_add_elements (DB_VALUE * key_value, DB_VALUE * element_values, int n_elements,
+				    struct tp_domain *element_domains);
 extern int pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 					      struct tp_domain *dbvals_domain_list, int tail_null_cnt);
 
-extern int pr_index_writeval_disk_size (DB_VALUE * value);
-extern int pr_data_writeval_disk_size (DB_VALUE * value);
+
 extern void pr_data_writeval (struct or_buf *buf, DB_VALUE * value);
+
+extern int pr_data_writeval_disk_size (DB_VALUE * value);
+extern int pr_index_writeval_disk_size (DB_VALUE * value);
+
 extern int pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midxkey2, DB_VALUE * db_result);
-extern int pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index);
 extern int pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix, int n_prefix);
 extern int pr_midxkey_remove_prefix (DB_VALUE * key, int prefix);
 extern int pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2);
 
-STATIC_INLINE bool pr_midxkey_element_is_null (char *memptr, const int index) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pr_midxkey_check_valid_domain (TP_DOMAIN * midxkey_domain) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_midxkey_check_valid_index (TP_DOMAIN * midxkey_domain, const int ncolumns, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE int pr_midxkey_get_size (void *memptr, TP_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_midxkey_get_element_offset (const DB_MIDXKEY * const midxkey, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_midxkey_get_element_offset_internal (void *memptr, TP_DOMAIN * domain, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE int pr_midxkey_get_nullmap_size (const int precision) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_midxkey_get_offset_size (const int precision) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_midxkey_get_header_size (const int precision) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE char *pr_midxkey_get_nullmap_ptr (char *nullmap_ptr) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE char *pr_midxkey_get_offset_ptr (char *nullmap_ptr, int nullmap_size) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE char *pr_midxkey_get_key_ptr (char *offset_ptr, int offset_size) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE void pr_midxkey_init_header (char *nullmap_ptr, const int header_size) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pr_midxkey_element_is_enable (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pr_midxkey_element_is_null (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE void pr_midxkey_set_enable_nullmap (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pr_midxkey_set_clear_nullmap (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE void pr_midxkey_set_current_offset (char *nullmap_ptr, char *offset_ptr, char *current_ptr,
+						  const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_midxkey_calculate_offset (char *nullmap_ptr, char *current_ptr) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE void pr_midxkey_set_offset (char *offset_ptr, int offset, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pr_midxkey_get_next_offset (char *offset_ptr, const int index);
+STATIC_INLINE int pr_midxkey_get_offset (char *offset_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE void
+pr_midxkey_next (char *nullmap_ptr, char *offset_ptr, TP_DOMAIN * element_domain, const int index, char **buf_ptr)
+__attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE void
+pr_midxkey_advance (char *nullmap_a_ptr, char *nullmap_b_ptr, char *offset_a_ptr, char *offset_b_ptr, const int index,
+		    char **buf_a_ptr, char **buf_b_ptr, TP_DOMAIN ** element_a_domain, TP_DOMAIN ** element_b_domain)
+__attribute__ ((ALWAYS_INLINE));
 
 extern int pr_Inhibit_oid_promotion;
 
@@ -429,30 +472,17 @@ pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
   return domain->type->get_index_size_of_mem (mem, domain);
 }
 
-STATIC_INLINE bool
-pr_midxkey_element_is_null (char *memptr, const int index)
-{
-  assert (memptr != NULL);
-  assert (index >= 0);
-  /* OR_MULTI_ATT_IS_UNBOUND */
-  if ((*(memptr + (index >> 3))) & (1 << (index & 7)))
-    {
-      return false;
-    }
-  return true;
-}
-
 STATIC_INLINE int
-pr_midxkey_check_valid_domain (TP_DOMAIN * midxkey_domain)
+pr_midxkey_check_valid_domain (TP_DOMAIN * domain)
 {
-  TP_DOMAIN *domain;
+  TP_DOMAIN *element_domain;
   int precision;
 
-  assert (midxkey_domain != NULL);
-  assert (TP_DOMAIN_TYPE (midxkey_domain) == DB_TYPE_MIDXKEY);
-  assert (midxkey_domain->setdomain != NULL);
+  assert (domain != NULL);
+  assert (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY);
+  assert (domain->setdomain != NULL);
 
-  precision = midxkey_domain->precision;
+  precision = domain->precision;
   if (precision <= 0)
     {
       assert (false);
@@ -463,7 +493,7 @@ pr_midxkey_check_valid_domain (TP_DOMAIN * midxkey_domain)
   {
     int count = 0;
 
-    for (domain = midxkey_domain->setdomain; domain != NULL; domain = domain->next)
+    for (element_domain = domain->setdomain; element_domain != NULL; element_domain = element_domain->next)
       {
 	count++;
       }
@@ -478,6 +508,438 @@ pr_midxkey_check_valid_domain (TP_DOMAIN * midxkey_domain)
 
   return NO_ERROR;
 }
+
+STATIC_INLINE int
+pr_midxkey_check_valid_domains (DB_MIDXKEY * midxkey_a, DB_MIDXKEY * midxkey_b)
+{
+  int error = NO_ERROR;
+
+  error = pr_midxkey_check_valid_domain (midxkey_a->domain);
+  if (error < 0)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  error = pr_midxkey_check_valid_domain (midxkey_b->domain);
+  if (error < 0)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* safe guard */
+  if (midxkey_a->domain == NULL || TP_DOMAIN_TYPE (midxkey_a->domain) != DB_TYPE_MIDXKEY
+      || midxkey_a->domain->setdomain == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN, 0);
+      return DB_UNK;
+    }
+
+  /* safe guard */
+  if (midxkey_b->domain == NULL || TP_DOMAIN_TYPE (midxkey_b->domain) != DB_TYPE_MIDXKEY
+      || midxkey_b->domain->setdomain == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MR_NULL_DOMAIN, 0);
+      return ER_FAILED;
+    }
+
+  assert (midxkey_a->ncolumns == midxkey_b->ncolumns);
+  assert (midxkey_a->domain->precision == midxkey_b->domain->precision);
+
+  /* safe guard */
+  if (midxkey_a->ncolumns != midxkey_b->ncolumns || midxkey_a->domain->precision != midxkey_b->domain->precision)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+STATIC_INLINE int
+pr_midxkey_check_valid_index (TP_DOMAIN * domain, const int ncolumns, const int index)
+{
+  assert (domain != NULL);
+  assert (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY);
+
+  if (index >= domain->precision)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (index >= ncolumns)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+
+STATIC_INLINE int
+pr_midxkey_get_size (void *memptr, TP_DOMAIN * domain)
+{
+  return pr_midxkey_get_element_offset_internal ((char *) memptr, domain, domain->precision);
+}
+
+STATIC_INLINE int
+pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, const int index)
+{
+  int offset;
+  int error = NO_ERROR;
+
+  error = pr_midxkey_check_valid_domain (midxkey->domain);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  error = pr_midxkey_check_valid_index (midxkey->domain, midxkey->ncolumns, index);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  offset = pr_midxkey_get_element_offset_internal (midxkey->buf, midxkey->domain, index);
+  assert (offset <= midxkey->size);
+
+  return offset;
+}
+
+STATIC_INLINE int
+pr_midxkey_get_element_offset_internal (void *memptr, TP_DOMAIN * domain, const int index)
+{
+  TP_DOMAIN *element_domain;
+  char *nullmap_ptr, *offset_ptr, *buf_ptr;
+  int i, offset;
+  int nullmap_size, offset_size, header_size;
+
+  assert (memptr != NULL);
+  assert (domain != NULL);
+  assert (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY);
+
+  nullmap_size = pr_midxkey_get_nullmap_size (domain->precision);
+  offset_size = pr_midxkey_get_offset_size (domain->precision);
+  header_size = pr_midxkey_get_header_size (domain->precision);
+
+  nullmap_ptr = pr_midxkey_get_nullmap_ptr ((char *) memptr);
+  offset_ptr = pr_midxkey_get_offset_ptr (nullmap_ptr, nullmap_size);
+  buf_ptr = pr_midxkey_get_key_ptr (offset_ptr, offset_size);
+
+  offset = pr_midxkey_get_offset (offset_ptr, index);
+  if (offset < 0)
+    {
+      for (i = 0, element_domain = domain->setdomain; i < index; i++, element_domain = element_domain->next)
+	{
+	  if (pr_midxkey_element_is_null (nullmap_ptr, i))
+	    {
+	      continue;
+	    }
+
+	  buf_ptr += pr_midxkey_element_disk_size (buf_ptr, element_domain);
+	}
+
+      offset = pr_midxkey_calculate_offset (nullmap_ptr, buf_ptr);
+    }
+
+  assert (offset >= pr_midxkey_get_header_size (domain->precision));
+
+  return offset;
+}
+
+STATIC_INLINE int
+pr_midxkey_get_nullmap_size (const int precision)
+{
+  int nullmap_size;
+
+  assert (precision > 0);
+
+  nullmap_size = (precision + 7) >> 3;
+  assert (nullmap_size > 0);
+
+  return nullmap_size;
+}
+
+STATIC_INLINE int
+pr_midxkey_get_offset_size (const int precision)
+{
+  assert (precision > 0);
+
+  return precision + 1;
+}
+
+STATIC_INLINE int
+pr_midxkey_get_header_size (const int precision)
+{
+  return pr_midxkey_get_nullmap_size (precision) + pr_midxkey_get_offset_size (precision);
+}
+
+STATIC_INLINE char *
+pr_midxkey_get_nullmap_ptr (char *nullmap_ptr)
+{
+  assert (nullmap_ptr != NULL);
+
+  return nullmap_ptr;
+}
+
+STATIC_INLINE char *
+pr_midxkey_get_offset_ptr (char *nullmap_ptr, int nullmap_size)
+{
+  assert (nullmap_ptr != NULL);
+  assert (nullmap_size > 0);
+
+  return nullmap_ptr + nullmap_size;
+}
+
+STATIC_INLINE char *
+pr_midxkey_get_key_ptr (char *offset_ptr, int offset_size)
+{
+  assert (offset_ptr != NULL);
+  assert (offset_size > 0);
+
+  return offset_ptr + offset_size;
+}
+
+STATIC_INLINE void
+pr_midxkey_init_header (char *nullmap_ptr, const int header_size)
+{
+  assert (nullmap_ptr != NULL);
+  assert (header_size >= 0);
+
+  memset (nullmap_ptr, 0x00, header_size);
+}
+
+STATIC_INLINE bool
+pr_midxkey_has_null (char *nullmap_ptr, const int ncolumns)
+{
+  int i;
+
+  assert (nullmap_ptr != NULL);
+  assert (ncolumns > 0);
+
+  for (i = 0; i < ncolumns; i++)
+    {
+      if (pr_midxkey_element_is_null (nullmap_ptr, i))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+STATIC_INLINE bool
+pr_midxkey_element_is_enable (char *nullmap_ptr, const int index)
+{
+  assert (nullmap_ptr != NULL);
+  assert (index >= 0);
+
+  if (*(nullmap_ptr + (index >> 3)) & (1 << (index & 7)))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+STATIC_INLINE bool
+pr_midxkey_element_is_null (char *nullmap_ptr, const int index)
+{
+  return !pr_midxkey_element_is_enable (nullmap_ptr, index);
+}
+
+STATIC_INLINE void
+pr_midxkey_set_enable_nullmap (char *nullmap_ptr, const int index)
+{
+  assert (nullmap_ptr != NULL);
+  assert (index >= 0);
+
+  *(nullmap_ptr + (index >> 3)) |= (1 << (index & 7));
+}
+
+STATIC_INLINE void
+pr_midxkey_set_clear_nullmap (char *nullmap_ptr, const int index)
+{
+  assert (nullmap_ptr != NULL);
+  assert (index >= 0);
+
+  *(nullmap_ptr + (index >> 3)) &= ~(1 << (index & 7));
+}
+
+/* 혹시라도 0보다 작은 경우에 대한 예외처리가 필요하다. */
+STATIC_INLINE void
+pr_midxkey_set_current_offset (char *nullmap_ptr, char *offset_ptr, char *current_ptr, const int index)
+{
+  int offset;
+
+  assert (nullmap_ptr != NULL);
+  assert (offset_ptr != NULL);
+  assert (current_ptr != NULL);
+  assert (index >= 0);
+
+  offset = pr_midxkey_calculate_offset (nullmap_ptr, current_ptr);
+  pr_midxkey_set_offset (offset_ptr, offset, index);
+}
+
+STATIC_INLINE int
+pr_midxkey_calculate_offset (char *nullmap_ptr, char *current_ptr)
+{
+  int offset;
+
+  assert (nullmap_ptr != NULL);
+  assert (current_ptr != NULL);
+
+  offset = CAST_BUFLEN (current_ptr - nullmap_ptr);
+  assert (offset > 0);
+
+  return offset;
+}
+
+STATIC_INLINE void
+pr_midxkey_set_offset (char *offset_ptr, int offset, const int index)
+{
+  assert (offset_ptr != NULL);
+  assert (index >= 0);
+  assert (offset > 0);
+
+  if (offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
+    {
+      OR_PUT_BYTE (offset_ptr + index, offset);
+    }
+  else
+    {
+      OR_PUT_BYTE (offset_ptr + index, OR_MIDXKEY_MAX_OFFSET_SIZE);
+    }
+}
+
+STATIC_INLINE int
+pr_midxkey_get_next_offset (char *offset_ptr, const int index)
+{
+  return pr_midxkey_get_offset (offset_ptr, index + 1);
+}
+
+STATIC_INLINE int
+pr_midxkey_get_offset (char *offset_ptr, const int index)
+{
+  int offset;
+
+  assert (offset_ptr != NULL);
+  assert (index >= 0);
+
+  offset = OR_GET_BYTE (offset_ptr + index);
+  assert (offset > 0);
+
+  if (offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
+    {
+      return offset;
+    }
+
+  return -1;
+}
+
+STATIC_INLINE void
+pr_midxkey_next (char *nullmap_ptr, char *offset_ptr, TP_DOMAIN * element_domain, const int index, char **buf_ptr)
+{
+  int element_offset;
+
+  assert (nullmap_ptr != NULL);
+  assert (offset_ptr != NULL);
+  assert (buf_ptr != NULL && *buf_ptr);
+  assert (element_domain != NULL);
+  assert (index >= 0);
+
+  element_offset = pr_midxkey_get_next_offset (offset_ptr, index);
+  if (element_offset > 0)
+    {
+      *buf_ptr = nullmap_ptr + element_offset;
+    }
+  else
+    {
+      *buf_ptr += pr_midxkey_element_disk_size (*buf_ptr, element_domain);
+    }
+}
+
+STATIC_INLINE void
+pr_midxkey_advance (char *nullmap_a_ptr, char *nullmap_b_ptr, char *offset_a_ptr, char *offset_b_ptr, const int index,
+		    TP_DOMAIN ** element_a_domain, TP_DOMAIN ** element_b_domain, char **buf_a_ptr, char **buf_b_ptr)
+{
+  int i, element_a_offset, element_b_offset;
+
+  assert (nullmap_a_ptr != NULL);
+  assert (nullmap_b_ptr != NULL);
+  assert (offset_a_ptr != NULL);
+  assert (offset_b_ptr != NULL);
+  assert (element_a_domain != NULL && element_a_domain != NULL);
+  assert (element_b_domain != NULL && element_b_domain != NULL);
+  assert (buf_a_ptr != NULL && *buf_a_ptr != NULL);
+  assert (buf_b_ptr != NULL && *buf_b_ptr != NULL);
+  assert (index > 0);
+
+  element_a_offset = pr_midxkey_get_offset (offset_a_ptr, index);
+  element_b_offset = pr_midxkey_get_offset (offset_b_ptr, index);
+
+  if (element_a_offset > 0)
+    {
+      if (element_b_offset > 0)
+	{
+	  *buf_a_ptr = nullmap_a_ptr + element_a_offset;
+	  *buf_b_ptr = nullmap_b_ptr + element_b_offset;
+
+	  for (i = 0; i < index;
+	       i++, *element_a_domain = (*element_a_domain)->next, *element_b_domain = (*element_b_domain)->next)
+	    {
+	      ;
+	    }
+	}
+      else
+	{
+	  *buf_a_ptr = nullmap_a_ptr + element_a_offset;
+
+	  for (i = 0; i < index;
+	       i++, *element_a_domain = (*element_a_domain)->next, *element_b_domain = (*element_b_domain)->next)
+	    {
+	      if (pr_midxkey_element_is_enable (nullmap_b_ptr, i))
+		{
+		  *buf_b_ptr += pr_midxkey_element_disk_size (*buf_b_ptr, *element_b_domain);
+		}
+	    }
+	}
+    }
+  else if (element_b_offset > 0)
+    {
+      *buf_b_ptr = nullmap_b_ptr + element_b_offset;
+
+      for (i = 0; i < index;
+	   i++, *element_a_domain = (*element_a_domain)->next, *element_b_domain = (*element_b_domain)->next)
+	{
+	  if (pr_midxkey_element_is_enable (nullmap_a_ptr, i))
+	    {
+	      *buf_a_ptr += pr_midxkey_element_disk_size (*buf_a_ptr, *element_a_domain);
+	    }
+	}
+    }
+  else
+    {
+      for (i = 0; i < index;
+	   i++, *element_a_domain = (*element_a_domain)->next, *element_b_domain = (*element_b_domain)->next)
+	{
+	  if (pr_midxkey_element_is_enable (nullmap_a_ptr, i))
+	    {
+	      *buf_a_ptr += pr_midxkey_element_disk_size (*buf_a_ptr, *element_a_domain);
+	    }
+
+	  if (pr_midxkey_element_is_enable (nullmap_b_ptr, i))
+	    {
+	      *buf_b_ptr += pr_midxkey_element_disk_size (*buf_b_ptr, *element_b_domain);
+	    }
+	}
+    }
+}
+
 
 //////////////////////////////////////////////////////////////////////////
 // Inline/template implementation

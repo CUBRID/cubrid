@@ -3564,29 +3564,29 @@ compare_driver (const void *first, const void *second, void *arg)
 
   if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
     {
+      TP_DOMAIN *element_domain;
+      char *nullmap_a_ptr, *nullmap_b_ptr;
+      char *offset_a_ptr, *offset_b_ptr;
+      char *buf_a_ptr, *buf_b_ptr;
       int i;
-      char *nullmap_ptr1, *offset_ptr1;
-      char *nullmap_ptr2, *offset_ptr2;
       int nullmap_size, offset_size, header_size, element_offset;
-      TP_DOMAIN *dom;
 
       /* fast implementation of pr_midxkey_compare (). do not use DB_VALUE container for speed-up */
 
-      nullmap_size = OR_MULTI_BOUND_BIT_BYTES (key_type->precision);
-      offset_size = key_type->precision + 1;
-      header_size = nullmap_size + offset_size;
+      nullmap_size = pr_midxkey_get_nullmap_size (key_type->precision);
+      offset_size = pr_midxkey_get_offset_size (key_type->precision);
+      header_size = pr_midxkey_get_header_size (key_type->precision);
 
-      nullmap_ptr1 = mem1;
-      nullmap_ptr2 = mem2;
+      nullmap_a_ptr = pr_midxkey_get_nullmap_ptr (mem1);
+      offset_a_ptr = pr_midxkey_get_offset_ptr (nullmap_a_ptr, nullmap_size);
+      buf_a_ptr = pr_midxkey_get_key_ptr (offset_a_ptr, offset_size);
 
-      offset_ptr1 = nullmap_ptr1 + nullmap_size;
-      offset_ptr2 = nullmap_ptr2 + nullmap_size;
-
-      mem1 = nullmap_ptr1 + header_size;
-      mem2 = nullmap_ptr2 + header_size;
+      nullmap_b_ptr = pr_midxkey_get_nullmap_ptr (mem2);
+      offset_b_ptr = pr_midxkey_get_offset_ptr (nullmap_b_ptr, nullmap_size);
+      buf_b_ptr = pr_midxkey_get_key_ptr (offset_b_ptr, offset_size);
 
 #if !defined(NDEBUG)
-      for (i = 0, dom = key_type->setdomain; dom; dom = dom->next, i++);
+      for (i = 0, element_domain = key_type->setdomain; element_domain; element_domain = element_domain->next, i++);
       assert (i == key_type->precision);
 
       if (sort_args->func_index_info != NULL)
@@ -3603,14 +3603,15 @@ compare_driver (const void *first, const void *second, void *arg)
       assert (key_type->setdomain != NULL);
 #endif
 
-      for (i = 0, dom = key_type->setdomain; i < key_type->precision && dom; i++, dom = dom->next)
+      for (i = 0, element_domain = key_type->setdomain; i < key_type->precision && element_domain;
+	   i++, element_domain = element_domain->next)
 	{
 	  /* val1 or val2 is NULL */
 	  if (has_null)
 	    {
-	      if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr1, i))
+	      if (OR_MULTI_ATT_IS_UNBOUND (nullmap_a_ptr, i))
 		{		/* element val is null? */
-		  if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr2, i))
+		  if (OR_MULTI_ATT_IS_UNBOUND (nullmap_b_ptr, i))
 		    {
 		      continue;
 		    }
@@ -3618,7 +3619,7 @@ compare_driver (const void *first, const void *second, void *arg)
 		  c = DB_LT;
 		  break;	/* exit for-loop */
 		}
-	      else if (OR_MULTI_ATT_IS_UNBOUND (nullmap_ptr2, i))
+	      else if (OR_MULTI_ATT_IS_UNBOUND (nullmap_b_ptr, i))
 		{
 		  c = DB_GT;
 		  break;	/* exit for-loop */
@@ -3626,7 +3627,7 @@ compare_driver (const void *first, const void *second, void *arg)
 	    }
 
 	  /* check for val1 and val2 same domain */
-	  c = dom->type->index_cmpdisk (mem1, mem2, dom, 0, 1, NULL);
+	  c = element_domain->type->index_cmpdisk (buf_a_ptr, buf_b_ptr, element_domain, 0, 1, NULL);
 	  assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
 	  if (c != DB_EQ)
@@ -3634,31 +3635,12 @@ compare_driver (const void *first, const void *second, void *arg)
 	      break;		/* exit for-loop */
 	    }
 
-	  element_offset = OR_GET_BYTE ((offset_ptr1 + 1) + i);
-	  assert (element_offset > 0);
-	  if (element_offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
-	    {
-	      mem1 = nullmap_ptr1 + element_offset;
-	    }
-	  else
-	    {
-	      mem1 += pr_midxkey_element_disk_size (mem1, dom);
-	    }
-
-	  element_offset = OR_GET_BYTE ((offset_ptr2 + 1) + i);
-	  assert (element_offset > 0);
-	  if (element_offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
-	    {
-	      mem2 = nullmap_ptr2 + element_offset;
-	    }
-	  else
-	    {
-	      mem2 += pr_midxkey_element_disk_size (mem2, dom);
-	    }
+	  pr_midxkey_next (nullmap_a_ptr, offset_a_ptr, element_domain, i, &buf_a_ptr);
+	  pr_midxkey_next (nullmap_b_ptr, offset_b_ptr, element_domain, i, &buf_b_ptr);
 	}			/* for (i = 0; ... ) */
       assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
-      if (dom && dom->is_desc)
+      if (element_domain && element_domain->is_desc)
 	{
 	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
 	}

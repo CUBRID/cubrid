@@ -11673,8 +11673,8 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   const int *asc_desc = NULL;
 
   OR_BUF buf;
-  OR_MIDXKEY or_midxkey;
-  int buf_size, offset;
+  char *nullmap_ptr, *offset_ptr;
+  int buf_size, nullmap_size, offset_size, header_size;
 
   buf_size = 0;
   midxkey.buf = NULL;
@@ -11718,8 +11718,10 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       dom = attr_dom;
     }
 
-  or_midxkey.set_header_size (attr_count);
-  buf_size += or_midxkey.get_header_size ();
+  nullmap_size = pr_midxkey_get_nullmap_size (attr_count);
+  offset_size = pr_midxkey_get_offset_size (attr_count);
+  header_size = pr_midxkey_get_header_size (attr_count);
+  buf_size += header_size;
 
   midxkey.buf = (char *) db_private_alloc (NULL, buf_size);
   if (midxkey.buf == NULL)
@@ -11729,9 +11731,11 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
     }
 
   or_init (&buf, midxkey.buf, buf_size);
+  or_advance (&buf, header_size);
 
-  or_midxkey.set_buffer (&buf);
-  or_midxkey.clear_header ();
+  nullmap_ptr = pr_midxkey_get_nullmap_ptr (midxkey.buf);
+  offset_ptr = pr_midxkey_get_offset_ptr (nullmap_ptr, nullmap_size);
+  pr_midxkey_init_header (nullmap_ptr, header_size);
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
@@ -11742,22 +11746,22 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 	}
       dom = (*attr)->domain;
 
-      or_midxkey.set_offset (i);
+      pr_midxkey_set_current_offset (nullmap_ptr, offset_ptr, buf.ptr, i);
 
       if (DB_IS_NULL (val))
 	{
-	  assert (or_midxkey.is_null_with_index (i));
+	  assert (pr_midxkey_element_is_null (nullmap_ptr, i));
 	  continue;
 	}
 
-      dom->type->index_writeval (or_midxkey.get_buffer (), val);
-      or_midxkey.set_nullmap (i);
+      dom->type->index_writeval (&buf, val);
+      pr_midxkey_set_enable_nullmap (nullmap_ptr, i);
     }
 
-  or_midxkey.set_offset (attr_count);
+  pr_midxkey_set_current_offset (nullmap_ptr, offset_ptr, buf.ptr, attr_count);
 
   midxkey.size = buf_size;
-  assert (buf_size == or_midxkey.get_current_offset ());
+  assert (buf_size == pr_midxkey_calculate_offset (nullmap_ptr, buf.ptr));
   midxkey.ncolumns = attr_count;
   midxkey.domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, attr_count, 0, setdomain);
   if (midxkey.domain == NULL)

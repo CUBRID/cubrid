@@ -1494,8 +1494,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   regu_variable_list_node *operand;
 
   OR_BUF buf;
-  OR_MIDXKEY or_midxkey;
-  int buf_size, offset;
+  char *nullmap_ptr, *offset_ptr;
+  int buf_size, nullmap_size, offset_size, header_size;
 
   bool need_new_setdomain = false;
   TP_DOMAIN *idx_setdomain = NULL, *vals_setdomain = NULL;
@@ -1507,14 +1507,14 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   *indexable = false;
 
-  if (TP_DOMAIN_TYPE (func->domain) != DB_TYPE_MIDXKEY)
+  ret = pr_midxkey_check_valid_domain (btree_domainp);
+  if (ret < 0)
     {
       assert (false);
       return ER_FAILED;
     }
 
-  ret = pr_midxkey_check_valid_domain (btree_domainp);
-  if (ret < 0)
+  if (TP_DOMAIN_TYPE (func->domain) != DB_TYPE_MIDXKEY)
     {
       assert (false);
       return ER_FAILED;
@@ -1722,8 +1722,10 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
     }
 
-  or_midxkey.set_header_size (idx_ncols);
-  buf_size += or_midxkey.get_header_size ();
+  nullmap_size = pr_midxkey_get_nullmap_size (idx_ncols);
+  offset_size = pr_midxkey_get_offset_size (idx_ncols);
+  header_size = pr_midxkey_get_header_size (idx_ncols);
+  buf_size += header_size;
 
   midxkey.buf = (char *) db_private_alloc (thread_p, buf_size);
   if (midxkey.buf == NULL)
@@ -1733,9 +1735,11 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
     }
 
   or_init (&buf, midxkey.buf, buf_size);
+  or_advance (&buf, header_size);
 
-  or_midxkey.set_buffer (&buf);
-  or_midxkey.clear_header ();
+  nullmap_ptr = pr_midxkey_get_nullmap_ptr (midxkey.buf);
+  offset_ptr = pr_midxkey_get_offset_ptr (nullmap_ptr, nullmap_size);
+  pr_midxkey_init_header (nullmap_ptr, header_size);
 
   /* generate multi columns key (values -> midxkey.buf) */
   for (operand = func->value.funcp->operand, i = 0, dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;
@@ -1755,14 +1759,14 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      or_midxkey.set_offset (i);
+      pr_midxkey_set_current_offset (nullmap_ptr, offset_ptr, buf.ptr, i);
 
       if (DB_IS_NULL (val))
 	{
 	  if (is_iss && i == 0)
 	    {
 	      /* There is nothing to write for NULL. Just make sure the bit is not set */
-	      assert (or_midxkey.is_null_with_index (i));
+	      assert (pr_midxkey_element_is_null (nullmap_ptr, i));
 	      continue;
 	    }
 	  else
@@ -1773,19 +1777,19 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      dom->type->index_writeval (or_midxkey.get_buffer (), val);
-      or_midxkey.set_nullmap (i);
+      dom->type->index_writeval (&buf, val);
+      pr_midxkey_set_enable_nullmap (nullmap_ptr, i);
     }
 
   for (i = natts; i < idx_ncols; i++)
     {
-      or_midxkey.set_offset (i);
+      pr_midxkey_set_current_offset (nullmap_ptr, offset_ptr, buf.ptr, i);
     }
-  or_midxkey.set_offset (idx_ncols);
+  pr_midxkey_set_current_offset (nullmap_ptr, offset_ptr, buf.ptr, idx_ncols);
 
   /* Make midxkey DB_VALUE */
   midxkey.size = buf_size;
-  assert (buf_size == or_midxkey.get_current_offset ());
+  assert (buf_size == pr_midxkey_calculate_offset (nullmap_ptr, buf.ptr));
   midxkey.ncolumns = natts;
 
   if (vals_setdomain != NULL)
