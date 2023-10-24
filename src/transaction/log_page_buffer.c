@@ -3483,7 +3483,6 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
   const bool have_only_partial_record_in_page = log_pgptr->hdr.offset == NULL_LOG_OFFSET;
-
   if (have_only_partial_record_in_page)
     {
       // Do nothing. It will be finished up at a following call.
