@@ -230,7 +230,7 @@ namespace cublog
 	     * Lock will be acquired for the class that log_rec.classoid indicates
 	     */
 	    int error = heap_get_class_name (&thread_entry, &log_rec.classoid, &classname);
-	    _er_log_debug (ARG_FILE_LINE,"[REPL LOCK] Schema modification lock is aquired on %s (OID = %d|%d|%d)\n",
+	    _er_log_debug (ARG_FILE_LINE,"[REPL_LOCK] Schema modification lock is aquired on %s (OID = %d|%d|%d)\n",
 			   error != NO_ERROR ? "null" : classname, OID_AS_ARGS (&log_rec.classoid));
 
 	    if (classname != NULL)
