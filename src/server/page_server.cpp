@@ -998,6 +998,10 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   int error = NO_ERROR;
 
   LOG_CS_ENTER (&entry);
+  auto unlock_log_cs_on_exit = scope_exit {[&entry] ()
+  {
+    LOG_CS_EXIT (&entry);
+  }};
 
   while (remaining_page_cnt > 0)
     {
@@ -1052,8 +1056,6 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
     }
 
   disconnect_followee_page_server (with_disc_msg);
-
-  LOG_CS_EXIT (&entry);
 }
 
 bool
