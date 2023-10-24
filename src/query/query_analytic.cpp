@@ -54,7 +54,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
       return ER_FAILED;
     }
 
-  const FUNC_TYPE fcode = func_p->function;
+  const FUNC_CODE fcode = func_p->function;
   if (fcode == PT_COUNT_STAR || fcode == PT_COUNT)
     {
       db_make_bigint (func_p->value, 0);
@@ -1104,7 +1104,7 @@ qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::analytic_list
   int error = NO_ERROR;
   INT64 tuple_count;
   double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
-  FUNC_TYPE function;
+  FUNC_CODE function;
   double cur_group_percentile;
 
   assert (ana_p != NULL && scan_id != NULL && scan_id->status == S_OPENED);
