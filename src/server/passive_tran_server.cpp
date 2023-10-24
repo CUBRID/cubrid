@@ -46,7 +46,7 @@ passive_tran_server::connection_handler::request_handlers_map_t
 passive_tran_server::connection_handler::get_request_handlers ()
 {
   /* start from the request handlers in common on ATS and PTS */
-  auto  handlers_map = tran_server::connection_handler::get_request_handlers ();
+  auto handlers_map = tran_server::connection_handler::get_request_handlers ();
 
   auto from_ps_log_prior_list_handler = std::bind (&passive_tran_server::connection_handler::receive_log_prior_list,
 					this, std::placeholders::_1);
@@ -61,6 +61,16 @@ passive_tran_server::connection_handler::get_saved_lsa () const
 {
   assert (false); // Only used in active transaction server
   return NULL_LSA;
+}
+
+void
+passive_tran_server::connection_handler::on_connecting ()
+{
+}
+
+void
+passive_tran_server::connection_handler::on_disconnecting ()
+{
 }
 
 void
@@ -206,15 +216,15 @@ void passive_tran_server::wait_replication_past_target_lsa (LOG_LSA lsa)
 }
 
 passive_tran_server::connection_handler *
-passive_tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
+passive_tran_server::create_connection_handler (tran_server &ts, cubcomm::node &&node) const
 {
   // passive_tran_server::connection_handler
-  return new connection_handler (std::move (chn), ts);
+  return new connection_handler (ts, std::move (node));
 }
 
 void
-passive_tran_server::connection_handler::receive_log_prior_list (page_server_conn_t::sequenced_payload &a_ip)
+passive_tran_server::connection_handler::receive_log_prior_list (page_server_conn_t::sequenced_payload &&a_sp)
 {
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
 }

@@ -57,12 +57,35 @@ mock_socket_direction::push_message (std::string &&str)
 }
 
 bool
+mock_socket_direction::peek_message (std::string &str)
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_condvar.wait (ulock, [this]
+  {
+    return m_disconnect || (!m_frozen && !m_messages.empty ());
+  });
+
+  if (m_disconnect)
+    {
+      return false;
+    }
+
+  assert (str.empty ());
+  str = m_messages.front ();
+
+  ulock.unlock ();
+  m_condvar.notify_all ();
+
+  return true;
+}
+
+bool
 mock_socket_direction::pull_message (std::string &str)
 {
   std::unique_lock<std::mutex> ulock (m_mutex);
   m_condvar.wait (ulock, [this]
   {
-    return !m_messages.empty () || m_disconnect;
+    return m_disconnect || (!m_frozen && !m_messages.empty ());
   });
 
   if (m_disconnect)
@@ -116,6 +139,22 @@ mock_socket_direction::wait_until_message_count (size_t count)
 }
 
 void
+mock_socket_direction::freeze ()
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_frozen = true;
+}
+
+void
+mock_socket_direction::unfreeze ()
+{
+  std::unique_lock<std::mutex> ulock (m_mutex);
+  m_frozen = false;
+  ulock.unlock ();
+  m_condvar.notify_all ();
+}
+
+void
 add_socket_direction (const std::string &sender_id, const std::string &receiver_id,
 		      mock_socket_direction &sockdir, bool last_one_to_be_initialized)
 {
@@ -132,6 +171,54 @@ add_socket_direction (const std::string &sender_id, const std::string &receiver_
 }
 
 void
+disconnect_sender_socket_direction (const std::string &sender_id)
+{
+  const auto it = global_sender_sockdirs.find (sender_id);
+  if (it != global_sender_sockdirs.cend())
+    {
+      it->second->disconnect ();
+    }
+}
+
+void
+disconnect_receiver_socket_direction (const std::string &receiver_id)
+{
+  const auto it = global_receiver_sockdirs.find (receiver_id);
+
+  if (it != global_receiver_sockdirs.cend())
+    {
+      it->second->disconnect ();
+    }
+}
+
+void
+freeze_receiver_socket_direction (const std::string &receiver_id)
+{
+  const auto it = global_receiver_sockdirs.find (receiver_id);
+  assert (it != global_receiver_sockdirs.cend());
+
+  it->second->freeze ();
+}
+
+void
+unfreeze_receiver_socket_direction (const std::string &receiver_id)
+{
+  const auto it = global_receiver_sockdirs.find (receiver_id);
+  assert (it != global_receiver_sockdirs.cend());
+
+  it->second->unfreeze ();
+}
+
+bool
+does_receiver_socket_direction_have_message (const std::string &receiver_id)
+{
+  const auto it = global_receiver_sockdirs.find (receiver_id);
+  assert (it != global_receiver_sockdirs.cend());
+
+  return it->second->has_message ();
+}
+
+void
 clear_socket_directions ()
 {
   global_sender_sockdirs.clear ();
@@ -145,26 +232,32 @@ namespace cubcomm
   // channel mockup
   //
 
+  std::atomic<uint64_t> channel::unique_id_allocator = 0;
+
   channel::channel (int max_timeout_in_ms)
-    : m_max_timeout_in_ms (max_timeout_in_ms),
-      m_type (CHANNEL_TYPE::NO_TYPE),
-      m_socket (INVALID_SOCKET)
+    : m_max_timeout_in_ms (max_timeout_in_ms)
+    , m_type (CHANNEL_TYPE::NO_TYPE)
+    , m_socket (INVALID_SOCKET)
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (std::string &&channel_name)
     : m_channel_name { std::move (channel_name) }
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (int max_timeout_in_ms, std::string &&channel_name)
     : m_max_timeout_in_ms (max_timeout_in_ms)
     , m_channel_name { std::move (channel_name) }
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (channel &&comm)
     : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
+    , m_unique_id (comm.m_unique_id)
   {
     m_type = comm.m_type;
     comm.m_type = NO_TYPE;
@@ -174,6 +267,9 @@ namespace cubcomm
 
     m_channel_name = std::move (comm.m_channel_name);
     m_hostname = std::move (comm.m_hostname);
+
+    m_port = comm.m_port;
+    comm.m_port = INVALID_PORT;
   }
 
   channel::~channel ()
@@ -188,18 +284,76 @@ namespace cubcomm
 
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
+    // function is not used in unit test context anymore
+    REQUIRE (false);
+    return NO_ERRORS;
+  }
+
+  css_error_code channel::recv_allow_truncated (char *buffer, std::size_t &maxlen_in_recvlen_out,
+      std::size_t &remaining_len)
+  {
     const std::string channel_id = get_channel_id ();
-    assert (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.cend ());
+    REQUIRE (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.cend ());
 
-    std::string message;
+    std::string message_peek;
 
-    if (!global_receiver_sockdirs[channel_id]->pull_message (message))
+    remaining_len = 0;
+
+    if (!global_receiver_sockdirs[channel_id]->peek_message (message_peek))
       {
 	return CONNECTION_CLOSED;
       }
 
-    REQUIRE (maxlen_in_recvlen_out == message.size ());
-    std::memcpy (buffer, message.c_str (), maxlen_in_recvlen_out);
+    REQUIRE (message_peek.size () > 0);
+    if (message_peek.size () > maxlen_in_recvlen_out)
+      {
+	// copy at most what is supported and report back remaining
+	// maxlen_in_recvlen_out - same length
+	std::memcpy (buffer, message_peek.c_str (), maxlen_in_recvlen_out);
+
+	remaining_len = message_peek.size () - maxlen_in_recvlen_out;
+
+	// message will be consumed at completion/remainder
+	return RECORD_TRUNCATED;
+      }
+    else
+      {
+	//REQUIRE (message.size () <= maxlen_in_recvlen_out);
+	maxlen_in_recvlen_out = message_peek.size ();
+	std::memcpy (buffer, message_peek.c_str (), maxlen_in_recvlen_out);
+
+	std::string message_pull;
+	if (!global_receiver_sockdirs[channel_id]->pull_message (message_pull))
+	  {
+	    REQUIRE (false);
+	    return CONNECTION_CLOSED;
+	  }
+	assert (maxlen_in_recvlen_out == message_pull.size ());
+	// message peek is now a dangling reference
+
+	return NO_ERRORS;
+      }
+  }
+
+  css_error_code channel::recv_remainder (char *buffer, std::size_t &maxlen_in_recvlen_out)
+  {
+    const std::string channel_id = get_channel_id ();
+    REQUIRE (global_receiver_sockdirs.find (channel_id) != global_receiver_sockdirs.cend ());
+
+    std::string message_pull;
+
+    if (!global_receiver_sockdirs[channel_id]->pull_message (message_pull))
+      {
+	REQUIRE (false);
+	return CONNECTION_CLOSED;
+      }
+
+    //maxlen_in_recvlen_out remains the same
+    // TODO: how to actually read from remaining offset
+    std::size_t str_offset = (message_pull.size () - maxlen_in_recvlen_out);
+    const char *const str_at_offset = message_pull.c_str () + str_offset;
+    std::memcpy (buffer, str_at_offset, maxlen_in_recvlen_out);
+
     return NO_ERRORS;
   }
 
@@ -208,7 +362,10 @@ namespace cubcomm
     const std::string channel_id = get_channel_id ();
     assert (global_sender_sockdirs.find (channel_id) != global_sender_sockdirs.cend ());
 
-    global_sender_sockdirs[channel_id]->push_message (std::string (buffer, length));
+    if (!global_sender_sockdirs[channel_id]->push_message (std::string (buffer, length)))
+      {
+	return ERROR_ON_WRITE;
+      }
     return NO_ERRORS;
   }
 
@@ -238,20 +395,8 @@ namespace cubcomm
 
   void channel::close_connection ()
   {
-    for (auto &it : global_sender_sockdirs)
-      {
-	if (it.first == get_channel_id ())
-	  {
-	    it.second->disconnect ();
-	  }
-      }
-    for (auto &it : global_receiver_sockdirs)
-      {
-	if (it.first == get_channel_id ())
-	  {
-	    it.second->disconnect ();
-	  }
-      }
+    disconnect_sender_socket_direction (get_channel_id ());
+    disconnect_receiver_socket_direction (get_channel_id ());
   }
 
   int channel::get_max_timeout_in_ms () const

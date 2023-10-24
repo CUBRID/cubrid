@@ -3172,52 +3172,102 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   vacuum_stop_master (thread_p);
 
 #if defined (SERVER_MODE)
-  if (get_server_type () == SERVER_TYPE_PAGE)
+  if (is_page_server ())
     {
-      log_Gl.finalize_log_prior_receiver ();	// stop receiving log before log_final()
-      ps_Gl->disconnect_all_tran_server ();
+      /*
+       * The dependencies in PS shutdown: 
+       * - ps_Gl.disconnect_all_tran_server() -> log_Gl.finalize_log_prior_receiver()
+       *   :stop communication with tran_server to prevent the ATS from pushing log prior nodes 
+       *    to finalized receiver.
+       * - ps_Gl->disconnect_all_tran_servers() -> ps_Gl->finalize_request_responder()
+       *   : the dtor of connection_handler access the request responder.
+       * - log_Gl.finalize_log_prior_receiver(), ps_Gl->finish_replication_during_shutdown -> log_final()
+       *   : they access the log_Gl so that they must stop before log_final(). 
+       *   e.g. they access log_Gl.append.nxio_lsa which are set NULL_LSA in log_final().
+       *
+       * The disconnection from TS.
+       * * Note that the PS-disconnection process always starts from TS.
+       *   PS requests the disconnection but doesn't disconnect by itself. It's the case even during the shutdown.
+       * 1. A PS sends SEND_DISCONNECT_REQUEST_MSG to a TS.
+       *   - the PS keeps the connection and running.
+       * 2. The TS who received the message starts preparing disconnection.
+       *   - Stop pushing requests to the connection.
+       *   - Stop threads generating msgs to the connection.
+       * 3. The TS sends SEND_DISCONNECT_MSG to the PS.
+       *   - When the PS receives this msg, it can release resources at any point for the connection.
+       * 4. The TS releases resources for the connection.
+       *   - Stop the request receiver for the connection.
+       *   - Wake up all threads that wait for a response.
+       *   - Make sure all msg are digested.
+       *   - Stop the request sender for the connection.
+       */
+      ps_Gl->disconnect_all_tran_servers ();
+      ps_Gl->disconnect_all_follower_page_servers ();
+      ps_Gl->disconnect_followee_page_server (true /* with_disc_msg */ );
+      log_Gl.finalize_log_prior_receiver ();
+      log_Gl.finalize_log_prior_sender ();
       ps_Gl->finish_replication_during_shutdown (*thread_p);
       ps_Gl->finalize_request_responder ();
     }
-  else if (get_server_type () == SERVER_TYPE_TRANSACTION)
+  else if (is_passive_transaction_server ())
     {
-      if (is_passive_transaction_server ())
-	{
-	  // shutdown order for Passive Transaction Server:
-	  //  - send and receive confirmation that Page Server(s) stop dispatching log prior messages
-	  //    - done in: shutdown server routine
-	  //  - stop log prior receiver on Passive Transaction Server
-	  //    - done in: shutdown server routine
-	  //  - wait for replication to finish and stop its infrastructure
-	  //    - done in: shutdown server routine
-	  //  - finalize log infrastructure
-	  //    - done in: shutdown server routine
-	  //  - stop sending messages to page server (eg: oldest MVCCID updates)
-	  //    - done in: shutdown server routine
-	  //      -> polymorphically right before sending
-	  //         the final disconnect message to Page Server(s)
-	  //  - send the final disconnect message to Page Server(s)
-	  //    - done in: shutdown server routine
-	  //      -> tran_server::disconnect_all_page_servers
-	  //        -> tran_server::connection_handler::disconnect
-	  //  - delete the Passive Transaction Server object
-	  //    - done in: finalize_server_type
+      // shutdown order for Passive Transaction Server:
+      //  - send and receive confirmation that Page Server(s) stop dispatching log prior messages
+      //    - done in: shutdown server routine (this routine)
+      //  - stop log prior receiver on Passive Transaction Server
+      //    - done in: shutdown server routine
+      //  - wait for replication to finish and stop its infrastructure
+      //    - done in: shutdown server routine
+      //  - finalize log infrastructure
+      //    - done in: shutdown server routine
+      //  - stop sending messages to page server (eg: oldest MVCCID updates)
+      //    - done in: shutdown server routine
+      //      -> polymorphically right before sending
+      //         the final disconnect message to Page Server(s)
+      //  - send the final disconnect message to Page Server(s)
+      //    - done in: shutdown server routine
+      //      -> tran_server::disconnect_all_page_servers
+      //        -> tran_server::connection_handler::disconnect
+      //  - delete the Passive Transaction Server object
+      //    - done in: finalize_server_type
 
-	  passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
-	  pts_ptr->send_and_receive_stop_log_prior_dispatch ();
+      passive_tran_server *const pts_ptr = get_passive_tran_server_ptr ();
+      pts_ptr->send_and_receive_stop_log_prior_dispatch ();
 
-	  log_Gl.finalize_log_prior_receiver ();	// stop receiving log before log_final()
+      log_Gl.finalize_log_prior_receiver ();	// stop receiving log before log_final()
 
-	  // NOTE: passive transaction server, regarding replication: even if a
-	  // passive transaction server is completely transient - and read-only -
-	  // and, thus, does not need to reach a consistent state at shutdown (because it
-	  // will pick a consistent state at boot from the page server(s) it connects to), replication
-	  // needs to be explicitly terminated gracefully before log infrastructure is finalized
-	  pts_ptr->finish_replication_during_shutdown (*thread_p);
-	}
+      // NOTE: passive transaction server, regarding replication: even if a
+      // passive transaction server is completely transient - and read-only -
+      // and, thus, does not need to reach a consistent state at shutdown (because it
+      // will pick a consistent state at boot from the page server(s) it connects to), replication
+      // needs to be explicitly terminated gracefully before log infrastructure is finalized
+      pts_ptr->finish_replication_during_shutdown (*thread_p);
 
       ts_Gl->stop_outgoing_page_server_messages ();
       ts_Gl->disconnect_all_page_servers ();
+    }
+#endif
+
+#if defined(SERVER_MODE)
+  pgbuf_daemons_destroy ();
+  cdc_daemons_destroy ();
+#endif
+
+#if defined (SA_MODE)
+  vacuum_sa_reflect_last_blockid (thread_p);
+#endif // SA_MODE
+  log_final (thread_p);
+
+#if defined(SERVER_MODE)
+  if (is_active_transaction_server ())
+    {
+      // for active transaction server, the log final needs to have the full connection
+      // infrastructure alive to flush the last of the log
+      ts_Gl->stop_outgoing_page_server_messages ();
+      ts_Gl->disconnect_all_page_servers ();
+      // the check for ATS is needed because finalize routine asserts that there
+      // must have been an instance of the sender
+      log_Gl.finalize_log_prior_sender ();
 
       // shutdown order for Active Transaction Server:
       //  - finalize log infrastructure
@@ -3243,16 +3293,6 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
       //            -> finalize_server_type
     }
 #endif
-
-#if defined(SERVER_MODE)
-  pgbuf_daemons_destroy ();
-  cdc_daemons_destroy ();
-#endif
-
-#if defined (SA_MODE)
-  vacuum_sa_reflect_last_blockid (thread_p);
-#endif // SA_MODE
-  log_final (thread_p);
 
   /* Since all pages were flushed, now it's safe to destroy DWB. */
   if (!is_tran_server_with_remote_storage ())

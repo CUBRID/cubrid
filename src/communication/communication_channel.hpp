@@ -70,6 +70,9 @@ namespace cubcomm
 
       /* receive/send functions that use the created m_socket */
       css_error_code recv (char *buffer, std::size_t &maxlen_in_recvlen_out);
+      css_error_code recv_allow_truncated (char *buffer, std::size_t &maxlen_in_recvlen_out,
+					   std::size_t &remaining_len);
+      css_error_code recv_remainder (char *buffer, std::size_t &maxlen_in_recvlen_out);
       css_error_code send (const std::string &message);
       css_error_code send (const char *buffer, std::size_t length);
 
@@ -114,7 +117,7 @@ namespace cubcomm
 	    ss << "_" << m_port;
 	  }
 
-	ss << "_" << m_socket;
+	ss << "_" << m_unique_id;
 
 	return ss.str ();
       }
@@ -126,8 +129,11 @@ namespace cubcomm
       std::string m_channel_name;
       std::string m_hostname;
       int m_port = INVALID_PORT;
-  };
+      const uint64_t m_unique_id;
 
+    private:
+      static std::atomic<uint64_t> unique_id_allocator; // allocates ever-increasing value to m_uqniue_id
+  };
 
 } /* cubcomm namespace */
 

@@ -34,7 +34,7 @@ class active_tran_server : public tran_server
     }
 
     bool uses_remote_storage () const final override;
-    MVCCID get_oldest_active_mvccid_from_page_server () const;
+    MVCCID get_oldest_active_mvccid_from_page_server ();
     log_lsa compute_consensus_lsa ();
 
   private:
@@ -42,7 +42,7 @@ class active_tran_server : public tran_server
     {
       public:
 	connection_handler () = delete;
-	connection_handler (cubcomm::channel &&chn, tran_server &ts);
+	connection_handler (tran_server &ts, cubcomm::node &&node);
 
 	connection_handler (const connection_handler &) = delete;
 	connection_handler (connection_handler &&) = delete;
@@ -50,16 +50,25 @@ class active_tran_server : public tran_server
 	connection_handler &operator= (const connection_handler &) = delete;
 	connection_handler &operator= (connection_handler &&) = delete;
 
-	void disconnect () final override;
+	~connection_handler () override;
 
       private:
 	request_handlers_map_t get_request_handlers () final override;
-	void remove_prior_sender_sink ();
 
 	// request handlers
-	void receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip);
+	void receive_saved_lsa (page_server_conn_t::sequenced_payload &&a_sp);
+	void receive_catchup_complete (page_server_conn_t::sequenced_payload &&a_sp);
+
+	// a request only used internally
+	void send_start_catch_up_request (std::string &&host, int32_t port, LOG_LSA &&catchup_lsa);
 
 	log_lsa get_saved_lsa () const override final;
+
+	void on_connecting () override final;
+	void on_disconnecting () override final;
+
+	// Function used as sink for log transfer
+	void prior_sender_sink_hook (std::string &&message);
 
       private:
 	cublog::prior_sender::sink_hook_t m_prior_sender_sink_hook_func;
@@ -70,8 +79,7 @@ class active_tran_server : public tran_server
     bool get_remote_storage_config () final override;
 
     void stop_outgoing_page_server_messages () final override;
-    connection_handler *create_connection_handler (cubcomm::channel &&chn,
-	tran_server &ts) const final override;
+    connection_handler *create_connection_handler (tran_server &ts, cubcomm::node &&node) const final override;
 
   private:
     bool m_uses_remote_storage = false;

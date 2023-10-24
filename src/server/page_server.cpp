@@ -18,6 +18,7 @@
 
 #include "page_server.hpp"
 
+#include "communication_server_channel.hpp"
 #include "disk_manager.h"
 #include "error_manager.h"
 #include "log_impl.h"
@@ -29,12 +30,23 @@
 #include "page_buffer.h"
 #include "server_type.hpp"
 #include "system_parameter.h"
+#include "thread_manager.hpp"
 #include "vpid_utilities.hpp"
 
 #include <cassert>
 #include <cstring>
 #include <functional>
 #include <thread>
+
+page_server::page_server (const char *db_name)
+  : m_server_name { db_name }
+{
+  const auto thread_count = 4; // Arbitrary chosen
+  const auto task_max_count = thread_count * 4;
+
+  m_worker_pool = cubthread::get_manager ()->create_worker_pool (thread_count, task_max_count, "page_server_workers",
+		  nullptr, 1, false);
+}
 
 page_server::~page_server ()
 {
@@ -47,9 +59,15 @@ page_server::~page_server ()
   assert (m_passive_tran_server_conn.size () == 0);
 
   m_async_disconnect_handler.terminate ();
+
+  cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
+  assert (m_worker_pool == nullptr);
+
+  assert (m_follower_disc_future.valid() == false);
 }
 
-page_server::connection_handler::connection_handler (cubcomm::channel &chn, transaction_server_type server_type,
+page_server::tran_server_connection_handler::tran_server_connection_handler (cubcomm::channel &&chn,
+    transaction_server_type server_type,
     page_server &ps)
   : m_server_type { server_type }
   , m_connection_id { chn.get_channel_id () }
@@ -67,56 +85,60 @@ page_server::connection_handler::connection_handler (cubcomm::channel &chn, tran
     {
       // TODO: rename handler with _async / _sync
       tran_to_page_request::GET_BOOT_INFO,
-      std::bind (&page_server::connection_handler::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_boot_info_request, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_LOG_PAGE_FETCH,
-      std::bind (&page_server::connection_handler::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_DATA_PAGE_FETCH,
-      std::bind (&page_server::connection_handler::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_data_page_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_DISCONNECT_MSG,
-      std::bind (&page_server::connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
     },
     // active only
     {
       tran_to_page_request::SEND_LOG_PRIOR_LIST,
-      std::bind (&page_server::connection_handler::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_log_prior_list, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID,
-      std::bind (&page_server::connection_handler::handle_oldest_active_mvccid_request, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::handle_oldest_active_mvccid_request, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      tran_to_page_request::SEND_START_CATCH_UP,
+      std::bind (&page_server::tran_server_connection_handler::receive_start_catch_up, std::ref (*this), std::placeholders::_1)
     },
     // passive only
     {
       tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH,
-      std::bind (&page_server::connection_handler::receive_log_boot_info_fetch, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_log_boot_info_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_STOP_LOG_PRIOR_DISPATCH,
-      std::bind (&page_server::connection_handler::receive_stop_log_prior_dispatch, std::ref (*this),
+      std::bind (&page_server::tran_server_connection_handler::receive_stop_log_prior_dispatch, std::ref (*this),
 		 std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_OLDEST_ACTIVE_MVCCID,
-      std::bind (&page_server::connection_handler::receive_oldest_active_mvccid, std::ref (*this), std::placeholders::_1)
+      std::bind (&page_server::tran_server_connection_handler::receive_oldest_active_mvccid, std::ref (*this), std::placeholders::_1)
     }
   },
   page_to_tran_request::RESPOND,
   tran_to_page_request::RESPOND,
   RESPONSE_PARTITIONING_SIZE,
-  std::bind (&page_server::connection_handler::abnormal_tran_server_disconnect,
-	     std::ref (*this), std::placeholders::_1, std::placeholders::_2)));
-  m_ps.get_responder ().register_connection (m_conn.get ());
+  std::bind (&page_server::tran_server_connection_handler::abnormal_tran_server_disconnect,
+	     std::ref (*this), std::placeholders::_1, std::placeholders::_2), nullptr));
+  m_ps.get_tran_server_responder ().register_connection (m_conn.get ());
 
   assert (m_conn != nullptr);
   m_conn->start ();
 }
 
-page_server::connection_handler::~connection_handler ()
+page_server::tran_server_connection_handler::~tran_server_connection_handler ()
 {
   assert (!m_prior_sender_sink_hook_func);
 
@@ -126,53 +148,55 @@ page_server::connection_handler::~connection_handler ()
 
   // blocking call
   // wait async responder to finish processing in-flight incoming roundtrip requests
-  m_ps.get_responder ().wait_connection_to_become_idle (m_conn.get ());
+  m_ps.get_tran_server_responder ().wait_connection_to_become_idle (m_conn.get ());
 
   m_conn->stop_outgoing_communication_thread ();
 }
 
 const std::string &
-page_server::connection_handler::get_connection_id () const
+page_server::tran_server_connection_handler::get_connection_id () const
 {
   return m_connection_id;
 }
 
 void
-page_server::connection_handler::push_request (page_to_tran_request id, std::string msg)
+page_server::tran_server_connection_handler::push_request (page_to_tran_request id, std::string &&msg)
 {
   m_conn->push (id, std::move (msg));
 }
 
 void
-page_server::connection_handler::receive_log_prior_list (tran_server_conn_t::sequenced_payload &a_ip)
+page_server::tran_server_connection_handler::receive_log_prior_list (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  log_Gl.get_log_prior_receiver ().push_message (std::move (a_ip.pull_payload ()));
+  log_Gl.get_log_prior_receiver ().push_message (std::move (a_sp.pull_payload ()));
 }
 
 template<class F, class ... Args>
 void
-page_server::connection_handler::push_async_response (F &&a_func, tran_server_conn_t::sequenced_payload &&a_sp,
+page_server::tran_server_connection_handler::push_async_response (F &&a_func,
+    tran_server_conn_t::sequenced_payload &&a_sp,
     Args &&... args)
 {
   auto handler_func = std::bind (std::forward<F> (a_func), std::placeholders::_1, std::placeholders::_2,
 				 std::forward<Args> (args)...);
-  m_ps.get_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
+  m_ps.get_tran_server_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (handler_func));
 }
 
 void
-page_server::connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::tran_server_connection_handler::receive_log_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  push_async_response (&logpb_respond_fetch_log_page_request, std::move (a_sp));
+  push_async_response (logpb_respond_fetch_log_page_request, std::move (a_sp));
 }
 
 void
-page_server::connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::tran_server_connection_handler::receive_data_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  push_async_response (&pgbuf_respond_data_fetch_page_request, std::move (a_sp));
+  push_async_response (pgbuf_respond_data_fetch_page_request, std::move (a_sp));
 }
 
 void
-page_server::connection_handler::handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::tran_server_connection_handler::handle_oldest_active_mvccid_request (tran_server_conn_t::sequenced_payload
+    &&a_sp)
 {
   assert (m_server_type == transaction_server_type::ACTIVE);
   const MVCCID oldest_mvccid = m_ps.m_pts_mvcc_tracker.get_global_oldest_active_mvccid ();
@@ -184,16 +208,62 @@ page_server::connection_handler::handle_oldest_active_mvccid_request (tran_serve
   m_conn->respond (std::move (a_sp));
 }
 
+
 void
-page_server::connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::tran_server_connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  m_prior_sender_sink_hook_func =
-	  std::bind (&connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
-  push_async_response (&log_pack_log_boot_info, std::move (a_sp), std::ref (m_prior_sender_sink_hook_func));
+  auto payload = a_sp.pull_payload ();
+  cubpacking::unpacker unpacker { payload.c_str (), payload.size () };
+
+  std::string host;
+  int32_t port;
+  LOG_LSA catchup_lsa;
+
+  unpacker.unpack_string (host);
+  unpacker.unpack_int (port);
+  cublog::lsa_utils::unpack (unpacker, catchup_lsa);
+
+  _er_log_debug (ARG_FILE_LINE,
+		 "[CATCH_UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
+		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
+  if (port == -1)
+    {
+      // TODO: It means that the ATS is booting up.
+      // it will be set properly after ATS recovery is implemented.
+      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      return;
+    }
+
+  assert (!catchup_lsa.is_null ());
+  assert (!log_Gl.hdr.append_lsa.is_null ());
+  assert (catchup_lsa >= log_Gl.hdr.append_lsa);
+
+  if (log_Gl.hdr.append_lsa == catchup_lsa)
+    {
+      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] There is nothing to catch up.\n");
+
+      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      return;
+    }
+
+  // Establish a connection with the PS to catch up with, and start the cathup asynchronously.
+  // The connection will be destoryed at the end of the catch-up.
+  m_ps.connect_to_followee_page_server (std::move (host), port);
+  m_ps.start_catchup (catchup_lsa);
 }
 
 void
-page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::tran_server_connection_handler::receive_log_boot_info_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
+{
+  m_prior_sender_sink_hook_func =
+	  std::bind (&tran_server_connection_handler::prior_sender_sink_hook, this, std::placeholders::_1);
+
+  push_async_response (log_pack_log_boot_info, std::move (a_sp), std::ref (m_prior_sender_sink_hook_func));
+}
+
+void
+page_server::tran_server_connection_handler::receive_stop_log_prior_dispatch (tran_server_conn_t::sequenced_payload
+    &&a_sp)
 {
   // empty request message
 
@@ -207,7 +277,7 @@ page_server::connection_handler::receive_stop_log_prior_dispatch (tran_server_co
 }
 
 void
-page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::tran_server_connection_handler::receive_oldest_active_mvccid (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   assert (m_server_type == transaction_server_type::PASSIVE);
 
@@ -217,7 +287,7 @@ page_server::connection_handler::receive_oldest_active_mvccid (tran_server_conn_
 }
 
 void
-page_server::connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &)
+page_server::tran_server_connection_handler::receive_disconnect_request (tran_server_conn_t::sequenced_payload &&)
 {
   // if this instance acted as a prior sender sink - in other words, if this connection handler was for a
   // passive transaction server - it should have been disconnected beforehand
@@ -232,7 +302,7 @@ page_server::connection_handler::receive_disconnect_request (tran_server_conn_t:
 }
 
 void
-page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code error_code,
+page_server::tran_server_connection_handler::abnormal_tran_server_disconnect (css_error_code error_code,
     bool &abort_further_processing)
 {
   /* Explanation for the mutex lock.
@@ -283,7 +353,7 @@ page_server::connection_handler::abnormal_tran_server_disconnect (css_error_code
  *        this message has no actual use currently. However, this mechanism will be reserved,
  *        because it can be used in the future when multiple PS's are supported. */
 void
-page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &a_sp)
+page_server::tran_server_connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &&a_sp)
 {
   /* It is simply a dummy value to check whether the TS (get_boot_info_from_page_server) receives the message well */
   DKNVOLS nvols_perm = VOLID_MAX;
@@ -297,7 +367,7 @@ page_server::connection_handler::receive_boot_info_request (tran_server_conn_t::
 }
 
 void
-page_server::connection_handler::prior_sender_sink_hook (std::string &&message) const
+page_server::tran_server_connection_handler::prior_sender_sink_hook (std::string &&message) const
 {
   assert (m_conn != nullptr);
   assert (message.size () > 0);
@@ -318,15 +388,289 @@ page_server::connection_handler::prior_sender_sink_hook (std::string &&message) 
  * In all these scenarios, log prior dispatch sink must be disconnected explicitly.
  * */
 void
-page_server::connection_handler::remove_prior_sender_sink ()
+page_server::tran_server_connection_handler::remove_prior_sender_sink ()
 {
   std::lock_guard<std::mutex> lockg { m_prior_sender_sink_removal_mtx };
 
   if (static_cast<bool> (m_prior_sender_sink_hook_func))
     {
-      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+      log_Gl.get_log_prior_sender ().remove_sink (m_prior_sender_sink_hook_func);
       m_prior_sender_sink_hook_func = nullptr;
     }
+}
+
+void
+page_server::tran_server_connection_handler::push_disconnection_request ()
+{
+  push_request (page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG, std::string ());
+}
+
+page_server::follower_connection_handler::follower_connection_handler (cubcomm::channel &&chn, page_server &ps)
+  : m_ps { ps }
+{
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
+
+  auto send_error_handler = std::bind (&page_server::follower_connection_handler::send_error_handler, this,
+				       std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = std::bind (&page_server::follower_connection_handler::recv_error_handler, this,
+				       std::placeholders::_1);
+
+  m_conn.reset (new follower_server_conn_t (std::move (chn),
+  {
+    {
+      follower_to_followee_request::SEND_DISCONNECT_MSG,
+      std::bind (&page_server::follower_connection_handler::receive_disconnect_request, std::ref (*this), std::placeholders::_1)
+    },
+    {
+      follower_to_followee_request::SEND_LOG_PAGES_FETCH,
+      std::bind (&page_server::follower_connection_handler::receive_log_pages_fetch, std::ref (*this), std::placeholders::_1)
+    },
+  },
+  followee_to_follower_request::RESPOND,
+  follower_to_followee_request::RESPOND,
+  RESPONSE_PARTITIONING_SIZE,
+  send_error_handler,
+  recv_error_handler));
+
+  m_ps.get_follower_responder ().register_connection (m_conn.get ());
+
+  m_conn->start ();
+}
+
+const std::string
+page_server::follower_connection_handler::get_channel_id () const
+{
+  return m_conn->get_underlying_channel_id ();
+}
+
+void
+page_server::follower_connection_handler::receive_log_pages_fetch (follower_server_conn_t::sequenced_payload &&a_sp)
+{
+  auto log_serving_func = std::bind (&page_server::follower_connection_handler::serve_log_pages, std::ref (*this),
+				     std::placeholders::_1, std::placeholders::_2);
+  m_ps.get_follower_responder ().async_execute (std::ref (*m_conn), std::move (a_sp), std::move (log_serving_func));
+}
+
+void
+page_server::follower_connection_handler::serve_log_pages (THREAD_ENTRY &, std::string &payload_in_out)
+{
+  // Unpack the message data
+  cubpacking::unpacker payload_unpacker { payload_in_out.c_str (), payload_in_out.size () };
+  LOG_PAGEID start_pageid;
+  int cnt;
+
+  assert (payload_in_out.size () == (sizeof (LOG_PAGEID) + OR_INT_SIZE));
+  payload_unpacker.unpack_bigint (start_pageid);
+  payload_unpacker.unpack_int (cnt);
+
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
+
+  // Pack the requested log pages
+  int error = NO_ERROR;
+  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) }; // Pack NO_ERROR assuming it'll succeed.
+  log_reader lr { LOG_CS_SAFE_READER };
+
+  for (int i = 0; i < cnt; i++)
+    {
+      const log_lsa fetch_lsa { start_pageid + i, 0 };
+
+      assert (fetch_lsa.pageid != LOGPB_HEADER_PAGE_ID);
+
+      error = lr.set_lsa_and_fetch_page (fetch_lsa);
+
+      if (error != NO_ERROR)
+	{
+	  // All or Nothing. Abandon all appended pages and just set the error.
+	  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+	  break;
+	}
+      else
+	{
+	  payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
+	}
+    }
+
+  if (perform_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "[READ LOG] Sending log pages to the pager server (%s). Page Id from %lld to %lld, Error code: %d\n",
+		     m_conn->get_underlying_channel_id ().c_str (), start_pageid, start_pageid + cnt - 1, error);
+    }
+}
+
+void
+page_server::follower_connection_handler::send_error_handler (css_error_code error_code, bool &abort_further_processing)
+{
+  m_ps.disconnect_follower_page_server_async (this);
+  // Don't access any members below here. This will be destroyed anytime soon.
+}
+
+void
+page_server::follower_connection_handler::recv_error_handler (css_error_code error_code)
+{
+  m_ps.disconnect_follower_page_server_async (this);
+  // Don't access any members below here. This will be destroyed anytime soon.
+}
+
+void
+page_server::follower_connection_handler::receive_disconnect_request (follower_server_conn_t::sequenced_payload &&a_sp)
+{
+  m_ps.disconnect_follower_page_server_async (this);
+  // Don't access any members below here. This will be destroyed anytime soon.
+}
+
+page_server::follower_connection_handler::~follower_connection_handler ()
+{
+  // blocking call
+  // internally, this will also wait pending outgoing roundtrip (send-receive) requests
+  m_conn->stop_incoming_communication_thread ();
+
+  // blocking call
+  // wait async responder to finish processing in-flight incoming roundtrip requests
+  m_ps.get_follower_responder ().wait_connection_to_become_idle (m_conn.get ());
+
+  m_conn->stop_outgoing_communication_thread ();
+}
+
+page_server::followee_connection_handler::followee_connection_handler (cubcomm::channel &&chn, page_server &ps)
+  : m_ps { ps }
+{
+  constexpr size_t RESPONSE_PARTITIONING_SIZE = 1; // Arbitrarily chosen
+
+  auto send_error_handler = std::bind (&page_server::followee_connection_handler::send_error_handler, this,
+				       std::placeholders::_1, std::placeholders::_2);
+  auto recv_error_handler = std::bind (&page_server::followee_connection_handler::recv_error_handler, this,
+				       std::placeholders::_1);
+
+  m_conn.reset (new followee_server_conn_t (std::move (chn),
+		{}, // followee doesn't request anything
+		follower_to_followee_request::RESPOND,
+		followee_to_follower_request::RESPOND,
+		RESPONSE_PARTITIONING_SIZE,
+		send_error_handler,
+		recv_error_handler));
+
+  m_conn->start ();
+}
+
+const std::string
+page_server::followee_connection_handler::get_channel_id () const
+{
+  return m_conn->get_underlying_channel_id ();
+}
+
+void
+page_server::followee_connection_handler::push_request (follower_to_followee_request reqid, std::string &&msg)
+{
+  m_conn->push (reqid, std::move (msg));
+}
+
+int
+page_server::followee_connection_handler::send_receive (follower_to_followee_request reqid, std::string &&payload_in,
+    std::string &payload_out)
+{
+  const css_error_code error_code =  m_conn->send_recv (reqid, std::move (payload_in), payload_out);
+  if (error_code != NO_ERRORS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+      return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+page_server::followee_connection_handler::request_log_pages (LOG_PAGEID start_pageid, int count,
+    const std::vector<LOG_PAGE *> &log_pages_out)
+{
+  int error_code = NO_ERROR;
+  std::string response_message;
+  cubpacking::packer payload_packer;
+  size_t size = 0;
+
+  assert (0 < count);
+  assert ((size_t) count <= log_pages_out.size ());
+
+  const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
+
+  size += payload_packer.get_packed_bigint_size (size); // start_pageid
+  size += payload_packer.get_packed_int_size (size); // count
+
+  std::unique_ptr < char[] > buffer (new char[size]);
+  payload_packer.set_buffer (buffer.get (), size);
+
+  payload_packer.pack_bigint (start_pageid);
+  payload_packer.pack_int (count);
+
+  if (perform_logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to the page server (%s). Page ID from %lld to %lld\n",
+		     m_conn->get_underlying_channel_id ().c_str (), start_pageid, start_pageid + count - 1);
+    }
+
+  error_code = send_receive (follower_to_followee_request::SEND_LOG_PAGES_FETCH, std::string (buffer.get (), size),
+			     response_message);
+  if (error_code != NO_ERROR)
+    {
+      /* client-side error: it fails to send or receive.
+       */
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from the page server (%s). Error code: %d\n",
+			 m_conn->get_underlying_channel_id ().c_str (), error_code);
+	}
+      return error_code;
+    }
+
+  assert (response_message.size () > 0);
+
+  const char *message_ptr = response_message.c_str ();
+  std::memcpy (&error_code, message_ptr, sizeof (error_code));
+  message_ptr += sizeof (error_code);
+
+  if (error_code != NO_ERROR)
+    {
+      /*  server-side error from followee: the follwee fails to fetch log pages. For example,
+       *  - the followee PS amy truncate some log pages requested.
+       *  - some requested pages are corrupted
+       *  - or something
+       */
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from the page server (%s). Error code: %d\n",
+			 m_conn->get_underlying_channel_id ().c_str (), error_code);
+	}
+      return error_code;
+    }
+
+  for (int i = 0; i < count; i++)
+    {
+      std::memcpy (log_pages_out[i], message_ptr, LOG_PAGESIZE);
+      message_ptr += LOG_PAGESIZE;
+
+      assert (log_pages_out[i]->hdr.logical_pageid == start_pageid + i);
+      if (perform_logging)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received log page message from the page server (%s). Page ID: %lld\n",
+			 m_conn->get_underlying_channel_id ().c_str (), start_pageid + i);
+	}
+    }
+
+  return error_code;
+}
+
+void
+page_server::followee_connection_handler::send_error_handler (css_error_code, bool &)
+{
+  // TODO an arbitrary disconnection from followee is not allowed for now.
+  assert_release (false);
+}
+
+void
+page_server::followee_connection_handler::recv_error_handler (css_error_code)
+{
+  // TODO an arbitrary disconnection from followee is not allowed for now.
+  assert_release (false);
 }
 
 void page_server::pts_mvcc_tracker::init_oldest_active_mvccid (const std::string &pts_channel_id)
@@ -422,7 +766,7 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
   // called from the same thread (master-server connection handler) the mutex is actually needed.
   // The usage of the mutex is to synchronize with the disconnects which are trigered from each connection
   // handler's connection threads (inbound or outbound).
-  std::lock_guard lk_guard (m_conn_mutex);
+  std::lock_guard lk_guard { m_conn_mutex };
 
   if (m_active_tran_server_conn != nullptr)
     {
@@ -434,7 +778,8 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_active_tran_server ();
     }
 
-  m_active_tran_server_conn.reset (new connection_handler (chn, transaction_server_type::ACTIVE, *this));
+  m_active_tran_server_conn.reset (new tran_server_connection_handler (std::move (chn), transaction_server_type::ACTIVE,
+				   *this));
 }
 
 void
@@ -455,12 +800,79 @@ page_server::set_passive_tran_server_connection (cubcomm::channel &&chn)
     // called from the same thread (master-server connection handler) the mutex is actually needed.
     // The usage of the mutex is to synchronize with the disconnects which are trigered from each connection
     // handler's connection threads (inbound or outbound).
-    std::lock_guard lk_guard (m_conn_mutex);
+    std::lock_guard lk_guard { m_conn_mutex };
 
-    m_passive_tran_server_conn.emplace_back (new connection_handler (chn, transaction_server_type::PASSIVE, *this));
+    m_passive_tran_server_conn.emplace_back (new tran_server_connection_handler (std::move (chn),
+	transaction_server_type::PASSIVE,
+	*this));
   }
 
   m_pts_mvcc_tracker.init_oldest_active_mvccid (channel_id);
+}
+
+void
+page_server::set_follower_page_server_connection (cubcomm::channel &&chn)
+{
+  chn.set_channel_name ("PS_PS_catchup_comm");
+
+  assert (chn.is_connection_alive ());
+  const auto channel_id = chn.get_channel_id ();
+
+  {
+    auto lockg = std::lock_guard <std::mutex> (m_follower_conn_vec_mutex);
+
+    m_follower_conn_vec.emplace_back (new follower_connection_handler (std::move (chn), *this));
+  }
+
+  er_log_debug (ARG_FILE_LINE,
+		"A follower page server connected to this page server to catch up. Channel id: %s.\n",
+		channel_id.c_str ());
+}
+
+int
+page_server::connect_to_followee_page_server (std::string &&hostname, int32_t port)
+{
+  auto ps_conn_error_lambda = [&hostname] ()
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 1, hostname.c_str ());
+    return ER_NET_PAGESERVER_CONNECTION;
+  };
+
+  constexpr int CHANNEL_POLL_TIMEOUT = 1000;    // 1000 milliseconds = 1 second
+  cubcomm::server_channel srv_chn (m_server_name.c_str (), SERVER_TYPE_PAGE, CHANNEL_POLL_TIMEOUT);
+
+  srv_chn.set_channel_name ("PS_PS_catchup_comm");
+
+  auto comm_error_code = srv_chn.connect (hostname.c_str (), port, CMD_SERVER_SERVER_CONNECT);
+  if (comm_error_code != css_error_code::NO_ERRORS)
+    {
+      return ps_conn_error_lambda ();
+    }
+
+  constexpr auto conn_type = cubcomm::server_server::CONNECT_PAGE_TO_PAGE_SERVER;
+  if (srv_chn.send_int (static_cast<int> (conn_type)) != NO_ERRORS)
+    {
+      return ps_conn_error_lambda ();
+    }
+
+  int returned_code;
+  if (srv_chn.recv_int (returned_code) != css_error_code::NO_ERRORS)
+    {
+      return ps_conn_error_lambda ();
+    }
+  if (returned_code != static_cast<int> (conn_type))
+    {
+      return ps_conn_error_lambda ();
+    }
+
+  assert (m_followee_conn == nullptr);
+  m_followee_conn.reset (new followee_connection_handler (std::move (srv_chn), *this));
+
+  er_log_debug (ARG_FILE_LINE,
+		"This page server successfully connected to the followee page server to catch up. Channel id: %s.\n",
+		srv_chn.get_channel_id ().c_str ());
+
+  return NO_ERROR;
 }
 
 void
@@ -480,15 +892,15 @@ page_server::disconnect_active_tran_server ()
 }
 
 void
-page_server::disconnect_tran_server_async (const connection_handler *conn)
+page_server::disconnect_tran_server_async (const tran_server_connection_handler *conn)
 {
   assert (conn != nullptr);
 
-  std::lock_guard lk_guard (m_conn_mutex);
+  std::lock_guard lk_guard { m_conn_mutex };
 
   if (conn == m_active_tran_server_conn.get ())
     {
-      er_log_debug (ARG_FILE_LINE, "Page server disconnected from active transaction server with channel id: %s.\n",
+      er_log_debug (ARG_FILE_LINE, "The active transaction server is disconnected. Channel id: %s.\n",
 		    conn->get_connection_id ().c_str ());
       m_async_disconnect_handler.disconnect (std::move (m_active_tran_server_conn));
       assert (m_active_tran_server_conn == nullptr);
@@ -499,7 +911,7 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 	{
 	  if (conn == it->get ())
 	    {
-	      er_log_debug (ARG_FILE_LINE, "Page server disconnected from passive transaction server with channel id: %s.\n",
+	      er_log_debug (ARG_FILE_LINE, "The passive transaction server is disconnected. Channel id: %s.\n",
 			    (*it)->get_connection_id ().c_str ());
 	      m_async_disconnect_handler.disconnect (std::move (*it));
 	      assert (*it == nullptr);
@@ -508,15 +920,29 @@ page_server::disconnect_tran_server_async (const connection_handler *conn)
 	    }
 	}
     }
+
+  m_conn_cv.notify_one ();
 }
 
 void
-page_server::disconnect_all_tran_server ()
+page_server::disconnect_all_tran_servers ()
 {
-  std::lock_guard lk_guard (m_conn_mutex);
+  std::unique_lock ulock { m_conn_mutex };
 
-  disconnect_active_tran_server ();
+  /* Request the ATS to disconnect */
+  if (m_active_tran_server_conn == nullptr)
+    {
+      er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: Active transaction server is not connected.\n");
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "disconnect_all_tran_server: Request active transaction server to disconnect. Channel id: %s.\n",
+		    m_active_tran_server_conn->get_connection_id ().c_str ());
+      m_active_tran_server_conn->push_disconnection_request ();
+    }
 
+  /* Request all PTSes to disconnect */
   if (m_passive_tran_server_conn.empty ())
     {
       er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: No passive transaction server connected.\n");
@@ -525,13 +951,233 @@ page_server::disconnect_all_tran_server ()
     {
       for (size_t i = 0; i < m_passive_tran_server_conn.size (); i++)
 	{
-	  er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server:"
-			" Disconnected passive transaction server with channel id: %s.\n",
+	  er_log_debug (ARG_FILE_LINE,
+			"disconnect_all_tran_server: Request passive transaction server to disconnect. Channel id: %s.\n",
 			m_passive_tran_server_conn[i]->get_connection_id ().c_str ());
 	  m_passive_tran_server_conn[i]->remove_prior_sender_sink ();
-	  m_passive_tran_server_conn[i].reset (nullptr);
+	  m_passive_tran_server_conn[i]->push_disconnection_request ();
 	}
-      m_passive_tran_server_conn.clear ();
+    }
+
+  er_log_debug (ARG_FILE_LINE,
+		"disconnect_all_tran_server: Wait until all connections are disconnected.\n");
+
+  /*
+   *  m_active_tran_server_conn == nullptr : The ATS has been disconnected or disconnected in progress (by async_disconnect_handler)
+   *  The connection for a PTS is not in m_passive_tran_server_conn : the PTS has been disconnected or disconnected in progress(by async_disconnect_handler)
+   *
+   *  The disconnection of a TS starts when tran_to_page_request::SEND_DISCONNECT_MSG is arrived from the TS. It's either tiggered by page_to_tran_request::SEND_DISCONNECT_REQUEST_MSG from this page server or just initiated by the TS itself.
+   *
+   *  If some disconnections are underway, they will be waited for at the m_async_disconnect_handler.terminate () below.
+   */
+  constexpr auto millis_20 = std::chrono::milliseconds { 20 };
+  while (!m_conn_cv.wait_for (ulock, millis_20, [this]
+  {
+    return m_active_tran_server_conn == nullptr && m_passive_tran_server_conn.empty ();
+    }));
+
+  ulock.unlock ();
+
+  m_async_disconnect_handler.terminate ();
+
+  er_log_debug (ARG_FILE_LINE, "disconnect_all_tran_server: All connections have been disconnected.\n");
+}
+
+void
+page_server::disconnect_all_follower_page_servers ()
+{
+  /*
+   * TODO it should request to disconnect to all followers and wait until it's done.
+   * It will be addressed when follower has a way to re-start the catch-up with another followee.
+   * For now, this waits until just all the catch-up jobs in progress are done.
+   */
+  constexpr auto millis_20 = std::chrono::milliseconds { 20 };
+
+  er_log_debug (ARG_FILE_LINE, "Wait until all follower connections are disconnected.\n");
+
+  {
+    auto ulock_conn_vec = std::unique_lock { m_follower_conn_vec_mutex };
+
+    while (!m_follower_conn_vec_cv.wait_for (ulock_conn_vec, millis_20, [this]
+    {
+      return m_follower_conn_vec.empty ();
+      }));
+
+    assert (m_follower_conn_vec.empty());
+  }
+
+  {
+    auto lockg_disc = std::lock_guard { m_follower_disc_mutex };
+    if (m_follower_disc_future.valid ())
+      {
+	m_follower_disc_future.get (); // wait until it's done if there is an on-going disconnection.
+      }
+  }
+  er_log_debug (ARG_FILE_LINE, "All follower connections have been disconnected.\n");
+}
+
+void
+page_server::disconnect_followee_page_server (const bool with_disc_msg)
+{
+  auto lockg = std::lock_guard { m_followee_conn_mutex };
+  if (m_followee_conn != nullptr)
+    {
+      auto channel_id = m_followee_conn->get_channel_id ();
+      if (with_disc_msg)
+	{
+	  m_followee_conn->push_request (follower_to_followee_request::SEND_DISCONNECT_MSG, std::string ());
+	}
+      m_followee_conn.reset (nullptr);
+
+      er_log_debug (ARG_FILE_LINE, "The followee page server has been disconnected. channel id: %s\n", channel_id.c_str ());
+    }
+}
+
+void
+page_server::disconnect_follower_page_server_async (const follower_connection_handler *conn)
+{
+  auto ulock_conn_vec = std::unique_lock { m_follower_conn_vec_mutex };
+
+  auto it = std::find_if (m_follower_conn_vec.begin (), m_follower_conn_vec.end (),
+			  [&conn] (auto & conn_uptr)
+  {
+    return conn_uptr.get () == conn;
+  });
+
+  if (it == m_follower_conn_vec.cend ())
+    {
+      // It's already been disconnected or in progress by another thread.
+      return;
+    }
+
+  auto disconnecting_conn_uptr = std::move (*it);
+  m_follower_conn_vec.erase (it);
+  m_follower_conn_vec_cv.notify_one ();
+
+  auto lockg_disc = std::lock_guard { m_follower_disc_mutex };
+  ulock_conn_vec.unlock ();
+
+  if (m_follower_disc_future.valid ())
+    {
+      m_follower_disc_future.get (); // waits until the previous async is done
+    }
+
+  auto reset_func = [] (auto &&conn_uptr)
+  {
+    auto channel_id = conn_uptr->get_channel_id ();
+    conn_uptr.reset (nullptr);
+    er_log_debug (ARG_FILE_LINE, "The follower page server has been disconnected. channel id: %s\n", channel_id.c_str ());
+  };
+  m_follower_disc_future = std::async (std::launch::async, reset_func, std::move (disconnecting_conn_uptr));
+  assert (m_follower_disc_future.valid ());
+}
+
+void
+page_server::start_catchup (const LOG_LSA catchup_lsa)
+{
+  assert (m_followee_conn != nullptr);
+  auto catchup_func = std::bind (&page_server::execute_catchup, std::ref (*this), std::placeholders::_1, catchup_lsa);
+  cubthread::get_manager ()->push_task (m_worker_pool, new cubthread::entry_callable_task (catchup_func));
+}
+
+void
+page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa)
+{
+  // Initialize variables for buffers
+  constexpr int PAGE_CNT_IN_BUFFER = 10;       // Arbitrarily chosen
+  const size_t buffer_size_in_total = PAGE_CNT_IN_BUFFER * LOG_PAGESIZE + MAX_ALIGNMENT;
+  auto log_pgbuf_buffer1 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+  auto log_pgbuf_buffer2 = std::unique_ptr<char []> { new char[buffer_size_in_total] };
+  char *const aligned_log_pgbuf_buffer1 = PTR_ALIGN (log_pgbuf_buffer1.get (), MAX_ALIGNMENT);
+  char *const aligned_log_pgbuf_buffer2 = PTR_ALIGN (log_pgbuf_buffer2.get (), MAX_ALIGNMENT);
+
+  auto log_pgptr_vec = std::vector<LOG_PAGE *> {};
+  auto log_pgptr_recv_vec = std::vector<LOG_PAGE *> {};
+
+  for (int i = 0; i < PAGE_CNT_IN_BUFFER; i++)
+    {
+      log_pgptr_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer1 + i * LOG_PAGESIZE));
+      log_pgptr_recv_vec.emplace_back (reinterpret_cast<LOG_PAGE *> (aligned_log_pgbuf_buffer2 + i * LOG_PAGESIZE));
+    }
+
+  const LOG_PAGEID start_pageid = log_Gl.hdr.append_lsa.pageid;
+  const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
+  const size_t total_page_count = end_pageid - start_pageid + 1;
+
+  // Request pages to the followee
+  auto request_pages_to_buffer = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t request_page_cnt) -> int
+  {
+    auto lockg = std::lock_guard <std::mutex> (m_followee_conn_mutex);
+    if (m_followee_conn == nullptr)
+      {
+	// It has been disconnected somewhere, because of an error or server shutdown.
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED, 0);
+	return ER_CONN_PAGE_SERVER_CANNOT_BE_REACHED;
+      }
+    const int error_code = m_followee_conn->request_log_pages (start_pageid, request_page_cnt, log_pgptr_recv_vec);
+    if (error_code != NO_ERROR)
+      {
+	/* There are two kinds of errors either from client-side or server-side.
+	 * client-side error: it fails to send or receive.
+	 * server-side error: the followee fails to fetch log pages. For example, due to
+	 *  - the followee PS any truncate some log pages requested.
+	 *  - some requested pages are corrupted
+	 *  - or something
+	 * TODO We have to handle them. Probably, we should change the followee to catch up with through ATS.
+	 */
+	assert_release (false);
+      }
+    return error_code;
+  };
+
+  _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
+		 start_pageid, end_pageid, total_page_count);
+
+  LOG_PAGEID request_start_pageid = start_pageid;
+  size_t remaining_page_cnt = total_page_count;
+  size_t request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
+  auto req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
+  int error = NO_ERROR;
+  while (remaining_page_cnt > 0)
+    {
+      error = req_future.get (); // waits until the previous requests are replied
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+
+      remaining_page_cnt -= request_page_cnt;
+      request_start_pageid += request_page_cnt;
+
+      log_pgptr_vec.swap (log_pgptr_recv_vec);
+
+      if (remaining_page_cnt > 0)
+	{
+	  request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
+	  req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
+	}
+      // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
+    }
+
+  if (error == NO_ERROR)
+    {
+      assert (remaining_page_cnt == 0);
+      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
+		     start_pageid, end_pageid, total_page_count);
+      // TODO: start appneding log prior nodes from the ATS.
+
+      push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+
+      constexpr bool with_disc_msg = true;
+      disconnect_followee_page_server (with_disc_msg);
+    }
+  else
+    {
+      assert (remaining_page_cnt > 0);
+      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
+		     error, remaining_page_cnt, total_page_count);
+      constexpr bool with_disc_msg = false;
+      disconnect_followee_page_server (with_disc_msg);
     }
 }
 
@@ -543,11 +1189,18 @@ page_server::is_active_tran_server_connected () const
   return m_active_tran_server_conn != nullptr;
 }
 
-page_server::responder_t &
-page_server::get_responder ()
+page_server::tran_server_responder_t &
+page_server::get_tran_server_responder ()
 {
-  assert (m_responder);
-  return *m_responder;
+  assert (m_tran_server_responder);
+  return *m_tran_server_responder;
+}
+
+page_server::follower_responder_t &
+page_server::get_follower_responder ()
+{
+  assert (m_follower_responder);
+  return *m_follower_responder;
 }
 
 void
@@ -597,11 +1250,13 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 void
 page_server::init_request_responder ()
 {
-  m_responder = std::make_unique<responder_t> ();
+  m_tran_server_responder = std::make_unique<tran_server_responder_t> ();
+  m_follower_responder = std::make_unique<follower_responder_t> ();
 }
 
 void
 page_server::finalize_request_responder ()
 {
-  m_responder.reset (nullptr);
+  m_tran_server_responder.reset (nullptr);
+  m_follower_responder.reset (nullptr);
 }

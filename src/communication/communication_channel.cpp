@@ -43,26 +43,32 @@ namespace cubcomm
 #define er_log_chn_debug(...) \
   if (prm_get_bool_value (PRM_ID_ER_LOG_COMM_CHANNEL)) _er_log_debug (ARG_FILE_LINE, "[COMM_CHN]" __VA_ARGS__)
 
+  std::atomic<uint64_t> channel::unique_id_allocator = 0;
+
   channel::channel (int max_timeout_in_ms)
-    : m_max_timeout_in_ms (max_timeout_in_ms),
-      m_type (CHANNEL_TYPE::NO_TYPE),
-      m_socket (INVALID_SOCKET)
+    : m_max_timeout_in_ms (max_timeout_in_ms)
+    , m_type (CHANNEL_TYPE::NO_TYPE)
+    , m_socket (INVALID_SOCKET)
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (std::string &&channel_name)
     : m_channel_name { std::move (channel_name) }
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (int max_timeout_in_ms, std::string &&channel_name)
     : m_max_timeout_in_ms (max_timeout_in_ms)
     , m_channel_name { std::move (channel_name) }
+    , m_unique_id (unique_id_allocator++)
   {
   }
 
   channel::channel (channel &&comm)
     : m_max_timeout_in_ms (comm.m_max_timeout_in_ms)
+    , m_unique_id (comm.m_unique_id)
   {
     m_type = comm.m_type;
     comm.m_type = NO_TYPE;
@@ -89,23 +95,65 @@ namespace cubcomm
 
   css_error_code channel::recv (char *buffer, std::size_t &maxlen_in_recvlen_out)
   {
-    int copy_of_maxlen_in_recvlen_out = (int) maxlen_in_recvlen_out;
-    int rc = NO_ERRORS;
+    int actual_recv_maxlen = (int) maxlen_in_recvlen_out;
 
     assert (m_type != NO_TYPE);
 
-    rc = css_net_recv (m_socket, buffer, &copy_of_maxlen_in_recvlen_out, m_max_timeout_in_ms);
+    const css_error_code rc = (css_error_code) css_net_recv (m_socket, buffer, &actual_recv_maxlen,
+			      m_max_timeout_in_ms);
     er_log_chn_debug ("[%s] Receive buffer of size = %d, max_size = %zu, result = %d", get_channel_id ().c_str (),
-		      copy_of_maxlen_in_recvlen_out, maxlen_in_recvlen_out, rc);
-    maxlen_in_recvlen_out = copy_of_maxlen_in_recvlen_out;
-    return (css_error_code) rc;
+		      actual_recv_maxlen, maxlen_in_recvlen_out, (int)rc);
+    maxlen_in_recvlen_out = actual_recv_maxlen;
+    return rc;
+  }
+
+  css_error_code channel::recv_allow_truncated (char *buffer, std::size_t &maxlen_in_recvlen_out,
+      std::size_t &remaining_len)
+  {
+    int actual_recv_maxlen = (int) maxlen_in_recvlen_out;
+    int actual_remaining_len = (int) remaining_len;
+
+    assert (m_type != NO_TYPE);
+    assert (actual_remaining_len == 0);
+
+    const css_error_code rc = css_net_recv_allow_truncated (m_socket, buffer, &actual_recv_maxlen,
+			      &actual_remaining_len, m_max_timeout_in_ms);
+    er_log_chn_debug ("[%s] Receive%s buffer of size = %d, max_size = %zu, remain = %d, result = %d",
+		      get_channel_id ().c_str (), ((actual_remaining_len > 0) ? " truncated" : " full"),
+		      actual_recv_maxlen, maxlen_in_recvlen_out,
+		      actual_remaining_len, (int)rc);
+
+    assert (actual_recv_maxlen >= 0);
+    maxlen_in_recvlen_out = static_cast<std::size_t> (actual_recv_maxlen);
+
+    assert (actual_remaining_len >= 0);
+    remaining_len = static_cast<std::size_t> (actual_remaining_len);
+
+    return rc;
+  }
+
+  css_error_code channel::recv_remainder (char *buffer, std::size_t &maxlen_in_recvlen_out)
+  {
+    int actual_recv_maxlen = (int) maxlen_in_recvlen_out;
+
+    assert (m_type != NO_TYPE);
+
+    const css_error_code rc = css_net_recv_remainder (m_socket, buffer, &actual_recv_maxlen, m_max_timeout_in_ms);
+    er_log_chn_debug ("[%s] Receive remainder buffer of size = %d, max_size = %zu, result = %d",
+		      get_channel_id ().c_str (), actual_recv_maxlen, maxlen_in_recvlen_out, (int)rc);
+
+    assert (actual_recv_maxlen >= 0);
+    maxlen_in_recvlen_out = static_cast<std::size_t> (actual_recv_maxlen);
+
+    return rc;
   }
 
   css_error_code channel::send (const char *buffer, std::size_t length)
   {
-    int templen, vector_length = 2;
+    int templen = 0;
+    constexpr int vector_length = 2;
     int total_len = 0, rc = NO_ERRORS;
-    struct iovec iov[2];
+    struct iovec iov[vector_length];
 
     assert (m_type != NO_TYPE);
 

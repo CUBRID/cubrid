@@ -1783,7 +1783,7 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		      if (status == NO_ERROR)
 			{
 			  (void) process_javasp (command_type, 1, (const char **) &token, false, true,
-					     process_window_service, false);
+						 process_window_service, false);
 			}
 		    }
 		}

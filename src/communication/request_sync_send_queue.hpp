@@ -96,6 +96,8 @@ namespace cubcomm
       template <typename Duration>
       void wait_not_empty_and_send_all (queue_type &backbuffer, const Duration &timeout);
 
+      void wait_until_empty ();
+
     private:
       void send_queue (queue_type &q); // Send queued requests to the server
 
@@ -175,10 +177,7 @@ namespace cubcomm
     // synchronize push request into the queue and notify consumers
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
-    m_request_queue.emplace ();
-    m_request_queue.back ().m_id = reqid;
-    m_request_queue.back ().m_payload = std::move (payload);
-    m_request_queue.back ().m_error_handler = std::move (error_handler);
+    m_request_queue.emplace (queue_item_type { reqid, std::move (payload), std::move (error_handler) });
 
     ulock.unlock ();
     m_queue_condvar.notify_all ();
@@ -190,15 +189,25 @@ namespace cubcomm
   {
     while (!q.empty () && !m_abort_further_processing)
       {
-	typename queue_type::const_reference queue_front = q.front ();
+	// non-const reference, to allow move
+	typename queue_type::reference queue_front = q.front ();
 
 	css_error_code err_code = NO_ERRORS;
 	{
 	  std::lock_guard<std::mutex> lockg (m_send_mutex);
-	  err_code = m_client.send (queue_front.m_id, queue_front.m_payload);
+	  err_code = m_client.send (queue_front.m_id, std::move (queue_front.m_payload));
 	}
 	if (err_code != NO_ERRORS)
 	  {
+	    /*
+	     * Set CONNECTION_CLOSED as the error code if the internal socket is closed.
+	     * It lets the outside know that it's disconnected abnormally for some reason.
+	     */
+	    if (!m_client.get_channel ().is_connection_alive ())
+	      {
+		err_code = CONNECTION_CLOSED;
+	      }
+
 	    /* The send over socket is not - in and by itself - capable of detecting when the peer has
 	     * actully dropped the connection. It errors-out as an after effect (eg: when, maybe, the buffer
 	     * is full and there's no more space left to write new data).
@@ -244,6 +253,8 @@ namespace cubcomm
   void
   request_sync_send_queue<ReqClient, ReqPayload>::send_all (queue_type &backbuffer)
   {
+    // TODO: this function is used only in unit tests; adapt unit tests to remove the need of this function
+
     // Swap requests queue with the backbuffer. If there are any requests in the backbuffer, send them.
     assert (backbuffer.empty ());
 
@@ -285,6 +296,18 @@ namespace cubcomm
 
     send_queue (backbuffer);
     assert (backbuffer.empty ());
+  }
+
+  template <typename ReqClient, typename ReqPayload>
+  void
+  request_sync_send_queue<ReqClient, ReqPayload>::wait_until_empty ()
+  {
+    constexpr auto ten_millis = std::chrono::milliseconds (10);
+    std::unique_lock<std::mutex> ulock (m_queue_mutex);
+    while (!m_queue_condvar.wait_for (ulock, ten_millis, [this]
+    {
+      return m_request_queue.empty ();
+      }));
   }
 
   //

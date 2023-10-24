@@ -19,15 +19,9 @@
 #include "server_type.hpp"
 
 #include "active_tran_server.hpp"
-#include "passive_tran_server.hpp"
-#include "communication_server_channel.hpp"
-#include "connection_defs.h"
-#include "error_manager.h"
-#include "log_impl.h"
 #include "page_server.hpp"
+#include "passive_tran_server.hpp"
 #include "system_parameter.h"
-
-#include <string>
 
 std::unique_ptr<tran_server> ts_Gl;
 
@@ -111,7 +105,7 @@ int init_server_type (const char *db_name)
   int er_code = NO_ERROR;
   const auto server_type_from_config = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
   const auto transaction_server_type_from_config =
-	  (transaction_server_type_config) prm_get_integer_value ( PRM_ID_TRANSACTION_SERVER_TYPE);
+	  (transaction_server_type_config) prm_get_integer_value (PRM_ID_TRANSACTION_SERVER_TYPE);
   g_transaction_server_type = get_transaction_server_type_from_config (transaction_server_type_from_config);
 
   if (g_server_type == SERVER_TYPE_UNKNOWN)
@@ -131,6 +125,7 @@ int init_server_type (const char *db_name)
     {
       setup_tran_server_params_on_single_node_config ();
     }
+
 #if !defined(NDEBUG)
   g_server_type_initialized = true;
 #endif
@@ -140,6 +135,9 @@ int init_server_type (const char *db_name)
 
       if (is_active_transaction_server ())
 	{
+	  // initialize this before ATS; as ATS could do some initialization that involves the sender
+	  log_Gl.initialize_log_prior_sender ();
+
 	  assert (ats_Gl == nullptr);
 	  ats_Gl = new active_tran_server ();
 	  ts_Gl.reset (ats_Gl);
@@ -149,6 +147,7 @@ int init_server_type (const char *db_name)
 	  assert (pts_Gl == nullptr);
 
 	  // passive tran server also needs (a) prior receiver(s) to receive log from page server(s)
+	  // the mechanism is that of a pub sub; a PTS subscribes to receive log from one page server (for now)
 	  log_Gl.initialize_log_prior_receiver ();
 
 	  pts_Gl = new passive_tran_server ();
@@ -162,8 +161,11 @@ int init_server_type (const char *db_name)
     }
   else if (g_server_type == SERVER_TYPE_PAGE)
     {
-      ps_Gl.reset (new page_server());
-      // page server needs a log prior receiver
+      ps_Gl.reset (new page_server (db_name));
+
+      // initialize the sender before the receiver; such that the receiver has the
+      // sender ready, if needed (very unlikely scenario, but principially so)
+      log_Gl.initialize_log_prior_sender ();
       log_Gl.initialize_log_prior_receiver ();
     }
   else
@@ -263,6 +265,54 @@ bool is_tran_server_with_remote_storage ()
   return false;
 }
 
+/*
+ * get_page_server_maxim_extra_thread_count - returns the number of extra thread count per
+ *        scalability server type
+ *
+ */
+int get_maxim_extra_thread_count_by_server_type ()
+{
+  SERVER_TYPE local_server_type = g_server_type;
+  if (local_server_type == SERVER_TYPE_UNKNOWN)
+    {
+      // by this time, the server type is in one of two states:
+      //  - either non initialized, in which case it will be initialized later from config file
+      //  - or, explicitly initialized from command line
+      // in the case of the first state, we need the config file value here
+      // NOTE: further explanation, we cannot move the initialization of the entire "server type" infrastructure -
+      //  - aka, the function 'init_server_type' - before thread infrastructure initialization because server
+      // type initialization already initializes some threads and, on the other hand, the threading infrastructure
+      // needs this function to properly initialize itself
+      const auto server_type_from_config = (server_type_config) prm_get_integer_value (PRM_ID_SERVER_TYPE);
+      local_server_type = get_server_type_from_config (server_type_from_config);
+    }
+
+  if (local_server_type == SERVER_TYPE_PAGE)
+    {
+      // thread pool used by page server to perform parallel replication
+      //
+      const int replication_parallel_thread_count = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
+
+      // thread pool used by page server to asynchronously service requests from transaction servers
+      //
+      int server_request_responder_thread_count
+	= prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
+      // TODO: there are now two such thread pools on the page server; a future refactoring will remove one
+      server_request_responder_thread_count *= 2;
+
+      // TODO: there is a worker pool to deal with background tasks that need cubthread::entry: page_server::m_worker_pool
+      // a future refactoring will make it shared with request responders above.
+      const int shared_worker_pool_thread_count = 4;
+
+      return replication_parallel_thread_count + server_request_responder_thread_count + shared_worker_pool_thread_count;
+    }
+  // NOTE: the same parallel replication mechanism is also used for active transaction server recovery mechanism;
+  // but, because that one is transient and only occuring before any other thread infrastructure is instantiated in
+  // an active transaction server, we can safely ignore for now
+
+  return 0;
+}
+
 active_tran_server *get_active_tran_server_ptr ()
 {
   if (is_active_transaction_server ())
@@ -344,6 +394,11 @@ bool is_passive_server ()
 bool is_transaction_server ()
 {
   return true;
+}
+
+int get_maxim_extra_thread_count_by_server_type ()
+{
+  return 0;
 }
 
 #endif // !SERVER_MODE = SA_MODE

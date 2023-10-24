@@ -300,9 +300,11 @@ test_env::require_mem_equal (const char *memleft, const char *memrite, size_t me
     }
 }
 
-//
-// Definitions of CUBRID stuff that is not used, but is needed by the linker
-//
+// ****************************************************************
+// CUBRID stuff; required by linker:
+//  - whatever is not (should not be) touched at all is asserted
+//  - some of it actually called with benign/no effect
+// ****************************************************************
 
 #include "error_manager.h"
 #include "log_compress.h"
@@ -337,6 +339,12 @@ bool
 is_active_transaction_server ()
 {
   return true;
+}
+
+bool
+is_page_server ()
+{
+  return false;
 }
 
 PGLENGTH
@@ -457,7 +465,11 @@ namespace cublog
     : m_prior_lsa_info (prior_lsa_info)
   {
   }
-  prior_recver::~prior_recver () = default;
+
+  prior_recver::~prior_recver ()
+  {
+    assert_release (!m_thread.joinable ());
+  }
 }
 
 log_global::log_global ()

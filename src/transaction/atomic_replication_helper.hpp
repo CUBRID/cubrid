@@ -445,7 +445,6 @@ namespace cublog
 	redo_context.m_reader.reinterpret_copy_and_add_align<T> ());
     if (log_rv_check_redo_is_needed (rcv.pgptr, record_info.m_start_lsa, redo_context.m_end_redo_lsa))
       {
-	rcv.reference_lsa = m_lsa;
 	log_rv_redo_record_sync_apply (thread_p, redo_context, record_info, m_vpid, rcv);
       }
   }

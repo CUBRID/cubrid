@@ -756,6 +756,7 @@ extern int btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, co
 extern void btree_rv_data_unpack_btid_and_stats (const LOG_RCV & rcv, BTID & btid, log_unique_stats & stats);
 extern void btree_rv_data_pack_btid_and_stats (const BTID * btid, long long nulls, long long oids, long long keys,
 					       char *data, size_t data_size, size_t & written_size);
+extern void btree_rv_global_unique_stats_commit_dump (FILE * fp, int length, void *data);
 
 #include "scan_manager.h"
 

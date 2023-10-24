@@ -28,28 +28,28 @@ namespace cubcomm
   {
     public:
       node () = default;
-      node (const node &nd) = default;
+      node (const node &nd) = delete;
       node (node &&nd) = default;
-      node (long port, std::string host);
+      node (int32_t port, std::string host);
 
-      node &operator= (const node &nd) = default;
+      node &operator= (const node &nd) = delete;
       node &operator= (node &&nd) = default;
 
-      long get_port () const;
+      int32_t get_port () const;
       std::string get_host () const;
 
     private:
-      long m_port = -1; // initialize with an invalid port
+      int32_t m_port = -1; // initialize with an invalid port
       std::string m_host;
   };
 
-  inline node::node (long port, std::string host)
+  inline node::node (int32_t port, std::string host)
   {
     m_port = port;
     m_host = host;
   }
 
-  inline long node::get_port () const
+  inline int32_t node::get_port () const
   {
     return m_port;
   }

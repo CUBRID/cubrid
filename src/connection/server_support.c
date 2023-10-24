@@ -1816,15 +1816,14 @@ css_pack_message_to_master (const char *server_name)
     */
 
   sprintf (pid_string, "%d", getpid ());
-  size_t message_size =
-    strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1
+  size_t message_size = strlen (server_name) + 1 + strlen (rel_major_release_string ()) + 1 + strlen (env_name) + 1
     + strlen (pid_string) + 1;
   /* in order to prepend '#' or server type */
   message_size++;
 
   message.reserve (message_size);
 
-  if (!HA_DISABLED ())
+  if (!HA_DISABLED())
     {
       message.append (1, '#');
     }
@@ -2645,6 +2644,16 @@ css_process_server_server_connect (SOCKET master_fd)
         }
       // *INDENT-ON*
       ps_Gl->set_passive_tran_server_connection (std::move (chn));
+      break;
+    case cubcomm::server_server::CONNECT_PAGE_TO_PAGE_SERVER:
+      // *INDENT-OFF*
+      if (chn.send_int (static_cast<int> (cubcomm::server_server::CONNECT_PAGE_TO_PAGE_SERVER)) != NO_ERRORS)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_PAGESERVER_CONNECTION, 0);
+          break;
+        }
+      // *INDENT-ON*
+      ps_Gl->set_follower_page_server_connection (std::move (chn));
       break;
     default:
       assert (false);

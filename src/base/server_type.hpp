@@ -42,6 +42,8 @@ void set_server_type (SERVER_TYPE type);
 void finalize_server_type ();
 int init_server_type (const char *db_name);
 
+int get_maxim_extra_thread_count_by_server_type ();
+
 active_tran_server *get_active_tran_server_ptr ();
 passive_tran_server *get_passive_tran_server_ptr ();
 

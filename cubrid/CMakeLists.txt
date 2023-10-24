@@ -404,7 +404,6 @@ set(SERVER_SOURCES
   ${SERVER_DIR}/page_server.cpp
   ${SERVER_DIR}/passive_tran_server.cpp
   ${SERVER_DIR}/tran_server.cpp
-  ${SERVER_DIR}/async_disconnect_handler.cpp
   )
 set(SERVER_HEADERS
   ${SERVER_DIR}/active_tran_server.hpp

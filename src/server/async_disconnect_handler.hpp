@@ -48,8 +48,6 @@ class async_disconnect_handler
     void disconnect (connection_handler_uptr_t &&handler);
     void terminate ();
 
-    bool is_terminated ();
-
   private:
     void disconnect_loop ();
 
@@ -60,4 +58,91 @@ class async_disconnect_handler
     std::condition_variable m_queue_cv;
     std::thread m_thread;
 };
+
+template <typename T_CONN_HANDLER>
+async_disconnect_handler<T_CONN_HANDLER>::async_disconnect_handler ()
+  : m_terminate { false }
+{
+  m_thread = std::thread (&async_disconnect_handler::disconnect_loop, std::ref (*this));
+}
+
+template <typename T_CONN_HANDLER>
+async_disconnect_handler<T_CONN_HANDLER>::~async_disconnect_handler ()
+{
+  // it's terminated explicitely in advance so all disconnection requests have been handled.
+  assert (m_terminate.load ());
+}
+
+template <typename T_CONN_HANDLER>
+void
+async_disconnect_handler<T_CONN_HANDLER>::disconnect (connection_handler_uptr_t &&handler)
+{
+  std::unique_lock<std::mutex> ulock { m_queue_mtx };
+  if (!m_terminate.load ())
+    {
+      m_disconnect_queue.emplace (std::move (handler));
+      ulock.unlock ();
+      m_queue_cv.notify_one ();
+    }
+  else
+    {
+      // cannot ask for disconnect after termination
+      assert (false);
+    }
+}
+
+template <typename T_CONN_HANDLER>
+void
+async_disconnect_handler<T_CONN_HANDLER>::terminate ()
+{
+  if (m_terminate.exchange (true))
+    {
+      return; // have been terminated already
+    }
+
+  m_queue_cv.notify_one ();
+
+  if (m_thread.joinable ())
+    {
+      m_thread.join ();
+    }
+  else
+    {
+      assert (false);
+    }
+
+  assert (m_disconnect_queue.empty ());
+}
+
+template <typename T_CONN_HANDLER>
+void
+async_disconnect_handler<T_CONN_HANDLER>::disconnect_loop ()
+{
+  constexpr std::chrono::seconds one_second { 1 };
+
+  std::queue<connection_handler_uptr_t> disconnect_work_buffer;
+  while (!m_terminate.load ())
+    {
+      {
+	std::unique_lock<std::mutex> ulock { m_queue_mtx };
+	if (!m_queue_cv.wait_for (ulock, one_second,
+				  [this] { return !m_disconnect_queue.empty () || m_terminate.load (); }))
+	  {
+	    continue;
+	  }
+
+	m_disconnect_queue.swap (disconnect_work_buffer);
+      }
+
+      disconnect_work_buffer = {}; // clear
+    }
+
+  // clear requests added after swapped to m_disconnect_queue before termination.
+
+  std::unique_lock<std::mutex> ulock { m_queue_mtx };
+  if (!m_disconnect_queue.empty ())
+    {
+      m_disconnect_queue = {}; // clear
+    }
+}
 #endif // !_ASYNC_DISCONNECT_HANDLER_HPP_

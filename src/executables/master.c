@@ -446,24 +446,24 @@ receive_server_info (CSS_CONN_ENTRY * conn, unsigned short rid, std::string & db
     {
       const char first_char = buffer[0];
       if (first_char == '#')
-	{
-	  // HA mode on; only transaction servers connect.
-	  type = SERVER_TYPE_TRANSACTION;
-	  // Include '#' in the dbname; legacy requirement
-	  dbname = std::string (buffer, buffer_length);
-	}
+        {
+          // HA mode on; only transaction servers connect.
+          type = SERVER_TYPE_TRANSACTION;
+          // Include '#' in the dbname; legacy requirement.
+          dbname = std::string (buffer, buffer_length);
+        }
       else if (first_char == '$' || first_char == '%')
-	{
-	  // not really a server, it is copylogdb or applylogdb
-	  type = SERVER_TYPE_UNKNOWN;
-	  dbname = std::string (buffer, buffer_length);
-	}
+        {
+          // not really a server, it is copylogdb or applylogdb
+          type = SERVER_TYPE_UNKNOWN;
+          dbname = std::string (buffer, buffer_length );
+        }
       else
-	{
-	  // First character represents server type
-	  type = static_cast<SERVER_TYPE> (buffer[0] - '0');
-	  dbname = std::string (buffer + 1, buffer_length - 1);
-	}
+        {
+          // First character represents server type
+          type = static_cast<SERVER_TYPE> (buffer[0] - '0');
+          dbname = std::string (buffer + 1, buffer_length - 1);
+        }
     }
   return exit_code;
 }

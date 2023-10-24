@@ -21,6 +21,7 @@
 #include "error_manager.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
+#include "log_lsa_utils.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
 
@@ -37,7 +38,7 @@ active_tran_server::uses_remote_storage () const
 }
 
 MVCCID
-active_tran_server::get_oldest_active_mvccid_from_page_server () const
+active_tran_server::get_oldest_active_mvccid_from_page_server ()
 {
   std::string response_message;
   const int error_code = send_receive (tran_to_page_request::GET_OLDEST_ACTIVE_MVCCID, std::string (), response_message);
@@ -63,25 +64,20 @@ active_tran_server::get_oldest_active_mvccid_from_page_server () const
 log_lsa
 active_tran_server::compute_consensus_lsa ()
 {
-  const int total_node_cnt = m_connection_list.size ();
+  const int total_node_cnt = m_page_server_conn_vec.size ();
   const int quorum = total_node_cnt / 2 + 1; // For now, it's fixed to the number of the majority.
-  int cur_node_cnt;
+  int cur_node_cnt = 0;
   std::vector<log_lsa> collected_saved_lsa;
 
-  // TODO The next block has to be exclusive with connection and disconnection
-  {
-    cur_node_cnt = m_page_server_conn_vec.size ();
-    if (cur_node_cnt < quorum)
-      {
-	quorum_consenesus_er_log ("compute_consensus_lsa - Quorum unsatisfied: total node count = %d, curreunt node count = %d, quorum = %d\n",
-				  total_node_cnt, cur_node_cnt, quorum);
-	return NULL_LSA;
-      }
-    for (const auto &conn : m_page_server_conn_vec)
-      {
-	collected_saved_lsa.emplace_back (conn->get_saved_lsa ());
-      }
-  }
+  for (const auto &conn : m_page_server_conn_vec)
+    {
+      if (conn->is_connected ())
+	{
+	  collected_saved_lsa.emplace_back (conn->get_saved_lsa ());
+	  cur_node_cnt++;
+	}
+    }
+
   /*
    * Gather all PS'es saved_lsa and sort it in ascending order.
    * The <cur_node_count - quorum>'th element is the consensus LSA, upon which the majority (quorumn) of PS agrees.
@@ -90,19 +86,40 @@ active_tran_server::compute_consensus_lsa ()
    * total: 5, cur: 4 - [5, 6, 9, 10] -> "6"
    * total: 3, cur: 2 - [9, 10] -> "9"
    */
-  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
 
-  const auto consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
+  const bool quorum_not_met = cur_node_cnt < quorum;
+
+  LOG_LSA consensus_lsa;
+  if (quorum_not_met)
+    {
+      if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
+	{
+	  // if the quorum is not met, only sort if we're about to log the details (see below); otherwise the sorting is useless
+	  std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
+	}
+      consensus_lsa = NULL_LSA; // the quorum is not met.
+    }
+  else
+    {
+      // always do the sort if the quorum is met:
+      std::sort (collected_saved_lsa.begin (), collected_saved_lsa.end ());
+      consensus_lsa = collected_saved_lsa[cur_node_cnt - quorum];
+    }
 
   if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS))
     {
       constexpr int BUF_SIZE = 1024;
       char msg_buf[BUF_SIZE];
       int n = 0;
+
+      n = snprintf (msg_buf, BUF_SIZE, "compute_consensus_lsa - ");
+
+      n += snprintf (msg_buf + n, BUF_SIZE - n, "Quorum %ssatisfied: ", (quorum_not_met ? "un" : ""));
+
       // cppcheck-suppress [wrongPrintfScanfArgNum]
-      n = snprintf (msg_buf, BUF_SIZE,
-		    "compute_consensus_lsa - total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
-		    total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
+      n += snprintf (msg_buf + n, BUF_SIZE - n,
+		     "total node count = %d, current node count = %d, quorum = %d, consensus LSA = %lld|%d\n",
+		     total_node_cnt, cur_node_cnt, quorum, LSA_AS_ARGS (&consensus_lsa));
       n += snprintf (msg_buf + n, BUF_SIZE - n, "Collected saved lsa list = [ ");
       for (const auto &lsa : collected_saved_lsa)
 	{
@@ -130,13 +147,15 @@ active_tran_server::stop_outgoing_page_server_messages ()
 {
 }
 
-active_tran_server::connection_handler::connection_handler (cubcomm::channel &&chn, tran_server &ts)
-  : tran_server::connection_handler (std::move (chn), ts, get_request_handlers ())
-  , m_saved_lsa { NULL_LSA }
+active_tran_server::connection_handler::connection_handler (tran_server &ts, cubcomm::node &&node)
+  : tran_server::connection_handler (ts, std::move (node))
+  ,m_saved_lsa { NULL_LSA }
 {
-  m_prior_sender_sink_hook_func = std::bind (&tran_server::connection_handler::push_request, this,
-				  tran_to_page_request::SEND_LOG_PRIOR_LIST, std::placeholders::_1);
-  log_Gl.m_prior_sender.add_sink (m_prior_sender_sink_hook_func);
+}
+
+active_tran_server::connection_handler::~connection_handler ()
+{
+  assert (m_prior_sender_sink_hook_func == nullptr);
 }
 
 active_tran_server::connection_handler::request_handlers_map_t
@@ -147,34 +166,61 @@ active_tran_server::connection_handler::get_request_handlers ()
 
   auto saved_lsa_handler = std::bind (&active_tran_server::connection_handler::receive_saved_lsa, this,
 				      std::placeholders::_1);
+  auto catchup_complete_handler = std::bind (&active_tran_server::connection_handler::receive_catchup_complete, this,
+				  std::placeholders::_1);
 
   handlers_map.insert (std::make_pair (page_to_tran_request::SEND_SAVED_LSA, saved_lsa_handler));
+  handlers_map.insert (std::make_pair (page_to_tran_request::SEND_CATCHUP_COMPLETE, catchup_complete_handler));
 
   return handlers_map;
 }
 
 void
-active_tran_server::connection_handler::disconnect ()
+active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::sequenced_payload &&a_sp)
 {
-  remove_prior_sender_sink ();
-  tran_server::connection_handler::disconnect ();
-}
-
-void
-active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::sequenced_payload &a_ip)
-{
-  std::string message = a_ip.pull_payload ();
+  std::string message = a_sp.pull_payload ();
   log_lsa saved_lsa;
 
   assert (sizeof (log_lsa) == message.size ());
   std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
 
-  assert (saved_lsa > get_saved_lsa ()); // increasing monotonically
-  m_saved_lsa.store (saved_lsa);
+  assert (saved_lsa >= get_saved_lsa ()); // PS can send the same saved_lsa as before in some cases
+  if (saved_lsa > get_saved_lsa ())
+    {
+      m_saved_lsa.store (saved_lsa);
+      log_Gl.wakeup_ps_flush_waiters ();
+    }
 
-  quorum_consenesus_er_log ("Received saved LSA = %lld|%d.\n", LSA_AS_ARGS (&saved_lsa));
+  quorum_consenesus_er_log ("Received saved LSA = %lld|%d from %s.\n", LSA_AS_ARGS (&saved_lsa),
+			    get_channel_id ().c_str ());
+}
 
-  log_Gl.wakeup_ps_flush_waiters ();
+void
+active_tran_server::connection_handler::receive_catchup_complete (page_server_conn_t::sequenced_payload &&a_sp)
+{
+  _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] the catchup has been completed. channel id: %s\n",
+		 get_channel_id ().c_str ());
+}
+
+void
+active_tran_server::connection_handler::send_start_catch_up_request (std::string &&host, int32_t port,
+    LOG_LSA &&catchup_lsa)
+{
+  cubpacking::packer packer;
+  size_t size = 0;
+
+  size += packer.get_packed_string_size (host, size); // host
+  size += packer.get_packed_int_size (size); // port
+  size += cublog::lsa_utils::get_packed_size (packer, size); // catchup_lsa
+
+  std::unique_ptr < char[] > buffer (new char[size]);
+  packer.set_buffer (buffer.get (), size);
+
+  packer.pack_string (host);
+  packer.pack_int (port);
+  cublog::lsa_utils::pack (packer, catchup_lsa);
+
+  push_request_regardless_of_state (tran_to_page_request::SEND_START_CATCH_UP, std::string (buffer.get (), size));
 }
 
 log_lsa
@@ -184,22 +230,57 @@ active_tran_server::connection_handler::get_saved_lsa () const
 }
 
 void
-active_tran_server::connection_handler::remove_prior_sender_sink ()
+active_tran_server::connection_handler::on_connecting ()
 {
-  /*
-   * Now, it's removed only when disconencting all page servers during shutdown.
-   * TODO: used when abnormal or normal disonnection of PS. It may need a latch.
-   */
-  if (static_cast<bool> (m_prior_sender_sink_hook_func))
+  assert (m_prior_sender_sink_hook_func == nullptr);
+
+  m_prior_sender_sink_hook_func = std::bind (&active_tran_server::connection_handler::prior_sender_sink_hook, this,
+				  std::placeholders::_1);
+
+  auto unsent_lsa = log_Gl.get_log_prior_sender ().add_sink (m_prior_sender_sink_hook_func);
+
+  std::string hostname = "N/A";
+  int32_t port = -1;
+
+  // TODO: We should make two paths to set a connection_handler to CONNECTED:
+  //    - While booting: a target PS is determined after communicating with multiple PSes and
+  //      send the catch-up request based on it.
+  //    - While running: the unsent_lsa from prior_sender is the LSA of the first log records to send.
+  if (!unsent_lsa.is_null ())
     {
-      log_Gl.m_prior_sender.remove_sink (m_prior_sender_sink_hook_func);
+      auto res = m_ts.get_main_connection_info (hostname, port);
+      assert (res);
+    }
+  else
+    {
+      // It's booting up and before log_initialize (). There is no main connection yet. For now, it just sends NULL_LSA.
+      // TODO: While booting up, the catchup_lsa is not unsent_lsa, but determined by communicating with PSes.
+    }
+
+  send_start_catch_up_request (std::move (hostname), port, std::move (unsent_lsa));
+}
+
+void
+active_tran_server::connection_handler::on_disconnecting ()
+{
+  if (m_prior_sender_sink_hook_func != nullptr)
+    {
+      log_Gl.get_log_prior_sender ().remove_sink (m_prior_sender_sink_hook_func);
       m_prior_sender_sink_hook_func = nullptr;
     }
 }
 
+void
+active_tran_server::connection_handler::prior_sender_sink_hook (std::string &&message)
+{
+  assert (message.size () > 0);
+
+  push_request_regardless_of_state (tran_to_page_request::SEND_LOG_PRIOR_LIST, std::move (message));
+}
+
 active_tran_server::connection_handler *
-active_tran_server::create_connection_handler (cubcomm::channel &&chn, tran_server &ts) const
+active_tran_server::create_connection_handler (tran_server &ts, cubcomm::node &&node) const
 {
   // active_tran_server::connection_handler
-  return new connection_handler (std::move (chn), ts);
+  return new connection_handler (ts, std::move (node));
 }
