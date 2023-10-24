@@ -3492,7 +3492,7 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
   assert (log_Gl.hdr.append_lsa.pageid == log_pgptr->hdr.logical_pageid);
   log_Gl.hdr.append_lsa.offset = log_pgptr->hdr.offset;
 
-  LOG_RECORD_HEADER *log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_Gl.hdr.append_lsa);
+  const LOG_RECORD_HEADER *const log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_Gl.hdr.append_lsa);
   log_Gl.append.prev_lsa = log_rec->back_lsa;
 
   switch (log_Pb.partial_append.status)
@@ -3502,7 +3502,7 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
       break;
     case LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG:
       {
-	LOG_RECORD_HEADER *origin_append_log_record = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_Gl.hdr.append_lsa);
+	const LOG_RECORD_HEADER *const origin_append_log_record = log_rec;
 
 	// The temporary EOF log record at the prev_lsa has to be removed.
 	log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_ENDED;
@@ -3510,7 +3510,8 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
 	assert (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL);
 
 	// A new EOF has been appended at the append_lsa in logpb_flush_all_append_pages. Remove it as well.
-	LOG_RECORD_HEADER *append_log_rec = LOG_GET_LOG_RECORD_HEADER (log_Gl.append.log_pgptr, &log_Gl.hdr.append_lsa);
+	LOG_RECORD_HEADER *const append_log_rec =
+	  LOG_GET_LOG_RECORD_HEADER (log_Gl.append.log_pgptr, &log_Gl.hdr.append_lsa);
 	assert (append_log_rec->type == LOG_END_OF_LOG);
 	assert (log_Gl.append.log_pgptr->hdr.logical_pageid == log_pgptr->hdr.logical_pageid);
 	memcpy (append_log_rec, origin_append_log_record, sizeof (LOG_RECORD_HEADER));
