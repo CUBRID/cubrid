@@ -1479,7 +1479,7 @@ static int
 xts_save_cte_xasl_id (const XASL_ID * cte_xasl_id)
 {
   int offset, i;
-  int size, nelements = 8;
+  int size;
   char *ptr;
 
   OR_ALIGNED_BUF (sizeof (*cte_xasl_id)) a_buf;
@@ -1499,7 +1499,7 @@ xts_save_cte_xasl_id (const XASL_ID * cte_xasl_id)
       return offset;
     }
 
-  size = OR_INT_SIZE * nelements;
+  size = sizeof (XASL_ID);
 
   offset = xts_reserve_location_in_stream (size);
   if (offset == ER_FAILED || xts_mark_ptr_visited (cte_xasl_id, offset) == ER_FAILED)
@@ -1524,7 +1524,20 @@ xts_save_cte_xasl_id (const XASL_ID * cte_xasl_id)
     }
 
   buf = xts_process_cte_xasl_id (buf_p, cte_xasl_id);
+  if (buf == NULL)
+    {
+      offset = ER_FAILED;
+      goto end;
+    }
+  assert (buf <= buf_p + size);
+
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+end:
+  if (is_buf_alloced)
+    {
+      free_and_init (buf_p);
+    }
 
   return offset;
 }
@@ -5901,7 +5914,6 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 {
   int size = 0;
   int tmp_size = 0;
-  int i;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
   size += (XASL_NODE_HEADER_SIZE	/* header */
@@ -5966,10 +5978,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
   size += OR_INT_SIZE * 8;	/* cte_xasl_id = sha1(5) + flag(1) + time(2)... */
   size += OR_INT_SIZE;		/* for CTE host variable count */
 
-  for (i = 0; i < xasl->cte_host_var_count; i++)
-    {
-      size += OR_INT_SIZE;
-    }
+  size += (OR_INT_SIZE * xasl->cte_host_var_count);
 
   switch (xasl->type)
     {
