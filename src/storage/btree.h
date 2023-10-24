@@ -130,6 +130,7 @@ struct btid_int
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
+  int deduplicate_key_idx;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   OID topclass_oid;		/* class oid for which index is created */
 };
 
@@ -247,7 +248,7 @@ struct btree_scan
   bool is_btid_int_valid;
   bool is_scan_started;
   bool force_restart_from_root;
-
+  bool is_fk_remake;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   PERF_UTIME_TRACKER time_track;
 
   void *bts_other;
@@ -300,6 +301,7 @@ struct btree_scan
     OID_SET_NULL (&(bts)->match_class_oid);		\
     (bts)->time_track.is_perf_tracking = false;		\
     (bts)->bts_other = NULL;				\
+    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_RESET_SCAN(bts)				\
@@ -318,6 +320,7 @@ struct btree_scan
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_scan_started = false;			\
+    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \
@@ -374,6 +377,8 @@ struct btree_capacity
 {
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
   int64_t tot_val_cnt;		/* Total number of values stored in tree */
+  int deduplicate_dis_key_cnt;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+  int avg_val_per_dedup_key;	/* Average number of values (OIDs) per deduplicate key */
   int avg_val_per_key;		/* Average number of values (OIDs) per key */
   int leaf_pg_cnt;		/* Leaf page count */
   int nleaf_pg_cnt;		/* NonLeaf page count */
@@ -663,6 +668,9 @@ typedef int BTREE_RANGE_SCAN_PROCESS_KEY_FUNC (THREAD_ENTRY * thread_p, BTREE_SC
 
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 				   OID * found_oid);
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+extern int btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
+					     key_val_range * kv_range, bool * is_newly);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 
@@ -698,6 +706,7 @@ extern int btree_update (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * old_ke
 extern int btree_reflect_global_unique_statistics (THREAD_ENTRY * thread_p, GLOBAL_UNIQUE_STATS * unique_stat_info);
 extern void btree_root_update_stats (THREAD_ENTRY * thread_p, PAGE_PTR root_page, const log_unique_stats & stats);
 extern int btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, int flag_minkey);
+
 extern bool btree_multicol_key_is_null (DB_VALUE * key);
 extern int btree_multicol_key_has_null (DB_VALUE * key);
 extern DISK_ISVALID btree_find_key (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, DB_VALUE * key, bool * clear_key);

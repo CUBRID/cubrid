@@ -828,19 +828,10 @@ shard_stmt_set_hint_list (T_SHARD_STMT * stmt_p)
   hint_p = sp_get_first_hint (stmt_p->parser);
   while (hint_p != NULL)
     {
-      if (hint_type == HT_NONE)
-	{
-	  hint_type = hint_p->hint_type;
-	}
-      else if (hint_type != hint_p->hint_type)
-	{
-	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unexpected hint type. (expect:%d, current:%d).", hint_p->hint_type,
-		     hint_type);
-	  return -1;
-	}
+      hint_type = hint_p->hint_type;
 
       /* currently only support HT_KEY and HT_ID */
-      if (hint_type != HT_KEY && hint_type != HT_ID)
+      if (hint_type != HT_KEY && hint_type != HT_ID && hint_type != HT_VAL)
 	{
 	  PROXY_LOG (PROXY_LOG_MODE_ERROR, "Unsupported hint type. (hint_type:%d).", hint_type);
 	  return -1;
@@ -1319,7 +1310,7 @@ shard_stmt_change_shard_val_to_id (char **sql_stmt, const char **buf, char appl_
   T_SHARD_KEY_RANGE *range_p = NULL;
   const char *key_column;
   int shard_key_id = -1;
-  char shard_key_id_string[14];
+  char shard_key_id_string[16] = { '\0' };
 
   hint_p = sp_create_parser_hint ();
   if (hint_p == NULL)
@@ -1363,7 +1354,7 @@ shard_stmt_change_shard_val_to_id (char **sql_stmt, const char **buf, char appl_
       goto FINALLY;
     }
 
-  sprintf (shard_key_id_string, "shard_id(%d)*/", range_p->shard_id);
+  snprintf (shard_key_id_string, sizeof (shard_key_id_string), "shard_id(%d)*/", range_p->shard_id);
   *sql_stmt =
     shard_stmt_write_buf_to_sql (*sql_stmt, shard_key_id_string, strlen (shard_key_id_string), true, appl_server);
 

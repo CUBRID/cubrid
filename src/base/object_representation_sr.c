@@ -29,6 +29,7 @@
 #include "btree_load.h"
 #include "config.h"
 #include "dbtype.h"
+#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -318,6 +319,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 
       att->type = or_att->type;
       att->id = or_att->id;
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->location = or_att->location;
       att->position = or_att->position;
       att->val_length = or_att->default_value.val_length;
@@ -361,6 +363,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      bt_statsp->key_type = NULL;
 	      bt_statsp->pkeys_size = 0;
 	      bt_statsp->pkeys = NULL;
+	      bt_statsp->dedup_idx = -1;
 
 #if 0				/* reserved for future use */
 	      for (k = 0; k < BTREE_STATS_RESERVED_NUM; k++)
@@ -411,6 +414,7 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	      if (TP_DOMAIN_TYPE (bt_statsp->key_type) == DB_TYPE_MIDXKEY)
 		{
 		  bt_statsp->pkeys_size = tp_domain_size (bt_statsp->key_type->setdomain);
+		  bt_statsp->dedup_idx = btid_int.deduplicate_key_idx;
 		}
 	      else
 		{
@@ -1978,14 +1982,21 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 	    }
 
 	  att_id = db_get_int (&att_val);
-
-	  for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
 	    {
-	      if (att->id == att_id)
+	      index->atts[index->n_atts] = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (att_id);
+	      (index->n_atts)++;
+	    }
+	  else
+	    {
+	      for (j = 0, att = rep->attributes; j < rep->n_attributes; j++, att++)
 		{
-		  index->atts[index->n_atts] = att;
-		  (index->n_atts)++;
-		  break;
+		  if (att->id == att_id)
+		    {
+		      index->atts[index->n_atts] = att;
+		      (index->n_atts)++;
+		      break;
+		    }
 		}
 	    }
 	}
@@ -2164,9 +2175,11 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id)
   OR_ATTRIBUTE *ptr = NULL;
   int size;
 
+  assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
   /* Find the attribute with the matching attribute ID */
   for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
     {
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       if (att->id == att_id)
 	{
 	  ptr = att;
@@ -2281,6 +2294,27 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
     {
       assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
       att_id = db_get_int (&att_val);	/* The first attrID */
+
+      if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
+	{
+          // *INDENT-OFF* 
+	  /* To reach this point, the inside of the set must have at least the following structure.
+	   *     0         1                    2      [  3        4  ] *x           5 + x          6 + x   7 + x
+	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, status, comment}
+	   * That is, the size of this constraint_seq set must be 8 or more, and the 3rd position will be attrID.
+	   * The position 1 is deduplicate_key_attrID, which is virtual information, 
+	   * the position 3 value must be read to obtain actual column information.           
+	   */
+          // *INDENT-ON*
+	  assert (seq_size >= 8);
+	  i = 3;		// index of attrID (for first real column)
+	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
+	    {
+	      assert (DB_VALUE_TYPE (&att_val) == DB_TYPE_INTEGER);
+	      att_id = db_get_int (&att_val);	/* The first attrID after HIDDEN_INDEX_COL */
+	    }
+	}
+
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
 
@@ -2550,6 +2584,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2744,6 +2779,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2823,6 +2859,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -3065,6 +3102,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
       att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
+      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
       att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -3262,6 +3300,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  fixed = repatt + OR_VAR_TABLE_SIZE (ORC_REPATT_VAR_ATT_COUNT);
 
 	  att->id = OR_GET_INT (fixed + ORC_REPATT_ID_OFFSET);
+	  assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
 	  att->type = (DB_TYPE) OR_GET_INT (fixed + ORC_REPATT_TYPE_OFFSET);
 	  att->position = j;
 	  att->default_value.val_length = 0;
@@ -4018,6 +4057,15 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	      *string = NULL;
 	      return rc;
 	    }
+	}
+    }
+  else
+    {
+      *alloced_string = 0;
+      *string = NULL;
+      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
+	{
+	  *string = dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id));
 	}
     }
 

@@ -186,7 +186,8 @@ static PT_NODE *mq_rewrite_agg_names (PARSER_CONTEXT * parser, PT_NODE * node, v
 static PT_NODE *mq_rewrite_agg_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static bool mq_conditionally_add_objects (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT *** classes, int *index,
 					  int *max);
-static PT_UPDATABILITY mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *i);
+static PT_UPDATABILITY mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** classes, int *i,
+					   int *max);
 static PT_NODE *mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * query_spec,
 						   PT_NODE * class_);
 static PT_NODE *mq_substitute_select_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statement,
@@ -219,8 +220,6 @@ static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE *
 					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
 					      PT_NODE * class_);
 static PUSHABLE_TYPE mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery);
-static PT_NODE *pt_remove_cast_wrap_for_dblink (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg,
-						int *continue_walk);
 static void pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * term_list,
 			       FIND_ID_TYPE type);
 static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
@@ -3382,6 +3381,14 @@ pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
 	  cinfop->method_found = true;	/* not pushable */
 	}
       break;
+
+    case PT_EXPR:
+      if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (tree))
+	{
+	  cinfop->method_found = true;
+	}
+      break;
+
     default:
       break;
     }				/* switch (tree->node_type) */
@@ -3500,6 +3507,13 @@ pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query
 	      case PT_METHOD_CALL:
 		cinfo.method_found = true;	/* not pushable */
 		break;
+
+	      case PT_EXPR:
+		if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (list))
+		  {
+		    cinfo.method_found = true;
+		    break;
+		  }
 
 	      default:		/* do traverse */
 		parser_walk_leaves (parser, list, pt_check_pushable, &cinfo, NULL, NULL);
@@ -3827,14 +3841,24 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	}
       break;
     case PT_DBLINK_TABLE:
+
+      if (pt_check_dblink_column_alias (parser, query) != NO_ERROR)
+	{
+	  return;
+	}
+
       /* copy terms */
       query->info.dblink_table.pushed_pred = parser_copy_tree_list (parser, term_list);
+
       /* remove the cast wrap from pushed predicate */
       query->info.dblink_table.pushed_pred =
 	parser_walk_tree (parser, query->info.dblink_table.pushed_pred, pt_remove_cast_wrap_for_dblink, NULL, NULL,
 			  NULL);
+
+      /* print the pushed predicates */
       save_custom = parser->custom_print;
-      parser->custom_print |= PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX;
+      parser->custom_print |=
+	PT_CONVERT_RANGE | PT_SUPPRESS_RESOLVED | PT_PRINT_NO_HOST_VAR_INDEX | PT_PRINT_SUPPRESS_FOR_DBLINK;
       pushed_pred = pt_print_and_list (parser, query->info.dblink_table.pushed_pred);
 
       /* wrapped query SELECT * FROM */
@@ -3844,7 +3868,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 
       /* alias name: cublink */
       rewritten = pt_append_bytes (parser, rewritten, ") cublink", 9);
-
+#if 0
       if (query->info.dblink_table.cols != NULL)
 	{
 	  /* aliased column list */
@@ -3853,7 +3877,7 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	  rewritten = pt_append_varchar (parser, rewritten, col_list);
 	  rewritten = pt_append_bytes (parser, rewritten, ")", 1);
 	}
-
+#endif
       if (pushed_pred != NULL)
 	{
 	  /* where predicate */
@@ -4091,6 +4115,66 @@ mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE * statement,
 #endif
 
 /*
+ * mq_is_dblink_pushable_term () - check if the predicate is pushable for dblink
+ *   return: bool
+ *   parser(in):
+ *   term(in):
+ */
+static bool
+mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
+{
+  if (term->node_type == PT_EXPR)
+    {
+      if (pt_is_operator_logical (term->info.expr.op) || pt_is_operator_arith (term->info.expr.op))
+	{
+	  if (mq_is_dblink_pushable_term (parser, term->info.expr.arg1))
+	    {
+	      if (term->info.expr.arg2)
+		{
+		  if (mq_is_dblink_pushable_term (parser, term->info.expr.arg2))
+		    {
+		      /* every argument is pushable */
+		      return true;
+		    }
+		  /* some argument is not pushable */
+		  return false;
+		}
+	      /* every argument is pushable */
+	      return true;
+	    }
+
+	  /* it's not pushable because the expression may have function-like */
+	  return false;
+	}
+      else
+	{
+	  /* wrapped cast should be pushed and it will be removed while rewriting the dblink query */
+	  if (term->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_CAST_WRAP))
+	    {
+	      /* it needs to check if the argument is pushable */
+	      if (mq_is_dblink_pushable_term (parser, term->info.expr.arg1))
+		{
+		  return true;
+		}
+	    }
+
+	  /* other expression like built-in and stored function and etc. */
+	  return false;
+	}
+    }
+
+  switch (term->node_type)
+    {
+    case PT_NAME:
+    case PT_HOST_VAR:
+    case PT_VALUE:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -4131,7 +4215,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   int push_cnt, push_correlated_cnt, copy_cnt;
   PT_NODE *temp;
   int nullable_cnt;		/* nullable terms count */
-  PT_NODE *save_next;
+  PT_NODE *save_next, *in_spec;
   bool is_outer_joined;
 
   /* init */
@@ -4179,8 +4263,18 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
   is_outer_joined = mq_is_outer_join_spec (parser, spec);
 
   /* term(predicate) check */
+  in_spec = statement->info.query.q.select.from;
   for (term = statement->info.query.q.select.where; term; term = term->next)
     {
+      /* check for dblink's function term */
+      if (in_spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
+	{
+	  if (!mq_is_dblink_pushable_term (parser, term))
+	    {
+	      continue;
+	    }
+	}
+
       /* check for on_cond term */
       assert (term->node_type == PT_EXPR || term->node_type == PT_VALUE);
       if ((term->node_type == PT_EXPR && term->info.expr.location > 0)
@@ -5340,6 +5434,13 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	  flat = from->info.spec.flat_entity_list;
 	  if (flat == NULL)
 	    {
+	      if (from_spec->remote_server_name)
+		{
+		  assert (from_spec->remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+		  last = &temp->next;
+		  continue;
+		}
+
 	      assert (false);
 	      return NULL;
 	    }

@@ -46,6 +46,7 @@
 
 #include "porting.h"
 #include "chartype.h"
+#include "deduplicate_key.h"
 #include "misc_string.h"
 #include "error_manager.h"
 #include "storage_common.h"
@@ -391,6 +392,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_HA_SQL_LOGGING "ha_enable_sql_logging"
 
 #define PRM_NAME_HA_SQL_LOG_MAX_SIZE_IN_MB "ha_sql_log_max_size_in_mbytes"
+
+#define PRM_NAME_HA_SQL_LOG_PATH "ha_sql_log_path"
+
+#define PRM_NAME_HA_SQL_LOG_MAX_COUNT "ha_sql_log_max_count"
 
 #define PRM_NAME_HA_COPY_LOG_MAX_ARCHIVES "ha_copy_log_max_archives"
 
@@ -742,11 +747,21 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_REGEXP_ENGINE "regexp_engine"
 
-#define PRM_NAME_ORACLE_STYLE_NUMBER_RETURN "oracle_style_number_return"
+#define PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR "oracle_compat_number_behavior"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
+
+#define PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX "statdump_force_add_int_max"
+
+#define PRM_NAME_VACUUM_OVFP_CHECK_DURATION  "vacuum_ovfp_check_duration"
+#define PRM_NAME_VACUUM_OVFP_CHECK_THRESHOLD "vacuum_ovfp_check_threshold"
+
+#define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
+#define PRM_NAME_PRINT_INDEX_DETAIL        "print_index_detail"
+
+#define PRM_NAME_ORACLE_STYLE_DIVIDE "oracle_style_divide"
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -1224,6 +1239,18 @@ bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
+static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
+static unsigned int prm_deduplicate_key_level_flag = 0;
+static int prm_deduplicate_key_level_lower = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MIN;
+static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MAX;
+
+bool PRM_USE_WITH_OPTION_PRINT = false;
+static bool prm_use_print_index_detail_default = false;
+static unsigned int prm_use_print_index_detail_flag = 0;
+
+
 int PRM_DEFAULT_WEEK_FORMAT = 0;
 static int prm_week_format_default = 0;
 static int prm_week_format_lower = 0;
@@ -1506,6 +1533,16 @@ static unsigned int prm_ha_applylogdb_log_wait_time_in_secs_flag = 0;
 bool PRM_HA_SQL_LOGGING = false;
 static bool prm_ha_sql_logging_default = false;
 static unsigned int prm_ha_sql_logging_flag = 0;
+
+const char *PRM_HA_SQL_LOG_PATH = "";
+static char *prm_ha_sql_log_path_default = NULL;
+static unsigned int prm_ha_sql_log_path_flag = 0;
+
+int PRM_HA_SQL_LOG_MAX_COUNT = 2;
+static int prm_ha_sql_log_max_count_default = 2;
+static int prm_ha_sql_log_max_count_upper = 5;
+static int prm_ha_sql_log_max_count_lower = 2;
+static unsigned int prm_ha_sql_log_max_count_flag = 0;
 
 int PRM_HA_SQL_LOG_MAX_SIZE_IN_MB = INT_MIN;
 static int prm_ha_sql_log_max_size_in_mb_default = 50;
@@ -2474,9 +2511,25 @@ static int prm_regexp_engine_upper = cubregex::engine_type::LIB_RE2;
 static unsigned int prm_regexp_engine_flag = 0;
 /* *INDENT-ON* */
 
-bool PRM_ORACLE_STYLE_NUMBER_RETURN = false;
-static bool prm_oracle_style_number_return_default = false;
-static unsigned int prm_oracle_style_number_return_flag = 0;
+bool PRM_ORACLE_COMPAT_NUMBER_BEHAVIOR = false;
+static bool prm_oracle_compat_number_behavior_default = false;
+static unsigned int prm_oracle_compat_number_behavior_flag = 0;
+
+bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
+static bool prm_statdump_force_add_int_max_default = false;
+static unsigned int prm_statdump_force_add_int_max_flag = 0;
+
+int PRM_VACUUM_OVFP_CHECK_DURATION = 45000;
+static int prm_vacuum_ovfp_check_duration_default = 45000;
+static int prm_vacuum_ovfp_check_duration_upper = 600000;
+static int prm_vacuum_ovfp_check_duration_lower = 1;	// 1 min
+static unsigned int prm_vacuum_ovfp_check_duration_flag = 0;
+
+int PRM_VACUUM_OVFP_CHECK_THRESHOLD = 1000;
+static int prm_vacuum_ovfp_check_threshold_default = 1000;
+static int prm_vacuum_ovfp_check_threshold_upper = INT_MAX;
+static int prm_vacuum_ovfp_check_threshold_lower = 2;
+static unsigned int prm_vacuum_ovfp_check_threshold_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6536,13 +6589,13 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_ORACLE_STYLE_NUMBER_RETURN,
-   PRM_NAME_ORACLE_STYLE_NUMBER_RETURN,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+  {PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
+   PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
-   &prm_oracle_style_number_return_flag,
-   (void *) &prm_oracle_style_number_return_default,
-   (void *) &PRM_ORACLE_STYLE_NUMBER_RETURN,
+   &prm_oracle_compat_number_behavior_flag,
+   (void *) &prm_oracle_compat_number_behavior_default,
+   (void *) &PRM_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -6569,7 +6622,89 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_ha_ping_timeout_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STATDUMP_FORCE_ADD_INT_MAX,
+   PRM_NAME_STATDUMP_FORCE_ADD_INT_MAX,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_statdump_force_add_int_max_flag,
+   (void *) &prm_statdump_force_add_int_max_default,
+   (void *) &PRM_STATDUMP_FORCE_ADD_INT_MAX,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_SQL_LOG_PATH,
+   PRM_NAME_HA_SQL_LOG_PATH,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_STRING,
+   &prm_ha_sql_log_path_flag,
+   (void *) &prm_ha_sql_log_path_default,
+   (void *) &PRM_HA_SQL_LOG_PATH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_VACUUM_OVFP_CHECK_DURATION,
+   PRM_NAME_VACUUM_OVFP_CHECK_DURATION,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_vacuum_ovfp_check_duration_flag,
+   (void *) &prm_vacuum_ovfp_check_duration_default,
+   (void *) &PRM_VACUUM_OVFP_CHECK_DURATION,
+   (void *) &prm_vacuum_ovfp_check_duration_upper,
+   (void *) &prm_vacuum_ovfp_check_duration_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) prm_msec_to_sec,
+   (DUP_PRM_FUNC) prm_sec_to_msec},
+  {PRM_ID_VACUUM_OVFP_CHECK_THRESHOLD,
+   PRM_NAME_VACUUM_OVFP_CHECK_THRESHOLD,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_vacuum_ovfp_check_threshold_flag,
+   (void *) &prm_vacuum_ovfp_check_threshold_default,
+   (void *) &PRM_VACUUM_OVFP_CHECK_THRESHOLD,
+   (void *) &prm_vacuum_ovfp_check_threshold_upper,
+   (void *) &prm_vacuum_ovfp_check_threshold_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEDUPLICATE_KEY_LEVEL,
+   PRM_NAME_DEDUPLICATE_KEY_LEVEL,
+   // It is not specified in the manual that it can be changed in the session.
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   PRM_INTEGER,
+   &prm_deduplicate_key_level_flag,
+   (void *) &prm_deduplicate_key_level_default,
+   (void *) &PRM_DEDUPLICATE_KEY_MOD_LEVEL,
+   (void *) &prm_deduplicate_key_level_upper,
+   (void *) &prm_deduplicate_key_level_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PRINT_INDEX_DETAIL,
+   PRM_NAME_PRINT_INDEX_DETAIL,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_use_print_index_detail_flag,
+   (void *) &prm_use_print_index_detail_default,
+   (void *) &PRM_USE_WITH_OPTION_PRINT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_SQL_LOG_MAX_COUNT,
+   PRM_NAME_HA_SQL_LOG_MAX_COUNT,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   &prm_ha_sql_log_max_count_flag,
+   (void *) &prm_ha_sql_log_max_count_default,
+   (void *) &PRM_HA_SQL_LOG_MAX_COUNT,
+   (void *) &prm_ha_sql_log_max_count_upper,
+   (void *) &prm_ha_sql_log_max_count_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 static int num_session_parameters = 0;
@@ -6890,7 +7025,7 @@ static void prm_check_environment (void);
 static int prm_check_parameters (void);
 static SYSPRM_ERR sysprm_validate_escape_char_parameters (const SYSPRM_ASSIGN_VALUE * assignment_list);
 static int prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload,
-				const char *file, const int load_flags);
+				const char *file, const int load_flags, bool ignore_case);
 static int prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, const bool reload,
 					const int load_flags);
 static void prm_report_bad_entry (const char *key, int line, int err, const char *where);
@@ -7374,10 +7509,11 @@ sysprm_reload_and_init (const char *db_name, const char *conf_file)
  *   reload(in):
  *   file(in):
  *   load_flags(in):
+ *   ignore_case(in):
  */
 static int
 prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, bool reload, const char *file,
-		     const int load_flags)
+		     const int load_flags, bool ignore_case)
 {
   int i, error;
   int sec_len;
@@ -7409,7 +7545,7 @@ prm_load_by_section (INI_TABLE * ini, const char *section, bool ignore_section, 
 
       if (ini_hassec (key))
 	{
-	  sec_len = ini_seccmp (key, section);
+	  sec_len = ini_seccmp (key, section, ignore_case);
 	  if (!sec_len)
 	    {
 	      continue;
@@ -7593,33 +7729,33 @@ prm_read_and_parse_ini_file (const char *prm_file_name, const char *db_name, con
       return PRM_ERR_FILE_ERR;
     }
 
-  error = prm_load_by_section (ini, "common", true, reload, prm_file_name, load_flags);
+  error = prm_load_by_section (ini, "common", true, reload, prm_file_name, load_flags, true);
   if (error == NO_ERROR && SYSPRM_LOAD_IS_IGNORE_HA (load_flags) && db_name != NULL && *db_name != '\0')
     {
       snprintf (sec_name, LINE_MAX, "@%s", db_name);
-      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
+      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags, false);
     }
 
 #if defined (SA_MODE)
   if (error == NO_ERROR)
     {
-      error = prm_load_by_section (ini, "standalone", true, reload, prm_file_name, load_flags);
+      error = prm_load_by_section (ini, "standalone", true, reload, prm_file_name, load_flags, true);
     }
 #endif /* SA_MODE */
 
   if (error == NO_ERROR && SYSPRM_LOAD_IS_IGNORE_HA (load_flags))
     {
-      error = prm_load_by_section (ini, "service", false, reload, prm_file_name, load_flags);
+      error = prm_load_by_section (ini, "service", false, reload, prm_file_name, load_flags, true);
     }
   if (error == NO_ERROR && !SYSPRM_LOAD_IS_IGNORE_HA (load_flags) && PRM_HA_MODE != HA_MODE_OFF
       && GETHOSTNAME (host_name, CUB_MAXHOSTNAMELEN) == 0)
     {
       snprintf (sec_name, LINE_MAX, "%%%s|*", host_name);
-      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
+      error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags, true);
       if (error == NO_ERROR && getlogin_r (user_name, CUB_MAXHOSTNAMELEN) == 0)
 	{
 	  snprintf (sec_name, LINE_MAX, "%%%s|%s", host_name, user_name);
-	  error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags);
+	  error = prm_load_by_section (ini, sec_name, true, reload, prm_file_name, load_flags, true);
 	}
     }
 
@@ -11106,6 +11242,7 @@ prm_tune_parameters (void)
       if (GETHOSTNAME (host_name, sizeof (host_name)))
 	{
 	  strncpy (host_name, "localhost", sizeof (host_name) - 1);
+	  er_clear ();
 	}
 
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);
@@ -11258,6 +11395,7 @@ prm_tune_parameters (void)
       if (GETHOSTNAME (host_name, sizeof (host_name)))
 	{
 	  strncpy (host_name, "localhost", sizeof (host_name) - 1);
+	  er_clear ();
 	}
 
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);

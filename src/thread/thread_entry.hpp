@@ -292,6 +292,7 @@ namespace cubthread
       int count_private_allocators;
 #endif
       int m_qlist_count;
+      int read_ovfl_pages_count; // For Vacuum only.
 
       cubload::driver *m_loaddb_driver;
 

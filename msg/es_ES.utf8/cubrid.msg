@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Base de datos "%1$s" es desconocida, o el archivo "databases.txt" no se puede accesar.
 117 El nombre de ruta absoluto para la base de datos es demasiado largo. La longitud combinada de la ruta "%1$s" y el nombre "%2$s" es %3$d; la longitud combinada debe ser inferior a %4$d.
 118 No se ha podido localizar el directorio de trabajo actual.
-119 Ne eblas trovi ("%1$s") en /etc/hosts. Bonvolu kontroli permesojn de la dosiero aŭ se estas la gastnomo.
+119 Ne eblas trovi ("%1$s") en "%2$s". Bonvolu kontroli permesojn de la dosiero aŭ se estas la gastnomo.
 120 El numero maximo de volumenes (%1$d) ha sido excedido.
 121 Tratando de eliminar "%1$s", un volumen permanente de la base de datos.
 122 No se puede acceder al catálogo del sistema de mensajes.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 No se puede establecer un tunel hacia el servidor maestro.
 348 Debe especificar un identificador sea de servicio o de puerto.
 349 Servicio desconocido para TCP: %1$s.
-350 Ne eblas trovi ("%1$s") en /etc/hosts. Bonvolu kontroli permesojn de la dosiero aŭ se estas la gastnomo.
+350 Ne eblas trovi ("%1$s") en "%2$s". Bonvolu kontroli permesojn de la dosiero aŭ se estas la gastnomo.
 351 No se puede crear enchufe TCP.
 352 tcp_open: no se puede obtener un puerto TCP reservado.
 353 No se puede establecer conexion hacia el servidor maestro en host "%1$s".
@@ -904,7 +904,7 @@ $ LOADDB
 834 Hay algunos desajustes entre el string de origen "%1$s" y el string de formato "%2$s" dados en to_number().
 835 Artículo de estadísticas indefinido.
 836 Pestillo en la pagina (%1$d|%2$d) ha expirado
-837 No se puede disminuir el usuario que patrocina objetos de base de datos (clase/trigger/serial/server/synonym etc)
+837 No se puede disminuir el usuario que patrocina objetos de base de datos.
 838 No se pueden abrir simultaneamente mas de %1$d tomografías de indice.
 839 "%1$s": parametro de sistema desconocido o valor malo.
 840 No se puede cambiar el parametro de sistema "%1$s".
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 La carga del índice se canceló después de un error.
 1244 La carga de actualizaciones de atributos compartidos desde archivos de objetos no es compatible con el modo CS.
 1245 La carga de actualizaciones de atributos de clase desde archivos de objetos no es compatible con el modo CS.
-1246 Ne eblas ricevi adreson kaj kanonikan nomon por ("%1$s") en /etc/hosts. Bonvolu kontroli la permeson de la dosiero aŭ se estas la gastnomo.
+1246 Ne eblas ricevi adreson kaj kanonikan nomon por ("%1$s") en "%2$s". Bonvolu kontroli la permeson de la dosiero aŭ se estas la gastnomo.
 1247 El tiempo (%1$s) especificado tiene que ser despues del tiempo (%2$s) del respaldo especificado.
 1248 Archivo de clave no válido: %1$s
 1249 No se puede encontrar la clave (índice: %1$d).
@@ -1437,16 +1437,13 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" tiene un formato no válido en la línea %3$d del archivo "%4$s".
-1356 El nombre de host "%1$s" es demasiado largo, debe ser menor o igual a 256 en la línea %2$d del archivo "%3$s".
-1357 El nombre de host "%1$s" ya existe, un nombre de host no se puede duplicar con otras direcciones IP en la línea %2$d del archivo "%3$s".
-1358 Tanto la dirección IP como el nombre de host deben escribirse completamente en la línea %1$d del archivo "%2$s".
-1359 No se pudo buscar "%1$s" en cubrid_hosts.conf.
-1360 Ocurrió un error al usar el host definido por el usuario.
 
-1361 No se encontró el archivo "%1$s".
+1355 No se encontró el archivo "%1$s".
+1356 No hay ninguna pista en la consulta de DBLink o el tipo de instrucción es incorrecto. %1$s
+1357 Error al convertir una cadena SQL a una cadena ancha.
+1358 Se desconoce el número de filas afectadas.
 
-1362 Ultimo error
+1359 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
@@ -1612,6 +1609,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No se han especificado opciones para ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Sin memoria.

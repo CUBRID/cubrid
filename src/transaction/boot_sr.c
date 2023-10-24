@@ -4253,7 +4253,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	  else
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, p);
-	      if (mkdir (p, 0777) < 0)
+	      if (mkdir (p, 0700) < 0)
 		{
 		  cub_dirname_r (p, fixed_pathbuf, PATH_MAX);
 		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);
@@ -6141,6 +6141,8 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "ADMIN_UTILITY";
     case DB_CLIENT_TYPE_ADMIN_CSQL:
       return "ADMIN_CSQL";
+    case DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG:
+      return "ADMIN_CSQL_REBUILD_CATALOG";
     case DB_CLIENT_TYPE_LOG_COPIER:
       return "LOG_COPIER";
     case DB_CLIENT_TYPE_LOG_APPLIER:
@@ -6157,6 +6159,12 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "SKIP_VACUUM_CSQL";
     case DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL:
       return "SKIP_VACUUM_ADMIN_CSQL";
+    case DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS:
+      return "ADMIN_COMPACTDB_WOS";
+    case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT:
+      return "ADMIN_LOADDB_COMPAT";
+    case DB_CLIENT_TYPE_LOADDB_UTILITY:
+      return "LOADDB_UTILITY";
     case DB_CLIENT_TYPE_UNKNOWN:
     default:
       return "UNKNOWN";

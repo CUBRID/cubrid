@@ -128,6 +128,7 @@ int (*csql_text_console_to_utf8) (const char *, const int, char **, int *) = NUL
 
 int csql_Row_count;
 int csql_Num_failures;
+char csql_Db_name[512];
 
 /* command editor lines */
 int csql_Line_lwm = -1;
@@ -588,6 +589,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  prompt = csql_Prompt_offline;
 	}
 
+      read_whole_line = false;
+
       memset (line_buf, 0, LINE_BUFFER_SIZE);
       memset (utf8_line_buf, 0, INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE);
 
@@ -1043,7 +1046,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
-	      au_sysadm_disable ();
+	      au_disable ();
 	    }
 	  csql_Database_connected = true;
 
@@ -1485,12 +1488,27 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	    {
 	      return error_code;
 	    }
-	  break;
 	}
       else
 	{
 	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
 	}
+      break;
+
+    case S_CMD_MIDXKEY:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_arg->midxkey_print = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_arg->midxkey_print = false;
+	}
+      if (csql_Is_interactive)
+	{
+	  fprintf (csql_Output_fp, "MIDXKEY IS %s\n", (csql_arg->midxkey_print ? "ON" : "OFF"));
+	}
+      break;
     }
 
   return DO_CMD_SUCCESS;
@@ -1791,7 +1809,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
-  PT_NODE *statement = NULL;
   char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
 
   csql_Num_failures = 0;
@@ -1887,6 +1904,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       DB_QUERY_RESULT *result = NULL;	/* result pointer */
       int db_error;
       char stmt_msg[LINE_BUFFER_SIZE];
+      PT_NODE *statement = NULL;
 
       /* Start the execution of stms */
       stmt_msg[0] = '\0';
@@ -2884,6 +2902,12 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       client_type = DB_CLIENT_TYPE_CSQL;
     }
 
+  if (csql_arg->sysadm_rebuild_catalog)
+    {
+      client_type = DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG;
+      csql_arg->sysadm = true;
+    }
+
   if (db_restart_ex (argv0, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL, client_type) != NO_ERROR)
     {
       if (!csql_Is_interactive || csql_arg->passwd != NULL || db_error_code () != ER_AU_INVALID_PASSWORD)
@@ -2938,7 +2962,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_sysadm_disable ();
+      au_disable ();
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */
@@ -3472,17 +3496,17 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
 /*If login is success, copy csql_new_arg to csql_arg*/
   csql_new_arg.user_name = strdup (user_name_ptr);
-  csql_new_arg.db_name = strdup (db_name_ptr);
+  strcpy (csql_Db_name, db_name_ptr);
+  csql_new_arg.db_name = csql_Db_name;
 
   FREE_MEM ((char *) csql_arg->user_name);
-  FREE_MEM ((char *) csql_arg->db_name);
   FREE_MEM ((char *) csql_arg->passwd);
 
   memcpy (csql_arg, &csql_new_arg, sizeof (CSQL_ARGUMENT));
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      au_sysadm_disable ();
+      au_disable ();
     }
   csql_Database_connected = true;
 
