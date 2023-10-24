@@ -3485,7 +3485,7 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
   const bool have_only_partial_record_in_page = log_pgptr->hdr.offset == NULL_LOG_OFFSET;
   if (have_only_partial_record_in_page)
     {
-      // Do nothing. It will be finished up at a following call.
+      // Do nothing. It will be finished up in one of following logpb_catchup_end_append ().
       return;
     }
 
@@ -3498,7 +3498,7 @@ logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pg
   switch (log_Pb.partial_append.status)
     {
     case LOGPB_APPENDREC_IN_PROGRESS:
-      /* success, fall through */
+      /* success */
       break;
     case LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG:
       {
