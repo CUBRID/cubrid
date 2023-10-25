@@ -6834,6 +6834,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->node.classname = NULL;
   scan_cache->cache_last_fix_page = cache_last_fix_page;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&(scan_cache->old_page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
   scan_cache->start_area ();
   scan_cache->num_btids = 0;
   scan_cache->m_index_stats = NULL;
@@ -6990,6 +6991,10 @@ heap_scancache_force_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
     {
       pgbuf_ordered_unfix (thread_p, &(scan_cache->page_watcher));
     }
+  if (scan_cache->old_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &(scan_cache->old_page_watcher));
+    }
 
   return NO_ERROR;
 }
@@ -7123,11 +7128,13 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
     {
       scan_cache->node.hfid.vfid.volid = NULL_VOLID;
       PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+      PGBUF_INIT_WATCHER (&(scan_cache->old_page_watcher), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
     }
   else
     {
       HFID_COPY (&scan_cache->node.hfid, hfid);
       PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
+      PGBUF_INIT_WATCHER (&(scan_cache->old_page_watcher), PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
     }
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->node.classname = NULL;
@@ -7177,6 +7184,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	    {
 	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	    }
+	  assert (scan_cache->old_page_watcher.pgptr == NULL);
 	}
 
       if (scan_cache->partition_list)
@@ -7830,7 +7838,6 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   SCAN_CODE scan = S_ERROR;
   int get_rec_info = cache_recordinfo != NULL;
   bool is_null_recdata;
-  PGBUF_WATCHER old_page_watcher;
 
   assert (scan_cache != NULL);
 
@@ -7856,8 +7863,6 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
     {
       class_oid = &scan_cache->node.class_oid;
     }
-
-  PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   if (OID_ISNULL (next_oid))
     {
@@ -7908,7 +7913,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      if (!VPID_EQ (&vpid, vpidptr_incache))
 		{
 		  /* Keep previous scan page fixed until we fixed the current one */
-		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
+		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &scan_cache->old_page_watcher);
 		}
 	    }
 	  if (scan_cache->page_watcher.pgptr == NULL)
@@ -7916,9 +7921,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      scan_cache->page_watcher.pgptr =
 		heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, scan_cache,
 					     &scan_cache->page_watcher);
-	      if (old_page_watcher.pgptr != NULL)
+	      if (scan_cache->old_page_watcher.pgptr != NULL)
 		{
-		  pgbuf_ordered_unfix (thread_p, &old_page_watcher);
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->old_page_watcher);
 		}
 	      if (scan_cache->page_watcher.pgptr == NULL)
 		{
@@ -8006,7 +8011,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      (void) heap_vpid_next (thread_p, hfid, scan_cache->page_watcher.pgptr, &vpid);
 		    }
-		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
+		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &scan_cache->old_page_watcher);
 		  oid.volid = vpid.volid;
 		  oid.pageid = vpid.pageid;
 		  oid.slotid = -1;
@@ -8014,9 +8019,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      /* must be last page, end scanning */
 		      OID_SET_NULL (next_oid);
-		      if (old_page_watcher.pgptr != NULL)
+		      if (scan_cache->old_page_watcher.pgptr != NULL)
 			{
-			  pgbuf_ordered_unfix (thread_p, &old_page_watcher);
+			  pgbuf_ordered_unfix (thread_p, &scan_cache->old_page_watcher);
 			}
 		      return scan;
 		    }
@@ -8024,9 +8029,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      else
 		{
 		  /* Error, stop scanning */
-		  if (old_page_watcher.pgptr != NULL)
+		  if (scan_cache->old_page_watcher.pgptr != NULL)
 		    {
-		      pgbuf_ordered_unfix (thread_p, &old_page_watcher);
+		      pgbuf_ordered_unfix (thread_p, &scan_cache->old_page_watcher);
 		    }
 		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 		  return scan;
@@ -8096,9 +8101,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       break;
     }
 
-  if (old_page_watcher.pgptr != NULL)
+  if (scan_cache->old_page_watcher.pgptr != NULL)
     {
-      pgbuf_ordered_unfix (thread_p, &old_page_watcher);
+      pgbuf_ordered_unfix (thread_p, &scan_cache->old_page_watcher);
     }
 
   if (scan_cache->page_watcher.pgptr != NULL)
