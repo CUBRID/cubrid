@@ -7184,10 +7184,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	    {
 	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	    }
-	  if (scan_cache->old_page_watcher.pgptr != NULL)
-	    {
-	      pgbuf_ordered_unfix (thread_p, &scan_cache->old_page_watcher);
-	    }
+	  assert (scan_cache->old_page_watcher.pgptr == NULL);
 	}
 
       if (scan_cache->partition_list)
