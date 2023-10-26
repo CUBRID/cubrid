@@ -24856,6 +24856,12 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
   HEAP_GET_CONTEXT context;
 
   /*
+   * The process below should be within heap_get_visible_version_internal(), 
+   * but it's an added shortcut for performance improvement. Under certain specific conditions, 
+   * it allows for skipping the process of initializing and cleaning the context and the 
+   * heap_get_visible_version_internal() function. This brings the current CUBRID's heap scan 
+   * performance closer to the heap scan performance of CUBRID before the introduction of MVCC. 
+   * Following is the explanation for the code below.
    * Before fetching a record, check forward_recdes to see if the record type is REC_HOME,
    * and it's being PEEKed (meaning there's no need to COPY the record data to a new space). 
    * In this case, we can use forward_recdes as the record without executing the
