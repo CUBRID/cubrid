@@ -39,6 +39,7 @@ import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.math.MathContext;
 import java.sql.*;
 import java.sql.Date;
 import java.sql.Time;
