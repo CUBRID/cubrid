@@ -725,6 +725,7 @@ void page_server::pts_mvcc_tracker::update_oldest_active_mvccid (const std::stri
   er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
 #endif
 }
+
 void page_server::pts_mvcc_tracker::delete_oldest_active_mvccid (const std::string &pts_channel_id)
 {
   std::lock_guard<std::mutex> lockg { m_pts_oldest_active_mvccids_mtx };
@@ -1108,8 +1109,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   const LOG_PAGEID end_pageid = catchup_lsa.offset == 0 ? catchup_lsa.pageid - 1 : catchup_lsa.pageid;
   const size_t total_page_count = end_pageid - start_pageid + 1;
 
-  // Request pages to the followee
-  auto request_pages_to_buffer = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t request_page_cnt) -> int
+  // A functor to request pages to the followee
+  auto request_pages_to_buffer = [this, &log_pgptr_recv_vec] (LOG_PAGEID start_pageid, size_t request_page_cnt)
   {
     auto lockg = std::lock_guard <std::mutex> (m_followee_conn_mutex);
     if (m_followee_conn == nullptr)
@@ -1142,6 +1143,13 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
   size_t request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
   auto req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
   int error = NO_ERROR;
+
+  LOG_CS_ENTER (&entry);
+  auto unlock_log_cs_on_exit = scope_exit {[&entry] ()
+  {
+    LOG_CS_EXIT (&entry);
+  }};
+
   while (remaining_page_cnt > 0)
     {
       error = req_future.get (); // waits until the previous requests are replied
@@ -1150,8 +1158,9 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  break;
 	}
 
-      remaining_page_cnt -= request_page_cnt;
-      request_start_pageid += request_page_cnt;
+      auto receive_page_cnt = request_page_cnt;
+      remaining_page_cnt -= receive_page_cnt;
+      request_start_pageid += receive_page_cnt;
 
       log_pgptr_vec.swap (log_pgptr_recv_vec);
 
@@ -1160,12 +1169,25 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  request_page_cnt = std::min (log_pgptr_recv_vec.size (), remaining_page_cnt);
 	  req_future = std::async (std::launch::async, request_pages_to_buffer, request_start_pageid, request_page_cnt);
 	}
-      // TODO append pages in log_pgptr_vec to the log buffer while pulling next pages.
+
+      for (size_t i = 0; i < receive_page_cnt; i++)
+	{
+	  logpb_catchup_append_page (&entry, log_pgptr_vec[i]);
+	}
     }
 
+  bool with_disc_msg = true;
   if (error == NO_ERROR)
     {
       assert (remaining_page_cnt == 0);
+
+      error = logpb_catchup_finish (&entry, catchup_lsa);
+      if (error != NO_ERROR)
+	{
+	  // unacceptable.
+	  assert_release (false);
+	}
+
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 		     start_pageid, end_pageid, total_page_count);
 
@@ -1173,17 +1195,24 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 
       push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
 
-      constexpr bool with_disc_msg = true;
-      disconnect_followee_page_server (with_disc_msg);
+      with_disc_msg = true;
     }
   else
     {
+      /*
+       * TODO
+       * In this case, we are going to re-initiate the catch-up with another PS.
+       * Now, we asuume it doesn't happen.
+       */
+      assert (false);
+
       assert (remaining_page_cnt > 0);
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
 		     error, remaining_page_cnt, total_page_count);
-      constexpr bool with_disc_msg = false;
-      disconnect_followee_page_server (with_disc_msg);
+      with_disc_msg = false;
     }
+
+  disconnect_followee_page_server (with_disc_msg);
 }
 
 bool

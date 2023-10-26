@@ -363,6 +363,9 @@ static int logpb_write_append_pages_to_disk (THREAD_ENTRY * thread_p);
 static void logpb_skip_flush_append_pages ();
 static int logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * ndoe);
 
+static void logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr);
+static void logpb_catchup_start_append (THREAD_ENTRY * thread_p);
+
 static void logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header);
 static void logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header);
 static void logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data);
@@ -3360,6 +3363,252 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
       bg_arv_info->last_sync_pageid = bg_arv_info->current_page_id;
     }
 }
+
+#if defined(SERVER_MODE)
+/*
+ * logpb_catchup_append_page - Append a page during catch-up.
+ *
+ *   pgptr(in): a log page pointer to append
+ */
+void
+logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pgptr)
+{
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (log_Gl.append.log_pgptr != NULL);
+
+  logpb_catchup_start_append (thread_p);
+
+  if (log_Gl.append.log_pgptr->hdr.logical_pageid + 1 == log_pgptr->hdr.logical_pageid)
+    {
+      // The normal case. Only exception is the first page. 
+      log_Gl.append.prev_lsa = log_Gl.hdr.append_lsa;
+      logpb_next_append_page (thread_p, LOG_SET_DIRTY);
+    }
+  else if (log_Gl.append.log_pgptr->hdr.logical_pageid == log_pgptr->hdr.logical_pageid)
+    {
+      assert (log_Pb.partial_append.status == LOGPB_APPENDREC_IN_PROGRESS);
+      // For the first page, just overwrite the page.
+      // DON'T change meta data like log_Gl.append.prev_lsa. They don't go backward
+    }
+  else
+    {
+      // Not reachable. The appedning page must be either the cuurent append.log_pgptr or the next one.
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_catchup_append_page");
+    }
+
+  memcpy (log_Gl.append.log_pgptr, log_pgptr, LOG_PAGESIZE);
+  logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
+
+  logpb_catchup_end_append (thread_p, log_pgptr);
+}
+
+/*
+ * logpb_catchup_start_append - Start appending a page during catch-up.
+ *      LOGPB_APPENDREC_SUCCESS: 
+ *        A normal case. The previous appending has been successfully.
+ *      LOGPB_APPENDREC_IN_PROGRESS:
+ *        The previous appended page doesn't have a start of a log record. It only constains a middle part 
+ *        or the last part of a log record. In this case, the prev_lsa has not been advanced, 
+ *        and the EOF will be appended when flushing log pages halfway through appending a page.
+ *      LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG:
+ *        Log pages are flushed during appending a page including only a partial log record, and the temporary EOF 
+ *        has been appended at the prev_lsa. We will remove this at logpb_catchup_end_append() when the partial log record completes.
+ *      
+ *      The status transition:
+ *   
+ *       ┌──► ┌─►_SUCCESS
+ *       │    │      │
+ *       │    │ (*)  │ Start appending a page
+ *       │    │      ▼
+ *       │    └──_IN_PROGRESS
+ *       │           │
+ *       │           │ It happens to flush log pages during the catch-up.
+ *       │           │ So, EOF is appended at the prev_lsa.
+ *       │           ▼
+ *       │       _PARTIAL_FLUSHED_END_OF_LOG
+ *       │           │
+ *       │           │ It's done to append log pages containing an incomplete log record.
+ *       │           │ If there is no incomplete log record, just a page has been appended.
+ *       │           ▼
+ *       │       _PARTIAL_ENDED
+ *       │           │
+ *       │           │ Flush log pages to remove the EOF.
+ *       │           │ It appends the EOF at the append_lsa instead.
+ *       │           ▼
+ *       │       _PARTIAL_FLUSHED_ORIGINAL
+ *       │           │
+ *       │           │ Remove the EOF at the append_lsa on the memory buffer.
+ *       └───────────┘ This will be flushed in the next time.
+ *
+ * (*): It's done to append log pages containing an incomplete log record without flushing in the middle.
+ * 
+ *      See logpb_catchup_end_append() and logpb_flush_all_append_pages() as well for the complete picture.
+ *     
+ *   log_pgptr(in): a log page pointer to append
+ */
+static void
+logpb_catchup_start_append (THREAD_ENTRY * thread_p)
+{
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  switch (log_Pb.partial_append.status)
+    {
+    case LOGPB_APPENDREC_SUCCESS:
+      log_Pb.partial_append.status = LOGPB_APPENDREC_IN_PROGRESS;
+      break;
+    case LOGPB_APPENDREC_IN_PROGRESS:
+    case LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG:
+      /* keep the status */
+      break;
+    default:
+      /* invalid state */
+      assert_release (false);
+    }
+}
+
+/*
+ * logpb_catchup_end_append - Finish appending a page during catch-up.
+ *      If the appended page has only parital record in it, keep partial appending status.
+ *      Otherwise, complete appending pages, in the partial appending case, or a page.
+ *        - Set the append_lsa and prev_lsa to valid ones.
+ *        - Remove the temporary EOF If log pages are flushed halfway through.
+ *        - Set the partial appending status to LOGPB_APPENDREC_SUCCESS.
+ * 
+ *    See logpb_catchup_start_append() for details of the status transition.
+ *
+ *   log_pgptr(in): a log page pointer appended
+ */
+static void
+logpb_catchup_end_append (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_pgptr)
+{
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  const bool have_only_partial_record_in_page = log_pgptr->hdr.offset == NULL_LOG_OFFSET;
+  if (have_only_partial_record_in_page)
+    {
+      // Do nothing. It will be finished up in one of following logpb_catchup_end_append ().
+      return;
+    }
+
+  assert (log_Gl.hdr.append_lsa.pageid == log_pgptr->hdr.logical_pageid);
+  log_Gl.hdr.append_lsa.offset = log_pgptr->hdr.offset;
+
+  const LOG_RECORD_HEADER *const log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_Gl.hdr.append_lsa);
+  log_Gl.append.prev_lsa = log_rec->back_lsa;
+
+  switch (log_Pb.partial_append.status)
+    {
+    case LOGPB_APPENDREC_IN_PROGRESS:
+      /* success */
+      break;
+    case LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG:
+      {
+	const LOG_RECORD_HEADER *const origin_append_log_record = log_rec;
+
+	// The temporary EOF log record at the prev_lsa has to be removed.
+	log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_ENDED;
+	logpb_flush_all_append_pages (thread_p);
+	assert (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL);
+
+	// A new EOF has been appended at the append_lsa in logpb_flush_all_append_pages. Remove it as well.
+	LOG_RECORD_HEADER *const append_log_rec =
+	  LOG_GET_LOG_RECORD_HEADER (log_Gl.append.log_pgptr, &log_Gl.hdr.append_lsa);
+	assert (append_log_rec->type == LOG_END_OF_LOG);
+	assert (log_Gl.append.log_pgptr->hdr.logical_pageid == log_pgptr->hdr.logical_pageid);
+	memcpy (append_log_rec, origin_append_log_record, sizeof (LOG_RECORD_HEADER));
+
+	logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
+      }
+      break;
+    default:
+      /* invalid state */
+      assert_release (false);
+    }
+  log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS;
+}
+
+/*
+ * logpb_catchup_finish - finish the catch-up job. 
+ *      This sets the prev_lsa and append_lsa to the latest ones traversing log pages from known log record.
+ *
+ * return: NO_ERROR
+ *
+ *   catchup_lsa(in): catchup_lsa, until which we pull pages, and from which new log records will be appended.
+ */
+int
+logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
+{
+  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  assert (log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS);
+
+  char log_pgbuf[LOG_PAGESIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
+  LOG_LSA nav_lsa = log_Gl.append.prev_lsa;
+  LOG_PAGE *log_pgptr = NULL;
+  int error = NO_ERROR;
+
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+
+  error = logpb_fetch_page (thread_p, &prev_lsa, LOG_CS_FORCE_USE, log_pgptr);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  while (nav_lsa < catchup_lsa)
+    {
+      if (nav_lsa.pageid != prev_lsa.pageid)
+	{
+	  error = logpb_fetch_page (thread_p, &nav_lsa, LOG_CS_FORCE_USE, log_pgptr);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+
+      // If offset is missing, it is because we archive an incomplete log record.
+      if (nav_lsa.offset == NULL_OFFSET)
+	{
+	  nav_lsa.offset = log_pgptr->hdr.offset;
+	  if (nav_lsa.offset == NULL_OFFSET)
+	    {
+	      // There is nothing in this page. Here is a part of incomplete log record.
+	      nav_lsa.pageid++;
+	      continue;
+	    }
+	}
+
+      prev_lsa = nav_lsa;
+
+      LOG_RECORD_HEADER *log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &prev_lsa);
+
+      nav_lsa = log_rec->forw_lsa;
+
+      if (nav_lsa.is_null () && logpb_is_page_in_archive (prev_lsa.pageid))
+	{
+	  nav_lsa.pageid = prev_lsa.pageid + 1;
+	  nav_lsa.offset = NULL_OFFSET;
+	}
+    }
+
+  assert_release (nav_lsa == catchup_lsa);
+
+  log_Gl.append.prev_lsa = prev_lsa;
+  log_Gl.hdr.append_lsa = catchup_lsa;
+  log_Gl.get_log_prior_sender ().reset_unsent_lsa (catchup_lsa);
+  {
+    auto lockg = std::lock_guard { log_Gl.prior_info.prior_lsa_mutex };
+    log_Gl.prior_info.prev_lsa = prev_lsa;
+    log_Gl.prior_info.prior_lsa = catchup_lsa;
+  }
+
+  logpb_flush_all_append_pages (thread_p);
+
+  return NO_ERROR;
+}
+
+#endif /* SERVER_MODE */
 
 /*
  * logpb_append_next_record -

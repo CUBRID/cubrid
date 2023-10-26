@@ -1263,6 +1263,11 @@ extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_t
 
 extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
 
+#if defined(SERVER_MODE)
+extern void logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr);
+extern int logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa);
+#endif // SERVER_MODE
+
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
