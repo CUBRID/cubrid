@@ -3392,6 +3392,7 @@ logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const log_p
     }
   else
     {
+      // Not reachable. The appedning page must be either the cuurent append.log_pgptr or the next one.
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "logpb_catchup_append_page");
     }
 
