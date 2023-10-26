@@ -1176,7 +1176,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	}
     }
 
-  bool with_disc_msg;
+  bool with_disc_msg = true;
   if (error == NO_ERROR)
     {
       assert (remaining_page_cnt == 0);
@@ -1195,8 +1195,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 
       push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
 
-      constexpr bool with_disc_msg = true;
-      disconnect_followee_page_server (with_disc_msg);
+      with_disc_msg = true;
     }
   else
     {
