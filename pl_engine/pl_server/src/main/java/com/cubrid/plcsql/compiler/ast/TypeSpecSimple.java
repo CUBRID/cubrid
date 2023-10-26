@@ -85,9 +85,9 @@ public class TypeSpecSimple extends TypeSpec {
             new TypeSpecSimple("Boolean", "java.lang.Boolean", IDX_BOOLEAN, null);
     public static TypeSpecSimple STRING =
             new TypeSpecSimple("String", "java.lang.String", IDX_STRING, "cast(? as string)");
-    public static TypeSpecSimple NUMERIC =
-            new TypeSpecSimple(
-                    "Numeric", "java.math.BigDecimal", IDX_NUMERIC, "cast(? as numeric)");
+
+    public static TypeSpecSimple NUMERIC = TypeSpecNumeric.getInstance();
+
     public static TypeSpecSimple SHORT =
             new TypeSpecSimple("Short", "java.lang.Short", IDX_SHORT, "cast(? as short)");
     public static TypeSpecSimple INT =
@@ -115,12 +115,6 @@ public class TypeSpecSimple extends TypeSpec {
                     IDX_SYS_REFCURSOR,
                     null);
 
-    /* TODO: restore later
-    public static TypeSpecSimple SET = of("java.util.Set");
-    public static TypeSpecSimple MULTISET = of("org.apache.commons.collections4.MultiSet");
-    public static TypeSpecSimple LIST = of("java.util.List");
-     */
-
     public boolean isNumber() {
         return simpleTypeIdx == IDX_SHORT
                 || simpleTypeIdx == IDX_INT
@@ -145,7 +139,7 @@ public class TypeSpecSimple extends TypeSpec {
     // Private
     // ------------------------------------------------------------------
 
-    private TypeSpecSimple(
+    protected TypeSpecSimple(
             String plcName, String fullJavaType, int simpleTypeIdx, String typicalValueStr) {
         super(plcName, getJavaCode(fullJavaType), simpleTypeIdx, typicalValueStr);
         this.fullJavaType = fullJavaType;
