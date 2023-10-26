@@ -150,7 +150,6 @@ struct heap_scancache
 				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
     bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
     PGBUF_WATCHER page_watcher;
-    PGBUF_WATCHER old_page_watcher; /* Keep previous scan page fixed until fix new one */
     int num_btids;		/* Total number of indexes defined on the scanning class */
     multi_index_unique_stats *m_index_stats;	// does this really belong to scan cache??
     FILE_TYPE file_type;		/* The file type of the heap file being scanned. Can be FILE_HEAP or
