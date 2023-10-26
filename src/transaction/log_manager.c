@@ -3748,7 +3748,6 @@ log_append_schema_modification_lock (THREAD_ENTRY * thread_p, const OID * classo
       return;
     }
 
-
   LOG_PRIOR_NODE *node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_SCHEMA_MODIFICATION_LOCK, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == nullptr)
