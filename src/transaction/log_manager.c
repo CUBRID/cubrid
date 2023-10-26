@@ -3739,12 +3739,23 @@ log_append_schema_modification_lock (THREAD_ENTRY * thread_p, const OID * classo
 {
   assert (!OID_ISNULL (classoid));
 
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  assert (tdes != nullptr);
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == nullptr)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return;
+    }
+
 
   LOG_PRIOR_NODE *node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_SCHEMA_MODIFICATION_LOCK, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
-  assert (node != nullptr);
+  if (node == nullptr)
+    {
+      assert (false);
+      return;
+    }
 
   auto record = (LOG_REC_SCHEMA_MODIFICATION_LOCK *) node->data_header;
   COPY_OID (&record->classoid, classoid);
