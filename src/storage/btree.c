@@ -27130,12 +27130,9 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
       ASSERT_ERROR ();
       goto error;
     }
-  child_page =
-    btree_pgbuf_fix (thread_p, &child_vpid, OLD_PAGE,
-		     ((is_child_leaf
-		       || insert_helper->
-		       need_update_max_key_len) ? PGBUF_LATCH_WRITE : insert_helper->nonleaf_latch_mode),
-		     PGBUF_UNCONDITIONAL_LATCH);
+  child_page = btree_pgbuf_fix (thread_p, &child_vpid, OLD_PAGE,
+				((is_child_leaf || insert_helper->need_update_max_key_len)
+				 ? PGBUF_LATCH_WRITE : insert_helper->nonleaf_latch_mode), PGBUF_UNCONDITIONAL_LATCH);
   if (child_page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
