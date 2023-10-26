@@ -8103,9 +8103,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
   if (scan_cache->page_watcher.pgptr != NULL && scan_cache->cache_last_fix_page == false)
     {
-	{
-	  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
-	}
+      {
+	pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+      }
     }
 
   return scan;
@@ -24874,17 +24874,8 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
       if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL
 	  && scan_cache->mvcc_snapshot->snapshot_fnc != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
 	  && scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
-						      scan_cache->mvcc_snapshot) != SNAPSHOT_SATISFIED)
-	{
-	  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
-
-	  scan = heap_get_visible_version_internal (thread_p, &context, true);
-
-	  heap_clean_get_context (thread_p, &context);
-
-	  return scan;
-	}
-      if (recdes != NULL)
+						      scan_cache->mvcc_snapshot) == SNAPSHOT_SATISFIED
+	  && recdes != NULL)
 	{
 	  *recdes = *forward_recdes;
 	  return scan;
