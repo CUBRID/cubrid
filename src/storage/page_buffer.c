@@ -14154,8 +14154,11 @@ pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  */
 int
 pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thread_p, const VPID * vpid, PGBUF_LATCH_MODE latch_mode,
-					  PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page,
-					  const char *caller_file, int caller_line)
+					  PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page
+#if !defined (NDEBUG)
+					  , const char *caller_file, int caller_line
+#endif
+  )
 {
   DISK_ISVALID isvalid;
   int error_code = NO_ERROR;

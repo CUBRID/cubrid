@@ -445,10 +445,15 @@ extern int pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * 
 
 extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid,
 						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
-						     PAGE_PTR * page, const char *caller_file, int caller_line);
+						     PAGE_PTR * page
+#if !defined (NDEBUG)
+						     , const char *caller_file, int caller_line
+#endif
+  );
+
 #if defined (NDEBUG)
 #define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
-  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, NULL, 0)
+  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page)
 #else /* !NDEBUG */
 #define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
   pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE)

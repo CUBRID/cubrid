@@ -867,4 +867,73 @@ extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, 
 extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
 extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
 
+
+//*************************************************************************************************
+//#define CHECK_BTREE_PGBUF
+#if !defined(NDEBUG) && defined(CHECK_BTREE_PGBUF)
+
+#define  FILE_LINE_FUNC_HDR_DEF      const char *caller_file, int caller_line, const char *caller_func
+#define  FILE_LINE_FUNC_CALL_ARGS    __FILE__, __LINE__, __func__
+
+extern PAGE_PTR btree_pgbuf_fix_dbg (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+				     PGBUF_LATCH_MODE requestmode, PGBUF_LATCH_CONDITION condition,
+				     FILE_LINE_FUNC_HDR_DEF);
+extern void btree_pgbuf_unfix_dbg (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, FILE_LINE_FUNC_HDR_DEF);
+extern int btree_pgbuf_promote_read_latch_dbg (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
+					       PGBUF_PROMOTE_CONDITION condition, FILE_LINE_FUNC_HDR_DEF);
+extern int btree_pgbuf_fix_if_not_deallocated_dbg (THREAD_ENTRY * thread_p, const VPID * vpid,
+						   PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
+						   PAGE_PTR * page, FILE_LINE_FUNC_HDR_DEF);
+extern void btree_pgbuf_set_dirty_dbg (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page, FILE_LINE_FUNC_HDR_DEF);
+extern const LOG_LSA *btree_pgbuf_set_lsa_dbg (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr,
+					       FILE_LINE_FUNC_HDR_DEF);
+extern void btree_pgbuf_notify_vacuum_follows_dbg (THREAD_ENTRY * thread_p, PAGE_PTR page, FILE_LINE_FUNC_HDR_DEF);
+
+#define btree_pgbuf_fix(...)                    btree_pgbuf_fix_dbg(__VA_ARGS__,  FILE_LINE_FUNC_CALL_ARGS)
+#define btree_pgbuf_unfix(...)                  btree_pgbuf_unfix_dbg(__VA_ARGS__,  FILE_LINE_FUNC_CALL_ARGS)
+#define btree_pgbuf_promote_read_latch(...)     btree_pgbuf_promote_read_latch_dbg(__VA_ARGS__,  FILE_LINE_FUNC_CALL_ARGS)
+#define btree_pgbuf_fix_if_not_deallocated(...) btree_pgbuf_fix_if_not_deallocated_dbg(__VA_ARGS__, FILE_LINE_FUNC_CALL_ARGS)
+#define btree_pgbuf_set_lsa(...)                btree_pgbuf_set_lsa_dbg(__VA_ARGS__, FILE_LINE_FUNC_CALL_ARGS)
+#define btree_pgbuf_notify_vacuum_follows(...)  btree_pgbuf_notify_vacuum_follows_dbg(__VA_ARGS__, FILE_LINE_FUNC_CALL_ARGS)
+#define btree_pgbuf_set_dirty(...)              btree_pgbuf_set_dirty_dbg(__VA_ARGS__, FILE_LINE_FUNC_CALL_ARGS)
+
+#define btree_pgbuf_unfix_and_init(thread_p, pgptr)    do {                   \
+    btree_pgbuf_unfix_dbg ((thread_p), (pgptr), FILE_LINE_FUNC_CALL_ARGS);    \
+    (pgptr) = NULL;                                                           \
+  } while (0)
+#define btree_pgbuf_unfix_and_init_after_check(thread_p, pgptr)    do {       \
+    if((pgptr)) {                                                             \
+        btree_pgbuf_unfix_dbg ((thread_p), (pgptr), FILE_LINE_FUNC_CALL_ARGS);\
+        (pgptr) = NULL;                                                       \
+      }                                                                       \
+  } while(0)
+
+#else // #if !defined(NDEBUG) && defined(CHECK_BTREE_PGBUF)
+
+#define btree_pgbuf_fix                         pgbuf_fix
+#define btree_pgbuf_unfix                       pgbuf_unfix
+#define btree_pgbuf_promote_read_latch          pgbuf_promote_read_latch
+#define btree_pgbuf_fix_if_not_deallocated      pgbuf_fix_if_not_deallocated
+#define btree_pgbuf_set_lsa                     pgbuf_set_lsa
+#define btree_pgbuf_notify_vacuum_follows       pgbuf_notify_vacuum_follows
+#define btree_pgbuf_set_dirty                   pgbuf_set_dirty
+
+#define btree_pgbuf_unfix_and_init              pgbuf_unfix_and_init
+#define btree_pgbuf_unfix_and_init_after_check  pgbuf_unfix_and_init_after_check
+
+#endif // #if !defined(NDEBUG) && defined(CHECK_BTREE_PGBUF)
+
+#define btree_pgbuf_get_lsa                     pgbuf_get_lsa
+#define btree_pgbuf_get_vpid_ptr                pgbuf_get_vpid_ptr
+#define btree_pgbuf_get_vpid                    pgbuf_get_vpid
+#define btree_pgbuf_get_latch_mode              pgbuf_get_latch_mode
+
+#define btree_pgbuf_check_page_ptype            pgbuf_check_page_ptype
+#define btree_pgbuf_set_page_ptype              pgbuf_set_page_ptype
+#define btree_pgbuf_get_page_ptype              pgbuf_get_page_ptype
+#define btree_pgbuf_is_valid_page               pgbuf_is_valid_page
+#define btree_pgbuf_is_io_stressful             pgbuf_is_io_stressful
+#define btree_pgbuf_has_any_waiters             pgbuf_has_any_waiters
+//*************************************************************************************************
+
 #endif /* _BTREE_H_ */

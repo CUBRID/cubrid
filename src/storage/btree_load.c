@@ -317,7 +317,7 @@ btree_get_node_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
   assert (page_ptr != NULL);
 
 #if !defined(NDEBUG)
-  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  (void) btree_pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 #endif
 
   if (spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
@@ -351,7 +351,7 @@ btree_get_root_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
   assert (page_ptr != NULL);
 
 #if !defined(NDEBUG)
-  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  (void) btree_pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 #endif
 
   if (spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
@@ -385,7 +385,7 @@ btree_get_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
   assert (page_ptr != NULL);
 
 #if !defined(NDEBUG)
-  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  (void) btree_pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 #endif
 
   if (spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
@@ -1226,9 +1226,9 @@ error:
     }
   pr_clear_value (&load_args->current_key);
 
-  pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
-  pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
-  pgbuf_unfix_and_init_after_check (thread_p, load_args->nleaf.pgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, load_args->nleaf.pgptr);
 
   if (load_args->push_list != NULL)
     {
@@ -1343,8 +1343,8 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 
 exit_on_error:
 
-  pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
-  pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -1564,7 +1564,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   while (!VPID_ISNULL (&(load_args->leaf.vpid)))
     {
       load_args->leaf.pgptr =
-	pgbuf_fix (thread_p, &load_args->leaf.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	btree_pgbuf_fix (thread_p, &load_args->leaf.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (load_args->leaf.pgptr == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
@@ -1572,7 +1572,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	}
 
 #if !defined (NDEBUG)
-      (void) pgbuf_check_page_ptype (thread_p, load_args->leaf.pgptr, PAGE_BTREE);
+      (void) btree_pgbuf_check_page_ptype (thread_p, load_args->leaf.pgptr, PAGE_BTREE);
 #endif /* !NDEBUG */
 
       key_cnt = btree_node_number_of_keys (thread_p, load_args->leaf.pgptr);
@@ -1700,7 +1700,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       btree_clear_key_value (&clear_first_key, &first_key);
 
       /* Proceed the current leaf page pointer to the next leaf page */
-      pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
+      btree_pgbuf_unfix_and_init (thread_p, load_args->leaf.pgptr);
       load_args->leaf.vpid = next_vpid;
       load_args->leaf.pgptr = next_pageptr;
       next_pageptr = NULL;
@@ -1771,7 +1771,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  cur_nleafpgid = load_args->pop_list->pageid;
 
 	  /* Fetch the current page */
-	  cur_nleafpgptr = pgbuf_fix (thread_p, &cur_nleafpgid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  cur_nleafpgptr =
+	    btree_pgbuf_fix (thread_p, &cur_nleafpgid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (cur_nleafpgptr == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (ret);
@@ -1779,7 +1780,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	    }
 
 #if !defined (NDEBUG)
-	  (void) pgbuf_check_page_ptype (thread_p, cur_nleafpgptr, PAGE_BTREE);
+	  (void) btree_pgbuf_check_page_ptype (thread_p, cur_nleafpgptr, PAGE_BTREE);
 #endif /* !NDEBUG */
 
 	  /* obtain the header information for the current non-leaf page */
@@ -1827,7 +1828,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	      goto end;
 	    }
 
-	  pgbuf_unfix_and_init (thread_p, cur_nleafpgptr);
+	  btree_pgbuf_unfix_and_init (thread_p, cur_nleafpgptr);
 
 	  /* Remove this pageid from the pop list */
 	  list_remove_first (&load_args->pop_list);
@@ -1877,14 +1878,14 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   /* Retrieve the last non-leaf page (the current one); guaranteed to exist */
   /* Fetch the current page */
   load_args->nleaf.pgptr =
-    pgbuf_fix (thread_p, &load_args->nleaf.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+    btree_pgbuf_fix (thread_p, &load_args->nleaf.vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (load_args->nleaf.pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (ret);
       goto end;
     }
 #if !defined (NDEBUG)
-  pgbuf_check_page_ptype (thread_p, load_args->nleaf.pgptr, PAGE_BTREE);
+  btree_pgbuf_check_page_ptype (thread_p, load_args->nleaf.pgptr, PAGE_BTREE);
 #endif /* !NDEBUG */
 
   /* Prepare the root header by using the last leaf node header */
@@ -1948,16 +1949,16 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 
   /* move current ROOT page content to the first page allocated */
   btree_get_root_vpid_from_btid (thread_p, load_args->btid->sys_btid, &cur_nleafpgid);
-  next_pageptr = pgbuf_fix (thread_p, &cur_nleafpgid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  next_pageptr = btree_pgbuf_fix (thread_p, &cur_nleafpgid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (next_pageptr == NULL)
     {
       ASSERT_ERROR_AND_SET (ret);
       goto end;
     }
-  assert (pgbuf_get_page_ptype (thread_p, next_pageptr) == PAGE_BTREE);
+  assert (btree_pgbuf_get_page_ptype (thread_p, next_pageptr) == PAGE_BTREE);
 
   memcpy (next_pageptr, load_args->nleaf.pgptr, DB_PAGESIZE);
-  pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
+  btree_pgbuf_unfix_and_init (thread_p, load_args->nleaf.pgptr);
 
   load_args->nleaf.pgptr = next_pageptr;
   next_pageptr = NULL;
@@ -1972,10 +1973,10 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 end:
 
   /* cleanup */
-  pgbuf_unfix_and_init_after_check (thread_p, next_pageptr);
-  pgbuf_unfix_and_init_after_check (thread_p, cur_nleafpgptr);
-  pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
-  pgbuf_unfix_and_init_after_check (thread_p, load_args->nleaf.pgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, next_pageptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, cur_nleafpgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, load_args->nleaf.pgptr);
 
   if (temp_data)
     {
@@ -2008,7 +2009,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
   addr.offset = -1;		/* irrelevant */
   log_append_redo_data (thread_p, RVBT_COPYPAGE, &addr, DB_PAGESIZE, page_ptr);
 
-  pgbuf_set_dirty (thread_p, page_ptr, FREE);
+  btree_pgbuf_set_dirty (thread_p, page_ptr, FREE);
   page_ptr = NULL;
 }
 
@@ -2050,7 +2051,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       goto end;
     }
 #if !defined (NDEBUG)
-  (void) pgbuf_check_page_ptype (thread_p, *page_new, PAGE_BTREE);
+  (void) btree_pgbuf_check_page_ptype (thread_p, *page_new, PAGE_BTREE);
 #endif /* !NDEBUG */
 
   if (header)
@@ -2067,7 +2068,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  pgbuf_unfix_and_init (thread_p, *page_new);
+	  btree_pgbuf_unfix_and_init (thread_p, *page_new);
 	  goto end;
 	}
     }
@@ -2082,7 +2083,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  pgbuf_unfix_and_init (thread_p, *page_new);
+	  btree_pgbuf_unfix_and_init (thread_p, *page_new);
 	  goto end;
 	}
     }
@@ -2146,7 +2147,7 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   header = btree_get_node_header (thread_p, new_leafpgptr);
   if (header == NULL)
     {
-      pgbuf_unfix_and_init (thread_p, new_leafpgptr);
+      btree_pgbuf_unfix_and_init (thread_p, new_leafpgptr);
       return NULL;
     }
 
@@ -2160,7 +2161,7 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   header = btree_get_node_header (thread_p, load_args->leaf.pgptr);
   if (header == NULL)
     {
-      pgbuf_unfix_and_init (thread_p, new_leafpgptr);
+      btree_pgbuf_unfix_and_init (thread_p, new_leafpgptr);
       return NULL;
     }
 
@@ -2767,13 +2768,13 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
       ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &new_ovfpgid, &new_ovfpgptr);
       if (ret != NO_ERROR)
 	{
-	  pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
+	  btree_pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
 	  ASSERT_ERROR ();
 	  return ret;
 	}
       if (new_ovfpgptr == NULL)
 	{
-	  pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
+	  btree_pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
 	  assert_release (false);
 	  return ER_FAILED;
 	}
@@ -2782,7 +2783,7 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
       ovf_header = btree_get_overflow_header (thread_p, load_args->ovf.pgptr);
       if (ovf_header == NULL)
 	{
-	  pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
+	  btree_pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
 	  *sp_success = ER_FAILED;
 	  return ret;
 	}
@@ -2984,7 +2985,7 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
 	}
       log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM, &load_args->btid->sys_btid->vfid, NULL, -1,
 			     notify_vacuum_rv_data_length, *notify_vacuum_rv_data);
-      pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+      btree_pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
     }
 
   return NO_ERROR;
@@ -3110,8 +3111,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
   return ret;
 
 error:
-  pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
-  pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
 
   btree_clear_key_value (&copy, &sparam.this_key);
 
@@ -3866,7 +3867,7 @@ btree_node_number_of_keys (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
 
   assert (page_ptr != NULL);
 #if !defined(NDEBUG)
-  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+  (void) btree_pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
 #endif
 
   key_cnt = spage_number_of_records (page_ptr) - 1;
@@ -4202,7 +4203,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  else
 	    {
 	      /* First unfix the old page if applicable. The new page was fixed in btree_locate_key. */
-	      pgbuf_unfix_and_init_after_check (thread_p, old_page);
+	      btree_pgbuf_unfix_and_init_after_check (thread_p, old_page);
 
 	      /* Make sure there is at least one visible object. */
 	      ret = btree_is_slot_visible (thread_p, &pk_bt_scan.btid_int, pk_bt_scan.C_page, &mvcc_snapshot_dirty,
@@ -4227,7 +4228,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	    }
 
 	  /* Unfix old page, if any. */
-	  pgbuf_unfix_and_init_after_check (thread_p, old_page);
+	  btree_pgbuf_unfix_and_init_after_check (thread_p, old_page);
 	}
       else
 	{
@@ -4307,13 +4308,13 @@ end:
     {
       for (i = 0; i < part_count; i++)
 	{
-	  pgbuf_unfix_and_init_after_check (thread_p, partitions[i].bt_scan.C_page);
+	  btree_pgbuf_unfix_and_init_after_check (thread_p, partitions[i].bt_scan.C_page);
 	}
     }
 
-  pgbuf_unfix_and_init_after_check (thread_p, old_page);
-  pgbuf_unfix_and_init_after_check (thread_p, curr_fk_pageptr);
-  pgbuf_unfix_and_init_after_check (thread_p, pk_bt_scan.C_page);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, old_page);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, curr_fk_pageptr);
+  btree_pgbuf_unfix_and_init_after_check (thread_p, pk_bt_scan.C_page);
 
   btree_clear_key_value (&clear_fk_key, &fk_key);
   btree_clear_key_value (&clear_pk_key, &pk_key);
@@ -4411,7 +4412,7 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   if (page == NULL)
     {
-      page = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      page = btree_pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
@@ -4424,7 +4425,7 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
   assert (page != NULL);
 
   /* Check page. */
-  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
+  (void) btree_pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
 
   if (local_header == NULL)
     {
@@ -4457,13 +4458,13 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  if (VPID_ISNULL (&next_vpid))
 	    {
 	      /* No next page. unfix current one. */
-	      pgbuf_unfix_and_init (thread_p, page);
+	      btree_pgbuf_unfix_and_init (thread_p, page);
 	      break;
 	    }
 	  else
 	    {
 	      old_page = page;
-	      page = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      page = btree_pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (page == NULL)
 		{
 		  ASSERT_ERROR_AND_SET (ret);
@@ -4471,7 +4472,7 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
 		}
 
 	      /* unfix old page */
-	      pgbuf_unfix_and_init (thread_p, old_page);
+	      btree_pgbuf_unfix_and_init (thread_p, old_page);
 
 	      *slot_id = is_desc ? *key_cnt : 1;
 
