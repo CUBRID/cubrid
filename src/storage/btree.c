@@ -31280,8 +31280,8 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   else
     {
       log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (*leaf_page),
-					     delete_helper->leaf_addr.offset, *leaf_page,
-					     rv_redo_data_length, rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
+					     delete_helper->leaf_addr.offset, *leaf_page, rv_redo_data_length,
+					     rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
 					     &delete_helper->reference_lsa);
     }
 
