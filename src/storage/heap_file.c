@@ -24860,21 +24860,21 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
    * heap_get_visible_version_internal() function. This brings the current CUBRID's heap scan 
    * performance closer to the heap scan performance of CUBRID before the introduction of MVCC. 
    * Following is the explanation for the code below.
-   * Before fetching a record, check forward_recdes to see if the record type is REC_HOME,
+   * Before fetching a record, check peeked_recdes to see if the record type is REC_HOME,
    * and it's being PEEKed (meaning there's no need to COPY the record data to a new space). 
-   * In this case, we can use forward_recdes as the record without executing the
+   * In this case, we can use peeked_recdes as the record without executing the
    * heap_get_visible_version_internal() function. If the conditions above are not met,
    * or the mvcc_snapshot does not satisfy, then carry out the necessary steps through 
    * the heap_get_visible_version_internal() function.
    */
-  if (forward_recdes->type == REC_HOME && ispeeking == PEEK)
+  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK)
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
 
       assert (scan_cache != NULL);
       assert (recdes != NULL);
 
-      if (or_mvcc_get_header (forward_recdes, &mvcc_header) != NO_ERROR)
+      if (or_mvcc_get_header (peeked_recdes, &mvcc_header) != NO_ERROR)
 	{
 	  /* Unexpected. */
 	  assert (false);
@@ -24888,7 +24888,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 
       if (!need_check_visibility)
 	{
-	  *recdes = *forward_recdes;
+	  *recdes = *peeked_recdes;
 	  return scan;
 	}
       /* fall through.. */
