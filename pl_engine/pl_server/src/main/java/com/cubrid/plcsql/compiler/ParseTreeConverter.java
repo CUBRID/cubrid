@@ -2163,7 +2163,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private static final Map<String, Integer> typeNameToDbType = new HashMap<>();
-
     static {
         typeNameToDbType.put("CHAR", DBType.DB_CHAR);
         typeNameToDbType.put("CHARACTER", DBType.DB_CHAR);
