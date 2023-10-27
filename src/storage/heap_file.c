@@ -24886,7 +24886,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	  *recdes = *forward_recdes;
 	  return scan;
 	}
-      /*fall through to get visible version... */
+      /* fall through to get visible version... */
     }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
