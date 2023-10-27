@@ -39,9 +39,9 @@ public class TypeSpecNumeric extends TypeSpecSimple {
     // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
 
     public final int precision;
-    public final int scale;
+    public final short scale;
 
-    public static TypeSpecNumeric getInstance(int precision, int scale) {
+    public static TypeSpecNumeric getInstance(int precision, short scale) {
 
         assert precision <= 38 && precision >= 1;
         assert scale <= precision && scale >= 0;
@@ -57,16 +57,6 @@ public class TypeSpecNumeric extends TypeSpecSimple {
 
         return ret;
     }
-    public static TypeSpecNumeric getInstance() {
-
-        // precision default = 15, scale default = 0
-        return getInstance(15, 0);
-    }
-    public static TypeSpecNumeric getInstance(int precision) {
-
-        // scale default = 0
-        return getInstance(precision, 0);
-    }
 
     // ---------------------------------------------------------------------------
     // Private
@@ -74,7 +64,7 @@ public class TypeSpecNumeric extends TypeSpecSimple {
 
     private static Map<Integer, TypeSpecNumeric> instances = new HashMap<>();
 
-    private TypeSpecNumeric(String plcName, String fullJavaType, String typicalValueStr, int precision, int scale) {
+    private TypeSpecNumeric(String plcName, String fullJavaType, String typicalValueStr, int precision, short scale) {
         super(plcName, fullJavaType, IDX_NUMERIC, typicalValueStr);
         this.precision = precision;
         this.scale = scale;

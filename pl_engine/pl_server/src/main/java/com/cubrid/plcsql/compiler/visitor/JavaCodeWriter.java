@@ -2342,6 +2342,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static final String[] tmplCastCoercion = new String[] {"(%'TYPE'%)", "  %'+EXPR'%"};
     private static final String[] tmplConvCoercion =
             new String[] {"conv%'SRC-TYPE'%To%'DST-TYPE'%(", "  %'+EXPR'%)"};
+    private static final String[] tmplCoerceAndCheckPrec =
+            new String[] {"checkPrecision(%'PREC'%, %'SCALE'%,", "  %'+EXPR'%)"};
 
     private CodeToResolve applyCoercion(Coercion c, CodeTemplate exprCode) {
 
@@ -2376,6 +2378,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     conv.to,
                     "%'+EXPR'%",
                     exprCode);
+        } else if (c instanceof Coercion.CoerceAndCheckPrecision) {
+            Coercion.CoerceAndCheckPrecision checkPrec = (Coercion.CoerceAndCheckPrecision) c;
+            return new CodeTemplate(
+                    "coerce and check precision",
+                    Misc.UNKNOWN_LINE_COLUMN,
+                    tmplCoerceAndCheckPrec,
+                    "%'PREC'",
+                    "" + checkPrec.prec,
+                    "%'SCALE'",
+                    "" + checkPrec.scale,
+                    "%'+EXPR'",
+                    applyCoercion(checkPrec.c, exprCode));
         } else {
             throw new RuntimeException("unreachable");
         }

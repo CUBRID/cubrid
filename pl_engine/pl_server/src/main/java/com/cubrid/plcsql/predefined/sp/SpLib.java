@@ -59,6 +59,19 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static BigDecimal checkPrecision(int prec, short scale, BigDecimal val) {
+        int valScale = val.scale();
+        if (val.precision() - valScale > prec - scale) {
+            throw new VALUE_ERROR("numeric value is out of the range of the target type");
+        }
+
+        if (valScale == scale) {
+            return val;
+        } else {
+            return val.setScale(scale, RoundingMode.HALF_UP);
+        }
+    }
+
     // -------------------------------------------------------------------------------
     // To provide line and column numbers for run-time exceptions
     //

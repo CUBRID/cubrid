@@ -35,21 +35,15 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public class ExprUint extends Expr {
 
-    public enum Type {
-        NUMERIC,
-        BIGINT,
-        INT
-    }
-
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitExprUint(this);
     }
 
     public final String val;
-    public final Type ty;
+    public final TypeSpecSimple ty;
 
-    public ExprUint(ParserRuleContext ctx, String val, Type ty) {
+    public ExprUint(ParserRuleContext ctx, String val, TypeSpecSimple ty) {
         super(ctx);
 
         this.val = val;
@@ -57,12 +51,12 @@ public class ExprUint extends Expr {
     }
 
     public String javaCode() {
-        switch (ty) {
-            case NUMERIC:
+        switch (ty.simpleTypeIdx) {
+            case TypeSpecSimple.IDX_NUMERIC:
                 return "new BigDecimal(\"" + val + "\")";
-            case BIGINT:
+            case TypeSpecSimple.IDX_BIGINT:
                 return "new Long(" + val + "L)";
-            case INT:
+            case TypeSpecSimple.IDX_INT:
                 return "new Integer(" + val + ")";
         }
         return val;

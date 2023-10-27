@@ -85,9 +85,8 @@ public class TypeSpecSimple extends TypeSpec {
             new TypeSpecSimple("Boolean", "java.lang.Boolean", IDX_BOOLEAN, null);
     public static TypeSpecSimple STRING =
             new TypeSpecSimple("String", "java.lang.String", IDX_STRING, "cast(? as string)");
-
-    public static TypeSpecSimple NUMERIC = TypeSpecNumeric.getInstance();
-
+    public static TypeSpecSimple NUMERIC_ANY =     // numeric with any precision and scale
+            new TypeSpecSimple("Numeric", "java.math.BigDecimal", IDX_NUMERIC, "cast(? as numeric)");
     public static TypeSpecSimple SHORT =
             new TypeSpecSimple("Short", "java.lang.Short", IDX_SHORT, "cast(? as short)");
     public static TypeSpecSimple INT =
@@ -170,7 +169,7 @@ public class TypeSpecSimple extends TypeSpec {
         register(OBJECT);
         register(BOOLEAN);
         register(STRING);
-        register(NUMERIC);
+        register(NUMERIC_ANY);
         register(SHORT);
         register(INT);
         register(BIGINT);
