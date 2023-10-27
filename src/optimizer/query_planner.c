@@ -3906,7 +3906,14 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       }
     else if (a_range > 0 && a_range < a_last)
       {
-	a_keys = a_cum->pkeys[a_range - 1];
+	if (qo_is_index_iss_scan (a))
+	  {
+	    b_keys = b_cum->pkeys[a_range];
+	  }
+	else
+	  {
+	    a_keys = a_cum->pkeys[a_range - 1];
+	  }
       }
     else
       {				/* a_range == 0 */
@@ -3950,7 +3957,14 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       }
     else if (b_range > 0 && b_range < b_last)
       {
-	b_keys = b_cum->pkeys[b_range - 1];
+	if (qo_is_index_iss_scan (b))
+	  {
+	    b_keys = b_cum->pkeys[b_range];
+	  }
+	else
+	  {
+	    b_keys = b_cum->pkeys[b_range - 1];
+	  }
       }
     else
       {				/* b_range == 0 */

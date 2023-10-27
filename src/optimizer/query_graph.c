@@ -6992,21 +6992,9 @@ qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_
     {
       return 0;			/* disable loose index scan */
     }
-  else if ((tree->info.query.q.select.hint & PT_HINT_INDEX_LS) && (QO_NODE_HINT (nodep) & PT_HINT_INDEX_LS))
-    {				/* enable loose index scan */
-      if (tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
-	  || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
-	{			/* skip scan is disabled */
-	  ;			/* go ahead */
-	}
-      else
-	{			/* skip scan is enabled */
-	  return 0;
-	}
-    }
-  else
+  else if (!(tree->info.query.q.select.hint & PT_HINT_INDEX_LS) || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_LS))
     {
-      return 0;			/* no hint */
+      return 0;			/* disable loose index scan */
     }
 
   if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_DISABLE_LOOSE_SCAN))
@@ -7509,16 +7497,16 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
 	      index_entryp->cover_segments = qo_is_coverage_index (env, nodep, index_entryp);
 
-	      index_entryp->is_iss_candidate = qo_is_iss_index (env, nodep, index_entryp);
+	      index_entryp->ils_prefix_len = qo_get_ils_prefix_length (env, nodep, index_entryp);
 
-	      /* disable loose scan if skip scan is possible */
-	      if (index_entryp->is_iss_candidate == true)
+	      /* disable skip scan if loose scan is possible */
+	      if (index_entryp->ils_prefix_len > 0)
 		{
-		  index_entryp->ils_prefix_len = 0;
+		  index_entryp->is_iss_candidate = false;
 		}
 	      else
 		{
-		  index_entryp->ils_prefix_len = qo_get_ils_prefix_length (env, nodep, index_entryp);
+		  index_entryp->is_iss_candidate = qo_is_iss_index (env, nodep, index_entryp);
 		}
 
 	      index_entryp->statistics_attribute_name = NULL;
