@@ -35982,7 +35982,7 @@ btree_pgbuf_fix_dbg (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE
   PAGE_PTR pgptr = NULL;
 
   pgptr = pgbuf_fix_debug (thread_p, vpid, fetch_mode, requestmode, condition, caller_file, caller_line);
-  assert (pgbuf_check_page_type_no_error (thread_p, pgptr, PAGE_BTREE) == true);
+  assert (pgptr == NULL || pgbuf_check_page_type_no_error (thread_p, pgptr, PAGE_BTREE) == true);
 
 #if defined(BTREE_PGBUF_LOGGING_ENABLE)
   btree_pgbuf_log ("%-30s>> vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid, pgptr,
@@ -35994,11 +35994,14 @@ btree_pgbuf_fix_dbg (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE
 void
 btree_pgbuf_unfix_dbg (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, FILE_LINE_FUNC_HDR_DEF)
 {
-  assert (pgbuf_check_page_type_no_error (thread_p, pgptr, PAGE_BTREE) == true);
+  assert (pgptr == NULL || pgbuf_check_page_type_no_error (thread_p, pgptr, PAGE_BTREE) == true);
 #if defined(BTREE_PGBUF_LOGGING_ENABLE)
-  VPID *vpid = pgbuf_get_vpid_ptr (pgptr);
-  btree_pgbuf_log ("%-30s>>\t vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid,
-		   pgptr, caller_func, caller_line);
+  if (pgptr)
+    {
+      VPID *vpid = pgbuf_get_vpid_ptr (pgptr);
+      btree_pgbuf_log ("%-30s>>\t vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid,
+		       pgptr, caller_func, caller_line);
+    }
 #endif
 
   pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line);
@@ -36008,11 +36011,14 @@ int
 btree_pgbuf_promote_read_latch_dbg (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr, PGBUF_PROMOTE_CONDITION condition,
 				    FILE_LINE_FUNC_HDR_DEF)
 {
-  assert (pgbuf_check_page_type_no_error (thread_p, *pgptr, PAGE_BTREE) == true);
+  assert (pgptr == NULL || pgbuf_check_page_type_no_error (thread_p, *pgptr, PAGE_BTREE) == true);
 #if defined(BTREE_PGBUF_LOGGING_ENABLE)
-  VPID *vpid = pgbuf_get_vpid_ptr (*pgptr);
-  btree_pgbuf_log ("%-30s>> vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid, *pgptr,
-		   caller_func, caller_line);
+  if (pgptr)
+    {
+      VPID *vpid = pgbuf_get_vpid_ptr (*pgptr);
+      btree_pgbuf_log ("%-30s>> vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid, *pgptr,
+		       caller_func, caller_line);
+    }
 #endif
 
   int ret = pgbuf_promote_read_latch_debug (thread_p, pgptr, condition, caller_file, caller_line);
@@ -36027,10 +36033,13 @@ btree_pgbuf_fix_if_not_deallocated_dbg (THREAD_ENTRY * thread_p, const VPID * vp
   int ret = pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, caller_file,
 						      caller_line);
 
-  assert (pgbuf_check_page_type_no_error (thread_p, *page, PAGE_BTREE) == true);
+  assert ((ret != NO_ERROR) || pgbuf_check_page_type_no_error (thread_p, *page, PAGE_BTREE) == true);
 #if defined(BTREE_PGBUF_LOGGING_ENABLE)
-  btree_pgbuf_log ("%-30s>> vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid, *page,
-		   caller_func, caller_line);
+  if ((ret == NO_ERROR) && (*page != NULL))
+    {
+      btree_pgbuf_log ("%-30s>> vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid, *page,
+		       caller_func, caller_line);
+    }
 #endif
   return ret;
 }
@@ -36038,11 +36047,14 @@ btree_pgbuf_fix_if_not_deallocated_dbg (THREAD_ENTRY * thread_p, const VPID * vp
 void
 btree_pgbuf_set_dirty_dbg (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page, FILE_LINE_FUNC_HDR_DEF)
 {
-  assert (pgbuf_check_page_type_no_error (thread_p, pgptr, PAGE_BTREE) == true);
+  assert (pgptr == NULL || pgbuf_check_page_type_no_error (thread_p, pgptr, PAGE_BTREE) == true);
 #if defined(BTREE_PGBUF_LOGGING_ENABLE)
-  VPID *vpid = pgbuf_get_vpid_ptr (pgptr);
-  btree_pgbuf_log ("%-30s>> vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid, pgptr,
-		   caller_func, caller_line);
+  if (pgptr)
+    {
+      VPID *vpid = pgbuf_get_vpid_ptr (pgptr);
+      btree_pgbuf_log ("%-30s>> vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid, pgptr,
+		       caller_func, caller_line);
+    }
 #endif
 
   pgbuf_set_dirty (thread_p, pgptr, free_page);
@@ -36051,11 +36063,14 @@ btree_pgbuf_set_dirty_dbg (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_pa
 const LOG_LSA *
 btree_pgbuf_set_lsa_dbg (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr, FILE_LINE_FUNC_HDR_DEF)
 {
-  assert (pgbuf_check_page_type_no_error (thread_p, pgptr, PAGE_BTREE) == true);
+  assert (pgptr == NULL || pgbuf_check_page_type_no_error (thread_p, pgptr, PAGE_BTREE) == true);
 #if defined(BTREE_PGBUF_LOGGING_ENABLE)
-  VPID *vpid = pgbuf_get_vpid_ptr (pgptr);
-  btree_pgbuf_log ("%-30s>> vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid, pgptr,
-		   caller_func, caller_line);
+  if (pgptr)
+    {
+      VPID *vpid = pgbuf_get_vpid_ptr (pgptr);
+      btree_pgbuf_log ("%-30s>> vpid=%d:%d pgptr=0x%08X call: %s(%d)\n", __func__, vpid->volid, vpid->pageid, pgptr,
+		       caller_func, caller_line);
+    }
 #endif
 
   return pgbuf_set_lsa (thread_p, pgptr, lsa_ptr);
@@ -36064,7 +36079,7 @@ btree_pgbuf_set_lsa_dbg (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA 
 void
 btree_pgbuf_notify_vacuum_follows_dbg (THREAD_ENTRY * thread_p, PAGE_PTR page, FILE_LINE_FUNC_HDR_DEF)
 {
-  assert (pgbuf_check_page_type_no_error (thread_p, page, PAGE_BTREE) == true);
+  assert ((page == NULL) || pgbuf_check_page_type_no_error (thread_p, page, PAGE_BTREE) == true);
 
   pgbuf_notify_vacuum_follows (thread_p, page);
 }
