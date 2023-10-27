@@ -8103,7 +8103,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
   if (scan_cache->page_watcher.pgptr != NULL && scan_cache->cache_last_fix_page == false)
     {
-	pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
     }
 
   return scan;
