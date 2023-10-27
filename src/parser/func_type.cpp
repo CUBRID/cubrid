@@ -20,6 +20,7 @@
  * func_type.cpp
  */
 
+#include "dbtype.h"
 #include "func_type.hpp"
 #include "message_catalog.h"
 #include "object_primitive.h"
@@ -828,8 +829,12 @@ namespace func_type
 	if (func_sig == NULL || !apply_signature (*func_sig))
 	  {
 	    m_node->type_enum = PT_TYPE_NA;
-	    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_VALID_FUNCTION_SIGNATURE,
-			  fcode_get_uppercase_name (m_node->info.function.function_type));
+            // reserve previous error
+	    if (!pt_has_error (m_parser))
+	      {
+		pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_VALID_FUNCTION_SIGNATURE,
+			      fcode_get_uppercase_name (m_node->info.function.function_type));
+	      }
 	  }
 	else
 	  {
@@ -1204,17 +1209,39 @@ namespace func_type
   {
     arg_res.m_type = PT_TYPE_NONE;
 
+    if (arg_node == nullptr)
+      {
+	compat.m_compat = type_compatibility::INCOMPATIBLE;
+	return false;
+      }
+
+    PT_TYPE_ENUM arg_type = arg_node->type_enum;
+    if (PT_IS_PARAMETER (arg_node) && arg_type == PT_TYPE_NONE)
+      {
+	DB_VALUE *db_value = pt_find_value_of_label (arg_node->info.name.original);
+	if (db_value == NULL)
+	  {
+	    // check invalid paramter, unresolved
+	    compat.m_compat = type_compatibility::INCOMPATIBLE;
+	    invalid_arg_param_error (arg_node);
+	    return false;
+	  }
+	else
+	  {
+	    arg_type = pt_db_to_type_enum (db_value_type (db_value));
+	  }
+      }
     // todo - equivalent type & coercible type checks should all be in a the same place to have a better view of how
     //        each type can convert to another
 
-    if (cmp_types_equivalent (arg_signature, arg_node->type_enum))
+    if (cmp_types_equivalent (arg_signature, arg_type))
       {
-	arg_res.m_type = pt_get_equivalent_type (arg_signature, arg_node->type_enum);
+	arg_res.m_type = pt_get_equivalent_type (arg_signature, arg_type);
       }
-    else if (cmp_types_castable (arg_signature, arg_node->type_enum))
+    else if (cmp_types_castable (arg_signature, arg_type))
       {
 	compat.m_compat = type_compatibility::COERCIBLE;
-	arg_res.m_type = pt_get_equivalent_type (arg_signature, arg_node->type_enum);
+	arg_res.m_type = pt_get_equivalent_type (arg_signature, arg_type);
       }
     else
       {
@@ -1322,6 +1349,13 @@ namespace func_type
 		  pt_show_type_enum (arg_node->type_enum), expected_sb.get_buffer ());
     pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_SIGNATURE,
 		  sgn_sb.get_buffer ());
+  }
+
+  void
+  Node::invalid_arg_param_error (const PT_NODE *arg_node)
+  {
+    pt_cat_error (m_parser, arg_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_PARM_IS_NOT_SET,
+		  arg_node->info.name.original);
   }
 
   void
