@@ -49,8 +49,8 @@ public class ClassLoaderManager {
 
     public static Path getRootPath() {
         if (root == null) {
-            String rootPath = Server.getSpPath() + "/java/";
-            root = Paths.get(rootPath);
+            Path dbPath = Paths.get(Server.getServerConfig().getDatabasePath());
+            root = dbPath.resolve("java/");
             createDirIfNotExists(root);
         }
         return root;

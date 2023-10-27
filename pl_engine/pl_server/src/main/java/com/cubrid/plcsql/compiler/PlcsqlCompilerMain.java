@@ -117,7 +117,7 @@ public class PlcsqlCompilerMain {
 
         // create a output stream to print parse tree
         String outfile =
-                Server.getRootPath().toString()
+                Server.getServer().getRootPath().toString()
                         + File.separatorChar
                         + "log"
                         + File.separatorChar
