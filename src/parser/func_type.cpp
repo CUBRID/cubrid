@@ -829,7 +829,7 @@ namespace func_type
 	if (func_sig == NULL || !apply_signature (*func_sig))
 	  {
 	    m_node->type_enum = PT_TYPE_NA;
-            // reserve previous error
+	    // reserve previous error
 	    if (!pt_has_error (m_parser))
 	      {
 		pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_VALID_FUNCTION_SIGNATURE,
