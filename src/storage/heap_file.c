@@ -24880,6 +24880,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	{
 	  /* Unexpected. */
 	  assert (false);
+	  return S_ERROR;
 	}
 
       const bool need_check_visibility = scan_cache->mvcc_snapshot != NULL
