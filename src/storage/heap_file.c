@@ -24872,21 +24872,27 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
   if (forward_recdes->type == REC_HOME && ispeeking == PEEK)
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+
+      assert (scan_cache != NULL);
+      assert (recdes != NULL);
+
       if (or_mvcc_get_header (forward_recdes, &mvcc_header) != NO_ERROR)
 	{
 	  /* Unexpected. */
 	  assert (false);
 	}
-      if (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL
-	  && scan_cache->mvcc_snapshot->snapshot_fnc != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
-	  && scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
-						      scan_cache->mvcc_snapshot) == SNAPSHOT_SATISFIED
-	  && recdes != NULL)
+
+      const bool need_check_visibility = scan_cache != NULL && scan_cache->mvcc_snapshot != NULL
+	&& scan_cache->mvcc_snapshot->snapshot_fnc != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
+	&& scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
+						    scan_cache->mvcc_snapshot) != SNAPSHOT_SATISFIED;
+
+      if (!need_check_visibility)
 	{
 	  *recdes = *forward_recdes;
 	  return scan;
 	}
-      /* fall through to get visible version... */
+      /* fall through.. */
     }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
