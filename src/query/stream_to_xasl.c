@@ -2400,11 +2400,7 @@ stx_build_cte_xasl_id (THREAD_ENTRY * thread_p, char *ptr, XASL_ID * cte_xasl_id
 {
   int i;
 
-  for (i = 0; i < 5; i++)
-    {
-      cte_xasl_id->sha1.h[i] = OR_GET_INT (ptr);
-      ptr += OR_INT_SIZE;
-    }
+  ptr = or_unpack_sha1 (ptr, &cte_xasl_id->sha1);
 
   cte_xasl_id->cache_flag = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;

@@ -1459,11 +1459,7 @@ xts_process_cte_xasl_id (char *ptr, const XASL_ID * cte_xasl_id)
 {
   int i;
 
-  for (i = 0; i < 5; i++)
-    {
-      OR_PUT_INT (ptr, cte_xasl_id->sha1.h[i]);
-      ptr += OR_INT_SIZE;
-    }
+  ptr = or_pack_sha1 (ptr, &cte_xasl_id->sha1);
 
   OR_PUT_INT (ptr, cte_xasl_id->cache_flag);
   ptr += OR_INT_SIZE;
