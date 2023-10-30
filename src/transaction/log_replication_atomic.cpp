@@ -234,24 +234,12 @@ namespace cublog
 	  }
 	  case LOG_SCHEMA_MODIFICATION_LOCK:
 	  {
-	    char *classname = NULL;
-
 	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SCHEMA_MODIFICATION_LOCK));
 	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
 
-	    /* TODO:
-	     * All these debug logging part will be removed.
-	     * Lock will be acquired for the class that log_rec.classoid indicates
-	     */
-	    int error = heap_get_class_name (&thread_entry, &log_rec.classoid, &classname);
-	    _er_log_debug (ARG_FILE_LINE,"[REPL_LOCK] Schema modification lock is aquired on %s (OID = %d|%d|%d)\n",
-			   error != NO_ERROR ? "null" : classname, OID_AS_ARGS (&log_rec.classoid));
+	    acquire_lock (thread_entry, header.trid, &log_rec.classoid);
 
-	    if (classname != NULL)
-	      {
-		free_and_init (classname);
-	      }
 	    break;
 	  }
 	  default:
@@ -392,5 +380,16 @@ namespace cublog
       {
 	lock_unlock_object (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK, true);
       }
+
+    m_locked_objects.erase (trid);
   }
+
+  void
+  atomic_replicator::acquire_lock (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid)
+  {
+    lock_object (&thread_entry, classoid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
+
+    m_locked_objects.emplace (trid, *classoid);
+  }
+
 }
