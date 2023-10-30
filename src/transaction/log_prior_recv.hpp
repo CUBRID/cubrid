@@ -74,7 +74,7 @@ namespace cublog
 
       std::thread m_thread;                                   // internal thread
       bool m_shutdown = false;                                // true to stop internal thread
-      bool m_paused = false;                                // true to stop internal thread
+      bool m_paused = false;                                  // true to pause consuming messages
   };
 }
 
