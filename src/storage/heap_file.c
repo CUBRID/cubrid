@@ -24873,6 +24873,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 
       assert (scan_cache != NULL);
       assert (recdes != NULL);
+      assert (peeked_recdes != NULL);
 
       if (or_mvcc_get_header (peeked_recdes, &mvcc_header) != NO_ERROR)
 	{
