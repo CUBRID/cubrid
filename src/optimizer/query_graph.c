@@ -7101,8 +7101,7 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
 
   /* check hint */
   if ((tree->info.query.q.select.hint & PT_HINT_NO_INDEX_SS)
-      || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS)
-      || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
+      || !(tree->info.query.q.select.hint & PT_HINT_INDEX_SS) || !(QO_NODE_HINT (nodep) & PT_HINT_INDEX_SS))
     {
       return false;
     }
