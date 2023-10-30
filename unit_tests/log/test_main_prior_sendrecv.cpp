@@ -60,6 +60,9 @@ class test_env
     void wait_until_flushed ();          // make sure that all messages have been processed
     void require_prior_list_match () const; // check prior list in source matches the lists
 
+    void pause_receiver (int idx);
+    void resume_receiver (int idx);
+
   private:
     static void free_list (log_prior_node *headp);
 
@@ -69,6 +72,8 @@ class test_env
     // source of log transfer during log_flush()
     log_prior_node *m_source_nodes_head = nullptr;	  // head of list with all nodes that have been transferred
     log_prior_node *m_source_nodes_tail = nullptr;	  // tail of list with all nodes that have been transferred
+
+    std::vector<LOG_LSA> m_paused_lsa;
 
     std::vector<log_prior_lsa_info *> m_dest_prior_infos; // destination prior info, one for each receiver
     std::vector<cublog::prior_recver *> m_recvers;	  // log receivers
@@ -140,6 +145,9 @@ test_env::test_env (size_t receivers_count)
       // add new sink for prior receiver
       m_prior_sender_sinks.emplace_back (
 	      std::bind (&cublog::prior_recver::push_message, std::ref (*m_recvers.back ()), std::placeholders::_1));
+
+      // set paused_lsa to NULL_LSA for each receiver
+      m_paused_lsa.push_back (NULL_LSA);
     }
 
   for (const auto &sink : m_prior_sender_sinks)
@@ -217,6 +225,20 @@ test_env::flush_and_transfer_log ()
       m_source_prior_info.prior_list_header = nullptr;
       m_source_prior_info.prior_list_tail = nullptr;
     }
+}
+
+void
+test_env::pause_receiver (int idx)
+{
+  m_paused_lsa[idx] = m_source_nodes_tail->start_lsa;
+  m_recvers[idx]->wait_until_empty_and_pause ();
+}
+
+void
+test_env::resume_receiver (int idx)
+{
+  m_paused_lsa[idx] = NULL_LSA;
+  m_recvers[idx]->resume ();
 }
 
 void
