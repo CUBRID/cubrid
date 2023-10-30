@@ -162,9 +162,11 @@ typedef enum bts_key_status BTS_KEY_STATUS;
  */
 typedef struct btree_scan BTREE_SCAN;	/* BTS */
 
+#define IMPROVE_RANGE_SCAN_IN_BTREE
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 typedef struct
 {
-  bool enable;
+  bool in_range_scan;
   int n_prefix;
   VPID pg_vpid;
 
@@ -175,7 +177,7 @@ typedef struct
 } S_PREFIX_INFO;
 
 #define BTREE_INIT_PREFIX_INFO(prefix_info)  do {\
-    prefix_info.enable = false;                  \
+    prefix_info.in_range_scan = false;                  \
     prefix_info.n_prefix = -1;                   \
     prefix_info.pg_vpid.pageid = NULL_PAGEID;    \
     db_make_null (&prefix_info.prefix_key);      \
@@ -184,7 +186,7 @@ typedef struct
 } while(0)
 
 #define BTREE_RESET_PREFIX_INFO(prefix_info) do {\
-    prefix_info.enable = false;                  \
+    prefix_info.in_range_scan = false;                  \
     prefix_info.n_prefix = -1;                   \
     prefix_info.pg_vpid.pageid = NULL_PAGEID;    \
     pr_clear_value (&prefix_info.prefix_key);    \
@@ -192,6 +194,10 @@ typedef struct
     prefix_info.clear_prefix_key = false;        \
     prefix_info.range_satisfied_in_page = false; \
 } while(0)
+#else
+#define BTREE_INIT_PREFIX_INFO(prefix_info)
+#define BTREE_RESET_PREFIX_INFO(prefix_info)
+#endif
 
 struct btree_scan
 {

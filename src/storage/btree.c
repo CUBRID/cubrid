@@ -59,7 +59,8 @@
 #include <string.h>
 
 //----------------------------------------------------------------------------------------------
-//#define TEST_NEW_1
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+#define TEST_NEW_1
 //#define TEST_NEW_2
 //#define TEST_NEW_3
 // ctshim
@@ -106,7 +107,7 @@ static int btree_pgbuf_fix_if_not_deallocated_func (THREAD_ENTRY * thread_p, con
   } while (0)
 
 #endif
-
+#endif // #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 //----------------------------------------------------------------------------------------------
 
 
@@ -4489,10 +4490,10 @@ btree_read_record_xyz (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr,
   assert (bts == NULL || bts->common_prefix == -1
 	  || bts->common_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
 
-#if defined(TEST_NEW_1)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(TEST_NEW_1)
   if (bts != NULL)
     {
-      if (bts->prefix_info.enable)
+      if (bts->prefix_info.in_range_scan)
 	{
 	  if (VPID_EQ (&(bts->C_vpid), &(bts->prefix_info.pg_vpid)))
 	    {
@@ -4548,8 +4549,8 @@ btree_read_record_xyz (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr,
 	{
 	  /* recalculate n_prefix */
 	  n_prefix = btree_node_common_prefix (thread_p, btid, pgptr);
-#if defined(TEST_NEW_1)		// ctshim
-	  if (bts->prefix_info.enable)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(TEST_NEW_1)	// ctshim
+	  if (bts->prefix_info.in_range_scan)
 	    {
 	      bts->prefix_info.n_prefix = n_prefix;
 	      VPID_COPY (&(bts->prefix_info.pg_vpid), &(bts->C_vpid));
@@ -4570,8 +4571,8 @@ btree_read_record_xyz (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr,
 	  LEAF_REC leaf_pnt;
 	  int dummy_offset;
 
-#if defined(TEST_NEW_1)		// ctshim
-	  if (bts->prefix_info.enable)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(TEST_NEW_1)	// ctshim
+	  if (bts->prefix_info.in_range_scan)
 	    {
 	      if (is_new_page)
 		{
@@ -24939,11 +24940,11 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
 	    }
 
-#if defined(TEST_NEW_1)		// ctshim
-	  if (bts->prefix_info.enable)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(TEST_NEW_1)	// ctshim
+	  if (bts->prefix_info.in_range_scan)
 	    {
 	      btree_clear_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
-	      bts->prefix_info.enable = false;
+	      bts->prefix_info.in_range_scan = false;
 	      VPID_SET_NULL (&(bts->prefix_info.pg_vpid));
 	    }
 #endif
@@ -25078,7 +25079,7 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   /* Clear current key value if needed. */
   btree_scan_clear_key (bts);
   /* Read record key (and other info). */
-#ifdef TEST_NEW_1		// ctshim
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(TEST_NEW_1)	// ctshim
   assert (bts != NULL);
   return btree_read_record_xyz (thread_p, &bts->btid_int, bts->C_page, &bts->key_record, &bts->cur_key,
 				&bts->leaf_rec_info, bts->node_type, &bts->clear_cur_key, &bts->offset, COPY_KEY_VALUE,
@@ -25357,10 +25358,10 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
     }
 
 #if 0				//defined(TEST_NEW_1) // ctshim
-  if (bts->prefix_info.enable)
+  if (bts->prefix_info.in_range_scan)
     {
       btree_clear_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
-      bts->prefix_info.enable = false;
+      bts->prefix_info.in_range_scan = false;
       VPID_SET_NULL (&(bts->prefix_info.pg_vpid));
     }
 #endif
@@ -25739,26 +25740,24 @@ int
 btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func)
 {
   int ret;
-  // ctshim
-#if !defined(NDEBUG)
-  fprintf (stdout, "\n\nbtree_range_scan() START\n");
-#endif
 
-  bts->prefix_info.enable = true;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  // ctshim
+  bts->prefix_info.in_range_scan = true;
   btree_init_temp_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
   bts->prefix_info.range_satisfied_in_page = false;
+#endif
 
   ret = btree_range_scan_internal (thread_p, bts, key_func);
 
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   btree_clear_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
-  bts->prefix_info.enable = false;
+  bts->prefix_info.in_range_scan = false;
   VPID_SET_NULL (&(bts->prefix_info.pg_vpid));
   bts->prefix_info.n_prefix = -1;
   bts->prefix_info.range_satisfied_in_page = false;
-
-#if !defined(NDEBUG)
-  fprintf (stdout, "btree_range_scan() END\n\n");
 #endif
+
   return ret;
 }
 
