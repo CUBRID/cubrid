@@ -1213,7 +1213,7 @@ bool PRM_ANSI_QUOTES = true;
 static bool prm_ansi_quotes_default = true;
 static unsigned int prm_ansi_quotes_flag = 0;
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 int PRM_DEDUPLICATE_KEY_MOD_LEVEL = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
 static int prm_deduplicate_key_level_default = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT;
 static unsigned int prm_deduplicate_key_level_flag = 0;
@@ -1223,7 +1223,7 @@ static int prm_deduplicate_key_level_upper = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MAX;
 bool PRM_USE_WITH_OPTION_PRINT = false;
 static bool prm_use_print_index_detail_default = false;
 static unsigned int prm_use_print_index_detail_flag = 0;
-#endif
+
 
 int PRM_DEFAULT_WEEK_FORMAT = 0;
 static int prm_week_format_default = 0;
@@ -2401,10 +2401,10 @@ bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
 
-int PRM_VACUUM_OVFP_CHECK_DURATION = 2678400;
-static int prm_vacuum_ovfp_check_duration_default = 2678400;	/* 31 days * 24 hours * 60 min * 60 secs  */
-static int prm_vacuum_ovfp_check_duration_upper = INT_MAX;
-static int prm_vacuum_ovfp_check_duration_lower = 60;	// 1 min
+int PRM_VACUUM_OVFP_CHECK_DURATION = 45000;
+static int prm_vacuum_ovfp_check_duration_default = 45000;
+static int prm_vacuum_ovfp_check_duration_upper = 600000;
+static int prm_vacuum_ovfp_check_duration_lower = 1;	// 1 min
 static unsigned int prm_vacuum_ovfp_check_duration_flag = 0;
 
 int PRM_VACUUM_OVFP_CHECK_THRESHOLD = 1000;
@@ -6233,7 +6233,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR,
    PRM_NAME_ORACLE_COMPAT_NUMBER_BEHAVIOR,
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
    PRM_BOOLEAN,
    &prm_oracle_compat_number_behavior_flag,
    (void *) &prm_oracle_compat_number_behavior_default,
@@ -6289,7 +6289,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_VACUUM_OVFP_CHECK_DURATION,
    PRM_NAME_VACUUM_OVFP_CHECK_DURATION,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
+   (PRM_FOR_SERVER),
    PRM_INTEGER,
    &prm_vacuum_ovfp_check_duration_flag,
    (void *) &prm_vacuum_ovfp_check_duration_default,
@@ -6311,7 +6311,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   {PRM_ID_DEDUPLICATE_KEY_LEVEL,
    PRM_NAME_DEDUPLICATE_KEY_LEVEL,
    // It is not specified in the manual that it can be changed in the session.
@@ -6336,7 +6335,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-#endif
   {PRM_ID_HA_SQL_LOG_MAX_COUNT,
    PRM_NAME_HA_SQL_LOG_MAX_COUNT,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
@@ -10857,6 +10855,7 @@ prm_tune_parameters (void)
       if (GETHOSTNAME (host_name, sizeof (host_name)))
 	{
 	  strncpy (host_name, "localhost", sizeof (host_name) - 1);
+	  er_clear ();
 	}
 
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);
@@ -11009,6 +11008,7 @@ prm_tune_parameters (void)
       if (GETHOSTNAME (host_name, sizeof (host_name)))
 	{
 	  strncpy (host_name, "localhost", sizeof (host_name) - 1);
+	  er_clear ();
 	}
 
       snprintf (newval, sizeof (newval) - 1, "%s@%s", host_name, host_name);

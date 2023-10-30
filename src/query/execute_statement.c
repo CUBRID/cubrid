@@ -21194,6 +21194,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
   DB_VALUE values[2];
   int au_save;
   int rec_cnt = 0;
+  int saved_opt_level;
 
   server_name = (char *) node_server->info.name.original;
   owner_name = (char *) (node_owner ? node_owner->info.name.original : NULL);
@@ -21209,7 +21210,17 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
 
   AU_DISABLE (au_save);
 
+  /*
+   * backup the optimization level for executing internal query to find server-name,
+   * because it could not be executed depending on the optimization level.
+   */
+  saved_opt_level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
+  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
+
   error = db_compile_and_execute_local (query, &query_result, &query_error);
+
+  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, saved_opt_level);
+
   if (error < 0)
     {
       goto err;

@@ -14594,7 +14594,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_pgptr->area + process_lsa.offset);
 
 	  LSA_COPY (ret_lsa, &cur_log_lsa);
-	  *time = donetime->at_time;
+	  *time = dummy->at_time;
 
 	  return NO_ERROR;
 	}

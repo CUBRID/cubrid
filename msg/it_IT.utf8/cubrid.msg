@@ -904,7 +904,7 @@ $ LOADDB
 834 Ci sono delle discrepanze tra stringa di origine "%1$s" e la stringa di formato "%2$s" dato nel to_number().
 835 Artocolo non definito di statistiche.
 836 Blocco sulla pagina (%1$d|%2$d) è scaduto.
-837 Impossibile eliminare l'utente che possiede oggetti di database (classe/trigger/seriale/server/synonym etc.)
+837 Impossibile eliminare l'utente che possiede oggetti di database.
 838 Non è possibile aprire più di %1$d scansioni di index contemporaneamente.
 839 "%1$s": parametro di sistema sconosciuto o valore non valido.
 840 Non è possibile modificare il parametro di sistema "%1$s".
@@ -1439,8 +1439,11 @@ Controllare il percorso del file della chiave (_keys) e assicurarsi che includa 
 
 
 1355 Il file "%1$s" non è stato trovato.
+1356 Non c'è alcun suggerimento nella query DBLink o il tipo di istruzione non è corretto. %1$s
+1357 La conversione della stringa SQL in una stringa ampia non è riuscita.
+1358 Il numero di righe interessate è sconosciuto.
 
-1356 Ultimo errore
+1359 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

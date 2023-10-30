@@ -904,7 +904,7 @@ $ LOADDB
 834 Es gibt einige Diskrepanzen zwischen Quell-String "%1$s" und Format-String "%2$s" in to_number() angegeben.
 835 Undefiniertes Statistikelement.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Der Benutzer, der Datenbankobjekte besitzt, kann nicht gelöscht werden (Klasse/Trigger/Serial/Server/Synonym usw.).
+837 Der Benutzer, der Datenbankobjekte besitzt, kann nicht gelöscht werden.
 838 Es können nicht mehr als %1$d Index Scans gleichzeitig geöffnet werden.
 839 "%1$s": Unbekannter System-Parameter oder falscher Wert.
 840 System-Parameter "%1$s" kann nicht geändert werden.
@@ -1439,8 +1439,11 @@ $ LOADDB
 
 
 1355 Datei "%1$s" wurde nicht gefunden.
+1356 Die DBLink-Abfrage enthält keinen Hinweis oder der Anweisungstyp ist falsch. %1$s
+1357 Konvertieren der SQL-Zeichenfolge in eine breite Zeichenfolge ist fehlgeschlagen.
+1358 Die Anzahl der betroffenen Zeilen ist unbekannt.
 
-1356 Letzter Fehler
+1359 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

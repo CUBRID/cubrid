@@ -680,7 +680,7 @@ main (int argc, char **argv)
 	      shm_br = NULL;
 	    }
 #endif
-	  if (in_ch == 'q')
+	  if (in_ch == 'q' || in_ch == 'Q' || in_ch == 0x03)
 	    {
 	      break;
 	    }

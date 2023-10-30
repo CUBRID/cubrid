@@ -181,7 +181,7 @@ hm_srv_handle_free (int h_id)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if defined (CAS_FOR_CGW)
-  srv_handle->cgw_handle = NULL;
+  ux_cgw_free_stmt (srv_handle);
 #endif
 
   FREE_MEM (srv_handle);

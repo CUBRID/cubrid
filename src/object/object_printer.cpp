@@ -644,9 +644,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
-#endif
 
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
@@ -754,7 +752,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  break;
 	}
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
+
       if (IS_DEDUPLICATE_KEY_ATTR_ID ((*attribute_p)->id))
 	{
 	  assert (k == (n_attrs - 1));
@@ -765,7 +763,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	  n_attrs--;
 	  break;
 	}
-#endif
+
       if (k > 0)
 	{
 	  m_buf (", ");
@@ -800,13 +798,11 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
       m_buf (" WHERE %s", constraint.filter_predicate->pred_string);
     }
 
-#if defined(SUPPORT_DEDUPLICATE_KEY_MODE)
   // In case of PK (Unique Key also), reserved_col_buf will be empty.
   if (reserved_col_buf[0])
     {
       m_buf (" WITH %s", reserved_col_buf);
     }
-#endif
 
   if (constraint.type == SM_CONSTRAINT_FOREIGN_KEY && constraint.fk_info)
     {

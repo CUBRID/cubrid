@@ -904,7 +904,7 @@ $ LOADDB
 834 Hay algunos desajustes entre el string de origen "%1$s" y el string de formato "%2$s" dados en to_number().
 835 Artículo de estadísticas indefinido.
 836 Pestillo en la pagina (%1$d|%2$d) ha expirado
-837 No se puede disminuir el usuario que patrocina objetos de base de datos (clase/trigger/serial/server/synonym etc)
+837 No se puede disminuir el usuario que patrocina objetos de base de datos.
 838 No se pueden abrir simultaneamente mas de %1$d tomografías de indice.
 839 "%1$s": parametro de sistema desconocido o valor malo.
 840 No se puede cambiar el parametro de sistema "%1$s".
@@ -1439,8 +1439,11 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 
 
 1355 No se encontró el archivo "%1$s".
+1356 No hay ninguna pista en la consulta de DBLink o el tipo de instrucción es incorrecto. %1$s
+1357 Error al convertir una cadena SQL a una cadena ancha.
+1358 Se desconoce el número de filas afectadas.
 
-1356 Ultimo error
+1359 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

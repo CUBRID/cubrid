@@ -631,7 +631,7 @@ pt_find_name (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * lis
 bool
 pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  FUNC_TYPE function_type;
+  FUNC_CODE function_type;
 
   if (node->node_type == PT_FUNCTION)
     {
@@ -683,7 +683,7 @@ pt_is_analytic_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 bool
 pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  FUNC_TYPE function_type;
+  FUNC_CODE function_type;
 
   if (node->node_type == PT_FUNCTION)
     {
@@ -727,7 +727,7 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 bool
 pt_is_json_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  FUNC_TYPE function_type;
+  FUNC_CODE function_type;
 
   if (node->node_type == PT_FUNCTION)
     {
@@ -8462,6 +8462,31 @@ pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_pa
 }
 
 /*
+ * pt_is_operator_arith() - returns TRUE if the operator has an arithmetic
+ *			      return type (i.e. +, -, *, /) and FALSE
+ *			      otherwise.
+ *
+ *   return: boolean
+ *   op(in): the operator
+ */
+bool
+pt_is_operator_arith (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_TIMES:
+    case PT_DIVIDE:
+    case PT_UNARY_MINUS:
+    case PT_MOD:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * pt_is_operator_logical() - returns TRUE if the operator has a logical
  *			      return type (i.e. <, >, AND etc.) and FALSE
  *			      otherwise.
@@ -11582,6 +11607,8 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   PT_NODE *list = NULL;		/* for insert select list */
   PT_NODE *spec, *into_spec = NULL, *upd_spec = NULL, *server;
 
+  PARSER_VARCHAR *comment, *dml;
+
   switch (node->node_type)
     {
     case PT_INSERT:
@@ -11696,10 +11723,32 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   save_custom_print = parser->custom_print;
 
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK INSERT */ ", 20);
+      break;
+    case PT_UPDATE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK UPDATE */ ", 20);
+      break;
+    case PT_DELETE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK DELETE */ ", 20);
+      break;
+    case PT_MERGE:
+      comment = pt_append_bytes (parser, NULL, "/* DBLINK MERGE */ ", 19);
+      break;
+    default:
+      /* must not reach here */
+      assert (false);
+    }
+
   parser->custom_print |=
     PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
     PT_PRINT_SUPPRESS_FOR_DBLINK;
-  val->info.value.data_value.str = pt_print_bytes (parser, node);
+
+  dml = pt_print_bytes (parser, node);
+
+  val->info.value.data_value.str = pt_append_bytes (parser, comment, (const char *) dml->bytes, dml->length);
 
   parser->custom_print = save_custom_print;
 
@@ -11712,6 +11761,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   else
     {
       server = upd_spec->info.spec.remote_server_name;
+    }
+
+  if (server == NULL)
+    {
+      /* the subquery target in update query is not allowed */
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+      return;
     }
 
   assert (server->node_type == PT_NAME);
@@ -11850,12 +11906,27 @@ pt_convert_dml (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
         } while(0)
 // *INDENT-ON*     
 
+static PT_NODE *
+pt_set_print_in_value_for_dblink (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = (PT_NODE *) arg;
+
+  if (node->node_type == PT_EXPR && (node->info.expr.op == PT_IS_IN || node->info.expr.op == PT_IS_NOT_IN))
+    {
+      node->info.expr.arg2->flag.print_in_value_for_dblink = 1;
+    }
+
+  return node;
+}
+
 void
 pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   SERVER_NAME_LIST snl;
 
   memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
+
+  parser_walk_tree (parser, stmt, pt_set_print_in_value_for_dblink, NULL, NULL, NULL);
 
   switch (stmt->node_type)
     {
