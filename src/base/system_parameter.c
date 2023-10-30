@@ -1865,8 +1865,8 @@ static float prm_pb_aout_ratio_upper = 3.0;
 static float prm_pb_aout_ratio_lower = 0;
 static unsigned int prm_pb_aout_ratio_flag = 0;
 
-bool PRM_OPTIMIZER_ENABLE_MERGE_JOIN = true;
-static bool prm_optimizer_enable_merge_join_default = true;
+bool PRM_OPTIMIZER_ENABLE_MERGE_JOIN = false;
+static bool prm_optimizer_enable_merge_join_default = false;
 static unsigned int prm_optimizer_enable_merge_join_flag = 0;
 
 UINT64 PRM_MAX_HASH_LIST_SCAN_SIZE = 8 * 1024 * 1024;	/* 8 MB */
