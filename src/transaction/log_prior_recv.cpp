@@ -44,7 +44,7 @@ namespace cublog
     std::unique_lock<std::mutex> ulock (m_messages_mutex);
     m_messages.push (std::move (str));
     ulock.unlock ();
-    m_messages_condvar.notify_one ();
+    m_messages_push_cv.notify_one ();
   }
 
   void
@@ -61,7 +61,7 @@ namespace cublog
     std::unique_lock<std::mutex> ulock (m_messages_mutex);
     m_shutdown = true;
     ulock.unlock ();
-    m_messages_condvar.notify_one ();
+    m_messages_push_cv.notify_one ();
 
     m_thread.join ();
   }
@@ -74,7 +74,7 @@ namespace cublog
     std::unique_lock<std::mutex> ulock (m_messages_mutex);
     while (true)
       {
-	m_messages_condvar.wait (ulock, [this]
+	m_messages_push_cv.wait (ulock, [this]
 	{
 	  return m_shutdown || !m_messages.empty ();
 	});

@@ -66,7 +66,7 @@ namespace cublog
 
       message_container m_messages;                           // internal queue of messages
       std::mutex m_messages_mutex;                            // protect access on message queue
-      std::condition_variable m_messages_condvar;             // notify internal thread of new messages
+      std::condition_variable m_messages_push_cv;             // notify internal thread of new messages
 
       std::thread m_thread;                                   // internal thread
       bool m_shutdown = false;                                // true to stop internal thread
