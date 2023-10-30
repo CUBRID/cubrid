@@ -539,7 +539,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
 
 		  name_coll = PT_GET_COLLATION_MODIFIER (name);
 
-		  if (name_coll == -1 && name->data_type != NULL)
+		  if (!PT_HAS_COLLATION_MODIFIER (name) && name->data_type != NULL)
 		    {
 		      name_coll = name->data_type->info.data_type.collation_id;
 		    }
@@ -6285,13 +6285,12 @@ pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PARSER_VARCHAR *
 pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2, *r3, *comment;
+  PARSER_VARCHAR *b = 0, *r1, *comment;
   unsigned int saved_cp = parser->custom_print;
 
   parser->custom_print |= PT_SUPPRESS_RESOLVED;
 
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
-  r2 = pt_print_index_columns (parser, p);
 
   parser->custom_print = saved_cp;
 
@@ -6315,26 +6314,10 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_nulstring (parser, b, " on ");
   b = pt_append_varchar (parser, b, r1);
 
-  if (r2 != NULL)
-    {
-      b = pt_append_nulstring (parser, b, " (");
-      b = pt_append_varchar (parser, b, r2);
-      b = pt_append_nulstring (parser, b, ")");
-    }
-
   b = pt_append_nulstring (parser, b, " ");
 
-  if (p->info.index.code == PT_REBUILD_INDEX)
-    {
-      if (p->info.index.where)
-	{
-	  r3 = pt_print_and_list (parser, p->info.index.where);
-	  b = pt_append_nulstring (parser, b, " where ");
-	  b = pt_append_varchar (parser, b, r3);
-	}
-    }
 #if defined (ENABLE_RENAME_CONSTRAINT)
-  else if (p->info.index.code == PT_RENAME_INDEX)
+  if (p->info.index.code == PT_RENAME_INDEX)
     {
       b = pt_append_nulstring (parser, b, "rename to ");
 
@@ -12076,7 +12059,7 @@ pt_apply_function (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PT_NODE *
 pt_init_function (PT_NODE * p)
 {
-  p->info.function.function_type = (FUNC_TYPE) 0;
+  p->info.function.function_type = (FUNC_CODE) 0;
   p->info.function.all_or_distinct = (PT_MISC_TYPE) 0;
 
   return p;
@@ -12091,7 +12074,7 @@ pt_init_function (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  FUNC_TYPE code;
+  FUNC_CODE code;
   PARSER_VARCHAR *q = 0, *r1;
   PT_NODE *order_by = NULL;
 
@@ -15874,7 +15857,7 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	   && !(parser->custom_print & (PT_CHARSET_COLLATE_FULL | PT_CHARSET_COLLATE_USER_ONLY)))
 	  || (p->info.value.is_collate_allowed == false)
 	  || (prt_coll_id == LANG_SYS_COLLATION && (parser->custom_print & PT_SUPPRESS_CHARSET_PRINT))
-	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && PT_GET_COLLATION_MODIFIER (p) == -1))
+	  || (parser->custom_print & PT_CHARSET_COLLATE_USER_ONLY && !PT_HAS_COLLATION_MODIFIER (p)))
 	{
 	  prt_coll_id = -1;
 	}
