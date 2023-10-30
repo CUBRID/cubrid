@@ -20,9 +20,12 @@
 #include "log_replication_atomic.hpp"
 #include "log_replication_jobs.hpp"
 
-#include "log_recovery_redo_parallel.hpp"
 #include "heap_file.h"
+#include "locator_sr.h"
+#include "log_recovery_redo_parallel.hpp"
 #include "oid.h"
+#include "partition_sr.h"
+#include "xasl_cache.h"
 
 namespace cublog
 {
@@ -123,8 +126,9 @@ namespace cublog
 
 	    if (m_locked_objects.count (header.trid))
 	      {
-		/* unlock the objects that has been locked for DDL replication */
-		release_locks_by_tranid (thread_entry, header.trid);
+		/* unlock the objects that has been locked for DDL replication,
+		 * and discard the related caches that are modified by DDL */
+		unlock_and_discard_caches (thread_entry, header.trid);
 	      }
 
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
@@ -159,8 +163,9 @@ namespace cublog
 
 	    if (m_locked_objects.count (header.trid))
 	      {
-		/* unlock the objects that has been locked for DDL replication */
-		release_locks_by_tranid (thread_entry, header.trid);
+		/* unlock the objects that has been locked for DDL replication,
+		 * and discard the related caches that are modified by DDL */
+		unlock_and_discard_caches (thread_entry, header.trid);
 	      }
 
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
@@ -370,15 +375,24 @@ namespace cublog
 	  }
       }
   }
-
   void
-  atomic_replicator::release_locks_by_tranid (cubthread::entry &thread_entry, const TRANID trid)
+  atomic_replicator::unlock_and_discard_caches (cubthread::entry &thread_entry, const TRANID trid)
   {
     assert (m_locked_objects.count (trid) > 0);
 
+    /* TODO:
+     * update the classname only when it is needed */
+    locator_initialize (&thread_entry);
+
     for (auto it = m_locked_objects.lower_bound (trid); it != m_locked_objects.upper_bound (trid); it++)
       {
-	lock_unlock_object (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK, true);
+	const OID classoid = it->second;
+
+	heap_classrepr_decache (&thread_entry, &classoid);
+	xcache_remove_by_oid (&thread_entry, &classoid);
+	partition_decache_class (&thread_entry, &classoid);
+
+	lock_unlock_object (&thread_entry, &classoid, oid_Root_class_oid, SCH_M_LOCK, true);
       }
 
     m_locked_objects.erase (trid);
