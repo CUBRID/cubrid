@@ -57,9 +57,11 @@ class test_env
     void flush_and_transfer_log ();	  // simulate log flush. log is transferred to the receivers in the process
     // and at the end prior lists are compared
 
+    void wait_until_flushed ();          // make sure that all messages have been processed
+    void require_prior_list_match () const; // check prior list in source matches the lists
+
   private:
     static void free_list (log_prior_node *headp);
-    void require_prior_list_match () const;
 
     // Sender & source data
     cublog::prior_sender m_sender;			  // the log sender
@@ -207,13 +209,17 @@ test_env::flush_and_transfer_log ()
       m_source_prior_info.prior_list_header = nullptr;
       m_source_prior_info.prior_list_tail = nullptr;
 
-      // now make sure that all messages have been processed
-      // note: if m_source_prior_info.prior_list_header == nullptr, no message is sent.
-      test_Flush_track.wait_until_count_and_reset (m_dest_prior_infos.size ());
+      wait_until_flushed ();
     }
 
-  // check prior list in source matches the lists
   require_prior_list_match ();
+}
+
+void
+test_env::wait_until_flushed ()
+{
+  // note: if m_source_prior_info.prior_list_header == nullptr, no message is sent.
+  test_Flush_track.wait_until_count_and_reset (m_dest_prior_infos.size ());
 }
 
 void
