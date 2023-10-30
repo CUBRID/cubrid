@@ -246,8 +246,8 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
       return;
     }
 
-  // Establish a connection with the PS to catch up with, and start the cathup asynchronously.
-  // The connection will be destoryed at the end of the catch-up.
+  // Establish a connection with the PS to catch up with, and start the catch-up asynchronously.
+  // The connection will be destroyed at the end of the catch-up.
   m_ps.connect_to_followee_page_server (std::move (host), port);
   m_ps.start_catchup (catchup_lsa);
 }
