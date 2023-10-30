@@ -52,6 +52,7 @@ namespace cublog
   {
     assert (m_thread.get_id () == std::thread::id ()); // make sure that it's not been started.
     m_shutdown = false;
+    m_paused = false;
     m_thread = std::thread (&prior_recver::loop_message_to_prior_info, std::ref (*this));
   }
 
@@ -71,11 +72,32 @@ namespace cublog
   {
     std::unique_lock<std::mutex> ulock (m_messages_mutex);
 
+    assert (m_paused == false);
+    assert (m_shutdown == false);
+
     constexpr auto sleep_30ms = std::chrono::milliseconds (30);
     while (!m_messages_consume_cv.wait_for (ulock, sleep_30ms, [this]
     {
       return !m_messages.empty();
       }));
+
+    m_paused = true;
+  }
+
+  void
+  prior_recver::resume ()
+  {
+    std::unique_lock<std::mutex> ulock (m_messages_mutex);
+
+    assert (m_paused == true);
+    assert (m_shutdown == false);
+
+    m_paused = false;
+
+    if (!m_messages.empty ())
+      {
+	m_messages_push_cv.notify_one ();
+      }
   }
 
   void
@@ -88,7 +110,7 @@ namespace cublog
       {
 	m_messages_push_cv.wait (ulock, [this]
 	{
-	  return m_shutdown || !m_messages.empty ();
+	  return m_shutdown || (!m_messages.empty () && !m_paused);
 	});
 
 	if (m_shutdown)

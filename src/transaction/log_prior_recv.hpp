@@ -56,6 +56,7 @@ namespace cublog
       void start_thread ();                                   // run loop_message_to_prior_info in a thread
 
       void wait_until_empty_and_pause ();
+      void resume ();
 
     private:
       using message_container = std::queue<std::string>;      // internal message container type
@@ -73,6 +74,7 @@ namespace cublog
 
       std::thread m_thread;                                   // internal thread
       bool m_shutdown = false;                                // true to stop internal thread
+      bool m_paused = false;                                // true to stop internal thread
   };
 }
 
