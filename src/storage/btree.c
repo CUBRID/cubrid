@@ -58,6 +58,58 @@
 #include <stdlib.h>
 #include <string.h>
 
+//----------------------------------------------------------------------------------------------
+//#define TEST_NEW_1
+//#define TEST_NEW_2
+//#define TEST_NEW_3
+// ctshim
+static PAGE_PTR btree_pgbuf_fix_func (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+				      PGBUF_LATCH_MODE requestmode, PGBUF_LATCH_CONDITION condition
+#if !defined(NDEBUG)
+				      , const char *caller_file, int caller_line, const char *func_name
+#endif
+  );
+static void btree_pgbuf_unfix_func (THREAD_ENTRY * thread_p, PAGE_PTR pgptr
+#if !defined(NDEBUG)
+				    , const char *caller_file, int caller_line, const char *func_name
+#endif
+  );
+
+static int btree_pgbuf_promote_read_latch_func (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
+						PGBUF_PROMOTE_CONDITION condition
+#if !defined(NDEBUG)
+						, const char *caller_file, int caller_line, const char *func_name
+#endif
+  );
+
+
+static int btree_pgbuf_fix_if_not_deallocated_func (THREAD_ENTRY * thread_p, const VPID * vpid,
+						    PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
+						    PAGE_PTR * page
+#if !defined(NDEBUG)
+						    , const char *caller_file, int caller_line, const char *func_name
+#endif
+  );
+
+
+#if !defined(NDEBUG)
+
+#define pgbuf_fix(...)                     btree_pgbuf_fix_func(__VA_ARGS__,  __FILE__, __LINE__, __func__)
+#define pgbuf_unfix(...)                   btree_pgbuf_unfix_func(__VA_ARGS__,  __FILE__, __LINE__, __func__)
+#define pgbuf_promote_read_latch(...)      btree_pgbuf_promote_read_latch_func(__VA_ARGS__, __FILE__, __LINE__, __func__)
+#define pgbuf_fix_if_not_deallocated(...)  btree_pgbuf_fix_if_not_deallocated_func(__VA_ARGS__, __FILE__, __LINE__, __func__)
+
+#define pgbuf_unfix_and_init(thread_p, pgptr) \
+  do { \
+    btree_pgbuf_unfix_func ((thread_p), (pgptr), __FILE__, __LINE__, __func__); \
+    (pgptr) = NULL; \
+  } while (0)
+
+#endif
+
+//----------------------------------------------------------------------------------------------
+
+
 #define BTREE_HEALTH_CHECK
 
 #define BTREE_DEBUG_DUMP_SIMPLE		0x0001	/* simple message in SMO */
@@ -4287,6 +4339,298 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
   return NO_ERROR;
 }
 
+#if defined(TEST_NEW_3)
+void
+btree_between_check (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, BTREE_SCAN * bts)
+{
+  int error;
+  DB_VALUE *key = NULL;
+  bool accept_all = false;
+
+  bts->prefix_info.range_satisfied_in_page = false;
+
+  if (bts->key_range.upper_key == NULL)
+    {
+      assert (bts->key_range.range == GE_INF || bts->key_range.range == GT_INF || bts->key_range.range == INF_INF);
+      bts->prefix_info.range_satisfied_in_page = true;
+      return;
+    }
+
+
+  switch (bts->key_range.range)
+    {
+    case GE_LE:
+    case GT_LE:
+      break;
+    case GE_LT:
+    case GT_LT:
+      break;
+    case INF_LE:
+    case INF_LT:
+      break;
+
+    case GE_INF:
+    case GT_INF:
+    case INF_INF:
+      assert (bts->key_range.upper_key == NULL);
+      return;
+
+    case EQ_NA:
+    case NA_NA:
+    case LE_GE:
+    case LE_GT:
+    case LT_GE:
+    case LT_GT:
+    case NEQ_NA:
+    default:
+      assert (0);
+      break;
+    }
+
+#ifndef NDEBUG
+  if (bts->key_range.lower_key)
+    db_value_print_console (bts->key_range.lower_key, true, "***** lower_key ");
+  if (bts->key_range.upper_key)
+    db_value_print_console (bts->key_range.upper_key, true, "***** upper_key ");
+#endif
+
+  assert (bts->key_range.upper_key != NULL);
+  key = bts->key_range.upper_key;
+
+  DB_VALUE border_key;
+  RECDES border_record;
+  BTREE_NODE_HEADER *node_header = NULL;
+  LEAF_REC dummy_leaf_rec;
+  int dummy_offset;
+  bool clear_border_key = false;
+  int error_code = NO_ERROR;
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
+  int key_count = 0;
+
+  node_header = btree_get_node_header (thread_p, pgptr);
+  if (node_header == NULL)
+    {
+      assert (false);
+      return;
+    }
+  key_count = btree_node_number_of_keys (thread_p, pgptr);
+  if (key_count < 1)
+    {
+      /* Too few keys to decide. */
+      assert (false);
+      return;
+    }
+
+  btree_init_temp_key_value (&clear_border_key, &border_key);
+  if (spage_get_record (thread_p, pgptr, key_count, &border_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return;
+    }
+
+  error_code =
+    btree_read_record (thread_p, btid, pgptr, &border_record, &border_key, &dummy_leaf_rec, BTREE_LEAF_NODE,
+		       &clear_border_key, &dummy_offset, PEEK_KEY_VALUE, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
+
+
+  // ctshim
+#ifndef NDEBUG
+  db_value_print_console (&border_key, true, "***** border_key ");
+#endif
+
+  c = btree_compare_key (key, &border_key, btid->key_type, 1, 1, NULL);
+  btree_clear_key_value (&clear_border_key, &border_key);
+
+
+  switch (bts->key_range.range)
+    {
+    case GE_LE:
+    case GT_LE:
+    case INF_LE:
+      if (c == DB_GT || c == DB_EQ)
+	accept_all = true;
+      break;
+    case GE_LT:
+    case GT_LT:
+    case INF_LT:
+      if (c == DB_GT)
+	accept_all = true;
+      break;
+    case GE_INF:
+    case GT_INF:
+    case INF_INF:
+    case EQ_NA:
+    default:
+      assert (0);		// not reached          
+      break;
+    }
+
+  bts->prefix_info.range_satisfied_in_page = accept_all;
+}
+#endif // #if defined(TEST_NEW_3)
+
+int
+btree_read_record_xyz (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * rec, DB_VALUE * key,
+		       void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset, int copy_key,
+		       BTREE_SCAN * bts)
+{
+  int n_prefix = COMMON_PREFIX_UNKNOWN;
+  int error;
+  bool is_new_page = false;
+
+  assert (pgptr != NULL);
+  assert (rec != NULL);
+  assert (rec->type == REC_HOME);
+  assert (bts == NULL || bts->common_prefix == -1
+	  || bts->common_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
+
+#if defined(TEST_NEW_1)
+  if (bts != NULL)
+    {
+      if (bts->prefix_info.enable)
+	{
+	  if (VPID_EQ (&(bts->C_vpid), &(bts->prefix_info.pg_vpid)))
+	    {
+	      n_prefix = bts->prefix_info.n_prefix;
+	    }
+#if defined(TEST_NEW_3)
+	  else
+	    {
+	      btree_between_check (thread_p, btid, pgptr, bts);
+	    }
+#endif
+	}
+      else
+	{
+	  n_prefix = bts->common_prefix;
+	}
+    }
+#else
+  if (bts != NULL)
+    {
+      n_prefix = bts->common_prefix;
+    }
+#endif
+
+#if 0				// defined(TEST_NEW_3)
+  if (bts->prefix_info.range_satisfied_in_page)
+    {
+      if ((!
+	   (bts->need_to_check_null && DB_VALUE_DOMAIN_TYPE (&bts->cur_key) == DB_TYPE_MIDXKEY
+	    && bts->key_range.num_index_term > 0)) || (!(bts->key_filter && bts->key_filter->scan_pred
+							 && bts->key_filter->scan_pred->regu_list
+							 && bts->key_filter->scan_pred->pr_eval_fnc
+							 && bts->key_filter->scan_pred->pred_expr)))
+	{
+	  return NO_ERROR;
+	}
+    }
+#endif
+
+
+  error =
+    btree_read_record_without_decompression (thread_p, btid, rec, key, rec_header, node_type, clear_key, offset,
+					     copy_key);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (key != NULL && node_type == BTREE_LEAF_NODE && !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY)
+      && !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_FENCE))
+    {
+      if (n_prefix == COMMON_PREFIX_UNKNOWN)
+	{
+	  /* recalculate n_prefix */
+	  n_prefix = btree_node_common_prefix (thread_p, btid, pgptr);
+#if defined(TEST_NEW_1)		// ctshim
+	  if (bts->prefix_info.enable)
+	    {
+	      bts->prefix_info.n_prefix = n_prefix;
+	      VPID_COPY (&(bts->prefix_info.pg_vpid), &(bts->C_vpid));
+
+	      btree_clear_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
+	      is_new_page = true;
+	    }
+#endif
+	}
+
+      assert (n_prefix >= 0);
+
+      if (n_prefix > 0)
+	{
+	  RECDES peek_rec;
+	  DB_VALUE lf_key, result;
+	  bool lf_clear_key;
+	  LEAF_REC leaf_pnt;
+	  int dummy_offset;
+
+#if defined(TEST_NEW_1)		// ctshim
+	  if (bts->prefix_info.enable)
+	    {
+	      if (is_new_page)
+		{
+		  btree_clear_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
+
+		  (void) spage_get_record (thread_p, pgptr, 1, &peek_rec, PEEK);
+		  error =
+		    btree_read_record_without_decompression (thread_p, btid, &peek_rec, &(bts->prefix_info.prefix_key),
+							     &leaf_pnt, BTREE_LEAF_NODE,
+							     &(bts->prefix_info.clear_prefix_key), &dummy_offset,
+							     PEEK_KEY_VALUE);
+
+		  if (error != NO_ERROR)
+		    {
+		      btree_clear_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
+		      return error;
+		    }
+		  assert (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE));
+		  assert (DB_VALUE_TYPE (&(bts->prefix_info.prefix_key)) == DB_TYPE_MIDXKEY);
+		}
+
+	      pr_midxkey_add_prefix (&result, &(bts->prefix_info.prefix_key), key, n_prefix);
+	      btree_clear_key_value (clear_key, key);
+	    }
+	  else
+#endif
+	    {
+	      btree_init_temp_key_value (&lf_clear_key, &lf_key);
+	      (void) spage_get_record (thread_p, pgptr, 1, &peek_rec, PEEK);
+	      error = btree_read_record_without_decompression (thread_p, btid, &peek_rec, &lf_key, &leaf_pnt,
+							       BTREE_LEAF_NODE, &lf_clear_key, &dummy_offset,
+							       PEEK_KEY_VALUE);
+	      if (error != NO_ERROR)
+		{
+		  btree_clear_key_value (clear_key, key);
+		  return error;
+		}
+
+	      assert (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE));
+	      assert (DB_VALUE_TYPE (&lf_key) == DB_TYPE_MIDXKEY);
+
+	      pr_midxkey_add_prefix (&result, &lf_key, key, n_prefix);
+
+	      btree_clear_key_value (clear_key, key);
+	      btree_clear_key_value (&lf_clear_key, &lf_key);
+	    }
+
+	  *key = result;
+	  *clear_key = true;
+	}
+      else if (n_prefix < 0)
+	{
+	  return n_prefix;
+	}
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * btree_read_record_without_decompression () -
  *   return:
@@ -5214,6 +5558,12 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       return error_code;
     }
 
+
+  {				// ctshim
+    // db_value_print_console (key, true, "***** key ");
+    // db_value_print_console (&border_key, true, "***** slot %d", 1);
+  }
+
   /* Compare with first key. */
   c = btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
   btree_clear_key_value (&clear_key, &border_key);
@@ -5266,6 +5616,10 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       ASSERT_ERROR ();
       return error_code;
     }
+  {				// ctshim
+    //db_value_print_console (&border_key, true, "***** slot %d", key_count);
+  }
+
   /* Compare with last key. */
   c = btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
   btree_clear_key_value (&clear_key, &border_key);
@@ -16090,6 +16444,71 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
   *is_key_range_satisfied = *is_key_filter_satisfied = false;
   bts->key_range_max_value_equal = false;	/* init as false */
 
+// ctshim
+#if defined(TEST_NEW_3)
+  /* Key Range Checking */
+  if (bts->prefix_info.range_satisfied_in_page)
+    {
+      if (bts->key_range.range == GT_LE || bts->key_range.range == GE_LE || bts->key_range.range == INF_LE)
+	{
+	  bts->key_range_max_value_equal = true;
+	}
+      *is_key_range_satisfied = true;
+    }
+  else
+    {
+      if (bts->key_range.upper_key == NULL)
+	{
+	  *is_key_range_satisfied = true;
+	}
+      else
+	{
+	  c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key, bts->btid_int.key_type, 1, 1, NULL);
+
+	  if (c == DB_UNK)
+	    {
+	      /* error should have been set */
+	      goto exit_on_error;
+	    }
+
+	  if (c == 0)
+	    {
+	      if (bts->key_range.range == GT_LE || bts->key_range.range == GE_LE || bts->key_range.range == INF_LE)
+		{
+		  *is_key_range_satisfied = true;
+		  bts->key_range_max_value_equal = true;
+		}
+	      else
+		{
+		  *is_key_range_satisfied = false;
+		}
+	    }
+	  else
+	    {
+	      /* when using descending index the comparison should be changed again */
+	      if (bts->use_desc_index)
+		{
+		  c = -c;
+		}
+
+	      if (c < 0)
+		{
+		  *is_key_range_satisfied = false;
+		}
+	      else
+		{
+		  *is_key_range_satisfied = true;
+		}
+	    }
+	}
+    }
+
+  if (bts->prefix_info.range_satisfied_in_page)
+    {
+      assert (*is_key_range_satisfied == true);
+    }
+
+#else //==========================================================================
   /* Key Range Checking */
   if (bts->key_range.upper_key == NULL)
     {
@@ -16132,6 +16551,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     {
       *is_key_range_satisfied = true;
     }
+#endif //==========================================================================
 
   if (*is_key_range_satisfied)
     {
@@ -24519,6 +24939,15 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
 	    }
 
+#if defined(TEST_NEW_1)		// ctshim
+	  if (bts->prefix_info.enable)
+	    {
+	      btree_clear_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
+	      bts->prefix_info.enable = false;
+	      VPID_SET_NULL (&(bts->prefix_info.pg_vpid));
+	    }
+#endif
+
 	  /* Page suffered some changes. */
 	  if (BTREE_IS_PAGE_VALID_LEAF (thread_p, bts->C_page))
 	    {
@@ -24649,8 +25078,15 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   /* Clear current key value if needed. */
   btree_scan_clear_key (bts);
   /* Read record key (and other info). */
+#ifdef TEST_NEW_1		// ctshim
+  assert (bts != NULL);
+  return btree_read_record_xyz (thread_p, &bts->btid_int, bts->C_page, &bts->key_record, &bts->cur_key,
+				&bts->leaf_rec_info, bts->node_type, &bts->clear_cur_key, &bts->offset, COPY_KEY_VALUE,
+				bts);
+#else
   return btree_read_record (thread_p, &bts->btid_int, bts->C_page, &bts->key_record, &bts->cur_key, &bts->leaf_rec_info,
 			    bts->node_type, &bts->clear_cur_key, &bts->offset, COPY_KEY_VALUE, bts);
+#endif
 }
 
 /*
@@ -24919,6 +25355,16 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       ASSERT_ERROR ();
       return error_code;
     }
+
+#if 0				//defined(TEST_NEW_1) // ctshim
+  if (bts->prefix_info.enable)
+    {
+      btree_clear_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
+      bts->prefix_info.enable = false;
+      VPID_SET_NULL (&(bts->prefix_info.pg_vpid));
+    }
+#endif
+
   if (prev_leaf == NULL)
     {
       /* deallocated */
@@ -25104,7 +25550,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
  * key_func (in)      : Internal function to call when an eligible key is found.
  */
 int
-btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func)
+btree_range_scan_internal (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func)
 {
   int error_code = NO_ERROR;	/* Error code. */
 
@@ -25287,6 +25733,33 @@ end:
 exit_on_error:
   error_code = error_code != NO_ERROR ? error_code : ER_FAILED;
   goto end;
+}
+
+int
+btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func)
+{
+  int ret;
+  // ctshim
+#if !defined(NDEBUG)
+  fprintf (stdout, "\n\nbtree_range_scan() START\n");
+#endif
+
+  bts->prefix_info.enable = true;
+  btree_init_temp_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
+  bts->prefix_info.range_satisfied_in_page = false;
+
+  ret = btree_range_scan_internal (thread_p, bts, key_func);
+
+  btree_clear_key_value (&(bts->prefix_info.clear_prefix_key), &(bts->prefix_info.prefix_key));
+  bts->prefix_info.enable = false;
+  VPID_SET_NULL (&(bts->prefix_info.pg_vpid));
+  bts->prefix_info.n_prefix = -1;
+  bts->prefix_info.range_satisfied_in_page = false;
+
+#if !defined(NDEBUG)
+  fprintf (stdout, "btree_range_scan() END\n\n");
+#endif
+  return ret;
 }
 
 /*
@@ -35959,3 +36432,60 @@ bool btree_insert_list::check_release_latch (THREAD_ENTRY * thread_p, void *arg,
   return false;
 }
 // *INDENT-ON*
+
+
+#if !defined(NDEBUG)
+//#define debug_fprintf  fprintf
+#define debug_fprintf
+
+PAGE_PTR
+btree_pgbuf_fix_func (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+		      PGBUF_LATCH_MODE requestmode, PGBUF_LATCH_CONDITION condition, const char *caller_file,
+		      int caller_line, const char *func_name)
+{
+  PAGE_PTR pg_ptr = NULL;
+  pg_ptr = pgbuf_fix_debug (thread_p, vpid, fetch_mode, requestmode, condition, caller_file, caller_line);
+  debug_fprintf (stdout, "Fix  >> pg_ptr=%08X vpid(%d:%d) caller= %s:%d\n", pg_ptr, vpid->volid, vpid->pageid,
+		 func_name, caller_line);
+
+  return pg_ptr;
+}
+
+
+void
+btree_pgbuf_unfix_func (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const char *caller_file, int caller_line,
+			const char *func_name)
+{
+  if (pgbuf_check_page_type_no_error (thread_p, pgptr, PAGE_BTREE))
+    {
+      VPID *vpid = pgbuf_get_vpid_ptr (pgptr);
+      debug_fprintf (stdout, "UnFix>> \t\t pg_ptr=%08X  vpid(%d:%d)  caller= %s:%d\n", pgptr, vpid->volid, vpid->pageid,
+		     func_name, caller_line);
+    }
+
+  pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line);
+}
+
+int
+btree_pgbuf_promote_read_latch_func (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, PGBUF_PROMOTE_CONDITION condition,
+				     const char *caller_file, int caller_line, const char *func_name)
+{
+  return pgbuf_promote_read_latch_debug (thread_p, pgptr_p, condition, caller_file, caller_line);
+}
+
+int
+btree_pgbuf_fix_if_not_deallocated_func (THREAD_ENTRY * thread_p, const VPID * vpid, PGBUF_LATCH_MODE latch_mode,
+					 PGBUF_LATCH_CONDITION latch_condition, PAGE_PTR * page,
+					 const char *caller_file, int caller_line, const char *func_name)
+{
+  int ret;
+
+  ret =
+    pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, caller_file,
+					      caller_line);
+  debug_fprintf (stdout, "Dealo>> page=%08X vpid(%d:%d) caller= %s:%d\n", *page, vpid->volid, vpid->pageid, func_name,
+		 caller_line);
+
+  return ret;
+}
+#endif

@@ -161,6 +161,38 @@ typedef enum bts_key_status BTS_KEY_STATUS;
  *	 a different structure (that is pointed by bts_other).
  */
 typedef struct btree_scan BTREE_SCAN;	/* BTS */
+
+typedef struct
+{
+  bool enable;
+  int n_prefix;
+  VPID pg_vpid;
+
+  DB_VALUE prefix_key;
+  bool clear_prefix_key;
+
+  bool range_satisfied_in_page;
+} S_PREFIX_INFO;
+
+#define BTREE_INIT_PREFIX_INFO(prefix_info)  do {\
+    prefix_info.enable = false;                  \
+    prefix_info.n_prefix = -1;                   \
+    prefix_info.pg_vpid.pageid = NULL_PAGEID;    \
+    db_make_null (&prefix_info.prefix_key);      \
+    prefix_info.clear_prefix_key = false;        \
+    prefix_info.range_satisfied_in_page = false; \
+} while(0)
+
+#define BTREE_RESET_PREFIX_INFO(prefix_info) do {\
+    prefix_info.enable = false;                  \
+    prefix_info.n_prefix = -1;                   \
+    prefix_info.pg_vpid.pageid = NULL_PAGEID;    \
+    pr_clear_value (&prefix_info.prefix_key);    \
+    db_make_null (&prefix_info.prefix_key);      \
+    prefix_info.clear_prefix_key = false;        \
+    prefix_info.range_satisfied_in_page = false; \
+} while(0)
+
 struct btree_scan
 {
   BTID_INT btid_int;
@@ -206,6 +238,7 @@ struct btree_scan
   int qualified_keys;
 
   int common_prefix;
+  S_PREFIX_INFO prefix_info;
 
   bool key_range_max_value_equal;
 
@@ -263,6 +296,7 @@ struct btree_scan
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
     (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
+    BTREE_INIT_PREFIX_INFO((bts)->prefix_info);         \
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
@@ -310,6 +344,7 @@ struct btree_scan
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
     (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
+    BTREE_RESET_PREFIX_INFO((bts)->prefix_info);        \
     pr_clear_value (&(bts)->cur_key);			\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
