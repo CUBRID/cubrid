@@ -53,13 +53,13 @@ namespace cublog
       prior_recver &operator = (prior_recver &&) = delete;
 
       void push_message (std::string &&str);                  // push message from prior_sender into message queue
-      void start_thread ();                                   // run loop_message_to_prior_info in a thread
 
     private:
       using message_container = std::queue<std::string>;      // internal message container type
 
       void loop_message_to_prior_info ();                     // convert messages into prior node lists and append them
       // to prior info
+      void start_thread ();                                   // run loop_message_to_prior_info in a thread
       void stop_thread ();                                    // stop thread running loop_message_to_prior_info()
 
       log_prior_lsa_info &m_prior_lsa_info;                   // prior list destination
