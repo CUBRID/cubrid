@@ -78,7 +78,7 @@ namespace cublog
     constexpr auto sleep_30ms = std::chrono::milliseconds (30);
     while (!m_messages_consume_cv.wait_for (ulock, sleep_30ms, [this]
     {
-      return !m_messages.empty();
+      return m_messages.empty();
       }));
 
     m_paused = true;
