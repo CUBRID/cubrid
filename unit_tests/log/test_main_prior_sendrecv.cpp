@@ -125,7 +125,6 @@ test_env::test_env (size_t receivers_count)
 
       // add new prior receiver that reconstructs destination prior info
       m_recvers.push_back (new cublog::prior_recver (*m_dest_prior_infos.back ()));
-      m_recvers.back ()->start_thread ();
 
       // add new sink for prior receiver
       m_prior_sender_sinks.emplace_back (

@@ -149,7 +149,6 @@ int init_server_type (const char *db_name)
 	  // passive tran server also needs (a) prior receiver(s) to receive log from page server(s)
 	  // the mechanism is that of a pub sub; a PTS subscribes to receive log from one page server (for now)
 	  log_Gl.initialize_log_prior_receiver ();
-	  log_Gl.get_log_prior_receiver ().start_thread ();
 
 	  pts_Gl = new passive_tran_server ();
 	  ts_Gl.reset (pts_Gl);
@@ -168,8 +167,6 @@ int init_server_type (const char *db_name)
       // sender ready, if needed (very unlikely scenario, but principially so)
       log_Gl.initialize_log_prior_sender ();
       log_Gl.initialize_log_prior_receiver ();
-      // The thread in the log_prior_receiver who appends log prior nodes will start once the catch-up is completed.
-      // Until then, it just receives and keeps prior nodes form ATS. See receive_start_catch_up() and execute_catchup.
     }
   else
     {

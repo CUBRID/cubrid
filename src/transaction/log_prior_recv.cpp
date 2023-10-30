@@ -28,14 +28,12 @@ namespace cublog
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
     : m_prior_lsa_info (prior_lsa_info)
   {
+    start_thread ();
   }
 
   prior_recver::~prior_recver ()
   {
-    if (m_thread.get_id () != std::thread::id ())
-      {
-	stop_thread ();
-      }
+    stop_thread ();
   }
 
   void
@@ -50,7 +48,6 @@ namespace cublog
   void
   prior_recver::start_thread ()
   {
-    assert (m_thread.get_id () == std::thread::id ()); // make sure that it's not been started.
     m_shutdown = false;
     m_thread = std::thread (&prior_recver::loop_message_to_prior_info, std::ref (*this));
   }
