@@ -87,13 +87,21 @@ do_test (test_env &env)
   env.append_log ();
   env.flush_and_transfer_log ();
 
+  env.wait_until_flushed ();
+  env.require_prior_list_match ();
+
   env.flush_and_transfer_log ();
+
+  env.require_prior_list_match ();
 
   for (size_t i = 0; i < 3; ++i)
     {
       env.append_log ();
     }
   env.flush_and_transfer_log ();
+
+  env.wait_until_flushed ();
+  env.require_prior_list_match ();
 }
 
 TEST_CASE ("Test prior list transfers with a single receiver", "")
@@ -208,11 +216,7 @@ test_env::flush_and_transfer_log ()
 
       m_source_prior_info.prior_list_header = nullptr;
       m_source_prior_info.prior_list_tail = nullptr;
-
-      wait_until_flushed ();
     }
-
-  require_prior_list_match ();
 }
 
 void
