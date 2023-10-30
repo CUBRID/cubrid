@@ -270,21 +270,31 @@ test_env::require_prior_list_match () const
     {
       return;
     }
-  for (auto &dest_prior_info : m_dest_prior_infos)
+
+  for (size_t i = 0; i< m_dest_prior_infos.size (); i++)
     {
+      const auto &dest_prior_info = m_dest_prior_infos[i];
       const log_prior_node *dest_node = dest_prior_info->prior_list_header;
       const log_prior_node *source_node = m_source_nodes_head;
-      while (source_node != nullptr)
+      while (dest_node != nullptr)
 	{
-	  REQUIRE (dest_node != nullptr);
+	  REQUIRE (source_node != nullptr);
 	  REQUIRE (dest_node->start_lsa == source_node->start_lsa);
 
 	  source_node = source_node->next;
 	  dest_node = dest_node->next;
 	}
-      REQUIRE (dest_node == nullptr);
+
       REQUIRE (m_source_prior_info.prev_lsa == dest_prior_info->prev_lsa);
-      REQUIRE (m_source_nodes_tail->start_lsa == dest_prior_info->prior_list_tail->start_lsa);
+      if (source_node != nullptr)
+	{
+	  // it has beend paused;
+	  REQUIRE (m_paused_lsa[i] == source_node->start_lsa);
+	}
+      else
+	{
+	  REQUIRE (m_source_nodes_tail->start_lsa == dest_prior_info->prior_list_tail->start_lsa);
+	}
     }
 }
 
