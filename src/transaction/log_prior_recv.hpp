@@ -55,6 +55,8 @@ namespace cublog
       void push_message (std::string &&str);                  // push message from prior_sender into message queue
       void start_thread ();                                   // run loop_message_to_prior_info in a thread
 
+      void wait_until_empty_and_pause ();
+
     private:
       using message_container = std::queue<std::string>;      // internal message container type
 
@@ -67,6 +69,7 @@ namespace cublog
       message_container m_messages;                           // internal queue of messages
       std::mutex m_messages_mutex;                            // protect access on message queue
       std::condition_variable m_messages_push_cv;             // notify internal thread of new messages
+      std::condition_variable m_messages_consume_cv;          // notify a set of message has been consumed
 
       std::thread m_thread;                                   // internal thread
       bool m_shutdown = false;                                // true to stop internal thread

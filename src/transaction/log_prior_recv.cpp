@@ -67,6 +67,18 @@ namespace cublog
   }
 
   void
+  prior_recver::wait_until_empty_and_pause ()
+  {
+    std::unique_lock<std::mutex> ulock (m_messages_mutex);
+
+    constexpr auto sleep_30ms = std::chrono::milliseconds (30);
+    while (!m_messages_consume_cv.wait_for (ulock, sleep_30ms, [this]
+    {
+      return !m_messages.empty();
+      }));
+  }
+
+  void
   prior_recver::loop_message_to_prior_info ()
   {
     message_container backbuffer;
@@ -107,6 +119,8 @@ namespace cublog
 	  }
 
 	ulock.lock ();
+
+	m_messages_consume_cv.notify_one ();
       }
   }
 }
