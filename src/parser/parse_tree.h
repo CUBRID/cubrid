@@ -36,6 +36,7 @@
 #include "compile_context.h"
 #include "config.h"
 #include "cursor.h"
+#include "db_function.hpp"
 #include "json_table_def.h"
 #include "message_catalog.h"
 #include "string_opfunc.h"
@@ -651,6 +652,8 @@ struct json_t;
   (((p)->node_type == PT_NAME) ? ((p)->info.name.coll_modifier - 1) :	     \
   (((p)->node_type == PT_FUNCTION) ? ((p)->info.function.coll_modifier - 1) :\
   (((p)->node_type == PT_DOT_) ? ((p)->info.dot.coll_modifier - 1) : (-1))))))
+
+#define PT_HAS_COLLATION_MODIFIER(p) (PT_GET_COLLATION_MODIFIER((p)) != -1)
 
 #define PT_SET_NODE_COLL_MODIFIER(p, coll)                  \
     do {                                                    \
@@ -2440,7 +2443,7 @@ struct pt_file_path_info
 struct pt_function_info
 {
   PT_NODE *arg_list;		/* PT_EXPR(list) */
-  FUNC_TYPE function_type;	/* PT_COUNT, PT_AVG, ... */
+  FUNC_CODE function_type;	/* PT_COUNT, PT_AVG, ... */
   PT_MISC_TYPE all_or_distinct;	/* will be PT_ALL or PT_DISTINCT */
   const char *generic_name;	/* only for type PT_GENERIC */
   char hidden_column;		/* used for updates and deletes for the class OID column */

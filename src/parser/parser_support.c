@@ -631,7 +631,7 @@ pt_find_name (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * lis
 bool
 pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  FUNC_TYPE function_type;
+  FUNC_CODE function_type;
 
   if (node->node_type == PT_FUNCTION)
     {
@@ -683,7 +683,7 @@ pt_is_analytic_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 bool
 pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  FUNC_TYPE function_type;
+  FUNC_CODE function_type;
 
   if (node->node_type == PT_FUNCTION)
     {
@@ -727,7 +727,7 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 bool
 pt_is_json_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  FUNC_TYPE function_type;
+  FUNC_CODE function_type;
 
   if (node->node_type == PT_FUNCTION)
     {
