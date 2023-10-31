@@ -226,14 +226,10 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   _er_log_debug (ARG_FILE_LINE,
 		 "[CATCH_UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
 		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
-
   if (port == -1)
     {
       // TODO: It means that the ATS is booting up.
       // it will be set properly after ATS recovery is implemented.
-
-      log_Gl.get_log_prior_receiver ().start_thread ();
-
       m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
       return;
     }
@@ -1190,8 +1186,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 
       _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
 		     start_pageid, end_pageid, total_page_count);
-
-      log_Gl.get_log_prior_receiver ().start_thread ();
+      // TODO: start appneding log prior nodes from the ATS.
 
       push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
 
