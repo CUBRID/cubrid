@@ -54,8 +54,8 @@ namespace cublog
 
       void push_message (std::string &&str);                  // push message from prior_sender into message queue
 
-      void wait_until_empty_and_pause ();
-      void resume ();
+      void wait_until_empty_and_pause ();                     // digest all existing prior nodes and pause consuming coming ones
+      void resume ();                                         // resume the paused thread
 
     private:
       using message_container = std::queue<std::string>;      // internal message container type
