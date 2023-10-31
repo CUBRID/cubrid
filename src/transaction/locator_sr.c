@@ -2541,12 +2541,13 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 		}
 
 #if defined (SERVER_MODE)
-	      if (lock == SCH_M_LOCK && is_active_transaction_server ())
+	      if (is_active_transaction_server () &&
+		  lock == SCH_M_LOCK || (lock == X_LOCK && OID_EQ (class_oid, oid_Serial_class_oid)))
 		{
 		  assert (OID_IS_ROOTOID (class_oid));
 		  assert (!OID_ISNULL (p_oid));
 
-		  log_append_schema_modification_lock (thread_p, p_oid);
+		  log_append_locked_object (thread_p, class_oid, p_oid, lock);
 		}
 #endif
 	    }
