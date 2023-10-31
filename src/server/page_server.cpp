@@ -1215,6 +1215,7 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 void
 page_server::complete_catchup ()
 {
+  log_Gl.get_log_prior_receiver ().resume ();
   push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
 }
 
