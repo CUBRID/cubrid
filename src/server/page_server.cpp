@@ -779,6 +779,9 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_active_tran_server ();
     }
 
+  // Pause the log prior receiver to process log records from the enw ATS. It just keeps them until the catch-up is compeleted.
+  log_Gl.get_log_prior_receiver ().wait_until_empty_and_pause ();
+
   m_active_tran_server_conn.reset (new tran_server_connection_handler (std::move (chn), transaction_server_type::ACTIVE,
 				   *this));
 }
