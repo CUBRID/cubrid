@@ -3950,7 +3950,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     /* btree access pages */
     a_pages = a_leafs + a_cum->height - 1;
 
-    /* btree partial-key stats */
+    /* btree partial-key stats  */
     if (b_range == b_ent->col_num)
       {
 	b_keys = b_cum->keys;
