@@ -575,7 +575,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         int argSize = node.args.nodes.size();
         String dynSql = String.format("?= call %s(%s)", node.name, getQuestionMarks(argSize));
         String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
-        GlobalCallCodeSnippets code = getGlobalCallCodeSnippets(argSize, 2, node.args, node.decl.paramList);
+        GlobalCallCodeSnippets code =
+                getGlobalCallCodeSnippets(argSize, 2, node.args, node.decl.paramList);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -728,7 +729,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         int argSize = node.args.nodes.size();
         String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
-        LocalCallCodeSnippets code = getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
+        LocalCallCodeSnippets code =
+                getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
 
         CodeTemplate tmpl =
@@ -1623,7 +1625,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         int argSize = node.args.nodes.size();
         String dynSql = String.format("call %s(%s)", node.name, getQuestionMarks(argSize));
         String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
-        GlobalCallCodeSnippets code = getGlobalCallCodeSnippets(argSize, 1, node.args, node.decl.paramList);
+        GlobalCallCodeSnippets code =
+                getGlobalCallCodeSnippets(argSize, 1, node.args, node.decl.paramList);
 
         return new CodeTemplate(
                 "StmtGlobalProcCall",
@@ -1704,7 +1707,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         int argSize = node.args.nodes.size();
         String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
-        LocalCallCodeSnippets code = getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
+        LocalCallCodeSnippets code =
+                getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
 
         return Misc.isEmpty(node.args)
@@ -2333,7 +2337,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         }
     }
 
-    private static String getCallWrapperParam(int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
+    private static String getCallWrapperParam(
+            int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
 
         if (size == 0) {
             return "";
@@ -2383,7 +2388,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 // fill setArgs
                 setArgs.add(
                         String.format(
-                                "stmt.registerOutParameter(%d, java.sql.Types.OTHER);", i + argOffset));
+                                "stmt.registerOutParameter(%d, java.sql.Types.OTHER);",
+                                i + argOffset));
 
                 ExprId id = (ExprId) args.nodes.get(i);
                 Coercion c = id.coercion;
@@ -2391,13 +2397,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
                 if (((DeclParamOut) param).alsoIn) {
                     String paramVal = "o" + i + "[0]";
-                    setArgs.add(String.format("stmt.setObject(%d, %s);", i + argOffset, c.javaCode(paramVal)));
+                    setArgs.add(
+                            String.format(
+                                    "stmt.setObject(%d, %s);",
+                                    i + argOffset, c.javaCode(paramVal)));
                 }
 
                 // fill updateOutArgs
                 Coercion cRev = c.getReversion();
-                assert cRev != null;   // by earlier check
-                String outVal = String.format("(%s) stmt.getObject(%d)", param.typeSpec.javaCode, i + argOffset);
+                assert cRev != null; // by earlier check
+                String outVal =
+                        String.format(
+                                "(%s) stmt.getObject(%d)", param.typeSpec.javaCode, i + argOffset);
                 updateOutArgs.add(String.format("o%d[0] = %s;", i, cRev.javaCode(outVal)));
 
                 DeclId declId = id.decl;
@@ -2419,9 +2430,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     }
 
     private static class LocalCallCodeSnippets {
-         String[] allocCoercedOutArgs;
-         String argsToLocal;
-         String[] updateOutArgs;
+        String[] allocCoercedOutArgs;
+        String argsToLocal;
+        String[] updateOutArgs;
     }
 
     private static LocalCallCodeSnippets getLocalCallCodeSnippets(
@@ -2453,14 +2464,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 } else {
                     String paramType = param.typeSpec.javaCode;
                     allocCoercedOutArgs.add(
-                        String.format("%s[] p%d = new %s[] { %s };", paramType, i, paramType, c.javaCode("o" + i + "[0]")));
+                            String.format(
+                                    "%s[] p%d = new %s[] { %s };",
+                                    paramType, i, paramType, c.javaCode("o" + i + "[0]")));
 
                     argsToLocal.append("p" + i);
 
                     Coercion cRev = c.getReversion();
-                    assert cRev != null;    // by earlier check
-                    update.add(
-                        String.format("o%d[0] = %s;", i, cRev.javaCode("p" + i + "[0]")));
+                    assert cRev != null; // by earlier check
+                    update.add(String.format("o%d[0] = %s;", i, cRev.javaCode("p" + i + "[0]")));
                 }
 
                 DeclId declId = id.decl;
@@ -2481,7 +2493,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         ret.updateOutArgs = update.toArray(DUMMY_STRING_ARRAY);
         return ret;
     }
-
 
     private static class CodeTemplate implements CodeToResolve {
 

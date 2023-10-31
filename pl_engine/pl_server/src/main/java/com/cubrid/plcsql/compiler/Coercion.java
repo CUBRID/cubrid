@@ -50,6 +50,7 @@ public abstract class Coercion {
     }
 
     public abstract Coercion getReversion();
+
     public abstract String javaCode(String exprJavaCode);
 
     public static Coercion getCoercion(TypeSpec src, TypeSpec dst) {
@@ -107,21 +108,22 @@ public abstract class Coercion {
         // ----------------------------------------------
 
         private static Map<TypeSpecSimple, Identity> instances = new HashMap<>();
+
         static {
-            instances.put(TypeSpecSimple.NULL,          new Identity(TypeSpecSimple.NULL));
-            instances.put(TypeSpecSimple.OBJECT,        new Identity(TypeSpecSimple.OBJECT));
-            instances.put(TypeSpecSimple.BOOLEAN,       new Identity(TypeSpecSimple.BOOLEAN));
-            instances.put(TypeSpecSimple.STRING,        new Identity(TypeSpecSimple.STRING));
-            instances.put(TypeSpecSimple.SHORT,         new Identity(TypeSpecSimple.SHORT));
-            instances.put(TypeSpecSimple.INT,           new Identity(TypeSpecSimple.INT));
-            instances.put(TypeSpecSimple.BIGINT,        new Identity(TypeSpecSimple.BIGINT));
-            instances.put(TypeSpecSimple.NUMERIC,       new Identity(TypeSpecSimple.NUMERIC));
-            instances.put(TypeSpecSimple.FLOAT,         new Identity(TypeSpecSimple.FLOAT));
-            instances.put(TypeSpecSimple.DOUBLE,        new Identity(TypeSpecSimple.DOUBLE));
-            instances.put(TypeSpecSimple.DATE,          new Identity(TypeSpecSimple.DATE));
-            instances.put(TypeSpecSimple.TIME,          new Identity(TypeSpecSimple.TIME));
-            instances.put(TypeSpecSimple.DATETIME,      new Identity(TypeSpecSimple.DATETIME));
-            instances.put(TypeSpecSimple.TIMESTAMP,     new Identity(TypeSpecSimple.TIMESTAMP));
+            instances.put(TypeSpecSimple.NULL, new Identity(TypeSpecSimple.NULL));
+            instances.put(TypeSpecSimple.OBJECT, new Identity(TypeSpecSimple.OBJECT));
+            instances.put(TypeSpecSimple.BOOLEAN, new Identity(TypeSpecSimple.BOOLEAN));
+            instances.put(TypeSpecSimple.STRING, new Identity(TypeSpecSimple.STRING));
+            instances.put(TypeSpecSimple.SHORT, new Identity(TypeSpecSimple.SHORT));
+            instances.put(TypeSpecSimple.INT, new Identity(TypeSpecSimple.INT));
+            instances.put(TypeSpecSimple.BIGINT, new Identity(TypeSpecSimple.BIGINT));
+            instances.put(TypeSpecSimple.NUMERIC, new Identity(TypeSpecSimple.NUMERIC));
+            instances.put(TypeSpecSimple.FLOAT, new Identity(TypeSpecSimple.FLOAT));
+            instances.put(TypeSpecSimple.DOUBLE, new Identity(TypeSpecSimple.DOUBLE));
+            instances.put(TypeSpecSimple.DATE, new Identity(TypeSpecSimple.DATE));
+            instances.put(TypeSpecSimple.TIME, new Identity(TypeSpecSimple.TIME));
+            instances.put(TypeSpecSimple.DATETIME, new Identity(TypeSpecSimple.DATETIME));
+            instances.put(TypeSpecSimple.TIMESTAMP, new Identity(TypeSpecSimple.TIMESTAMP));
             instances.put(TypeSpecSimple.SYS_REFCURSOR, new Identity(TypeSpecSimple.SYS_REFCURSOR));
         }
 
@@ -151,30 +153,44 @@ public abstract class Coercion {
         // ----------------------------------------------
 
         private static Map<TypeSpecSimple, Cast> instances = new HashMap<>();
+
         static {
             // NOTE: there is no Cast coercion dst NULL
-            instances.put(TypeSpecSimple.OBJECT,        new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
-            instances.put(TypeSpecSimple.BOOLEAN,       new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
-            instances.put(TypeSpecSimple.STRING,        new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
-            instances.put(TypeSpecSimple.SHORT,         new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
-            instances.put(TypeSpecSimple.INT,           new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
-            instances.put(TypeSpecSimple.BIGINT,        new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
-            instances.put(TypeSpecSimple.NUMERIC,       new Cast(TypeSpecSimple.NULL, TypeSpecSimple.NUMERIC));
-            instances.put(TypeSpecSimple.FLOAT,         new Cast(TypeSpecSimple.NULL, TypeSpecSimple.FLOAT));
-            instances.put(TypeSpecSimple.DOUBLE,        new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
-            instances.put(TypeSpecSimple.DATE,          new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
-            instances.put(TypeSpecSimple.TIME,          new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
-            instances.put(TypeSpecSimple.DATETIME,      new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATETIME));
-            instances.put(TypeSpecSimple.TIMESTAMP,     new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIMESTAMP));
-            instances.put(TypeSpecSimple.SYS_REFCURSOR, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SYS_REFCURSOR));
+            instances.put(
+                    TypeSpecSimple.OBJECT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
+            instances.put(
+                    TypeSpecSimple.BOOLEAN, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
+            instances.put(
+                    TypeSpecSimple.STRING, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
+            instances.put(
+                    TypeSpecSimple.SHORT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
+            instances.put(TypeSpecSimple.INT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
+            instances.put(
+                    TypeSpecSimple.BIGINT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
+            instances.put(
+                    TypeSpecSimple.NUMERIC, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.NUMERIC));
+            instances.put(
+                    TypeSpecSimple.FLOAT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.FLOAT));
+            instances.put(
+                    TypeSpecSimple.DOUBLE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
+            instances.put(TypeSpecSimple.DATE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
+            instances.put(TypeSpecSimple.TIME, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
+            instances.put(
+                    TypeSpecSimple.DATETIME,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATETIME));
+            instances.put(
+                    TypeSpecSimple.TIMESTAMP,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIMESTAMP));
+            instances.put(
+                    TypeSpecSimple.SYS_REFCURSOR,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SYS_REFCURSOR));
         }
 
         private Cast(TypeSpecSimple src, TypeSpecSimple dst) {
             super(src, dst);
-            assert src.equals(TypeSpecSimple.NULL);    // only NULL type is possible for the src type
-            assert !dst.equals(TypeSpecSimple.NULL);    // dst cannot be NULL type
+            assert src.equals(TypeSpecSimple.NULL); // only NULL type is possible for the src type
+            assert !dst.equals(TypeSpecSimple.NULL); // dst cannot be NULL type
         }
-
     }
 
     public static class Conversion extends Coercion {
@@ -215,11 +231,12 @@ public abstract class Coercion {
         // Private
         // ----------------------------------------------
 
-        private static Map<TypeSpecSimple, Map<TypeSpecSimple, Conversion>> memoized = new HashMap<>();
+        private static Map<TypeSpecSimple, Map<TypeSpecSimple, Conversion>> memoized =
+                new HashMap<>();
 
         private Conversion(TypeSpecSimple src, TypeSpecSimple dst) {
             super(src, dst);
-            assert !dst.equals(TypeSpecSimple.NULL);    // dst cannot be NULL type
+            assert !dst.equals(TypeSpecSimple.NULL); // dst cannot be NULL type
         }
     }
 
