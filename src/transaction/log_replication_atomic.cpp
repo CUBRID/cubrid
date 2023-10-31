@@ -232,11 +232,11 @@ namespace cublog
 	      }
 	    break;
 	  }
-	  case LOG_SCHEMA_MODIFICATION_LOCK:
+	  case LOG_LOCKED_OBJECT:
 	  {
-	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SCHEMA_MODIFICATION_LOCK));
-	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
-		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_LOCKED_OBJECT));
+	    const LOG_REC_LOCKED_OBJECT log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_LOCKED_OBJECT> ();
 
 	    acquire_lock (thread_entry, header.trid, &log_rec.classoid);
 
