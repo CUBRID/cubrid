@@ -325,7 +325,7 @@ test_env::require_prior_list_match () const
 
       if (source_node != nullptr)
 	{
-	  // some from source_node haven't been arrrived.
+	  // some from source_node haven't been arrived.
 	  // it must've been paused.
 	  REQUIRE (source_node->start_lsa == m_paused_lsa[i]);
 	}
