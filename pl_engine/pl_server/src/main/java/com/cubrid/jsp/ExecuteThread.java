@@ -158,7 +158,7 @@ public class ExecuteThread extends Thread {
                         /* the following request codes are for javasp utility */
                     case RequestCode.UTIL_PING:
                         {
-                            String ping = Server.getServerName();
+                            String ping = Server.getServer().getServerName();
 
                             resultBuffer.clear(); /* prepare to put */
                             packer.setBuffer(resultBuffer);
@@ -174,8 +174,8 @@ public class ExecuteThread extends Thread {
                             resultBuffer.clear(); /* prepare to put */
                             packer.setBuffer(resultBuffer);
 
-                            packer.packInt(Server.getServerPort());
-                            packer.packString(Server.getServerName());
+                            packer.packInt(Server.getServer().getServerPort());
+                            packer.packString(Server.getServer().getServerName());
                             List<String> vm_args = Server.getJVMArguments();
                             packer.packInt(vm_args.size());
                             for (String arg : vm_args) {
@@ -337,7 +337,7 @@ public class ExecuteThread extends Thread {
                             "Cannot find the system Java compiler. Check that your class path includes tools.jar");
                 }
 
-                Path cubrid_env_root = Server.getRootPath();
+                Path cubrid_env_root = Server.getServer().getRootPath();
                 String javacOpts[] = {
                     "-classpath", cubrid_env_root + "/java/pl_server.jar", file.getPath()
                 };

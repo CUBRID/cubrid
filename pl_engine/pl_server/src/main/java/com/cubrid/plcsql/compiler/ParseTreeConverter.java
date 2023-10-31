@@ -45,12 +45,12 @@ import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.TreeSet;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.commons.text.StringEscapeUtils;
@@ -743,7 +743,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         "field lookup is only allowed for records");
             }
 
-            Scope scope = symbolStack.getCurrentScope();
             return new ExprField(ctx, record, fieldName);
 
         } catch (SemanticError e) {
@@ -948,6 +947,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             return null;
         }
 
+        Map<String, UseAndDeclLevel> saved = idUsedInCurrentDeclPart;
+        idUsedInCurrentDeclPart = new HashMap<>();
+
         // scan the declarations for the procedures and functions
         // in order for the effect of their forward declarations
         for (Declare_specContext ds : ctx.declare_spec()) {
@@ -970,6 +972,20 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         symbolStack.getCurrentScope().setDeclDone();
+
+        if (saved == null) {
+            idUsedInCurrentDeclPart = null;
+        } else {
+            int currLevel = symbolStack.getCurrentScope().level;
+            for (String name : idUsedInCurrentDeclPart.keySet()) {
+                UseAndDeclLevel udl = idUsedInCurrentDeclPart.get(name);
+                if (udl.declLevel < currLevel) {
+                    saved.put(name, udl);
+                }
+            }
+
+            idUsedInCurrentDeclPart = saved;
+        }
 
         if (ret.nodes.size() == 0) {
             return null;
@@ -999,11 +1015,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitConstant_declaration(Constant_declarationContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.identifier());
+
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         Expr val = visitDefault_value_part(ctx.default_value_part());
 
         DeclConst ret = new DeclConst(ctx, name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
+
+        checkRedefinitionOfUsedName(name, ctx);
 
         return ret;
     }
@@ -1016,6 +1035,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclException ret = new DeclException(ctx, name);
         symbolStack.putDecl(name, ret);
 
+        checkRedefinitionOfUsedName(name, ctx);
+
         return ret;
     }
 
@@ -1023,11 +1044,14 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     public AstNode visitVariable_declaration(Variable_declarationContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.identifier());
+
         TypeSpec ty = (TypeSpec) visit(ctx.type_spec());
         Expr val = visitDefault_value_part(ctx.default_value_part());
 
         DeclVar ret = new DeclVar(ctx, name, ty, ctx.NOT() != null, val);
         symbolStack.putDecl(name, ret);
+
+        checkRedefinitionOfUsedName(name, ctx);
 
         return ret;
     }
@@ -1066,6 +1090,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         DeclCursor ret = new DeclCursor(ctx, name, paramList, staticSql);
         symbolStack.putDecl(name, ret);
 
+        checkRedefinitionOfUsedName(name, ctx);
+
         return ret;
     }
 
@@ -1081,7 +1107,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         String name = Misc.getNormalizedText(ctx.identifier());
-
         boolean isFunction = (ctx.PROCEDURE() == null);
 
         symbolStack.pushSymbolTable(
@@ -1116,6 +1141,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         assert ret != null; // by the previsit
         ret.decls = decls;
         ret.body = body;
+
+        if (symbolStack.getCurrentScope().level > 1) {
+            // check it only for local routines
+            checkRedefinitionOfUsedName(name, ctx);
+        }
 
         return ret;
     }
@@ -1202,6 +1232,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         Decl decl = symbolStack.getDeclForIdExpr(name);
         if (decl == null) {
 
+            if (idUsedInCurrentDeclPart != null) {
+                idUsedInCurrentDeclPart.put(
+                        name, new UseAndDeclLevel(ctx, symbolStack.LEVEL_PREDEFINED));
+            }
+
             // this is possibly a global function call
 
             connectionRequired = true;
@@ -1210,12 +1245,17 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             Expr ret = new ExprGlobalFuncCall(ctx, name, EMPTY_ARGS);
             semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
             return ret;
-        } else if (decl instanceof DeclId) {
+        } else {
             Scope scope = symbolStack.getCurrentScope();
-            return new ExprId(ctx, name, scope, (DeclId) decl);
-        } else if (decl instanceof DeclFunc) {
-            Scope scope = symbolStack.getCurrentScope();
-            return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
+            if (idUsedInCurrentDeclPart != null && decl.scope.level < scope.level) {
+                idUsedInCurrentDeclPart.put(name, new UseAndDeclLevel(ctx, decl.scope.level));
+            }
+
+            if (decl instanceof DeclId) {
+                return new ExprId(ctx, name, scope, (DeclId) decl);
+            } else if (decl instanceof DeclFunc) {
+                return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
+            }
         }
 
         assert false : "unreachable";
@@ -1972,11 +2012,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
 
         NodeList<Expr> usedExprList;
-        Using_clauseContext usingClause = ctx.using_clause();
+        Restricted_using_clauseContext usingClause = ctx.restricted_using_clause();
         if (usingClause == null) {
             usedExprList = null;
         } else {
-            usedExprList = visitUsing_clause(usingClause);
+            usedExprList = visitRestricted_using_clause(usingClause);
         }
 
         int level = symbolStack.getCurrentScope().level + 1;
@@ -1990,30 +2030,6 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         for (Restricted_using_elementContext c : ctx.restricted_using_element()) {
             ret.addNode(visitExpression(c.expression()));
-        }
-
-        return ret;
-    }
-
-    @Override
-    public NodeList<Expr> visitUsing_clause(Using_clauseContext ctx) {
-
-        NodeList<Expr> ret = new NodeList<>();
-
-        for (Using_elementContext c : ctx.using_element()) {
-            Expr expr = visitExpression(c.expression());
-            if (c.OUT() != null || c.INOUT() != null) {
-                if (expr instanceof ExprId && isAssignableTo((ExprId) expr)) {
-                    // OK
-                } else {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(c), // s046
-                            "expression '"
-                                    + c.expression().getText()
-                                    + "' may not be used there in the USING clause because it is not assignable to");
-                }
-            }
-            ret.addNode(expr);
         }
 
         return ret;
@@ -2103,7 +2119,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                         && ((DeclIdTyped) decl).typeSpec().equals(TypeSpecSimple.SYS_REFCURSOR)));
     }
 
-    private static final Map<String, TypeSpecSimple> typeSpecs = new TreeMap<>();
+    private static final Map<String, TypeSpecSimple> typeSpecs = new HashMap<>();
 
     static {
         typeSpecs.put("BOOLEAN", TypeSpecSimple.BOOLEAN);
@@ -2173,6 +2189,18 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     // Private
     // --------------------------------------------------------
 
+    private static class UseAndDeclLevel {
+        ParserRuleContext use;
+        int declLevel;
+
+        UseAndDeclLevel(ParserRuleContext use, int declLevel) {
+            this.use = use;
+            this.declLevel = declLevel;
+        }
+    }
+
+    private Map<String, UseAndDeclLevel> idUsedInCurrentDeclPart;
+
     private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions =
             new LinkedHashMap<>();
 
@@ -2185,6 +2213,20 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
     private boolean connectionRequired = false;
 
     private boolean controlFlowBlocked;
+
+    private void checkRedefinitionOfUsedName(String name, ParserRuleContext declCtx) {
+
+        assert idUsedInCurrentDeclPart != null;
+        UseAndDeclLevel forwardRef = idUsedInCurrentDeclPart.get(name);
+        if (forwardRef != null) {
+            int[] pos = Misc.getLineColumnOf(forwardRef.use);
+            throw new SemanticError(
+                    Misc.getLineColumnOf(declCtx), // s068
+                    String.format(
+                            "name %s has already been used at line %d and column %d in the same declaration block",
+                            name, pos[0], pos[1]));
+        }
+    }
 
     private ExprId visitNonFuncIdentifier(IdentifierContext ctx) {
         return visitNonFuncIdentifier(Misc.getNormalizedText(ctx), ctx);
@@ -2202,6 +2244,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             ret = null; // no such id at all
         } else if (decl instanceof DeclId) {
             Scope scope = symbolStack.getCurrentScope();
+
+            if (idUsedInCurrentDeclPart != null && decl.scope.level < scope.level) {
+                idUsedInCurrentDeclPart.put(name, new UseAndDeclLevel(ctx, decl.scope.level));
+            }
+
             return new ExprId(ctx, name, scope, (DeclId) decl);
         } else if (decl instanceof DeclFunc) {
             ret = null; // the name represents a function in its scope
@@ -2364,15 +2411,37 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     hostExprs.put(
                             autoParam,
                             null); // null: type check is not necessary for auto parameters
-
                 } else {
                     // host variable
-                    String varName = Misc.getNormalizedText(pi.name);
-                    ExprId id = visitNonFuncIdentifier(varName, ctx); // s408: undeclared id ...
+                    String hostExpr = Misc.getNormalizedText(pi.name);
+                    String[] split = hostExpr.split("\\.");
+                    if (split.length == 1) {
 
-                    // TODO: replace the following null with meaningful type information
-                    // (type required in the location of this host var) after augmenting server API
-                    hostExprs.put(id, null);
+                        ExprId id =
+                                visitNonFuncIdentifier(hostExpr, ctx); // s408: undeclared id ...
+
+                        // TODO: replace the following null with meaningful type information
+                        // (type required in the location of this host var) after augmenting server
+                        // API
+                        hostExprs.put(id, null);
+
+                    } else if (split.length == 2) {
+
+                        ExprId record =
+                                visitNonFuncIdentifier(split[0], ctx); // s432: undeclared id ...
+                        if (!(record.decl instanceof DeclForRecord)) {
+                            throw new SemanticError(
+                                    Misc.getLineColumnOf(ctx), // s433
+                                    split[0] + " is not a record");
+                        }
+
+                        hostExprs.put(new ExprField(ctx, record, split[1]), null);
+
+                    } else {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(ctx), // s431
+                                "invalid form of a host expression " + hostExpr);
+                    }
                 }
             }
         }

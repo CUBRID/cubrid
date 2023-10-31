@@ -32,6 +32,7 @@
 package com.cubrid.jsp;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
@@ -40,18 +41,20 @@ import java.util.logging.Logger;
 public class LoggingThread extends Thread {
     private final Logger logger = Logger.getLogger("com.cubrid.jsp");
 
+    private boolean isRunning = false;
     private FileHandler logHandler = null;
     private LinkedBlockingQueue<String> logQueue = new LinkedBlockingQueue<String>();
     private Level logginLevel = Level.SEVERE;
 
-    public LoggingThread(String path) throws SecurityException, IOException {
+    public LoggingThread(Path path) throws SecurityException, IOException {
         super();
-        logHandler = new FileHandler(path, true);
+        logHandler = new FileHandler(path.toAbsolutePath().toString(), true);
         logger.addHandler(logHandler);
     }
 
     @Override
     public void run() {
+        isRunning = true;
         while (Thread.interrupted() == false) {
             try {
                 String logString = logQueue.take();
@@ -63,6 +66,7 @@ public class LoggingThread extends Thread {
 
         if (logHandler != null) {
             try {
+                isRunning = false;
                 logHandler.close();
                 logger.removeHandler(logHandler);
             } catch (Throwable e) {
@@ -75,5 +79,9 @@ public class LoggingThread extends Thread {
             logQueue.put(str);
         } catch (InterruptedException e) {
         }
+    }
+
+    public boolean isRunning() {
+        return isRunning;
     }
 }
