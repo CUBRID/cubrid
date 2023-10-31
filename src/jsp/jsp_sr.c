@@ -288,7 +288,7 @@ delay_load_hook (unsigned dliNotify, PDelayLoadInfo pdli)
 
 	if (jvm_path)
 	  {
-	    err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' envirnment variable: ");
+	    err_msgs.append ("\n\tFailed to load libjvm from 'JVM_PATH' environment variable: ");
 	    err_msgs.append ("\n\t\t");
 	    err_msgs.append (jvm_path);
 
