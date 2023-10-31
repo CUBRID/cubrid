@@ -20,6 +20,7 @@
 #define _ATOMIC_REPLICATOR_HPP_
 
 #include "atomic_replication_helper.hpp"
+#include "log_record.hpp"
 #include "log_replication.hpp"
 
 namespace cublog
@@ -91,7 +92,7 @@ namespace cublog
       void replicate_sysop_start_postpone (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header);
 
       void release_locks_by_tranid (cubthread::entry &thread_entry, const TRANID trid);
-      void acquire_lock (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid);
+      void acquire_lock (cubthread::entry &thread_entry, const TRANID trid, const LOG_REC_LOCKED_OBJECT *rec);
 
     private:
       atomic_replication_helper m_atomic_helper;
@@ -105,7 +106,7 @@ namespace cublog
       /* Store the locked objects for DDL replication.
        * Since multiple DDL operation can be executed within single trnasaction,
        * more than one objects can be mapped to one transaction */
-      std::multimap <TRANID, OID> m_locked_objects;
+      std::multimap <TRANID, LOG_REC_LOCKED_OBJECT> m_locked_objects;
   };
 }
 

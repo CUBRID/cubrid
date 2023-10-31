@@ -238,7 +238,7 @@ namespace cublog
 	    const LOG_REC_LOCKED_OBJECT log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_LOCKED_OBJECT> ();
 
-	    acquire_lock (thread_entry, header.trid, &log_rec.classoid);
+	    acquire_lock (thread_entry, header.trid, &log_rec);
 
 	    break;
 	  }
@@ -378,18 +378,19 @@ namespace cublog
 
     for (auto it = m_locked_objects.lower_bound (trid); it != m_locked_objects.upper_bound (trid); it++)
       {
-	lock_unlock_object (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK, true);
+	auto record = it->second;
+	lock_unlock_object (&thread_entry, &record.oid, &record.classoid, record.lock_mode, true);
       }
 
     m_locked_objects.erase (trid);
   }
 
   void
-  atomic_replicator::acquire_lock (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid)
+  atomic_replicator::acquire_lock (cubthread::entry &thread_entry, const TRANID trid, const LOG_REC_LOCKED_OBJECT *rec)
   {
-    lock_object (&thread_entry, classoid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
+    lock_object (&thread_entry, &rec->oid, &rec->classoid, rec->lock_mode, LK_UNCOND_LOCK);
 
-    m_locked_objects.emplace (trid, *classoid);
+    m_locked_objects.emplace (trid, *rec);
   }
 
 }
