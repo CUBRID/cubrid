@@ -242,7 +242,8 @@ extern "C"
 
     S_CMD_SINGLELINE,
 
-    S_CMD_CONNECT
+    S_CMD_CONNECT,
+    S_CMD_MIDXKEY
   } SESSION_CMD;
 
 /* iq_ function return status */
@@ -291,6 +292,7 @@ extern "C"
 #if defined(CSQL_NO_LONGGING)
     bool no_logging;
 #endif				/* CSQL_NO_LONGGING */
+    bool midxkey_print;
   } CSQL_ARGUMENT;
 
   typedef struct
@@ -367,8 +369,7 @@ extern "C"
   extern void csql_help_info (const char *command, int aucommit_flag);
   extern void csql_killtran (const char *argument);
 
-  extern char *csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string, CSQL_OUTPUT_TYPE output_type,
-					char cloumn_enclosure);
+  extern char *csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * csql_arg);
 
   extern char *csql_string_to_plain_string (const char *string_value, int length, int *result_length);
 

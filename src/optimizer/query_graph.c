@@ -193,7 +193,7 @@ static bool qo_is_equi_join_term (QO_TERM * term);
 static void add_hint (QO_ENV * env, PT_NODE * tree);
 static void add_using_index (QO_ENV * env, PT_NODE * using_index);
 static int get_opcode_rank (PT_OP_TYPE opcode);
-static int get_expr_fcode_rank (FUNC_TYPE fcode);
+static int get_expr_fcode_rank (FUNC_CODE fcode);
 static int get_operand_rank (PT_NODE * node);
 static int count_classes (PT_NODE * p);
 static QO_CLASS_INFO_ENTRY *grok_classes (QO_ENV * env, PT_NODE * dom_set, QO_CLASS_INFO_ENTRY * info);
@@ -3410,7 +3410,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
  *   should be added here.
  */
 static int
-get_expr_fcode_rank (FUNC_TYPE fcode)
+get_expr_fcode_rank (FUNC_CODE fcode)
 {
   switch (fcode)
     {

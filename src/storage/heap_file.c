@@ -7883,7 +7883,6 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   SCAN_CODE scan = S_ERROR;
   int get_rec_info = cache_recordinfo != NULL;
   bool is_null_recdata;
-  PGBUF_WATCHER curr_page_watcher;
   PGBUF_WATCHER old_page_watcher;
 
   assert (scan_cache != NULL);
@@ -7911,7 +7910,6 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       class_oid = &scan_cache->node.class_oid;
     }
 
-  PGBUF_INIT_WATCHER (&curr_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
   if (OID_ISNULL (next_oid))
@@ -7960,27 +7958,22 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  if (scan_cache->cache_last_fix_page == true && scan_cache->page_watcher.pgptr != NULL)
 	    {
 	      vpidptr_incache = pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr);
-	      if (VPID_EQ (&vpid, vpidptr_incache))
-		{
-		  /* replace with local watcher, scan cache watcher will be changed by called functions */
-		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &curr_page_watcher);
-		}
-	      else
+	      if (!VPID_EQ (&vpid, vpidptr_incache))
 		{
 		  /* Keep previous scan page fixed until we fixed the current one */
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
 		}
 	    }
-	  if (curr_page_watcher.pgptr == NULL)
+	  if (scan_cache->page_watcher.pgptr == NULL)
 	    {
-	      curr_page_watcher.pgptr =
+	      scan_cache->page_watcher.pgptr =
 		heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, scan_cache,
-					     &curr_page_watcher);
+					     &scan_cache->page_watcher);
 	      if (old_page_watcher.pgptr != NULL)
 		{
 		  pgbuf_ordered_unfix (thread_p, &old_page_watcher);
 		}
-	      if (curr_page_watcher.pgptr == NULL)
+	      if (scan_cache->page_watcher.pgptr == NULL)
 		{
 		  if (er_errid () == ER_PB_BAD_PAGEID)
 		    {
@@ -8000,18 +7993,21 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      if (reversed_direction)
 		{
 		  scan =
-		    spage_previous_record_dont_skip_empty (curr_page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		    spage_previous_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+							   PEEK);
 		}
 	      else
 		{
 		  scan =
-		    spage_next_record_dont_skip_empty (curr_page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+						       PEEK);
 		}
 	      if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		{
 		  /* skip the header */
 		  scan =
-		    spage_next_record_dont_skip_empty (curr_page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+						       PEEK);
 		}
 	    }
 	  else
@@ -8023,11 +8019,11 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		{
 		  if (reversed_direction)
 		    {
-		      scan = spage_previous_record (curr_page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		      scan = spage_previous_record (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
 		    }
 		  else
 		    {
-		      scan = spage_next_record (curr_page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		      scan = spage_next_record (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
 		    }
 		  if (scan != S_SUCCESS)
 		    {
@@ -8039,7 +8035,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      /* skip the header */
 		      continue;
 		    }
-		  type = spage_get_record_type (curr_page_watcher.pgptr, oid.slotid);
+		  type = spage_get_record_type (scan_cache->page_watcher.pgptr, oid.slotid);
 		  if (type == REC_NEWHOME || type == REC_ASSIGN_ADDRESS || type == REC_UNKNOWN)
 		    {
 		      /* skip */
@@ -8057,14 +8053,14 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		  /* Find next page of heap and continue scanning */
 		  if (reversed_direction)
 		    {
-		      (void) heap_vpid_prev (thread_p, hfid, curr_page_watcher.pgptr, &vpid);
+		      (void) heap_vpid_prev (thread_p, hfid, scan_cache->page_watcher.pgptr, &vpid);
 		    }
 		  else
 		    {
 		      if (sampling)
 			{
 			  /* skip pages */
-			  if (heap_vpid_skip_next (thread_p, hfid, &curr_page_watcher, &old_page_watcher,
+			  if (heap_vpid_skip_next (thread_p, hfid, &scan_cache->page_watcher, &old_page_watcher,
 						   sampling->weight, &vpid, scan_cache) == S_ERROR)
 			    {
 			      return S_ERROR;
@@ -8072,10 +8068,10 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 			}
 		      else
 			{
-			  (void) heap_vpid_next (thread_p, hfid, curr_page_watcher.pgptr, &vpid);
+			  (void) heap_vpid_next (thread_p, hfid, scan_cache->page_watcher.pgptr, &vpid);
 			}
 		    }
-		  pgbuf_replace_watcher (thread_p, &curr_page_watcher, &old_page_watcher);
+		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
 		  oid.volid = vpid.volid;
 		  oid.pageid = vpid.pageid;
 		  oid.slotid = -1;
@@ -8097,7 +8093,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      pgbuf_ordered_unfix (thread_p, &old_page_watcher);
 		    }
-		  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 		  return scan;
 		}
 	    }
@@ -8112,24 +8108,19 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       if (get_rec_info)
 	{
 	  scan =
-	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &curr_page_watcher, scan_cache, ispeeking,
-				  cache_recordinfo);
+	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &scan_cache->page_watcher, scan_cache,
+				  ispeeking, cache_recordinfo);
 	}
       else
 	{
 	  int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
 
 	  scan_cache->cache_last_fix_page = true;
-	  pgbuf_replace_watcher (thread_p, &curr_page_watcher, &scan_cache->page_watcher);
 
-	  scan = heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, scan_cache, ispeeking, NULL_CHN);
+	  scan =
+	    heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
+					   NULL_CHN);
 	  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
-
-	  if (!cache_last_fix_page_save && scan_cache->page_watcher.pgptr)
-	    {
-	      /* restore into curr_page_watcher and unfix later */
-	      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &curr_page_watcher);
-	    }
 	}
 
       if (scan == S_SUCCESS)
@@ -8175,16 +8166,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       pgbuf_ordered_unfix (thread_p, &old_page_watcher);
     }
 
-  if (curr_page_watcher.pgptr != NULL)
+  if (scan_cache->page_watcher.pgptr != NULL && scan_cache->cache_last_fix_page == false)
     {
-      if (!scan_cache->cache_last_fix_page)
-	{
-	  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
-	}
-      else
-	{
-	  pgbuf_replace_watcher (thread_p, &curr_page_watcher, &scan_cache->page_watcher);
-	}
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
     }
 
   return scan;
@@ -24941,6 +24925,7 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 *   oid (in): Object to be obtained.
 *   class_oid (in):
 *   recdes (out): Record descriptor. NULL if not needed
+*   forward_recdes (in): Record descriptor for heap scan optimizing
 *   scan_cache(in): Heap scan cache.
 *   ispeeking(in): Peek record or copy.
 *   old_chn (in): Cache coherency number for existing record data. It is
@@ -24950,10 +24935,52 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 */
 SCAN_CODE
 heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-			       HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
+
+  /*
+   * The process below should be within heap_get_visible_version_internal(), 
+   * but it's an added shortcut for performance improvement. Under certain specific conditions, 
+   * it allows for skipping the process of initializing and cleaning the context and the 
+   * heap_get_visible_version_internal() function. This brings the current CUBRID's heap scan 
+   * performance closer to the heap scan performance of CUBRID before the introduction of MVCC. 
+   * Following is the explanation for the code below.
+   * Before fetching a record, check peeked_recdes to see if the record type is REC_HOME,
+   * and it's being PEEKed (meaning there's no need to COPY the record data to a new space). 
+   * In this case, we can use peeked_recdes as the record without executing the
+   * heap_get_visible_version_internal() function. If the conditions above are not met,
+   * or the mvcc_snapshot does not satisfy, then carry out the necessary steps through 
+   * the heap_get_visible_version_internal() function.
+   */
+  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK)
+    {
+      MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+
+      assert (scan_cache != NULL);
+      assert (recdes != NULL);
+      assert (peeked_recdes != NULL);
+
+      if (or_mvcc_get_header (peeked_recdes, &mvcc_header) != NO_ERROR)
+	{
+	  /* Unexpected. */
+	  assert (false);
+	  return S_ERROR;
+	}
+
+      const bool need_check_visibility = scan_cache->mvcc_snapshot != NULL
+	&& scan_cache->mvcc_snapshot->snapshot_fnc != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
+	&& scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
+						    scan_cache->mvcc_snapshot) != SNAPSHOT_SATISFIED;
+
+      if (!need_check_visibility)
+	{
+	  *recdes = *peeked_recdes;
+	  return scan;
+	}
+      /* fall through.. */
+    }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
 
