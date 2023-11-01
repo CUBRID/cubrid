@@ -60,16 +60,19 @@ import java.util.regex.PatternSyntaxException;
 public class SpLib {
 
     public static BigDecimal checkPrecision(int prec, short scale, BigDecimal val) {
-        int valScale = val.scale();
-        if (val.precision() - valScale > prec - scale) {
-            throw new VALUE_ERROR("numeric value is out of the range of the target type");
+        // ParseTreeConverter.visitNumeric_type() guarantees the following assertions
+        assert prec >= 1 && prec <= 38;
+        assert scale >= 0 && scale <= prec;
+
+        if (val.scale() != scale) {
+            val = val.setScale(scale, RoundingMode.HALF_UP);
         }
 
-        if (valScale == scale) {
-            return val;
-        } else {
-            return val.setScale(scale, RoundingMode.HALF_UP);
+        if (val.precision() > prec) {
+            throw new VALUE_ERROR("numeric value does not fit in the target type's precision and scale");
         }
+
+        return val;
     }
 
     // -------------------------------------------------------------------------------
