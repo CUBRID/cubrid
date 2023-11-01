@@ -3725,76 +3725,38 @@ alter_stmt
 	  INDEX						/* 6 */
 	  identifier					/* 7 */
 	  ON_						/* 8 */
-	  only_class_name				/* 9 */
-	  opt_index_column_name_list			/* 10 */
-	  opt_where_clause				/* 11 */
-	  opt_comment_spec				/* 12 */
-	  REBUILD					/* 13 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ );
+	  only_class_name				/* 9 */	  
+	  opt_comment_spec				/* 10 */
+	  REBUILD					/* 11 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ REBUILD);
 
-			PT_NODE *node = parser_pop_hint_node ();
-			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+		  PT_NODE *node = parser_pop_hint_node ();
+		  
+                  if (node)
+		    {
+		      node->info.index.code = PT_REBUILD_INDEX;
+                      node->info.index.reverse = $4;
+		      node->info.index.unique = $5;
+		      node->info.index.index_name = $7;
+		      node->info.index.comment = $10;
+		      if (node->info.index.index_name)
+		        {
+		          node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+		        }
 
-			if ($5 && $11)
-			  {
-			    /* Currently, not allowed unique with filter/function index.
-			       However, may be introduced later, if it will be usefull.
-			       Unique filter/function index code is removed from
-			       grammar module only. It is kept yet in the others modules.
-			       This will allow us to easily support this feature later by
-			       adding in grammar only. If no need such feature,
-			       filter/function code must be removed from all modules. */
-			    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-			  }
-			if (node && ocs)
-			  {
-			    PT_NODE *col, *temp;
-			    node->info.index.code = PT_REBUILD_INDEX;
-			    node->info.index.reverse = $4;
-			    node->info.index.unique = $5;
-			    node->info.index.index_name = $7;
-			    if (node->info.index.index_name)
-			      {
-				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
-			      }
+		      if ($9 != NULL)
+		        {
+		          PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+		          ocs->info.spec.entity_name = $9;
+		          ocs->info.spec.only_all = PT_ONLY;
+		          ocs->info.spec.meta_class = PT_CLASS;
 
-			    ocs->info.spec.entity_name = $9;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
+		          node->info.index.indexed_class = ocs;
+		        }
+		      }
 
-			    node->info.index.indexed_class = ocs;
-			    col = $10;
-			    if (node->info.index.unique)
-			      {
-			        for (temp = col; temp != NULL; temp = temp->next)
-			          {
-			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
-			              {
-			                /* Currently, not allowed unique with
-			                   filter/function index. However, may be
-			                   introduced later, if it will be usefull.
-			                   Unique filter/function index code is removed
-			                   from grammar module only. It is kept yet in
-			                   the others modules. This will allow us to
-			                   easily support this feature later by adding in
-			                   grammar only. If no need such feature,
-			                   filter/function code must be removed from all
-			                   modules. */
-			                PT_ERRORm (this_parser, node,
-			                           MSGCAT_SET_PARSER_SYNTAX,
-			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-			              }
-			          }
-			      }
-
-			    node->info.index.column_names = col;
-			    node->info.index.where = $11;
-			    node->info.index.comment = $12;                            
-			    $$ = node;
-			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			  }
-
+		  $$ = node;
+		  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	| ALTER						/* 1 */
 	  INDEX						/* 2 */
