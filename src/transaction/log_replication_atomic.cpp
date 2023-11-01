@@ -244,6 +244,7 @@ namespace cublog
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
 
 	    acquire_lock (thread_entry, header.trid, &log_rec.classoid);
+	    bookkeep_classname (thread_entry, &log_rec.classoid);
 
 	    break;
 	  }
@@ -375,14 +376,11 @@ namespace cublog
 	  }
       }
   }
+
   void
   atomic_replicator::unlock_and_discard_caches (cubthread::entry &thread_entry, const TRANID trid)
   {
     assert (m_locked_objects.count (trid) > 0);
-
-    /* TODO:
-     * update the classname only when it is needed */
-    locator_initialize (&thread_entry);
 
     for (auto it = m_locked_objects.lower_bound (trid); it != m_locked_objects.upper_bound (trid); it++)
       {
@@ -391,6 +389,38 @@ namespace cublog
 	heap_classrepr_decache (&thread_entry, &classoid);
 	xcache_remove_by_oid (&thread_entry, &classoid);
 	partition_decache_class (&thread_entry, &classoid);
+
+	{
+	  // update locator_Mht_classnames only when it is needed
+	  char *class_name = NULL;
+	  (void) heap_get_class_name (&thread_entry, &classoid, &class_name);
+	  if (class_name != NULL)
+	    {
+	      if (m_class_name_map.find (classoid) == m_class_name_map.end ())
+		{
+		  // if classname does not exist in the m_class_name_map, then it is CREATE case
+		  locator_put_class_name_entry (&thread_entry, class_name, &classoid);
+		}
+	      else
+		{
+		  // if classname does exist in the map, then it is RENAME case
+		  locator_remove_class_name_entry (&thread_entry, m_class_name_map.at (classoid).c_str());
+		  locator_put_class_name_entry (&thread_entry, class_name, &classoid);
+		}
+
+	      free_and_init (class_name);
+	    }
+	  else
+	    {
+	      if (m_class_name_map.find (classoid) != m_class_name_map.end ())
+		{
+		  // if classname does exist in the map, then it is DROP case
+		  locator_remove_class_name_entry (&thread_entry, m_class_name_map.at (classoid).c_str());
+		}
+	    }
+	}
+
+	m_class_name_map.erase (classoid);
 
 	lock_unlock_object (&thread_entry, &classoid, oid_Root_class_oid, SCH_M_LOCK, true);
       }
@@ -404,6 +434,18 @@ namespace cublog
     lock_object (&thread_entry, classoid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
 
     m_locked_objects.emplace (trid, *classoid);
+  }
+
+  void
+  atomic_replicator::bookkeep_classname (cubthread::entry &thread_entry, const OID *classoid)
+  {
+    char *class_name = NULL;
+    (void) heap_get_class_name (&thread_entry, classoid, &class_name);
+    if (class_name != NULL)
+      {
+	m_class_name_map.emplace (*classoid, class_name);
+	free_and_init (class_name);
+      }
   }
 
 }

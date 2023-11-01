@@ -92,6 +92,7 @@ namespace cublog
 
       void unlock_and_discard_caches (cubthread::entry &thread_entry, const TRANID trid);
       void acquire_lock (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid);
+      void bookkeep_classname (cubthread::entry &thread_entry, const OID *classoid);
 
     private:
       atomic_replication_helper m_atomic_helper;
@@ -106,6 +107,7 @@ namespace cublog
        * Since multiple DDL operation can be executed within single trnasaction,
        * more than one objects can be mapped to one transaction */
       std::multimap <TRANID, OID> m_locked_objects;
+      std::unordered_map <OID, std::string> m_class_name_map;
   };
 }
 
