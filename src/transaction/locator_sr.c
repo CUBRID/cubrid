@@ -13839,6 +13839,83 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   return error_code;
 }
 
+void
+locator_put_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, const OID *classoid)
+{
+  assert (classname != NULL);
+  assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
+
+  LOCATOR_CLASSNAME_ENTRY *entry;
+
+  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      /* Some kind of failure. We must notify the error to the caller. */
+      assert (false);
+      return;
+    }
+
+  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      return;
+    }
+
+  entry = ((LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry)));
+  if (entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
+      return;
+    }
+
+  entry->e_name = strdup ((char *) classname);
+  if (entry->e_name == NULL)
+    {
+      free_and_init (entry);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (classname) + 1));
+      return;
+    }
+
+  entry->e_tran_index = NULL_TRAN_INDEX;
+
+  entry->e_current.action = LC_CLASSNAME_EXIST;
+  COPY_OID (&entry->e_current.oid, classoid);
+  LSA_SET_NULL (&entry->e_current.savep_lsa);
+  entry->e_current.prev = NULL;
+
+  (void) mht_put (locator_Mht_classnames, entry->e_name, entry);
+
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_CT_OID_TABLE);
+}
+
+void
+locator_remove_class_name_entry (THREAD_ENTRY * thread_p, const char *classname)
+{
+  LOCATOR_CLASSNAME_ENTRY *entry = NULL;
+
+  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      /* Some kind of failure. We must notify the error to the caller. */
+      assert (false);
+      return;
+    }
+
+  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      return;
+    }
+
+  entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
+
+  (void) locator_force_drop_class_name_entry (entry->e_name, entry, NULL);
+  
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+  csect_exit (thread_p, CSECT_CT_OID_TABLE);
+}
+
 bool
 has_errors_filtered_for_insert (std::vector<int> error_filter_array)
 {

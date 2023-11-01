@@ -142,5 +142,7 @@ extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID
 extern bool has_errors_filtered_for_insert (std::vector<int> error_filter_array);
 // *INDENT-ON*
 
+extern void locator_put_class_name_entry (THREAD_ENTRY * thread_p, const char *classname, const OID * classoid);
+extern void locator_remove_class_name_entry (THREAD_ENTRY * thread_p, const char *classname);
 
 #endif /* _LOCATOR_SR_H_ */
