@@ -8044,8 +8044,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       if (get_rec_info)
 	{
 
-                 PGBUF_INIT_WATCHER (&rec_info_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-                 pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &rec_info_page_watcher);
+	  PGBUF_INIT_WATCHER (&rec_info_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+	  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &rec_info_page_watcher);
 	  scan =
 	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &rec_info_page_watcher, scan_cache,
 				  ispeeking, cache_recordinfo);
