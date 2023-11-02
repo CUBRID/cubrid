@@ -20,9 +20,9 @@
 #include "log_replication_atomic.hpp"
 #include "log_replication_jobs.hpp"
 
-#include "oid.h"
-#include "log_recovery_redo_parallel.hpp"
 #include "heap_file.h"
+#include "log_recovery_redo_parallel.hpp"
+#include "oid.h"
 
 namespace cublog
 {
@@ -391,7 +391,16 @@ namespace cublog
   {
     assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
 
-    lock_object (&thread_entry, classoid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
+    /* TODO:
+     * If a PTS read transaction holds a lock for an extended period without releasing it for the same class,
+     * the replicator could wait too long to acquire the lock.
+     * In such cases, there might be an introduction of a mechanism to abort read transaction that holds lock.
+     */
+
+    if (lock_object (&thread_entry, classoid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+      {
+	assert_release (false);
+      }
 
     m_locked_classes.emplace (trid, *classoid);
   }
