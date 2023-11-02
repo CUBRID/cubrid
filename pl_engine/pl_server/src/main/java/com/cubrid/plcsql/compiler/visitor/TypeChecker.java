@@ -45,6 +45,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
@@ -231,7 +233,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert outCoercions.size() == 3;
 
         if (op.hasTimestampParam()) {
-            node.setForTimestampParam();
+            node.setOpExtension("Timestamp");
+        } else if (targetType instanceof TypeSpecChar &&
+                    lowerType instanceof TypeSpecChar &&
+                    upperType instanceof TypeSpecChar) {
+            node.setOpExtension("Char");
         }
 
         node.target.setCoercion(outCoercions.get(0));
@@ -239,6 +245,18 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         node.upperBound.setCoercion(outCoercions.get(2));
 
         return TypeSpecSimple.BOOLEAN;
+    }
+
+    private static final Set<String> comparisonOp = new HashSet<>();
+    static {
+        // see ParseTreeConverter.visitRel_exp()
+        comparisonOp.add("Eq");
+        comparisonOp.add("NullSafeEq");
+        comparisonOp.add("Neq");
+        comparisonOp.add("Le");
+        comparisonOp.add("Ge");
+        comparisonOp.add("Lt");
+        comparisonOp.add("Gt");
     }
 
     @Override
@@ -258,7 +276,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert outCoercions.size() == 2;
 
         if (binOp.hasTimestampParam()) {
-            node.setForTimestampParam();
+            node.setOpExtension("Timestamp");
+        } else if (comparisonOp.contains(node.opStr) &&
+                    leftType instanceof TypeSpecChar &&
+                    rightType instanceof TypeSpecChar) {
+            node.setOpExtension("Char");
         }
 
         node.left.setCoercion(outCoercions.get(0));
@@ -488,11 +510,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec targetType = visit(node.target);
         args.add(node.target);
         argTypes.add(targetType);
+        boolean argsAreChars = (targetType instanceof TypeSpecChar);
 
         for (Expr e : node.inElements.nodes) {
             TypeSpec eType = visit(e);
             args.add(e);
             argTypes.add(eType);
+            argsAreChars = argsAreChars && (eType instanceof TypeSpecChar);
         }
         int len = args.size();
 
@@ -506,7 +530,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert outCoercions.size() == len;
 
         if (op.hasTimestampParam()) {
-            node.setForTimestampParam();
+            node.setOpExtension("Timestamp");
+        } else if (argsAreChars) {
+            node.setOpExtension("Char");
         }
 
         for (int i = 0; i < len; i++) {

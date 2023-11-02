@@ -44,10 +44,10 @@ public class ExprBinaryOp extends Expr {
     public final Expr left;
     public final Expr right;
 
-    public boolean forTimestampParam;
+    public String opExtension = "";
 
-    public void setForTimestampParam() {
-        forTimestampParam = true;
+    public void setOpExtension(String ext) {
+        opExtension = ext;
     }
 
     public ExprBinaryOp(ParserRuleContext ctx, String opStr, Expr left, Expr right) {

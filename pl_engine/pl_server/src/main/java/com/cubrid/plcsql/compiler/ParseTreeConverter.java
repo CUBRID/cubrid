@@ -457,20 +457,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             opStr = "Lt";
         } else if (op.GT() != null) {
             opStr = "Gt";
-            /* TODO: restore later
-            } else if (op.SETEQ() != null) {
-                opStr = "SetEq";
-            } else if (op.SETNEQ() != null) {
-                opStr = "SetNeq";
-            } else if (op.SUPERSET() != null) {
-                opStr = "Superset";
-            } else if (op.SUBSET() != null) {
-                opStr = "Subset";
-            } else if (op.SUPERSETEQ() != null) {
-                opStr = "SupersetEq";
-            } else if (op.SUBSETEQ() != null) {
-                opStr = "SubsetEq";
-             */
         }
         if (opStr == null) {
             assert false : "unreachable"; // by syntax

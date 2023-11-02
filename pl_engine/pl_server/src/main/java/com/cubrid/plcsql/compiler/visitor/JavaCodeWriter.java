@@ -334,7 +334,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplExprBetween =
             new String[] {
-                "opBetween%'TIMESTAMP'%(",
+                "opBetween%'OP-EXTENSION'%(",
                 "  %'+TARGET'%,",
                 "  %'+LOWER-BOUND'%,",
                 "  %'+UPPER-BOUND'%",
@@ -348,8 +348,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "ExprBetween",
                         Misc.getLineColumnOf(node.ctx),
                         tmplExprBetween,
-                        "%'TIMESTAMP'%",
-                        node.forTimestampParam ? "Timestamp" : "",
+                        "%'OP-EXTENSION'%",
+                        node.opExtension,
                         "%'+TARGET'%",
                         visit(node.target),
                         "%'+LOWER-BOUND'%",
@@ -366,7 +366,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplExprBinaryOp =
             new String[] {
-                "op%'OPERATION'%%'TIMESTAMP'%(", "  %'+LEFT-OPERAND'%,", "  %'+RIGHT-OPERAND'%", ")"
+                "op%'OPERATION'%%'OP-EXTENSION'%(", "  %'+LEFT-OPERAND'%,", "  %'+RIGHT-OPERAND'%", ")"
             };
 
     @Override
@@ -378,8 +378,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         tmplExprBinaryOp,
                         "%'OPERATION'%",
                         node.opStr,
-                        "%'TIMESTAMP'%",
-                        node.forTimestampParam ? "Timestamp" : "",
+                        "%'OP-EXTENSION'%",
+                        node.opExtension,
                         "%'+LEFT-OPERAND'%",
                         visit(node.left),
                         "%'+RIGHT-OPERAND'%",
@@ -620,7 +620,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplExprIn =
-            new String[] {"opIn%'TIMESTAMP'%(", "  %'+TARGET'%,", "  %'+IN-ELEMENTS'%", ")"};
+            new String[] {"opIn%'OP-EXTENSION'%(", "  %'+TARGET'%,", "  %'+IN-ELEMENTS'%", ")"};
 
     @Override
     public CodeToResolve visitExprIn(ExprIn node) {
@@ -630,8 +630,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "ExprIn",
                         Misc.getLineColumnOf(node.ctx),
                         tmplExprIn,
-                        "%'TIMESTAMP'%",
-                        node.forTimestampParam ? "Timestamp" : "",
+                        "%'OP-EXTENSION'%",
+                        node.opExtension,
                         "%'+TARGET'%",
                         visit(node.target),
                         "%'+IN-ELEMENTS'%",

@@ -65,10 +65,6 @@ public class DBTypeAdapter {
         return getTypeSpecSimple(dbType, true, prec, scale);
     }
 
-    public static TypeSpecSimple getDeclTypeSpec(int dbType, int length) {
-        return getTypeSpecSimple(dbType, true, length, (short) -1);
-    }
-
     public static TypeSpecSimple getValueType(int dbType) {
         return getTypeSpecSimple(dbType, false, -1, (short) -1); // ignore precision and scale
     }
