@@ -43,7 +43,6 @@ namespace cublog
      * and, thus, does not need to be left in consistent state; thus, no check as to the consistent
      * termination state for atomic replication is needed
      */
-    assert (m_locked_classes.empty ());
   }
 
   void
