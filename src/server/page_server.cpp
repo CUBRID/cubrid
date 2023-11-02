@@ -1183,8 +1183,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  assert_release (false);
 	}
 
-      catchup_er_log ("The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
-		      start_pageid, end_pageid, total_page_count);
+      catchup_er_log ("The catch-up is completed, ranging from %lld to %lld, count = %lld, append_lsa= (%lld|%d).\n",
+		      start_pageid, end_pageid, total_page_count, LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
       // TODO: start appneding log prior nodes from the ATS.
 
       push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
