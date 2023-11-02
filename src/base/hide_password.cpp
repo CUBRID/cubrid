@@ -237,6 +237,7 @@ hide_password::get_token (char *&in, int &len)
 
   if (in == ps)
     {
+      len = 0;
       return NULL;
     }
 
@@ -334,7 +335,7 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
   while (*ps)
     {
       token = get_token (ps, len);
-      if (*token == ';' || *token == ')')
+      if (token == NULL || *token == ';' || *token == ')')
 	{
 	  return token;
 	}
@@ -354,6 +355,11 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
 
   prev = NULL;
   token = get_token (ps, len);
+  if (token == NULL)
+    {
+      return NULL;
+    }
+
   if (is_server)
     {
       /* pattern cases)
@@ -366,7 +372,7 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
 	}
 
       token = get_token (ps, len);
-      if (*token == ';' || *token == ')' || *token == ',' )
+      if (token == NULL || *token == ';' || *token == ')' || *token == ',' )
 	{
 	  return token;
 	}
@@ -409,8 +415,23 @@ hide_password::get_passowrd_pos_n_len_invalid_syntax (char *query, int *password
   *is_pwd_keyword_found = false;
 
   token = get_token (ps, len);
-  if (strcasecmp (token, "select") == 0 || strcasecmp (token, "delete") == 0 || strcasecmp (token, "insert") == 0
-      || strcasecmp (token, "update") == 0 || strcasecmp (token, "merge") == 0 || strcasecmp (token, "with") == 0 )
+  if (token == NULL)
+    {
+      return NULL;
+    }
+  if (len == 6)
+    {
+      if ( strcasecmp (token, "select") == 0 || strcasecmp (token, "delete") == 0 || strcasecmp (token, "insert") == 0
+	   || strcasecmp (token, "update") == 0)
+	{
+	  return NULL;
+	}
+    }
+  else if (len == 5 && strcasecmp (token, "merge") == 0)
+    {
+      return NULL;
+    }
+  else if (len = 4 && strcasecmp (token, "with") == 0)
     {
       return NULL;
     }
@@ -419,7 +440,7 @@ hide_password::get_passowrd_pos_n_len_invalid_syntax (char *query, int *password
   while (*ps)
     {
       token = get_token (ps, len);
-      if (*token == ';' || *token == ')')
+      if (token == NULL || *token == ';')
 	{
 	  return token;
 	}
@@ -438,28 +459,34 @@ hide_password::get_passowrd_pos_n_len_invalid_syntax (char *query, int *password
 
   prev = NULL;
   token = get_token (ps, len);
-  if (*token == '=')
+  if (token)
     {
-      token = get_token (ps, len);
+      if (*token == '=')
+	{
+	  token = get_token (ps, len);
+	}
+
+      if (*token == '_')
+	{
+	  // _utf8, _euckr, _iso88591, _binary
+	  prev = token;
+	  tlen = len;
+	  token = get_token (ps, len);
+	}
     }
 
-  if (*token == '_')
+  if (token)
     {
-      // _utf8, _euckr, _iso88591, _binary
-      prev = token;
-      tlen = len;
-      token = get_token (ps, len);
-    }
+      if (*token == ';' || *token == ')' || *token == ',' )
+	{
+	  return token;
+	}
 
-  if (*token == ';' || *token == ')' || *token == ',' )
-    {
-      return token;
-    }
-
-  if (*token == '\'' || *token == '"')
-    {
-      *password_len = (prev ? (len + tlen) : len);
-      return (prev ? prev : token);
+      if (*token == '\'' || *token == '"')
+	{
+	  *password_len = (prev ? (len + tlen) : len);
+	  return (prev ? prev : token);
+	}
     }
   return NULL;
 }
@@ -621,7 +648,7 @@ hide_password::find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_
 
       if (!matched && (ps = get_passowrd_pos_n_len_invalid_syntax (newptr, &password_len, &has_password_keyword)) )
 	{
-	  matched = true;
+	  matched = has_password_keyword;
 	}
 
       if (matched)
