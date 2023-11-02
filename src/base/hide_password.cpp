@@ -100,6 +100,7 @@ class hide_password
     char *get_method_passowrd_start_position (char *ps, char *method_name, int *method_password_len);
     char *get_passowrd_pos_n_len (char *query, bool is_create, bool is_server, int *password_len,
 				  bool *is_pwd_keyword_found);
+    char *get_passowrd_pos_n_len_invalid_syntax (char *query, int *password_len, bool *is_pwd_keyword_found);
     char *skip_one_query (char *query);
     bool check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server);
     void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
@@ -397,6 +398,73 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
 }
 
 char *
+hide_password::get_passowrd_pos_n_len_invalid_syntax (char *query, int *password_len, bool *is_pwd_keyword_found)
+{
+  char *ps = query;
+  char *token, *prev;
+  int len, tlen = 0;
+  bool is_open = false;
+
+  *password_len = 0;
+  *is_pwd_keyword_found = false;
+
+  token = get_token (ps, len);
+  if (strcasecmp (token, "select") == 0 || strcasecmp (token, "delete") == 0 || strcasecmp (token, "insert") == 0
+      || strcasecmp (token, "update") == 0 || strcasecmp (token, "merge") == 0 || strcasecmp (token, "with") == 0 )
+    {
+      return NULL;
+    }
+
+  // alter or create
+  while (*ps)
+    {
+      token = get_token (ps, len);
+      if (*token == ';' || *token == ')')
+	{
+	  return token;
+	}
+
+      if (len == 8 && strncasecmp (token, "password", 8) == 0)
+	{
+	  *is_pwd_keyword_found = true;
+	  break;
+	}
+    }
+
+  if (*ps == '\0')
+    {
+      return NULL;
+    }
+
+  prev = NULL;
+  token = get_token (ps, len);
+  if (*token == '=')
+    {
+      token = get_token (ps, len);
+    }
+
+  if (*token == '_')
+    {
+      // _utf8, _euckr, _iso88591, _binary
+      prev = token;
+      tlen = len;
+      token = get_token (ps, len);
+    }
+
+  if (*token == ';' || *token == ')' || *token == ',' )
+    {
+      return token;
+    }
+
+  if (*token == '\'' || *token == '"')
+    {
+      *password_len = (prev ? (len + tlen) : len);
+      return (prev ? prev : token);
+    }
+  return NULL;
+}
+
+char *
 hide_password::skip_one_query (char *query)
 {
   char *ps;
@@ -528,40 +596,50 @@ hide_password::find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_
     {
       char *tp, *ps;
       int password_len;
-      char *method_name = NULL;
+      char *method_name;
+      bool matched;
 
+      matched = false;
+      method_name = NULL;
       if (check_lead_string_in_query (&newptr, &method_name, &is_create, &is_server))
 	{
 	  if (method_name)
 	    {
-	      if ((ps = get_method_passowrd_start_position (newptr, method_name, &password_len)) == NULL)
+	      if ((ps = get_method_passowrd_start_position (newptr, method_name, &password_len)) != NULL)
 		{
-		  newptr = skip_one_query (newptr);
-		  continue;
+		  matched = true;
 		}
-
-	      start = (int) (ps - query);
-	      end = (int) (ps - query) + password_len;
-	      is_add_comma = (bool) (password_len == 0);
-	      en_add_pwd_string = en_none_password;
-	      newptr = ps + password_len;
 	    }
 	  else
 	    {
-	      if ((ps = get_passowrd_pos_n_len (newptr, is_create, is_server, &password_len, &has_password_keyword)) == NULL)
+	      if ((ps = get_passowrd_pos_n_len (newptr, is_create, is_server, &password_len, &has_password_keyword)) != NULL)
 		{
-		  newptr = skip_one_query (newptr);
-		  continue;
+		  matched = true;
 		}
+	    }
+	}
 
-	      start = (int) (ps - query);
-	      end = (int) (ps - query) + password_len;
+      if (!matched && (ps = get_passowrd_pos_n_len_invalid_syntax (newptr, &password_len, &has_password_keyword)) )
+	{
+	  matched = true;
+	}
+
+      if (matched)
+	{
+	  start = (int) (ps - query);
+	  end = (int) (ps - query) + password_len;
+	  if (method_name)
+	    {
+	      is_add_comma = (bool) (password_len == 0);
+	      en_add_pwd_string = en_none_password;
+	    }
+	  else
+	    {
 	      en_add_pwd_string = (is_create
 				   && !has_password_keyword) ? (is_server ? en_server_password : en_user_password) : en_none_password;
 	      is_add_comma = (bool) (is_create && is_server && !has_password_keyword);
-
-	      newptr = ps + password_len;
 	    }
+	  newptr = ps + password_len;
 
 	  if (hide_pwd_ptr->size < (hide_pwd_ptr->used + 2))
 	    {
