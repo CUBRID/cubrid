@@ -1391,7 +1391,6 @@ stx_restore_cte_xasl_id (THREAD_ENTRY * thread_p, char *ptr)
 {
   int i, offset;
   XASL_ID *cte_xasl_id;
-  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   if (ptr == NULL)
     {
