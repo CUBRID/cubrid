@@ -43,6 +43,7 @@ namespace cublog
      * and, thus, does not need to be left in consistent state; thus, no check as to the consistent
      * termination state for atomic replication is needed
      */
+    assert (m_locked_classes.empty ());
   }
 
   void
@@ -121,7 +122,7 @@ namespace cublog
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
 
-	    if (m_locked_objects.count (header.trid))
+	    if (m_locked_classes.count (header.trid))
 	      {
 		/* unlock the objects that has been locked for DDL replication */
 		release_locks_by_tranid (thread_entry, header.trid);
@@ -157,7 +158,7 @@ namespace cublog
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
 
-	    if (m_locked_objects.count (header.trid))
+	    if (m_locked_classes.count (header.trid))
 	      {
 		/* unlock the objects that has been locked for DDL replication */
 		release_locks_by_tranid (thread_entry, header.trid);
@@ -374,22 +375,25 @@ namespace cublog
   void
   atomic_replicator::release_locks_by_tranid (cubthread::entry &thread_entry, const TRANID trid)
   {
-    assert (m_locked_objects.count (trid) > 0);
+    assert (m_locked_classes.count (trid) > 0);
 
-    for (auto it = m_locked_objects.lower_bound (trid); it != m_locked_objects.upper_bound (trid); it++)
+    auto [begin, end] = m_locked_classes.equal_range (trid);
+    for (auto it = begin; it != end; it++)
       {
 	lock_unlock_object (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK, true);
       }
 
-    m_locked_objects.erase (trid);
+    m_locked_classes.erase (trid);
   }
 
   void
   atomic_replicator::acquire_lock (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid)
   {
+    assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
+
     lock_object (&thread_entry, classoid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
 
-    m_locked_objects.emplace (trid, *classoid);
+    m_locked_classes.emplace (trid, *classoid);
   }
 
 }

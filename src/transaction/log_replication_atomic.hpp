@@ -104,8 +104,8 @@ namespace cublog
 
       /* Store the locked objects for DDL replication.
        * Since multiple DDL operations can be executed within single transaction,
-       * more than one objects can be mapped to one transaction */
-      std::multimap <TRANID, OID> m_locked_objects;
+       * more than one classes can be mapped to one transaction */
+      std::multimap <TRANID, OID> m_locked_classes;
   };
 }
 
