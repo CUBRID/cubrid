@@ -95,6 +95,12 @@ namespace cublog
       {
 	m_messages_push_cv.notify_one ();
       }
+
+    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+      {
+	_er_log_debug (ARG_FILE_LINE,
+		       "[LOG_PRIOR_TRANSFER] Resume prior_recver: the number of kept messages while paused = %lu.\n", m_messages.size ());
+      }
   }
 
   void
