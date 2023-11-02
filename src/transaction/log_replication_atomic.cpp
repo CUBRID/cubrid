@@ -20,9 +20,9 @@
 #include "log_replication_atomic.hpp"
 #include "log_replication_jobs.hpp"
 
+#include "oid.h"
 #include "log_recovery_redo_parallel.hpp"
 #include "heap_file.h"
-#include "oid.h"
 
 namespace cublog
 {
