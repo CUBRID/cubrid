@@ -35,6 +35,8 @@ import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import com.cubrid.plcsql.compiler.ast.TypeSpecPercent;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
+import com.cubrid.plcsql.compiler.ast.TypeSpecChar;
+import com.cubrid.plcsql.compiler.ast.TypeSpecVarchar;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -96,17 +98,27 @@ public abstract class Coercion {
 
         Coercion ret = Conversion.getInstance(src0, dst0);
         if (ret == null && src0.simpleTypeIdx == dst0.simpleTypeIdx) {
-            if (src0.simpleTypeIdx == TypeSpecSimple.IDX_NUMERIC) {
+            if (src0.simpleTypeIdx == TypeSpecSimple.IDX_NUMERIC || src0.simpleTypeIdx == TypeSpecSimple.IDX_STRING) {
                 ret = Identity.getInstance(src0, dst0);
             } else {
                 assert false;
             }
         }
 
-        if (ret != null && dst0 instanceof TypeSpecNumeric) {
-            // when dst0 is a NUMERIC type with specific precision and scale
-            TypeSpecNumeric tsNumeric = (TypeSpecNumeric) dst0;
-            ret = new CoerceAndCheckPrecision(ret, tsNumeric.precision, tsNumeric.scale);
+        if (ret != null) {
+            if (to instanceof TypeSpecNumeric) {
+                // when 'to' is a NUMERIC type with specific precision and scale
+                TypeSpecNumeric tsNumeric = (TypeSpecNumeric) to;
+                ret = new CoerceAndCheckPrecision(ret, tsNumeric.precision, tsNumeric.scale);
+            } else if (to instanceof TypeSpecChar){
+                // when 'to' is a CHAR type with a specific length
+                TypeSpecChar tsChar = (TypeSpecChar) to;
+                ret = new CoerceAndCheckStrLength(ret, tsChar.length, true);
+            } else if (to instanceof TypeSpecVarchar){
+                // when 'to' is a VARCHAR type with a specific length
+                TypeSpecVarchar tsVarchar = (TypeSpecVarchar) to;
+                ret = new CoerceAndCheckStrLength(ret, tsVarchar.length, false);
+            }
         }
 
         return ret;
@@ -139,6 +151,24 @@ public abstract class Coercion {
         Coercion create(TypeSpecSimple src, TypeSpecSimple dst) {
             assert false; // CoerceAndCheckPrecision is not memoized in CoercionStore
             return null;
+        }
+    }
+
+    public static class CoerceAndCheckStrLength extends Coercion {
+
+        public Coercion c;
+        public int length;
+        public boolean isChar;
+
+        public CoerceAndCheckStrLength(Coercion c, int length, boolean isChar) {
+            this.c = c;
+            this.length = length;
+            this.isChar = isChar;   // true for Char, and false for Varchar
+        }
+
+        @Override
+        public String javaCode(String exprJavaCode) {
+            return String.format("checkStrLength(%s, %d, %s)", isChar, length, c.javaCode(exprJavaCode));
         }
     }
 

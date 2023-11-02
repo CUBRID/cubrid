@@ -61,7 +61,39 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static String checkStrLength(boolean isChar, int length, String val) {
+
+        if (val == null) {
+            return null;
+        }
+
+        assert length >= 1;
+
+        if (val.length() > length) {
+            throw new VALUE_ERROR("string does not fit in the target type's length");
+        }
+
+        if (isChar) {
+            int d = length - val.length();
+            if (d > 0) {
+
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < d; i++) {
+                    sb.append(" ");
+                }
+                val = val + sb.toString();
+            }
+        }
+
+        return val;
+    }
+
     public static BigDecimal checkPrecision(int prec, short scale, BigDecimal val) {
+
+        if (val == null) {
+            return null;
+        }
+
         // ParseTreeConverter.visitNumeric_type() guarantees the following assertions
         assert prec >= 1 && prec <= 38;
         assert scale >= 0 && scale <= prec;

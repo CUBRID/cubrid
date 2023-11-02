@@ -2280,6 +2280,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {"conv%'SRC-TYPE'%To%'DST-TYPE'%(", "  %'+EXPR'%)"};
     private static final String[] tmplCoerceAndCheckPrec =
             new String[] {"checkPrecision(%'PREC'%, (short) %'SCALE'%,", "  %'+EXPR'%)"};
+    private static final String[] tmplCoerceAndCheckStrLength =
+            new String[] {"checkStrLength(%'IS-CHAR'%, %'LENGTH'%,", "  %'+EXPR'%)"};
 
     private CodeToResolve applyCoercion(Coercion c, CodeTemplate exprCode) {
 
@@ -2319,6 +2321,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "" + checkPrec.scale,
                     "%'+EXPR'%",
                     applyCoercion(checkPrec.c, exprCode));
+        } else if (c instanceof Coercion.CoerceAndCheckStrLength) {
+            Coercion.CoerceAndCheckStrLength checkStrLen = (Coercion.CoerceAndCheckStrLength) c;
+            return new CodeTemplate(
+                    "coerce and check precision",
+                    Misc.UNKNOWN_LINE_COLUMN,
+                    tmplCoerceAndCheckStrLength,
+                    "%'IS-CHAR'%",
+                    checkStrLen.isChar ? "true" : "false",
+                    "%'LENGTH'%",
+                    "" + checkStrLen.length,
+                    "%'+EXPR'%",
+                    applyCoercion(checkStrLen.c, exprCode));
         } else {
             throw new RuntimeException("unreachable");
         }

@@ -133,7 +133,7 @@ public class SymbolStack {
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamOut(
-                                                null, "line", TypeSpecSimple.STRING, false))
+                                                null, "line", TypeSpecSimple.STRING_ANY, false))
                                 .addNode(
                                         new DeclParamOut(
                                                 null, "status", TypeSpecSimple.INT, true)));
@@ -149,7 +149,7 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT_LINE",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING_ANY)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT_LINE", dp);
 
         // put
@@ -158,7 +158,7 @@ public class SymbolStack {
                         null,
                         "DBMS_OUTPUT$PUT",
                         new NodeList<DeclParam>()
-                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING)));
+                                .addNode(new DeclParamIn(null, "s", TypeSpecSimple.STRING_ANY)));
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$PUT", dp);
     }
 

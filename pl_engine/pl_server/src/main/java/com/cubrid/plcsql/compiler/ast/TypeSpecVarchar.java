@@ -34,24 +34,23 @@ import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.util.Map;
 import java.util.HashMap;
 
-public class TypeSpecNumeric extends TypeSpecSimple {
+public class TypeSpecVarchar extends TypeSpecSimple {
+
+    public static final int MAX_LEN = 1073741823;
 
     // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
 
-    public final int precision;
-    public final short scale;
+    public final int length;
 
-    public static synchronized TypeSpecNumeric getInstance(int precision, short scale) {
+    public synchronized static TypeSpecVarchar getInstance(int length) {
 
-        assert precision <= 38 && precision >= 1;
-        assert scale <= precision && scale >= 0;
+        assert length <= MAX_LEN && length >= 1;
 
-        int key = precision * 100 + scale;
-        TypeSpecNumeric ret = instances.get(key);
+        TypeSpecVarchar ret = instances.get(length);
         if (ret == null) {
-            String typicalValueStr = String.format("cast(? as numeric(%d, %d))", precision, scale);
-            ret = new TypeSpecNumeric(typicalValueStr, precision, scale);
-            instances.put(key, ret);
+            String typicalValueStr = String.format("cast(? as varchar(%d))", length);
+            ret = new TypeSpecVarchar(typicalValueStr, length);
+            instances.put(length, ret);
         }
 
         return ret;
@@ -61,11 +60,10 @@ public class TypeSpecNumeric extends TypeSpecSimple {
     // Private
     // ---------------------------------------------------------------------------
 
-    private static final Map<Integer, TypeSpecNumeric> instances = new HashMap<>();
+    private static final Map<Integer, TypeSpecVarchar> instances = new HashMap<>();
 
-    private TypeSpecNumeric(String typicalValueStr, int precision, short scale) {
-        super("Numeric", "java.math.BigDecimal", IDX_NUMERIC, typicalValueStr);
-        this.precision = precision;
-        this.scale = scale;
+    private TypeSpecVarchar(String typicalValueStr, int length) {
+        super("String", "java.lang.String", IDX_STRING, typicalValueStr);
+        this.length = length;
     }
 }

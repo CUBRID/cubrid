@@ -170,10 +170,13 @@ public class Misc {
         if (indentLevel < 10) {
             return smallIndents[indentLevel];
         } else {
-            String ret = bigIndents.get(indentLevel);
-            if (ret == null) {
-                ret = makeIndent(indentLevel);
-                bigIndents.put(indentLevel, ret);
+            String ret;
+            synchronized(bigIndents) {
+                ret = bigIndents.get(indentLevel);
+                if (ret == null) {
+                    ret = makeIndent(indentLevel);
+                    bigIndents.put(indentLevel, ret);
+                }
             }
             return ret;
         }

@@ -34,6 +34,8 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
+import com.cubrid.plcsql.compiler.ast.TypeSpecChar;
+import com.cubrid.plcsql.compiler.ast.TypeSpecVarchar;
 import com.cubrid.plcsql.compiler.serverapi.PlParamInfo;
 
 public class DBTypeAdapter {
@@ -61,6 +63,10 @@ public class DBTypeAdapter {
 
     public static TypeSpecSimple getDeclTypeSpec(int dbType, int prec, short scale) {
         return getTypeSpecSimple(dbType, true, prec, scale);
+    }
+
+    public static TypeSpecSimple getDeclTypeSpec(int dbType, int length) {
+        return getTypeSpecSimple(dbType, true, length, (short) -1);
     }
 
     public static TypeSpecSimple getValueType(int dbType) {
@@ -143,8 +149,25 @@ public class DBTypeAdapter {
             case DBType.DB_NULL:
                 return TypeSpecSimple.NULL;
             case DBType.DB_CHAR:
+                if (includePrecision) {
+                    if (prec == -1) {
+                        prec = TypeSpecChar.MAX_LEN;
+                    }
+                    assert prec >= 1 && prec <= TypeSpecChar.MAX_LEN : ("invalid precision " + prec);
+                    return TypeSpecChar.getInstance(prec);
+                } else {
+                    return TypeSpecSimple.STRING_ANY;
+                }
             case DBType.DB_STRING:
-                return TypeSpecSimple.STRING;
+                if (includePrecision) {
+                    if (prec == -1 || prec == 0) {  // 0 for STRING (by test)
+                        prec = TypeSpecVarchar.MAX_LEN;
+                    }
+                    assert prec >= 1 && prec <= TypeSpecVarchar.MAX_LEN : ("invalid precision " + prec);
+                    return TypeSpecVarchar.getInstance(prec);
+                } else {
+                    return TypeSpecSimple.STRING_ANY;
+                }
             case DBType.DB_SHORT:
                 return TypeSpecSimple.SHORT;
             case DBType.DB_INT:
