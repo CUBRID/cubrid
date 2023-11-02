@@ -198,8 +198,7 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
 void
 active_tran_server::connection_handler::receive_catchup_complete (page_server_conn_t::sequenced_payload &&a_sp)
 {
-  _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] the catchup has been completed. channel id: %s\n",
-		 get_channel_id ().c_str ());
+  catchup_er_log ("The catchup has been completed. channel id: %s\n", get_channel_id ().c_str ());
 }
 
 void
