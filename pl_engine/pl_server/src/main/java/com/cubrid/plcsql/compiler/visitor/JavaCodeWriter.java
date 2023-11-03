@@ -2083,7 +2083,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplBody =
             new String[] {
                 "try {",
-                "  try {",  // convert every exception raised in the statement list into PlcsqlRuntimeError
+                "  try {", // convert every exception from the STATEMENTS into PlcsqlRuntimeError
                 "    %'+STATEMENTS'%",
                 "  } catch (PlcsqlRuntimeError e) {",
                 "    throw e;",
