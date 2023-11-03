@@ -41,7 +41,7 @@
 #include "message_catalog.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
-
+#include "hide_password.h"
 
 // forward definitions
 struct json_t;
@@ -3926,6 +3926,8 @@ struct parser_context
   char **external_into_label;
   int external_into_label_cnt;
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
+
+  HIDE_PWD_INFO hide_pwd_info;
 
   struct
   {

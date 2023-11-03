@@ -19,6 +19,7 @@
 #include "method_callback.hpp"
 
 #include "dbi.h"
+#include "api_compat.h"
 
 #include "ddl_log.h"
 
@@ -202,10 +203,11 @@ namespace cubmethod
       }
 
     /* DDL audit */
-    if (handler && logddl_set_stmt_type (handler->get_statement_type()))
+    if (handler)
       {
-	logddl_set_sql_text ((char *) sql.c_str (), sql.size ());
-	logddl_set_err_code (m_error_ctx.get_error ());
+	DB_SESSION *hdl_session = handler->get_db_session();
+	logddl_set_callback_stmt (handler->get_statement_type(), (char *) sql.c_str (), sql.size (), m_error_ctx.get_error (),
+				  ((hdl_session && hdl_session->parser) ?  & (hdl_session->parser->hide_pwd_info) : NULL));
       }
 
     if (m_error_ctx.has_error())

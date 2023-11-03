@@ -162,6 +162,7 @@ main (int argc, char *argv[])
   csql_arg.loaddb_output = false;
   csql_arg.column_delimiter = -1;
   csql_arg.column_enclosure = -1;
+  csql_arg.midxkey_print = false;
   utility_make_getopt_optstring (csql_option, option_string);
 
   while (1)
