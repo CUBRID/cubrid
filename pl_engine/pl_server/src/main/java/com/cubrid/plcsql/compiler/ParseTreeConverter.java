@@ -1957,8 +1957,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            int level = symbolStack.getCurrentScope().level + 1;
-            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, level, name, args);
+            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args);
             semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(name));
 
             return ret;
