@@ -28,6 +28,7 @@ namespace cublog
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
     : m_prior_lsa_info (prior_lsa_info)
   {
+    m_state = state::RUN;
     start_thread ();
   }
 
@@ -40,16 +41,19 @@ namespace cublog
   prior_recver::push_message (std::string &&str)
   {
     std::unique_lock<std::mutex> ulock (m_messages_mutex);
+
+    assert (m_state == state::RUN || m_state == state::PAUSED);
+
     m_messages.push (std::move (str));
+
     ulock.unlock ();
+
     m_messages_push_cv.notify_one ();
   }
 
   void
   prior_recver::start_thread ()
   {
-    m_shutdown = false;
-    m_paused = false;
     m_thread = std::thread (&prior_recver::loop_message_to_prior_info, std::ref (*this));
   }
 
@@ -57,7 +61,10 @@ namespace cublog
   prior_recver::stop_thread ()
   {
     std::unique_lock<std::mutex> ulock (m_messages_mutex);
-    m_shutdown = true;
+
+    assert (m_state != state::SHUTDOWN);
+    m_state = state::SHUTDOWN;
+
     ulock.unlock ();
     m_messages_push_cv.notify_one ();
 
@@ -69,16 +76,24 @@ namespace cublog
   {
     std::unique_lock<std::mutex> ulock (m_messages_mutex);
 
-    assert (m_paused == false);
-    assert (m_shutdown == false);
+    if (m_state == state::SHUTDOWN)
+      {
+	return;
+      }
+
+    assert (m_state == state::RUN);
+    m_state = state::PAUSING;
 
     constexpr auto sleep_30ms = std::chrono::milliseconds (30);
     while (!m_messages_consume_cv.wait_for (ulock, sleep_30ms, [this]
     {
-      return m_messages.empty();
+      return m_messages.empty () || m_state == state::SHUTDOWN;
       }));
 
-    m_paused = true;
+    if (m_state != state::SHUTDOWN)
+      {
+	m_state = state::PAUSED;
+      }
   }
 
   void
@@ -86,10 +101,9 @@ namespace cublog
   {
     std::unique_lock<std::mutex> ulock (m_messages_mutex);
 
-    assert (m_paused == true);
-    assert (m_shutdown == false);
+    assert (m_state == state::PAUSED);
 
-    m_paused = false;
+    m_state = state::RUN;
 
     if (!m_messages.empty ())
       {
@@ -113,10 +127,11 @@ namespace cublog
       {
 	m_messages_push_cv.wait (ulock, [this]
 	{
-	  return m_shutdown || (!m_messages.empty () && !m_paused);
+	  return m_state == state::SHUTDOWN
+	  || (m_state != state::PAUSED && !m_messages.empty ());
 	});
 
-	if (m_shutdown)
+	if (m_state == state::SHUTDOWN)
 	  {
 	    break;
 	  }

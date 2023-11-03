@@ -60,6 +60,27 @@ namespace cublog
     private:
       using message_container = std::queue<std::string>;      // internal message container type
 
+      /*
+       * The state transition
+       *
+       * RUN -> PAUSING -> PAUSED -> RUN
+       * (*) -> SHUTDOWN
+       *
+       * - RUN:      It starts with this state. It accepts messages and appends nodes if possible.
+       * - PAUSING:  It's being paused. It's consuming existing prior nodes
+       *             that have been not appended. It's assumed that no msg is pushed.
+       * - PAUSED:   It's been paused. It accepts messages, but doesn't append them.
+       *             It's transitioned to RUN when resume () is called.
+       * - SHUTDOWN: It's shutting down. It will be destroyed soon.
+       */
+      enum class state
+      {
+	RUN,
+	PAUSING,
+	PAUSED,
+	SHUTDOWN,
+      };
+
       void loop_message_to_prior_info ();                     // convert messages into prior node lists and append them
       // to prior info
       void start_thread ();                                   // run loop_message_to_prior_info in a thread
@@ -73,8 +94,8 @@ namespace cublog
       std::condition_variable m_messages_consume_cv;          // notify a set of message has been consumed
 
       std::thread m_thread;                                   // internal thread
-      bool m_shutdown = false;                                // true to stop internal thread
-      bool m_paused = false;                                  // true to pause consuming messages
+
+      state m_state;                                          // see the comment on enum class state
   };
 }
 
