@@ -21,6 +21,7 @@
 #include "log_replication_jobs.hpp"
 
 #include "log_recovery_redo_parallel.hpp"
+#include "heap_file.h"
 
 namespace cublog
 {
@@ -213,6 +214,28 @@ namespace cublog
 	    if (m_replicate_mvcc)
 	      {
 		m_replicator_mvccid->new_assigned_mvccid (header.trid, log_rec.mvccid);
+	      }
+	    break;
+	  }
+	  case LOG_SCHEMA_MODIFICATION_LOCK:
+	  {
+	    char *classname = NULL;
+
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SCHEMA_MODIFICATION_LOCK));
+	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
+
+	    /* TODO:
+	     * All these debug logging part will be removed.
+	     * Lock will be acquired for the class that log_rec.classoid indicates
+	     */
+	    int error = heap_get_class_name (&thread_entry, &log_rec.classoid, &classname);
+	    _er_log_debug (ARG_FILE_LINE,"[REPL_LOCK] Schema modification lock is aquired on %s (OID = %d|%d|%d)\n",
+			   error != NO_ERROR ? "null" : classname, OID_AS_ARGS (&log_rec.classoid));
+
+	    if (classname != NULL)
+	      {
+		free_and_init (classname);
 	      }
 	    break;
 	  }

@@ -294,6 +294,8 @@ static LOG_PAGE *log_dump_record_assigned_mvccid (THREAD_ENTRY * thread_p, FILE 
 						  LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_schema_modification_lock (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+							   LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
 				  LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
 static void log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -509,6 +511,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_GENERIC";
     case LOG_SUPPLEMENTAL_INFO:
       return "LOG_SUPPLEMENTAL_INFO";
+    case LOG_SCHEMA_MODIFICATION_LOCK:
+      return "LOG_SCHEMA_MODIFICATION_LOCK";
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
       break;
@@ -3726,6 +3730,34 @@ log_append_assigned_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 
   auto recp = (LOG_REC_ASSIGNED_MVCCID *) node->data_header;
   recp->mvccid = mvccid;
+
+  (void) prior_lsa_next_record (thread_p, node, tdes);
+}
+
+void
+log_append_schema_modification_lock (THREAD_ENTRY * thread_p, const OID * classoid)
+{
+  assert (!OID_ISNULL (classoid));
+
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == nullptr)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return;
+    }
+
+  LOG_PRIOR_NODE *node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_SCHEMA_MODIFICATION_LOCK, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (node == nullptr)
+    {
+      assert (false);
+      return;
+    }
+
+  auto record = (LOG_REC_SCHEMA_MODIFICATION_LOCK *) node->data_header;
+  COPY_OID (&record->classoid, classoid);
 
   (void) prior_lsa_next_record (thread_p, node, tdes);
 }
@@ -7261,6 +7293,20 @@ log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_L
 }
 
 static LOG_PAGE *
+log_dump_record_schema_modification_lock (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+					  LOG_PAGE * log_page_p)
+{
+  LOG_REC_SCHEMA_MODIFICATION_LOCK *log_rec;
+
+  /* Get the DATA HEADER */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*log_rec), log_lsa, log_page_p);
+  log_rec = ((LOG_REC_SCHEMA_MODIFICATION_LOCK *) ((char *) log_page_p->area + log_lsa->offset));
+  fprintf (out_fp, ", classoid = %d|%d|%d\n", OID_AS_ARGS (&log_rec->classoid));
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
 log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * log_lsa,
 		 LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
 {
@@ -7361,6 +7407,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_SUPPLEMENTAL_INFO:
       log_page_p = log_dump_record_supplemental_info (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_SCHEMA_MODIFICATION_LOCK:
+      log_page_p = log_dump_record_schema_modification_lock (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_2PC_COMMIT_DECISION:
@@ -8290,6 +8340,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_END_ATOMIC_REPL:
 	    case LOG_ASSIGNED_MVCCID:
 	    case LOG_SUPPLEMENTAL_INFO:
+	    case LOG_SCHEMA_MODIFICATION_LOCK:
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -8725,6 +8776,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_SUPPLEMENTAL_INFO:
 		    case LOG_START_ATOMIC_REPL:
 		    case LOG_ASSIGNED_MVCCID:
+		    case LOG_SCHEMA_MODIFICATION_LOCK:
 		    case LOG_END_ATOMIC_REPL:
 		      break;
 

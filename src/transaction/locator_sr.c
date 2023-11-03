@@ -60,6 +60,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "record_descriptor.hpp"
 #include "slotted_page.h"
+#include "server_type.hpp"
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
@@ -2543,6 +2544,16 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 		   * rules. This object must be also locked. */
 		  object_locked = true;
 		}
+
+#if defined (SERVER_MODE)
+	      if (lock == SCH_M_LOCK && is_active_transaction_server ())
+		{
+		  assert (OID_IS_ROOTOID (class_oid));
+		  assert (!OID_ISNULL (p_oid));
+
+		  log_append_schema_modification_lock (thread_p, p_oid);
+		}
+#endif
 	    }
 	  break;
 	}
