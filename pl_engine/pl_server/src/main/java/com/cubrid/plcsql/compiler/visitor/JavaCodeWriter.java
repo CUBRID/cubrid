@@ -90,13 +90,16 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      %'GET-CONNECTION'%",
                 "      %'+DECL-CLASS'%",
                 "      %'+BODY'%",
+                // exceptions that escaped from the exception handlers of the body
+                "    } catch (PlcsqlRuntimeError e) {",
+                "      Throwable c = e.getCause();",
+                "      int[] pos = getPlcLineColumn(codeRangeMarkerList, c == null ? e : c, \"%'CLASS-NAME'%.java\");",
+                "      throw e.setPlcLineColumn(pos);",
+                // exceptions raised in an exception handler
                 "    } catch (OutOfMemoryError e) {",
                 "      Server.log(e);",
                 "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
                 "      throw new STORAGE_ERROR().setPlcLineColumn(pos);",
-                "    } catch (PlcsqlRuntimeError e) {",
-                "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
-                "      throw e.setPlcLineColumn(pos);",
                 "    } catch (Throwable e) {",
                 "      Server.log(e);",
                 "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
@@ -1901,7 +1904,22 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplBody =
-            new String[] {"try {", "  %'+STATEMENTS'%", "}", "%'+CATCHES'%"};
+            new String[] {
+                "try {",
+                "  try {", // convert every exception from the STATEMENTS into PlcsqlRuntimeError
+                "    %'+STATEMENTS'%",
+                "  } catch (PlcsqlRuntimeError e) {",
+                "    throw e;",
+                "  } catch (OutOfMemoryError e) {",
+                "    Server.log(e);",
+                "    throw new STORAGE_ERROR().initCause(e);",
+                "  } catch (Throwable e) {",
+                "    Server.log(e);",
+                "    throw new PROGRAM_ERROR().initCause(e);",
+                "  }",
+                "}",
+                "%'+CATCHES'%"
+            };
 
     @Override
     public CodeToResolve visitBody(Body node) {
@@ -1939,7 +1957,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
 
             if ("OTHERS".equals(ex.name)) {
-                sbuf.append("Throwable");
+                sbuf.append("PlcsqlRuntimeError");
             } else if (ex.prefixDeclBlock) {
                 sbuf.append("Decl_of_" + ex.decl.scope().block + "." + ex.name);
             } else {
