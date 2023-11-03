@@ -89,7 +89,7 @@ namespace cublog
       log_prior_lsa_info &m_prior_lsa_info;                   // prior list destination
 
       message_container m_messages;                           // internal queue of messages
-      std::mutex m_messages_mutex;                            // protect access on message queue
+      std::mutex m_mutex;                                     // protect access on message queue and m_state
       std::condition_variable m_messages_push_cv;             // notify internal thread of new messages
       std::condition_variable m_messages_consume_cv;          // notify a set of message has been consumed
 

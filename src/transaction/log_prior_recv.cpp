@@ -40,7 +40,7 @@ namespace cublog
   void
   prior_recver::push_message (std::string &&str)
   {
-    std::unique_lock<std::mutex> ulock (m_messages_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
     assert (m_state == state::RUN || m_state == state::PAUSED);
 
@@ -60,7 +60,7 @@ namespace cublog
   void
   prior_recver::stop_thread ()
   {
-    std::unique_lock<std::mutex> ulock (m_messages_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
     assert (m_state != state::SHUTDOWN);
     m_state = state::SHUTDOWN;
@@ -74,7 +74,7 @@ namespace cublog
   void
   prior_recver::wait_until_empty_and_pause ()
   {
-    std::unique_lock<std::mutex> ulock (m_messages_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
     if (m_state == state::SHUTDOWN)
       {
@@ -99,7 +99,7 @@ namespace cublog
   void
   prior_recver::resume ()
   {
-    std::unique_lock<std::mutex> ulock (m_messages_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
 
     assert (m_state == state::PAUSED);
 
@@ -122,7 +122,7 @@ namespace cublog
   {
     message_container backbuffer;
 
-    std::unique_lock<std::mutex> ulock (m_messages_mutex);
+    std::unique_lock<std::mutex> ulock (m_mutex);
     while (true)
       {
 	m_messages_push_cv.wait (ulock, [this]
