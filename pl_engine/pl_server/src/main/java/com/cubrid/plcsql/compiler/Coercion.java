@@ -41,75 +41,205 @@ import java.util.Set;
 
 public abstract class Coercion {
 
+    public final TypeSpecSimple src;
+    public final TypeSpecSimple dst;
+
+    protected Coercion(TypeSpecSimple src, TypeSpecSimple dst) {
+        this.src = src;
+        this.dst = dst;
+    }
+
+    public abstract Coercion getReversion();
+
     public abstract String javaCode(String exprJavaCode);
 
-    public static Coercion getCoercion(TypeSpec from, TypeSpec to) {
+    public static Coercion getCoercion(TypeSpec src, TypeSpec dst) {
 
-        if (from instanceof TypeSpecPercent) {
-            from = ((TypeSpecPercent) from).resolvedType;
-            assert from != null;
+        if (src instanceof TypeSpecPercent) {
+            src = ((TypeSpecPercent) src).resolvedType;
+            assert src != null;
         }
-        if (to instanceof TypeSpecPercent) {
-            to = ((TypeSpecPercent) to).resolvedType;
-            assert to != null;
+        if (dst instanceof TypeSpecPercent) {
+            dst = ((TypeSpecPercent) dst).resolvedType;
+            assert dst != null;
         }
 
-        if (from.equals(to)) {
-            return IDENTITY;
-        } else if (from.equals(TypeSpecSimple.NULL)) {
-            // why NULL?: in order for Javac to pick the right version among operator function
+        assert src instanceof TypeSpecSimple;
+        assert dst instanceof TypeSpecSimple;
+
+        TypeSpecSimple src0 = (TypeSpecSimple) src;
+        TypeSpecSimple dst0 = (TypeSpecSimple) dst;
+
+        if (src0.equals(dst0)) {
+            return Identity.getInstance(dst0);
+        } else if (src0.equals(TypeSpecSimple.NULL)) {
+            // why cast NULL?: in order for Javac dst pick the right version among operator function
             // overloads when all the arguments are nulls
-            return new Cast(to);
-        } else if (to.equals(TypeSpecSimple.OBJECT)) {
-            return IDENTITY;
+            return Cast.getInstance(src0, dst0);
+        } else if (dst0.equals(TypeSpecSimple.OBJECT)) {
+            return Identity.getInstance(dst0);
         }
 
-        Set<TypeSpec> possibleTargets = possibleCasts.get(from);
-        if (possibleTargets != null && possibleTargets.contains(to)) {
-            return new Conversion(from.plcName, to.plcName);
-        } else {
-            return null;
-        }
+        return Conversion.getInstance(src0, dst0);
     }
 
     // ----------------------------------------------
-    // cases
+    // coercion cases
     // ----------------------------------------------
 
     public static class Identity extends Coercion {
+
         @Override
         public String javaCode(String exprJavaCode) {
             return exprJavaCode; // no coercion
         }
+
+        @Override
+        public Identity getReversion() {
+            return this;
+        }
+
+        public static Identity getInstance(TypeSpecSimple ty) {
+            return instances.get(ty);
+        }
+
+        // ----------------------------------------------
+        // Private
+        // ----------------------------------------------
+
+        private static Map<TypeSpecSimple, Identity> instances = new HashMap<>();
+
+        static {
+            instances.put(TypeSpecSimple.NULL, new Identity(TypeSpecSimple.NULL));
+            instances.put(TypeSpecSimple.OBJECT, new Identity(TypeSpecSimple.OBJECT));
+            instances.put(TypeSpecSimple.BOOLEAN, new Identity(TypeSpecSimple.BOOLEAN));
+            instances.put(TypeSpecSimple.STRING, new Identity(TypeSpecSimple.STRING));
+            instances.put(TypeSpecSimple.SHORT, new Identity(TypeSpecSimple.SHORT));
+            instances.put(TypeSpecSimple.INT, new Identity(TypeSpecSimple.INT));
+            instances.put(TypeSpecSimple.BIGINT, new Identity(TypeSpecSimple.BIGINT));
+            instances.put(TypeSpecSimple.NUMERIC, new Identity(TypeSpecSimple.NUMERIC));
+            instances.put(TypeSpecSimple.FLOAT, new Identity(TypeSpecSimple.FLOAT));
+            instances.put(TypeSpecSimple.DOUBLE, new Identity(TypeSpecSimple.DOUBLE));
+            instances.put(TypeSpecSimple.DATE, new Identity(TypeSpecSimple.DATE));
+            instances.put(TypeSpecSimple.TIME, new Identity(TypeSpecSimple.TIME));
+            instances.put(TypeSpecSimple.DATETIME, new Identity(TypeSpecSimple.DATETIME));
+            instances.put(TypeSpecSimple.TIMESTAMP, new Identity(TypeSpecSimple.TIMESTAMP));
+            instances.put(TypeSpecSimple.SYS_REFCURSOR, new Identity(TypeSpecSimple.SYS_REFCURSOR));
+        }
+
+        private Identity(TypeSpecSimple ty) {
+            super(ty, ty);
+        }
     }
 
-    public static Coercion IDENTITY = new Identity();
-
     public static class Cast extends Coercion {
-        public TypeSpec to;
-
-        public Cast(TypeSpec to) {
-            this.to = to;
-        }
 
         @Override
         public String javaCode(String exprJavaCode) {
-            return String.format("(%s) %s", to.javaCode(), exprJavaCode);
+            return String.format("(%s) %s", dst.javaCode(), exprJavaCode);
+        }
+
+        @Override
+        public Cast getReversion() {
+            return Cast.getInstance(dst, src);
+        }
+
+        public static Cast getInstance(TypeSpecSimple src, TypeSpecSimple dst) {
+            return instances.get(dst);
+        }
+
+        // ----------------------------------------------
+        // Private
+        // ----------------------------------------------
+
+        private static Map<TypeSpecSimple, Cast> instances = new HashMap<>();
+
+        static {
+            // NOTE: there is no Cast coercion dst NULL
+            instances.put(
+                    TypeSpecSimple.OBJECT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
+            instances.put(
+                    TypeSpecSimple.BOOLEAN, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
+            instances.put(
+                    TypeSpecSimple.STRING, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
+            instances.put(
+                    TypeSpecSimple.SHORT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
+            instances.put(TypeSpecSimple.INT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
+            instances.put(
+                    TypeSpecSimple.BIGINT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
+            instances.put(
+                    TypeSpecSimple.NUMERIC, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.NUMERIC));
+            instances.put(
+                    TypeSpecSimple.FLOAT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.FLOAT));
+            instances.put(
+                    TypeSpecSimple.DOUBLE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
+            instances.put(TypeSpecSimple.DATE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
+            instances.put(TypeSpecSimple.TIME, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
+            instances.put(
+                    TypeSpecSimple.DATETIME,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATETIME));
+            instances.put(
+                    TypeSpecSimple.TIMESTAMP,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIMESTAMP));
+            instances.put(
+                    TypeSpecSimple.SYS_REFCURSOR,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SYS_REFCURSOR));
+        }
+
+        private Cast(TypeSpecSimple src, TypeSpecSimple dst) {
+            super(src, dst);
+            assert src.equals(TypeSpecSimple.NULL); // only NULL type is possible for the src type
+            assert !dst.equals(TypeSpecSimple.NULL); // dst cannot be NULL type
         }
     }
 
     public static class Conversion extends Coercion {
-        public String from;
-        public String to;
-
-        public Conversion(String from, String to) {
-            this.from = from;
-            this.to = to;
-        }
 
         @Override
         public String javaCode(String exprJavaCode) {
-            return String.format("conv%sTo%s(%s)", from, to, exprJavaCode);
+            return String.format("conv%sTo%s(%s)", src.plcName, dst.plcName, exprJavaCode);
+        }
+
+        @Override
+        public Conversion getReversion() {
+            return Conversion.getInstance(dst, src);
+        }
+
+        public static Conversion getInstance(TypeSpecSimple src, TypeSpecSimple dst) {
+
+            Set<TypeSpecSimple> possibleTargets = possibleCasts.get(src);
+            if (possibleTargets == null || !possibleTargets.contains(dst)) {
+                return null;
+            }
+
+            Conversion c;
+            synchronized(memoized) {
+                Map<TypeSpecSimple, Conversion> instances = memoized.get(src);
+                if (instances == null) {
+                    instances = new HashMap<>();
+                    memoized.put(src, instances);
+                }
+
+                c = instances.get(dst);
+                if (c == null) {
+                    c = new Conversion(src, dst);
+                    instances.put(dst, c);
+                }
+            }
+
+            return c;
+        }
+
+        // ----------------------------------------------
+        // Private
+        // ----------------------------------------------
+
+        private static final Map<TypeSpecSimple, Map<TypeSpecSimple, Conversion>> memoized =
+                new HashMap<>();
+
+        private Conversion(TypeSpecSimple src, TypeSpecSimple dst) {
+            super(src, dst);
+            assert !dst.equals(TypeSpecSimple.NULL); // dst cannot be NULL type
         }
     }
 
@@ -117,7 +247,7 @@ public abstract class Coercion {
     // Private
     // ----------------------------------------------
 
-    private static final Map<TypeSpec, Set<TypeSpec>> possibleCasts = new HashMap<>();
+    private static final Map<TypeSpecSimple, Set<TypeSpecSimple>> possibleCasts = new HashMap<>();
 
     static {
         possibleCasts.put(

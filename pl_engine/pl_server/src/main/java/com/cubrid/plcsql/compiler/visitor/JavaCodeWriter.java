@@ -90,13 +90,16 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      %'GET-CONNECTION'%",
                 "      %'+DECL-CLASS'%",
                 "      %'+BODY'%",
+                // exceptions that escaped from the exception handlers of the body
+                "    } catch (PlcsqlRuntimeError e) {",
+                "      Throwable c = e.getCause();",
+                "      int[] pos = getPlcLineColumn(codeRangeMarkerList, c == null ? e : c, \"%'CLASS-NAME'%.java\");",
+                "      throw e.setPlcLineColumn(pos);",
+                // exceptions raised in an exception handler
                 "    } catch (OutOfMemoryError e) {",
                 "      Server.log(e);",
                 "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
                 "      throw new STORAGE_ERROR().setPlcLineColumn(pos);",
-                "    } catch (PlcsqlRuntimeError e) {",
-                "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
-                "      throw e.setPlcLineColumn(pos);",
                 "    } catch (Throwable e) {",
                 "      Server.log(e);",
                 "      int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
@@ -567,78 +570,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "))"
             };
 
-    private static String getGlobalFuncParamStr(int size, NodeList<DeclParam> paramList) {
-
-        if (size == 0) {
-            return "";
-        }
-
-        StringBuffer sbuf = new StringBuffer();
-        boolean first = true;
-        for (int i = 0; i < size; i++) {
-
-            DeclParam param = paramList.nodes.get(i);
-
-            if (first) {
-                first = false;
-            } else {
-                sbuf.append(", ");
-            }
-
-            if (param instanceof DeclParamOut) {
-                sbuf.append(String.format("%s[] o%d", param.typeSpec.javaCode, i));
-            } else {
-                sbuf.append(String.format("%s o%d", param.typeSpec.javaCode, i));
-            }
-        }
-
-        return sbuf.toString();
-    }
-
-    private static String[] getGlobalFuncArgsSetCode(int size, NodeList<DeclParam> paramList) {
-
-        List<String> ret = new LinkedList<>();
-
-        for (int i = 0; i < size; i++) {
-
-            DeclParam param = paramList.nodes.get(i);
-
-            if (param instanceof DeclParamOut) {
-                ret.add(
-                        String.format(
-                                "stmt.registerOutParameter(%d, java.sql.Types.OTHER);", i + 2));
-            }
-
-            if (param instanceof DeclParamIn) {
-                ret.add(String.format("stmt.setObject(%d, o%d);", i + 2, i));
-            } else if (((DeclParamOut) param).alsoIn) {
-                ret.add(String.format("stmt.setObject(%d, o%d[0]);", i + 2, i));
-            }
-        }
-
-        return ret.toArray(DUMMY_STRING_ARRAY);
-    }
-
-    private static String[] getUpdateGlobalFuncOutArgsCode(
-            int size, NodeList<DeclParam> paramList) {
-
-        List<String> ret = new LinkedList<>();
-
-        for (int i = 0; i < size; i++) {
-
-            DeclParam param = paramList.nodes.get(i);
-
-            if (param instanceof DeclParamOut) {
-                ret.add(
-                        String.format(
-                                "o%d[0] = (%s) stmt.getObject(%d);",
-                                i, param.typeSpec.javaCode, i + 2));
-            }
-        }
-
-        return ret.toArray(DUMMY_STRING_ARRAY);
-    }
-
     @Override
     public CodeToResolve visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
 
@@ -646,10 +577,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         int argSize = node.args.nodes.size();
         String dynSql = String.format("?= call %s(%s)", node.name, getQuestionMarks(argSize));
-        String paramStr = getGlobalFuncParamStr(argSize, node.decl.paramList);
-        String[] setGlobalFuncArgs = getGlobalFuncArgsSetCode(argSize, node.decl.paramList);
-        String[] updateGlobalFuncOutArgs =
-                getUpdateGlobalFuncOutArgsCode(argSize, node.decl.paramList);
+        String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
+        GlobalCallCodeSnippets code =
+                getGlobalCallCodeSnippets(argSize, 2, node.args, node.decl.paramList);
 
         CodeTemplate tmpl =
                 new CodeTemplate(
@@ -663,16 +593,20 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'RETURN-TYPE'%",
                         node.decl.retType.javaCode(),
                         "%'PARAMETERS'%",
-                        paramStr,
+                        wrapperParam,
                         "%'+SET-GLOBAL-FUNC-ARGS'%",
-                        setGlobalFuncArgs,
+                        code.setArgs,
                         "%'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
-                        updateGlobalFuncOutArgs,
+                        code.updateOutArgs,
                         "%'+ARGUMENTS'%",
                         visitArguments(node.args, node.decl.paramList));
 
         return applyCoercion(node.coercion, tmpl);
     }
+
+    // -------------------------------------------------------------------------
+    // ExprId
+    //
 
     @Override
     public CodeToResolve visitExprId(ExprId node) {
@@ -778,39 +712,58 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplExprLocalFuncCall =
-            new String[] {"%'BLOCK'%%'NAME'%(", "  %'+ARGS'%", ")"};
+            new String[] {
+                "(new Object() { // local function call: %'FUNC-NAME'%",
+                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
+                "    %'+ALLOC-COERCED-OUT-ARGS'%",
+                "    %'RETURN-TYPE'% ret = %'BLOCK'%%'FUNC-NAME'%(%'ARGS'%);",
+                "    %'+UPDATE-OUT-ARGS'%",
+                "    return ret;",
+                "  }",
+                "}.invoke(",
+                "  %'+ARGUMENTS'%",
+                "))"
+            };
 
     @Override
     public CodeToResolve visitExprLocalFuncCall(ExprLocalFuncCall node) {
 
-        CodeTemplate tmpl;
+        assert node.decl != null;
 
+        int argSize = node.args.nodes.size();
+        String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
+        LocalCallCodeSnippets code =
+                getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
 
-        if (node.args.nodes.size() == 0) {
-
-            tmpl =
-                    new CodeTemplate(
-                            "ExprLocalFuncCall",
-                            Misc.getLineColumnOf(node.ctx),
-                            block + node.name + "()");
-        } else {
-
-            tmpl =
-                    new CodeTemplate(
-                            "ExprLocalFuncCall",
-                            Misc.getLineColumnOf(node.ctx),
-                            tmplExprLocalFuncCall,
-                            "%'BLOCK'%",
-                            block,
-                            "%'NAME'%",
-                            node.name,
-                            "%'+ARGS'%",
-                            visitArguments(node.args, node.decl.paramList));
-        }
+        CodeTemplate tmpl =
+                new CodeTemplate(
+                        "ExprLocalFuncCall",
+                        Misc.getLineColumnOf(node.ctx),
+                        tmplExprLocalFuncCall,
+                        "%'BLOCK'%",
+                        block,
+                        "%'FUNC-NAME'%",
+                        node.name,
+                        "%'RETURN-TYPE'%",
+                        node.decl.retType.javaCode(),
+                        "%'PARAMETERS'%",
+                        wrapperParam,
+                        "%'+ALLOC-COERCED-OUT-ARGS'%",
+                        code.allocCoercedOutArgs,
+                        "%'ARGS'%",
+                        code.argsToLocal,
+                        "%'+UPDATE-OUT-ARGS'%",
+                        code.updateOutArgs,
+                        "%'+ARGUMENTS'%",
+                        visitArguments(node.args, node.decl.paramList));
 
         return applyCoercion(node.coercion, tmpl);
     }
+
+    // -------------------------------------------------------------------------
+    // ExprNull
+    //
 
     @Override
     public CodeToResolve visitExprNull(ExprNull node) {
@@ -1648,82 +1601,24 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtGlobalProcCall =
             new String[] {
-                "try { // global procedure call: %'PROC-NAME'%",
-                "  String dynSql_%'LEVEL'% = \"%'DYNAMIC-SQL'%\";",
-                "  CallableStatement stmt_%'LEVEL'% = conn.prepareCall(dynSql_%'LEVEL'%);",
-                "  %'+SET-GLOBAL-PROC-ARGS'%",
-                "  stmt_%'LEVEL'%.execute();",
-                "  %'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
-                "  stmt_%'LEVEL'%.close();",
-                "} catch (SQLException e) {",
-                "  Server.log(e);",
-                "  throw new SQL_ERROR(e.getMessage());",
-                "}"
+                "new Object() { // global procedure call: %'PROC-NAME'%",
+                "  void invoke(%'PARAMETERS'%) throws Exception {",
+                "    try {",
+                "      String dynSql = \"%'DYNAMIC-SQL'%\";",
+                "      CallableStatement stmt = conn.prepareCall(dynSql);",
+                "      %'+SET-GLOBAL-PROC-ARGS'%",
+                "      stmt.execute();",
+                "      %'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
+                "      stmt.close();",
+                "    } catch (SQLException e) {",
+                "      Server.log(e);",
+                "      throw new SQL_ERROR(e.getMessage());",
+                "    }",
+                "  }",
+                "}.invoke(",
+                "  %'+ARGUMENTS'%",
+                ");"
             };
-
-    private Object getSetGlobalProcArgsCode(
-            int size, List<? extends Expr> args, NodeList<DeclParam> paramList) {
-
-        if (size == 0) {
-            return "";
-        }
-
-        CodeTemplateList ret = new CodeTemplateList();
-
-        for (int i = 0; i < size; i++) {
-
-            DeclParam param = paramList.nodes.get(i);
-
-            if (param instanceof DeclParamOut) {
-
-                ret.addElement(
-                        new CodeTemplate(
-                                "global procedure out argument",
-                                Misc.UNKNOWN_LINE_COLUMN,
-                                String.format(
-                                        "stmt_%%'LEVEL'%%.registerOutParameter(%d, java.sql.Types.OTHER);",
-                                        i + 1)));
-            }
-
-            if (param instanceof DeclParamIn || ((DeclParamOut) param).alsoIn) {
-
-                Expr arg = args.get(i);
-                ret.addElement(
-                        new CodeTemplate(
-                                "global procedure argument",
-                                Misc.getLineColumnOf(arg.ctx),
-                                tmplSetObject,
-                                "%'INDEX'%",
-                                "" + (i + 1),
-                                "%'+VALUE'%",
-                                visit(arg)));
-            }
-        }
-
-        return ret;
-    }
-
-    private static String[] getUpdateGlobalProcOutArgsCode(
-            int size, List<? extends Expr> args, NodeList<DeclParam> paramList) {
-
-        List<String> ret = new LinkedList<>();
-
-        for (int i = 0; i < size; i++) {
-
-            DeclParam param = paramList.nodes.get(i);
-
-            if (param instanceof DeclParamOut) {
-                Expr arg = args.get(i);
-                assert arg instanceof ExprId;
-                ret.add(
-                        String.format(
-                                "%s = (%s) stmt_%%'LEVEL'%%.getObject(%d);",
-                                ((ExprId) arg).javaCode(), param.typeSpec.javaCode, i + 1));
-            }
-        }
-
-        return ret.toArray(DUMMY_STRING_ARRAY);
-    }
 
     @Override
     public CodeToResolve visitStmtGlobalProcCall(StmtGlobalProcCall node) {
@@ -1732,10 +1627,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         int argSize = node.args.nodes.size();
         String dynSql = String.format("call %s(%s)", node.name, getQuestionMarks(argSize));
-        Object setGlobalProcArgs =
-                getSetGlobalProcArgsCode(argSize, node.args.nodes, node.decl.paramList);
-        String[] updGlobalProcOutArgs =
-                getUpdateGlobalProcOutArgsCode(argSize, node.args.nodes, node.decl.paramList);
+        String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
+        GlobalCallCodeSnippets code =
+                getGlobalCallCodeSnippets(argSize, 1, node.args, node.decl.paramList);
 
         return new CodeTemplate(
                 "StmtGlobalProcCall",
@@ -1745,12 +1639,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 node.name,
                 "%'DYNAMIC-SQL'%",
                 dynSql,
+                "%'PARAMETERS'%",
+                wrapperParam,
                 "%'+SET-GLOBAL-PROC-ARGS'%",
-                setGlobalProcArgs,
+                code.setArgs,
                 "%'+UPDATE-GLOBAL-PROC-OUT-ARGS'%",
-                updGlobalProcOutArgs,
-                "%'LEVEL'%",
-                "" + node.level);
+                code.updateOutArgs,
+                "%'+ARGUMENTS'%",
+                visitArguments(node.args, node.decl.paramList));
     }
 
     // -------------------------------------------------------------------------
@@ -1795,11 +1691,27 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplStmtLocalProcCall =
-            new String[] {"%'BLOCK'%%'NAME'%(", "  %'+ARGS'%", ");"};
+            new String[] {
+                "new Object() { // local procedure call: %'PROC-NAME'%",
+                "  void invoke(%'PARAMETERS'%) throws Exception {",
+                "    %'+ALLOC-COERCED-OUT-ARGS'%",
+                "    %'BLOCK'%%'PROC-NAME'%(%'ARGS'%);",
+                "    %'+UPDATE-OUT-ARGS'%",
+                "  }",
+                "}.invoke(",
+                "  %'+ARGUMENTS'%",
+                ");"
+            };
 
     @Override
     public CodeToResolve visitStmtLocalProcCall(StmtLocalProcCall node) {
 
+        assert node.decl != null;
+
+        int argSize = node.args.nodes.size();
+        String wrapperParam = getCallWrapperParam(argSize, node.args, node.decl.paramList);
+        LocalCallCodeSnippets code =
+                getLocalCallCodeSnippets(argSize, node.args, node.decl.paramList);
         String block = node.prefixDeclBlock ? node.decl.scope().block + "." : "";
 
         return Misc.isEmpty(node.args)
@@ -1813,9 +1725,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         tmplStmtLocalProcCall,
                         "%'BLOCK'%",
                         block,
-                        "%'NAME'%",
+                        "%'PROC-NAME'%",
                         node.name,
-                        "%'+ARGS'%",
+                        "%'PARAMETERS'%",
+                        wrapperParam,
+                        "%'+ALLOC-COERCED-OUT-ARGS'%",
+                        code.allocCoercedOutArgs,
+                        "%'ARGS'%",
+                        code.argsToLocal,
+                        "%'+UPDATE-OUT-ARGS'%",
+                        code.updateOutArgs,
+                        "%'+ARGUMENTS'%",
                         visitArguments(node.args, node.decl.paramList));
     }
 
@@ -1984,7 +1904,22 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplBody =
-            new String[] {"try {", "  %'+STATEMENTS'%", "}", "%'+CATCHES'%"};
+            new String[] {
+                "try {",
+                "  try {", // convert every exception from the STATEMENTS into PlcsqlRuntimeError
+                "    %'+STATEMENTS'%",
+                "  } catch (PlcsqlRuntimeError e) {",
+                "    throw e;",
+                "  } catch (OutOfMemoryError e) {",
+                "    Server.log(e);",
+                "    throw new STORAGE_ERROR().initCause(e);",
+                "  } catch (Throwable e) {",
+                "    Server.log(e);",
+                "    throw new PROGRAM_ERROR().initCause(e);",
+                "  }",
+                "}",
+                "%'+CATCHES'%"
+            };
 
     @Override
     public CodeToResolve visitBody(Body node) {
@@ -1992,7 +1927,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return node.exHandlers.nodes.size() == 0
                 ? visitNodeList(node.stmts)
                 : new CodeTemplate(
-                        "ExprLocalFuncCall",
+                        "Body",
                         Misc.getLineColumnOf(node.ctx),
                         tmplBody,
                         "%'+STATEMENTS'%",
@@ -2022,7 +1957,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
 
             if ("OTHERS".equals(ex.name)) {
-                sbuf.append("Throwable");
+                sbuf.append("PlcsqlRuntimeError");
             } else if (ex.prefixDeclBlock) {
                 sbuf.append("Decl_of_" + ex.decl.scope().block + "." + ex.name);
             } else {
@@ -2338,21 +2273,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();"
             };
 
-    private static final String[] tmplNoCoercion = new String[] {"// no coercion", "%'+EXPR'%"};
     private static final String[] tmplCastCoercion = new String[] {"(%'TYPE'%)", "  %'+EXPR'%"};
     private static final String[] tmplConvCoercion =
             new String[] {"conv%'SRC-TYPE'%To%'DST-TYPE'%(", "  %'+EXPR'%)"};
 
     private CodeToResolve applyCoercion(Coercion c, CodeTemplate exprCode) {
 
-        if (c == null) {
-            return new CodeTemplate(
-                    "null coercion",
-                    Misc.UNKNOWN_LINE_COLUMN,
-                    tmplNoCoercion,
-                    "%'+EXPR'%",
-                    exprCode);
-        } else if (c instanceof Coercion.Identity) {
+        if (c == null || c instanceof Coercion.Identity) {
             return exprCode;
         } else if (c instanceof Coercion.Cast) {
             Coercion.Cast cast = (Coercion.Cast) c;
@@ -2361,7 +2288,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     Misc.UNKNOWN_LINE_COLUMN,
                     tmplCastCoercion,
                     "%'TYPE'%",
-                    cast.to.javaCode(),
+                    cast.dst.javaCode(),
                     "%'+EXPR'%",
                     exprCode);
         } else if (c instanceof Coercion.Conversion) {
@@ -2371,9 +2298,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     Misc.UNKNOWN_LINE_COLUMN,
                     tmplConvCoercion,
                     "%'SRC-TYPE'%",
-                    conv.from,
+                    conv.src.plcName,
                     "%'DST-TYPE'%",
-                    conv.to,
+                    conv.dst.plcName,
                     "%'+EXPR'%",
                     exprCode);
         } else {
@@ -2426,6 +2353,163 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             resolved = true;
         }
+    }
+
+    private static String getCallWrapperParam(
+            int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
+
+        if (size == 0) {
+            return "";
+        }
+
+        StringBuffer sbuf = new StringBuffer();
+        boolean first = true;
+        for (int i = 0; i < size; i++) {
+
+            DeclParam param = paramList.nodes.get(i);
+
+            if (first) {
+                first = false;
+            } else {
+                sbuf.append(", ");
+            }
+
+            if (param instanceof DeclParamOut) {
+                ExprId id = (ExprId) args.nodes.get(i);
+                DeclIdTyped declId = (DeclIdTyped) id.decl;
+                sbuf.append(String.format("%s[] o%d", declId.typeSpec().javaCode, i));
+            } else {
+                sbuf.append(String.format("%s o%d", param.typeSpec.javaCode, i));
+            }
+        }
+
+        return sbuf.toString();
+    }
+
+    private static class GlobalCallCodeSnippets {
+        String[] setArgs;
+        String[] updateOutArgs;
+    }
+
+    private static GlobalCallCodeSnippets getGlobalCallCodeSnippets(
+            int size, int argOffset, NodeList<Expr> args, NodeList<DeclParam> paramList) {
+
+        List<String> setArgs = new LinkedList<>();
+        List<String> updateOutArgs = new LinkedList<>();
+
+        for (int i = 0; i < size; i++) {
+
+            DeclParam param = paramList.nodes.get(i);
+
+            if (param instanceof DeclParamOut) {
+
+                // fill setArgs
+                setArgs.add(
+                        String.format(
+                                "stmt.registerOutParameter(%d, java.sql.Types.OTHER);",
+                                i + argOffset));
+
+                ExprId id = (ExprId) args.nodes.get(i);
+                Coercion c = id.coercion;
+                assert c != null;
+
+                if (((DeclParamOut) param).alsoIn) {
+                    String paramVal = "o" + i + "[0]";
+                    setArgs.add(
+                            String.format(
+                                    "stmt.setObject(%d, %s);",
+                                    i + argOffset, c.javaCode(paramVal)));
+                }
+
+                // fill updateOutArgs
+                Coercion cRev = c.getReversion();
+                assert cRev != null; // by earlier check
+                String outVal =
+                        String.format(
+                                "(%s) stmt.getObject(%d)", param.typeSpec.javaCode, i + argOffset);
+                updateOutArgs.add(String.format("o%d[0] = %s;", i, cRev.javaCode(outVal)));
+
+                DeclId declId = id.decl;
+                if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
+                    updateOutArgs.add(
+                            String.format(
+                                    "checkNotNull(o%d[0], \"a not-null variable %s was set NULL by this call\");",
+                                    i, id.name));
+                }
+            } else {
+                setArgs.add(String.format("stmt.setObject(%d, o%d);", i + argOffset, i));
+            }
+        }
+
+        GlobalCallCodeSnippets ret = new GlobalCallCodeSnippets();
+        ret.setArgs = setArgs.toArray(DUMMY_STRING_ARRAY);
+        ret.updateOutArgs = updateOutArgs.toArray(DUMMY_STRING_ARRAY);
+        return ret;
+    }
+
+    private static class LocalCallCodeSnippets {
+        String[] allocCoercedOutArgs;
+        String argsToLocal;
+        String[] updateOutArgs;
+    }
+
+    private static LocalCallCodeSnippets getLocalCallCodeSnippets(
+            int size, NodeList<Expr> args, NodeList<DeclParam> paramList) {
+
+        List<String> allocCoercedOutArgs = new LinkedList<>();
+        StringBuilder argsToLocal = new StringBuilder();
+        List<String> update = new LinkedList<>();
+
+        boolean first = true;
+        for (int i = 0; i < size; i++) {
+
+            if (first) {
+                first = false;
+            } else {
+                argsToLocal.append(", ");
+            }
+
+            DeclParam param = paramList.nodes.get(i);
+
+            if (param instanceof DeclParamOut) {
+
+                ExprId id = (ExprId) args.nodes.get(i);
+
+                Coercion c = id.coercion;
+                assert c != null;
+                if (c instanceof Coercion.Identity) {
+                    argsToLocal.append("o" + i);
+                } else {
+                    String paramType = param.typeSpec.javaCode;
+                    allocCoercedOutArgs.add(
+                            String.format(
+                                    "%s[] p%d = new %s[] { %s };",
+                                    paramType, i, paramType, c.javaCode("o" + i + "[0]")));
+
+                    argsToLocal.append("p" + i);
+
+                    Coercion cRev = c.getReversion();
+                    assert cRev != null; // by earlier check
+                    update.add(String.format("o%d[0] = %s;", i, cRev.javaCode("p" + i + "[0]")));
+                }
+
+                DeclId declId = id.decl;
+                if (declId instanceof DeclVar && ((DeclVar) declId).notNull) {
+                    update.add(
+                            String.format(
+                                    "checkNotNull(o%d[0], \"a not-null variable %s was set NULL by this function call\");",
+                                    i, id.name));
+                }
+            } else {
+                argsToLocal.append("o" + i);
+            }
+        }
+
+        LocalCallCodeSnippets ret = new LocalCallCodeSnippets();
+        ret.allocCoercedOutArgs = allocCoercedOutArgs.toArray(DUMMY_STRING_ARRAY);
+        ret.argsToLocal = argsToLocal.toString();
+        ret.updateOutArgs = update.toArray(DUMMY_STRING_ARRAY);
+        return ret;
     }
 
     private static class CodeTemplate implements CodeToResolve {
