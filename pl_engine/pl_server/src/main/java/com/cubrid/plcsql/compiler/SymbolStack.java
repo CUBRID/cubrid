@@ -576,7 +576,9 @@ public class SymbolStack {
         Map<String, D> map = symbolTable.<D>map((Class<D>) decl.getClass());
         assert map != null;
         if (map == symbolTable.labels) {
-            assert !map.containsKey(name);  // currently, a symbol table is always pushed right before putting a label
+            assert !map.containsKey(
+                    name); // currently, a symbol table is always pushed right before putting a
+            // label
         } else {
             if (symbolTable.ids.containsKey(name)
                     || symbolTable.procs.containsKey(name)

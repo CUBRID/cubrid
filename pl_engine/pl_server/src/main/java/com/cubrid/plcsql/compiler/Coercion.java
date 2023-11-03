@@ -213,7 +213,7 @@ public abstract class Coercion {
             }
 
             Conversion c;
-            synchronized(memoized) {
+            synchronized (memoized) {
                 Map<TypeSpecSimple, Conversion> instances = memoized.get(src);
                 if (instances == null) {
                     instances = new HashMap<>();

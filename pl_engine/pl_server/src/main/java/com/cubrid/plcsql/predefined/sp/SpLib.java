@@ -52,8 +52,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Stack;
 import java.util.Locale;
+import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
