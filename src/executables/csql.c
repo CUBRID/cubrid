@@ -1498,6 +1498,21 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       break;
 
+    case S_CMD_MIDXKEY:
+      if (!strcasecmp (argument, "on"))
+	{
+	  csql_arg->midxkey_print = true;
+	}
+      else if (!strcasecmp (argument, "off"))
+	{
+	  csql_arg->midxkey_print = false;
+	}
+      if (csql_Is_interactive)
+	{
+	  fprintf (csql_Output_fp, "MIDXKEY IS %s\n", (csql_arg->midxkey_print ? "ON" : "OFF"));
+	}
+      break;
+
     case S_CMD_SERVER_OUTPUT:
       if (strcasecmp (argument, "on") == 0)
 	{
@@ -1991,20 +2006,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       stmt_id = db_compile_statement (session);
 
-      if (session->statements)
+      assert ((stmt_id < 0) || stmt_id == (num_stmts + 1));
+      if (session->statements && session->statements[num_stmts])
 	{
-	  statement = session->statements[num_stmts];
-	  if (statement)
-	    {
-	      if (logddl_set_stmt_type (statement->node_type))
-		{
-		  logddl_set_file_line (statement->line_number);
-		  if (statement->sql_user_text && statement->sql_user_text_len > 0)
-		    {
-		      logddl_set_sql_text (statement->sql_user_text, statement->sql_user_text_len);
-		    }
-		}
-	    }
+	  int t_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, num_stmts + 1);
+	  logddl_check_and_set_query_text (session->statements[num_stmts], t_type, &session->parser->hide_pwd_info);
 	}
 
       if (stmt_id <= 0)
@@ -2023,10 +2029,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 
 	  logddl_set_err_code (db_error_code ());
-	  if (statement)
-	    {
-	      logddl_set_file_line (statement->line_number);
-	    }
 
 	  /* compilation error */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -2041,16 +2043,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		  db_abort_transaction ();
 		  do_abort_transaction = false;
 		  logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
-		  if (logddl_get_jsp_mode ())
-		    {
-		      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
-		    }
 		}
 	      csql_Num_failures += 1;
-	      if (logddl_get_jsp_mode () == false)
-		{
-		  logddl_write_end ();
-		}
+	      logddl_write_end ();
 	      continue;
 	    }
 	  else
@@ -2093,18 +2088,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		  db_abort_transaction ();
 		  do_abort_transaction = false;
 		  logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
-		  if (logddl_get_jsp_mode ())
-		    {
-		      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
-		    }
 		}
 	      csql_Num_failures += 1;
 
 	      free_attr_spec (&attr_spec);
-	      if (logddl_get_jsp_mode () == false)
-		{
-		  logddl_write_end ();
-		}
+	      logddl_write_end ();
 	      continue;
 	    }
 	  goto error;
@@ -2223,16 +2211,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 		      db_abort_transaction ();
 		      do_abort_transaction = false;
 		      logddl_set_msg (LOGDDL_MSG_AUTO_ROLLBACK);
-		      if (logddl_get_jsp_mode ())
-			{
-			  logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
-			}
 		    }
 		  csql_Num_failures += 1;
-		  if (logddl_get_jsp_mode () == false)
-		    {
-		      logddl_write_end ();
-		    }
+		  logddl_write_end ();
 		  continue;
 		}
 	      goto error;
@@ -2282,23 +2263,11 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       if (type != FILE_INPUT)
 	{
-	  if (logddl_get_jsp_mode ())
+	  if (csql_is_auto_commit_requested (csql_arg))
 	    {
-	      if (csql_is_auto_commit_requested (csql_arg))
-		{
-		  do_abort_transaction ==
-		    true ? logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK) :
-		    logddl_write_tran_str (LOGDDL_TRAN_TYPE_COMMIT);
-		}
+	      logddl_set_msg (LOGDDL_MSG_AUTO_COMMIT);
 	    }
-	  else
-	    {
-	      if (csql_is_auto_commit_requested (csql_arg))
-		{
-		  logddl_set_msg (LOGDDL_MSG_AUTO_COMMIT);
-		}
-	      logddl_write_end ();
-	    }
+	  logddl_write_end ();
 	}
     }
 
@@ -2343,14 +2312,7 @@ error:
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
-  if (logddl_get_jsp_mode ())
-    {
-      logddl_write_tran_str (LOGDDL_TRAN_TYPE_ROLLBACK);
-    }
-  else
-    {
-      (type == FILE_INPUT) ? logddl_write_end_for_csql_fileinput ("") : logddl_write_end ();
-    }
+  (type == FILE_INPUT) ? logddl_write_end_for_csql_fileinput ("") : logddl_write_end ();
 
   if (session)
     {
