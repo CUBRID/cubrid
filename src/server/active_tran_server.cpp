@@ -185,14 +185,15 @@ active_tran_server::connection_handler::receive_saved_lsa (page_server_conn_t::s
   std::memcpy (&saved_lsa, message.c_str (), sizeof (log_lsa));
 
   assert (saved_lsa >= get_saved_lsa ()); // PS can send the same saved_lsa as before in some cases
+
+  quorum_consenesus_er_log ("Received saved LSA = %lld|%d from %s.\n", LSA_AS_ARGS (&saved_lsa),
+			    get_channel_id ().c_str ());
+
   if (saved_lsa > get_saved_lsa ())
     {
       m_saved_lsa.store (saved_lsa);
       log_Gl.wakeup_ps_flush_waiters ();
     }
-
-  quorum_consenesus_er_log ("Received saved LSA = %lld|%d from %s.\n", LSA_AS_ARGS (&saved_lsa),
-			    get_channel_id ().c_str ());
 }
 
 void
