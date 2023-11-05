@@ -29,7 +29,7 @@ namespace cublog
     : m_prior_lsa_info (prior_lsa_info)
   {
     m_state = state::RUN;
-    start_thread ();
+    m_thread = std::thread (&prior_recver::loop_message_to_prior_info, std::ref (*this));
   }
 
   prior_recver::~prior_recver ()
@@ -48,12 +48,6 @@ namespace cublog
     }
 
     m_messages_push_cv.notify_one ();
-  }
-
-  void
-  prior_recver::start_thread ()
-  {
-    m_thread = std::thread (&prior_recver::loop_message_to_prior_info, std::ref (*this));
   }
 
   void
