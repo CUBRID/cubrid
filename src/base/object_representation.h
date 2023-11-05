@@ -1065,6 +1065,50 @@ struct or_buf
   int error_abort;
 };
 
+typedef struct midxkey_header MIDXKEY_HEADER;
+struct midxkey_header
+{
+private:
+  char *m_nullmap_ptr;
+  char *m_offset_ptr;
+  int m_nullmap_size;
+  int m_offset_size;
+  int m_header_size;
+
+#if !defined (NDEBUG)
+  bool m_has_size;
+  bool m_has_buffer;
+#endif				/* NDEBUG */
+
+  void write_offset (const int offset, const int index);
+  void write_offset_internal (const int offset, const int index);
+
+  int read_offset (const int index);
+  int read_offset_internal (const int index);
+
+public:
+    midxkey_header ();
+
+  void set_size (const int n_elements);
+  void set_buffer (char *buf);
+  void clear ();
+
+  int get_header_size ();
+
+  void set_not_null (const int index);
+  void set_null (const int index);
+  bool is_not_null (const int index);
+  bool is_null (const int index);
+
+  void write_start_offset (const int offset, const int index);
+  void write_end_offset (const int offset, const int index);
+  void write_size_offset (const int offset);
+
+  int read_start_offset (const int index);
+  int read_end_offset (const int index);
+  int read_size_offset ();
+};
+
 /* Need to translate types of DB_TYPE_OBJECT into DB_TYPE_OID in server-side */
 #define OR_PACK_DOMAIN_OBJECT_TO_OID(p, d, o, n) \
   or_pack_domain ((p), \
@@ -2802,6 +2846,197 @@ or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
       assert (offset_size == OR_INT_SIZE);
       return or_get_int (buf, error);
     }
+}
+// *INDENT-OFF*
+inline
+MIDXKEY_HEADER::midxkey_header ()
+  : m_nullmap_ptr (NULL)
+  , m_offset_ptr (NULL)
+  , m_nullmap_size (0)
+  , m_offset_size (0)
+  , m_header_size (0)
+#if !defined (NDEBUG)
+  , m_has_size (false)
+  , m_has_buffer (false)
+#endif /* NDEBUG */
+{
+}
+// *INDENT-ON*
+
+inline void
+MIDXKEY_HEADER::set_size (const int n_elements)
+{
+  assert (n_elements > 0);
+
+  m_nullmap_size = ((n_elements + 7) >> 3);
+  assert (m_nullmap_size > 0);
+
+  m_offset_size = n_elements + 1;
+  m_header_size = m_nullmap_size + m_offset_size;
+
+#if !defined (NDEBUG)
+  m_has_size = true;
+#endif /* NDEBUG */
+}
+
+inline void
+MIDXKEY_HEADER::set_buffer (char *buf)
+{
+  assert (m_has_size);
+
+  m_nullmap_ptr = buf;
+  m_offset_ptr = m_nullmap_ptr + m_nullmap_size;
+
+#if !defined (NDEBUG)
+  m_has_buffer = true;
+#endif /* NDEBUG */
+}
+
+inline void
+MIDXKEY_HEADER::clear ()
+{
+  assert (m_has_buffer);
+
+  memset (m_nullmap_ptr, 0x00, m_header_size);
+}
+
+inline int
+MIDXKEY_HEADER::get_header_size ()
+{
+  assert (m_has_size);
+
+  return m_header_size;
+}
+
+inline void
+MIDXKEY_HEADER::set_not_null (const int index)
+{
+  assert (m_has_buffer);
+  assert (index >= 0);
+  assert (index <= m_offset_size);
+
+  (*(m_nullmap_ptr + (index >> 3))) |= (1 << (index & 7));
+}
+
+inline void
+MIDXKEY_HEADER::set_null (const int index)
+{
+  assert (m_has_buffer);
+  assert (index >= 0);
+  assert (index <= m_offset_size);
+
+  (*(m_nullmap_ptr + (index >> 3))) &= (~(1 << (index & 7)));
+}
+
+inline bool
+MIDXKEY_HEADER::is_not_null (const int index)
+{
+  assert (m_has_buffer);
+  assert (index >= 0);
+  assert (index <= m_offset_size);
+
+  if ((*(m_nullmap_ptr + (index >> 3))) & (1 << (index & 7)))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+inline bool
+MIDXKEY_HEADER::is_null (const int index)
+{
+  return !is_not_null (index);
+}
+
+inline void
+MIDXKEY_HEADER::write_offset (const int offset, const int index)
+{
+  if (offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
+    {
+      write_offset_internal (offset, index);
+    }
+  else
+    {
+      write_offset_internal (OR_MIDXKEY_MAX_OFFSET_SIZE, index);
+    }
+}
+
+inline void
+MIDXKEY_HEADER::write_offset_internal (const int offset, const int index)
+{
+  assert (m_has_buffer);
+  assert (offset >= m_header_size);
+  assert (offset <= OR_MIDXKEY_MAX_OFFSET_SIZE);
+  assert (index >= 0);
+  assert (index <= m_offset_size);
+
+  OR_PUT_BYTE (m_offset_ptr + index, offset);
+}
+
+inline void
+MIDXKEY_HEADER::write_start_offset (const int offset, const int index)
+{
+  write_offset (offset, index);
+}
+
+inline void
+MIDXKEY_HEADER::write_end_offset (const int offset, const int index)
+{
+  write_offset (offset, index + 1);
+}
+
+inline void
+MIDXKEY_HEADER::write_size_offset (const int offset)
+{
+  write_offset (offset, m_offset_size - 1);
+}
+
+inline int
+MIDXKEY_HEADER::read_offset (const int index)
+{
+  int offset;
+
+  offset = read_offset_internal (index);
+  if (offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
+    {
+      return offset;
+    }
+
+  return -1;
+}
+
+inline int
+MIDXKEY_HEADER::read_offset_internal (const int index)
+{
+  int offset;
+
+  assert (m_has_buffer);
+  assert (index >= 0);
+  assert (index <= m_offset_size);
+
+  offset = OR_GET_BYTE (m_offset_ptr + index);
+  assert (offset >= m_header_size);
+
+  return offset;
+}
+
+inline int
+MIDXKEY_HEADER::read_start_offset (const int index)
+{
+  return read_offset (index);
+}
+
+inline int
+MIDXKEY_HEADER::read_end_offset (const int index)
+{
+  return read_offset (index + 1);
+}
+
+inline int
+MIDXKEY_HEADER::read_size_offset ()
+{
+  return read_offset (m_offset_size - 1);
 }
 
 #endif /* _OBJECT_REPRESENTATION_H_ */
