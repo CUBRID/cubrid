@@ -157,9 +157,9 @@ namespace cublog
 	    backbuffer.pop ();
 	  }
 
-	ulock.lock ();
-
 	m_messages_consume_cv.notify_one ();
+
+	ulock.lock ();
       }
   }
 }
