@@ -105,19 +105,15 @@ namespace cublog
       assert (m_state == state::PAUSED);
       m_state = state::RUN;
 
-      notify_one = !m_messages.empty ();
+      if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[LOG_PRIOR_TRANSFER] Resume prior_recver: the number of kept messages while paused = %lu.\n", m_messages.size ());
+	}
     }
 
-    if (notify_one)
-      {
-	m_messages_push_cv.notify_one ();
-      }
-
-    if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
-      {
-	_er_log_debug (ARG_FILE_LINE,
-		       "[LOG_PRIOR_TRANSFER] Resume prior_recver: the number of kept messages while paused = %lu.\n", m_messages.size ());
-      }
+    // There may be some pushed msg while pausing.
+    m_messages_push_cv.notify_one ();
   }
 
   void
