@@ -223,9 +223,8 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   unpacker.unpack_int (port);
   cublog::lsa_utils::unpack (unpacker, catchup_lsa);
 
-  _er_log_debug (ARG_FILE_LINE,
-		 "[CATCH_UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
-		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
+  catchup_er_log ("It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d).\n",
+		  host.c_str (), port, LSA_AS_ARGS (&catchup_lsa));
   if (port == -1)
     {
       // TODO: It means that the ATS is booting up.
@@ -240,7 +239,7 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
 
   if (log_Gl.hdr.append_lsa == catchup_lsa)
     {
-      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] There is nothing to catch up.\n");
+      catchup_er_log ("There is nothing to catch up. append_lsa = (%lld|%d).\n", LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 
       m_ps.complete_catchup ();
       return;
@@ -1134,8 +1133,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
     return error_code;
   };
 
-  _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
-		 start_pageid, end_pageid, total_page_count);
+  catchup_er_log ("The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
+		  start_pageid, end_pageid, total_page_count);
 
   LOG_PAGEID request_start_pageid = start_pageid;
   size_t remaining_page_cnt = total_page_count;
@@ -1187,8 +1186,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  assert_release (false);
 	}
 
-      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
-		     start_pageid, end_pageid, total_page_count);
+      catchup_er_log ("The catch-up is completed, ranging from %lld to %lld, count = %lld, append_lsa= (%lld|%d).\n",
+		      start_pageid, end_pageid, total_page_count, LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 
       complete_catchup ();
 
@@ -1204,8 +1203,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
       assert (false);
 
       assert (remaining_page_cnt > 0);
-      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
-		     error, remaining_page_cnt, total_page_count);
+      catchup_er_log ("The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
+		      error, remaining_page_cnt, total_page_count);
       with_disc_msg = false;
     }
 
