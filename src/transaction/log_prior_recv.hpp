@@ -54,22 +54,47 @@ namespace cublog
 
       void push_message (std::string &&str);                  // push message from prior_sender into message queue
 
+      void wait_until_empty_and_pause ();                     // digest all existing prior nodes and pause consuming coming ones
+      void resume ();                                         // resume the paused thread
+
     private:
       using message_container = std::queue<std::string>;      // internal message container type
 
+      /*
+       * The state transition
+       *
+       * RUN -> PAUSING -> PAUSED -> RUN
+       * (*) -> SHUTDOWN
+       *
+       * - RUN:      It starts with this state. It accepts messages and appends nodes if possible.
+       * - PAUSING:  It's being paused. It's consuming existing prior nodes
+       *             that have been not appended. It's assumed that no msg is pushed.
+       * - PAUSED:   It's been paused. It accepts messages, but doesn't append them.
+       *             It's transitioned to RUN when resume () is called.
+       * - SHUTDOWN: It's shutting down. It will be destroyed soon.
+       */
+      enum class state
+      {
+	RUN,
+	PAUSING,
+	PAUSED,
+	SHUTDOWN,
+      };
+
       void loop_message_to_prior_info ();                     // convert messages into prior node lists and append them
       // to prior info
-      void start_thread ();                                   // run loop_message_to_prior_info in a thread
       void stop_thread ();                                    // stop thread running loop_message_to_prior_info()
 
       log_prior_lsa_info &m_prior_lsa_info;                   // prior list destination
 
       message_container m_messages;                           // internal queue of messages
-      std::mutex m_messages_mutex;                            // protect access on message queue
-      std::condition_variable m_messages_condvar;             // notify internal thread of new messages
+      std::mutex m_mutex;                                     // protect access on message queue and m_state
+      std::condition_variable m_messages_push_cv;             // notify internal thread of new messages
+      std::condition_variable m_messages_consume_cv;          // notify a set of message has been consumed
 
       std::thread m_thread;                                   // internal thread
-      bool m_shutdown = false;                                // true to stop internal thread
+
+      state m_state;                                          // see the comment on enum class state
   };
 }
 
