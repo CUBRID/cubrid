@@ -10820,6 +10820,11 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		  /* coerce value1 to value2's type */
 		  TP_DOMAIN *d2 = tp_domain_resolve_default (vtype2);
 
+		  if (vtype2 == DB_TYPE_NUMERIC && vtype1 == DB_TYPE_BIGINT)
+		    {
+		      d2->precision = DB_BIGINT_PRECISION;
+		    }
+
 		  if (TP_TYPE_HAS_COLLATION (vtype1) && TP_IS_CHAR_TYPE (vtype2))
 		    {
 		      /* create a new domain with type of v2 */
