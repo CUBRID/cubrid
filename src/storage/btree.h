@@ -171,6 +171,7 @@ typedef struct
   VPID vpid;
   LOG_LSA leaf_lsa;
   bool range_satisfied_in_page;
+  bool enable_skip_read_key;
   bool clear_prefix_key;
   DB_VALUE prefix_key;
 } BTREE_PAGE_PREFIX_INFO;
@@ -183,6 +184,7 @@ typedef struct
     LSA_SET_NULL(&((pg_prefix)->leaf_lsa));          \
     btree_init_temp_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
     (pg_prefix)->range_satisfied_in_page = false;    \
+    (pg_prefix)->enable_skip_read_key = false;       \
 } while(0)
 
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {\
@@ -193,6 +195,7 @@ typedef struct
        VPID_SET_NULL (&((pg_prefix)->vpid));         \
        LSA_SET_NULL(&((pg_prefix)->leaf_lsa));       \
        (pg_prefix)->range_satisfied_in_page = false; \
+       (pg_prefix)->enable_skip_read_key = false;    \
     }                                                \
 } while(0)
 #else
