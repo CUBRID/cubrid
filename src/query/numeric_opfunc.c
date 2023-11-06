@@ -3445,7 +3445,11 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 
 	numeric_coerce_bigint_to_num (bigint, num);
 	precision = get_significant_digit (bigint);
-	desired_precision = MAX (desired_precision, precision);
+	if (desired_precision < precision)
+	  {
+	    /* for overflow handling */
+	    break;
+	  }
 	scale = 0;
 	break;
       }
