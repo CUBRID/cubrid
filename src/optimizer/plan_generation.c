@@ -1208,9 +1208,60 @@ make_pred_from_bitset (QO_ENV * env, BITSET * predset, ELIGIBILITY_FN safe)
 	  goto exit_on_error;
 	}
 
-      /* insert to the AND predicate list; this order is used at pt_to_pred_expr_with_arg() */
-      pointer->next = pred_list;
-      pred_list = pointer;
+      /* set AND predicate evaluation pred_order desc, selectivity asc, rank asc */
+      pointer->info.pointer.sel = QO_TERM_SELECTIVITY (term);
+      pointer->info.pointer.rank = QO_TERM_RANK (term);
+      pointer->info.pointer.pred_order = QO_TERM_PRED_ORDER (term);
+
+      /* insert to the AND predicate list by descending order of (selectivity, rank) vector; this order is used at
+       * pt_to_pred_expr_with_arg() */
+      found = false;		/* init */
+      prev = NULL;		/* init */
+      for (curr = pred_list; curr; curr = curr->next)
+	{
+	  cmp = pointer->info.pointer.pred_order - curr->info.pointer.pred_order;
+
+	  if (cmp == 0)
+	    {			/* same selectivity, re-compare rank */
+	      cmp = curr->info.pointer.sel - pointer->info.pointer.sel;
+	    }
+
+	  if (cmp == 0)
+	    {			/* same selectivity, re-compare rank */
+	      cmp = curr->info.pointer.rank - pointer->info.pointer.rank;
+	    }
+
+	  if (cmp <= 0)
+	    {
+	      pointer->next = curr;
+	      if (prev == NULL)
+		{		/* very the first */
+		  pred_list = pointer;
+		}
+	      else
+		{
+		  prev->next = pointer;
+		}
+	      found = true;
+	      break;
+	    }
+
+	  prev = curr;
+	}
+
+      /* append to the predicate list */
+      if (found == false)
+	{
+	  if (prev == NULL)
+	    {			/* very the first */
+	      pointer->next = pred_list;
+	      pred_list = pointer;
+	    }
+	  else
+	    {			/* very the last */
+	      prev->next = pointer;
+	    }
+	}
     }
 
   return pred_list;

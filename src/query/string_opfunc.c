@@ -196,8 +196,8 @@ static int qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_T
 			int s2_length, int s2_precision, DB_TYPE s2_type, INTL_CODESET codeset, int *result_length,
 			int *result_size, DB_DATA_STATUS * data_status);
 #endif
-static int qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type,
-			     const unsigned char *s2, int s2_length, int s2_precision, DB_TYPE s2_type,
+static int qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size, int s1_precision, DB_TYPE s1_type,
+			     const unsigned char *s2, int s2_length, int s2_size, int s2_precision, DB_TYPE s2_type,
 			     INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
 			     DB_TYPE * result_type, DB_DATA_STATUS * data_status);
 static int qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type,
@@ -1212,9 +1212,11 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 		}
 	    }
 
-	  error_status = qstr_concatenate (DB_GET_UCHAR (string1), (int) db_get_string_length (string1),
+	  error_status = qstr_concatenate (DB_GET_UCHAR (string1), (int) db_get_string_length ((DB_VALUE *) string1),
+					   (int) db_get_string_size (string1),
 					   (int) QSTR_VALUE_PRECISION (string1), DB_VALUE_DOMAIN_TYPE (string1),
-					   DB_GET_UCHAR (string2), (int) db_get_string_length (string2),
+					   DB_GET_UCHAR (string2), (int) db_get_string_length ((DB_VALUE *) string2),
+					   (int) db_get_string_size (string2),
 					   (int) QSTR_VALUE_PRECISION (string2), DB_VALUE_DOMAIN_TYPE (string2),
 					   codeset, &r, &r_length, &r_size, &r_type, data_status);
 
@@ -1241,6 +1243,7 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 
 	      qstr_make_typed_string (r_type, result, result_domain_length, (char *) r, r_size, codeset, common_coll);
 	      r[r_size] = 0;
+	      result->data.ch.medium.length = r_length;
 	      result->need_clear = true;
 	    }
 	}
@@ -8077,6 +8080,10 @@ db_get_string_length (const DB_VALUE * value)
   length = size = value->data.ch.medium.size;
   codeset = (INTL_CODESET) value->data.ch.medium.codeset;
 
+  if (value->data.ch.medium.length != -1)
+    {
+      return value->data.ch.medium.length;
+    }
   if (value->domain.general_info.type != DB_TYPE_BIT && value->domain.general_info.type != DB_TYPE_VARBIT)
     {
       intl_char_count ((unsigned char *) str, size, codeset, &length);
@@ -9130,10 +9137,12 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
  * Arguments:
  *             s1: (IN)  First string pointer.
  *      s1_length: (IN)  Character length of <s1>.
+ *        s1_size: (IN)  Byte size of <s1>.
  *   s1_precision: (IN)  Max character length of <s1>.
  *        s1_type: (IN)  Domain type of <s1>.
  *             s2: (IN)  Second string pointer.
  *      s2_length: (IN)  Character length of <s2>.
+ *        s2_size: (IN)  Byte size of <s2>.
  *   s2_precision: (IN)  Max character length of <s2>.
  *        s2_type: (IN)  Domain type of <s2>.
  *        codeset: (IN)  international codeset.
@@ -9149,9 +9158,10 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
  */
 
 static int
-qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type, const unsigned char *s2,
-		  int s2_length, int s2_precision, DB_TYPE s2_type, INTL_CODESET codeset, unsigned char **result,
-		  int *result_length, int *result_size, DB_TYPE * result_type, DB_DATA_STATUS * data_status)
+qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_precision, DB_TYPE s1_type,
+		  const unsigned char *s2, int s2_length, int s2_size_, int s2_precision, DB_TYPE s2_type,
+		  INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
+		  DB_TYPE * result_type, DB_DATA_STATUS * data_status)
 {
   int copy_length, copy_size;
   int pad1_length, pad2_length;
@@ -9162,6 +9172,9 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
   int error_status = NO_ERROR;
 
   *data_status = DATA_STATUS_OK;
+
+  s1_size = s1_size_;
+  s2_size = s2_size_;
 
   /*
    *  Categorize the source string into fixed and variable
@@ -9198,6 +9211,11 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
   if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
     {
       /*
+       * The only time we enter inside this if statement is 
+       * when we are using the iso88591 codeset and a data type like char(100). 
+       * This is because the size is not fixed in all other cases.
+       */
+      /*
        *  The result will be a chararacter string of length =
        *  string1_precision + string2_precision.  If the result
        *  length is greater than the maximum allowed for a fixed
@@ -9210,9 +9228,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 	  *result_length = QSTR_MAX_PRECISION (s1_type);
 	  *data_status = DATA_STATUS_TRUNCATED;
 	}
-
-      intl_char_size ((unsigned char *) s1, s1_logical_length, codeset, &s1_size);
-      intl_char_size ((unsigned char *) s2, s2_logical_length, codeset, &s2_size);
 
       if (s1_size == 0)
 	{
@@ -9301,9 +9316,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 	  *result_type = DB_TYPE_VARCHAR;
 	}
 
-      intl_char_size ((unsigned char *) s1, s1_logical_length, codeset, &s1_size);
-      intl_char_size ((unsigned char *) s2, s2_logical_length, codeset, &s2_size);
-
       if (s1_size == 0)
 	{
 	  s1_size = s1_logical_length;
@@ -9336,16 +9348,17 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
        *  a truncation exception.
        */
       copy_length = s1_length;
+      copy_size = s1_size;
       if (copy_length > *result_length)
 	{
 	  copy_length = *result_length;
+	  copy_size = *result_size;
 
 	  if (varchar_truncated ((unsigned char *) s1, s1_type, s1_length, copy_length, codeset))
 	    {
 	      *data_status = DATA_STATUS_TRUNCATED;
 	    }
 	}
-      intl_char_size ((unsigned char *) s1, copy_length, codeset, &copy_size);
 
       pad1_length = MIN (s1_logical_length, *result_length) - copy_length;
       length_left = *result_length - copy_length - pad1_length;
@@ -9354,16 +9367,17 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
        *  Processess string2 as we did for string1.
        */
       cat_length = s2_length;
+      cat_size = s2_size;
       if (cat_length > (*result_length - copy_length))
 	{
 	  cat_length = *result_length - copy_length;
+	  cat_size = *result_size - copy_size;
 
 	  if (varchar_truncated ((unsigned char *) s2, s2_type, s2_length, cat_length, codeset))
 	    {
 	      *data_status = DATA_STATUS_TRUNCATED;
 	    }
 	}
-      intl_char_size ((unsigned char *) s2, cat_length, codeset, &cat_size);
 
       pad2_length = length_left - cat_length;
 
@@ -9377,7 +9391,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
       (void) qstr_pad_string ((unsigned char *) &cat_ptr[cat_size], pad2_length, codeset);
     }
 
-  intl_char_size (*result, *result_length, codeset, result_size);
 
   return error_status;
 

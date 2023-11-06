@@ -293,6 +293,7 @@ class page_server
 
     void start_catchup (const LOG_LSA catchup_lsa);
     void execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa);
+    void complete_catchup ();
 
     tran_server_responder_t &get_tran_server_responder ();
     follower_responder_t &get_follower_responder ();

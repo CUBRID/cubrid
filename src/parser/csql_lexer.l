@@ -211,13 +211,13 @@ int is_dblink_query_string = 0;
 [cC][oO][lL][uU][mM][nN][sS]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return COLUMNS; }
-[cC][oO][mM][mM][eE][nN][tT]					{ begin_token(yytext);
+[cC][oO][mM][mM][eE][nN][tT]					        { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return COMMENT; }
 [cC][oO][mM][mM][iI][tT]						{ begin_token(yytext);   return COMMIT; }
 [cC][oO][mM][mM][iI][tT][tT][eE][dD]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
-										return COMMITTED; }
+										return COMMITTED; }                                                                            
 [cC][oO][nN][nN][eE][cC][tT]						{ begin_token(yytext);   return CONNECT; }
 [cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][iI][sS][cC][yY][cC][lL][eE]	{ begin_token(yytext);   return CONNECT_BY_ISCYCLE; }
 [cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][iI][sS][lL][eE][aA][fF]	{ begin_token(yytext);   return CONNECT_BY_ISLEAF; }
@@ -281,6 +281,9 @@ int is_dblink_query_string = 0;
 [dD][eE][cC][rR][eE][mM][eE][nN][tT]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return DECREMENT; }
+[dD][eE][dD][uU][pP][lL][iI][cC][aA][tT][eE] 	                        { begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return DEDUPLICATE_; }
 [dD][eE][fF][aA][uU][lL][tT]						{ begin_token(yytext);   return DEFAULT; }
 [dD][eE][fF][eE][rR][rR][aA][bB][lL][eE]				{ begin_token(yytext);   return DEFERRABLE; }
 [dD][eE][fF][eE][rR][rR][eE][dD]					{ begin_token(yytext);   return DEFERRED; }
@@ -398,7 +401,7 @@ int is_dblink_query_string = 0;
 										return HEADER; }
 [hH][eE][aA][pP]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
-										return HEAP; }
+										return HEAP; }                                                                            
 [hH][oO][sS][tT]					                { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HOST; }
@@ -673,7 +676,7 @@ int is_dblink_query_string = 0;
 [oO][fF][fF][sS][eE][tT]				                { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return OFFSET; }
-[oO][nN]								{ begin_token(yytext);   return ON_; }
+[oO][nN]								{ begin_token(yytext);   return ON_; }                                                                                
 [oO][nN][lL][iI][nN][eE]						{ begin_token(yytext);   
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return ONLINE; }
@@ -699,6 +702,7 @@ int is_dblink_query_string = 0;
 [pP][aA][gG][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PAGE; }
+                                                                                
 [pP][aA][rR][aA][lL][lL][eE][lL]					{ begin_token(yytext);
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return PARALLEL; }										

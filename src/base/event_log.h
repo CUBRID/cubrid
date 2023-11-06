@@ -45,4 +45,5 @@ extern void event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_I
 extern void event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, int bind_index);
 extern void event_log_log_flush_thr_wait (THREAD_ENTRY * thread_p, int flush_count, clientids * client_info,
 					  int flush_time, int flush_wait_time, int writer_time);
+extern void event_log_sql_without_user_oid (FILE * fp, const char *format, int indent, const char *hash_text);
 #endif /* _EVENT_LOG_H_ */

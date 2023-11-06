@@ -873,7 +873,11 @@ receiver_thr_f (void *arg)
 	  memcpy ((char *) &session_id, cas_req_header + 6, 4);
 	  session_id = ntohl (session_id);
 
-	  if (shm_br->br_info[br_index].shard_flag == OFF)
+	  if (shm_br->br_info[br_index].shard_flag == ON)
+	    {
+	      status = FN_STATUS_BUSY;
+	    }
+	  else
 	    {
 	      for (i = 0; i < shm_br->br_info[br_index].appl_server_max_num; i++)
 		{
@@ -1404,7 +1408,11 @@ init_env (void)
       return (-1);
     }
 
+#if defined (WINDOWS)
+  if (listen (sock_fd, SOMAXCONN_HINT (shm_appl->job_queue_size)) < 0)
+#else
   if (listen (sock_fd, shm_appl->job_queue_size) < 0)
+#endif
     {
       UW_SET_ERROR_CODE (UW_ER_CANT_BIND, 0);
       return (-1);

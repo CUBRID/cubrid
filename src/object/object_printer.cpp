@@ -644,6 +644,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   const int *asc_desc;
   const int *prefix_length;
   int k, n_attrs = 0;
+  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
@@ -751,6 +752,18 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  break;
 	}
+
+      if (IS_DEDUPLICATE_KEY_ATTR_ID ((*attribute_p)->id))
+	{
+	  assert (k == (n_attrs - 1));
+	  int level = GET_DEDUPLICATE_KEY_ATTR_LEVEL ((*attribute_p)->id);
+	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), level);
+
+	  /* Since there is no hidden column in the contents to be described in the REFERENCE clause. */
+	  n_attrs--;
+	  break;
+	}
+
       if (k > 0)
 	{
 	  m_buf (", ");
@@ -783,6 +796,12 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   if (constraint.filter_predicate && constraint.filter_predicate->pred_string)
     {
       m_buf (" WHERE %s", constraint.filter_predicate->pred_string);
+    }
+
+  // In case of PK (Unique Key also), reserved_col_buf will be empty.
+  if (reserved_col_buf[0])
+    {
+      m_buf (" WITH %s", reserved_col_buf);
     }
 
   if (constraint.type == SM_CONSTRAINT_FOREIGN_KEY && constraint.fk_info)
@@ -836,6 +855,11 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
       m_buf (" ON UPDATE %s", classobj_describe_foreign_key_action (constraint.fk_info->update_action));
     }
 
+  if (constraint.index_status == SM_INVISIBLE_INDEX)
+    {
+      m_buf (" INVISIBLE");
+    }
+
   if (constraint.comment != NULL && constraint.comment[0] != '\0')
     {
       m_buf (" ");
@@ -847,11 +871,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	{
 	  describe_comment (constraint.comment);
 	}
-    }
-
-  if (constraint.index_status == SM_INVISIBLE_INDEX)
-    {
-      m_buf (" INVISIBLE");
     }
 
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)

@@ -131,92 +131,6 @@ typedef struct schema_def
 
 static SCHEMA_DEF Current_Schema = { {'\0'}, NULL, NULL, NULL, NULL };
 
-typedef struct system_class_def
-{
-  const char *name;
-  int len;
-} SYSTEM_CLASS_DEF;
-
-// *INDENT-OFF*
-static SYSTEM_CLASS_DEF system_classes[] = {
-  {ROOTCLASS_NAME, strlen (ROOTCLASS_NAME)},			// "Rootclass"
-  {CT_DUAL_NAME, strlen (CT_DUAL_NAME)},			// "dual"
-
-  /*
-   * authorization classes
-   *
-   * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
-   * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
-   * AU_USER_CLASS_NAME     = CT_USER_NAME
-   * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
-   * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
-   * AU_GRANT_CLASS_NAME
-   */
-  {AU_ROOT_CLASS_NAME, strlen (AU_ROOT_CLASS_NAME)},		// "db_root"
-  {AU_USER_CLASS_NAME, strlen (AU_USER_CLASS_NAME)},		// "db_user"
-  {AU_PASSWORD_CLASS_NAME, strlen (AU_PASSWORD_CLASS_NAME)},	// "db_password"
-  {AU_AUTH_CLASS_NAME, strlen (AU_AUTH_CLASS_NAME)},		// "db_authorization"
-  {AU_OLD_ROOT_CLASS_NAME, strlen (AU_OLD_ROOT_CLASS_NAME)},	// "db_authorizations"
-
-  /* currently, not implemented */
-  {AU_GRANT_CLASS_NAME, strlen (AU_GRANT_CLASS_NAME)},		// "db_grant"
-
-  /* 
-   * catalog classes
-   */
-  {CT_CLASS_NAME, strlen (CT_CLASS_NAME)},			// "_db_class"
-  {CT_ATTRIBUTE_NAME, strlen (CT_ATTRIBUTE_NAME)}, 		// "_db_attribute"
-  {CT_DOMAIN_NAME, strlen (CT_DOMAIN_NAME)},			// "_db_domain"
-  {CT_METHOD_NAME, strlen (CT_METHOD_NAME)},			// "_db_method"
-  {CT_METHSIG_NAME, strlen (CT_METHSIG_NAME)},			// "_db_meth_sig"
-  {CT_METHARG_NAME, strlen (CT_METHARG_NAME)},			// "_db_meth_arg"
-  {CT_METHFILE_NAME, strlen (CT_METHFILE_NAME)},		// "_db_meth_file"
-  {CT_QUERYSPEC_NAME, strlen (CT_QUERYSPEC_NAME)},		// "_db_query_spec"
-  {CT_INDEX_NAME, strlen (CT_INDEX_NAME)},			// "_db_index"
-  {CT_INDEXKEY_NAME, strlen (CT_INDEXKEY_NAME)},		// "_db_index_key"
-  {CT_DATATYPE_NAME, strlen (CT_DATATYPE_NAME)},		// "_db_data_type"
-  {CT_CLASSAUTH_NAME, strlen (CT_CLASSAUTH_NAME)},		// "_db_auth"
-  {CT_PARTITION_NAME, strlen (CT_PARTITION_NAME)},		// "_db_partition"
-  {CT_STORED_PROC_NAME, strlen (CT_STORED_PROC_NAME)},		// "_db_stored_procedure"
-  {CT_STORED_PROC_ARGS_NAME, strlen (CT_STORED_PROC_ARGS_NAME)},	// "_db_stored_procedure_args"
-  {CT_SERIAL_NAME, strlen (CT_SERIAL_NAME)},			// "db_serial"
-  {CT_HA_APPLY_INFO_NAME, strlen (CT_HA_APPLY_INFO_NAME)},	// "db_ha_apply_info"
-  {CT_COLLATION_NAME, strlen (CT_COLLATION_NAME)},		// "_db_collation"
-  {CT_CHARSET_NAME, strlen (CT_CHARSET_NAME)},			// "_db_charset"
-  {CT_DB_SERVER_NAME, strlen (CT_DB_SERVER_NAME)},		// "_db_server"
-  {CT_SYNONYM_NAME, strlen (CT_SYNONYM_NAME)},			// "_db_synonym"
-
-  {CT_TRIGGER_NAME, strlen (CT_TRIGGER_NAME)},			// "db_trigger"
-
-  /* currently, not implemented */
-  {CT_RESOLUTION_NAME, strlen (CT_RESOLUTION_NAME)},		// "_db_resolution"
-
-  /*
-   * catalog vclasses
-   */
-  {CTV_CLASS_NAME, strlen (CTV_CLASS_NAME)},			// "db_class"
-  {CTV_SUPER_CLASS_NAME, strlen (CTV_SUPER_CLASS_NAME)},	// "db_direct_super_class"
-  {CTV_VCLASS_NAME, strlen (CTV_VCLASS_NAME)},			// "db_vclass"
-  {CTV_ATTRIBUTE_NAME, strlen (CTV_ATTRIBUTE_NAME)},		// "db_attribute"
-  {CTV_ATTR_SD_NAME, strlen (CTV_ATTR_SD_NAME)},		// "db_attr_setdomain_elm"
-  {CTV_METHOD_NAME, strlen (CTV_METHOD_NAME)},			// "db_method"
-  {CTV_METHARG_NAME, strlen (CTV_METHARG_NAME)},		// "db_meth_arg"
-  {CTV_METHARG_SD_NAME, strlen (CTV_METHARG_SD_NAME)},		// "db_meth_arg_setdomain_elm"
-  {CTV_METHFILE_NAME, strlen (CTV_METHFILE_NAME)},		// "db_meth_file"
-  {CTV_INDEX_NAME, strlen (CTV_INDEX_NAME)},			// "db_index"
-  {CTV_INDEXKEY_NAME, strlen (CTV_INDEXKEY_NAME)},		// "db_index_key"
-  {CTV_AUTH_NAME, strlen (CTV_AUTH_NAME)},			// "db_auth"
-  {CTV_TRIGGER_NAME, strlen (CTV_TRIGGER_NAME)},		// "db_trig"
-  {CTV_PARTITION_NAME, strlen (CTV_PARTITION_NAME)},		// "db_partition"
-  {CTV_STORED_PROC_NAME, strlen (CTV_STORED_PROC_NAME)},	// "db_stored_procedure"
-  {CTV_STORED_PROC_ARGS_NAME, strlen (CTV_STORED_PROC_ARGS_NAME)},	// "db_stored_procedure_args"
-  {CTV_DB_COLLATION_NAME, strlen (CTV_DB_COLLATION_NAME)},	// "db_collation"
-  {CTV_DB_CHARSET_NAME, strlen (CTV_DB_CHARSET_NAME)},		// "db_charset"
-  {CTV_DB_SERVER_NAME, strlen (CTV_DB_SERVER_NAME)},		// "db_server"
-  {CTV_SYNONYM_NAME, strlen (CTV_SYNONYM_NAME)}			// "db_synonym"
-};
-// *INDENT-ON*
-
 #define WC_PERIOD L'.'
 
 /*
@@ -484,9 +398,11 @@ static const char *sm_locate_method_file (SM_CLASS * class_, const char *functio
 static void sm_method_final (void);
 #endif
 
+#if 0				// defined(UNCALLED_FUNCTION)
 static int sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 				 const char *constraint_name, const char **att_names, const int *asc_desc,
 				 const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * func_info);
+#endif
 
 static void sm_reset_descriptors (MOP class_);
 
@@ -3286,76 +3202,6 @@ sm_is_system_class (MOP op)
   return sm_get_class_flag (op, SM_CLASSFLAG_SYSTEM);
 }
 
-static int
-system_class_def_compare (const void *a, const void *b)
-{
-  const SYSTEM_CLASS_DEF *sa = STATIC_CAST (const SYSTEM_CLASS_DEF *, a);
-  const SYSTEM_CLASS_DEF *sb = STATIC_CAST (const SYSTEM_CLASS_DEF *, b);
-
-  if (sa->len != sb->len)
-    {
-      return sa->len - sb->len;
-    }
-
-  return strcmp (sa->name, sb->name);
-}
-
-/*
- * sm_check_system_class_by_name () - Checks whether the class name is
- *    the same as the system class name.
- * return: true if the system class name, false otherwise
- * name(in): class name
- */
-bool
-sm_check_system_class_by_name (const char *name)
-{
-  static int was_initialized = FALSE;
-  static int count = sizeof (system_classes) / sizeof (system_classes[0]);
-
-  SYSTEM_CLASS_DEF sa;
-  char downcase_name[SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH] = { '\0' };
-  int len = 0;
-  int cmp = 0;
-  int i = 0;
-
-  if (name == NULL || name[0] == '\0')
-    {
-      return false;
-    }
-
-  if (!was_initialized)
-    {
-      qsort (system_classes, count, sizeof (system_classes[0]), system_class_def_compare);
-      was_initialized = TRUE;
-    }
-
-  /* The user-specified name is not a system class name. */
-  if (strchr (name, '.') != NULL)
-    {
-      return false;
-    }
-
-  sm_downcase_name (name, downcase_name, SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-  sa.name = downcase_name;
-  sa.len = strlen (downcase_name);
-
-  if (sa.len > system_classes[count - 1].len)
-    {
-      return false;
-    }
-
-  for (i = 0; i < count; i++)
-    {
-      cmp = system_class_def_compare (&sa, system_classes + i);
-      if (cmp <= 0)
-	{
-	  return (cmp == 0);
-	}
-    }
-
-  return false;
-}
-
 /*
  * sm_is_reuse_oid_class() - Tests the reuse OID class flag of a class object.
  *   return: true if class is an OID reusable class. otherwise, false
@@ -5493,6 +5339,10 @@ sm_find_class_with_purpose (const char *name, bool for_update)
 	  char target_name[SM_MAX_IDENTIFIER_LENGTH] = { '\0' };
 	  sm_get_synonym_target_name (synonym_mop, target_name, SM_MAX_IDENTIFIER_LENGTH);
 	  class_mop = locator_find_class_with_purpose (target_name, for_update);
+	  if (class_mop)
+	    {
+	      er_clear ();
+	    }
 	}
       else
 	{
@@ -5931,8 +5781,8 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 	      continue;
 	    }
 
-	  /* exclude filter or function index */
-	  if (con->filter_predicate || con->func_index_info)
+	  /* exclude filter or function index(If the first key part of index is a function) */
+	  if (con->filter_predicate || (con->func_index_info && con->func_index_info->col_id < num_atts))
 	    {
 	      continue;
 	    }
@@ -9618,6 +9468,12 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	      /*
 	       * Try to find a corresponding attribute in the flattened template
 	       */
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[i]->id))
+		{
+		  assert (attrs[i + 1] == NULL);
+		  continue;
+		}
+
 	      for (att = flat->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 		{
 		  if (SM_COMPARE_NAMES (attrs[i]->header.name, att->header.name) == 0)
@@ -10046,6 +9902,7 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	  /* if the ids are the same, use it without looking at the name, this is how rename works */
 	  if (new_att->id != -1)
 	    {
+	      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (new_att->id));
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;
@@ -10819,7 +10676,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   // TODO: optimize has_instances case
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
+      error =
+	btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk,
+			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index));
     }
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else
@@ -10950,6 +10809,12 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
   if (!HFID_IS_NULL (hfid) && heap_has_instance (hfid, cls_oid, 0))
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
+
+      // We cannot make a PK with a function. Therefore, only the last member is checked.
+      if (n_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (key_attrs[n_attrs - 1]->id))
+	{
+	  n_attrs--;
+	}
 
       domain = construct_index_key_domain (n_attrs, key_attrs, asc_desc, NULL, -1, NULL);
       if (domain == NULL)
@@ -14193,10 +14058,11 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
   else
     {
       const char *prefix;
-      int i, k;
+      int i;
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
+      bool is_fk = false;
 
       switch (type)
 	{
@@ -14211,6 +14077,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
+	  is_fk = true;
 	  break;
 	case DB_CONSTRAINT_NOT_NULL:
 	  prefix = "n_";
@@ -14242,6 +14109,12 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
+	  if (is_fk && IS_DEDUPLICATE_KEY_ATTR_NAME (*ptr))
+	    {
+	      n_attrs--;	/* Do not include deduplicate_key_attr name in the FK name */
+	      assert (i == n_attrs);
+	      break;
+	    }
 
 	  do_desc = false;	/* init */
 	  if (asc_desc)
@@ -14346,10 +14219,9 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  strncat (name, class_name_only, class_name_prefix_size);
 
 	  /* separated list of attribute names */
-	  k = 0;
 	  i = 0;
 	  /* n_attrs is already limited to MAX_ATTR_IN_AUTO_GEN_NAME here */
-	  for (ptr = att_names; k < n_attrs; ptr++, i++)
+	  for (ptr = att_names; i < n_attrs; ptr++, i++)
 	    {
 	      do_desc = false;	/* init */
 	      if (asc_desc)
@@ -14408,7 +14280,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 
 		  strcat (name, att_name_trunc);
 		}
-	      k++;
 	    }
 
 	  if (att_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH || class_name_prefix_size != DB_MAX_IDENTIFIER_LENGTH)
@@ -14517,6 +14388,7 @@ sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl, DB_CONSTRAINT_TYPE constrai
   return sm_produce_constraint_name (template_classname (tmpl), constraint_type, att_names, asc_desc, given_name);
 }
 
+#if 0				// defined(UNCALLED_FUNCTION)
 /*
  * sm_check_index_exist() - Check index is duplicated.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -14552,6 +14424,7 @@ sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TY
   return classobj_check_index_exist (class_->constraints, out_shared_cons_name, sm_ch_name ((MOBJ) class_),
 				     constraint_type, constraint_name, att_names, asc_desc, filter_index, func_info);
 }
+#endif
 
 static int
 sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
@@ -16313,7 +16186,6 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   size_t attr_ids_size;
   OID *oids = NULL;
   HFID *hfids = NULL;
-  int reverse;
   int unique_pk = 0;
   int not_null = 0;
 
@@ -16456,15 +16328,6 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
       HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) subclass_));
 
       subclass_ = NULL;
-    }
-
-  if (con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
-    {
-      reverse = 1;
-    }
-  else
-    {
-      reverse = 0;
     }
 
   if (con->type == SM_CONSTRAINT_UNIQUE || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)

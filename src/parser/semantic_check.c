@@ -201,6 +201,7 @@ static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
@@ -5046,8 +5047,36 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     case PT_MODIFY_QUERY:
       if (type != PT_CLASS && (qry = alter->info.alter.alter_clause.query.query) != NULL)
 	{
+	  MOP me = NULL;
+	  MOP owner = NULL;
+	  bool change_owner_flag = false;
+	  int client_type = db_get_client_type ();
+
+	  if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	    {
+	      const char *user_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
+	      if (user_name != NULL)
+		{
+		  me = db_get_user ();
+		  owner = au_find_user (user_name);
+		  if (owner != NULL && !ws_is_same_object (owner, me))
+		    {
+		      /* set user to owner to translate query specification. */
+		      AU_SET_USER (owner);
+		      change_owner_flag = true;
+		    }
+		}
+	    }
+
 	  pt_validate_query_spec (parser, qry, db);
+
+	  if (change_owner_flag)
+	    {
+	      /* restore user */
+	      AU_SET_USER (me);
+	    }
 	}
+
       /* FALLTHRU */
     case PT_DROP_QUERY:
       if (type == PT_CLASS)
@@ -8636,7 +8665,34 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else				/* must be a CREATE VCLASS statement */
     {
+      MOP me = NULL;
+      MOP owner = NULL;
+      bool change_owner_flag = false;
+      int client_type = db_get_client_type ();
+
+      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	{
+	  const char *user_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
+	  if (user_name != NULL)
+	    {
+	      me = db_get_user ();
+	      owner = au_find_user (user_name);
+	      if (owner != NULL && !ws_is_same_object (owner, me))
+		{
+		  /* set user to owner to translate query specification. */
+		  AU_SET_USER (owner);
+		  change_owner_flag = true;
+		}
+	    }
+	}
+
       pt_check_create_view (parser, node);
+
+      if (change_owner_flag)
+	{
+	  /* restore user */
+	  AU_SET_USER (me);
+	}
     }
 
   /* check that all constraints look valid */
@@ -8938,13 +8994,16 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
       /* PT_SYNONYM_TARGET_NAME (node) != NULL */
 
       /* target_owner_name */
-      owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
-      assert (owner_name != NULL && *owner_name != '\0');
-      owner_obj = db_find_user (owner_name);
-      if (owner_obj == NULL)
+      if (!PT_SYNONYM_IS_DBLINKED (node))
 	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
-	  return;
+	  owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
+	  assert (owner_name != NULL && *owner_name != '\0');
+	  owner_obj = db_find_user (owner_name);
+	  if (owner_obj == NULL)
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	      return;
+	    }
 	}
     }
 }
@@ -9042,13 +9101,16 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
    * || (synonym_obj == NULL && db_find_class () == NULL && er_errid () == ER_LC_UNKNOWN_CLASSNAME) */
 
   /* target_owner_name */
-  owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
-  assert (owner_name != NULL && *owner_name != '\0');
-  owner_obj = db_find_user (owner_name);
-  if (owner_obj == NULL)
+  if (!PT_SYNONYM_IS_DBLINKED (node))
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
-      return;
+      owner_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (node));
+      assert (owner_name != NULL && *owner_name != '\0');
+      owner_obj = db_find_user (owner_name);
+      if (owner_obj == NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	  return;
+	}
     }
 }
 
@@ -9740,6 +9802,65 @@ pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  PT_ERRORm (parser, tran_id, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_TRANSACTION_ID_WANT_INTEGER);
 	  break;
+	}
+    }
+}
+
+/*
+ * pt_check_update_stats () - do semantic checks on the UPDATE STATISTICS statement
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+static void
+pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *class_name_node;
+  PT_FLAT_SPEC_INFO info;
+
+  assert (node->node_type == PT_UPDATE_STATS);
+
+  if (node->info.update_stats.all_classes != 0)
+    {
+      /* The following UPDATE STATISTICS statements do not need to be checked because class names are not used.
+       *   - UPDATE STATISTICS ON ALL CLASSES     : (PT_NODE *)->info.update_stats.all_classes == 1
+       *   - UPDATE STATISTICS ON CATALOG CLASSES : (PT_NODE *)->info.update_stats.all_classes == -1
+       */
+      return;
+    }
+
+  /* replace entity spec with an equivalent flat list */
+  info.spec_parent = NULL;
+  info.for_update = false;
+  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+
+  for (class_name_node = node->info.update_stats.class_list; class_name_node != NULL;
+       class_name_node = class_name_node->next)
+    {
+      assert (class_name_node->node_type == PT_NAME);
+      assert (class_name_node->info.name.original != NULL);
+
+      const char *class_name = class_name_node->info.name.original;
+
+      /* The use of synonyms is not allowed in the update statistics statement. */
+      if (db_find_synonym (class_name) != NULL)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, class_name);
+	  return;
+	}
+      else
+	{
+	  /* db_find_synonym () == NULL */
+	  ASSERT_ERROR ();
+
+	  if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	    {
+	      er_clear ();
+	    }
+	  else
+	    {
+	      return;
+	    }
 	}
     }
 }
@@ -10825,6 +10946,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       break;
 
     case PT_DBLINK_TABLE:
+    case PT_DBLINK_TABLE_DML:
       if (pt_has_error (parser))
 	{
 	  break;
@@ -11426,6 +11548,17 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	}
 #endif /* 0 */
 
+      if (!pt_has_error (parser))
+	{
+	  if ((node->node_type == PT_INSERT && node->info.insert.spec->info.spec.remote_server_name)
+	      || (node->node_type == PT_DELETE && node->info.delete_.spec->info.spec.remote_server_name)
+	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
+	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
+	    {
+	      break;
+	    }
+	}
+
       sc_info_ptr->system_class = false;
       node = pt_resolve_names (parser, node, sc_info_ptr);
 
@@ -11612,7 +11745,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
     case PT_DROP_USER:
     case PT_RENAME:
     case PT_RENAME_TRIGGER:
+      break;
+
     case PT_UPDATE_STATS:
+      pt_check_update_stats (parser, node);
       break;
 
     case PT_CREATE_SERVER:
@@ -13798,9 +13934,22 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return NULL;
     }
 
-#if 0				/* to disable TEXT */
-  pt_resolve_insert_external (parser, ins);
-#endif /* 0 */
+  if (stmt->node_type == PT_INSERT)
+    {
+      if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name)
+	{
+	  assert (stmt->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+	  return stmt;
+	}
+    }
+  else if (stmt->node_type == PT_MERGE)
+    {
+      if (stmt->info.merge.into && stmt->info.merge.into->info.spec.remote_server_name)
+	{
+	  assert (stmt->info.merge.into->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+	  return stmt;
+	}
+    }
 
   if (stmt->node_type == PT_INSERT)
     {

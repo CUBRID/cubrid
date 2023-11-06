@@ -105,6 +105,39 @@ jobs:
     parallelism: 8
     <<: *test_defaults
 
+  build-windows:
+    machine:
+      image: 'windows-server-2019-vs2019:2022.08.1'
+      resource_class: windows.large
+      shell: powershell.exe -ExecutionPolicy Bypass
+    environment:
+      - CMAKE_GENERATOR: "Visual Studio 16 2019"
+      - CMAKE_BUILD_PARALLEL_LEVEL: 10
+      - WITH_CCI: true
+    steps:
+      - checkout
+      - run:
+          name: Submodules
+          command: |
+            git submodule update --init --recursive
+            git rm -f cubridmanager
+      - run:
+          name: Install dependencies
+          command: |
+            choco install openjdk8redhatbuild --no-progress -y
+            choco install cmake --version=3.26.3 --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
+            choco install winflexbison wixtoolset --no-progress -y
+            choco install ant --ignore-dependencies --no-progress -y
+      - run:
+          name: CMake Configure
+          command: |
+            cmake -E make_directory build
+            cmake -E chdir build cmake -G $env:CMAKE_GENERATOR -DWITH_CCI=$env:WITH_CCI -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+      - run:
+          name: CMake Build
+          command: |
+            cmake --build build --config RelWithDebInfo --parallel $env:CMAKE_BUILD_PARALLEL_LEVEL
+
 workflows:
   version: 2
   build_test:
@@ -123,3 +156,4 @@ workflows:
       - test_sql_ol:
           requires:
             - build
+      - build-windows

@@ -58,3 +58,6 @@ target_include_directories(test_log_repl_atomic_helper PRIVATE
 #else()
 #  message(SEND_ERROR "Atomic replication only works on UNIX-like/WIN32")
 #endif ()
+add_dependencies(test_log_repl_atomic_helper
+  ${CATCH2_TARGET}
+  )

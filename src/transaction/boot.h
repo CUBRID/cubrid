@@ -30,6 +30,7 @@
 
 #include <stdio.h>
 
+// *INDENT-OFF*
 #define BOOT_NORMAL_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_DEFAULT \
          || (client_type) == DB_CLIENT_TYPE_CSQL \
@@ -38,7 +39,8 @@
          || (client_type) == DB_CLIENT_TYPE_BROKER \
          || (client_type) == DB_CLIENT_TYPE_READ_ONLY_BROKER \
          || (client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
-         || (client_type) == DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY)
+         || (client_type) == DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY \
+         || (client_type) == DB_CLIENT_TYPE_LOADDB_UTILITY)
 
 #define BOOT_READ_ONLY_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \
@@ -49,10 +51,12 @@
 
 #define BOOT_ADMIN_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_ADMIN_UTILITY \
-         || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS \
          || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG \
          || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
-         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS \
+	 || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
 
 #define BOOT_LOG_REPLICATOR_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_LOG_COPIER \
@@ -60,29 +64,41 @@
 
 #define BOOT_CSQL_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_CSQL \
-        || (client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \
-        || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_CSQL \
-        || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL \
-        || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
-        || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS)
+         || (client_type) == DB_CLIENT_TYPE_READ_ONLY_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
+
+/* DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG is excluded
+ * for using the `--sysadm_rebuild_catalog` option of the csql utility.
+ *
+ * See CBRD-24781 for the details.
+ */
+#define BOOT_ADMIN_CSQL_CLIENT_TYPE(client_type) \
+        ((client_type) == DB_CLIENT_TYPE_ADMIN_CSQL \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+         || (client_type) == DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL)
 
 #define BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_DEFAULT \
          || (client_type) == DB_CLIENT_TYPE_BROKER \
          || (client_type) == DB_CLIENT_TYPE_READ_ONLY_BROKER \
          || (client_type) == DB_CLIENT_TYPE_SLAVE_ONLY_BROKER \
-         || BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE(client_type))
+         || BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_type) \
+         || (client_type) == DB_CLIENT_TYPE_LOADDB_UTILITY)
 
 #define BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE(client_type) \
-    ((client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
-        || (client_type) == DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY \
-        || (client_type) == DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY)
+        ((client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
+         || (client_type) == DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY \
+         || (client_type) == DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY)
 
 #define BOOT_WRITE_ON_STANDY_CLIENT_TYPE(client_type) \
-  ((client_type) == DB_CLIENT_TYPE_LOG_APPLIER \
-      || (client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
-      || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
-      || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS)
+       ((client_type) == DB_CLIENT_TYPE_LOG_APPLIER \
+        || (client_type) == DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY \
+        || (client_type) == DB_CLIENT_TYPE_ADMIN_CSQL_WOS \
+        || (client_type) == DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS)
 
 /*
  * BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE()
@@ -90,13 +106,12 @@
  */
 #define BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE(host1, host2, client_type) \
         ((BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type) || \
-          ((host1 != NULL && strcmp (host1, host2)) && \
-           (BOOT_CSQL_CLIENT_TYPE(client_type) \
-            || BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type)))) ? 0 : 1)
+          ((host1 != NULL && strcmp (host1, host2)) && (BOOT_CSQL_CLIENT_TYPE(client_type) || BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE(client_type))) \
+         ) ? 0 : 1)
 
-#define BOOT_IS_PREFERRED_HOSTS_SET(credential) \
-        ((credential)->preferred_hosts != NULL \
-        && (credential)->preferred_hosts[0] != '\0')
+#define BOOT_IS_PREFERRED_HOSTS_SET(credential) ((credential)->preferred_hosts != NULL && (credential)->preferred_hosts[0] != '\0')
+
+// *INDENT-ON*
 
 typedef struct boot_db_path_info BOOT_DB_PATH_INFO;
 struct boot_db_path_info

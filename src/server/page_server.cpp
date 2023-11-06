@@ -229,7 +229,7 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
     {
       // TODO: It means that the ATS is booting up.
       // it will be set properly after ATS recovery is implemented.
-      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      m_ps.complete_catchup ();
       return;
     }
 
@@ -241,7 +241,7 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
     {
       catchup_er_log ("There is nothing to catch up. append_lsa = (%lld|%d).\n", LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 
-      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      m_ps.complete_catchup ();
       return;
     }
 
@@ -778,6 +778,9 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_active_tran_server ();
     }
 
+  // Pause the log prior receiver to process log records from the new ATS. It just keeps them until the catch-up is completed.
+  log_Gl.get_log_prior_receiver ().wait_until_empty_and_pause ();
+
   m_active_tran_server_conn.reset (new tran_server_connection_handler (std::move (chn), transaction_server_type::ACTIVE,
 				   *this));
 }
@@ -1185,9 +1188,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 
       catchup_er_log ("The catch-up is completed, ranging from %lld to %lld, count = %lld, append_lsa= (%lld|%d).\n",
 		      start_pageid, end_pageid, total_page_count, LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
-      // TODO: start appneding log prior nodes from the ATS.
 
-      push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      complete_catchup ();
 
       with_disc_msg = true;
     }
@@ -1207,6 +1209,13 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
     }
 
   disconnect_followee_page_server (with_disc_msg);
+}
+
+void
+page_server::complete_catchup ()
+{
+  log_Gl.get_log_prior_receiver ().resume ();
+  push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
 }
 
 bool

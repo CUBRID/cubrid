@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Baza de date "%1$s" nu este cunoscută sau fişierul "databases.txt" nu poate fi accesat.
 117 Calea absolută la baza de date este prea lungă. Lungimea combinată a căii "%1$s" plus numele "%2$s" este %3$d; lungimea combinată trebuie să fie mai mică decât %4$d.
 118 Nu s-a putut localiza directorul de lucru curent.
-119 Nu se poate găsi ("%1$s") în /etc/hosts. Vă rugăm să verificați permisiunile fișierului sau dacă există numele gazdei.
+119 Nu se poate găsi ("%1$s") în "%2$s". Vă rugăm să verificați permisiunile fișierului sau dacă există numele gazdei.
 120 Numărul maxim de volume (%1$d) a fost depăşit.
 121 Tentativă de ştergere "%1$s" a unui volum permanent al bazei de date.
 122 Nu se poate accesa catalogul de mesaje de sistem.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Nu s-a putut crea un pipe către serverul principal (master).
 348 Trebuie specificat un serviciu sau un identificator de port.
 349 Serviciu de TCP necunoscut: %1$s.
-350 Nu se poate găsi ("%1$s") în /etc/hosts. Vă rugăm să verificați permisiunile fișierului sau dacă există numele gazdei.
+350 Nu se poate găsi ("%1$s") în "%2$s". Vă rugăm să verificați permisiunile fișierului sau dacă există numele gazdei.
 351 Nu s-a putut crea un socket TCP.
 352 tcp_open: nu se poate obţine un port TCP rezervat.
 353 Nu s-a putut stabili conexiunea către serverul principal (master) pe maşina "%1$s".
@@ -904,7 +904,7 @@ $ LOADDB
 834 Există disconcordanţe între şirul de caractere sursă "%1$s" şi şirul de formatare "%2$s" date în to_number().
 835 Element de statistică necunoscut.
 836 Latch-ul pe pagina(%1$d|%2$d) a expirat.
-837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale/server/synonym etc) nu poate fi şters.
+837 Un utilizator care deţine obiecte în baza de date nu poate fi şters.
 838 Nu se pot deschide simultan mai mult de %1$d indecşi.
 839 "%1$s": Parametru de sistem necunoscut sau valoare invalidă.
 840 Parametrul de sistem "%1$s" nu poate fi schimbat.
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Încărcarea indexului a fost oprită din cauza unei erori.
 1244 Încărcarea atributelor de tip "shared" nu este suportată in modul client-server.
 1245 Încărcarea atributelor de tip "class" nu este suportată in modul client-server.
-1246 Nu se poate obține adresa și numele canonic pentru ("%1$s") în /etc/hosts. Vă rugăm să verificați permisiunea fișierului sau dacă există numele gazdei.
+1246 Nu se poate obține adresa și numele canonic pentru ("%1$s") în "%2$s". Vă rugăm să verificați permisiunea fișierului sau dacă există numele gazdei.
 1247 Momentul specificat (%1$s) trebuie să îl succeadă pe cel al copiei de rezervă specificate(%2$s).
 1248 Fișier cheie nevalid: %1$s
 1249 Nu se poate găsi cheia (index: %1$d).
@@ -1437,16 +1437,13 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" este format nevalid la rândul %3$d al fișierului "%4$s".
-1356 Numele de gazdă "%1$s" este prea lung, ar trebui să fie mai mic sau egal cu 256 la linia %2$d a fișierului "%3$s".
-1357 Numele de gazdă "%1$s" există deja, un nume de gazdă nu poate fi duplicat cu alte adrese IP la linia %2$d a fișierului "%3$s".
-1358 Ambele, adresa IP și numele de gazdă, trebuie să fie scrise complet la linia %1$d a fișierului "%2$s".
-1359 Nu se poate căuta "%1$s" în cubrid_hosts.conf.
-1360 A apărut o eroare la utilizarea gazdei definite de utilizator.
 
-1361 Fișierul "%1$s" nu a fost găsit.
+1355 Fișierul "%1$s" nu a fost găsit.
+1356 Nu există niciun indiciu în interogarea DBLink sau tipul de instrucțiune este incorect. %1$s
+1357 Conversia șirului SQL în șir larg a eșuat.
+1358 Numărul de rânduri afectate este necunoscut.
 
-1362 Ultima eroare
+1359 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1612,6 +1609,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 Nu au fost specificate opțiuni pentru ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
