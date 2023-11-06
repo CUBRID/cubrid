@@ -33,7 +33,6 @@
 
 #include "dbtype_def.h"
 #include "object_domain.h"
-#include "object_representation.h"
 #include "porting_inline.hpp"
 
 #include <cassert>

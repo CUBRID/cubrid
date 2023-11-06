@@ -892,7 +892,7 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE 
 
 static int pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total);
 static int pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, bool copy,
-					    int *p_prev_index, char **p_prev_ptr);
+					    int *prev_indexp, char **prev_ptrp);
 static void mr_initmem_enumeration (void *mem, TP_DOMAIN * domain);
 static void mr_initval_enumeration (DB_VALUE * value, int precision, int scale);
 static int mr_setmem_enumeration (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
@@ -7762,10 +7762,10 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
-  MIDXKEY_HEADER midxkey1_header, midxkey2_header;
-  int offset1, offset2;
   TP_DOMAIN *dom1, *dom2;
+  char *nullmap_ptr1, *nullmap_ptr2;
   char *mem1, *mem2;
+  int offset1, offset2;
   int last;
 
   assert (total_order == 1);
@@ -7825,14 +7825,13 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   }
 #endif /* NDEBUG */
 
-  midxkey1_header.set_size (mul1->domain->precision);
-  midxkey1_header.set_buffer (mul1->buf);
+  nullmap_ptr1 = mul1->buf;
+  nullmap_ptr2 = mul2->buf;
 
-  midxkey2_header.set_size (mul2->domain->precision);
-  midxkey2_header.set_buffer (mul2->buf);
+  last = or_multi_header_size (mul1->domain->precision);
 
-  mem1 = mul1->buf + midxkey1_header.get_header_size ();
-  mem2 = mul2->buf + midxkey2_header.get_header_size ();
+  mem1 = mul1->buf + last;
+  mem2 = mul2->buf + last;
 
   dom1 = mul1->domain->setdomain;
   dom2 = mul2->domain->setdomain;
@@ -7842,21 +7841,10 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
   i = 0;
   if (start_colp && *start_colp > 0)
     {
-#if !defined(NDEBUG)
-      for (i = 0; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
-	{
-	  assert (dom1 != NULL);
-	  assert (dom2 != NULL);
-	  assert (dom1->is_desc == dom2->is_desc);
-	}
+      offset1 = or_multi_get_element_offset (nullmap_ptr1, mul1->domain->precision, *start_colp);
+      offset2 = or_multi_get_element_offset (nullmap_ptr2, mul2->domain->precision, *start_colp);
 
-      dom1 = mul1->domain->setdomain;
-      dom2 = mul2->domain->setdomain;
-#endif /* NDEBUG */
-
-      offset1 = midxkey1_header.read_start_offset (*start_colp);
-      offset2 = midxkey2_header.read_start_offset (*start_colp);
-
+      /* fallthrough: i, dom1, dom2 */
       if (offset1 > 0)
 	{
 	  if (offset2 > 0)
@@ -7864,17 +7852,24 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	      mem1 = mul1->buf + offset1;
 	      mem2 = mul2->buf + offset2;
 
-	      for (i = 0; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+	      for (; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
 		{
+		  assert (dom1 != NULL);
+		  assert (dom2 != NULL);
+		  assert (dom1->is_desc == dom2->is_desc);
 		}
 	    }
 	  else
 	    {
 	      mem1 = mul1->buf + offset1;
 
-	      for (i = 0; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+	      for (; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
 		{
-		  if (midxkey2_header.is_not_null (i))
+		  assert (dom1 != NULL);
+		  assert (dom2 != NULL);
+		  assert (dom1->is_desc == dom2->is_desc);
+
+		  if (or_multi_is_not_null (nullmap_ptr2, i))
 		    {
 		      mem2 += pr_midxkey_element_disk_size (mem2, dom2);
 		    }
@@ -7885,24 +7880,32 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	{
 	  mem2 = mul2->buf + offset2;
 
-	  for (i = 0; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+	  for (; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
 	    {
-	      if (midxkey1_header.is_not_null (i))
+	      if (or_multi_is_not_null (nullmap_ptr1, i))
 		{
+		  assert (dom1 != NULL);
+		  assert (dom2 != NULL);
+		  assert (dom1->is_desc == dom2->is_desc);
+
 		  mem1 += pr_midxkey_element_disk_size (mem1, dom1);
 		}
 	    }
 	}
       else
 	{
-	  for (i = 0; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
+	  for (; i < *start_colp; i++, dom1 = dom1->next, dom2 = dom2->next)
 	    {
-	      if (midxkey1_header.is_not_null (i))
+	      assert (dom1 != NULL);
+	      assert (dom2 != NULL);
+	      assert (dom1->is_desc == dom2->is_desc);
+
+	      if (or_multi_is_not_null (nullmap_ptr1, i))
 		{
 		  mem1 += pr_midxkey_element_disk_size (mem1, dom1);
 		}
 
-	      if (midxkey2_header.is_not_null (i))
+	      if (or_multi_is_not_null (nullmap_ptr2, i))
 		{
 		  mem2 += pr_midxkey_element_disk_size (mem2, dom2);
 		}
@@ -7919,9 +7922,9 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	  return DB_UNK;
 	}
 
-      if (midxkey1_header.is_not_null (i))
+      if (or_multi_is_not_null (nullmap_ptr1, i))
 	{
-	  if (midxkey2_header.is_not_null (i))
+	  if (or_multi_is_not_null (nullmap_ptr2, i))
 	    {
 	      /* check for val1 and val2 same domain */
 	      if (dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
@@ -7958,7 +7961,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		}
 	    }
 	}
-      else if (midxkey2_header.is_not_null (i))
+      else if (or_multi_is_not_null (nullmap_ptr2, i))
 	{
 	  /* val 1 unbound, val 2 bound */
 	  if (mul1->min_max_val.position == i)
@@ -8021,12 +8024,12 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 
       if (c != DB_EQ)
 	{
-	  if (dom1 != NULL && midxkey1_header.is_not_null (i))
+	  if (dom1 != NULL && or_multi_is_not_null (nullmap_ptr1, i))
 	    {
 	      result_size[0] += pr_midxkey_element_disk_size (mem1, dom1);
 	    }
 
-	  if (dom2 != NULL && midxkey2_header.is_not_null (i))
+	  if (dom2 != NULL && or_multi_is_not_null (nullmap_ptr2, i))
 	    {
 	      result_size[1] += pr_midxkey_element_disk_size (mem2, dom2);
 	    }
@@ -8167,9 +8170,8 @@ mr_data_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain, int disk)
 static int
 mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
 {
-  MIDXKEY_HEADER midxkey_header;
+  char *nullmap_ptr, *buf_ptr;
   TP_DOMAIN *dom;
-  OR_BUF buf;
   int idx_ncols = 0, i;
   int offset, advance_size;
   int len;
@@ -8198,36 +8200,34 @@ mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
   }
 #endif /* NDEBUG */
 
-  or_init (&buf, (char *) memptr, -1);
-  midxkey_header.set_size (idx_ncols);
-  midxkey_header.set_buffer ((char *) memptr);
+  /* There is no difference between the disk & memory sizes. */
+  nullmap_ptr = (char *) memptr;
 
-  offset = midxkey_header.read_size_offset ();
+  offset = or_multi_get_size_offset (nullmap_ptr, idx_ncols);
   if (offset > 0)
     {
       return offset;
     }
   else
     {
-      or_advance (&buf, midxkey_header.get_header_size ());
+      buf_ptr = nullmap_ptr + or_multi_header_size (idx_ncols);
 
       for (i = 0, dom = domain->setdomain; i < idx_ncols; i++, dom = dom->next)
 	{
-	  /* check for element is NULL */
-	  if (midxkey_header.is_null (i))
+	  /* check for val is NULL */
+	  if (or_multi_is_null (nullmap_ptr, i))
 	    {
-	      continue;
+	      continue;		/* zero size; go ahead */
 	    }
 
 	  /* at here, val is non-NULL */
 
-	  advance_size = pr_midxkey_element_disk_size (buf.ptr, dom);
-	  or_advance (&buf, advance_size);
+	  buf_ptr += pr_midxkey_element_disk_size (buf_ptr, dom);
 	}
     }
 
   /* set buf size */
-  len = CAST_BUFLEN (buf.ptr - buf.buffer);
+  len = CAST_BUFLEN (buf_ptr - nullmap_ptr);
 
 exit_on_end:
 
@@ -8941,11 +8941,13 @@ pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
 int
 pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
 {
-  MIDXKEY_HEADER midxkey_header;
-  TP_DOMAIN *domain;
-  OR_BUF buf;
   int idx_ncols = 0, i;
   int offset, advance_size;
+
+  TP_DOMAIN *domain;
+
+  OR_BUF buf;
+  char *nullmap_ptr;
 
   idx_ncols = midxkey->domain->precision;
   if (idx_ncols <= 0)
@@ -8964,14 +8966,15 @@ pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
   domain = midxkey->domain->setdomain;	/* first element's domain */
 
   or_init (&buf, midxkey->buf, midxkey->size);
-  midxkey_header.set_size (midxkey->domain->precision);
-  midxkey_header.set_buffer (midxkey->buf);
-  if (or_advance (&buf, midxkey_header.get_header_size ()) != NO_ERROR)
+
+  nullmap_ptr = midxkey->buf;
+
+  if (or_advance (&buf, or_multi_header_size (idx_ncols)) != NO_ERROR)
     {
       goto exit_on_error;
     }
 
-  offset = midxkey_header.read_start_offset (index);
+  offset = or_multi_get_element_offset (nullmap_ptr, idx_ncols, index);
   if (offset > 0)
     {
       return offset;
@@ -8981,7 +8984,7 @@ pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
       for (i = 0; i < index; i++, domain = domain->next)
 	{
 	  /* check for element is NULL */
-	  if (midxkey_header.is_null (i))
+	  if (or_multi_is_null (nullmap_ptr, i))
 	    {
 	      continue;
 	    }
@@ -9019,19 +9022,13 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   int i, offset, offset_postfix, offset_prefix;
   DB_MIDXKEY *midx_postfix, *midx_prefix;
   DB_MIDXKEY midx_result;
-  MIDXKEY_HEADER result_header, prefix_header, postfix_header;
   int prefix_size;
 
   assert (DB_VALUE_TYPE (prefix) == DB_TYPE_MIDXKEY);
   assert (DB_VALUE_TYPE (postfix) == DB_TYPE_MIDXKEY);
 
   midx_prefix = db_get_midxkey (prefix);
-  prefix_header.set_size (midx_prefix->domain->precision);
-  prefix_header.set_buffer (midx_prefix->buf);
-
   midx_postfix = db_get_midxkey (postfix);
-  postfix_header.set_size (midx_postfix->domain->precision);
-  postfix_header.set_buffer (midx_postfix->buf);
 
   offset_prefix = pr_midxkey_get_element_offset (midx_prefix, n_prefix);
   offset_postfix = pr_midxkey_get_element_offset (midx_postfix, n_prefix);
@@ -9046,39 +9043,37 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   midx_result.ncolumns = midx_postfix->ncolumns;
 
   memcpy (midx_result.buf, midx_prefix->buf, offset_prefix);
-  memcpy (midx_result.buf + offset_prefix, midx_postfix->buf + offset_postfix, midx_prefix->size - offset_postfix);
-
-  result_header.set_size (midx_result.domain->precision);
-  result_header.set_buffer (midx_result.buf);
+  memcpy (midx_result.buf + offset_prefix, midx_postfix->buf + offset_postfix, midx_postfix->size - offset_postfix);
 
 #if !defined(NDEBUG)
   for (i = 0; i < n_prefix; i++)
     {
-      assert (postfix_header.is_null (i));
+      assert (or_multi_is_null (midx_postfix->buf, i));
     }
 #endif
 
-  prefix_size = offset_prefix - prefix_header.get_header_size ();
+  prefix_size = offset_prefix - or_multi_header_size (midx_prefix->domain->precision);
 
-  if (prefix_size < OR_MIDXKEY_MAX_OFFSET_SIZE)
+  if (prefix_size < OR_MULTI_MAX_OFFSET)
     {
       for (i = n_prefix; i < midx_postfix->domain->precision; i++)
 	{
 	  /* update nullmap */
-	  if (postfix_header.is_not_null (i))
+	  if (or_multi_is_not_null (midx_postfix->buf, i))
 	    {
-	      result_header.set_not_null (i);
+	      or_multi_set_not_null (midx_result.buf, i);
 	    }
 	  else
 	    {
-	      assert (result_header.is_null (i));
+	      assert (or_multi_is_null (midx_result.buf, i));
 	    }
 
 	  /* update offset */
-	  offset = postfix_header.read_end_offset (i);
-	  if (offset > 0 && (offset + prefix_size) < OR_MIDXKEY_MAX_OFFSET_SIZE)
+	  offset = or_multi_get_next_element_offset (midx_postfix->buf, midx_postfix->domain->precision, i);
+	  if (offset > 0 && (offset + prefix_size) < OR_MULTI_MAX_OFFSET)
 	    {
-	      result_header.write_end_offset (offset + prefix_size, i);
+	      or_multi_put_next_element_offset (midx_result.buf, midx_result.domain->precision, offset + prefix_size,
+						i);
 	    }
 	  else
 	    {
@@ -9087,23 +9082,23 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 	}
     }
 
-  assert (prefix_size >= OR_MIDXKEY_MAX_OFFSET_SIZE || i == midx_postfix->domain->precision || offset <= 0);
+  assert (prefix_size >= OR_MULTI_MAX_OFFSET || i == midx_postfix->domain->precision || offset <= 0);
 
   /* fallthrough: i */
   for (; i < midx_postfix->domain->precision; i++)
     {
       /* update nullmap */
-      if (postfix_header.is_not_null (i))
+      if (or_multi_is_not_null (midx_postfix->buf, i))
 	{
-	  result_header.set_not_null (i);
+	  or_multi_set_not_null (midx_result.buf, i);
 	}
       else
 	{
-	  assert (result_header.is_null (i));
+	  assert (or_multi_is_null (midx_result.buf, i));
 	}
 
       /* update offset */
-      result_header.write_end_offset (OR_MIDXKEY_MAX_OFFSET_SIZE, i);
+      or_multi_put_next_element_offset (midx_result.buf, midx_result.domain->precision, OR_MULTI_MAX_OFFSET, i);
     }
 
   midx_result.min_max_val.position = -1;
@@ -9125,41 +9120,36 @@ int
 pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 {
   DB_MIDXKEY *midx_key;
-  MIDXKEY_HEADER midxkey_header;
   TP_DOMAIN *domain;
+  char *buf_ptr;
   int i, start, offset;
   int prefix_size, advance_size;
-  int error = NO_ERROR;
-  char *buf_ptr;
 
   midx_key = db_get_midxkey (key);
 
-  midxkey_header.set_size (midx_key->domain->precision);
-  midxkey_header.set_buffer (midx_key->buf);
-
-  start = midxkey_header.get_header_size ();
+  start = pr_midxkey_get_element_offset (midx_key, 0);
   offset = pr_midxkey_get_element_offset (midx_key, prefix);
 
   memmove (midx_key->buf + start, midx_key->buf + offset, midx_key->size - offset);
 
   for (i = 0, domain = midx_key->domain->setdomain; i < prefix; i++, domain = domain->next)
     {
-      midxkey_header.set_null (i);
-      midxkey_header.write_end_offset (midxkey_header.get_header_size (), i);
+      or_multi_set_null (midx_key->buf, i);
+      or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, start, i);
     }
 
   assert (i == prefix);
   assert (domain != midx_key->domain->setdomain);
 
-  prefix_size = offset - midxkey_header.get_header_size ();
+  prefix_size = offset - start;
 
   /* fallthrough: i, domain */
   for (; i < midx_key->domain->precision; i++, domain = domain->next)
     {
-      offset = midxkey_header.read_end_offset (i);
+      offset = or_multi_get_next_element_offset (midx_key->buf, midx_key->domain->precision, i);
       if (offset > 0)
 	{
-	  midxkey_header.write_end_offset (offset - prefix_size, i);
+	  or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, offset - prefix_size, i);
 	}
       else
 	{
@@ -9172,9 +9162,9 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
   if (i < midx_key->domain->precision)
     {
       /* recalculate offset */
-      offset = midxkey_header.read_start_offset (i);
+      offset = or_multi_get_element_offset (midx_key->buf, midx_key->domain->precision, i);
       assert (offset > 0);
-      assert (offset < OR_MIDXKEY_MAX_OFFSET_SIZE);
+      assert (offset < OR_MULTI_MAX_OFFSET);
 
       buf_ptr = midx_key->buf + offset;
 
@@ -9182,11 +9172,11 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
       for (; i < midx_key->domain->precision; i++, domain = domain->next)
 	{
 	  advance_size = pr_midxkey_element_disk_size (buf_ptr, domain);
-	  if ((offset + advance_size) < OR_MIDXKEY_MAX_OFFSET_SIZE)
+	  if ((offset + advance_size) < OR_MULTI_MAX_OFFSET)
 	    {
-	      midxkey_header.write_end_offset ((offset + advance_size), i);
-	      buf_ptr += advance_size;
+	      or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, offset + advance_size, i);
 	      offset += advance_size;
+	      buf_ptr += advance_size;
 	    }
 	  else
 	    {
@@ -9197,7 +9187,7 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
       /* fallthrough: i, domain */
       for (; i < midx_key->domain->precision; i++, domain = domain->next)
 	{
-	  midxkey_header.write_end_offset (OR_MIDXKEY_MAX_OFFSET_SIZE, i);
+	  or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, OR_MULTI_MAX_OFFSET, i);
 	}
     }
 
@@ -9250,18 +9240,17 @@ pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2)
  */
 
 static int
-pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, bool copy, int *p_prev_index,
-				 char **p_prev_ptr)
+pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, bool copy, int *prev_indexp,
+				 char **prev_ptrp)
 {
-  MIDXKEY_HEADER midxkey_header;
-  TP_DOMAIN *domain;
-  char *prev_ptr;
-  int prev_index;
-  int offset;
-  int idx_ncols = 0, i;
+  int idx_ncols = 0, i, offset;
   int advance_size;
   int error = NO_ERROR;
+
+  TP_DOMAIN *domain;
+
   OR_BUF buf;
+  char *nullmap_ptr;
 
   idx_ncols = midxkey->domain->precision;
   if (idx_ncols <= 0)
@@ -9294,13 +9283,13 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
   }
 #endif /* NDEBUG */
 
-  midxkey_header.set_size (midxkey->domain->precision);
-  midxkey_header.set_buffer (midxkey->buf);
+  /* get bit-mask */
+  nullmap_ptr = midxkey->buf;
 
   /* get domain list, attr number */
   domain = midxkey->domain->setdomain;	/* first element's domain */
 
-  if (midxkey_header.is_null (index))
+  if (or_multi_is_null (nullmap_ptr, index))
     {
       db_make_null (value);
     }
@@ -9309,10 +9298,10 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
       i = 0;
 
       or_init (&buf, midxkey->buf, midxkey->size);
-      or_advance (&buf, midxkey_header.get_header_size ());
+      or_advance (&buf, or_multi_header_size (idx_ncols));
 
-      offset = midxkey_header.read_start_offset (index);
-      if (offset < OR_MIDXKEY_MAX_OFFSET_SIZE)
+      offset = or_multi_get_element_offset (midxkey->buf, idx_ncols, index);
+      if (offset > 0)
 	{
 	  or_seek (&buf, offset);
 
@@ -9323,13 +9312,11 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
 	}
       else
 	{
-	  if (p_prev_index && p_prev_ptr)
+	  if (prev_indexp && prev_ptrp)
 	    {
-	      prev_index = *p_prev_index;
-	      prev_ptr = *p_prev_ptr;
-	      offset = CAST_BUFLEN (prev_ptr - midxkey->buf);
+	      offset = CAST_BUFLEN (*prev_ptrp - midxkey->buf);
 
-	      if (prev_index <= 0 || prev_index > index || offset <= 0)
+	      if (*prev_indexp <= 0 || *prev_indexp > index || offset <= 0)
 		{		/* invalid info */
 		  /* nop */
 		}
@@ -9337,20 +9324,17 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
 		{
 		  or_seek (&buf, offset);
 
-		  for (i = 0; i < prev_index; i++, domain = domain->next)
+		  for (i = 0; i < *prev_indexp; i++, domain = domain->next)
 		    {
 		      assert (domain != NULL);
 		    }
 		}
 	    }
 
-	  assert (i == index);
-	  assert (domain != midxkey->domain->setdomain);
-
 	  for (; i < index; i++, domain = domain->next)
 	    {
 	      /* check for element is NULL */
-	      if (midxkey_header.is_null (i))
+	      if (or_multi_is_null (nullmap_ptr, index))
 		{
 		  continue;	/* skip and go ahead */
 		}
@@ -9367,10 +9351,10 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
 	}
 
       /* save the next index info */
-      if (p_prev_index && p_prev_ptr)
+      if (prev_indexp && prev_ptrp)
 	{
-	  *p_prev_index = index + 1;
-	  *p_prev_ptr = buf.ptr;
+	  *prev_indexp = index + 1;
+	  *prev_ptrp = buf.ptr;
 	}
     }
 
@@ -9411,7 +9395,6 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
   char *result_buf;
   DB_MIDXKEY *midxkey1, *midxkey2;
   DB_MIDXKEY result_midxkey;
-  MIDXKEY_HEADER result_header, midxkey1_header, midxkey2_header;
 
   /* Assertions */
   assert (db_midxkey1 != (DB_VALUE *) NULL);
@@ -9419,12 +9402,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
   assert (db_result != (DB_VALUE *) NULL);
 
   midxkey1 = db_get_midxkey (db_midxkey1);
-  midxkey1_header.set_size (midxkey1->domain->precision);
-  midxkey1_header.set_buffer (midxkey1->buf);
-
   midxkey2 = db_get_midxkey (db_midxkey2);
-  midxkey2_header.set_size (midxkey2->domain->precision);
-  midxkey2_header.set_buffer (midxkey2->buf);
 
   assert (midxkey1->size != -1);
   assert (midxkey2->size != -1);
@@ -9445,7 +9423,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
     }
 
   if (size_buf[0] == midxkey1->size || size_buf[1] == midxkey2->size
-      || midxkey1_header.is_null (diff_column + 1) || midxkey2_header.is_null (diff_column + 1))
+      || or_multi_is_null (midxkey1->buf, diff_column + 1) || or_multi_is_null (midxkey2->buf, diff_column + 1))
     {
       /* not found separator: give up */
       pr_clone_value (db_midxkey2, db_result);
@@ -9466,8 +9444,7 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
 	  result_size = size_buf[0];
 	}
 
-      result_midxkey.size = result_size;
-      result_midxkey.buf = (char *) db_private_alloc (NULL, result_midxkey.size);
+      result_midxkey.buf = (char *) db_private_alloc (NULL, result_size);
       if (result_midxkey.buf == NULL)
 	{
 	  /* will already be set by memory mgr */
@@ -9475,26 +9452,24 @@ pr_midxkey_unique_prefix (const DB_VALUE * db_midxkey1, const DB_VALUE * db_midx
 	  return er_errid ();
 	}
 
+      memcpy (result_midxkey.buf, result_buf, result_size);
+      result_midxkey.size = result_size;
       result_midxkey.domain = midxkey2->domain;
       result_midxkey.ncolumns = midxkey2->ncolumns;
 
-      memcpy (result_midxkey.buf, result_buf, result_size);
-
-      result_header.set_size (result_midxkey.domain->precision);
-      result_header.set_buffer (result_midxkey.buf);
-
-      offset = result_header.read_end_offset (diff_column);
+      offset = or_multi_get_next_element_offset (result_midxkey.buf, result_midxkey.domain->precision, diff_column);
       if (offset < 0)
 	{
-	  offset = OR_MIDXKEY_MAX_OFFSET_SIZE;
-	}
-      for (i = diff_column + 1; i < result_midxkey.domain->precision; i++)
-	{
-	  result_header.set_null (i);
-	  result_header.write_end_offset (offset, i);
+	  offset = OR_MULTI_MAX_OFFSET;
 	}
 
-      result_header.write_size_offset (result_midxkey.size);
+      for (i = diff_column + 1; i < result_midxkey.domain->precision; i++)
+	{
+	  or_multi_set_null (result_midxkey.buf, i);
+	  or_multi_put_next_element_offset (result_midxkey.buf, result_midxkey.domain->precision, offset, i);
+	}
+
+      or_multi_put_size_offset (result_midxkey.buf, result_midxkey.domain->precision, result_midxkey.size);
 
       result_midxkey.min_max_val.position = -1;
       result_midxkey.min_max_val.type = MIN_COLUMN;
@@ -9551,9 +9526,10 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
   int i;
   TP_DOMAIN *dom;
   DB_MIDXKEY *midxkey;
-  MIDXKEY_HEADER midxkey_header;
   int total_size = 0;
+  int header_size;
   char *new_IDXbuf;
+  char *nullmap_ptr;
   OR_BUF buf;
 
   /* phase 1: find old */
@@ -9566,13 +9542,13 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
   if (midxkey->ncolumns > 0 && midxkey->size > 0)
     {
       assert (midxkey->domain->precision == midxkey->ncolumns + num_dbvals);
-      midxkey_header.set_size (midxkey->domain->precision);
+      header_size = or_multi_header_size (midxkey->domain->precision);
       total_size += midxkey->size;
     }
   else
     {
-      midxkey_header.set_size (num_dbvals);
-      total_size += midxkey_header.get_header_size ();
+      header_size = or_multi_header_size (num_dbvals);
+      total_size += header_size;
     }
 
   /* phase 2: calculate how many bytes need */
@@ -9586,7 +9562,8 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
     }
 
   or_init (&buf, new_IDXbuf, -1);
-  midxkey_header.set_buffer (new_IDXbuf);
+
+  nullmap_ptr = new_IDXbuf;
 
   /* phase 4: copy new_IDXbuf from old */
   if (midxkey->ncolumns > 0 && midxkey->size > 0)
@@ -9595,13 +9572,14 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
     }
   else
     {
-      midxkey_header.clear ();
-      or_advance (&buf, midxkey_header.get_header_size ());
+      or_multi_clear_header (nullmap_ptr, num_dbvals);
+      or_advance (&buf, header_size);
     }
 
   for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
     {
-      midxkey_header.write_start_offset (CAST_BUFLEN (buf.ptr - buf.buffer), midxkey->ncolumns + i);
+      or_multi_put_element_offset (nullmap_ptr, midxkey->domain->precision, CAST_BUFLEN (buf.ptr - buf.buffer),
+				   midxkey->ncolumns + i);
 
       /* check for added val is NULL */
       if (DB_IS_NULL (&dbvals[i]))
@@ -9611,10 +9589,12 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
 
       dom->type->index_writeval (&buf, &dbvals[i]);
 
-      midxkey_header.set_not_null (midxkey->ncolumns + i);
+      or_multi_set_not_null (nullmap_ptr, midxkey->ncolumns + i);
     }				/* for (i = 0, ...) */
 
   assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
+
+  or_multi_put_size_offset (nullmap_ptr, midxkey->domain->precision, total_size);
 
   /* phase 5: make new multiIDX */
   if (midxkey->size > 0)
@@ -9626,8 +9606,6 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, s
   midxkey->buf = new_IDXbuf;
   midxkey->size = total_size;
   midxkey->ncolumns += num_dbvals;
-
-  midxkey_header.write_size_offset (midxkey->size);
 
   return NO_ERROR;
 
@@ -9648,10 +9626,9 @@ pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num
 {
   TP_DOMAIN *dom;
   DB_MIDXKEY *midxkey;
-  MIDXKEY_HEADER midxkey_header;
-  int i, total_size = 0, bitmap_size, offset;
+  int i, total_size = 0, offset;
   char *new_IDXbuf;
-  char *bound_bits;
+  char *nullmap_ptr;
   OR_BUF buf;
 
   /* phase 1: find old */
@@ -9663,8 +9640,7 @@ pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num
 
   assert (midxkey->ncolumns == 0 && midxkey->size == 0);
 
-  midxkey_header.set_size (num_dbvals + tail_null_cnt);
-  total_size = midxkey_header.get_header_size ();
+  total_size = or_multi_header_size (num_dbvals + tail_null_cnt);
 
   /* phase 2: calculate how many bytes need */
   total_size = pr_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
@@ -9677,9 +9653,10 @@ pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num
     }
 
   or_init (&buf, new_IDXbuf, -1);
-  midxkey_header.set_buffer (new_IDXbuf);
-  midxkey_header.clear ();
-  or_advance (&buf, midxkey_header.get_header_size ());
+
+  nullmap_ptr = new_IDXbuf;
+
+  or_advance (&buf, or_multi_header_size (num_dbvals + tail_null_cnt));
 
   /* phase 4: copy new_IDXbuf from old */
   for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
@@ -9692,22 +9669,22 @@ pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num
 
       dom->type->index_writeval (&buf, &dbvals[i]);
 
-      midxkey_header.set_not_null (midxkey->ncolumns + i);
+      or_multi_set_not_null (nullmap_ptr, midxkey->ncolumns + i);
     }				/* for (i = 0, ...) */
 
   assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
 
   for (i = num_dbvals; i < (num_dbvals + tail_null_cnt); i++)
     {
-      assert (midxkey_header.is_null (i));
-      midxkey_header.write_start_offset (total_size, i);
+      assert (or_multi_is_null (nullmap_ptr, i));
+      or_multi_put_element_offset (nullmap_ptr, num_dbvals + tail_null_cnt, total_size, i);
     }
+
+  or_multi_put_size_offset (nullmap_ptr, midxkey->ncolumns + num_dbvals + tail_null_cnt, total_size);
 
   midxkey->buf = new_IDXbuf;
   midxkey->size = total_size;
   midxkey->ncolumns += (num_dbvals + tail_null_cnt);
-
-  midxkey_header.write_size_offset (midxkey->size);
 
   return NO_ERROR;
 }

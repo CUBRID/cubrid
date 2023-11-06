@@ -11665,10 +11665,10 @@ static int
 do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key)
 {
   DB_MIDXKEY midxkey;
-  MIDXKEY_HEADER midxkey_header;
   SM_ATTRIBUTE **attr = NULL;
   int buf_size = 0, i, error = NO_ERROR, attr_count = 0;
   unsigned char *bits;
+  char *nullmap_ptr = NULL;
   OR_BUF buf;
   DB_VALUE *val = NULL;
   TP_DOMAIN *attr_dom = NULL, *dom = NULL, *setdomain = NULL;
@@ -11715,21 +11715,21 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       dom = attr_dom;
     }
 
-  midxkey_header.set_size (attr_count);
-  buf_size += midxkey_header.get_header_size ();
+  buf_size += or_multi_header_size (attr_count);
 
-  midxkey.size = buf_size;
-  midxkey.buf = (char *) db_private_alloc (NULL, midxkey.size);
+  midxkey.buf = (char *) db_private_alloc (NULL, buf_size);
   if (midxkey.buf == NULL)
     {
       error = ER_FAILED;
       goto error_return;
     }
 
-  or_init (&buf, midxkey.buf, midxkey.size);
-  midxkey_header.set_buffer (midxkey.buf);
-  midxkey_header.clear ();
-  or_advance (&buf, midxkey_header.get_header_size ());
+  or_init (&buf, midxkey.buf, buf_size);
+
+  nullmap_ptr = midxkey.buf;
+  or_multi_clear_header (nullmap_ptr, attr_count);
+
+  or_advance (&buf, or_multi_header_size (attr_count));
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
@@ -11740,21 +11740,22 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 	}
       dom = (*attr)->domain;
 
-      midxkey_header.write_start_offset (CAST_BUFLEN (buf.ptr - buf.buffer), i);
+      or_multi_put_element_offset (nullmap_ptr, attr_count, CAST_BUFLEN (buf.ptr - buf.buffer), i);
 
       if (!DB_IS_NULL (val))
 	{
 	  dom->type->index_writeval (&buf, val);
-	  midxkey_header.set_not_null (i);
+	  or_multi_set_not_null (nullmap_ptr, i);
 	}
       else
 	{
-	  assert (midxkey_header.is_null (i));
+	  assert (or_multi_is_null (nullmap_ptr, i));
 	}
     }
 
-  midxkey_header.write_size_offset (midxkey.size);
+  or_multi_put_size_offset (nullmap_ptr, attr_count, buf_size);
 
+  midxkey.size = buf_size;
   midxkey.ncolumns = attr_count;
   midxkey.domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, attr_count, 0, setdomain);
   if (midxkey.domain == NULL)

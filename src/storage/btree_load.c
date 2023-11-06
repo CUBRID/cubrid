@@ -3565,19 +3565,19 @@ compare_driver (const void *first, const void *second, void *arg)
   if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
     {
       int i;
-      MIDXKEY_HEADER midxkey1_header, midxkey2_header;
+      char *nullmap_ptr1, *nullmap_ptr2;
+      int header_size;
       TP_DOMAIN *dom;
 
       /* fast implementation of pr_midxkey_compare (). do not use DB_VALUE container for speed-up */
 
-      midxkey1_header.set_size (key_type->precision);
-      midxkey1_header.set_buffer (mem1);
+      nullmap_ptr1 = mem1;
+      nullmap_ptr2 = mem2;
 
-      midxkey2_header.set_size (key_type->precision);
-      midxkey2_header.set_buffer (mem2);
+      header_size = or_multi_header_size (key_type->precision);
 
-      mem1 += midxkey1_header.get_header_size ();
-      mem2 += midxkey2_header.get_header_size ();
+      mem1 += header_size;
+      mem2 += header_size;
 
 #if !defined(NDEBUG)
       for (i = 0, dom = key_type->setdomain; dom; dom = dom->next, i++);
@@ -3602,9 +3602,9 @@ compare_driver (const void *first, const void *second, void *arg)
 	  /* val1 or val2 is NULL */
 	  if (has_null)
 	    {
-	      if (midxkey1_header.is_null (i))
+	      if (or_multi_is_null (nullmap_ptr1, i))
 		{		/* element val is null? */
-		  if (midxkey2_header.is_null (i))
+		  if (or_multi_is_null (nullmap_ptr2, i))
 		    {
 		      continue;
 		    }
@@ -3612,7 +3612,7 @@ compare_driver (const void *first, const void *second, void *arg)
 		  c = DB_LT;
 		  break;	/* exit for-loop */
 		}
-	      else if (midxkey2_header.is_null (i))
+	      else if (or_multi_is_null (nullmap_ptr2, i))
 		{
 		  c = DB_GT;
 		  break;	/* exit for-loop */
@@ -4122,7 +4122,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	       * To do this, reduce the number of columns.
 	       * Modify bitmap information for btree_multicol_key_is_null() function. */
 	      new_ptr->data.midxkey.ncolumns--;
-	      OR_MULTI_CLEAR_BOUND_BIT (new_ptr->data.midxkey.buf, new_ptr->data.midxkey.ncolumns);
+	      or_multi_set_null (new_ptr->data.midxkey.buf, new_ptr->data.midxkey.ncolumns);
 	      new_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
 	    }
 	  else
