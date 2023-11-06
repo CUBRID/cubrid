@@ -84,6 +84,15 @@ namespace cublog
       return m_messages.empty () || m_state == state::SHUTDOWN;
       }));
 
+    /*
+     * TODO
+     *  Even if the m_messages is empty, some log reocrds can be appended to the log buffer.
+     *    - It moves the messages to the backbuffer internally.
+     *      This could be appended after it assumes all messages are consumed.
+     *    - The pushed prior nodes from the message queue are appended asynchronously by `log_Flush_daemon`.
+     *      This could be appended afterwards.
+     */
+
     if (m_state != state::SHUTDOWN)
       {
 	m_state = state::PAUSED;
