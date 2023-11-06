@@ -93,7 +93,6 @@ namespace cublog
   void
   prior_recver::resume ()
   {
-    auto notify_one = false;
     {
       auto lockg = std::lock_guard { m_mutex };
       assert (m_state == state::PAUSED);
