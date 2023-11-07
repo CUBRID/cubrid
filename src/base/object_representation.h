@@ -1404,27 +1404,32 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
  * MIDXKEY HEADER ACCESSORS
  */
 
-STATIC_INLINE int or_multi_nullmap_size (const int n_elements);
-STATIC_INLINE int or_multi_offset_table_size (const int n_elements);
-STATIC_INLINE int or_multi_header_size (const int n_elements);
-STATIC_INLINE void or_multi_clear_header (char *nullmap_ptr, const int n_elements);
-STATIC_INLINE void or_multi_set_not_null (char *nullmap_ptr, const int index);
-STATIC_INLINE void or_multi_set_null (char *nullmap_ptr, const int index);
-STATIC_INLINE bool or_multi_is_not_null (char *nullmap_ptr, const int index);
-STATIC_INLINE bool or_multi_is_null (char *nullmap_ptr, const int index);
-STATIC_INLINE char *or_multi_get_offset_table (char *nullmap_ptr, const int n_elements);
-STATIC_INLINE char *or_multi_get_element_offset_ptr (char *nullmap_ptr, const int n_elements, const int index);
-STATIC_INLINE int or_multi_get_element_offset_internal (char *nullmap_ptr, const int n_elements, const int index);
-STATIC_INLINE int or_multi_get_element_offset (char *nullmap_ptr, const int n_elements, const int index);
-STATIC_INLINE int or_multi_get_next_element_offset (char *nullmap_ptr, const int n_elements, const int index);
-STATIC_INLINE int or_multi_get_size_offset (char *nullmap_ptr, const int n_elements);
+STATIC_INLINE int or_multi_nullmap_size (const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_offset_table_size (const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_header_size (const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_clear_header (char *nullmap_ptr, const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_set_not_null (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_set_null (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool or_multi_is_not_null (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool or_multi_is_null (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE char *or_multi_get_offset_table (char *nullmap_ptr, const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE char *or_multi_get_element_offset_ptr (char *nullmap_ptr, const int n_elements, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_get_element_offset_internal (char *nullmap_ptr, const int n_elements, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_get_element_offset (char *nullmap_ptr, const int n_elements, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_get_next_element_offset (char *nullmap_ptr, const int n_elements, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_get_size_offset (char *nullmap_ptr, const int n_elements) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void or_multi_put_element_offset_internal (char *nullmap_ptr, const int n_elements, const int offset,
-							 const int index);
+							 const int index) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void or_multi_put_element_offset (char *nullmap_ptr, const int n_elements, const int offset,
-						const int index);
+						const int index) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void or_multi_put_next_element_offset (char *nullmap_ptr, const int n_elements, const int offset,
-						     const int index);
-STATIC_INLINE void or_multi_put_size_offset (char *nullmap_ptr, const int n_elements, const int offset);
+						     const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_put_size_offset (char *nullmap_ptr, const int n_elements, const int offset)
+  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * or_init - initialize the field of an OR_BUF
