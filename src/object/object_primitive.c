@@ -8941,13 +8941,11 @@ pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
 int
 pr_midxkey_get_element_offset (const DB_MIDXKEY * midxkey, int index)
 {
-  int idx_ncols = 0, i;
-  int offset, advance_size;
-
   TP_DOMAIN *domain;
-
+  int idx_ncols = 0, i;
   OR_BUF buf;
   char *nullmap_ptr;
+  int offset, advance_size;
 
   idx_ncols = midxkey->domain->precision;
   if (idx_ncols <= 0)
@@ -9020,7 +9018,7 @@ int
 pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix, int n_prefix)
 {
   int i, offset, offset_postfix, offset_prefix;
-  DB_MIDXKEY *midx_postfix, *midx_prefix;
+  DB_MIDXKEY *midx_prefix, *midx_postfix;
   DB_MIDXKEY midx_result;
   int prefix_size;
 
@@ -9243,14 +9241,13 @@ static int
 pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, bool copy, int *prev_indexp,
 				 char **prev_ptrp)
 {
-  int idx_ncols = 0, i, offset;
-  int advance_size;
-  int error = NO_ERROR;
-
   TP_DOMAIN *domain;
-
+  int idx_ncols;
   OR_BUF buf;
   char *nullmap_ptr;
+  int offset, advance_size;
+  int i;
+  int error = NO_ERROR;
 
   idx_ncols = midxkey->domain->precision;
   if (idx_ncols <= 0)
