@@ -20,8 +20,9 @@
 #include "log_replication_atomic.hpp"
 #include "log_replication_jobs.hpp"
 
-#include "log_recovery_redo_parallel.hpp"
 #include "heap_file.h"
+#include "log_recovery_redo_parallel.hpp"
+#include "oid.h"
 
 namespace cublog
 {
@@ -119,6 +120,12 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
+
+	    if (m_locked_classes.count (header.trid) > 0)
+	      {
+		release_all_locks_for_ddl (thread_entry, header.trid);
+	      }
+
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
@@ -148,6 +155,12 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
+
+	    if (m_locked_classes.count (header.trid) > 0)
+	      {
+		release_all_locks_for_ddl (thread_entry, header.trid);
+	      }
+
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
@@ -219,24 +232,12 @@ namespace cublog
 	  }
 	  case LOG_SCHEMA_MODIFICATION_LOCK:
 	  {
-	    char *classname = NULL;
-
 	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SCHEMA_MODIFICATION_LOCK));
 	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
 
-	    /* TODO:
-	     * All these debug logging part will be removed.
-	     * Lock will be acquired for the class that log_rec.classoid indicates
-	     */
-	    int error = heap_get_class_name (&thread_entry, &log_rec.classoid, &classname);
-	    _er_log_debug (ARG_FILE_LINE,"[REPL_LOCK] Schema modification lock is aquired on %s (OID = %d|%d|%d)\n",
-			   error != NO_ERROR ? "null" : classname, OID_AS_ARGS (&log_rec.classoid));
+	    acquire_lock_for_ddl (thread_entry, header.trid, &log_rec.classoid);
 
-	    if (classname != NULL)
-	      {
-		free_and_init (classname);
-	      }
 	    break;
 	  }
 	  default:
@@ -366,5 +367,50 @@ namespace cublog
 	    // by an atomic sequence; that will be treated in a standalone fashion
 	  }
       }
+  }
+
+  void
+  atomic_replicator::release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
+  {
+    assert (m_locked_classes.count (trid) > 0);
+
+    auto [begin, end] = m_locked_classes.equal_range (trid);
+    for (auto it = begin; it != end; it++)
+      {
+	lock_unlock_object_and_cleanup (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK);
+      }
+
+    m_locked_classes.erase (trid);
+  }
+
+  void
+  atomic_replicator::acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid)
+  {
+    assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
+
+    /* TODO:
+     * If a PTS read transaction holds a lock for an extended period without releasing it for the same class,
+     * the replicator could wait too long to acquire the lock.
+     * In such cases, there might be an introduction of a mechanism to abort read transaction that holds lock.
+     */
+
+    if (lock_object (&thread_entry, classoid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+      {
+	assert_release (false);
+      }
+
+#if !defined (NDEBUG)
+    /* there will be no duplicated object in the map */
+    auto [begin, end] = m_locked_classes.equal_range (trid);
+    if (std::count_if (begin, end, [classoid] (const auto &it)
+    {
+      return it.second == *classoid;
+    }) > 0)
+    {
+      assert (false);
+    }
+#endif
+
+    m_locked_classes.emplace (trid, *classoid);
   }
 }
