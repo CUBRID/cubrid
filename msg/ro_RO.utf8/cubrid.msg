@@ -904,7 +904,7 @@ $ LOADDB
 834 Există disconcordanţe între şirul de caractere sursă "%1$s" şi şirul de formatare "%2$s" date în to_number().
 835 Element de statistică necunoscut.
 836 Latch-ul pe pagina(%1$d|%2$d) a expirat.
-837 Un utilizator care deţine obiecte în baza de date(clase/declanşatori/seriale/server/synonym etc) nu poate fi şters.
+837 Un utilizator care deţine obiecte în baza de date nu poate fi şters.
 838 Nu se pot deschide simultan mai mult de %1$d indecşi.
 839 "%1$s": Parametru de sistem necunoscut sau valoare invalidă.
 840 Parametrul de sistem "%1$s" nu poate fi schimbat.
@@ -1437,15 +1437,13 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" este format nevalid la rândul %3$d al fișierului "%4$s".
-1356 Numele de gazdă "%1$s" este prea lung, ar trebui să fie mai mic sau egal cu 256 la linia %2$d a fișierului "%3$s".
-1357 Numele de gazdă "%1$s" există deja, un nume de gazdă nu poate fi duplicat cu alte adrese IP la linia %2$d a fișierului "%3$s".
-1358 Ambele, adresa IP și numele de gazdă, trebuie să fie scrise complet la linia %1$d a fișierului "%2$s".
-1359 Nu se poate căuta "%1$s" în cubrid_hosts.conf.
 
-1360 Fișierul "%1$s" nu a fost găsit.
+1355 Fișierul "%1$s" nu a fost găsit.
+1356 Nu există niciun indiciu în interogarea DBLink sau tipul de instrucțiune este incorect. %1$s
+1357 Conversia șirului SQL în șir larg a eșuat.
+1358 Numărul de rânduri afectate este necunoscut.
 
-1361 Ultima eroare
+1359 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1611,6 +1609,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 Nu au fost specificate opțiuni pentru ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.

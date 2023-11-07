@@ -135,10 +135,10 @@ static int do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NO
 			     PT_NODE ** update, PT_NODE * values);
 
 static int do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT * target_owner,
-				      const char *comment, const int is_public_synonym);
+				      const char *comment, const int is_public_synonym, bool is_dblinked);
 static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
 				       DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
-				       const int or_replace);
+				       const int or_replace, bool is_dblinked);
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
@@ -8464,6 +8464,13 @@ update_check_for_constraints (PARSER_CONTEXT * parser, int *has_unique, PT_NODE 
 	    }
 
 	  spec = pt_find_spec_in_statement (parser, statement, att);
+	  /* no need to check for dblink spec */
+	  if (spec->info.spec.remote_server_name
+	      && spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML)
+	    {
+	      continue;
+	    }
+
 	  if (spec == NULL || (class_obj = spec->info.spec.flat_entity_list->info.name.db_object) == NULL)
 	    {
 	      error = ER_GENERIC_ERROR;
@@ -13677,8 +13684,6 @@ int
 do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   INT64 err;
-  PT_NODE *flat;
-  DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id;
   QUERY_FLAG query_flag;
   QUERY_ID query_id_self = parser->query_id;
@@ -13687,19 +13692,20 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  if (statement->xasl_id == NULL)
+  /* for dblink: no need to check xasl_id is NULL */
+  if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
     {
-      /* check if it is not necessary to execute this statement */
-      if (qo_need_skip_execution ())
+      if (statement->xasl_id == NULL)
 	{
-	  statement->etc = NULL;
-	  return NO_ERROR;
+	  /* check if it is not necessary to execute this statement */
+	  if (qo_need_skip_execution ())
+	    {
+	      statement->etc = NULL;
+	      return NO_ERROR;
+	    }
+	  return do_insert (parser, statement);
 	}
-      return do_insert (parser, statement);
     }
-
-  flat = statement->info.insert.spec->info.spec.flat_entity_list;
-  class_obj = (flat) ? flat->info.name.db_object : NULL;
 
   query_flag = DEFAULT_EXEC_MODE;
 
@@ -17775,10 +17781,16 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       /* PT_SYNONYM_TARGET_NAME (statement) != NULL */
-
-      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
-			      DB_MAX_IDENTIFIER_LENGTH);
-      target_name = target_name_buf;
+      if (PT_SYNONYM_IS_DBLINKED (statement))
+	{
+	  target_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement));
+	}
+      else
+	{
+	  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
+				  DB_MAX_IDENTIFIER_LENGTH);
+	  target_name = target_name_buf;
+	}
 
       /* target_owner */
       target_owner_obj = db_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
@@ -17796,7 +17808,9 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
       comment = (char *) PT_SYNONYM_COMMENT_BYTES (statement);
     }
 
-  error = do_alter_synonym_internal (synonym_name, target_name, target_owner_obj, comment, FALSE);
+  error =
+    do_alter_synonym_internal (synonym_name, target_name, target_owner_obj, comment, FALSE,
+			       PT_SYNONYM_IS_DBLINKED (statement));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17816,7 +17830,7 @@ do_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 static int
 do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB_OBJECT * target_owner,
-			   const char *comment, const int is_public_synonym)
+			   const char *comment, const int is_public_synonym, bool is_dblinked)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
@@ -17891,7 +17905,14 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	}
 
       /* target_name */
-      db_make_string (&value, sm_remove_qualifier_name (target_name));
+      if (is_dblinked)
+	{
+	  db_make_string (&value, target_name);
+	}
+      else
+	{
+	  db_make_string (&value, sm_remove_qualifier_name (target_name));
+	}
       error = dbt_put_internal (obj_tmpl, "target_name", &value);
       db_value_clear (&value);
       if (error != NO_ERROR)
@@ -17977,7 +17998,8 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *synonym_owner_obj = NULL;
   DB_OBJECT *target_owner_obj = NULL;
   char synonym_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char target_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  const char *target_name = NULL;
+  char target_name_buf[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *comment = NULL;
   int or_replace = FALSE;
   int error = NO_ERROR;
@@ -18005,7 +18027,16 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
   or_replace = PT_SYNONYM_OR_REPLACE (statement);
 
   /* target_name */
-  sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name, DB_MAX_IDENTIFIER_LENGTH);
+  if (PT_SYNONYM_IS_DBLINKED (statement))
+    {
+      target_name = PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement));
+    }
+  else
+    {
+      sm_user_specified_name (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_NAME (statement)), target_name_buf,
+			      DB_MAX_IDENTIFIER_LENGTH);
+      target_name = target_name_buf;
+    }
 
   /* target_owner */
   target_owner_obj = au_find_user (PT_NAME_ORIGINAL (PT_SYNONYM_TARGET_OWNER_NAME (statement)));
@@ -18024,7 +18055,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error =
     do_create_synonym_internal (synonym_name, synonym_owner_obj, target_name, target_owner_obj, comment, FALSE,
-				or_replace);
+				or_replace, PT_SYNONYM_IS_DBLINKED (statement));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18047,7 +18078,7 @@ do_create_synonym (PARSER_CONTEXT * parser, PT_NODE * statement)
 static int
 do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner, const char *target_name,
 			    DB_OBJECT * target_owner, const char *comment, const int is_public_synonym,
-			    const int or_replace)
+			    const int or_replace, bool is_dblinked)
 {
   DB_OBJECT *class_obj = NULL;
   DB_OBJECT *instance_obj = NULL;
@@ -18182,7 +18213,14 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
     }
 
   /* target_name */
-  db_make_string (&value, sm_remove_qualifier_name (target_name));
+  if (is_dblinked)
+    {
+      db_make_string (&value, target_name);
+    }
+  else
+    {
+      db_make_string (&value, sm_remove_qualifier_name (target_name));
+    }
   error = dbt_put_internal (obj_tmpl, "target_name", &value);
   db_value_clear (&value);
   if (error != NO_ERROR)
@@ -21156,6 +21194,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
   DB_VALUE values[2];
   int au_save;
   int rec_cnt = 0;
+  int saved_opt_level;
 
   server_name = (char *) node_server->info.name.original;
   owner_name = (char *) (node_owner ? node_owner->info.name.original : NULL);
@@ -21171,7 +21210,17 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner, bool force_owner_name)
 
   AU_DISABLE (au_save);
 
+  /*
+   * backup the optimization level for executing internal query to find server-name,
+   * because it could not be executed depending on the optimization level.
+   */
+  saved_opt_level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
+  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
+
   error = db_compile_and_execute_local (query, &query_result, &query_error);
+
+  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, saved_opt_level);
+
   if (error < 0)
     {
       goto err;

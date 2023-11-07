@@ -5618,6 +5618,10 @@ boot_define_view_index (void)
     {"key_count", "integer"},
     {"is_primary_key", "varchar(3)"},
     {"is_foreign_key", "varchar(3)"},
+#if 0				// Not yet, Disabled for QA verification convenience
+    {"is_deduplicate", "varchar(3)"},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+    {"deduplicate_key_level", "smallint"},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+#endif
     {"filter_expression", "varchar(255)"},
     {"have_function", "varchar(3)"},
     {"comment", "varchar(1024)"},
@@ -5653,9 +5657,47 @@ boot_define_view_index (void)
 	  "CASE [i].[is_reverse] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_reverse], "
 	  "[i].[class_of].[class_name] AS [class_name], "
 	  "CAST ([i].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
-	  "[i].[key_count] AS [key_count], "
+	  "NVL2 ("
+	      "("
+		"SELECT 1 "
+		"FROM "
+		  /* CT_INDEXKEY_NAME */
+		  "[%s] [k] "
+		"WHERE "
+		  "[k].index_of.class_of = [i].class_of "
+		  "AND [k].index_of.index_name = [i].[index_name] "
+		  "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
+	      "), "
+	      "([i].[key_count] - 1), "
+	      "[i].[key_count]"
+	    ") AS [key_count], "
 	  "CASE [i].[is_primary_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
 	  "CASE [i].[is_foreign_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
+#if 0 // Not yet, Disabled for QA verification convenience          
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	  "CAST(NVL ("
+                  "(" 
+		      "SELECT 'YES' "
+		      "FROM [%s] [k] "
+		      "WHERE [k].index_of.class_of = [i].class_of "
+			  "AND [k].index_of.index_name = [i].[index_name] "
+			  "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
+   		   "), "
+                   "'NO') "
+                   "AS VARCHAR(3)"
+             ") AS [is_deduplicate], "
+	  "CAST(NVL (" 
+                  "("
+		      "SELECT REPLACE([k].key_attr_name,'%s','') "
+		      "FROM [%s] [k]"
+		      "WHERE [k].index_of.class_of = [i].class_of "
+			   "AND [k].index_of.index_name = [i].[index_name] "
+			   "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
+		   ")"
+                   ", 0)" 
+                  " AS SMALLINT" 
+             ") AS [deduplicate_key_level], "
+#endif
 	  "[i].[filter_expression] AS [filter_expression], "
 	  "CASE [i].[have_function] WHEN 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
 	  "[i].[comment] AS [comment], "
@@ -5705,7 +5747,13 @@ boot_define_view_index (void)
 		      "[u].[name] = CURRENT_USER"
 		  ") "
 		"AND [au].[auth_type] = 'SELECT'"
-	    ")",
+	    ")",            
+	CT_INDEXKEY_NAME,
+#if 0 // Not yet, Disabled for QA verification convenience        
+        CT_INDEXKEY_NAME,
+        DEDUPLICATE_KEY_ATTR_NAME_PREFIX,
+        CT_INDEXKEY_NAME,
+#endif        
 	CT_INDEX_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
@@ -5790,41 +5838,47 @@ boot_define_view_index_key (void)
 	  /* CT_INDEXKEY_NAME */
 	  "[%s] AS [k] "
 	"WHERE "
-	  "{'DBA'} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[k].[index_of].[class_of]} SUBSETEQ ("
-	      "SELECT "
-		"SUM (SET {[au].[class_of]}) "
-	      "FROM "
-		/* CT_CLASSAUTH_NAME */
-		"[%s] AS [au] "
-	      "WHERE "
-		"{[au].[grantee].[name]} SUBSETEQ ("
-		    "SELECT "
-		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		    "FROM "
-		      /* AU_USER_CLASS_NAME */
-		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		    "WHERE "
-		      "[u].[name] = CURRENT_USER"
-		  ") "
-		"AND [au].[auth_type] = 'SELECT'"
+          "("
+              "[k].[key_attr_name] IS NULL " 
+              "OR [k].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
+          ")"
+          " AND ("
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[k].[index_of].[class_of]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[class_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'SELECT'"
+		")"
 	    ")",
 	CT_INDEXKEY_NAME,
 	AU_USER_CLASS_NAME,

@@ -904,7 +904,7 @@ $ LOADDB
 834 There are some mismatches between source string "%1$s" and format string "%2$s" given in to_number().
 835 Undefined statistics item.
 836 LATCH ON PAGE(%1$d|%2$d) TIMEDOUT
-837 Cannot drop the user who owns database objects(class/trigger/serial/server/synonym etc).
+837 Cannot drop the user who owns database objects.
 838 Cannot open more than %1$d index scans simultaneously.
 839 "%1$s": Unknown system parameter or bad value.
 840 Cannot change system parameter "%1$s".
@@ -1437,15 +1437,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 %1$s "%2$s" is invalid format at line %3$d of the file "%4$s".
-1356 Hostname "%1$s" is too long, it should be less than or equal to 256 at line %2$d of the file "%3$s".
-1357 Hostname "%1$s" already exists, a hostname cannot be duplicated with other IP addresses at line %2$d of the file "%3$s".
-1358 Both, the IP address and hostname, must be written completely at line %1$d of the file "%2$s".
-1359 Unable to look up "%1$s" in the cubrid_hosts.conf.
 
-1360 File "%1$s" was not found.
+1355 File "%1$s" was not found.
+1356 There is no hint in the DBLink query, or the statement type is incorrect. %1$s
+1357 Converting SQL string to wide string failed.
+1358 Number of rows affected is unknown.
 
-1361 Last Error
+1359 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1611,6 +1609,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No options specified for ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
+138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
