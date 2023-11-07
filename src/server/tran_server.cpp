@@ -554,9 +554,12 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
     on_disconnecting (); // server-type specific jobs before disconnecting.
 
     /*
-     * Stop incoming communication and wake up threads waiting for a response and tell them it won't be served.
-     * This has to be out of the lock of m_conn_mtx because waitors are holding the lock. (send_receive())
-     * m_conn is not nullptr here since it's only set to nullptr here below.
+     * Stop incoming communication and wake up threads waiting for a response, informing them that it won't be served.
+     * - If the function `disconnect_async` is called more than once for a connection handler,
+     *   it will be guarded by the state checks at the beginning of the function (see above).
+     *   This can occur due to SEND_DISCONNECT_REQUEST_MSG and error handlers.
+     * - This must be outside the lock of m_conn_mtx because waiters are holding the lock during send_receive().
+     * - m_conn is not nullptr here since it's set to nullptr only below this point.
      */
     m_conn->stop_incoming_communication_thread ();
 
