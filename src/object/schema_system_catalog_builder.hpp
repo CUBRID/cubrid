@@ -29,35 +29,14 @@
 
 namespace cubschema
 {
-  // legacy definitions
-  typedef int (*DEF_CLASS_FUNCTION) (MOP);
-  typedef int (*DEF_VCLASS_FUNCTION) ();
-
   class system_catalog_builder;
 
   struct catcls_function
   {
-    const char *name;
-    union
-    {
-      const DEF_CLASS_FUNCTION class_func;
-      const DEF_VCLASS_FUNCTION vclass_func;
-    };
-
-    constexpr catcls_function (const char *n, DEF_CLASS_FUNCTION func)
-      : name {n}, class_func (func)
-    {}
-    constexpr catcls_function (const char *n, DEF_VCLASS_FUNCTION func)
-      : name {n}, vclass_func (func)
-    {}
-  };
-
-  struct catcls_function_ng
-  {
     const std::string_view name;
     const system_catalog_definition &definition;
 
-    constexpr catcls_function_ng (const std::string_view n, const system_catalog_definition &def)
+    constexpr catcls_function (const std::string_view n, const system_catalog_definition &def)
       : name {n}, definition {def}
     {}
   };

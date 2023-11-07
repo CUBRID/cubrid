@@ -1960,8 +1960,8 @@ using COLUMN = cubschema::attribute;
 /* MAIN APIS */
 /* ========================================================================== */
 
-static std::vector<cubschema::catcls_function_ng> *clist = nullptr;
-static std::vector<cubschema::catcls_function_ng> *vclist = nullptr;
+static std::vector<cubschema::catcls_function> *clist = nullptr;
+static std::vector<cubschema::catcls_function> *vclist = nullptr;
 
 void
 catcls_init (void)
@@ -1969,7 +1969,7 @@ catcls_init (void)
   // TODO: for late initialization (for au_init () to retrieve MOPs: Au_dba_user and Au_public_user)
 
   using namespace cubschema;
-  static std::vector<cubschema::catcls_function_ng> cl =
+  static std::vector<cubschema::catcls_function> cl =
   {
     {CT_CLASS_NAME, system_catalog_initializer::init_class ()},
     {CT_ATTRIBUTE_NAME, system_catalog_initializer::init_attribute ()},
@@ -1995,7 +1995,7 @@ catcls_init (void)
     {CT_DB_SERVER_NAME, system_catalog_initializer::init_db_server()}
   };
 
-  static std::vector<cubschema::catcls_function_ng> vcl =
+  static std::vector<cubschema::catcls_function> vcl =
   {
     {CTV_CLASS_NAME, system_catalog_initializer::init_view_class ()},
     {CTV_SUPER_CLASS_NAME, system_catalog_initializer::init_view_super_class ()},
