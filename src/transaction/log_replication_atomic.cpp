@@ -121,10 +121,9 @@ namespace cublog
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
 
-	    if (m_locked_classes.count (header.trid))
+	    if (m_locked_classes.count (header.trid) > 0)
 	      {
-		/* unlock the objects that has been locked for DDL replication */
-		release_locks_by_tranid (thread_entry, header.trid);
+		release_all_locks_for_ddl (thread_entry, header.trid);
 	      }
 
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
@@ -157,10 +156,9 @@ namespace cublog
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
 
-	    if (m_locked_classes.count (header.trid))
+	    if (m_locked_classes.count (header.trid) > 0)
 	      {
-		/* unlock the objects that has been locked for DDL replication */
-		release_locks_by_tranid (thread_entry, header.trid);
+		release_all_locks_for_ddl (thread_entry, header.trid);
 	      }
 
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
@@ -238,7 +236,7 @@ namespace cublog
 	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
 
-	    acquire_lock (thread_entry, header.trid, &log_rec.classoid);
+	    acquire_lock_for_ddl (thread_entry, header.trid, &log_rec.classoid);
 
 	    break;
 	  }
@@ -372,7 +370,7 @@ namespace cublog
   }
 
   void
-  atomic_replicator::release_locks_by_tranid (cubthread::entry &thread_entry, const TRANID trid)
+  atomic_replicator::release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
   {
     assert (m_locked_classes.count (trid) > 0);
 
@@ -386,7 +384,7 @@ namespace cublog
   }
 
   void
-  atomic_replicator::acquire_lock (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid)
+  atomic_replicator::acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid)
   {
     assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
 
