@@ -102,7 +102,7 @@ namespace cublog
       log_lsa m_lowest_unapplied_lsa;
       mutable std::mutex m_lowest_unapplied_lsa_mutex;
 
-      /* Store the locked objects for DDL replication.
+      /* Keep track of the locked classes for DDL replication.
        * Since multiple DDL operations can be executed within single transaction,
        * more than one classes can be mapped to one transaction */
       std::multimap <TRANID, OID> m_locked_classes;

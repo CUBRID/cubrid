@@ -399,18 +399,18 @@ namespace cublog
 	assert_release (false);
       }
 
-    m_locked_classes.emplace (trid, *classoid);
-
 #if !defined (NDEBUG)
     /* there will be no duplicated object in the map */
     auto [begin, end] = m_locked_classes.equal_range (trid);
-    for (auto it = begin; it != end; it++)
-      {
-	if (std::count (begin, end, *it) > 1)
-	  {
-	    assert (false);
-	  }
-      }
+    if (std::count_if (begin, end, [classoid] (const auto &it)
+    {
+      return it.second == *classoid;
+    }) > 0)
+    {
+      assert (false);
+    }
 #endif
+
+    m_locked_classes.emplace (trid, *classoid);
   }
 }

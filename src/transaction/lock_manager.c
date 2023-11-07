@@ -6631,18 +6631,15 @@ lock_unlock_object_and_cleanup (THREAD_ENTRY * thread_p, const OID * oid, const 
 #if !defined (SERVER_MODE)
   return;
 #else /* !SERVER_MODE */
-  int tran_index;
-  LK_TRAN_LOCK *tran_lock;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
   assert (tran_lock->non2pl_list == NULL);
 
   lock_unlock_object_lock_internal (thread_p, oid, class_oid, lock, true, false);
 
   /* TODO:
-   * We have to determine if deadlock information should be cleared
+   * We have to decide if deadlock information should be cleared
    * (like lock_clear_deadlock_victim () in lock_unlock_all ())
    * this will be handled when handling the deadlock for replicator
    */
