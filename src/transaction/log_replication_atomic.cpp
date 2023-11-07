@@ -16,6 +16,7 @@
  *
  */
 
+#include "lock_manager.h"
 #include "log_replication.cpp.hpp"
 #include "log_replication_atomic.hpp"
 #include "log_replication_jobs.hpp"
@@ -377,7 +378,7 @@ namespace cublog
     auto [begin, end] = m_locked_classes.equal_range (trid);
     for (auto it = begin; it != end; it++)
       {
-	lock_unlock_object (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK, true);
+	lock_unlock_object_and_cleanup (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK);
       }
 
     m_locked_classes.erase (trid);
