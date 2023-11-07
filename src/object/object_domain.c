@@ -12363,3 +12363,35 @@ end:
 
 #undef HIGHEST_3BITS_OF_UBI
 }
+
+int
+tp_get_precision (DB_VALUE *value)
+{
+  int precision = 0, n = 0;
+  int bigint;
+
+  assert (value != NULL);
+
+  switch (value->domain.general_info.type)
+    {
+    case DB_TYPE_BIGINT:
+      bigint = db_get_bigint (value);
+      break;
+    case DB_TYPE_INTEGER:
+      bigint = db_get_int (value);
+      break;
+    case DB_TYPE_SHORT:
+      bigint = db_get_short (value);
+    default:
+      return 0;
+    }
+
+  do
+    {
+      n++;
+      bigint /= 10;
+    }
+  while (bigint != 0);
+
+  return n;
+}

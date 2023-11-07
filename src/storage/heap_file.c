@@ -11285,7 +11285,15 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 	{
 	  if (value->last_attrepr->domain->type->id == DB_TYPE_NUMERIC)
 	    {
-	      dom_status = DOMAIN_OVERFLOW;
+	      int last_precision, precision;
+
+	      last_precision = value->last_attrepr->domain->precision;
+	      precision = tp_get_precision (attr_val);
+	      if (precision > last_precision)
+		{
+		  /* do not coerce for overflow */
+		  dom_status = DOMAIN_OVERFLOW;
+		}
 	    }
 	}
 
