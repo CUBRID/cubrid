@@ -8043,7 +8043,6 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       /* A record was found */
       if (get_rec_info)
 	{
-
 	  PGBUF_INIT_WATCHER (&rec_info_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 	  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &rec_info_page_watcher);
 	  scan =
