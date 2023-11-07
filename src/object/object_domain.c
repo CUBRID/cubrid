@@ -12365,7 +12365,7 @@ end:
 }
 
 int
-tp_get_precision (DB_VALUE *value)
+tp_get_precision (DB_VALUE * value)
 {
   int precision = 0, n = 0;
   int bigint;
