@@ -6632,7 +6632,7 @@ lock_unlock_object_and_cleanup (THREAD_ENTRY * thread_p, const OID * oid, const 
   return;
 #else /* !SERVER_MODE */
   const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  LK_TRAN_LOCK *const tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
   assert (tran_lock->non2pl_list == NULL);
 
