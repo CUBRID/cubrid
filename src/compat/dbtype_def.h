@@ -571,7 +571,7 @@ extern "C"
 #define DB_DEFAULT_SCALE -1
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
-#define DB_DEFAULT_NUMERIC_PRECISION 19
+#define DB_DEFAULT_NUMERIC_PRECISION 15
 
 /* This constant defines the default scale of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_SCALE 0
