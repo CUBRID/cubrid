@@ -164,9 +164,18 @@ typedef struct btree_scan BTREE_SCAN;	/* BTS */
 
 #define IMPROVE_RANGE_SCAN_IN_BTREE
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+
+typedef enum
+{
+  en_reader_none = 0,
+  en_reader_range_scan,
+  en_reader_stat,
+  en_reader_capacity,
+  en_reader_type_max
+} READER_TYPE;
 typedef struct
 {
-  bool inside_range_scan;
+  READER_TYPE reader_type;
   int n_prefix;
   VPID vpid;
   LOG_LSA leaf_lsa;
@@ -178,7 +187,7 @@ typedef struct
 
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix)   do {\
     assert((pg_prefix) != NULL);                     \
-    (pg_prefix)->inside_range_scan = false;          \
+    (pg_prefix)->reader_type = en_reader_none;       \
     (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;   \
     VPID_SET_NULL (&((pg_prefix)->vpid));            \
     LSA_SET_NULL(&((pg_prefix)->leaf_lsa));          \
@@ -189,7 +198,7 @@ typedef struct
 
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {\
     if((pg_prefix))  {                               \
-       (pg_prefix)->inside_range_scan = false;       \
+       (pg_prefix)->reader_type = en_reader_none;    \
        (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;\
        btree_clear_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
        VPID_SET_NULL (&((pg_prefix)->vpid));         \
