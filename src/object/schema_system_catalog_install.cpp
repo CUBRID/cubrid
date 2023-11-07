@@ -265,55 +265,55 @@ namespace cubschema
   {
     public:
       // classes
-      static const system_catalog_definition &init_class ();
-      static const system_catalog_definition &init_attribute ();
-      static const system_catalog_definition &init_domain ();
-      static const system_catalog_definition &init_method ();
-      static const system_catalog_definition &init_method_sig ();
-      static const system_catalog_definition &init_meth_argument ();
-      static const system_catalog_definition &init_meth_file ();
-      static const system_catalog_definition &init_query_spec ();
-      static const system_catalog_definition &init_index ();
-      static const system_catalog_definition &init_index_key ();
-      static const system_catalog_definition &init_class_authorization ();
-      static const system_catalog_definition &init_partition ();
-      static const system_catalog_definition &init_data_type ();
-      static const system_catalog_definition &init_stored_procedure ();
-      static const system_catalog_definition &init_stored_procedure_arguments ();
-      static const system_catalog_definition &init_serial ();
+      static const system_catalog_definition &get_class ();
+      static const system_catalog_definition &get_attribute ();
+      static const system_catalog_definition &get_domain ();
+      static const system_catalog_definition &get_method ();
+      static const system_catalog_definition &get_method_sig ();
+      static const system_catalog_definition &get_meth_argument ();
+      static const system_catalog_definition &get_meth_file ();
+      static const system_catalog_definition &get_query_spec ();
+      static const system_catalog_definition &get_index ();
+      static const system_catalog_definition &get_index_key ();
+      static const system_catalog_definition &get_class_authorization ();
+      static const system_catalog_definition &get_partition ();
+      static const system_catalog_definition &get_data_type ();
+      static const system_catalog_definition &get_stored_procedure ();
+      static const system_catalog_definition &get_stored_procedure_arguments ();
+      static const system_catalog_definition &get_serial ();
 
-      static const system_catalog_definition &init_ha_apply_info ();
-      static const system_catalog_definition &init_collations ();
-      static const system_catalog_definition &init_charsets ();
-      static const system_catalog_definition &init_dual ();
-      static const system_catalog_definition &init_db_server ();
-      static const system_catalog_definition &init_synonym ();
+      static const system_catalog_definition &get_ha_apply_info ();
+      static const system_catalog_definition &get_collations ();
+      static const system_catalog_definition &get_charsets ();
+      static const system_catalog_definition &get_dual ();
+      static const system_catalog_definition &get_db_server ();
+      static const system_catalog_definition &get_synonym ();
 
       // views
-      static const system_catalog_definition &init_view_class ();
-      static const system_catalog_definition &init_view_super_class ();
-      static const system_catalog_definition &init_view_vclass ();
-      static const system_catalog_definition &init_view_attribute ();
-      static const system_catalog_definition &init_view_attribute_set_domain ();
-      static const system_catalog_definition &init_view_method ();
-      static const system_catalog_definition &init_view_method_argument ();
-      static const system_catalog_definition &init_view_method_argument_set_domain ();
-      static const system_catalog_definition &init_view_method_file ();
-      static const system_catalog_definition &init_view_index ();
-      static const system_catalog_definition &init_view_index_key ();
-      static const system_catalog_definition &init_view_authorization ();
-      static const system_catalog_definition &init_view_trigger ();
-      static const system_catalog_definition &init_view_partition ();
-      static const system_catalog_definition &init_view_stored_procedure ();
-      static const system_catalog_definition &init_view_stored_procedure_arguments ();
-      static const system_catalog_definition &init_view_db_collation ();
-      static const system_catalog_definition &init_view_db_charset ();
-      static const system_catalog_definition &init_view_synonym ();
-      static const system_catalog_definition &init_view_db_server ();
+      static const system_catalog_definition &get_view_class ();
+      static const system_catalog_definition &get_view_super_class ();
+      static const system_catalog_definition &get_view_vclass ();
+      static const system_catalog_definition &get_view_attribute ();
+      static const system_catalog_definition &get_view_attribute_set_domain ();
+      static const system_catalog_definition &get_view_method ();
+      static const system_catalog_definition &get_view_method_argument ();
+      static const system_catalog_definition &get_view_method_argument_set_domain ();
+      static const system_catalog_definition &get_view_method_file ();
+      static const system_catalog_definition &get_view_index ();
+      static const system_catalog_definition &get_view_index_key ();
+      static const system_catalog_definition &get_view_authorization ();
+      static const system_catalog_definition &get_view_trigger ();
+      static const system_catalog_definition &get_view_partition ();
+      static const system_catalog_definition &get_view_stored_procedure ();
+      static const system_catalog_definition &get_view_stored_procedure_arguments ();
+      static const system_catalog_definition &get_view_db_collation ();
+      static const system_catalog_definition &get_view_db_charset ();
+      static const system_catalog_definition &get_view_synonym ();
+      static const system_catalog_definition &get_view_db_server ();
   };
 
   const system_catalog_definition &
-  system_catalog_initializer::init_class ()
+  system_catalog_initializer::get_class ()
   {
     static system_catalog_definition sm_define_class (
 	    // name
@@ -384,7 +384,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_attribute ()
+  system_catalog_initializer::get_attribute ()
   {
 
     static system_catalog_definition sm_define_attribute (
@@ -421,7 +421,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_domain ()
+  system_catalog_initializer::get_domain ()
   {
 
     static system_catalog_definition sm_define_domain (
@@ -458,7 +458,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_method ()
+  system_catalog_initializer::get_method ()
   {
 
     static system_catalog_definition sm_define_method (
@@ -490,7 +490,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_method_sig ()
+  system_catalog_initializer::get_method_sig ()
   {
 
     static system_catalog_definition sm_define_method_sig (
@@ -521,7 +521,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_meth_argument ()
+  system_catalog_initializer::get_meth_argument ()
   {
 
     static system_catalog_definition sm_define_meth_argument (
@@ -551,7 +551,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_meth_file ()
+  system_catalog_initializer::get_meth_file ()
   {
 
     static system_catalog_definition sm_define_meth_file (
@@ -580,7 +580,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_query_spec ()
+  system_catalog_initializer::get_query_spec ()
   {
 
     static system_catalog_definition sm_define_query_spec (
@@ -608,7 +608,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_index ()
+  system_catalog_initializer::get_index ()
   {
 
     static system_catalog_definition sm_define_index (
@@ -646,7 +646,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_index_key ()
+  system_catalog_initializer::get_index_key ()
   {
 
     static system_catalog_definition sm_define_index_key (
@@ -683,7 +683,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_class_authorization ()
+  system_catalog_initializer::get_class_authorization ()
   {
 
     static system_catalog_definition sm_define_class_authorization (
@@ -714,7 +714,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_partition ()
+  system_catalog_initializer::get_partition ()
   {
 
     static system_catalog_definition sm_define_partition (
@@ -746,7 +746,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_data_type ()
+  system_catalog_initializer::get_data_type ()
   {
 
     static system_catalog_definition sm_define_data_type (
@@ -773,7 +773,7 @@ namespace cubschema
 
 
   const system_catalog_definition &
-  system_catalog_initializer::init_stored_procedure ()
+  system_catalog_initializer::get_stored_procedure ()
   {
 
     static system_catalog_definition sm_define_stored_procedure (
@@ -808,7 +808,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_stored_procedure_arguments ()
+  system_catalog_initializer::get_stored_procedure_arguments ()
   {
 
     static system_catalog_definition sm_define_stored_procedure_arguments (
@@ -840,7 +840,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_serial ()
+  system_catalog_initializer::get_serial ()
   {
     static system_catalog_definition sm_define_serial (
 	    // name
@@ -913,7 +913,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_ha_apply_info ()
+  system_catalog_initializer::get_ha_apply_info ()
   {
 
     static system_catalog_definition sm_define_ha_apply_info (
@@ -975,7 +975,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_collations ()
+  system_catalog_initializer::get_collations ()
   {
 
     static system_catalog_definition sm_define_collations (
@@ -1007,7 +1007,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_charsets ()
+  system_catalog_initializer::get_charsets ()
   {
 
     static system_catalog_definition sm_define_charsets (
@@ -1035,7 +1035,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_dual ()
+  system_catalog_initializer::get_dual ()
   {
 #define CT_DUAL_DUMMY   "dummy"
     static system_catalog_definition sm_define_dual (
@@ -1086,7 +1086,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_synonym ()
+  system_catalog_initializer::get_synonym ()
   {
 
     static system_catalog_definition sm_define_synonym (
@@ -1132,7 +1132,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_db_server ()
+  system_catalog_initializer::get_db_server ()
   {
 
     static system_catalog_definition sm_define_db_server (
@@ -1201,7 +1201,7 @@ namespace cubschema
    */
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_class ()
+  system_catalog_initializer::get_view_class ()
   {
 // db_class
     static system_catalog_definition sm_define_view_class (
@@ -1239,7 +1239,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_super_class ()
+  system_catalog_initializer::get_view_super_class ()
   {
 // db_class
     static system_catalog_definition sm_define_super_class (
@@ -1272,7 +1272,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_vclass ()
+  system_catalog_initializer::get_view_vclass ()
   {
 // db_class
     static system_catalog_definition sm_define_vclass (
@@ -1305,7 +1305,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_attribute ()
+  system_catalog_initializer::get_view_attribute ()
   {
 // db_class
     static system_catalog_definition sm_define_attribute (
@@ -1352,7 +1352,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_attribute_set_domain ()
+  system_catalog_initializer::get_view_attribute_set_domain ()
   {
 // db_class
     static system_catalog_definition sm_define_attribute_set_domain (
@@ -1391,7 +1391,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_method ()
+  system_catalog_initializer::get_view_method ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1428,7 +1428,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_method_argument ()
+  system_catalog_initializer::get_view_method_argument ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1468,7 +1468,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_method_argument_set_domain ()
+  system_catalog_initializer::get_view_method_argument_set_domain ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1508,7 +1508,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_method_file ()
+  system_catalog_initializer::get_view_method_file ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1542,7 +1542,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_index ()
+  system_catalog_initializer::get_view_index ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1587,7 +1587,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_index_key ()
+  system_catalog_initializer::get_view_index_key ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1628,7 +1628,7 @@ namespace cubschema
    * Is this no problem? */
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_authorization ()
+  system_catalog_initializer::get_view_authorization ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1663,7 +1663,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_trigger ()
+  system_catalog_initializer::get_view_trigger ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1701,7 +1701,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_partition ()
+  system_catalog_initializer::get_view_partition ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1738,7 +1738,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_stored_procedure ()
+  system_catalog_initializer::get_view_stored_procedure ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1775,7 +1775,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_stored_procedure_arguments ()
+  system_catalog_initializer::get_view_stored_procedure_arguments ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1810,7 +1810,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_db_collation ()
+  system_catalog_initializer::get_view_db_collation ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1847,7 +1847,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_db_charset ()
+  system_catalog_initializer::get_view_db_charset ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1880,7 +1880,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_synonym ()
+  system_catalog_initializer::get_view_synonym ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1915,7 +1915,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_view_db_server ()
+  system_catalog_initializer::get_view_db_server ()
   {
 // db_class
     static system_catalog_definition sm_def (
@@ -1971,52 +1971,52 @@ catcls_init (void)
   using namespace cubschema;
   static std::vector<cubschema::catcls_function> cl =
   {
-    {CT_CLASS_NAME, system_catalog_initializer::init_class ()},
-    {CT_ATTRIBUTE_NAME, system_catalog_initializer::init_attribute ()},
-    {CT_DOMAIN_NAME, system_catalog_initializer::init_domain ()},
-    {CT_METHOD_NAME, system_catalog_initializer::init_method ()},
-    {CT_METHSIG_NAME, system_catalog_initializer::init_method_sig ()},
-    {CT_METHARG_NAME, system_catalog_initializer::init_meth_argument ()},
-    {CT_METHFILE_NAME, system_catalog_initializer::init_meth_file ()},
-    {CT_QUERYSPEC_NAME, system_catalog_initializer::init_query_spec ()},
-    {CT_INDEX_NAME, system_catalog_initializer::init_index ()},
-    {CT_INDEXKEY_NAME, system_catalog_initializer::init_index_key ()},
-    {CT_CLASSAUTH_NAME, system_catalog_initializer::init_class_authorization ()},
-    {CT_PARTITION_NAME, system_catalog_initializer::init_partition()},
-    {CT_DATATYPE_NAME, system_catalog_initializer::init_data_type()},
-    {CT_STORED_PROC_NAME, system_catalog_initializer::init_stored_procedure()},
-    {CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::init_stored_procedure_arguments()},
-    {CT_SERIAL_NAME, system_catalog_initializer::init_serial()},
-    {CT_HA_APPLY_INFO_NAME, system_catalog_initializer::init_ha_apply_info()},
-    {CT_COLLATION_NAME, system_catalog_initializer::init_collations()},
-    {CT_CHARSET_NAME, system_catalog_initializer::init_charsets()},
-    {CT_DUAL_NAME, system_catalog_initializer::init_dual()},
-    {CT_SYNONYM_NAME, system_catalog_initializer::init_synonym()},
-    {CT_DB_SERVER_NAME, system_catalog_initializer::init_db_server()}
+    {CT_CLASS_NAME, system_catalog_initializer::get_class ()},
+    {CT_ATTRIBUTE_NAME, system_catalog_initializer::get_attribute ()},
+    {CT_DOMAIN_NAME, system_catalog_initializer::get_domain ()},
+    {CT_METHOD_NAME, system_catalog_initializer::get_method ()},
+    {CT_METHSIG_NAME, system_catalog_initializer::get_method_sig ()},
+    {CT_METHARG_NAME, system_catalog_initializer::get_meth_argument ()},
+    {CT_METHFILE_NAME, system_catalog_initializer::get_meth_file ()},
+    {CT_QUERYSPEC_NAME, system_catalog_initializer::get_query_spec ()},
+    {CT_INDEX_NAME, system_catalog_initializer::get_index ()},
+    {CT_INDEXKEY_NAME, system_catalog_initializer::get_index_key ()},
+    {CT_CLASSAUTH_NAME, system_catalog_initializer::get_class_authorization ()},
+    {CT_PARTITION_NAME, system_catalog_initializer::get_partition()},
+    {CT_DATATYPE_NAME, system_catalog_initializer::get_data_type()},
+    {CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure()},
+    {CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_arguments()},
+    {CT_SERIAL_NAME, system_catalog_initializer::get_serial()},
+    {CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info()},
+    {CT_COLLATION_NAME, system_catalog_initializer::get_collations()},
+    {CT_CHARSET_NAME, system_catalog_initializer::get_charsets()},
+    {CT_DUAL_NAME, system_catalog_initializer::get_dual()},
+    {CT_SYNONYM_NAME, system_catalog_initializer::get_synonym()},
+    {CT_DB_SERVER_NAME, system_catalog_initializer::get_db_server()}
   };
 
   static std::vector<cubschema::catcls_function> vcl =
   {
-    {CTV_CLASS_NAME, system_catalog_initializer::init_view_class ()},
-    {CTV_SUPER_CLASS_NAME, system_catalog_initializer::init_view_super_class ()},
-    {CTV_VCLASS_NAME, system_catalog_initializer::init_view_vclass ()},
-    {CTV_ATTRIBUTE_NAME, system_catalog_initializer::init_view_attribute ()},
-    {CTV_ATTR_SD_NAME, system_catalog_initializer::init_view_attribute_set_domain ()},
-    {CTV_METHOD_NAME, system_catalog_initializer::init_view_method ()},
-    {CTV_METHARG_NAME, system_catalog_initializer::init_view_method_argument ()},
-    {CTV_METHARG_SD_NAME, system_catalog_initializer::init_view_method_argument_set_domain ()},
-    {CTV_METHFILE_NAME, system_catalog_initializer::init_view_method_file ()},
-    {CTV_INDEX_NAME, system_catalog_initializer::init_view_index ()},
-    {CTV_INDEXKEY_NAME, system_catalog_initializer::init_view_index_key ()},
-    {CTV_AUTH_NAME, system_catalog_initializer::init_view_authorization ()},
-    {CTV_TRIGGER_NAME, system_catalog_initializer::init_view_trigger ()},
-    {CTV_PARTITION_NAME, system_catalog_initializer::init_view_partition ()},
-    {CTV_STORED_PROC_NAME, system_catalog_initializer::init_view_stored_procedure ()},
-    {CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::init_view_stored_procedure_arguments ()},
-    {CTV_DB_COLLATION_NAME, system_catalog_initializer::init_view_db_collation ()},
-    {CTV_DB_CHARSET_NAME, system_catalog_initializer::init_view_db_charset ()},
-    {CTV_SYNONYM_NAME, system_catalog_initializer::init_view_synonym ()},
-    {CTV_DB_SERVER_NAME, system_catalog_initializer::init_view_db_server ()}
+    {CTV_CLASS_NAME, system_catalog_initializer::get_view_class ()},
+    {CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_super_class ()},
+    {CTV_VCLASS_NAME, system_catalog_initializer::get_view_vclass ()},
+    {CTV_ATTRIBUTE_NAME, system_catalog_initializer::get_view_attribute ()},
+    {CTV_ATTR_SD_NAME, system_catalog_initializer::get_view_attribute_set_domain ()},
+    {CTV_METHOD_NAME, system_catalog_initializer::get_view_method ()},
+    {CTV_METHARG_NAME, system_catalog_initializer::get_view_method_argument ()},
+    {CTV_METHARG_SD_NAME, system_catalog_initializer::get_view_method_argument_set_domain ()},
+    {CTV_METHFILE_NAME, system_catalog_initializer::get_view_method_file ()},
+    {CTV_INDEX_NAME, system_catalog_initializer::get_view_index ()},
+    {CTV_INDEXKEY_NAME, system_catalog_initializer::get_view_index_key ()},
+    {CTV_AUTH_NAME, system_catalog_initializer::get_view_authorization ()},
+    {CTV_TRIGGER_NAME, system_catalog_initializer::get_view_trigger ()},
+    {CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ()},
+    {CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ()},
+    {CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_arguments ()},
+    {CTV_DB_COLLATION_NAME, system_catalog_initializer::get_view_db_collation ()},
+    {CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ()},
+    {CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ()},
+    {CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ()}
   };
 
   clist = &cl;
