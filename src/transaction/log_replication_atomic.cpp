@@ -16,7 +16,6 @@
  *
  */
 
-#include "lock_manager.h"
 #include "log_replication.cpp.hpp"
 #include "log_replication_atomic.hpp"
 #include "log_replication_jobs.hpp"
@@ -401,6 +400,17 @@ namespace cublog
       }
 
     m_locked_classes.emplace (trid, *classoid);
-  }
 
+#if !defined (NDEBUG)
+    /* there will be no duplicated object in the map */
+    auto [begin, end] = m_locked_classes.equal_range (trid);
+    for (auto it = begin; it != end; it++)
+      {
+	if (std::count (begin, end, *it) > 1)
+	  {
+	    assert (false);
+	  }
+      }
+#endif
+  }
 }
