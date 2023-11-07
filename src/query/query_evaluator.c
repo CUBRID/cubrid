@@ -250,10 +250,12 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 		    {
 		      /* vtype1 is more general, try to coerce value_2 */
 		      dom = tp_domain_resolve_default (vtype1);
+#if 0
 		      if (vtype2 == DB_TYPE_BIGINT)
 			{
 			  dom->precision = DB_BIGINT_PRECISION;
 			}
+#endif
 		      (void) tp_value_coerce (dbval2, dbval2, dom);
 		    }
 
