@@ -434,7 +434,7 @@ namespace cublog
       {
 	const OID classoid = it->second;
 
-	heap_classrepr_decache (&thread_entry, &classoid);
+	(void) heap_classrepr_decache (&thread_entry, &classoid);
 	xcache_remove_by_oid (&thread_entry, &classoid);
 	partition_decache_class (&thread_entry, &classoid);
       }
