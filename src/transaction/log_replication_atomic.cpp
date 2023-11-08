@@ -431,9 +431,10 @@ namespace cublog
     auto [begin, end] = m_locked_classes.equal_range (trid);
     for (auto it = begin; it != end; it++)
       {
-	const OID classoid = it->second;
+	auto classoid = it->second;
 
 	(void) heap_classrepr_decache (&thread_entry, &classoid);
+	(void) heap_delete_hfid_from_cache (&thread_entry, &classoid);
 	xcache_remove_by_oid (&thread_entry, &classoid);
 	partition_decache_class (&thread_entry, &classoid);
       }
