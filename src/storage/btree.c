@@ -4266,13 +4266,6 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
   assert (pgptr != NULL);
   assert (rec != NULL);
   assert (rec->type == REC_HOME);
-  assert (bts == NULL || bts->common_prefix == -1
-	  || bts->common_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
-
-  if (bts != NULL)
-    {
-      n_prefix = bts->common_prefix;
-    }
 
   error =
     btree_read_record_without_decompression (thread_p, btid, rec, key, rec_header, node_type, clear_key, offset,
@@ -4489,8 +4482,9 @@ btree_read_record2 (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RE
   assert (pgptr != NULL);
   assert (rec != NULL);
   assert (rec->type == REC_HOME);
-  assert (bts == NULL || bts->common_prefix == -1
-	  || bts->common_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
+  assert (bts == NULL || bts->pg_prefix_info == NULL
+	  || bts->pg_prefix_info->n_prefix == COMMON_PREFIX_UNKNOWN
+	  || bts->pg_prefix_info->n_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
 
   if (bts != NULL && bts->pg_prefix_info)
     {
@@ -4511,10 +4505,6 @@ btree_read_record2 (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RE
 	      btree_check_within_range_in_page (thread_p, btid, pgptr, bts);
 	      VPID_SET_NULL (&(pg_prefix->vpid));
 	    }
-	}
-      else
-	{
-	  n_prefix = bts->common_prefix;
 	}
     }
 
@@ -16213,12 +16203,6 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
 #endif
 
-  if (first_page != bts->C_page)
-    {
-      /* reset common_prefix to recalculate */
-      bts->common_prefix = COMMON_PREFIX_UNKNOWN;
-    }
-
   /*
    * unfix first page if fix next page and move to it
    *
@@ -16553,10 +16537,6 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     }
   else if (bts->pg_prefix_info && bts->pg_prefix_info->range_satisfied_in_page)
     {
-      /* if (bts->key_range.range == GT_LE || bts->key_range.range == GE_LE || bts->key_range.range == INF_LE)
-         {
-         ;                       // bts->key_range_max_value_equal = true;
-         } */
       *is_key_range_satisfied = true;
     }
   else
