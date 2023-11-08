@@ -161,7 +161,6 @@ namespace cublog
 
 	    if (m_locked_classes.count (header.trid) > 0)
 	      {
-		discard_caches_for_ddl (thread_entry, header.trid);
 		release_all_locks_for_ddl (thread_entry, header.trid);
 	      }
 
