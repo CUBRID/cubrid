@@ -2532,6 +2532,9 @@ search_begin:
 	  goto exit;
 	}
 
+      /* cache is not modified during replication in PTS */
+      assert (thread_p->type != TT_REPLICATION_PTS);
+
       cache_entry->repr[reprid] = repr_from_record;
       repr = cache_entry->repr[reprid];
       repr_from_record = NULL;
@@ -2607,6 +2610,9 @@ search_begin:
 	    }
 	  else
 	    {
+	      /* cache can not be modified during replication in PTS */
+	      assert (thread_p->type != TT_REPLICATION_PTS);
+
 	      /* use load representation from record */
 	      cache_entry->repr[reprid] = repr_from_record;
 	      repr = repr_from_record;
@@ -24285,6 +24291,9 @@ heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hf
   assert (hfid != NULL && !HFID_IS_NULL (hfid));
   assert (ftype == FILE_HEAP || ftype == FILE_HEAP_REUSE_SLOTS);
 
+  /* cache is not modified during replication in PTS */
+  assert (thread_p->type != TT_REPLICATION_PTS);
+
   if (class_oid == NULL || OID_ISNULL (class_oid))
     {
       /* We can't cache it. */
@@ -24383,6 +24392,12 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
       return error_code;
     }
   assert (entry != NULL);
+
+  if (inserted == 1 && thread_p->type == TT_REPLICATION_PTS)
+    {
+      /* cache is not modified during replication in PTS */
+      assert (false);
+    }
 
   /*  Here we check only the classname because this is the last field to be populated by other possible concurrent
    *  inserters. This means that if this field is already set by someone else, then the entry data is already
