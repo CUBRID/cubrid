@@ -67,10 +67,13 @@
 #define VALID_INNER(plan)	(plan->well_rooted || \
 				 (plan->plan_type == QO_PLANTYPE_SORT))
 
-#define ISCAN_OVERHEAD_FACTOR   1.2
 #define TEMP_SETUP_COST 5.0
+#define QO_CPU_WEIGHT   0.0025
+#define MJ_CPU_OVERHEAD_FACTOR   20
+#define ISCAN_IO_HIT_RATIO   0.5
+#define SSCAN_DEFULT_CARD 1000
 
-#define RBO_CHECK_COST 10
+#define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
 
 #define	qo_scan_walk	qo_generic_walk
@@ -1853,7 +1856,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
-  double sel, sel_limit, objects, height, leaves, opages;
+  double sel, sel_limit, objects, height, leaves, opages, filter_sel;
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
@@ -1967,6 +1970,14 @@ qo_iscan_cost (QO_PLAN * planp)
   /* check lower bound */
   sel = MAX (sel, sel_limit);
 
+  /* selectivity of the index key filter terms */
+  filter_sel = 1.0;
+  for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+      filter_sel *= QO_TERM_SELECTIVITY (termp);
+    }
+
   /* number of objects to be selected */
   objects = sel * (double) QO_NODE_NCARD (nodep);
   /* height of the B+tree */
@@ -2004,7 +2015,7 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   else
     {
-      object_IO = opages * sel;
+      object_IO = opages * sel * filter_sel;
     }
 
   object_IO = MAX (1.0, object_IO);
@@ -2012,7 +2023,7 @@ qo_iscan_cost (QO_PLAN * planp)
   /* index scan requires more CPU cost than sequential scan */
   planp->fixed_cpu_cost = 0.0;
   planp->fixed_io_cost = index_IO;
-  planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT *ISCAN_OVERHEAD_FACTOR;
+  planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
 }
 
@@ -2969,7 +2980,16 @@ qo_nljoin_cost (QO_PLAN * planp)
   inner_cpu_cost = guessed_result_cardinality * inner->variable_cpu_cost;
 
   /* inner side IO cost of nested-loop block join */
-  inner_io_cost = guessed_result_cardinality * inner->variable_io_cost;	/* assume IO as # blocks */
+  if (qo_is_iscan (inner))
+    {
+      inner_io_cost = guessed_result_cardinality * inner->variable_io_cost * (1 - ISCAN_IO_HIT_RATIO);
+    }
+  else
+    {
+      /* if inner is seq scan, it is calculated by default card. */
+      /* This prevents the worst plan if the cardinality is calculated to be less than the actual value. */
+      inner_io_cost = MAX (guessed_result_cardinality, SSCAN_DEFULT_CARD) * inner->variable_io_cost;
+    }
 
   /* outer side CPU cost of nested-loop block join */
   outer_cpu_cost = outer->variable_cpu_cost;
@@ -3074,7 +3094,7 @@ qo_mjoin_cost (QO_PLAN * planp)
   planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
   /* CPU and IO costs which are variable according to the join plan */
   planp->variable_cpu_cost = outer->variable_cpu_cost + inner->variable_cpu_cost;
-  planp->variable_cpu_cost += (outer_cardinality / 2) * (inner_cardinality / 2) * (double) QO_CPU_WEIGHT;
+  planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * QO_CPU_WEIGHT * MJ_CPU_OVERHEAD_FACTOR;
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
 }
@@ -3910,7 +3930,14 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       }
     else if (a_range > 0 && a_range < a_last)
       {
-	a_keys = a_cum->pkeys[a_range - 1];
+	if (qo_is_index_iss_scan (a))
+	  {
+	    b_keys = b_cum->pkeys[a_range];
+	  }
+	else
+	  {
+	    a_keys = a_cum->pkeys[a_range - 1];
+	  }
       }
     else
       {				/* a_range == 0 */
@@ -3947,14 +3974,21 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     /* btree access pages */
     a_pages = a_leafs + a_cum->height - 1;
 
-    /* btree partial-key stats */
+    /* btree partial-key stats  */
     if (b_range == b_ent->col_num)
       {
 	b_keys = b_cum->keys;
       }
     else if (b_range > 0 && b_range < b_last)
       {
-	b_keys = b_cum->pkeys[b_range - 1];
+	if (qo_is_index_iss_scan (b))
+	  {
+	    b_keys = b_cum->pkeys[b_range];
+	  }
+	else
+	  {
+	    b_keys = b_cum->pkeys[b_range - 1];
+	  }
       }
     else
       {				/* b_range == 0 */
@@ -8767,6 +8801,11 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	  break;
 
+	case PT_NOT_LIKE:
+	  lhs_selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
+	  selectivity = qo_not_selectivity (env, lhs_selectivity);
+	  break;
+
 	case PT_SETNEQ:
 	case PT_SETEQ:
 	case PT_SUPERSETEQ:
@@ -8778,7 +8817,6 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  selectivity = DEFAULT_SELECTIVITY;
 	  break;
 
-	case PT_NOT_LIKE:
 	case PT_IS_NOT:
 	  selectivity = qo_not_selectivity (env, DEFAULT_SELECTIVITY);
 	  break;
@@ -9464,6 +9502,12 @@ qo_classify (PT_NODE * attr)
 	  return PC_OTHER;
 	}
 
+    case PT_EXPR:
+      if (pt_is_function_index_expression (attr))
+	{
+	  return PC_ATTR;
+	}
+
     default:
       return PC_OTHER;
     }
@@ -9488,7 +9532,7 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
       attr = attr->info.dot.arg2;
     }
 
-  QO_ASSERT (env, attr->node_type == PT_NAME);
+  QO_ASSERT (env, (attr->node_type == PT_NAME || pt_is_function_index_expression (attr)));
 
   nodep = lookup_node (attr, env, &dummy);
   if (nodep == NULL)

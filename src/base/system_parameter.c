@@ -3492,7 +3492,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MAX_OUTER_CARD_OF_IDXJOIN,
    PRM_NAME_MAX_OUTER_CARD_OF_IDXJOIN,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_DEPRECATED),
    PRM_INTEGER,
    &prm_max_outer_card_of_idxjoin_flag,
    (void *) &prm_max_outer_card_of_idxjoin_default,
@@ -6058,7 +6058,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_USE_STAT_ESTIMATION,	/* not deleted for compatibility. */
    PRM_NAME_USE_STAT_ESTIMATION,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_DEPRECATED),
    PRM_BOOLEAN,
    &prm_use_stat_estimation_flag,
    (void *) &prm_use_stat_estimation_default,

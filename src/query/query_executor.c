@@ -13580,7 +13580,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
   bool on_trace;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
-  UINT64 old_fetches = 0, old_ioreads = 0;
+  UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
   static int max_recursion_sql_depth = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
 
   if (thread_get_recursion_depth (thread_p) > max_recursion_sql_depth)
@@ -13598,6 +13598,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
 
       old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
     }
 
   error = qexec_execute_mainblock_internal (thread_p, xasl, xstate, p_class_instance_lock_info);
@@ -13610,6 +13611,8 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state *
 
       xasl->xasl_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       xasl->xasl_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      xasl->xasl_stats.fetch_time +=
+	perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) - old_fetch_time;
     }
 
   thread_dec_recursion_depth (thread_p);

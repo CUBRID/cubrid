@@ -34,8 +34,10 @@
 #define STATS_WITH_FULLSCAN  true
 #define STATS_WITH_SAMPLING  false
 
-#define STATS_SAMPLING_THRESHOLD 1000	/* sampling trial count */
-#define STATS_SAMPLING_LEAFS_MAX  500	/* sampling leaf pages */
+#define STATS_SAMPLING_THRESHOLD 5000	/* sampling trial count */
+#define STATS_SAMPLING_LEAFS_MAX 5000	/* sampling leaf pages */
+#define NUMBER_OF_SAMPLING_PAGES 5000
+#define EXPECTED_ROWS_PER_PAGE 20
 
 /* disk-resident elements of pkeys[] field */
 #define BTREE_STATS_PKEYS_NUM      8
@@ -121,5 +123,30 @@ extern char *stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** at
 extern int stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p,
 				   int with_fullscan);
 #endif /* !SERVER_MODE */
+STATIC_INLINE int stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
+  __attribute__ ((ALWAYS_INLINE));
+
+/*
+ * stats_adjust_sampling_weight () - adjust sampling weight
+ * return : adjusted sampling weight
+ * sampling_ndv (in)  : sampling number of distinct values
+ */
+STATIC_INLINE int
+stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
+{
+  /* This is based on the assumption that if the sample data is a lot of duplicated, */
+  /* there will also be duplicate in the overall data. */
+  /* Differential weight is applied to NDV within 1% of all rows of sample data. */
+  if (sampling_weight <= 1)
+    {
+      return sampling_weight;
+    }
+  int min_NDV = NUMBER_OF_SAMPLING_PAGES * EXPECTED_ROWS_PER_PAGE / 100;	/* 1% of number of sampling data */
+  if (sampling_ndv < min_NDV)
+    {
+      return MAX (sampling_weight * sampling_ndv / min_NDV, 1);
+    }
+  return sampling_weight;
+}
 
 #endif /* _STATISTICS_H_ */
