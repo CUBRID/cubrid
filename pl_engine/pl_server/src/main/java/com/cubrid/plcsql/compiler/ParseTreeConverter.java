@@ -1254,7 +1254,13 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             if (decl instanceof DeclId) {
                 return new ExprId(ctx, name, scope, (DeclId) decl);
             } else if (decl instanceof DeclFunc) {
-                return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
+                if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
+                    connectionRequired = true;
+                    addToImports("java.sql.*");
+                    return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
+                } else {
+                    return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
+                }
             }
         }
 

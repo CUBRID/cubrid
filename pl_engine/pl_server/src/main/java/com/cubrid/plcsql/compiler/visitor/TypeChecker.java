@@ -537,7 +537,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
 
         String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
-        String sql = String.format("select %s(%s) from dual", node.name, tvStr);
+        String sql = String.format("select %s%s from dual", node.name, tvStr);
 
         List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(sql));
         assert sqlSemantics.size() == 1;
@@ -1152,7 +1152,12 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     }
 
     private String checkArgsAndConvertToTypicalValuesStr(List<Expr> args, String funcName) {
+        if (args.size() == 0) {
+            return "";
+        }
+
         StringBuilder sb = new StringBuilder();
+        sb.append("(");
 
         int len = args.size();
         for (int i = 0; i < len; i++) {
@@ -1174,6 +1179,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             sb.append(typicalValueStr);
         }
 
+        sb.append(")");
         return sb.toString();
     }
 
