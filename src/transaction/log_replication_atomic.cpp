@@ -241,6 +241,7 @@ namespace cublog
 
 	    acquire_lock_for_ddl (thread_entry, header.trid, &log_rec.classoid);
 
+	    bookkeep_classname (thread_entry, &log_rec.classoid);
 	    break;
 	  }
 	  default:
@@ -415,6 +416,50 @@ namespace cublog
 #endif
 
     m_locked_classes.emplace (trid, *classoid);
+  }
+
+  void
+  atomic_replicator::bookkeep_classname (cubthread::entry &thread_entry, const OID *classoid)
+  {
+    assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
+    char *classname = NULL;
+    (void) heap_get_class_name (&thread_entry, classoid, &classname);
+    if (classname != NULL)
+      {
+	m_classname_map.emplace (*classoid, classname);
+	free_and_init (classname);
+      }
+  }
+
+  void
+  atomic_replicator::update_classname_cache_for_ddl (cubthread::entry &thread_entry, const OID *classoid)
+  {
+    /* update locator_Mht_classnames only if needed */
+    char *classname = NULL;
+    (void) heap_get_class_name (&thread_entry, classoid, &classname);
+    if (classname != NULL)
+      {
+	if (m_classname_map.find (*classoid) == m_classname_map.end ())
+	  {
+	    locator_put_classname_entry (&thread_entry, classname, classoid);
+	  }
+	else
+	  {
+	    locator_remove_classname_entry (&thread_entry, classname);
+	    locator_put_classname_entry (&thread_entry, classname, classoid);
+	  }
+
+	free_and_init (classname);
+      }
+    else
+      {
+	if (m_classname_map.find (*classoid) != m_classname_map.end ())
+	  {
+	    locator_remove_classname_entry (&thread_entry, m_classname_map[*classoid].c_str ());
+	  }
+      }
+
+    m_classname_map.erase (*classoid);
   }
 
   void

@@ -90,6 +90,9 @@ namespace cublog
       void set_lowest_unapplied_lsa ();
       void replicate_sysop_start_postpone (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header);
 
+      void bookkeep_classname (cubthread::entry &thread_entry, const OID *classoid);
+      void update_classname_cache_for_ddl (cubthread::entry &thread_entry, const OID *classoid);
+
       void release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
       void acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid);
       void discard_caches_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
@@ -107,6 +110,7 @@ namespace cublog
        * Since multiple DDL operations can be executed within single transaction,
        * more than one classes can be mapped to one transaction */
       std::multimap <TRANID, OID> m_locked_classes;
+      std::unordered_map <OID, std::string> m_classname_map;
   };
 }
 
