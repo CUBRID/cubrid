@@ -451,7 +451,7 @@ namespace cublog
 	    if (m_classname_map[*classoid] != classname)
 	      {
 		/* If the classname is modified after DDL, then it is RENAME TABLE/VIEW case */
-		locator_update_classname_entry (&thread_entry, classname);
+		locator_update_classname_entry (&thread_entry, m_classname_map[*classoid].c_str(), classname);
 	      }
 	  }
 
@@ -475,17 +475,12 @@ namespace cublog
   {
     assert (m_locked_classes.count (trid) > 0);
 
-    /* TODO:
-     * This is to update locator_Mht_classnames which contains class names,
-     * and it will be replaced with a function to update specific class name only if needed.
-     */
-    locator_initialize (&thread_entry);
-
     auto [begin, end] = m_locked_classes.equal_range (trid);
     for (auto it = begin; it != end; it++)
       {
 	auto classoid = it->second;
 
+	update_classname_cache_for_ddl (thread_entry, &classoid);
 	(void) heap_classrepr_decache (&thread_entry, &classoid);
 	(void) heap_delete_hfid_from_cache (&thread_entry, &classoid);
 	xcache_remove_by_oid (&thread_entry, &classoid);
