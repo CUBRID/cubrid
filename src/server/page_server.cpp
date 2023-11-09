@@ -208,7 +208,6 @@ page_server::tran_server_connection_handler::handle_oldest_active_mvccid_request
   m_conn->respond (std::move (a_sp));
 }
 
-
 void
 page_server::tran_server_connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
 {
