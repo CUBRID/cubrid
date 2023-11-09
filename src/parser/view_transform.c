@@ -6662,6 +6662,10 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
     {
       /* parse and compile the next query spec */
       query_spec_string = db_query_spec_string (db_query_spec);
+      if (query_spec_string[0] == '-' && query_spec_string[1] == '-')
+	{
+	  goto next_query;
+	}
       result = parser_parse_string_use_sys_charset (parser, query_spec_string);
 
       /* a system error, that allowed a syntax error to be in a query spec string. May want to augment the error
@@ -6731,7 +6735,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 	{
 	  statements = pt_union (parser, statements, local_query);
 	}
-
+    next_query:
       db_query_spec = db_query_spec_next (db_query_spec);
     }
 

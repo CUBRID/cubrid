@@ -8327,6 +8327,7 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
   const char *query;
   int error = NO_ERROR;
   unsigned int save_custom;
+  char user_query[4096] = { '-', '-' };
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
@@ -8334,6 +8335,12 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
   query = parser_print_tree_with_quotes (parser, queries);
   parser->custom_print = save_custom;
   error = dbt_add_query_spec (ctemplate, query);
+
+  query = strcat (user_query + 2, queries->sql_user_text);
+  if (error == NO_ERROR)
+    {
+      error = dbt_add_query_spec (ctemplate, user_query);
+    }
 
   return (error);
 }
