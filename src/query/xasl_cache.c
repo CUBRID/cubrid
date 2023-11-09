@@ -1369,6 +1369,9 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
   assert (stream != NULL);
   assert (stream->buffer != NULL || !context->recompile_xasl);
 
+  /* cache can not be modified during replication in PTS */
+  assert (thread_p->type != TT_REPLICATION_PTS);
+
   if (!xcache_Enabled)
     {
       return NO_ERROR;

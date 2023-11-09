@@ -21,8 +21,10 @@
 #include "log_replication_jobs.hpp"
 
 #include "heap_file.h"
+#include "locator_sr.h"
 #include "log_recovery_redo_parallel.hpp"
 #include "oid.h"
+#include "xasl_cache.h"
 
 namespace cublog
 {
@@ -123,6 +125,7 @@ namespace cublog
 
 	    if (m_locked_classes.count (header.trid) > 0)
 	      {
+		discard_caches_for_ddl (thread_entry, header.trid);
 		release_all_locks_for_ddl (thread_entry, header.trid);
 	      }
 
@@ -412,5 +415,28 @@ namespace cublog
 #endif
 
     m_locked_classes.emplace (trid, *classoid);
+  }
+
+  void
+  atomic_replicator::discard_caches_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
+  {
+    assert (m_locked_classes.count (trid) > 0);
+
+    /* TODO:
+     * This is to update locator_Mht_classnames which contains class names,
+     * and it will be replaced with a function to update specific class name only if needed.
+     */
+    locator_initialize (&thread_entry);
+
+    auto [begin, end] = m_locked_classes.equal_range (trid);
+    for (auto it = begin; it != end; it++)
+      {
+	auto classoid = it->second;
+
+	(void) heap_classrepr_decache (&thread_entry, &classoid);
+	(void) heap_delete_hfid_from_cache (&thread_entry, &classoid);
+	xcache_remove_by_oid (&thread_entry, &classoid);
+	partition_decache_class (&thread_entry, &classoid);
+      }
   }
 }

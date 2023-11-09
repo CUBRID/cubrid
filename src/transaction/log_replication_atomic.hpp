@@ -92,6 +92,7 @@ namespace cublog
 
       void release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
       void acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid);
+      void discard_caches_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
 
     private:
       atomic_replication_helper m_atomic_helper;
