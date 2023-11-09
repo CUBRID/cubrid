@@ -13934,15 +13934,7 @@ locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, con
 
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
     {
-      /* Some kind of failure. We must notify the error to the caller. */
       assert (false);
-      return;
-    }
-
-  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      assert (false);
-      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       return;
     }
 
@@ -13971,7 +13963,6 @@ locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, con
   (void) mht_put (locator_Mht_classnames, entry->e_name, entry);
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-  csect_exit (thread_p, CSECT_CT_OID_TABLE);
 }
 
 void
@@ -13981,7 +13972,6 @@ locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname)
 
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
     {
-      /* Some kind of failure. We must notify the error to the caller. */
       assert (false);
       return;
     }
@@ -13999,6 +13989,32 @@ locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname)
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
+}
+
+void
+locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *classname)
+{
+  LOCATOR_CLASSNAME_ENTRY *entry = NULL;
+
+  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+
+  entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
+ 
+  assert (entry != NULL);
+  assert (entry->e_name != NULL);
+  free_and_init (entry->e_name);
+
+  entry->e_tran_index = NULL_TRAN_INDEX;
+  entry->e_name = strdup ((char *) classname);
+  entry->e_tran_index = NULL_TRAN_INDEX;
+  entry->e_current.action = LC_CLASSNAME_EXIST;
+  LSA_SET_NULL (&entry->e_current.savep_lsa);
+
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 }
 
 bool

@@ -423,12 +423,14 @@ namespace cublog
   {
     assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
     char *classname = NULL;
+
     (void) heap_get_class_name (&thread_entry, classoid, &classname);
     if (classname != NULL)
       {
 	m_classname_map.emplace (*classoid, classname);
 	free_and_init (classname);
       }
+    /* if classname == NULL, then it is CREATE TABLE/VIEW case */
   }
 
   void
@@ -441,20 +443,26 @@ namespace cublog
       {
 	if (m_classname_map.find (*classoid) == m_classname_map.end ())
 	  {
+	    /* If the classname is created after DDL, then it is CREATE TABLE/VIEW case */
 	    locator_put_classname_entry (&thread_entry, classname, classoid);
 	  }
 	else
 	  {
-	    locator_remove_classname_entry (&thread_entry, classname);
-	    locator_put_classname_entry (&thread_entry, classname, classoid);
+	    if (m_classname_map[*classoid] != classname)
+	      {
+		/* If the classname is modified after DDL, then it is RENAME TABLE/VIEW case */
+		locator_update_classname_entry (&thread_entry, classname);
+	      }
 	  }
 
 	free_and_init (classname);
       }
     else
       {
+	/* classname == NULL */
 	if (m_classname_map.find (*classoid) != m_classname_map.end ())
 	  {
+	    /* If the classname is removed after DDL, then it is DROP TABLE/VIEW case */
 	    locator_remove_classname_entry (&thread_entry, m_classname_map[*classoid].c_str ());
 	  }
       }
