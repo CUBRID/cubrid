@@ -13925,6 +13925,19 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   return error_code;
 }
 
+bool
+has_errors_filtered_for_insert (std::vector<int> error_filter_array)
+{
+  if (std::find (error_filter_array.begin(), error_filter_array.end(), ER_BTREE_UNIQUE_FAILED)
+                 != error_filter_array.end ())
+  {
+    return true;
+  }
+
+  return false;
+}
+// *INDENT-ON*
+
 /* locator_put_classname_entry () - Put a new entry in the locator_Mht_classnames, used in PTS replicator (atomic_replicator)
  *
  * return	     : void
@@ -13933,7 +13946,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
  * classoid (in)     : class oid of the classname
  */
 void
-locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, const OID *classoid)
+locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, const OID * classoid)
 {
   assert (classname != NULL);
   assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
@@ -13949,29 +13962,29 @@ locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, con
   scope_exit <std::function <void ()>> classname_csect_exit ([&thread_p] () {csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE); });
   // *INDENT-ON*
 
-entry = ((LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry)));
-if (entry == NULL)
-  {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
-    return;
-  }
+  entry = ((LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry)));
+  if (entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
+      return;
+    }
 
-entry->e_name = strdup ((char *) classname);
-if (entry->e_name == NULL)
-  {
-    free_and_init (entry);
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (classname) + 1));
-    return;
-  }
+  entry->e_name = strdup ((char *) classname);
+  if (entry->e_name == NULL)
+    {
+      free_and_init (entry);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (classname) + 1));
+      return;
+    }
 
-entry->e_tran_index = NULL_TRAN_INDEX;
+  entry->e_tran_index = NULL_TRAN_INDEX;
 
-entry->e_current.action = LC_CLASSNAME_EXIST;
-COPY_OID (&entry->e_current.oid, classoid);
-LSA_SET_NULL (&entry->e_current.savep_lsa);
-entry->e_current.prev = NULL;
+  entry->e_current.action = LC_CLASSNAME_EXIST;
+  COPY_OID (&entry->e_current.oid, classoid);
+  LSA_SET_NULL (&entry->e_current.savep_lsa);
+  entry->e_current.prev = NULL;
 
-(void) mht_put (locator_Mht_classnames, entry->e_name, entry);
+  (void) mht_put (locator_Mht_classnames, entry->e_name, entry);
 }
 
 /* locator_remove_classname_entry () - Remove an entry from the locator_Mht_classnames, used in PTS replicator (atomic_replicator)
@@ -14073,20 +14086,6 @@ locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classna
 
   csect_exit (thread_p, CSECT_CT_OID_TABLE);
 }
-
-bool
-has_errors_filtered_for_insert (std::vector < int >error_filter_array)
-{
-  if (std::find (error_filter_array.begin (), error_filter_array.end (), ER_BTREE_UNIQUE_FAILED)
-      != error_filter_array.end ())
-    {
-      return true;
-    }
-
-  return false;
-}
-
-// *INDENT-ON*
 
 void
 xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
