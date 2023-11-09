@@ -179,8 +179,10 @@ typedef struct
   int n_prefix;
   VPID vpid;
   LOG_LSA leaf_lsa;
-  bool range_satisfied_in_page;
-  bool enable_skip_read_key;
+  bool is_midxkey;
+  bool use_comparing;		// key compare
+  bool use_index_column;	// result or filtering
+  bool satisfied_range_in_page;
   bool clear_prefix_key;
   DB_VALUE prefix_key;
 } BTREE_PAGE_PREFIX_INFO;
@@ -188,26 +190,31 @@ typedef struct
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix)   do {\
     assert((pg_prefix) != NULL);                     \
     (pg_prefix)->reader_type = en_reader_none;       \
+    (pg_prefix)->is_midxkey = true;                  \
+    (pg_prefix)->use_comparing = true;               \
+    (pg_prefix)->use_index_column = true;            \
+    (pg_prefix)->satisfied_range_in_page = false;    \
     (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;   \
     VPID_SET_NULL (&((pg_prefix)->vpid));            \
     LSA_SET_NULL(&((pg_prefix)->leaf_lsa));          \
     btree_init_temp_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
-    (pg_prefix)->range_satisfied_in_page = false;    \
-    (pg_prefix)->enable_skip_read_key = false;       \
 } while(0)
 
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {\
     if((pg_prefix))  {                               \
        (pg_prefix)->reader_type = en_reader_none;    \
+       (pg_prefix)->is_midxkey = true;               \
+       (pg_prefix)->use_comparing = true;            \
+       (pg_prefix)->use_index_column = true;         \
+       (pg_prefix)->satisfied_range_in_page = false; \
        (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;\
        btree_clear_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
        VPID_SET_NULL (&((pg_prefix)->vpid));         \
        LSA_SET_NULL(&((pg_prefix)->leaf_lsa));       \
-       (pg_prefix)->range_satisfied_in_page = false; \
-       (pg_prefix)->enable_skip_read_key = false;    \
     }                                                \
 } while(0)
 #else
+#define BTREE_PAGE_PREFIX_INFO  void
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix)
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)
 #endif
@@ -255,7 +262,6 @@ struct btree_scan
   /* for query trace */
   int read_keys;
   int qualified_keys;
-
   BTREE_PAGE_PREFIX_INFO *pg_prefix_info;
 
   bool key_range_max_value_equal;
