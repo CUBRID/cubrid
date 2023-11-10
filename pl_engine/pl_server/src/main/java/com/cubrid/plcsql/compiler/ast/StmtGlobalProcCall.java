@@ -40,17 +40,15 @@ public class StmtGlobalProcCall extends Stmt {
         return visitor.visitStmtGlobalProcCall(this);
     }
 
-    public final int level;
     public final String name;
     public final NodeList<Expr> args;
 
     public DeclProc decl;
 
-    public StmtGlobalProcCall(ParserRuleContext ctx, int level, String name, NodeList<Expr> args) {
+    public StmtGlobalProcCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
         super(ctx);
 
         assert args != null;
-        this.level = level;
         this.name = name;
         this.args = args;
     }

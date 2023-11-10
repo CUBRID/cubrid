@@ -42,41 +42,69 @@ import java.util.Set;
 
 public abstract class Coercion {
 
+    public final TypeSpecSimple src;
+    public final TypeSpecSimple dst;
+
     public abstract String javaCode(String exprJavaCode);
 
-    public static Coercion getCoercion(TypeSpec from, TypeSpec to) {
+    // for dummies in the CoercionStore
+    protected Coercion() {
+        src = dst = null;
+    };
 
-        if (from instanceof TypeSpecPercent) {
-            from = ((TypeSpecPercent) from).resolvedType;
-            assert from != null;
+    protected Coercion(TypeSpecSimple src, TypeSpecSimple dst) {
+        this.src = src;
+        this.dst = dst;
+    }
+
+    public Coercion getReversion() {
+        // getReversion() is only used for code generation of argument passing to OUT parameters.
+        // and the src and dst types are those written by the users in the program
+        assert TypeSpecSimple.isUserType(src);
+        assert TypeSpecSimple.isUserType(dst);
+
+        return getCoercion(dst, src);
+    }
+
+    public static Coercion getCoercion(TypeSpec src, TypeSpec dst) {
+
+        if (src instanceof TypeSpecPercent) {
+            src = ((TypeSpecPercent) src).resolvedType;
+            assert src != null;
         }
-        if (to instanceof TypeSpecPercent) {
-            to = ((TypeSpecPercent) to).resolvedType;
-            assert to != null;
+        if (dst instanceof TypeSpecPercent) {
+            dst = ((TypeSpecPercent) dst).resolvedType;
+            assert dst != null;
         }
 
-        if (from == to) {
-            return IDENTITY;
-        } else if (from == TypeSpecSimple.NULL) {
-            // why NULL?: in order for Javac to pick the right version among operator function
+        assert src instanceof TypeSpecSimple;
+        assert dst instanceof TypeSpecSimple;
+
+        TypeSpecSimple src0 = (TypeSpecSimple) src;
+        TypeSpecSimple dst0 = (TypeSpecSimple) dst;
+
+        if (src0.equals(dst0)) {
+            return Identity.getInstance(src0);
+        } else if (src0.equals(TypeSpecSimple.NULL)) {
+            // cast NULL: in order for Javac dst pick the right version among operator function
             // overloads when all the arguments are nulls
-            return new Cast(to);
-        } else if (to == TypeSpecSimple.OBJECT) {
-            return IDENTITY;
+            return Cast.getInstance(src0, dst0);
+        } else if (dst0.equals(TypeSpecSimple.OBJECT)) {
+            return Identity.getInstance(src0, dst0);
         }
 
-        Coercion ret = null;
-
-        Set<Integer> possibleTargets = possibleCasts.get(from.simpleTypeIdx);
-        if (possibleTargets != null && possibleTargets.contains(to.simpleTypeIdx)) {
-            ret = new Conversion(from.plcName, to.plcName);
-        } else if (from.simpleTypeIdx == to.simpleTypeIdx && from.simpleTypeIdx == TypeSpecSimple.IDX_NUMERIC) {
-            ret = IDENTITY;    // TODO: do more
+        Coercion ret = Conversion.getInstance(src0, dst0);
+        if (ret == null && src0.simpleTypeIdx == dst0.simpleTypeIdx) {
+            if (src0.simpleTypeIdx == TypeSpecSimple.IDX_NUMERIC) {
+                ret = Identity.getInstance(src0, dst0);
+            } else {
+                assert false;
+            }
         }
 
-        if (ret != null && to instanceof TypeSpecNumeric) {
-            // when 'to' is a NUMERIC type with specific precision and scale
-            TypeSpecNumeric tsNumeric = (TypeSpecNumeric) to;
+        if (ret != null && dst0 instanceof TypeSpecNumeric) {
+            // when dst0 is a NUMERIC type with specific precision and scale
+            TypeSpecNumeric tsNumeric = (TypeSpecNumeric) dst0;
             ret = new CoerceAndCheckPrecision(ret, tsNumeric.precision, tsNumeric.scale);
         }
 
@@ -84,7 +112,7 @@ public abstract class Coercion {
     }
 
     // ----------------------------------------------
-    // cases
+    // coercion cases
     // ----------------------------------------------
 
     public static class CoerceAndCheckPrecision extends Coercion {
@@ -94,6 +122,7 @@ public abstract class Coercion {
         public short scale;
 
         public CoerceAndCheckPrecision(Coercion c, int prec, short scale) {
+            super(c.src, c.dst);
             this.c = c;
             this.prec = prec;
             this.scale = scale;
@@ -103,42 +132,148 @@ public abstract class Coercion {
         public String javaCode(String exprJavaCode) {
             return String.format("checkPrecision(%d, %d, %s)", prec, scale, c.javaCode(exprJavaCode));
         }
+
+        @Override
+        Coercion create(TypeSpecSimple src, TypeSpecSimple dst) {
+            assert false;   // CoerceAndCheckPrecision is not memoized in CoercionStore
+            return null;
+        }
     }
 
     public static class Identity extends Coercion {
+
         @Override
         public String javaCode(String exprJavaCode) {
             return exprJavaCode; // no coercion
         }
+
+        @Override
+        Identity create(TypeSpecSimple src, TypeSpecSimple dst) {
+            return new Identity(src, dst);
+        }
+
+        public static Identity getInstance(TypeSpecSimple ty) {
+            return (Identity) memoized.get(ty, ty);
+        }
+
+        public static Identity getInstance(TypeSpecSimple src, TypeSpecSimple dst) {
+            return (Identity) memoized.get(src, dst);
+        }
+
+        // ----------------------------------------------
+        // Private
+        // ----------------------------------------------
+
+        private static CoercionStore memoized = new CoercionStore(new Identity());
+
+        private Identity(TypeSpecSimple ty) {
+            super(ty, ty);
+        }
+
+        protected Identity() {};    // for dummy in the CoercionStore
+
+        private Identity(TypeSpecSimple src, TypeSpecSimple dst) {
+            super(src, dst);
+        }
     }
 
-    public static Coercion IDENTITY = new Identity();
-
     public static class Cast extends Coercion {
-        public TypeSpec to;
-
-        public Cast(TypeSpec to) {
-            this.to = to;
-        }
 
         @Override
         public String javaCode(String exprJavaCode) {
-            return String.format("(%s) %s", to.javaCode(), exprJavaCode);
+            return String.format("(%s) %s", dst.javaCode(), exprJavaCode);
+        }
+
+        @Override
+        Cast create(TypeSpecSimple src, TypeSpecSimple dst) {
+            assert false;   // Cast is not memoized in CoercionStore
+            return null;
+        }
+
+
+        public static Cast getInstance(TypeSpecSimple src, TypeSpecSimple dst) {
+            assert src == TypeSpecSimple.NULL;
+            return instances.get(dst);
+        }
+
+        // ----------------------------------------------
+        // Private
+        // ----------------------------------------------
+
+        private static Map<TypeSpecSimple, Cast> instances = new HashMap<>();
+
+        static {
+            // NOTE: there is no Cast coercion dst NULL
+            instances.put(TypeSpecSimple.OBJECT,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
+            instances.put(TypeSpecSimple.BOOLEAN,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
+            instances.put(TypeSpecSimple.STRING,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
+            instances.put(TypeSpecSimple.SHORT,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
+            instances.put(TypeSpecSimple.INT,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
+            instances.put(TypeSpecSimple.BIGINT,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
+            instances.put(TypeSpecSimple.NUMERIC_ANY,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.NUMERIC_ANY));
+            instances.put(TypeSpecSimple.FLOAT,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.FLOAT));
+            instances.put(TypeSpecSimple.DOUBLE,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
+            instances.put(TypeSpecSimple.DATE,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
+            instances.put(TypeSpecSimple.TIME,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
+            instances.put(TypeSpecSimple.DATETIME,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATETIME));
+            instances.put(TypeSpecSimple.TIMESTAMP,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIMESTAMP));
+            instances.put(TypeSpecSimple.SYS_REFCURSOR,
+                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SYS_REFCURSOR));
+        }
+
+        private Cast(TypeSpecSimple src, TypeSpecSimple dst) {
+            super(src, dst);
+            assert src.equals(TypeSpecSimple.NULL); // only NULL type is possible for the src type
+            assert !dst.equals(TypeSpecSimple.NULL); // dst cannot be NULL type
         }
     }
 
     public static class Conversion extends Coercion {
-        public String from;
-        public String to;
-
-        public Conversion(String from, String to) {
-            this.from = from;
-            this.to = to;
-        }
 
         @Override
         public String javaCode(String exprJavaCode) {
-            return String.format("conv%sTo%s(%s)", from, to, exprJavaCode);
+            return String.format("conv%sTo%s(%s)", src.plcName, dst.plcName, exprJavaCode);
+        }
+
+        @Override
+        Conversion create(TypeSpecSimple src, TypeSpecSimple dst) {
+            return new Conversion(src, dst);
+        }
+
+        public static Conversion getInstance(TypeSpecSimple src, TypeSpecSimple dst) {
+
+            Set<Integer> possibleTargets = possibleCasts.get(src.simpleTypeIdx);
+            if (possibleTargets == null || !possibleTargets.contains(dst.simpleTypeIdx)) {
+                return null;
+            }
+
+            return (Conversion) memoized.get(src, dst);
+        }
+
+        // ----------------------------------------------
+        // Private
+        // ----------------------------------------------
+
+        private static final CoercionStore memoized = new CoercionStore(new Conversion());
+
+        protected Conversion() {};    // for dummy in the CoercionStore
+
+        private Conversion(TypeSpecSimple src, TypeSpecSimple dst) {
+            super(src, dst);
+            assert !dst.equals(TypeSpecSimple.NULL); // dst cannot be NULL type
         }
     }
 
@@ -146,8 +281,40 @@ public abstract class Coercion {
     // Private
     // ----------------------------------------------
 
-    private static final Map<Integer, Set<Integer>> possibleCasts = new HashMap<>();
+    abstract Coercion create(TypeSpecSimple src, TypeSpecSimple dst);  // used inside CoercionStore
 
+    private static class CoercionStore {
+
+        CoercionStore(Coercion dummy) {
+            this.dummy = dummy;
+        }
+
+        synchronized Coercion get(TypeSpecSimple src, TypeSpecSimple dst) {
+
+            Map<TypeSpecSimple, Coercion> storeInner = store.get(src);
+            if (storeInner == null) {
+                storeInner = new HashMap<>();
+                store.put(src, storeInner);
+            }
+
+            Coercion c = storeInner.get(dst);
+            if (c == null) {
+                c = dummy.create(src, dst);
+                storeInner.put(dst, c);
+            }
+
+            return c;
+        }
+
+        // ---------------------------------------
+        // Private
+        // ---------------------------------------
+
+        private final Map<TypeSpecSimple, Map<TypeSpecSimple, Coercion>> store = new HashMap<>();
+        private final Coercion dummy;
+    }
+
+    private static final Map<Integer, Set<Integer>> possibleCasts = new HashMap<>();
     static {
         possibleCasts.put(
                 TypeSpecSimple.IDX_DATETIME,

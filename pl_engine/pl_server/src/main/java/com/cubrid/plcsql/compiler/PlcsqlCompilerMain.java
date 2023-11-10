@@ -80,7 +80,8 @@ public class PlcsqlCompilerMain {
     private static final int OPT_VERBOSE = 1;
     private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
 
-    private static ParseTree parse(CharStream input, boolean verbose, String[] sqlTemplate, StringBuilder logStore) {
+    private static ParseTree parse(
+            CharStream input, boolean verbose, String[] sqlTemplate, StringBuilder logStore) {
 
         long t0 = 0L;
         if (verbose) {

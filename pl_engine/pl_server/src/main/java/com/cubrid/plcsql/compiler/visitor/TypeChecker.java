@@ -537,7 +537,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitExprBuiltinFuncCall(ExprBuiltinFuncCall node) {
 
         String tvStr = checkArgsAndConvertToTypicalValuesStr(node.args.nodes, node.name);
-        String sql = String.format("select %s(%s) from dual", node.name, tvStr);
+        String sql = String.format("select %s%s from dual", node.name, tvStr);
 
         List<SqlSemantics> sqlSemantics = ServerAPI.getSqlSemantics(Arrays.asList(sql));
         assert sqlSemantics.size() == 1;
@@ -870,7 +870,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                             Misc.getLineColumnOf(intoVar.ctx),
                             "into-variable "
                                     + intoVar.name
-                                    + " has an incompatible type " + tyIntoVar.plcName);
+                                    + " has an incompatible type "
+                                    + tyIntoVar.plcName);
                 } else {
                     coercions.add(c);
                 }
@@ -1144,7 +1145,12 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     }
 
     private String checkArgsAndConvertToTypicalValuesStr(List<Expr> args, String funcName) {
+        if (args.size() == 0) {
+            return "";
+        }
+
         StringBuilder sb = new StringBuilder();
+        sb.append("(");
 
         int len = args.size();
         for (int i = 0; i < len; i++) {
@@ -1166,6 +1172,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             sb.append(typicalValueStr);
         }
 
+        sb.append(")");
         return sb.toString();
     }
 
@@ -1174,7 +1181,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         for (int i = 0; i < len; i++) {
             Expr arg = args.get(i);
             TypeSpec argType = visit(arg);
-            TypeSpec paramType = decl.paramList.nodes.get(i).typeSpec();
+            DeclParam declParam = decl.paramList.nodes.get(i);
+            TypeSpec paramType = declParam.typeSpec();
             assert paramType
                     != null; // TODO: paramType can be null if variadic parameters are introduced
             Coercion c = Coercion.getCoercion(argType, paramType);
@@ -1182,9 +1190,17 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                 throw new SemanticError(
                         Misc.getLineColumnOf(arg.ctx), // s214
                         String.format(
-                                "argument %d to the call of %s has an incompatible type",
-                                i + 1, Misc.detachPkgName(decl.name)));
+                                "argument %d to the call of %s has an incompatible type %s",
+                                i + 1, Misc.detachPkgName(decl.name), argType.plcName));
             } else {
+                if (declParam instanceof DeclParamOut && c.getReversion() == null) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(arg.ctx), // s232
+                            String.format(
+                                    "OUT/INOUT parameter %d has a type %s which is incompatible with the argument type %s",
+                                    i + 1, paramType.plcName, argType.plcName));
+                }
+
                 arg.setCoercion(c);
             }
         }

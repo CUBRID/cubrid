@@ -1286,7 +1286,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             if (decl instanceof DeclId) {
                 return new ExprId(ctx, name, scope, (DeclId) decl);
             } else if (decl instanceof DeclFunc) {
-                return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
+                if (decl.scope().level == SymbolStack.LEVEL_PREDEFINED) {
+                    connectionRequired = true;
+                    addToImports("java.sql.*");
+                    return new ExprBuiltinFuncCall(ctx, name, EMPTY_ARGS);
+                } else {
+                    return new ExprLocalFuncCall(ctx, name, EMPTY_ARGS, scope, (DeclFunc) decl);
+                }
             }
         }
 
@@ -1989,8 +1995,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             connectionRequired = true;
             addToImports("java.sql.*");
 
-            int level = symbolStack.getCurrentScope().level + 1;
-            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, level, name, args);
+            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args);
             semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(name));
 
             return ret;

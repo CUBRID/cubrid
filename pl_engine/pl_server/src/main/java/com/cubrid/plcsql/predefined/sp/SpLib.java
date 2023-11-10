@@ -53,6 +53,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Stack;
 import java.util.Locale;
 import java.util.regex.PatternSyntaxException;
@@ -177,7 +178,7 @@ public class SpLib {
 
         int argsLen = args.length;
         String hostVars = getHostVarsStr(argsLen);
-        String query = String.format("select %s(%s) from dual", name, hostVars);
+        String query = String.format("select %s%s from dual", name, hostVars);
         try {
             PreparedStatement pstmt = conn.prepareStatement(query);
             for (int i = 0; i < argsLen; i++) {
@@ -3750,9 +3751,13 @@ public class SpLib {
     }
 
     private static String getHostVarsStr(int len) {
-        String[] arr = new String[len];
-        Arrays.fill(arr, "?");
-        return String.join(", ", arr);
+        if (len == 0) {
+            return "";
+        } else {
+            String[] arr = new String[len];
+            Arrays.fill(arr, "?");
+            return "(" + String.join(", ", arr) + ")";
+        }
     }
 
     private static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);

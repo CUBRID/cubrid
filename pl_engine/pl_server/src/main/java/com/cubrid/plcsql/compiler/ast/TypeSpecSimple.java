@@ -36,22 +36,26 @@ import java.util.Map;
 
 public class TypeSpecSimple extends TypeSpec {
 
-    public static final int IDX_NULL = 0;
-    public static final int IDX_OBJECT = 1;
-    public static final int IDX_BOOLEAN = 2;
-    public static final int IDX_STRING = 3;
-    public static final int IDX_SHORT = 4;
-    public static final int IDX_INT = 5;
-    public static final int IDX_BIGINT = 6;
-    public static final int IDX_NUMERIC = 7;
-    public static final int IDX_FLOAT = 8;
-    public static final int IDX_DOUBLE = 9;
-    public static final int IDX_DATE = 10;
-    public static final int IDX_TIME = 11;
-    public static final int IDX_DATETIME = 12;
-    public static final int IDX_TIMESTAMP = 13;
-    public static final int IDX_SYS_REFCURSOR = 14;
-    public static final int IDX_CURSOR = 15;
+    // types used only by the typechecker
+    public static final int IDX_CURSOR = 0;
+    public static final int IDX_NULL = 1;
+    public static final int IDX_OBJECT = 2;
+
+    // types used by users
+    public static final int IDX_BOOLEAN = 3;
+    public static final int IDX_STRING = 4;
+    public static final int IDX_SHORT = 5;
+    public static final int IDX_INT = 6;
+    public static final int IDX_BIGINT = 7;
+    public static final int IDX_NUMERIC = 8;
+    public static final int IDX_FLOAT = 9;
+    public static final int IDX_DOUBLE = 10;
+    public static final int IDX_DATE = 11;
+    public static final int IDX_TIME = 12;
+    public static final int IDX_DATETIME = 13;
+    public static final int IDX_TIMESTAMP = 14;
+    public static final int IDX_SYS_REFCURSOR = 15;
+
     public static final int COUNT_OF_IDX = 16;
 
     @Override
@@ -60,6 +64,10 @@ public class TypeSpecSimple extends TypeSpec {
     }
 
     public final String fullJavaType;
+
+    public static boolean isUserType(TypeSpecSimple ty) {
+        return (ty.simpleTypeIdx >= IDX_BOOLEAN);
+    }
 
     public static TypeSpecSimple ofJavaName(String javaType) {
         TypeSpecSimple ret = javaNameToSpec.get(javaType);

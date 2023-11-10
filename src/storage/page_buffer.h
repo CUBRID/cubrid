@@ -265,35 +265,33 @@ extern void pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page
 #if !defined(NDEBUG)
 
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
-        pgbuf_fix_debug(thread_p, vpid, fetch_mode, requestmode, condition, \
-                        __FILE__, __LINE__)
+        pgbuf_fix_debug(thread_p, vpid, fetch_mode, requestmode, condition, ARG_FILE_LINE_FUNC)
 extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 				 PGBUF_LATCH_MODE requestmode, PGBUF_LATCH_CONDITION condition, const char *caller_file,
-				 int caller_line);
+				 int caller_line, const char *caller_func);
 #define pgbuf_ordered_fix(thread_p, req_vpid, fetch_mode, requestmode,\
 			  req_watcher) \
-        pgbuf_ordered_fix_debug(thread_p, req_vpid, fetch_mode, requestmode, \
-			        req_watcher, __FILE__, __LINE__)
+        pgbuf_ordered_fix_debug(thread_p, req_vpid, fetch_mode, requestmode, req_watcher, ARG_FILE_LINE_FUNC)
 
 extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
 				    const PGBUF_LATCH_MODE requestmode, PGBUF_WATCHER * req_watcher,
-				    const char *caller_file, int caller_line);
+				    const char *caller_file, int caller_line, const char *caller_func);
 
 #define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \
-	pgbuf_promote_read_latch_debug(thread_p, pgptr_p, condition, \
-				       __FILE__, __LINE__)
+	pgbuf_promote_read_latch_debug(thread_p, pgptr_p, condition, ARG_FILE_LINE_FUNC)
 extern int pgbuf_promote_read_latch_debug (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p,
-					   PGBUF_PROMOTE_CONDITION condition, const char *caller_file, int caller_line);
+					   PGBUF_PROMOTE_CONDITION condition, const char *caller_file, int caller_line,
+					   const char *caller_func);
 
 #define pgbuf_unfix(thread_p, pgptr) \
-	pgbuf_unfix_debug(thread_p, pgptr, __FILE__, __LINE__)
-extern void pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const char *caller_file, int caller_line);
+	pgbuf_unfix_debug(thread_p, pgptr, ARG_FILE_LINE_FUNC)
+extern void pgbuf_unfix_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const char *caller_file, int caller_line,
+			       const char *caller_func);
 
 #define pgbuf_ordered_unfix(thread_p, watcher_object) \
-	pgbuf_ordered_unfix_debug(thread_p, watcher_object, \
-				  __FILE__, __LINE__)
+	pgbuf_ordered_unfix_debug(thread_p, watcher_object, ARG_FILE_LINE_FUNC)
 extern void pgbuf_ordered_unfix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object, const char *caller_file,
-				       int caller_line);
+				       int caller_line, const char *caller_func);
 
 #define pgbuf_invalidate_all(thread_p, volid) \
 	pgbuf_invalidate_all_debug(thread_p, volid, __FILE__, __LINE__)
@@ -359,12 +357,25 @@ extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int
 extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				   bool do_fetch, TDE_ALGORITHM tde_algo);
 
+#if !defined(NDEBUG)
+#define pgbuf_set_dirty(...)  pgbuf_set_dirty_debug(__VA_ARGS__, ARG_FILE_LINE_FUNC)
+extern void pgbuf_set_dirty_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page, const char *caller_file,
+				   int caller_line, const char *caller_func);
+#else
 extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page);
+#endif
 #define pgbuf_set_dirty_and_free(thread_p, pgptr) pgbuf_set_dirty (thread_p, pgptr, FREE); pgptr = NULL
 
 extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);
 extern int pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa);
+
+#if !defined(NDEBUG)
+#define pgbuf_set_lsa(...)   pgbuf_set_lsa_debug(__VA_ARGS__, ARG_FILE_LINE_FUNC)
+extern const LOG_LSA *pgbuf_set_lsa_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr,
+					   const char *caller_file, int caller_line, const char *caller_func);
+#else
 extern const LOG_LSA *pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr);
+#endif
 extern void pgbuf_reset_temp_lsa (PAGE_PTR pgptr);
 extern void pgbuf_set_tde_algorithm (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, TDE_ALGORITHM tde_algo,
 				     bool skip_logging);
@@ -445,13 +456,18 @@ extern int pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * 
 
 extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, const VPID * vpid,
 						     PGBUF_LATCH_MODE latch_mode, PGBUF_LATCH_CONDITION latch_condition,
-						     PAGE_PTR * page, const char *caller_file, int caller_line);
+						     PAGE_PTR * page
+#if !defined (NDEBUG)
+						     , const char *caller_file, int caller_line, const char *caller_func
+#endif
+  );
+
 #if defined (NDEBUG)
 #define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
-  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, NULL, 0)
+  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page)
 #else /* !NDEBUG */
 #define pgbuf_fix_if_not_deallocated(thread_p, vpid, latch_mode, latch_condition, page) \
-  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE)
+  pgbuf_fix_if_not_deallocated_with_caller (thread_p, vpid, latch_mode, latch_condition, page, ARG_FILE_LINE_FUNC)
 #endif /* !NDEBUG */
 extern int pgbuf_release_private_lru (THREAD_ENTRY * thread_p, const int private_idx);
 extern int pgbuf_assign_private_lru (THREAD_ENTRY * thread_p);
