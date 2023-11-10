@@ -13938,6 +13938,69 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
 // *INDENT-ON*
 
 void
+locator_mark_classname_entry_deleted (THREAD_ENTRY * thread_p, const OID * classoid)
+{
+  /* called when DROP TABLE/VIEW statement is executed */
+  char *classname = NULL;
+  (void) heap_get_class_name (thread_p, classoid, &classname);
+  if (classname != NULL)
+    {
+      if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
+
+      LOCATOR_CLASSNAME_ENTRY *entry = NULL;
+      entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
+      if (entry != NULL)
+	{
+	  entry->e_current.action = LC_CLASSNAME_DELETED;
+	}
+      else
+	{
+	  assert (false);
+	}
+
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+    }
+  else
+    {
+      assert (false);
+    }
+}
+
+void
+locator_restore_classname_entry_if_exists (THREAD_ENTRY * thread_p, const OID * oid)
+{
+  /* called when DROP TABLE/VIEW statement is rollbacked */
+  HENTRY_PTR hentry = NULL;
+  HENTRY_PTR next = NULL;
+  LOCATOR_CLASSNAME_ENTRY *entry = NULL;
+
+  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+
+  for (hentry = locator_Mht_classnames->act_head; hentry != NULL; hentry = next)
+    {
+      next = hentry->act_next;
+      entry = (LOCATOR_CLASSNAME_ENTRY *) hentry->data;
+
+      if (OID_EQ (&entry->e_current.oid, oid))
+	{
+	  assert (entry->e_current.action == LC_CLASSNAME_DELETED);
+	  entry->e_current.action = LC_CLASSNAME_EXIST;
+	  break;
+	}
+    }
+
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+}
+
+void
 xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
 {
   xcache_remove_by_oid (thread_p, oidp);

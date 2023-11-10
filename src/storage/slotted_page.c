@@ -4011,6 +4011,27 @@ spage_get_record_type (PAGE_PTR page_p, PGSLOTID slot_id)
   return slot_p->record_type;
 }
 
+bool
+spage_is_record_deleted (PAGE_PTR page_p, PGSLOTID slot_id)
+{
+  SPAGE_HEADER *page_header_p;
+  SPAGE_SLOT *slot_p;
+
+  assert (page_p != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  slot_p = spage_find_slot (page_p, page_header_p, slot_id, false);
+  if (slot_p == NULL)
+    {
+      /* This is CREATE TABLE case */
+      return false;
+    }
+
+  return slot_p->record_type == REC_MARKDELETED;
+}
+
 /*
  * spage_mark_deleted_slot_as_reusable () - Marks the slot of a previously
  *                                          deleted record as reusable
