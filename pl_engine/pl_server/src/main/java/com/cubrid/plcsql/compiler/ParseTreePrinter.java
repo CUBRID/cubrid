@@ -30,29 +30,24 @@
 
 package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
-import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseListener;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseListener;
 import java.io.PrintStream;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.TerminalNode;
 
-public class ParseTreePrinter extends PcsParserBaseListener {
+public class ParseTreePrinter extends PlcParserBaseListener {
 
-    public ParseTreePrinter(PrintStream out, String infile) {
+    public ParseTreePrinter(PrintStream out) {
         super();
         this.out = out;
-        this.infile = infile;
     }
 
     @Override
     public void enterEveryRule(ParserRuleContext ctx) {
 
         String nonTerminal = Misc.ctxToNonTerminalName(ctx);
-        if (nonTerminal.equals("sql_script")) {
-            out.println("# " + infile);
-        }
-
         Misc.printIndent(out, level);
         out.println(nonTerminal);
         level++;
@@ -78,10 +73,9 @@ public class ParseTreePrinter extends PcsParserBaseListener {
         out.println(
                 String.format(
                         "'%s': %s",
-                        t.getText(), PcsParser.VOCABULARY.getSymbolicName(t.getType())));
+                        t.getText(), PlcParser.VOCABULARY.getSymbolicName(t.getType())));
     }
 
     private int level = 0;
     private PrintStream out;
-    private String infile;
 }

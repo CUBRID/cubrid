@@ -286,7 +286,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (commonType == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ce.expr.ctx), // s227
-                        "expression in this case does not have a compatible type " + ty);
+                        "expression in this case has an incompatible type " + ty);
             }
             caseExprTypes.add(ty);
         }
@@ -296,7 +296,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (commonType == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.elsePart.ctx), // s228
-                        "expression in the else part does not have a compatible type " + ty);
+                        "expression in the else part has an incompatible type " + ty);
             }
             caseExprTypes.add(ty);
         }
@@ -353,7 +353,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (commonType == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ce.expr.ctx), // s229
-                        "expression in this case does not have a compatible type " + ty);
+                        "expression in this case has an incompatible type " + ty);
             }
             condExprTypes.add(ty);
         }
@@ -363,7 +363,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             if (commonType == null) {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.elsePart.ctx), // s230
-                        "expression in the else part does not have a compatible type " + ty);
+                        "expression in the else part has an incompatible type " + ty);
             }
             condExprTypes.add(ty);
         }
@@ -856,12 +856,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         // check types of expressions in the USING clause
         if (node.usedExprList != null) {
             for (Expr e : node.usedExprList) {
-                TypeSpec tyUsedExpr = visit(e); // s420
+                TypeSpec tyUsedExpr = visit(e);
                 if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.CURSOR
                         || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(e.ctx), // s428
-                            "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
+                            "expressions in a USING clause cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
                 }
             }
         }
@@ -879,7 +880,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                             Misc.getLineColumnOf(intoVar.ctx),
                             "into-variable "
                                     + intoVar.name
-                                    + " cannot be used there due to its incompatible type");
+                                    + " has an incompatible type "
+                                    + tyIntoVar.plcName);
                 } else {
                     coercions.add(c);
                 }
@@ -990,10 +992,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             for (Expr e : node.usedExprList) {
                 TypeSpec tyUsedExpr = visit(e); // s429
                 if (tyUsedExpr == TypeSpecSimple.BOOLEAN
+                        || tyUsedExpr == TypeSpecSimple.CURSOR
                         || tyUsedExpr == TypeSpecSimple.SYS_REFCURSOR) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(e.ctx), // s430
-                            "expressions in a USING clause cannot be of either BOOLEAN or SYS_REFCURSOR type");
+                            "expressions in a USING clause cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
                 }
             }
         }
@@ -1198,14 +1201,14 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         Misc.getLineColumnOf(arg.ctx), // s214
                         String.format(
                                 "argument %d to the call of %s has an incompatible type %s",
-                                i + 1, Misc.detachPkgName(decl.name), argType.pcsName));
+                                i + 1, Misc.detachPkgName(decl.name), argType.plcName));
             } else {
                 if (declParam instanceof DeclParamOut && c.getReversion() == null) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(arg.ctx), // s232
                             String.format(
                                     "OUT/INOUT parameter %d has a type %s which is incompatible with the argument type %s",
-                                    i + 1, paramType.pcsName, argType.pcsName));
+                                    i + 1, paramType.plcName, argType.plcName));
                 }
 
                 arg.setCoercion(c);
@@ -1220,26 +1223,20 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         LinkedHashMap<Expr, TypeSpec> hostExprs = staticSql.hostExprs;
         for (Expr e : hostExprs.keySet()) {
             TypeSpec ty = visit(e);
+            if (ty == TypeSpecSimple.BOOLEAN
+                    || ty == TypeSpecSimple.CURSOR
+                    || ty == TypeSpecSimple.SYS_REFCURSOR) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(e.ctx),
+                        "host expressions cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
+            }
 
+            /* TODO
             TypeSpec tyRequired = hostExprs.get(e);
             if (tyRequired != null) {
-                // NOTE: unreachable for now. but remains for future extension
-                assert e instanceof ExprId;
-
-                ExprId id = (ExprId) e;
-                Coercion c = Coercion.getCoercion(ty, tyRequired);
-                if (c == null) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(staticSql.ctx),
-                            "host variable "
-                                    + id.name
-                                    + " does not have a compatible type in the SQL statement");
-                } else {
-                    // no more use of the coercion: coercion (if not an identity) will be done in
-                    // the
-                    // server
-                }
+                ...
             }
+             */
         }
     }
 }

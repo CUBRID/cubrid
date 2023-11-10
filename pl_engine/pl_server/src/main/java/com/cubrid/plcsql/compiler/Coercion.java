@@ -197,7 +197,7 @@ public abstract class Coercion {
 
         @Override
         public String javaCode(String exprJavaCode) {
-            return String.format("conv%sTo%s(%s)", src.pcsName, dst.pcsName, exprJavaCode);
+            return String.format("conv%sTo%s(%s)", src.plcName, dst.plcName, exprJavaCode);
         }
 
         @Override
@@ -212,16 +212,19 @@ public abstract class Coercion {
                 return null;
             }
 
-            Map<TypeSpecSimple, Conversion> instances = memoized.get(src);
-            if (instances == null) {
-                instances = new HashMap<>();
-                memoized.put(src, instances);
-            }
+            Conversion c;
+            synchronized (memoized) {
+                Map<TypeSpecSimple, Conversion> instances = memoized.get(src);
+                if (instances == null) {
+                    instances = new HashMap<>();
+                    memoized.put(src, instances);
+                }
 
-            Conversion c = instances.get(dst);
-            if (c == null) {
-                c = new Conversion(src, dst);
-                instances.put(dst, c);
+                c = instances.get(dst);
+                if (c == null) {
+                    c = new Conversion(src, dst);
+                    instances.put(dst, c);
+                }
             }
 
             return c;
@@ -231,7 +234,7 @@ public abstract class Coercion {
         // Private
         // ----------------------------------------------
 
-        private static Map<TypeSpecSimple, Map<TypeSpecSimple, Conversion>> memoized =
+        private static final Map<TypeSpecSimple, Map<TypeSpecSimple, Conversion>> memoized =
                 new HashMap<>();
 
         private Conversion(TypeSpecSimple src, TypeSpecSimple dst) {

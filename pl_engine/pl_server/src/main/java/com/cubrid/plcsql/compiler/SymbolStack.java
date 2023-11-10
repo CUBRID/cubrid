@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler;
 
-import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
+import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
 
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.ast.*;
@@ -555,7 +555,18 @@ public class SymbolStack {
     // ----------------------------------------
     //
 
+    void putDeclLabel(String name, DeclLabel decl) {
+        if (getDeclLabel(name) != null) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(decl.ctx), // s061
+                    "label " + name + " has already been declared");
+        }
+
+        putDeclTo(currSymbolTable, name, decl);
+    }
+
     <D extends Decl> void putDecl(String name, D decl) {
+        assert !(decl instanceof DeclLabel);
         putDeclTo(currSymbolTable, name, decl);
     }
 
@@ -565,11 +576,9 @@ public class SymbolStack {
         Map<String, D> map = symbolTable.<D>map((Class<D>) decl.getClass());
         assert map != null;
         if (map == symbolTable.labels) {
-            if (map.containsKey(name)) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(decl.ctx), // s061
-                        "label " + name + " has already been declared in the same scope");
-            }
+            assert !map.containsKey(
+                    name); // currently, a symbol table is always pushed right before putting a
+            // label
         } else {
             if (symbolTable.ids.containsKey(name)
                     || symbolTable.procs.containsKey(name)

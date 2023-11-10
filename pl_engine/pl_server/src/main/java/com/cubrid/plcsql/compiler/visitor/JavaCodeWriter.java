@@ -2300,9 +2300,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     Misc.UNKNOWN_LINE_COLUMN,
                     tmplConvCoercion,
                     "%'SRC-TYPE'%",
-                    conv.src.pcsName,
+                    conv.src.plcName,
                     "%'DST-TYPE'%",
-                    conv.dst.pcsName,
+                    conv.dst.plcName,
                     "%'+EXPR'%",
                     exprCode);
         } else {

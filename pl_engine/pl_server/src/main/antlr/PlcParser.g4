@@ -20,14 +20,14 @@
  * limitations under the License.
  */
 
-parser grammar PcsParser;
+parser grammar PlcParser;
 
 @header {
 package com.cubrid.plcsql.compiler.antlrgen;
 }
 
 options {
-    tokenVocab=PcsLexer;
+    tokenVocab=PlcLexer;
 }
 
 sql_script
@@ -35,7 +35,7 @@ sql_script
     ;
 
 create_routine
-    : CREATE (OR_REPLACE)? routine_definition
+    : CREATE (OR_REPLACE)? routine_definition (COMMENT CHAR_STRING)?
     ;
 
 routine_definition

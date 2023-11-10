@@ -30,11 +30,11 @@
 
 package com.cubrid.plcsql.compiler;
 
-import static com.cubrid.plcsql.compiler.antlrgen.PcsParser.*;
+import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
 
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
-import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseVisitor;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
 import java.math.BigDecimal;
@@ -56,7 +56,7 @@ import org.antlr.v4.runtime.ParserRuleContext;
 import org.apache.commons.text.StringEscapeUtils;
 
 // parse tree --> AST converter
-public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
+public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
 
@@ -238,7 +238,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     throw new SemanticError(
                             Misc.getLineColumnOf(pc), // s064
                             "type "
-                                    + dp.typeSpec.pcsName
+                                    + dp.typeSpec.plcName
                                     + " cannot be used as a paramter type of stored procedures");
                 }
                 ret.addNode(dp);
@@ -331,9 +331,9 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
     @Override
     public TypeSpecSimple visitSimple_type(Simple_typeContext ctx) {
-        String pcsType = Misc.getNormalizedText(ctx);
-        TypeSpecSimple ret = getTypeSpec(pcsType);
-        assert ret != null : "invalid PL/CSQL type " + pcsType;
+        String plcType = Misc.getNormalizedText(ctx);
+        TypeSpecSimple ret = getTypeSpec(plcType);
+        assert ret != null : "invalid PL/CSQL type " + plcType;
         return ret;
     }
 
@@ -703,9 +703,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             }
 
         } catch (NumberFormatException e) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx), // s067
-                    "failed to parse the floating point literal");
+            throw new RuntimeException("unreachable");
         }
     }
 
@@ -1374,7 +1372,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
         if (declLabel != null) {
-            symbolStack.putDecl(declLabel.name, declLabel);
+            symbolStack.putDeclLabel(declLabel.name, declLabel);
         }
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1405,7 +1403,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
         if (declLabel != null) {
-            symbolStack.putDecl(declLabel.name, declLabel);
+            symbolStack.putDeclLabel(declLabel.name, declLabel);
         }
 
         Expr cond = visitExpression(ctx.expression());
@@ -1437,7 +1435,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
 
         DeclLabel declLabel = visitLabel_declaration(ctx.label_declaration());
         if (declLabel != null) {
-            symbolStack.putDecl(declLabel.name, declLabel);
+            symbolStack.putDeclLabel(declLabel.name, declLabel);
         }
 
         NodeList<Stmt> stmts = visitSeq_of_statements(ctx.seq_of_statements());
@@ -1504,7 +1502,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             label = null;
         } else {
             label = declLabel.name;
-            symbolStack.putDecl(label, declLabel);
+            symbolStack.putDeclLabel(label, declLabel);
         }
 
         DeclForRecord declForRecord =
@@ -1554,7 +1552,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             label = null;
         } else {
             label = declLabel.name;
-            symbolStack.putDecl(label, declLabel);
+            symbolStack.putDeclLabel(label, declLabel);
         }
 
         DeclForRecord declForRecord = new DeclForRecord(recNameCtx, record, staticSql.selectList);
@@ -1597,7 +1595,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
             label = null;
         } else {
             label = declLabel.name;
-            symbolStack.putDecl(label, declLabel);
+            symbolStack.putDeclLabel(label, declLabel);
         }
 
         DeclForRecord declForRecord =
@@ -2293,7 +2291,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx.type_spec()), // s065
                             "type "
-                                    + retType.pcsName
+                                    + retType.plcName
                                     + " cannot be used as a return type of stored functions");
                 }
             }
@@ -2327,8 +2325,8 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
         }
     }
 
-    private TypeSpecSimple getTypeSpec(String pcsType) {
-        TypeSpecSimple typeSpec = typeSpecs.get(pcsType);
+    private TypeSpecSimple getTypeSpec(String plcType) {
+        TypeSpecSimple typeSpec = typeSpecs.get(plcType);
         if (typeSpec == null) {
             return null;
         }
@@ -2467,7 +2465,7 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                     ExprId id = visitNonFuncIdentifier(col, ctx, false);
                     if (id == null) {
                         // col is not a host variable, but an expression which has a host variable
-                        // as a subexpression
+                        // as a subexpression (TODO: example?)
                         typeSpec =
                                 TypeSpecSimple
                                         .OBJECT; // unknown some type. best offort to give a type
@@ -2483,11 +2481,11 @@ public class ParseTreeConverter extends PcsParserBaseVisitor<AstNode> {
                                     Misc.getLineColumnOf(ctx), // s423
                                     "for-loop iterator record "
                                             + id.name
-                                            + " cannot be in a select list");
+                                            + " cannot be used in a select list");
                         } else if (decl instanceof DeclCursor) {
                             throw new SemanticError(
                                     Misc.getLineColumnOf(ctx), // s424
-                                    "cursor " + id.name + " cannot be in a select list");
+                                    "cursor " + id.name + " cannot be used in a select list");
                         } else {
                             throw new RuntimeException("unreachable");
                         }
