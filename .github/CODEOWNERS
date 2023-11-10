@@ -23,23 +23,5 @@
 # accidental assign as reviewer for PR for people not [yet] involved with the project;
 
 # required default reviewer
-/src/base/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/base/memory_monitor_* @wrlawodms @joohok @hornetmj @cristiarg
-/src/broker/ @hornetmj
-/src/cm_common/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/compat/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/jsp/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/method/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/optimizer/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/parser/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/parser/view_transform.* @wrlawodms @joohok @hornetmj @cristiarg
-/src/query/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/query/query_executor.* @wrlawodms @joohok @hornetmj @cristiarg
-/src/query/query_hash_scan.* @wrlawodms @joohok @hornetmj @cristiarg
-/src/query/scan_manager.* @wrlawodms @joohok @hornetmj @cristiarg
-/src/query/vacuum.* @wrlawodms @joohok @hornetmj @cristiarg
-/src/storage/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/storage/statistics* @wrlawodms @joohok @hornetmj @cristiarg
-/src/transaction/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/win_tools/ @wrlawodms @joohok @hornetmj @cristiarg
-/src/xasl/ @wrlawodms @joohok @hornetmj @cristiarg
+/src @wrlawodms @joohok @hornetmj @cristiarg
+/unit_tests @wrlawodms @joohok @hornetmj @cristiarg
