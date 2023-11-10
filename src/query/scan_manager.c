@@ -1490,12 +1490,11 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   DB_MIDXKEY midxkey;
 
   int idx_ncols = 0, natts, i, j;
-  int buf_size, nullmap_size;
+  int buf_size;
 
   regu_variable_list_node *operand;
 
   char *nullmap_ptr;		/* ponter to boundbits */
-  char *key_ptr;		/* current position in key */
 
   OR_BUF buf;
 
@@ -1556,10 +1555,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   buf_size = 0;
   midxkey.buf = NULL;
   midxkey.min_max_val.position = -1;
-
-  /* bitmap is always fully sized */
-  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-  buf_size = nullmap_size;
 
   /* check to need a new setdomain */
   for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, i = 0; operand != NULL && idx_dom != NULL;
@@ -1756,6 +1751,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
     }
 
+  buf_size += or_multi_header_size (idx_ncols);
+
   midxkey.buf = (char *) db_private_alloc (thread_p, buf_size);
   if (midxkey.buf == NULL)
     {
@@ -1763,11 +1760,12 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       goto err_exit;
     }
 
-  nullmap_ptr = midxkey.buf;
-  key_ptr = nullmap_ptr + nullmap_size;
+  or_init (&buf, midxkey.buf, buf_size);
 
-  or_init (&buf, key_ptr, buf_size - nullmap_size);
-  MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, nullmap_size);
+  nullmap_ptr = midxkey.buf;
+  or_multi_clear_header (nullmap_ptr, idx_ncols);
+
+  or_advance (&buf, or_multi_header_size (idx_ncols));
 
   /* generate multi columns key (values -> midxkey.buf) */
   for (operand = func->value.funcp->operand, i = 0, dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;
@@ -1787,12 +1785,14 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
+      or_multi_put_element_offset (nullmap_ptr, idx_ncols, CAST_BUFLEN (buf.ptr - buf.buffer), i);
+
       if (DB_IS_NULL (val))
 	{
 	  if (is_iss && i == 0)
 	    {
 	      /* There is nothing to write for NULL. Just make sure the bit is not set */
-	      OR_CLEAR_BOUND_BIT (nullmap_ptr, i);
+	      assert (or_multi_is_null (nullmap_ptr, i));
 	      continue;
 	    }
 	  else
@@ -1804,10 +1804,18 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
 
       dom->type->index_writeval (&buf, val);
-      OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
+      or_multi_set_not_null (nullmap_ptr, i);
     }
 
-  assert (buf_size == CAST_BUFLEN (buf.ptr - midxkey.buf));
+  assert (buf_size == CAST_BUFLEN (buf.ptr - buf.buffer));
+
+  for (i = natts; i < idx_ncols; i++)
+    {
+      assert (or_multi_is_null (nullmap_ptr, i));
+      or_multi_put_element_offset (nullmap_ptr, idx_ncols, buf_size, i);
+    }
+
+  or_multi_put_size_offset (nullmap_ptr, idx_ncols, buf_size);
 
   /* Make midxkey DB_VALUE */
   midxkey.size = buf_size;
