@@ -55,7 +55,7 @@ class server_request_responder
 
     class task;
 
-    server_request_responder ();
+    server_request_responder (cubthread::entry_workpool &shared_workerpool);
 
     server_request_responder (const server_request_responder &) = delete;
     server_request_responder (server_request_responder &&) = delete;
@@ -80,8 +80,7 @@ class server_request_responder
     inline void retire_task (const connection_t *connection_ptr);
 
   private:
-    std::unique_ptr<cubthread::system_worker_entry_manager> m_threads_context_manager;
-    cubthread::entry_workpool *m_threads = nullptr;
+    cubthread::entry_workpool &m_workerpool;
 
     /* monitor executing tasks on a per-connection basis
      * because the behavior of the thread pool - when it itself is requested to terminate - like, upon
@@ -161,14 +160,9 @@ class server_request_responder<T_CONN>::task : public cubthread::entry_task
 //
 
 template<typename T_CONN>
-server_request_responder<T_CONN>::server_request_responder ()
-  : m_threads_context_manager (std::make_unique<cubthread::system_worker_entry_manager> (TT_SYSTEM_WORKER))
+server_request_responder<T_CONN>::server_request_responder (cubthread::entry_workpool &shared_workerpool)
+  : m_workerpool { shared_workerpool }
 {
-  const size_t THREAD_COUNT = (size_t)prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
-  const size_t TASK_MAX_COUNT = (size_t)prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT);
-
-  m_threads = cubthread::get_manager ()->create_worker_pool (THREAD_COUNT, TASK_MAX_COUNT, "server_request_responder",
-	      m_threads_context_manager.get (), 1, false);
 }
 
 template<typename T_CONN>
@@ -179,8 +173,6 @@ server_request_responder<T_CONN>::~server_request_responder ()
       const auto first_connection_it = m_executing_tasks.begin ();
       wait_connection_to_become_idle (first_connection_it->first);
     }
-  cubthread::get_manager ()->destroy_worker_pool (m_threads);
-  assert (m_threads == nullptr);
 }
 
 template<typename T_CONN>
@@ -201,7 +193,7 @@ template<typename T_CONN>
 void
 server_request_responder<T_CONN>::async_execute (task *a_task)
 {
-  m_threads->execute (a_task);
+  m_workerpool.execute (a_task);
 }
 
 template<typename T_CONN>
