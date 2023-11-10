@@ -87,16 +87,16 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitCaseExpr(CaseExpr node) {
         TypeSpec caseValType = visit(node.val);
-        assert caseValTypes != null;
-        caseValTypes.add(caseValType);
+        assert caseComparedTypes != null;
+        caseComparedTypes.add(caseValType);
         return visit(node.expr);
     }
 
     @Override
     public TypeSpec visitCaseStmt(CaseStmt node) {
         TypeSpec caseValType = visit(node.val);
-        assert caseValTypes != null;
-        caseValTypes.add(caseValType);
+        assert caseComparedTypes != null;
+        caseComparedTypes.add(caseValType);
         visitNodeList(node.stmts);
         return null;
     }
@@ -292,14 +292,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprCase(ExprCase node) {
 
-        TypeSpec saveCaseSelectorType = caseSelectorType;
-        List<TypeSpec> saveCaseValTypes = caseValTypes;
-        caseValTypes = new ArrayList<>();
+        List<TypeSpec> saveCaseComparedTypes = caseComparedTypes;
+        caseComparedTypes = new ArrayList<>();
         List<TypeSpec> caseExprTypes = new ArrayList<>();
 
         // visit
-        caseSelectorType = visit(node.selector);
-        caseValTypes.add(caseSelectorType);
+        TypeSpec caseSelectorType = visit(node.selector);
+        caseComparedTypes.add(caseSelectorType);
 
         TypeSpec commonType = null;
         for (CaseExpr ce : node.whenParts.nodes) {
@@ -325,13 +324,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(outCoercions, "opIn", caseValTypes.toArray(TYPESPEC_ARR));
+                symbolStack.getOperator(outCoercions, "opIn", caseComparedTypes.toArray(TYPESPEC_ARR));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s226
                     "one of the values does not have a comparable type");
         }
-        assert outCoercions.size() == caseValTypes.size();
+        assert outCoercions.size() == caseComparedTypes.size();
 
         // set coercions of selector, case values, and case expressions
         node.selector.setCoercion(outCoercions.get(0));
@@ -358,8 +357,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         node.setSelectorType(op.paramList.nodes.get(0).typeSpec);
         node.setResultType(commonType);
 
-        caseSelectorType = saveCaseSelectorType; // restore
-        caseValTypes = saveCaseValTypes; // restore
+        caseComparedTypes = saveCaseComparedTypes; // restore
 
         return commonType;
     }
@@ -734,12 +732,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtCase(StmtCase node) {
 
-        TypeSpec saveCaseSelectorType = caseSelectorType;
-        List<TypeSpec> saveCaseValTypes = caseValTypes;
-        caseValTypes = new ArrayList<>();
+        List<TypeSpec> saveCaseComparedTypes = caseComparedTypes;
+        caseComparedTypes = new ArrayList<>();
 
-        caseSelectorType = visit(node.selector);
-        caseValTypes.add(caseSelectorType);
+        TypeSpec caseSelectorType = visit(node.selector);
+        caseComparedTypes.add(caseSelectorType);
 
         visitNodeList(node.whenParts);
         if (node.elsePart != null) {
@@ -748,13 +745,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(outCoercions, "opIn", caseValTypes.toArray(TYPESPEC_ARR));
+                symbolStack.getOperator(outCoercions, "opIn", caseComparedTypes.toArray(TYPESPEC_ARR));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s201
                     "one of the values does not have a comparable type");
         }
-        assert outCoercions.size() == caseValTypes.size();
+        assert outCoercions.size() == caseComparedTypes.size();
 
         // set coercions of selector, case values, and case expressions
         node.selector.setCoercion(outCoercions.get(0));
@@ -763,12 +760,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             cs.val.setCoercion(outCoercions.get(i));
             i++;
         }
-        assert i == caseValTypes.size();
+        assert i == caseComparedTypes.size();
 
         node.setSelectorType(op.paramList.nodes.get(0).typeSpec);
 
-        caseSelectorType = saveCaseSelectorType; // restore
-        caseValTypes = saveCaseValTypes; // restore
+        caseComparedTypes = saveCaseComparedTypes; // restore
 
         return null;
     }
@@ -1142,8 +1138,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     private SymbolStack symbolStack;
 
-    private TypeSpec caseSelectorType;
-    private List<TypeSpec> caseValTypes;
+    private List<TypeSpec> caseComparedTypes;
 
     private TypeSpec getCommonType(TypeSpec former, TypeSpec delta) {
         if (former == null) {
