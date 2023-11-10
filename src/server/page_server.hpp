@@ -323,7 +323,7 @@ class page_server
     std::future<void> m_follower_disc_future;
     std::mutex m_follower_disc_mutex;
 
-    cubthread::entry_workpool *m_worker_pool; // a worker_pool to take some background jobs that needs a thread entry
+    cubthread::entry_workpool *m_worker_pool; // a worker_pool to take some asynchronous jobs that needs a thread entry
 };
 
 #endif // !_PAGE_SERVER_HPP_
