@@ -8324,7 +8324,7 @@ do_add_resolutions (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const P
 static int
 add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * queries)
 {
-  const char *query;
+  const char *query, *select_query;
   int error = NO_ERROR;
   unsigned int save_custom;
   char user_query[4096] = { '-', '-' };
@@ -8336,7 +8336,9 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
   parser->custom_print = save_custom;
   error = dbt_add_query_spec (ctemplate, query);
 
-  query = strcat (user_query + 2, queries->sql_user_text);
+  select_query = strcasestr (queries->sql_user_text, "select");
+  query = strcat (user_query + 2, select_query);
+
   if (error == NO_ERROR)
     {
       error = dbt_add_query_spec (ctemplate, user_query);
