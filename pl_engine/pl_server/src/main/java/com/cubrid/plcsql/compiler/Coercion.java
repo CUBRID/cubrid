@@ -130,7 +130,7 @@ public abstract class Coercion {
 
         @Override
         public String javaCode(String exprJavaCode) {
-            return String.format("checkPrecision(%d, %d, %s)", prec, scale, c.javaCode(exprJavaCode));
+            return String.format("checkPrecision(%d, (short) %d, %s)", prec, scale, c.javaCode(exprJavaCode));
         }
 
         @Override

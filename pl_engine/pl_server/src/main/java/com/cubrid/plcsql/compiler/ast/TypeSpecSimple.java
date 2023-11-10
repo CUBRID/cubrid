@@ -81,8 +81,8 @@ public class TypeSpecSimple extends TypeSpec {
     }
 
     // the following two are not actual Java types but only for internal type checking
-    public static TypeSpecSimple NULL = new TypeSpecSimple("Null", "Null", IDX_NULL, "null");
     public static TypeSpecSimple CURSOR = new TypeSpecSimple("Cursor", "Cursor", IDX_CURSOR, null);
+    public static TypeSpecSimple NULL = new TypeSpecSimple("Null", "Null", IDX_NULL, "null");
 
     // (1) used as an argument type of some operators in SpLib
     // (2) used as an expression type when a specific Java type cannot be given
