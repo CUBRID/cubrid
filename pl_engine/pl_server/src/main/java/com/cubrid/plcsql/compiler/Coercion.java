@@ -201,28 +201,37 @@ public abstract class Coercion {
         // ----------------------------------------------
 
         private static Map<Integer, Cast> instances = new HashMap<>();
+
         static {
             // NOTE: there is no Cast coercion dst NULL
             instances.put(
-                    TypeSpecSimple.IDX_OBJECT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
+                    TypeSpecSimple.IDX_OBJECT,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
             instances.put(
-                    TypeSpecSimple.IDX_BOOLEAN, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
+                    TypeSpecSimple.IDX_BOOLEAN,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
             instances.put(
-                    TypeSpecSimple.IDX_STRING, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
+                    TypeSpecSimple.IDX_STRING,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
             instances.put(
                     TypeSpecSimple.IDX_SHORT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
-            instances.put(TypeSpecSimple.IDX_INT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
             instances.put(
-                    TypeSpecSimple.IDX_BIGINT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
+                    TypeSpecSimple.IDX_INT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
+            instances.put(
+                    TypeSpecSimple.IDX_BIGINT,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
             instances.put(
                     TypeSpecSimple.IDX_NUMERIC,
                     new Cast(TypeSpecSimple.NULL, TypeSpecSimple.NUMERIC_ANY));
             instances.put(
                     TypeSpecSimple.IDX_FLOAT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.FLOAT));
             instances.put(
-                    TypeSpecSimple.IDX_DOUBLE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
-            instances.put(TypeSpecSimple.IDX_DATE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
-            instances.put(TypeSpecSimple.IDX_TIME, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
+                    TypeSpecSimple.IDX_DOUBLE,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
+            instances.put(
+                    TypeSpecSimple.IDX_DATE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
+            instances.put(
+                    TypeSpecSimple.IDX_TIME, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
             instances.put(
                     TypeSpecSimple.IDX_DATETIME,
                     new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATETIME));
