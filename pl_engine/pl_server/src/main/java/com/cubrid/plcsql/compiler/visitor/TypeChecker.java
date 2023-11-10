@@ -43,10 +43,10 @@ import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
-import java.util.HashSet;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
@@ -234,9 +234,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         if (op.hasTimestampParam()) {
             node.setOpExtension("Timestamp");
-        } else if (targetType instanceof TypeSpecChar &&
-                    lowerType instanceof TypeSpecChar &&
-                    upperType instanceof TypeSpecChar) {
+        } else if (targetType instanceof TypeSpecChar
+                && lowerType instanceof TypeSpecChar
+                && upperType instanceof TypeSpecChar) {
             node.setOpExtension("Char");
         }
 
@@ -248,6 +248,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     }
 
     private static final Set<String> comparisonOp = new HashSet<>();
+
     static {
         // see ParseTreeConverter.visitRel_exp()
         comparisonOp.add("Eq");
@@ -277,9 +278,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         if (binOp.hasTimestampParam()) {
             node.setOpExtension("Timestamp");
-        } else if (comparisonOp.contains(node.opStr) &&
-                    leftType instanceof TypeSpecChar &&
-                    rightType instanceof TypeSpecChar) {
+        } else if (comparisonOp.contains(node.opStr)
+                && leftType instanceof TypeSpecChar
+                && rightType instanceof TypeSpecChar) {
             node.setOpExtension("Char");
         }
 
@@ -334,7 +335,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(outCoercions, "opIn", caseComparedTypes.toArray(TYPESPEC_ARR));
+                symbolStack.getOperator(
+                        outCoercions, "opIn", caseComparedTypes.toArray(TYPESPEC_ARR));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s226
@@ -765,7 +767,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(outCoercions, "opIn", caseComparedTypes.toArray(TYPESPEC_ARR));
+                symbolStack.getOperator(
+                        outCoercions, "opIn", caseComparedTypes.toArray(TYPESPEC_ARR));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s201

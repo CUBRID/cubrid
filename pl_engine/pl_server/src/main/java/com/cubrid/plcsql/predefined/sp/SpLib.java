@@ -662,6 +662,7 @@ public class SpLib {
     public static Boolean opEq(String l, String r) {
         return commonOpEq(l, r);
     }
+
     public static Boolean opEqChar(String l, String r) {
         if (l == null || r == null) {
             return null;
@@ -755,6 +756,7 @@ public class SpLib {
     public static Boolean opNullSafeEq(String l, String r) {
         return commonOpNullSafeEq(l, r);
     }
+
     public static Boolean opNullSafeEqChar(String l, String r) {
         if (l == null) {
             return (r == null);
@@ -863,6 +865,7 @@ public class SpLib {
     public static Boolean opNeq(String l, String r) {
         return commonOpNeq(l, r);
     }
+
     public static Boolean opNeqChar(String l, String r) {
         if (l == null || r == null) {
             return null;
@@ -957,6 +960,7 @@ public class SpLib {
     public static Boolean opLe(String l, String r) {
         return commonOpLe(l, r);
     }
+
     public static Boolean opLeChar(String l, String r) {
         if (l == null || r == null) {
             return null;
@@ -1049,6 +1053,7 @@ public class SpLib {
     public static Boolean opGe(String l, String r) {
         return commonOpGe(l, r);
     }
+
     public static Boolean opGeChar(String l, String r) {
         if (l == null || r == null) {
             return null;
@@ -1141,6 +1146,7 @@ public class SpLib {
     public static Boolean opLt(String l, String r) {
         return commonOpLt(l, r);
     }
+
     public static Boolean opLtChar(String l, String r) {
         if (l == null || r == null) {
             return null;
@@ -1234,6 +1240,7 @@ public class SpLib {
     public static Boolean opGt(String l, String r) {
         return commonOpGt(l, r);
     }
+
     public static Boolean opGtChar(String l, String r) {
         if (l == null || r == null) {
             return null;
@@ -1333,6 +1340,7 @@ public class SpLib {
         }
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
+
     public static Boolean opBetweenChar(String o, String lower, String upper) {
         if (o == null || lower == null || upper == null) {
             return null;
@@ -1456,6 +1464,7 @@ public class SpLib {
     public static Boolean opIn(String o, String... arr) {
         return commonOpIn(o, (Object[]) arr);
     }
+
     public static Boolean opInChar(String o, String... arr) {
         assert arr != null; // guaranteed by the syntax
 

@@ -30,9 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 
 public class TypeSpecNumeric extends TypeSpecSimple {
 

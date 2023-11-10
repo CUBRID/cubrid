@@ -171,7 +171,7 @@ public class Misc {
             return smallIndents[indentLevel];
         } else {
             String ret;
-            synchronized(bigIndents) {
+            synchronized (bigIndents) {
                 ret = bigIndents.get(indentLevel);
                 if (ret == null) {
                     ret = makeIndent(indentLevel);

@@ -30,9 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 
 public class TypeSpecVarchar extends TypeSpecSimple {
 
@@ -42,7 +41,7 @@ public class TypeSpecVarchar extends TypeSpecSimple {
 
     public final int length;
 
-    public synchronized static TypeSpecVarchar getInstance(int length) {
+    public static synchronized TypeSpecVarchar getInstance(int length) {
 
         assert length <= MAX_LEN && length >= 1;
 

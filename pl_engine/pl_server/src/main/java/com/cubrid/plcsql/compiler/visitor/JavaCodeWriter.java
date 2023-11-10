@@ -366,7 +366,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplExprBinaryOp =
             new String[] {
-                "op%'OPERATION'%%'OP-EXTENSION'%(", "  %'+LEFT-OPERAND'%,", "  %'+RIGHT-OPERAND'%", ")"
+                "op%'OPERATION'%%'OP-EXTENSION'%(",
+                "  %'+LEFT-OPERAND'%,",
+                "  %'+RIGHT-OPERAND'%",
+                ")"
             };
 
     @Override
@@ -2003,7 +2006,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplCaseExpr =
             new String[] {
-                "Boolean.TRUE.equals(opEq%'OP-EXTENSION'%(selector,", "    %'+VALUE'%)) ?", "  %'+EXPRESSION'% :"
+                "Boolean.TRUE.equals(opEq%'OP-EXTENSION'%(selector,",
+                "    %'+VALUE'%)) ?",
+                "  %'+EXPRESSION'% :"
             };
 
     @Override

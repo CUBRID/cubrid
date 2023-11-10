@@ -362,7 +362,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public TypeSpecVarchar visitVarchar_type(Varchar_typeContext ctx) {
-        int length = TypeSpecVarchar.MAX_LEN;   // default
+        int length = TypeSpecVarchar.MAX_LEN; // default
 
         try {
             if (ctx.length != null) {

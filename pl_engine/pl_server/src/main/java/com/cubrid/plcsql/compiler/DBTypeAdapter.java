@@ -148,17 +148,19 @@ public class DBTypeAdapter {
                     if (prec == -1) {
                         prec = TypeSpecChar.MAX_LEN;
                     }
-                    assert prec >= 1 && prec <= TypeSpecChar.MAX_LEN : ("invalid precision " + prec);
+                    assert prec >= 1 && prec <= TypeSpecChar.MAX_LEN
+                            : ("invalid precision " + prec);
                     return TypeSpecChar.getInstance(prec);
                 } else {
                     return TypeSpecSimple.STRING_ANY;
                 }
             case DBType.DB_STRING:
                 if (includePrecision) {
-                    if (prec == -1 || prec == 0) {  // 0 for STRING (by test)
+                    if (prec == -1 || prec == 0) { // 0 for STRING (by test)
                         prec = TypeSpecVarchar.MAX_LEN;
                     }
-                    assert prec >= 1 && prec <= TypeSpecVarchar.MAX_LEN : ("invalid precision " + prec);
+                    assert prec >= 1 && prec <= TypeSpecVarchar.MAX_LEN
+                            : ("invalid precision " + prec);
                     return TypeSpecVarchar.getInstance(prec);
                 } else {
                     return TypeSpecSimple.STRING_ANY;
