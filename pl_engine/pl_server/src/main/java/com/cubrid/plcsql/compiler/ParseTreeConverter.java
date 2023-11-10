@@ -158,7 +158,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 TypeSpecSimple retType =
-                    DBTypeAdapter.getDeclTypeSpec(fs.retType.type, fs.retType.prec, fs.retType.scale);
+                        DBTypeAdapter.getDeclTypeSpec(
+                                fs.retType.type, fs.retType.prec, fs.retType.scale);
                 if (retType == null) {
                     String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
                     throw new SemanticError( // s418
@@ -178,7 +179,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             } else if (q instanceof ServerAPI.ColumnType) {
                 ServerAPI.ColumnType ct = (ServerAPI.ColumnType) q;
 
-                TypeSpecSimple ty = DBTypeAdapter.getDeclTypeSpec(ct.colType.type, ct.colType.prec, ct.colType.scale);
+                TypeSpecSimple ty =
+                        DBTypeAdapter.getDeclTypeSpec(
+                                ct.colType.type, ct.colType.prec, ct.colType.scale);
                 if (ty == null) {
                     String sqlType = DBTypeAdapter.getSqlTypeName(ct.colType.type);
                     throw new SemanticError( // s410
@@ -307,7 +310,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public TypeSpecNumeric visitNumeric_type(Numeric_typeContext ctx) {
         int precision = 15; // default
-        short scale = 0;    // default
+        short scale = 0; // default
 
         try {
             if (ctx.precision != null) {
@@ -353,7 +356,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             ret = TypeSpecSimple.SYS_REFCURSOR;
         } else {
             Integer dbType = typeNameToDbType.get(plcType);
-            assert dbType != null : "invalid PL/CSQL type " + plcType;  // by syntax
+            assert dbType != null : "invalid PL/CSQL type " + plcType; // by syntax
             ret = DBTypeAdapter.getDeclTypeSpec(dbType, -1, (short) -1);
         }
 
@@ -688,7 +691,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             TypeSpecSimple ty;
 
             BigInteger bi = new BigInteger(ctx.UNSIGNED_INTEGER().getText());
-            if (bi.compareTo(BIGINT_MAX) > 0 || bi.compareTo(BIGINT_MIN) < 0 ) {
+            if (bi.compareTo(BIGINT_MAX) > 0 || bi.compareTo(BIGINT_MIN) < 0) {
                 BigDecimal bd = new BigDecimal(ctx.UNSIGNED_INTEGER().getText());
                 assert bd.scale() == 0;
                 int precision = bd.precision();
@@ -2160,6 +2163,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private static final Map<String, Integer> typeNameToDbType = new HashMap<>();
+
     static {
         typeNameToDbType.put("CHAR", DBType.DB_CHAR);
         typeNameToDbType.put("CHARACTER", DBType.DB_CHAR);
@@ -2551,7 +2555,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         int len = params.length;
         for (int i = 0; i < len; i++) {
 
-            TypeSpecSimple paramType = DBTypeAdapter.getDeclTypeSpec(params[i].type, params[i].prec, params[i].scale);
+            TypeSpecSimple paramType =
+                    DBTypeAdapter.getDeclTypeSpec(params[i].type, params[i].prec, params[i].scale);
             if (paramType == null) {
                 String sqlType = DBTypeAdapter.getSqlTypeName(params[i].type);
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);

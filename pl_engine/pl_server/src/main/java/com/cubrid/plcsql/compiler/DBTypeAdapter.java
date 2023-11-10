@@ -31,9 +31,8 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.data.DBType;
-import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
-import com.cubrid.plcsql.compiler.serverapi.PlParamInfo;
+import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 
 public class DBTypeAdapter {
 
@@ -63,7 +62,7 @@ public class DBTypeAdapter {
     }
 
     public static TypeSpecSimple getValueType(int dbType) {
-        return getTypeSpecSimple(dbType, false, -1, (short) -1);   // ignore precision and scale
+        return getTypeSpecSimple(dbType, false, -1, (short) -1); // ignore precision and scale
     }
 
     public static String getSqlTypeName(int dbType) {
@@ -136,7 +135,8 @@ public class DBTypeAdapter {
     // Private
     // ---------------------------------------------------------
 
-    private static TypeSpecSimple getTypeSpecSimple(int dbType, boolean includePrecision, int prec, short scale) {
+    private static TypeSpecSimple getTypeSpecSimple(
+            int dbType, boolean includePrecision, int prec, short scale) {
         switch (dbType) {
             case DBType.DB_NULL:
                 return TypeSpecSimple.NULL;
@@ -152,7 +152,8 @@ public class DBTypeAdapter {
             case DBType.DB_NUMERIC:
                 if (includePrecision) {
                     assert prec >= 1 && prec <= 38 : ("invalid precision " + prec);
-                    assert scale >= 0 && scale <= prec : ("invalid scale " + scale + " (precision " + prec + ")");
+                    assert scale >= 0 && scale <= prec
+                            : ("invalid scale " + scale + " (precision " + prec + ")");
                     return TypeSpecNumeric.getInstance(prec, scale);
                 } else {
                     return TypeSpecSimple.NUMERIC_ANY;
@@ -174,5 +175,4 @@ public class DBTypeAdapter {
                 throw new RuntimeException("unreachable");
         }
     }
-
 }

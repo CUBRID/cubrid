@@ -37,8 +37,8 @@ import com.cubrid.plcsql.compiler.DateTimeParser;
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.math.MathContext;
+import java.math.RoundingMode;
 import java.sql.*;
 import java.sql.Date;
 import java.sql.Time;
@@ -55,7 +55,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Stack;
-import java.util.Locale;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
@@ -70,7 +69,8 @@ public class SpLib {
         }
 
         if (val.precision() > prec) {
-            throw new VALUE_ERROR("numeric value does not fit in the target type's precision and scale");
+            throw new VALUE_ERROR(
+                    "numeric value does not fit in the target type's precision and scale");
         }
 
         return val;
@@ -1473,8 +1473,9 @@ public class SpLib {
         int maxPrecision = p1 + p2 + 1;
         int scale = s1 + s2;
 
-        BigDecimal ret = l.multiply(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
-                          .setScale(scale, RoundingMode.HALF_UP);
+        BigDecimal ret =
+                l.multiply(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
         if (ret.precision() > 38) {
             throw new VALUE_ERROR("the operation results in a precision higher than 38");
         }
@@ -1562,8 +1563,9 @@ public class SpLib {
             maxPrecision = 38;
         }
 
-        BigDecimal ret = l.divide(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
-                          .setScale(scale, RoundingMode.HALF_UP);
+        BigDecimal ret =
+                l.divide(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
         if (ret.precision() > 38) {
             throw new VALUE_ERROR("the operation results in a precision higher than 38");
         }
@@ -1727,8 +1729,9 @@ public class SpLib {
         int maxPrecision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2) + 1;
         int scale = Math.max(s1, s2);
 
-        BigDecimal ret = l.add(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
-                          .setScale(scale, RoundingMode.HALF_UP);
+        BigDecimal ret =
+                l.add(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
         if (ret.precision() > 38) {
             throw new VALUE_ERROR("the operation results in a precision higher than 38");
         }
@@ -1878,11 +1881,15 @@ public class SpLib {
         int p2 = r.precision();
         int s2 = r.scale();
 
-        int maxPrecision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2) + 1; // +1: consider subtracting a minus value
+        int maxPrecision =
+                Math.max(p1 - s1, p2 - s2)
+                        + Math.max(s1, s2)
+                        + 1; // +1: consider subtracting a minus value
         int scale = Math.max(s1, s2);
 
-        BigDecimal ret = l.subtract(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
-                          .setScale(scale, RoundingMode.HALF_UP);
+        BigDecimal ret =
+                l.subtract(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
         if (ret.precision() > 38) {
             throw new VALUE_ERROR("the operation results in a precision higher than 38");
         }

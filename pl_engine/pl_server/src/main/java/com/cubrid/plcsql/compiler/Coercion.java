@@ -31,9 +31,9 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import com.cubrid.plcsql.compiler.ast.TypeSpecPercent;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
-import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -130,12 +130,13 @@ public abstract class Coercion {
 
         @Override
         public String javaCode(String exprJavaCode) {
-            return String.format("checkPrecision(%d, (short) %d, %s)", prec, scale, c.javaCode(exprJavaCode));
+            return String.format(
+                    "checkPrecision(%d, (short) %d, %s)", prec, scale, c.javaCode(exprJavaCode));
         }
 
         @Override
         Coercion create(TypeSpecSimple src, TypeSpecSimple dst) {
-            assert false;   // CoerceAndCheckPrecision is not memoized in CoercionStore
+            assert false; // CoerceAndCheckPrecision is not memoized in CoercionStore
             return null;
         }
     }
@@ -170,7 +171,7 @@ public abstract class Coercion {
             super(ty, ty);
         }
 
-        protected Identity() {};    // for dummy in the CoercionStore
+        protected Identity() {}; // for dummy in the CoercionStore
 
         private Identity(TypeSpecSimple src, TypeSpecSimple dst) {
             super(src, dst);
@@ -186,10 +187,9 @@ public abstract class Coercion {
 
         @Override
         Cast create(TypeSpecSimple src, TypeSpecSimple dst) {
-            assert false;   // Cast is not memoized in CoercionStore
+            assert false; // Cast is not memoized in CoercionStore
             return null;
         }
-
 
         public static Cast getInstance(TypeSpecSimple src, TypeSpecSimple dst) {
             assert src == TypeSpecSimple.NULL;
@@ -204,34 +204,35 @@ public abstract class Coercion {
 
         static {
             // NOTE: there is no Cast coercion dst NULL
-            instances.put(TypeSpecSimple.OBJECT,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
-            instances.put(TypeSpecSimple.BOOLEAN,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
-            instances.put(TypeSpecSimple.STRING,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
-            instances.put(TypeSpecSimple.SHORT,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
-            instances.put(TypeSpecSimple.INT,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
-            instances.put(TypeSpecSimple.BIGINT,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
-            instances.put(TypeSpecSimple.NUMERIC_ANY,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.NUMERIC_ANY));
-            instances.put(TypeSpecSimple.FLOAT,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.FLOAT));
-            instances.put(TypeSpecSimple.DOUBLE,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
-            instances.put(TypeSpecSimple.DATE,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
-            instances.put(TypeSpecSimple.TIME,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
-            instances.put(TypeSpecSimple.DATETIME,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATETIME));
-            instances.put(TypeSpecSimple.TIMESTAMP,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIMESTAMP));
-            instances.put(TypeSpecSimple.SYS_REFCURSOR,
-                new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SYS_REFCURSOR));
+            instances.put(
+                    TypeSpecSimple.OBJECT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
+            instances.put(
+                    TypeSpecSimple.BOOLEAN, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
+            instances.put(
+                    TypeSpecSimple.STRING, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
+            instances.put(
+                    TypeSpecSimple.SHORT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
+            instances.put(TypeSpecSimple.INT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
+            instances.put(
+                    TypeSpecSimple.BIGINT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
+            instances.put(
+                    TypeSpecSimple.NUMERIC_ANY,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.NUMERIC_ANY));
+            instances.put(
+                    TypeSpecSimple.FLOAT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.FLOAT));
+            instances.put(
+                    TypeSpecSimple.DOUBLE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
+            instances.put(TypeSpecSimple.DATE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
+            instances.put(TypeSpecSimple.TIME, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
+            instances.put(
+                    TypeSpecSimple.DATETIME,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATETIME));
+            instances.put(
+                    TypeSpecSimple.TIMESTAMP,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIMESTAMP));
+            instances.put(
+                    TypeSpecSimple.SYS_REFCURSOR,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SYS_REFCURSOR));
         }
 
         private Cast(TypeSpecSimple src, TypeSpecSimple dst) {
@@ -269,7 +270,7 @@ public abstract class Coercion {
 
         private static final CoercionStore memoized = new CoercionStore(new Conversion());
 
-        protected Conversion() {};    // for dummy in the CoercionStore
+        protected Conversion() {}; // for dummy in the CoercionStore
 
         private Conversion(TypeSpecSimple src, TypeSpecSimple dst) {
             super(src, dst);
@@ -281,7 +282,7 @@ public abstract class Coercion {
     // Private
     // ----------------------------------------------
 
-    abstract Coercion create(TypeSpecSimple src, TypeSpecSimple dst);  // used inside CoercionStore
+    abstract Coercion create(TypeSpecSimple src, TypeSpecSimple dst); // used inside CoercionStore
 
     private static class CoercionStore {
 
@@ -315,6 +316,7 @@ public abstract class Coercion {
     }
 
     private static final Map<Integer, Set<Integer>> possibleCasts = new HashMap<>();
+
     static {
         possibleCasts.put(
                 TypeSpecSimple.IDX_DATETIME,
@@ -332,10 +334,7 @@ public abstract class Coercion {
                                 TypeSpecSimple.IDX_TIMESTAMP,
                                 TypeSpecSimple.IDX_STRING)));
         possibleCasts.put(
-                TypeSpecSimple.IDX_TIME,
-                new HashSet(
-                        Arrays.asList(
-                                TypeSpecSimple.IDX_STRING)));
+                TypeSpecSimple.IDX_TIME, new HashSet(Arrays.asList(TypeSpecSimple.IDX_STRING)));
         possibleCasts.put(
                 TypeSpecSimple.IDX_TIMESTAMP,
                 new HashSet(
