@@ -266,7 +266,7 @@ bool is_tran_server_with_remote_storage ()
 }
 
 /*
- * get_page_server_maxim_extra_thread_count - returns the number of extra thread count per
+ * get_maxim_extra_thread_count_by_server_type - returns the number of extra thread count per
  *        scalability server type
  *
  */
@@ -289,22 +289,7 @@ int get_maxim_extra_thread_count_by_server_type ()
 
   if (local_server_type == SERVER_TYPE_PAGE)
     {
-      // thread pool used by page server to perform parallel replication
-      //
-      const int replication_parallel_thread_count = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
-
-      // thread pool used by page server to asynchronously service requests from transaction servers
-      //
-      int server_request_responder_thread_count
-	= prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
-      // TODO: there are now two such thread pools on the page server; a future refactoring will remove one
-      server_request_responder_thread_count *= 2;
-
-      // TODO: there is a worker pool to deal with background tasks that need cubthread::entry: page_server::m_worker_pool
-      // a future refactoring will make it shared with request responders above.
-      const int shared_worker_pool_thread_count = 4;
-
-      return replication_parallel_thread_count + server_request_responder_thread_count + shared_worker_pool_thread_count;
+      return ps_Gl->get_internal_thread_count ();
     }
   // NOTE: the same parallel replication mechanism is also used for active transaction server recovery mechanism;
   // but, because that one is transient and only occuring before any other thread infrastructure is instantiated in

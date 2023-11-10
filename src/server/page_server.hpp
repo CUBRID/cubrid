@@ -109,6 +109,8 @@ class page_server
     void init_request_responder ();
     void finalize_request_responder ();
 
+    const size_t get_internal_thread_count ();
+
   private: // types
     class tran_server_connection_handler
     {
@@ -297,6 +299,8 @@ class page_server
 
     tran_server_responder_t &get_tran_server_responder ();
     follower_responder_t &get_follower_responder ();
+
+    const size_t get_workerpool_thread_count ();
 
   private: // members
     const std::string m_server_name;

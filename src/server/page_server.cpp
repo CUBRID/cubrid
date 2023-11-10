@@ -1304,3 +1304,15 @@ page_server::finalize_request_responder ()
   m_tran_server_responder.reset (nullptr);
   m_follower_responder.reset (nullptr);
 }
+
+const size_t
+page_server::get_internal_thread_count ()
+{
+  // thread pool used by page server to perform parallel replication
+  const int replication_parallel_thread_count = prm_get_integer_value (PRM_ID_REPLICATION_PARALLEL_COUNT);
+
+  // Refer to page_server::page_server () to see threads
+  const size_t worker_count = m_worker_pool->get_max_count ();
+
+  return replication_parallel_thread_count + worker_count;
+}
