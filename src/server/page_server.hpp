@@ -109,6 +109,7 @@ class page_server
     void init_request_responder ();
     void finalize_request_responder ();
 
+    // get the count of internal threads which use cubthread::entry
     const size_t get_internal_thread_count ();
 
   private: // types

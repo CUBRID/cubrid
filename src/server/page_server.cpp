@@ -46,8 +46,8 @@ page_server::page_server (const char *db_name)
   size_t task_max_count = thread_count * 4;
 
   // two async responder: m_tran_server_responder, m_follower_responder
-  const size_t responder_thread_cnt = 2 * (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
-  const size_t responder_max_task_cnt = 2 * (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT);
+  const size_t responder_thread_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
+  const size_t responder_max_task_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT);
 
   thread_count += responder_thread_cnt;
   task_max_count +=  responder_max_task_cnt;
