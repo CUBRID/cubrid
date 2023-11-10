@@ -2003,7 +2003,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplCaseExpr =
             new String[] {
-                "Boolean.TRUE.equals(opEq(selector,", "    %'+VALUE'%)) ?", "  %'+EXPRESSION'% :"
+                "Boolean.TRUE.equals(opEq%'OP-EXTENSION'%(selector,", "    %'+VALUE'%)) ?", "  %'+EXPRESSION'% :"
             };
 
     @Override
@@ -2013,6 +2013,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "CaseExpr",
                 Misc.getLineColumnOf(node.ctx),
                 tmplCaseExpr,
+                "%'OP-EXTENSION'%",
+                node.opExtension,
                 "%'+VALUE'%",
                 visit(node.val),
                 "%'+EXPRESSION'%",
@@ -2025,7 +2027,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplCaseStmt =
             new String[] {
-                "if (Boolean.TRUE.equals(opEq(selector_%'LEVEL'%,",
+                "if (Boolean.TRUE.equals(opEq%'OP-EXTENSION'%(selector_%'LEVEL'%,",
                 "    %'+VALUE'%))) {",
                 "  %'+STATEMENTS'%",
                 "}"
@@ -2038,6 +2040,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "CaseStmt",
                 Misc.getLineColumnOf(node.ctx),
                 tmplCaseStmt,
+                "%'OP-EXTENSION'%",
+                node.opExtension,
                 "%'+VALUE'%",
                 visit(node.val),
                 "%'+STATEMENTS'%",

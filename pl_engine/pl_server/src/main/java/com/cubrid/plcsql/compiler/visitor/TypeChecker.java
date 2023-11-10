@@ -297,8 +297,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         List<TypeSpec> caseExprTypes = new ArrayList<>();
 
         // visit
-        TypeSpec caseSelectorType = visit(node.selector);
-        caseComparedTypes.add(caseSelectorType);
+        TypeSpec selectorType = visit(node.selector);
+        caseComparedTypes.add(selectorType);
 
         TypeSpec commonType = null;
         for (CaseExpr ce : node.whenParts.nodes) {
@@ -320,6 +320,16 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
                         "expression in the else part has an incompatible type " + ty);
             }
             caseExprTypes.add(ty);
+        }
+
+        boolean comparedAreChars = true;
+        for (TypeSpec ts : caseComparedTypes) {
+            comparedAreChars = comparedAreChars && (ts instanceof TypeSpecChar);
+        }
+        if (comparedAreChars) {
+            for (CaseExpr ce : node.whenParts.nodes) {
+                ce.setOpExtension("Char");
+            }
         }
 
         List<Coercion> outCoercions = new ArrayList<>();
@@ -735,12 +745,22 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         List<TypeSpec> saveCaseComparedTypes = caseComparedTypes;
         caseComparedTypes = new ArrayList<>();
 
-        TypeSpec caseSelectorType = visit(node.selector);
-        caseComparedTypes.add(caseSelectorType);
+        TypeSpec selectorType = visit(node.selector);
+        caseComparedTypes.add(selectorType);
 
         visitNodeList(node.whenParts);
         if (node.elsePart != null) {
             visitNodeList(node.elsePart);
+        }
+
+        boolean comparedAreChars = true;
+        for (TypeSpec ts : caseComparedTypes) {
+            comparedAreChars = comparedAreChars && (ts instanceof TypeSpecChar);
+        }
+        if (comparedAreChars) {
+            for (CaseStmt cs : node.whenParts.nodes) {
+                cs.setOpExtension("Char");
+            }
         }
 
         List<Coercion> outCoercions = new ArrayList<>();
