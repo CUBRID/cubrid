@@ -39,7 +39,6 @@ import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
-import java.math.MathContext;
 import java.sql.*;
 import java.sql.Date;
 import java.sql.Time;
@@ -56,7 +55,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Stack;
-import java.util.Locale;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {

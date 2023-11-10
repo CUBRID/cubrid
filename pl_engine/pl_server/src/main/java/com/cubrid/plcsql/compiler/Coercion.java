@@ -34,7 +34,6 @@ import com.cubrid.plcsql.compiler.ast.TypeSpec;
 import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import com.cubrid.plcsql.compiler.ast.TypeSpecPercent;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
-import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import com.cubrid.plcsql.compiler.ast.TypeSpecChar;
 import com.cubrid.plcsql.compiler.ast.TypeSpecVarchar;
 import java.util.Arrays;
