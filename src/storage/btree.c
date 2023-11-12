@@ -18835,7 +18835,7 @@ btree_multicol_key_is_null (DB_VALUE * key)
       if (midxkey && midxkey->ncolumns != -1)
 	{
 	  bits = (unsigned char *) midxkey->buf;
-	  nbytes = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
+	  nbytes = or_multi_nullmap_size (midxkey->ncolumns);
 	  for (i = 0; i < nbytes; i++)
 	    {
 	      if (bits[i] != (unsigned char) 0)
@@ -18881,7 +18881,7 @@ btree_multicol_key_has_null (DB_VALUE * key)
 	{
 	  for (i = 0; i < midxkey->ncolumns; i++)
 	    {
-	      if (OR_MULTI_ATT_IS_UNBOUND (midxkey->buf, i))
+	      if (or_multi_is_null (midxkey->buf, i))
 		{
 		  return 1;
 		}
