@@ -4402,17 +4402,8 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
       if (pg_prefix->reader_type == en_reader_range_scan)
 	{
 	  assert (pgptr == bts->C_page && VPID_EQ (pgbuf_get_vpid_ptr (pgptr), &bts->C_vpid));
-
-#if 0				// !defined(NDEBUG)
-	  LOG_LSA *tlsa = pgbuf_get_lsa (pgptr);
-	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid))
-	    {
-	      assert (LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)));
-	    }
-#endif
 	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid) && LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)))
-	    {			// same page
-	      assert (LSA_ISNULL (&pg_prefix->leaf_lsa) || LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)));
+	    {			// same page         
 	      assert (pg_prefix->n_prefix != COMMON_PREFIX_UNKNOWN);
 
 	      if (pg_prefix->satisfied_range_in_page && pg_prefix->use_index_column == false)
@@ -4436,18 +4427,8 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 	{
 	  // en_reader_stat or en_reader_capacity
 	  assert (pg_prefix->use_index_column == false);
-
-	  assert (pgptr == bts->C_page && VPID_EQ (pgbuf_get_vpid_ptr (pgptr), &bts->C_vpid));
-#if 0				//!defined(NDEBUG)
-	  LOG_LSA *tlsa = pgbuf_get_lsa (pgptr);
-	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid))
-	    {
-	      assert (LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)));
-	    }
-#endif
 	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid) && LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)))
 	    {
-	      assert (LSA_ISNULL (&pg_prefix->leaf_lsa) || LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)));
 	      n_prefix = pg_prefix->n_prefix;
 	    }
 	  else
