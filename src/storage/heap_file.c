@@ -1154,7 +1154,7 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
   (void) heap_stats_entry_free (thread_p, ent, NULL);
   ent = NULL;
 
-  heap_Bestspace->num_stats_entries -= 1;
+  heap_Bestspace->num_stats_entries--;
 
 end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
@@ -1233,6 +1233,8 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
   LOCK page_lock;
   PGBUF_LATCH_MODE page_latch_mode;
 
+  assert (lock == S_LOCK || lock == X_LOCK);
+
   if (scan_cache != NULL)
     {
       if (scan_cache->page_latch == NULL_LOCK)
@@ -1241,8 +1243,7 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
 	}
       else
 	{
-	  assert (scan_cache->page_latch >= NULL_LOCK);
-	  assert (lock >= NULL_LOCK);
+	  assert (scan_cache->page_latch > NULL_LOCK);
 	  page_lock = lock_Conv[scan_cache->page_latch][lock];
 	  assert (page_lock != NA_LOCK);
 	}
