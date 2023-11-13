@@ -378,10 +378,9 @@ namespace cublog
   {
     assert (m_locked_classes.count (trid) > 0);
 
-    auto [begin, end] = m_locked_classes.equal_range (trid);
-    for (auto it = begin; it != end; it++)
+    for (auto classoid : m_locked_classes[trid])
       {
-	lock_unlock_object_and_cleanup (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK);
+	lock_unlock_object_and_cleanup (&thread_entry, &classoid, oid_Root_class_oid, SCH_M_LOCK);
       }
 
     m_locked_classes.erase (trid);
@@ -403,19 +402,7 @@ namespace cublog
 	assert_release (false);
       }
 
-#if !defined (NDEBUG)
-    /* there will be no duplicated object in the map */
-    auto [begin, end] = m_locked_classes.equal_range (trid);
-    if (std::count_if (begin, end, [classoid] (const auto &it)
-    {
-      return it.second == *classoid;
-    }) > 0)
-    {
-      assert (false);
-    }
-#endif
-
-    m_locked_classes.emplace (trid, *classoid);
+    m_locked_classes[trid].emplace (*classoid);
   }
 
   void
@@ -430,7 +417,10 @@ namespace cublog
 	m_classname_map.emplace (*classoid, classname);
 	free_and_init (classname);
       }
-    /* if classname == NULL, then it is CREATE TABLE/VIEW case */
+    else
+      {
+	/* if classname == NULL, then it is CREATE TABLE/VIEW case */
+      }
   }
 
   void
@@ -475,11 +465,8 @@ namespace cublog
   {
     assert (m_locked_classes.count (trid) > 0);
 
-    auto [begin, end] = m_locked_classes.equal_range (trid);
-    for (auto it = begin; it != end; it++)
+    for (auto classoid : m_locked_classes[trid])
       {
-	auto classoid = it->second;
-
 	update_classname_cache_for_ddl (thread_entry, &classoid);
 	(void) heap_classrepr_decache (&thread_entry, &classoid);
 	(void) heap_delete_hfid_from_cache (&thread_entry, &classoid);

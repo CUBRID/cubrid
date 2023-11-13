@@ -144,6 +144,25 @@ inline bool operator!=(const OID& oid1, const OID& oid2)
 {
   return !OID_EQ (&oid1, &oid2);
 }
+
+inline bool operator>(const OID& oid1, const OID& oid2)
+{
+  return OID_GT (&oid1, &oid2);
+}
+inline bool operator>=(const OID& oid1, const OID& oid2)
+{
+  return OID_GTE (&oid1, &oid2);
+}
+
+inline bool operator<(const OID& oid1, const OID& oid2)
+{
+  return OID_LT (&oid1, &oid2);
+}
+
+inline bool operator<=(const OID& oid1, const OID& oid2)
+{
+  return OID_LTE (&oid1, &oid2);
+}
 // *INDENT-ON*
 #endif
 

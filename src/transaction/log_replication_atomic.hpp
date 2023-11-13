@@ -109,7 +109,7 @@ namespace cublog
       /* Keep track of the locked classes for DDL replication.
        * Since multiple DDL operations can be executed within single transaction,
        * more than one classes can be mapped to one transaction */
-      std::multimap <TRANID, OID> m_locked_classes;
+      std::unordered_map <TRANID, std::set<OID>> m_locked_classes;
       std::unordered_map <OID, std::string> m_classname_map;
   };
 }
