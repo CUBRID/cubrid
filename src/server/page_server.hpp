@@ -323,8 +323,15 @@ class page_server
     std::future<void> m_follower_disc_future;
     std::mutex m_follower_disc_mutex;
 
+    /*
+     * A worker_pool to take some asynchronous jobs that need a thread entry.
+     * It's used by two server_request_responders for tran servers and follower servers,
+     * and some extra jobs like the catch-up.
+     *
+     * Note that server_request_responders have to be destroyed earlier since they ensure all jobs are done in their dtors.
+     */
     cubthread::system_worker_entry_manager m_worker_context_manager;
-    cubthread::entry_workpool *m_worker_pool; // a worker_pool to take some asynchronous jobs that needs a thread entry
+    cubthread::entry_workpool *m_worker_pool;
 };
 
 #endif // !_PAGE_SERVER_HPP_

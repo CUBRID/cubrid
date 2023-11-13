@@ -45,7 +45,7 @@ page_server::page_server (const char *db_name)
   size_t thread_count = 4; // Arbitrary chosen
   size_t task_max_count = thread_count * 4;
 
-  // two async responder: m_tran_server_responder, m_follower_responder
+  // For two async responders: m_tran_server_responder, m_follower_responder
   const size_t responder_thread_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
   const size_t responder_max_task_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT);
 
@@ -67,6 +67,9 @@ page_server::~page_server ()
   assert (m_passive_tran_server_conn.size () == 0);
 
   m_async_disconnect_handler.terminate ();
+
+  assert (m_tran_server_responder == nullptr);
+  assert (m_follower_responder == nullptr);
 
   cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
   assert (m_worker_pool == nullptr);
