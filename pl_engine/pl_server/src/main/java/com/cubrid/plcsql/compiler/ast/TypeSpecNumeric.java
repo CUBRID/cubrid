@@ -41,7 +41,7 @@ public class TypeSpecNumeric extends TypeSpecSimple {
     public final int precision;
     public final short scale;
 
-    public static TypeSpecNumeric getInstance(int precision, short scale) {
+    public static synchronized TypeSpecNumeric getInstance(int precision, short scale) {
 
         assert precision <= 38 && precision >= 1;
         assert scale <= precision && scale >= 0;
@@ -62,7 +62,7 @@ public class TypeSpecNumeric extends TypeSpecSimple {
     // Private
     // ---------------------------------------------------------------------------
 
-    private static Map<Integer, TypeSpecNumeric> instances = new HashMap<>();
+    private static final Map<Integer, TypeSpecNumeric> instances = new HashMap<>();
 
     private TypeSpecNumeric(String plcName, String fullJavaType, String typicalValueStr, int precision, short scale) {
         super(plcName, fullJavaType, IDX_NUMERIC, typicalValueStr);
