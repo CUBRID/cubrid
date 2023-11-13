@@ -612,12 +612,6 @@ bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   if (bts->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, bts->C_page);
-#if 0				//defined(IMPROVE_RANGE_SCAN_IN_BTREE) // ctshim xxxxx
-      if (bts->pg_prefix_info)
-	{
-	  VPID_SET_NULL (&bts->pg_prefix_info->vpid);
-	}
-#endif
     }
 }
 
@@ -4420,7 +4414,6 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 		{
 		  btree_check_within_range_in_page (thread_p, btid, pgptr, bts);
 		}
-	      //VPID_SET_NULL (&(pg_prefix->vpid));
 	    }
 	}
       else
@@ -4430,10 +4423,6 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid) && LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)))
 	    {
 	      n_prefix = pg_prefix->n_prefix;
-	    }
-	  else
-	    {
-	      //VPID_SET_NULL (&(pg_prefix->vpid));
 	    }
 	}
     }
@@ -4574,13 +4563,13 @@ btree_quit_page_prefix_info (BTREE_SCAN * bts, bool reset_scan)
 {
   if (bts)
     {
-      RESET_BTREE_PAGE_PREFIX_INFO (bts->pg_prefix_info);
       if (reset_scan)
 	{
 	  BTREE_RESET_SCAN (bts);
 	}
       else
 	{
+	  RESET_BTREE_PAGE_PREFIX_INFO (bts->pg_prefix_info);
 	  bts->pg_prefix_info = NULL;
 	}
     }
@@ -6442,7 +6431,7 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
     }
   /* Execute scan. */
   btree_scan.is_fk_remake = is_newly;
-  error_code = btree_range_scan (thread_p, &btree_scan, btree_range_scan_find_fk_any_object);
+  error_code = btree_range_scan (thread_p, &btree_scan, btree_range_scan_find_fk_any_object, false);
   btree_scan.is_fk_remake = false;
   assert (error_code == NO_ERROR || er_errid () != NO_ERROR);
 
@@ -15448,7 +15437,7 @@ btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE s
       ASSERT_ERROR ();
       return rc;
     }
-  rc = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids);
+  rc = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids, false);
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -16130,7 +16119,6 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   if (bts->pg_prefix_info && first_page != bts->C_page)
     {
       /* reset common_prefix to recalculate */
-      //bts->common_prefix = COMMON_PREFIX_UNKNOWN;
       VPID_SET_NULL (&(bts->pg_prefix_info->vpid));
     }
 #endif
@@ -16460,9 +16448,12 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
   *is_key_range_satisfied = *is_key_filter_satisfied = false;
   bts->key_range_max_value_equal = false;	/* init as false */
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   /* Key Range Checking */
-  if (bts->key_range.upper_key == NULL || (bts->pg_prefix_info && bts->pg_prefix_info->satisfied_range_in_page))
+  if (bts->key_range.upper_key == NULL
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      || (bts->pg_prefix_info && bts->pg_prefix_info->satisfied_range_in_page)
+#endif
+    )
     {
       *is_key_range_satisfied = true;
     }
@@ -16487,7 +16478,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	}
       else if (c == 0)
 	{
-	  if (bts->key_range.range == GT_LE || bts->key_range.range == GE_LE || bts->key_range.range == INF_LE)
+	  if (bts->key_range.range == GE_LE || bts->key_range.range == GT_LE || bts->key_range.range == INF_LE)
 	    {
 	      *is_key_range_satisfied = true;
 	      bts->key_range_max_value_equal = true;
@@ -16502,50 +16493,6 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	  *is_key_range_satisfied = true;
 	}
     }
-#else //#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  /* Key Range Checking */
-  if (bts->key_range.upper_key == NULL)
-    {
-      c = DB_GT;
-    }
-  else
-    {
-      c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key, bts->btid_int.key_type, 1, 1, NULL);
-
-      if (c == DB_UNK)
-	{
-	  /* error should have been set */
-	  goto exit_on_error;
-	}
-
-      /* when using descending index the comparison should be changed again */
-      if (bts->use_desc_index)
-	{
-	  c = -c;
-	}
-    }
-
-  if (c < 0)
-    {
-      *is_key_range_satisfied = false;
-    }
-  else if (c == 0)
-    {
-      if (bts->key_range.range == GT_LE || bts->key_range.range == GE_LE || bts->key_range.range == INF_LE)
-	{
-	  *is_key_range_satisfied = true;
-	  bts->key_range_max_value_equal = true;
-	}
-      else
-	{
-	  *is_key_range_satisfied = false;
-	}
-    }
-  else
-    {
-      *is_key_range_satisfied = true;
-    }
-#endif //#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 
   if (*is_key_range_satisfied)
     {
@@ -25713,25 +25660,29 @@ exit_on_error:
 }
 
 int
-btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func)
+btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func,
+		  bool use_pg_prefix)
 {
-  int ret;
-
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  BTREE_PAGE_PREFIX_INFO pg_prefix_info;
+  if (use_pg_prefix)
+    {
+      int ret;
+      BTREE_PAGE_PREFIX_INFO pg_prefix_info;
 
-  bts =
-    btree_init_page_prefix_info (bts, (TP_DOMAIN_TYPE (bts->btid_int.key_type) == DB_TYPE_MIDXKEY), false,
-				 &pg_prefix_info, en_reader_range_scan);
+      bts =
+	btree_init_page_prefix_info (bts, (TP_DOMAIN_TYPE (bts->btid_int.key_type) == DB_TYPE_MIDXKEY), false,
+				     &pg_prefix_info, en_reader_range_scan);
+
+      ret = btree_range_scan_internal (thread_p, bts, key_func);
+
+      btree_quit_page_prefix_info (bts, false);
+      return ret;
+    }
+  else
 #endif
-
-  ret = btree_range_scan_internal (thread_p, bts, key_func);
-
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  btree_quit_page_prefix_info (bts, false);
-#endif
-
-  return ret;
+    {
+      return btree_range_scan_internal (thread_p, bts, key_func);
+    }
 }
 
 /*

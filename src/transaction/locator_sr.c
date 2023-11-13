@@ -4359,7 +4359,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	       */
 	      bt_scan.is_key_partially_processed = false;
 #endif
-	      error_code = btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids);
+	      error_code = btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids, is_newly);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -4736,7 +4736,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	       */
 	      bt_scan.is_key_partially_processed = false;
 #endif
-	      error_code = btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids);
+	      error_code = btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids, is_newly);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (er_errid () != NO_ERROR);
@@ -9608,7 +9608,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 	  assert (er_errid () != NO_ERROR);
 	  break;
 	}
-      if (btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids) != NO_ERROR)
+      if (btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids, false) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  break;
@@ -10048,7 +10048,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	  assert (er_errid () != NO_ERROR);
 	  break;
 	}
-      if (btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids) != NO_ERROR)
+      if (btree_range_scan (thread_p, &bt_scan, btree_range_scan_select_visible_oids, false) != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  break;

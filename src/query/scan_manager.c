@@ -2377,7 +2377,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  assert (er_errid () != NO_ERROR);
 	  goto exit_on_error;
 	}
-      ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids);
+      ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids, true);
       if (ret != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -2463,7 +2463,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  assert (er_errid () != NO_ERROR);
 	  goto exit_on_error;
 	}
-      ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids);
+      ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids, true);
       key_vals[0].range = saved_range;
       if (ret != NO_ERROR)
 	{
@@ -2519,7 +2519,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	      assert (er_errid () != NO_ERROR);
 	      goto exit_on_error;
 	    }
-	  ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids);
+	  ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids, true);
 	  if (ret != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -2638,7 +2638,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	      assert (er_errid () != NO_ERROR);
 	      goto exit_on_error;
 	    }
-	  ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids);
+	  ret = btree_range_scan (thread_p, bts, btree_range_scan_select_visible_oids, true);
 	  key_vals[iscan_id->curr_keyno].range = saved_range;
 	  if (ret != NO_ERROR)
 	    {

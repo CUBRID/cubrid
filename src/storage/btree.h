@@ -202,15 +202,7 @@ typedef struct
 
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {\
     if((pg_prefix))  {                               \
-       (pg_prefix)->reader_type = en_reader_none;    \
-       (pg_prefix)->is_midxkey = true;               \
-       (pg_prefix)->use_comparing = true;            \
-       (pg_prefix)->use_index_column = true;         \
-       (pg_prefix)->satisfied_range_in_page = false; \
-       (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;\
        btree_clear_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
-       VPID_SET_NULL (&((pg_prefix)->vpid));         \
-       LSA_SET_NULL(&((pg_prefix)->leaf_lsa));       \
     }                                                \
 } while(0)
 #else
@@ -811,7 +803,8 @@ extern int btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LO
 extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
 				BTREE_SCAN * BTS, key_val_range * key_val_range, OID * class_oid, FILTER_INFO * filter,
 				INDX_SCAN_ID * isidp, bool is_all_class_srch);
-extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func);
+extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func,
+			     bool use_pg_prefix);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids,
 					 int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id);
