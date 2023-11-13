@@ -36,29 +36,28 @@
 
 using namespace std::literals;
 
-// system vclasses
-static int boot_define_view_super_class (void);
-static int boot_define_view_vclass (void);
-static int boot_define_view_attribute (void);
-static int boot_define_view_attribute_set_domain (void);
-static int boot_define_view_method (void);
-static int boot_define_view_method_argument (void);
-static int boot_define_view_method_argument_set_domain (void);
-static int boot_define_view_method_file (void);
-static int boot_define_view_index (void);
-static int boot_define_view_index_key (void);
-static int boot_define_view_authorization (void);
-static int boot_define_view_trigger (void);
-static int boot_define_view_partition (void);
-static int boot_define_view_stored_procedure (void);
-static int boot_define_view_stored_procedure_arguments (void);
-static int boot_define_view_db_collation (void);
-static int boot_define_view_db_charset (void);
-static int boot_define_view_db_server (void);
-static int boot_define_view_synonym (void);
-
 // query specs
 static const char *sm_define_view_class_spec (void);
+static const char *sm_define_view_super_class_spec (void);
+static const char *sm_define_view_vclass_spec (void);
+static const char *sm_define_view_attribute_spec (void);
+static const char *sm_define_view_attribute_set_domain_spec (void);
+static const char *sm_define_view_method_spec (void);
+static const char *sm_define_view_method_argument_spec (void);
+static const char *sm_define_view_method_argument_set_domain_spec (void);
+static const char *sm_define_view_method_file_spec (void);
+static const char *sm_define_view_index_spec (void);
+static const char *sm_define_view_index_key_spec (void);
+static const char *sm_define_view_authorization_spec (void);
+static const char *sm_define_view_trigger_spec (void);
+static const char *sm_define_view_partition_spec (void);
+static const char *sm_define_view_stored_procedure_spec (void);
+static const char *sm_define_view_stored_procedure_arguments_spec (void);
+static const char *sm_define_view_db_collation_spec (void);
+static const char *sm_define_view_db_charset_spec (void);
+static const char *sm_define_view_synonym_spec (void);
+static const char *sm_define_view_db_server_spec (void);
+
 
 /* ========================================================================== */
 /* NEW DEFINITION (initializers for CLASS) */
@@ -266,36 +265,55 @@ namespace cubschema
   {
     public:
       // classes
-      static const system_catalog_definition &init_class ();
-      static const system_catalog_definition &init_attribute ();
-      static const system_catalog_definition &init_domain ();
-      static const system_catalog_definition &init_method ();
-      static const system_catalog_definition &init_method_sig ();
-      static const system_catalog_definition &init_meth_argument ();
-      static const system_catalog_definition &init_meth_file ();
-      static const system_catalog_definition &init_query_spec ();
-      static const system_catalog_definition &init_index ();
-      static const system_catalog_definition &init_index_key ();
-      static const system_catalog_definition &init_class_authorization ();
-      static const system_catalog_definition &init_partition ();
-      static const system_catalog_definition &init_data_type ();
-      static const system_catalog_definition &init_stored_procedure ();
-      static const system_catalog_definition &init_stored_procedure_arguments ();
-      static const system_catalog_definition &init_serial ();
+      static const system_catalog_definition &get_class ();
+      static const system_catalog_definition &get_attribute ();
+      static const system_catalog_definition &get_domain ();
+      static const system_catalog_definition &get_method ();
+      static const system_catalog_definition &get_method_sig ();
+      static const system_catalog_definition &get_meth_argument ();
+      static const system_catalog_definition &get_meth_file ();
+      static const system_catalog_definition &get_query_spec ();
+      static const system_catalog_definition &get_index ();
+      static const system_catalog_definition &get_index_key ();
+      static const system_catalog_definition &get_class_authorization ();
+      static const system_catalog_definition &get_partition ();
+      static const system_catalog_definition &get_data_type ();
+      static const system_catalog_definition &get_stored_procedure ();
+      static const system_catalog_definition &get_stored_procedure_arguments ();
+      static const system_catalog_definition &get_serial ();
 
-      static const system_catalog_definition &init_ha_apply_info ();
-      static const system_catalog_definition &init_collations ();
-      static const system_catalog_definition &init_charsets ();
-      static const system_catalog_definition &init_dual ();
-      static const system_catalog_definition &init_db_server ();
-      static const system_catalog_definition &init_synonym ();
+      static const system_catalog_definition &get_ha_apply_info ();
+      static const system_catalog_definition &get_collations ();
+      static const system_catalog_definition &get_charsets ();
+      static const system_catalog_definition &get_dual ();
+      static const system_catalog_definition &get_db_server ();
+      static const system_catalog_definition &get_synonym ();
 
       // views
-      static const system_catalog_definition &init_vclass ();
+      static const system_catalog_definition &get_view_class ();
+      static const system_catalog_definition &get_view_super_class ();
+      static const system_catalog_definition &get_view_vclass ();
+      static const system_catalog_definition &get_view_attribute ();
+      static const system_catalog_definition &get_view_attribute_set_domain ();
+      static const system_catalog_definition &get_view_method ();
+      static const system_catalog_definition &get_view_method_argument ();
+      static const system_catalog_definition &get_view_method_argument_set_domain ();
+      static const system_catalog_definition &get_view_method_file ();
+      static const system_catalog_definition &get_view_index ();
+      static const system_catalog_definition &get_view_index_key ();
+      static const system_catalog_definition &get_view_authorization ();
+      static const system_catalog_definition &get_view_trigger ();
+      static const system_catalog_definition &get_view_partition ();
+      static const system_catalog_definition &get_view_stored_procedure ();
+      static const system_catalog_definition &get_view_stored_procedure_arguments ();
+      static const system_catalog_definition &get_view_db_collation ();
+      static const system_catalog_definition &get_view_db_charset ();
+      static const system_catalog_definition &get_view_synonym ();
+      static const system_catalog_definition &get_view_db_server ();
   };
 
   const system_catalog_definition &
-  system_catalog_initializer::init_class ()
+  system_catalog_initializer::get_class ()
   {
     static system_catalog_definition sm_define_class (
 	    // name
@@ -366,7 +384,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_attribute ()
+  system_catalog_initializer::get_attribute ()
   {
 
     static system_catalog_definition sm_define_attribute (
@@ -403,7 +421,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_domain ()
+  system_catalog_initializer::get_domain ()
   {
 
     static system_catalog_definition sm_define_domain (
@@ -440,7 +458,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_method ()
+  system_catalog_initializer::get_method ()
   {
 
     static system_catalog_definition sm_define_method (
@@ -472,7 +490,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_method_sig ()
+  system_catalog_initializer::get_method_sig ()
   {
 
     static system_catalog_definition sm_define_method_sig (
@@ -503,7 +521,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_meth_argument ()
+  system_catalog_initializer::get_meth_argument ()
   {
 
     static system_catalog_definition sm_define_meth_argument (
@@ -533,7 +551,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_meth_file ()
+  system_catalog_initializer::get_meth_file ()
   {
 
     static system_catalog_definition sm_define_meth_file (
@@ -562,7 +580,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_query_spec ()
+  system_catalog_initializer::get_query_spec ()
   {
 
     static system_catalog_definition sm_define_query_spec (
@@ -590,7 +608,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_index ()
+  system_catalog_initializer::get_index ()
   {
 
     static system_catalog_definition sm_define_index (
@@ -628,7 +646,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_index_key ()
+  system_catalog_initializer::get_index_key ()
   {
 
     static system_catalog_definition sm_define_index_key (
@@ -665,7 +683,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_class_authorization ()
+  system_catalog_initializer::get_class_authorization ()
   {
 
     static system_catalog_definition sm_define_class_authorization (
@@ -696,7 +714,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_partition ()
+  system_catalog_initializer::get_partition ()
   {
 
     static system_catalog_definition sm_define_partition (
@@ -728,7 +746,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_data_type ()
+  system_catalog_initializer::get_data_type ()
   {
 
     static system_catalog_definition sm_define_data_type (
@@ -755,7 +773,7 @@ namespace cubschema
 
 
   const system_catalog_definition &
-  system_catalog_initializer::init_stored_procedure ()
+  system_catalog_initializer::get_stored_procedure ()
   {
 
     static system_catalog_definition sm_define_stored_procedure (
@@ -790,7 +808,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_stored_procedure_arguments ()
+  system_catalog_initializer::get_stored_procedure_arguments ()
   {
 
     static system_catalog_definition sm_define_stored_procedure_arguments (
@@ -822,7 +840,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_serial ()
+  system_catalog_initializer::get_serial ()
   {
     static system_catalog_definition sm_define_serial (
 	    // name
@@ -895,7 +913,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_ha_apply_info ()
+  system_catalog_initializer::get_ha_apply_info ()
   {
 
     static system_catalog_definition sm_define_ha_apply_info (
@@ -957,7 +975,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_collations ()
+  system_catalog_initializer::get_collations ()
   {
 
     static system_catalog_definition sm_define_collations (
@@ -989,7 +1007,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_charsets ()
+  system_catalog_initializer::get_charsets ()
   {
 
     static system_catalog_definition sm_define_charsets (
@@ -1017,7 +1035,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_dual ()
+  system_catalog_initializer::get_dual ()
   {
 #define CT_DUAL_DUMMY   "dummy"
     static system_catalog_definition sm_define_dual (
@@ -1068,7 +1086,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_synonym ()
+  system_catalog_initializer::get_synonym ()
   {
 
     static system_catalog_definition sm_define_synonym (
@@ -1114,7 +1132,7 @@ namespace cubschema
   }
 
   const system_catalog_definition &
-  system_catalog_initializer::init_db_server ()
+  system_catalog_initializer::get_db_server ()
   {
 
     static system_catalog_definition sm_define_db_server (
@@ -1183,7 +1201,7 @@ namespace cubschema
    */
 
   const system_catalog_definition &
-  system_catalog_initializer::init_vclass ()
+  system_catalog_initializer::get_view_class ()
   {
 // db_class
     static system_catalog_definition sm_define_view_class (
@@ -1219,6 +1237,720 @@ namespace cubschema
     );
     return sm_define_view_class;
   }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_super_class ()
+  {
+// db_class
+    static system_catalog_definition sm_define_super_class (
+	    // name
+	    CTV_SUPER_CLASS_NAME,
+	    // columns
+    {
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"super_class_name", "varchar(255)"},
+      {"super_owner_name", "varchar(255)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_super_class_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_define_super_class;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_vclass ()
+  {
+// db_class
+    static system_catalog_definition sm_define_vclass (
+	    // name
+	    CTV_VCLASS_NAME,
+	    // columns
+    {
+      {"vclass_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"vclass_def", "varchar(1073741823)"},
+      {"comment", "varchar(2048)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_vclass_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_define_vclass;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_attribute ()
+  {
+// db_class
+    static system_catalog_definition sm_define_attribute (
+	    // name
+	    CTV_ATTRIBUTE_NAME,
+	    // columns
+    {
+      {"attr_name", "varchar(255)"},
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"attr_type", "varchar(8)"},
+      {"def_order", "integer"},
+      {"from_class_name", "varchar(255)"},
+      {"from_owner_name", "varchar(255)"},
+      {"from_attr_name", "varchar(255)"},
+      {"data_type", "varchar(9)"},
+      {"prec", "integer"},
+      {"scale", "integer"},
+      {"charset", "varchar(32)"},
+      {"collation", "varchar(32)"},
+      {"domain_class_name", "varchar(255)"},
+      {"domain_owner_name", "varchar(255)"},
+      {"default_value", "varchar(255)"},
+      {"is_nullable", "varchar(3)"},
+      {"comment", "varchar(1024)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_attribute_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_define_attribute;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_attribute_set_domain ()
+  {
+// db_class
+    static system_catalog_definition sm_define_attribute_set_domain (
+	    // name
+	    CTV_ATTR_SD_NAME,
+	    // columns
+    {
+      {"attr_name", "varchar(255)"},
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"attr_type", "varchar(8)"},
+      {"data_type", "varchar(9)"},
+      {"prec", "integer"},
+      {"scale", "integer"},
+      {"code_set", "integer"},
+      {"domain_class_name", "varchar(255)"},
+      {"domain_owner_name", "varchar(255)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_attribute_set_domain_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_define_attribute_set_domain;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_method ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_METHOD_NAME,
+	    // columns
+    {
+      {"meth_name", "varchar(255)"},
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"meth_type", "varchar(8)"},
+      {"from_class_name", "varchar(255)"},
+      {"from_owner_name", "varchar(255)"},
+      {"from_meth_name", "varchar(255)"},
+      {"func_name", "varchar(255)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_method_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_method_argument ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_METHARG_NAME,
+	    // columns
+    {
+      {"meth_name", "varchar(255)"},
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"meth_type", "varchar(8)"},
+      {"index_of", "integer"},
+      {"data_type", "varchar(9)"},
+      {"prec", "integer"},
+      {"scale", "integer"},
+      {"code_set", "integer"},
+      {"domain_class_name", "varchar(255)"},
+      {"domain_owner_name", "varchar(255)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_method_argument_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_method_argument_set_domain ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_METHARG_SD_NAME,
+	    // columns
+    {
+      {"meth_name", "varchar(255)"},
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"meth_type", "varchar(8)"},
+      {"index_of", "integer"},
+      {"data_type", "varchar(9)"},
+      {"prec", "integer"},
+      {"scale", "integer"},
+      {"code_set", "integer"},
+      {"domain_class_name", "varchar(255)"},
+      {"domain_owner_name", "varchar(255)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_method_argument_set_domain_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_method_file ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_METHFILE_NAME,
+	    // columns
+    {
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"path_name", "varchar(255)"},
+      {"from_class_name", "varchar(255)"},
+      {"from_owner_name", "varchar(255)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_method_file_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_index ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_INDEX_NAME,
+	    // columns
+    {
+      {"index_name", "varchar(255)"},
+      {"is_unique", "varchar(3)"},
+      {"is_reverse", "varchar(3)"},
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"key_count", "integer"},
+      {"is_primary_key", "varchar(3)"},
+      {"is_foreign_key", "varchar(3)"},
+#if 0				// Not yet, Disabled for QA verification convenience
+      {"is_deduplicate", "varchar(3)"},
+      {"deduplicate_key_level", "smallint"},
+#endif
+      {"filter_expression", "varchar(255)"},
+      {"have_function", "varchar(3)"},
+      {"comment", "varchar(1024)"},
+      {"status", "varchar(255)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_index_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_index_key ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_INDEXKEY_NAME,
+	    // columns
+    {
+      {"index_name", "varchar(255)"},
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"key_attr_name", "varchar(255)"},
+      {"key_order", "integer"},
+      {"asc_desc", "varchar(4)"},
+      {"key_prefix_length", "integer"},
+      {"func", "varchar(1023)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_index_key_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  /* When a user is granted SELECT privilege,
+   * that user can also view the list of privileges that other users have been granted.
+   * Is this no problem? */
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_authorization ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_AUTH_NAME,
+	    // columns
+    {
+      {"grantor_name", "varchar(255)"},
+      {"grantee_name", "varchar(255)"},
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"auth_type", "varchar(7)"},
+      {"is_grantable", "varchar(3)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_trigger ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_TRIGGER_NAME,
+	    // columns
+    {
+      {"trigger_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"target_class_name", "varchar(255)"},
+      {"target_owner_name", "varchar(255)"},
+      {"target_attr_name", "varchar(255)"},
+      {"target_attr_type", "varchar(8)"},
+      {"action_type", "integer"},
+      {"action_time", "integer"},
+      {"comment", "varchar(1024)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_trigger_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_partition ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_PARTITION_NAME,
+	    // columns
+    {
+      {"class_name", "varchar(255)"},
+      {"owner_name", "varchar(255)"},
+      {"partition_name", "varchar(255)"},
+      {"partition_class_name", "varchar(255)"},
+      {"partition_type", "varchar(32)"},
+      {"partition_expr", "varchar(2048)"},
+      {"partition_values", "sequence of"},
+      {"comment", "varchar(1024)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_partition_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_stored_procedure ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_STORED_PROC_NAME,
+	    // columns
+    {
+      {"sp_name", "varchar(255)"},
+      {"sp_type", "varchar(16)"},
+      {"return_type", "varchar(16)"},
+      {"arg_count", "integer"},
+      {"lang", "varchar(16)"},
+      {"target", "varchar(4096)"},
+      {"owner", "varchar(256)"},
+      {"comment", "varchar(1024)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_stored_procedure_arguments ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_STORED_PROC_ARGS_NAME,
+	    // columns
+    {
+      {"sp_name", "varchar(255)"},
+      {"index_of", "integer"},
+      {"arg_name", "varchar(255)"},
+      {"data_type", "varchar(16)"},
+      {"mode", "varchar(6)"},
+      {"comment", "varchar(1024)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_arguments_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_db_collation ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_DB_COLLATION_NAME,
+	    // columns
+    {
+      {"coll_id", "integer"},
+      {"coll_name", "varchar(32)"},
+      {"charset_name", "varchar(32)"},
+      {"is_builtin", "varchar(3)"},
+      {"has_expansions", "varchar(3)"},
+      {"contractions", "integer"},
+      {"uca_strength", "varchar(255)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_db_collation_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_db_charset ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_DB_CHARSET_NAME,
+	    // columns
+    {
+      {CT_DBCHARSET_CHARSET_ID, "integer"},
+      {CT_DBCHARSET_CHARSET_NAME, "varchar(32)"},
+      {CT_DBCHARSET_DEFAULT_COLLATION, "varchar(32)"},
+      {CT_DBCHARSET_CHAR_SIZE, "int"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_db_charset_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_synonym ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_SYNONYM_NAME,
+	    // columns
+    {
+      {"synonym_name", "varchar(255)"},
+      {"synonym_owner_name", "varchar(255)"},
+      {"is_public_synonym", "varchar(3)"},	/* access_modifier */
+      {"target_name", "varchar(255)"},
+      {"target_owner_name", "varchar(255)"},
+      {"comment", "varchar(2048)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_synonym_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
+
+  const system_catalog_definition &
+  system_catalog_initializer::get_view_db_server ()
+  {
+// db_class
+    static system_catalog_definition sm_def (
+	    // name
+	    CTV_DB_SERVER_NAME,
+	    // columns
+    {
+      {"link_name", "varchar(255)"},
+      {"host", "varchar(255)"},
+      {"port", "integer"},
+      {"db_name", "varchar(255)"},
+      {"user_name", "varchar(255)"},
+      // {"password", "varchar(256)"}
+      {"properties", "varchar(2048)"},
+      {"owner", "varchar(255)"},
+      {"comment", "varchar(1024)"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_db_server_spec (), ""}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+    );
+    return sm_def;
+  }
 }
 
 // for backward compatibility
@@ -1228,31 +1960,8 @@ using COLUMN = cubschema::attribute;
 /* MAIN APIS */
 /* ========================================================================== */
 
-static cubschema::catcls_function vclist[] =
-{
-  {CTV_SUPER_CLASS_NAME, boot_define_view_super_class},
-  {CTV_VCLASS_NAME, boot_define_view_vclass},
-  {CTV_ATTRIBUTE_NAME, boot_define_view_attribute},
-  {CTV_ATTR_SD_NAME, boot_define_view_attribute_set_domain},
-  {CTV_METHOD_NAME, boot_define_view_method},
-  {CTV_METHARG_NAME, boot_define_view_method_argument},
-  {CTV_METHARG_SD_NAME, boot_define_view_method_argument_set_domain},
-  {CTV_METHFILE_NAME, boot_define_view_method_file},
-  {CTV_INDEX_NAME, boot_define_view_index},
-  {CTV_INDEXKEY_NAME, boot_define_view_index_key},
-  {CTV_AUTH_NAME, boot_define_view_authorization},
-  {CTV_TRIGGER_NAME, boot_define_view_trigger},
-  {CTV_PARTITION_NAME, boot_define_view_partition},
-  {CTV_STORED_PROC_NAME, boot_define_view_stored_procedure},
-  {CTV_STORED_PROC_ARGS_NAME, boot_define_view_stored_procedure_arguments},
-  {CTV_DB_COLLATION_NAME, boot_define_view_db_collation},
-  {CTV_DB_CHARSET_NAME, boot_define_view_db_charset},
-  {CTV_DB_SERVER_NAME, boot_define_view_db_server},
-  {CTV_SYNONYM_NAME,boot_define_view_synonym}
-};
-
-static std::vector<cubschema::catcls_function_ng> *clist_new = nullptr;
-static std::vector<cubschema::catcls_function_ng> *vclist_new = nullptr;
+static std::vector<cubschema::catcls_function> *clist = nullptr;
+static std::vector<cubschema::catcls_function> *vclist = nullptr;
 
 void
 catcls_init (void)
@@ -1260,39 +1969,58 @@ catcls_init (void)
   // TODO: for late initialization (for au_init () to retrieve MOPs: Au_dba_user and Au_public_user)
 
   using namespace cubschema;
-  static std::vector<cubschema::catcls_function_ng> cl =
+  static std::vector<cubschema::catcls_function> cl =
   {
-    {CT_CLASS_NAME, system_catalog_initializer::init_class ()},
-    {CT_ATTRIBUTE_NAME, system_catalog_initializer::init_attribute ()},
-    {CT_DOMAIN_NAME, system_catalog_initializer::init_domain ()},
-    {CT_METHOD_NAME, system_catalog_initializer::init_method ()},
-    {CT_METHSIG_NAME, system_catalog_initializer::init_method_sig ()},
-    {CT_METHARG_NAME, system_catalog_initializer::init_meth_argument ()},
-    {CT_METHFILE_NAME, system_catalog_initializer::init_meth_file ()},
-    {CT_QUERYSPEC_NAME, system_catalog_initializer::init_query_spec ()},
-    {CT_INDEX_NAME, system_catalog_initializer::init_index ()},
-    {CT_INDEXKEY_NAME, system_catalog_initializer::init_index_key ()},
-    {CT_CLASSAUTH_NAME, system_catalog_initializer::init_class_authorization ()},
-    {CT_PARTITION_NAME, system_catalog_initializer::init_partition()},
-    {CT_DATATYPE_NAME, system_catalog_initializer::init_data_type()},
-    {CT_STORED_PROC_NAME, system_catalog_initializer::init_stored_procedure()},
-    {CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::init_stored_procedure_arguments()},
-    {CT_SERIAL_NAME, system_catalog_initializer::init_serial()},
-    {CT_HA_APPLY_INFO_NAME, system_catalog_initializer::init_ha_apply_info()},
-    {CT_COLLATION_NAME, system_catalog_initializer::init_collations()},
-    {CT_CHARSET_NAME, system_catalog_initializer::init_charsets()},
-    {CT_DUAL_NAME, system_catalog_initializer::init_dual()},
-    {CT_SYNONYM_NAME, system_catalog_initializer::init_synonym()},
-    {CT_DB_SERVER_NAME, system_catalog_initializer::init_db_server()}
+    {CT_CLASS_NAME, system_catalog_initializer::get_class ()},
+    {CT_ATTRIBUTE_NAME, system_catalog_initializer::get_attribute ()},
+    {CT_DOMAIN_NAME, system_catalog_initializer::get_domain ()},
+    {CT_METHOD_NAME, system_catalog_initializer::get_method ()},
+    {CT_METHSIG_NAME, system_catalog_initializer::get_method_sig ()},
+    {CT_METHARG_NAME, system_catalog_initializer::get_meth_argument ()},
+    {CT_METHFILE_NAME, system_catalog_initializer::get_meth_file ()},
+    {CT_QUERYSPEC_NAME, system_catalog_initializer::get_query_spec ()},
+    {CT_INDEX_NAME, system_catalog_initializer::get_index ()},
+    {CT_INDEXKEY_NAME, system_catalog_initializer::get_index_key ()},
+    {CT_CLASSAUTH_NAME, system_catalog_initializer::get_class_authorization ()},
+    {CT_PARTITION_NAME, system_catalog_initializer::get_partition()},
+    {CT_DATATYPE_NAME, system_catalog_initializer::get_data_type()},
+    {CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure()},
+    {CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_arguments()},
+    {CT_SERIAL_NAME, system_catalog_initializer::get_serial()},
+    {CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info()},
+    {CT_COLLATION_NAME, system_catalog_initializer::get_collations()},
+    {CT_CHARSET_NAME, system_catalog_initializer::get_charsets()},
+    {CT_DUAL_NAME, system_catalog_initializer::get_dual()},
+    {CT_SYNONYM_NAME, system_catalog_initializer::get_synonym()},
+    {CT_DB_SERVER_NAME, system_catalog_initializer::get_db_server()}
   };
 
-  static std::vector<cubschema::catcls_function_ng> vcl =
+  static std::vector<cubschema::catcls_function> vcl =
   {
-    {CTV_CLASS_NAME, system_catalog_initializer::init_vclass ()}
+    {CTV_CLASS_NAME, system_catalog_initializer::get_view_class ()},
+    {CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_super_class ()},
+    {CTV_VCLASS_NAME, system_catalog_initializer::get_view_vclass ()},
+    {CTV_ATTRIBUTE_NAME, system_catalog_initializer::get_view_attribute ()},
+    {CTV_ATTR_SD_NAME, system_catalog_initializer::get_view_attribute_set_domain ()},
+    {CTV_METHOD_NAME, system_catalog_initializer::get_view_method ()},
+    {CTV_METHARG_NAME, system_catalog_initializer::get_view_method_argument ()},
+    {CTV_METHARG_SD_NAME, system_catalog_initializer::get_view_method_argument_set_domain ()},
+    {CTV_METHFILE_NAME, system_catalog_initializer::get_view_method_file ()},
+    {CTV_INDEX_NAME, system_catalog_initializer::get_view_index ()},
+    {CTV_INDEXKEY_NAME, system_catalog_initializer::get_view_index_key ()},
+    {CTV_AUTH_NAME, system_catalog_initializer::get_view_authorization ()},
+    {CTV_TRIGGER_NAME, system_catalog_initializer::get_view_trigger ()},
+    {CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ()},
+    {CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ()},
+    {CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_arguments ()},
+    {CTV_DB_COLLATION_NAME, system_catalog_initializer::get_view_db_collation ()},
+    {CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ()},
+    {CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ()},
+    {CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ()}
   };
 
-  clist_new = &cl;
-  vclist_new = &vcl;
+  clist = &cl;
+  vclist = &vcl;
 }
 
 int
@@ -1300,7 +2028,7 @@ catcls_install_class (void)
 {
   int error_code = NO_ERROR;
 
-  const size_t num_classes = clist_new->size ();
+  const size_t num_classes = clist->size ();
   std::vector<MOP> class_mop (num_classes, nullptr);
   int save;
   size_t i;
@@ -1311,7 +2039,7 @@ catcls_install_class (void)
   for (i = 0; i < num_classes; i++)
     {
       // new routine
-      class_mop[i] = catalog_builder::create_and_mark_system_class ((*clist_new)[i].name);
+      class_mop[i] = catalog_builder::create_and_mark_system_class ((*clist)[i].name);
       if (class_mop[i] == nullptr)
 	{
 	  assert (false);
@@ -1323,7 +2051,7 @@ catcls_install_class (void)
   for (i = 0; i < num_classes; i++)
     {
       // new routine
-      error_code = catalog_builder::build_class (class_mop[i], (*clist_new)[i].definition);
+      error_code = catalog_builder::build_class (class_mop[i], (*clist)[i].definition);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
@@ -1349,37 +2077,25 @@ catcls_install_vclass (void)
   int save;
   size_t i;
 
-  const size_t num_vclasses_old = sizeof (vclist) / sizeof (vclist[0]);
-  const size_t num_vclasses_new = vclist_new->size ();
-  const size_t num_vclasses_total = num_vclasses_old + num_vclasses_new;
-
+  const size_t num_vclasses = vclist->size ();
   int error_code = NO_ERROR;
 
   AU_DISABLE (save);
 
   using catalog_builder = cubschema::system_catalog_builder;
 
-  for (i = 0; i < num_vclasses_total; i++)
+  for (i = 0; i < num_vclasses; i++)
     {
-      if (i < num_vclasses_new)
+      // new routine
+      MOP class_mop = catalog_builder::create_and_mark_system_class ((*vclist)[i].name);
+      if (class_mop != nullptr)
 	{
-	  // new routine
-	  MOP class_mop = catalog_builder::create_and_mark_system_class ((*vclist_new)[i].name);
-	  if (class_mop != nullptr)
-	    {
-	      error_code = catalog_builder::build_vclass (class_mop, (*vclist_new)[i].definition);
-	    }
-
-	  if (er_errid () != NO_ERROR)
-	    {
-	      error_code = er_errid ();
-	    }
+	  error_code = catalog_builder::build_vclass (class_mop, (*vclist)[i].definition);
 	}
-      else
+
+      if (er_errid () != NO_ERROR)
 	{
-	  // old routine
-	  int idx = i - num_vclasses_new;
-	  error_code = (vclist[idx].vclass_func) ();
+	  error_code = er_errid ();
 	}
 
 
@@ -1397,6 +2113,10 @@ end:
 
 /* ========================================================================== */
 /* LEGACY FUNCTIONS (SYSTEM VCLASS) */
+/* ========================================================================== */
+
+/* ========================================================================== */
+/* NEW ROUTINE (QUERY SPECS OF SYSTEM VCLASS) */
 /* ========================================================================== */
 
 /*
@@ -1428,43 +2148,88 @@ end:
  *
  */
 
-/*
- * boot_define_view_super_class :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_super_class (void)
+static const char *
+sm_define_view_class_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"super_class_name", "varchar(255)"},
-    {"super_owner_name", "varchar(255)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
+  static char stmt [2048];
 
-  class_mop = db_create_vclass (CTV_SUPER_CLASS_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+	  "[c].[class_name] AS [class_name], "
+	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
+	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [class_type], "
+	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
+	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
+	  "CASE "
+	    "WHEN [c].[sub_classes] IS NULL THEN 'NO' "
+	    /* CT_PARTITION_NAME */
+	    "ELSE NVL ((SELECT 'YES' FROM [%s] AS [p] WHERE [p].[class_of] = [c] AND [p].[pname] IS NULL), 'NO') "
+	    "END AS [partitioned], "
+	  "CASE WHEN MOD ([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
+	  "[coll].[coll_name] AS [collation], "
+	  "[c].[comment] AS [comment] "
+	"FROM "
+	  /* CT_CLASS_NAME */
+	  "[%s] AS [c], "
+	  /* CT_COLLATION_NAME */
+	  "[%s] AS [coll] "
+	"WHERE "
+	  "[c].[collation_id] = [coll].[coll_id] "
+	  "AND ("
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[c].[owner].[name]} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[c]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[class_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'SELECT'"
+		")"
+	    ")",
+	CT_PARTITION_NAME,
+	CT_CLASS_NAME,
+	CT_COLLATION_NAME,
+	AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
 
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  return stmt;
+}
+
+static const char *
+sm_define_view_super_class_spec (void)
+{
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -1520,64 +2285,13 @@ boot_define_view_super_class (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_vclass :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_vclass (void)
+static const char *
+sm_define_view_vclass_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"vclass_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"vclass_def", "varchar(1073741823)"},
-    {"comment", "varchar(2048)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_VCLASS_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -1639,78 +2353,13 @@ boot_define_view_vclass (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_attribute :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_attribute (void)
+static const char *
+sm_define_view_attribute_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"attr_name", "varchar(255)"},
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"attr_type", "varchar(8)"},
-    {"def_order", "integer"},
-    {"from_class_name", "varchar(255)"},
-    {"from_owner_name", "varchar(255)"},
-    {"from_attr_name", "varchar(255)"},
-    {"data_type", "varchar(9)"},
-    {"prec", "integer"},
-    {"scale", "integer"},
-    {"charset", "varchar(32)"},
-    {"collation", "varchar(32)"},
-    {"domain_class_name", "varchar(255)"},
-    {"domain_owner_name", "varchar(255)"},
-    {"default_value", "varchar(255)"},
-    {"is_nullable", "varchar(3)"},
-    {"comment", "varchar(1024)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_ATTRIBUTE_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -1806,70 +2455,13 @@ boot_define_view_attribute (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_attribute_set_domain :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_attribute_set_domain (void)
+static const char *
+sm_define_view_attribute_set_domain_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"attr_name", "varchar(255)"},
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"attr_type", "varchar(8)"},
-    {"data_type", "varchar(9)"},
-    {"prec", "integer"},
-    {"scale", "integer"},
-    {"code_set", "integer"},
-    {"domain_class_name", "varchar(255)"},
-    {"domain_owner_name", "varchar(255)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_ATTR_SD_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -1945,68 +2537,13 @@ boot_define_view_attribute_set_domain (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_method :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_method (void)
+static const char *
+sm_define_view_method_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"meth_name", "varchar(255)"},
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"meth_type", "varchar(8)"},
-    {"from_class_name", "varchar(255)"},
-    {"from_owner_name", "varchar(255)"},
-    {"from_meth_name", "varchar(255)"},
-    {"func_name", "varchar(255)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_METHOD_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -2072,71 +2609,13 @@ boot_define_view_method (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_method_argument :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_method_argument (void)
+static const char *
+sm_define_view_method_argument_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"meth_name", "varchar(255)"},
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"meth_type", "varchar(8)"},
-    {"index_of", "integer"},
-    {"data_type", "varchar(9)"},
-    {"prec", "integer"},
-    {"scale", "integer"},
-    {"code_set", "integer"},
-    {"domain_class_name", "varchar(255)"},
-    {"domain_owner_name", "varchar(255)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_METHARG_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -2213,74 +2692,13 @@ boot_define_view_method_argument (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_method_argument_set_domain :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- * Note:
- *
- */
-static int
-boot_define_view_method_argument_set_domain (void)
+static const char *
+sm_define_view_method_argument_set_domain_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"meth_name", "varchar(255)"},
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"meth_type", "varchar(8)"},
-    {"index_of", "integer"},
-    {"data_type", "varchar(9)"},
-    {"prec", "integer"},
-    {"scale", "integer"},
-    {"code_set", "integer"},
-    {"domain_class_name", "varchar(255)"},
-    {"domain_owner_name", "varchar(255)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_METHARG_SD_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -2357,65 +2775,13 @@ boot_define_view_method_argument_set_domain (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_method_file :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_method_file (void)
+static const char *
+sm_define_view_method_file_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"path_name", "varchar(255)"},
-    {"from_class_name", "varchar(255)"},
-    {"from_owner_name", "varchar(255)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_METHFILE_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -2472,76 +2838,13 @@ boot_define_view_method_file (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_index :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_index (void)
+static const char *
+sm_define_view_index_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"index_name", "varchar(255)"},
-    {"is_unique", "varchar(3)"},
-    {"is_reverse", "varchar(3)"},
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"key_count", "integer"},
-    {"is_primary_key", "varchar(3)"},
-    {"is_foreign_key", "varchar(3)"},
-#if 0				// Not yet, Disabled for QA verification convenience
-    {"is_deduplicate", "varchar(3)"},
-    {"deduplicate_key_level", "smallint"},
-#endif
-    {"filter_expression", "varchar(255)"},
-    {"have_function", "varchar(3)"},
-    {"comment", "varchar(1024)"},
-    {"status", "varchar(255)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_INDEX_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -2655,68 +2958,13 @@ boot_define_view_index (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_index_key :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_index_key (void)
+static const char *
+sm_define_view_index_key_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"index_name", "varchar(255)"},
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"key_attr_name", "varchar(255)"},
-    {"key_order", "integer"},
-    {"asc_desc", "varchar(4)"},
-    {"key_prefix_length", "integer"},
-    {"func", "varchar(1023)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_INDEXKEY_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -2782,70 +3030,13 @@ boot_define_view_index_key (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_authorization :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_authorization (void)
+static const char *
+sm_define_view_authorization_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"grantor_name", "varchar(255)"},
-    {"grantee_name", "varchar(255)"},
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"auth_type", "varchar(7)"},
-    {"is_grantable", "varchar(3)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_AUTH_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
-
-  /* When a user is granted SELECT privilege,
-   * that user can also view the list of privileges that other users have been granted.
-   * Is this no problem? */
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -2903,69 +3094,13 @@ boot_define_view_authorization (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_trigger :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_trigger (void)
+static const char *
+sm_define_view_trigger_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"trigger_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"target_class_name", "varchar(255)"},
-    {"target_owner_name", "varchar(255)"},
-    {"target_attr_name", "varchar(255)"},
-    {"target_attr_type", "varchar(8)"},
-    {"action_type", "integer"},
-    {"action_time", "integer"},
-    {"comment", "varchar(1024)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_TRIGGER_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -3029,68 +3164,13 @@ boot_define_view_trigger (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_partition :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_partition (void)
+static const char *
+sm_define_view_partition_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"class_name", "varchar(255)"},
-    {"owner_name", "varchar(255)"},
-    {"partition_name", "varchar(255)"},
-    {"partition_class_name", "varchar(255)"},
-    {"partition_type", "varchar(32)"},
-    {"partition_expr", "varchar(2048)"},
-    {"partition_values", "sequence of"},
-    {"comment", "varchar(1024)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_PARTITION_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -3160,68 +3240,13 @@ boot_define_view_partition (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_stored_procedure :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_stored_procedure (void)
+static const char *
+sm_define_view_stored_procedure_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"sp_name", "varchar(255)"},
-    {"sp_type", "varchar(16)"},
-    {"return_type", "varchar(16)"},
-    {"arg_count", "integer"},
-    {"lang", "varchar(16)"},
-    {"target", "varchar(4096)"},
-    {"owner", "varchar(256)"},
-    {"comment", "varchar(1024)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_STORED_PROC_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -3246,66 +3271,13 @@ boot_define_view_stored_procedure (void)
 	CT_STORED_PROC_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_stored_procedure_arguments :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_stored_procedure_arguments (void)
+static const char *
+sm_define_view_stored_procedure_arguments_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"sp_name", "varchar(255)"},
-    {"index_of", "integer"},
-    {"arg_name", "varchar(255)"},
-    {"data_type", "varchar(16)"},
-    {"mode", "varchar(6)"},
-    {"comment", "varchar(1024)"}
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_STORED_PROC_ARGS_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -3330,68 +3302,13 @@ boot_define_view_stored_procedure_arguments (void)
 	CT_STORED_PROC_ARGS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_db_collation :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_db_collation (void)
+static const char *
+sm_define_view_db_collation_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"coll_id", "integer"},
-    {"coll_name", "varchar(32)"},
-    {"charset_name", "varchar(32)"},
-    {"is_builtin", "varchar(3)"},
-    {"has_expansions", "varchar(3)"},
-    {"contractions", "integer"},
-    {"uca_strength", "varchar(255)"}
-  };
-
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_DB_COLLATION_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -3422,65 +3339,13 @@ boot_define_view_db_collation (void)
 	CT_CHARSET_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_db_charset :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_db_charset (void)
+static const char *
+sm_define_view_db_charset_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {CT_DBCHARSET_CHARSET_ID, "integer"},
-    {CT_DBCHARSET_CHARSET_NAME, "varchar(32)"},
-    {CT_DBCHARSET_DEFAULT_COLLATION, "varchar(32)"},
-    {CT_DBCHARSET_CHAR_SIZE, "int"}
-  };
-
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  class_mop = db_create_vclass (CTV_DB_CHARSET_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -3502,65 +3367,13 @@ boot_define_view_db_charset (void)
 	CT_COLLATION_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-static int
-boot_define_view_synonym (void)
+static const char *
+sm_define_view_synonym_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"synonym_name", "varchar(255)"},
-    {"synonym_owner_name", "varchar(255)"},
-    {"is_public_synonym", "varchar(3)"},	/* access_modifier */
-    {"target_name", "varchar(255)"},
-    {"target_owner_name", "varchar(255)"},
-    {"comment", "varchar(2048)"}
-  };
-
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-  /* Initialization */
-  memset (stmt, '\0', sizeof (char) * 2048);
-
-  class_mop = db_create_vclass (CTV_SYNONYM_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -3602,71 +3415,13 @@ boot_define_view_synonym (void)
 	AU_USER_CLASS_NAME);
   // *INDENT-ON*
 
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
+  return stmt;
 }
 
-/*
- * boot_define_view_db_server :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-static int
-boot_define_view_db_server (void)
+static const char *
+sm_define_view_db_server_spec (void)
 {
-  MOP class_mop;
-  COLUMN columns[] =
-  {
-    {"link_name", "varchar(255)"},
-    {"host", "varchar(255)"},
-    {"port", "integer"},
-    {"db_name", "varchar(255)"},
-    {"user_name", "varchar(255)"},
-    // {"password", "varchar(256)"}
-    {"properties", "varchar(2048)"},
-    {"owner", "varchar(255)"},
-    {"comment", "varchar(1024)"}
-
-  };
-  int num_cols = sizeof (columns) / sizeof (columns[0]);
-  int i;
-  char stmt[2048];
-  int error_code = NO_ERROR;
-
-
-  class_mop = db_create_vclass (CTV_DB_SERVER_NAME);
-  if (class_mop == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      return error_code;
-    }
-
-  for (i = 0; i < num_cols; i++)
-    {
-      error_code = db_add_attribute (class_mop, columns[i].name.data (), columns[i].type.data (), NULL);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  static char stmt [2048];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -3720,106 +3475,6 @@ boot_define_view_db_server (void)
 		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_DB_SERVER_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	CT_CLASSAUTH_NAME,
-	AU_USER_CLASS_NAME);
-  // *INDENT-ON*
-
-  error_code = db_add_query_spec (class_mop, stmt);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_change_owner (class_mop, Au_dba_user);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
-
-/* ========================================================================== */
-/* NEW ROUTINE (QUERY SPECS OF SYSTEM VCLASS) */
-/* ========================================================================== */
-
-static const char *
-sm_define_view_class_spec (void)
-{
-  static char stmt [2048];
-
-  // *INDENT-OFF*
-  sprintf (stmt,
-	"SELECT "
-	  "[c].[class_name] AS [class_name], "
-	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
-	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOW' END AS [class_type], "
-	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
-	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
-	  "CASE "
-	    "WHEN [c].[sub_classes] IS NULL THEN 'NO' "
-	    /* CT_PARTITION_NAME */
-	    "ELSE NVL ((SELECT 'YES' FROM [%s] AS [p] WHERE [p].[class_of] = [c] AND [p].[pname] IS NULL), 'NO') "
-	    "END AS [partitioned], "
-	  "CASE WHEN MOD ([c].[is_system_class] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
-	  "[coll].[coll_name] AS [collation], "
-	  "[c].[comment] AS [comment] "
-	"FROM "
-	  /* CT_CLASS_NAME */
-	  "[%s] AS [c], "
-	  /* CT_COLLATION_NAME */
-	  "[%s] AS [coll] "
-	"WHERE "
-	  "[c].[collation_id] = [coll].[coll_id] "
-	  "AND ("
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[c]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[class_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
-	    ")",
-	CT_PARTITION_NAME,
-	CT_CLASS_NAME,
-	CT_COLLATION_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
