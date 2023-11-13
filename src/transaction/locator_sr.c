@@ -13962,7 +13962,7 @@ locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, con
   scope_exit <std::function <void ()>> classname_csect_exit ([&thread_p] () {csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE); });
   // *INDENT-ON*
 
-  entry = ((LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry)));
+  entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry));
   if (entry == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
@@ -14014,6 +14014,13 @@ locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname)
     }
 
   entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
+  if (entry == NULL)
+    {
+      assert (false);
+      csect_exit (thread_p, CSECT_CT_OID_TABLE);
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      return;
+    }
 
   (void) locator_force_drop_class_name_entry (entry->e_name, entry, NULL);
 
@@ -14052,7 +14059,7 @@ locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classna
   assert (old_entry != NULL);
 
   /* create new entry with new key (new_classname) */
-  new_entry = ((LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*new_entry)));
+  new_entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*new_entry));
   if (new_entry == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*new_entry));
