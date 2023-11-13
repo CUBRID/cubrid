@@ -176,15 +176,15 @@ typedef enum
 typedef struct
 {
   READER_TYPE reader_type;
-  int n_prefix;
   VPID vpid;
   LOG_LSA leaf_lsa;
   bool is_midxkey;
   bool use_comparing;		// key compare
   bool use_index_column;	// result or filtering
-  bool satisfied_range_in_page;
+  bool satisfied_range_in_page;	// If true, it guarantees that all keys on the current page satisfy the range condition.
+  int n_prefix;			// size of common prefix key parts.
   bool clear_prefix_key;
-  DB_VALUE prefix_key;
+  DB_VALUE prefix_key;		// common prefix key part 
 } BTREE_PAGE_PREFIX_INFO;
 
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix)   do {\
@@ -194,9 +194,9 @@ typedef struct
     (pg_prefix)->use_comparing = true;               \
     (pg_prefix)->use_index_column = true;            \
     (pg_prefix)->satisfied_range_in_page = false;    \
-    (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;   \
     VPID_SET_NULL (&((pg_prefix)->vpid));            \
     LSA_SET_NULL(&((pg_prefix)->leaf_lsa));          \
+    (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;   \
     btree_init_temp_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
 } while(0)
 
