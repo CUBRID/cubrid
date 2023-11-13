@@ -14648,7 +14648,7 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
       stmt = cte_list->info.cte.non_recursive_part;
       if (stmt && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
 	{
-	  host_variables = (DB_VALUE *) parser_alloc (parser, sizeof (DB_VALUE) * stmt->cte_host_var_count);
+	  host_variables = (DB_VALUE *) malloc (sizeof (DB_VALUE) * stmt->cte_host_var_count);
 	  if (host_variables == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -14664,6 +14664,8 @@ do_execute_cte (PARSER_CONTEXT * parser, PT_NODE * statement, int query_flag)
 	  err =
 	    execute_query (stmt->xasl_id, &query_id, stmt->cte_host_var_count, host_variables, &list_id,
 			   flag | RESULT_CACHE_REQUIRED, &clt_cache_time, &stmt->cache_time);
+
+	  free (host_variables);
 
 	  if (err != NO_ERROR)
 	    {
