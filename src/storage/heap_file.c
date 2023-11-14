@@ -11281,26 +11281,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   else
     {
       /* the domains don't match, must attempt coercion */
-      if (TP_IS_DISCRETE_NUMBER_TYPE (attr_val->domain.general_info.type))
-	{
-	  if (value->last_attrepr->domain->type->id == DB_TYPE_NUMERIC)
-	    {
-	      int last_precision, precision;
-
-	      last_precision = value->last_attrepr->domain->precision;
-	      precision = tp_get_precision (attr_val);
-	      if (precision > last_precision)
-		{
-		  /* do not coerce for overflow */
-		  dom_status = DOMAIN_OVERFLOW;
-		}
-	    }
-	}
-
-      if (dom_status != DOMAIN_OVERFLOW)
-	{
-	  dom_status = tp_value_auto_cast (attr_val, &value->dbvalue, value->last_attrepr->domain);
-	}
+      dom_status = tp_value_auto_cast_with_precision_check (attr_val, &value->dbvalue, value->last_attrepr->domain);
 
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
