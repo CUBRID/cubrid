@@ -13938,10 +13938,13 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
 // *INDENT-ON*
 
 void
-locator_mark_classname_entry_deleted (THREAD_ENTRY * thread_p, const OID * classoid)
+locator_change_classname_entry_status_if_exists (THREAD_ENTRY * thread_p, const OID * classoid,
+						 const LC_FIND_CLASSNAME status)
 {
-  /* called when DROP TABLE/VIEW statement is executed */
+  assert (is_passive_transaction_server ());
+
   char *classname = NULL;
+
   (void) heap_get_class_name (thread_p, classoid, &classname);
   if (classname != NULL)
     {
@@ -13955,22 +13958,32 @@ locator_mark_classname_entry_deleted (THREAD_ENTRY * thread_p, const OID * class
       entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
       if (entry != NULL)
 	{
-	  assert (entry->e_current.action == LC_CLASSNAME_EXIST);
+	  assert (entry->e_current.action != status);
 
-	  entry->e_current.action = LC_CLASSNAME_DELETED;
+	  entry->e_current.action = status;
 	}
       else
 	{
-	  /* RENAMEd class is not cached in the locator_Mht_classnames
-	   * so, we need to modify the cache contains the classoid.
-	   * scenario :
-	   * RENAME TABLE tbl to tbl2;  -- tbl2 is not cached
-	   * DROP TABLE tbl2;           -- looking for tbl2 in the cache
+	  /* CREATEd or RENAMEd class is not cached in the locator_Mht_classnames yet.
+	   * They are updated when replicator apply LOG_COMMIT.
+	   * scenario (PTS side):
+	   * 1) CREATE
+	   * CREATE TABLE tbl (a int);  -- "tbl" is not cached in the locator_Mht_classnames
+	   * DROP TABLE tbl;            -- looking for "tbl" in the locator_Mht_classnames.
+	   *                               But we don't need to change the status of "tbl" entry,
+	   *                               it will be changed at LOG_COMMIT time
+	   * COMMIT;
+	   *
+	   * 2) RENAME
+	   * RENAME TABLE tbl to tbl2;  -- "tbl2" is not cached, but only "tbl" is cached
+	   * DROP TABLE tbl2;           -- looking for "tbl2" in the cache
+	   *                               "tbl2" is not found, but need to change the status of "tbl" entry
+	   *                               because READ transaction in PTS could access "tbl" entry which has been deleted.
+	   * COMMIT;
 	   */
 
 	  HENTRY_PTR hentry = NULL;
 	  HENTRY_PTR next = NULL;
-
 	  for (hentry = locator_Mht_classnames->act_head; hentry != NULL; hentry = next)
 	    {
 	      next = hentry->act_next;
@@ -13978,8 +13991,9 @@ locator_mark_classname_entry_deleted (THREAD_ENTRY * thread_p, const OID * class
 
 	      if (OID_EQ (&entry->e_current.oid, classoid))
 		{
-		  assert (entry->e_current.action == LC_CLASSNAME_EXIST);
-		  entry->e_current.action = LC_CLASSNAME_DELETED;
+		  assert (entry->e_current.action != status);
+
+		  entry->e_current.action = status;
 		  break;
 		}
 	    }
@@ -13991,36 +14005,6 @@ locator_mark_classname_entry_deleted (THREAD_ENTRY * thread_p, const OID * class
     {
       assert (false);
     }
-}
-
-void
-locator_restore_classname_entry_if_exists (THREAD_ENTRY * thread_p, const OID * oid)
-{
-  /* called when DROP TABLE/VIEW statement is rollbacked */
-  HENTRY_PTR hentry = NULL;
-  HENTRY_PTR next = NULL;
-  LOCATOR_CLASSNAME_ENTRY *entry = NULL;
-
-  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      assert (false);
-      return;
-    }
-
-  for (hentry = locator_Mht_classnames->act_head; hentry != NULL; hentry = next)
-    {
-      next = hentry->act_next;
-      entry = (LOCATOR_CLASSNAME_ENTRY *) hentry->data;
-
-      if (OID_EQ (&entry->e_current.oid, oid))
-	{
-	  assert (entry->e_current.action == LC_CLASSNAME_DELETED);
-	  entry->e_current.action = LC_CLASSNAME_EXIST;
-	  break;
-	}
-    }
-
-  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
 }
 
 void

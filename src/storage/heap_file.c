@@ -15817,37 +15817,6 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
       recdes.area_size = recdes.length = *(INT16 *) recdes.data;
       recdes.data = NULL;
     }
-  else
-    {
-      /* Classname cache (locator_Mht_classnames) status should be reverted when
-       * DROP TABLE statement is rolled back (RVHF_COMPENSATE_WITH_INSERT).
-       * The cache status is modified at heap_rv_redo_delete() (RVHF_DELETE).
-       * When CREATE TABLE is executed, recdes.type is always REC_ASSIGN_ADDRESS,
-       * and we need to filter out the CREATE TABLE case.
-       */
-
-      if (is_passive_transaction_server ())
-	{
-	  assert (thread_p->type == TT_REPLICATION_PTS);
-
-	  const bool is_deleted = spage_is_record_deleted (rcv->pgptr, slotid);
-	  if (is_deleted)
-	    {
-	      OID classoid;
-	      heap_get_class_oid_from_page (thread_p, rcv->pgptr, &classoid);
-	      if (OID_EQ (&classoid, oid_Root_class_oid))
-		{
-		  VPID vpid;
-		  OID oid;
-
-		  (void) pgbuf_get_vpid (rcv->pgptr, &vpid);
-		  SET_OID (&oid, vpid.volid, vpid.pageid, slotid);
-
-		  locator_restore_classname_entry_if_exists (thread_p, &oid);
-		}
-	    }
-	}
-    }
 
   sp_success = spage_insert_for_recovery (thread_p, rcv->pgptr, slotid, &recdes);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
@@ -15861,6 +15830,34 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 	}
       assert (er_errid () != NO_ERROR);
       return er_errid ();
+    }
+
+  if (is_passive_transaction_server ())
+    {
+      if (recdes.type != REC_ASSIGN_ADDRESS)
+	{
+	  /* Classname cache (locator_Mht_classnames) status should be reverted when
+	   * DROP TABLE statement is rolled back (RVHF_COMPENSATE_WITH_INSERT).
+	   * The cache status is modified at heap_rv_redo_delete() (RVHF_DELETE).
+	   * When CREATE TABLE is executed, recdes.type is always REC_ASSIGN_ADDRESS,
+	   * and we need to filter out the CREATE TABLE case.
+	   */
+
+	  assert (thread_p->type == TT_REPLICATION_PTS);
+
+	  OID classoid;
+	  heap_get_class_oid_from_page (thread_p, rcv->pgptr, &classoid);
+	  if (OID_EQ (&classoid, oid_Root_class_oid))
+	    {
+	      VPID vpid;
+	      OID oid;
+
+	      (void) pgbuf_get_vpid (rcv->pgptr, &vpid);
+	      SET_OID (&oid, vpid.volid, vpid.pageid, slotid);
+
+	      locator_change_classname_entry_status_if_exists (thread_p, &oid, LC_CLASSNAME_EXIST);
+	    }
+	}
     }
 
   return NO_ERROR;
@@ -16118,7 +16115,7 @@ heap_rv_redo_delete (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 	  pgbuf_get_vpid (rcv->pgptr, &vpid);
 	  SET_OID (&oid, vpid.volid, vpid.pageid, rcv->offset);
 
-	  locator_mark_classname_entry_deleted (thread_p, &oid);
+	  locator_change_classname_entry_status_if_exists (thread_p, &oid, LC_CLASSNAME_DELETED);
 	}
     }
 

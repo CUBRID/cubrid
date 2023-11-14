@@ -141,7 +141,7 @@ extern int spage_get_record_length (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGS
 extern int spage_get_record_offset (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id);
 extern int spage_get_space_for_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id);
 extern INT16 spage_get_record_type (PAGE_PTR pgptr, PGSLOTID slotid);
-extern bool spage_is_record_deleted (PAGE_PTR page_p, PGSLOTID slot_id);
+extern bool spage_is_record_will_reuse (PAGE_PTR page_p, PGSLOTID slot_id);
 extern int spage_max_space_for_new_record (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void spage_collect_statistics (PAGE_PTR pgptr, int *npages, int *nrecords, int *rec_length);
 extern int spage_max_record_size (void);
