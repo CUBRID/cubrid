@@ -408,8 +408,9 @@ namespace cublog
   void
   atomic_replicator::bookkeep_classname (cubthread::entry &thread_entry, const OID *classoid)
   {
-    assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
     char *classname = NULL;
+
+    assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
 
     (void) heap_get_class_name (&thread_entry, classoid, &classname);
     if (classname != NULL)
@@ -449,10 +450,9 @@ namespace cublog
       }
     else
       {
-	/* classname == NULL */
+	/* If the classname is removed after DDL, then it is DROP TABLE/VIEW case */
 	if (m_classname_map.find (*classoid) != m_classname_map.end ())
 	  {
-	    /* If the classname is removed after DDL, then it is DROP TABLE/VIEW case */
 	    locator_remove_classname_entry (&thread_entry, m_classname_map[*classoid].c_str ());
 	  }
       }
