@@ -132,6 +132,7 @@ tran_server::boot (const char *db_name)
   if (m_page_server_conn_vec.empty () == false)
     {
       const auto start_time = std::chrono::steady_clock::now ();
+
       while (true)
 	{
 	  error_code = reset_main_connection ();
