@@ -13954,8 +13954,7 @@ locator_change_classname_entry_status_if_exists (THREAD_ENTRY * thread_p, const 
 	  return;
 	}
 
-      LOCATOR_CLASSNAME_ENTRY *entry = NULL;
-      entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
+      LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
       if (entry != NULL)
 	{
 	  assert (entry->e_current.action != status);
