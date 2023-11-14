@@ -166,7 +166,7 @@ class tran_server
 	// Do the server-type-specific jobs and transition state from CONNECTING to CONNECTED.
 	// The m_state MUST be changed to CONNECTED either synchronously or asynchronously.
 	virtual void transition_to_connected () = 0;
-	// Do the rver-type-specific jobs before disconnected. DISCONNECTING -> (*) -> IDLE
+	// Do the server-type-specific jobs before disconnected. DISCONNECTING -> (*) -> IDLE
 	virtual void on_disconnecting () = 0;
 
       protected:
