@@ -13955,11 +13955,34 @@ locator_mark_classname_entry_deleted (THREAD_ENTRY * thread_p, const OID * class
       entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
       if (entry != NULL)
 	{
+	  assert (entry->e_current.action == LC_CLASSNAME_EXIST);
+
 	  entry->e_current.action = LC_CLASSNAME_DELETED;
 	}
       else
 	{
-	  assert (false);
+	  /* RENAMEd class is not cached in the locator_Mht_classnames
+	   * so, we need to modify the cache contains the classoid.
+	   * scenario :
+	   * RENAME TABLE tbl to tbl2;  -- tbl2 is not cached
+	   * DROP TABLE tbl2;           -- looking for tbl2 in the cache
+	   */
+
+	  HENTRY_PTR hentry = NULL;
+	  HENTRY_PTR next = NULL;
+
+	  for (hentry = locator_Mht_classnames->act_head; hentry != NULL; hentry = next)
+	    {
+	      next = hentry->act_next;
+	      entry = (LOCATOR_CLASSNAME_ENTRY *) hentry->data;
+
+	      if (OID_EQ (&entry->e_current.oid, classoid))
+		{
+		  assert (entry->e_current.action == LC_CLASSNAME_EXIST);
+		  entry->e_current.action = LC_CLASSNAME_DELETED;
+		  break;
+		}
+	    }
 	}
 
       csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
