@@ -13967,17 +13967,18 @@ locator_change_classname_entry_status_if_exists (THREAD_ENTRY * thread_p, const 
 	   * They are updated when replicator apply LOG_COMMIT.
 	   * scenario (PTS side):
 	   * 1) CREATE
-	   * CREATE TABLE tbl (a int);  -- "tbl" is not cached in the locator_Mht_classnames
-	   * DROP TABLE tbl;            -- looking for "tbl" in the locator_Mht_classnames.
-	   *                               But we don't need to change the status of "tbl" entry,
+	   * CREATE TABLE tbl (a int);  -- "tbl" is not cached in the locator_Mht_classnames because it is not committed yet.
+	   * DROP TABLE tbl;            -- looking for "tbl" in the locator_Mht_classnames above, but not found.
+	   *                               We don't need to change the status of "tbl" entry,
 	   *                               it will be changed at LOG_COMMIT time
 	   * COMMIT;
 	   *
 	   * 2) RENAME
 	   * RENAME TABLE tbl to tbl2;  -- "tbl2" is not cached, but only "tbl" is cached
-	   * DROP TABLE tbl2;           -- looking for "tbl2" in the cache
-	   *                               "tbl2" is not found, but need to change the status of "tbl" entry
-	   *                               because READ transaction in PTS could access "tbl" entry which has been deleted.
+	   * DROP TABLE tbl2;           -- looking for "tbl2" in the cache, but not found.
+	   *                               But we need to change the status of "tbl" entry
+	   *                               because READ transaction in PTS could access DELETED "tbl" object
+	   *                               using cached entry which causes failure.
 	   * COMMIT;
 	   */
 
