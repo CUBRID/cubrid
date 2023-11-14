@@ -24,6 +24,7 @@ method_sig_node::method_sig_node ()
 {
   next = nullptr;
   method_name = nullptr;
+  auth_name = nullptr;
   method_type = METHOD_TYPE_NONE;
   num_method_args = 0;
   method_arg_pos = nullptr;
@@ -39,11 +40,13 @@ method_sig_node::method_sig_node (method_sig_node &&obj)
   next = std::move (obj.next);
 
   method_name = obj.method_name;
+  auth_name = obj.auth_name;
   method_type = obj.method_type;
   method_arg_pos = obj.method_arg_pos;
   num_method_args = obj.num_method_args;
 
   obj.method_name = nullptr;
+  obj.auth_name = nullptr;
   obj.method_arg_pos = nullptr;
 
   if (method_type == METHOD_TYPE_NONE)
@@ -82,6 +85,13 @@ method_sig_node::method_sig_node (const method_sig_node &obj)
       int method_name_len = strlen (obj.method_name);
       method_name = (char *) db_private_alloc (NULL, method_name_len + 1);
       strncpy (method_name, obj.method_name, method_name_len);
+    }
+
+  if (obj.auth_name != nullptr)
+    {
+      int auth_name_len = strlen (obj.auth_name);
+      auth_name = (char *) db_private_alloc (NULL, auth_name_len + 1);
+      strncpy (auth_name, obj.auth_name, auth_name_len);
     }
 
   method_type = obj.method_type;
@@ -133,6 +143,7 @@ void
 method_sig_node::pack (cubpacking::packer &serializator) const
 {
   serializator.pack_c_string (method_name, strlen (method_name));
+  serializator.pack_c_string (auth_name, strlen (auth_name));
 
   serializator.pack_int (method_type);
   serializator.pack_int (num_method_args);
@@ -170,6 +181,7 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
   size_t size = serializator.get_packed_int_size (start_offset); /* num_methods */
 
   size += serializator.get_packed_c_string_size (method_name, strlen (method_name), size);
+  size += serializator.get_packed_c_string_size (auth_name, strlen (auth_name), size);
 
   /* method type and num_method_args */
   size += serializator.get_packed_int_size (size);
@@ -221,6 +233,13 @@ method_sig_node::operator= (const method_sig_node &obj)
 	  int method_name_len = strlen (obj.method_name);
 	  method_name = (char *) db_private_alloc (NULL, method_name_len + 1);
 	  strncpy (method_name, obj.method_name, method_name_len);
+	}
+
+      if (obj.auth_name != nullptr)
+	{
+	  int auth_name_len = strlen (obj.auth_name);
+	  auth_name = (char *) db_private_alloc (NULL, auth_name_len + 1);
+	  strncpy (auth_name, obj.auth_name, auth_name_len);
 	}
 
       method_type = obj.method_type;
@@ -279,6 +298,10 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
   deserializator.unpack_string_to_memblock (method_name_blk);
   method_name = method_name_blk.release_ptr ();
 
+  cubmem::extensible_block auth_name_blk { cubmem::PRIVATE_BLOCK_ALLOCATOR };
+  deserializator.unpack_string_to_memblock (auth_name_blk);
+  auth_name = auth_name_blk.release_ptr ();
+
   int type;
   deserializator.unpack_int (type);
   method_type = static_cast<METHOD_TYPE> (type);
@@ -334,6 +357,11 @@ method_sig_node::freemem ()
   if (method_name != nullptr)
     {
       db_private_free_and_init (NULL, method_name);
+    }
+
+  if (auth_name != nullptr)
+    {
+      db_private_free_and_init (NULL, auth_name);
     }
 
   if (method_arg_pos != nullptr)

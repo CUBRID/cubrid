@@ -3823,6 +3823,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	  (sig_list->num_methods)++;
 
 	  (*tail)->method_name = (char *) node->info.method_call.method_name->info.name.original;
+	  (*tail)->auth_name = (char *) PT_METHOD_CALL_AUTH_NAME (node);
 
 	  /* num_method_args does not include the target by convention */
 	  (*tail)->num_method_args = pt_length_of_list (node->info.method_call.arg_list);
