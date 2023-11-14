@@ -1373,7 +1373,9 @@ typedef struct _ha_config
 #define UNLOAD_SPLIT_SCHEMA_FILES_S             11920
 #define UNLOAD_SPLIT_SCHEMA_FILES_L             "split-schema-files"
 #define UNLOAD_AS_DBA_S                         11921
-#define UNLOAD_AS_DBA_L                         "same-as-dba"
+#define UNLOAD_AS_DBA_L                         "as-dba"
+#define UNLOAD_SKIP_INDEX_DETAIL_S              11922	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+#define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
@@ -1446,7 +1448,9 @@ typedef struct _ha_config
 #define CSQL_QUERY_COLUMN_ENCLOSURE_L		"enclosure"
 #define CSQL_LOADDB_OUTPUT_S			'd'
 #define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
-#define CSQL_PAGE_SERVER_S                      12020
+#define CSQL_SYSADM_REBUILD_CATALOG_S           12020
+#define CSQL_SYSADM_REBUILD_CATALOG_L           "sysadm-rebuild-catalog"
+#define CSQL_PAGE_SERVER_S                      12022
 #define CSQL_PAGE_SERVER_L                      "page-server"
 
 #define COMMDB_SERVER_LIST_S                    'P'
@@ -1742,7 +1746,6 @@ extern "C"
   extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
   extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
   extern int utility_check_class_name (const char *class_name);
-  extern bool utility_check_system_class_name (const char *class_name);
 
   extern FILE *fopen_ex (const char *filename, const char *type);
 

@@ -31,6 +31,7 @@
 #include "system.h"
 #include "dbtype_def.h"
 #include "parse_tree.h"
+#include "deduplicate_key.h"
 
 #if defined (SERVER_MODE)
 #error Does not belong to server module
@@ -266,7 +267,7 @@ extern "C"
   extern int pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE op, DB_VALUE * arg1,
 					DB_VALUE * arg2, DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN * domain,
 					PT_NODE * o1, PT_NODE * o2, PT_NODE * o3, PT_MISC_TYPE qualifier);
-  extern int pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE * args[],
+  extern int pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE * args[],
 					  const int num_args, DB_VALUE * result);
 
   extern int pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_res);
@@ -611,6 +612,7 @@ extern "C"
   extern PT_NODE *pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_parens_inside,
 					      bool use_parens_outside);
   extern bool pt_is_operator_logical (PT_OP_TYPE op);
+  extern bool pt_is_operator_arith (PT_OP_TYPE op);
   extern bool pt_list_has_logical_nodes (PT_NODE * list);
   extern bool pt_is_pseudo_const (PT_NODE * expr);
   extern bool pt_is_op_hv_late_bind (PT_OP_TYPE op);
@@ -680,6 +682,14 @@ extern "C"
   extern const char *pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name);
   extern const char *pt_get_name_with_qualifier_removed (const char *name);
   extern const char *pt_get_name_without_current_user_name (const char *name);
+
+  extern void pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt);
+  extern PT_NODE *pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+  extern int pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec);
+
+  extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
+  extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
 #ifdef __cplusplus
 }
 #endif

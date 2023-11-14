@@ -573,33 +573,35 @@ tran_server::connection_handler::disconnect_async (bool with_disc_msg)
   m_disconn_future = std::async (std::launch::async, [this, with_disc_msg]
   {
     on_disconnecting (); // server-type specific jobs before disconnecting.
-    // m_conn is not nullptr since it's only set to nullptr here below once
 
-    m_conn->stop_response_broker (); // wake up threads waiting for a response and tell them it won't be served.
-    auto ulock_conn = std::unique_lock<std::shared_mutex> { m_conn_mtx };
+    /*
+     * Stop incoming communication and wake up threads waiting for a response, informing them that it won't be served.
+     * - If the function `disconnect_async` is called more than once for a connection handler,
+     *   it will be guarded by the state checks at the beginning of the function (see above).
+     *   This can occur due to SEND_DISCONNECT_REQUEST_MSG and error handlers.
+     * - This must be outside the lock of m_conn_mtx because waiters are holding the lock during send_receive().
+     * - m_conn is not nullptr here since it's set to nullptr only below this point.
+     */
+    m_conn->stop_incoming_communication_thread ();
+
+    auto lockg_state = std::lock_guard { m_state_mtx };
+    auto lockg_conn = std::lock_guard { m_conn_mtx };
     const std::string channel_id = get_channel_id ();
+
+    assert (m_state == state::DISCONNECTING);
+
     if (with_disc_msg)
       {
 	const int payload = static_cast<int> (m_ts.m_conn_type);
 	std::string msg (reinterpret_cast<const char *> (&payload), sizeof (payload));
 	m_conn->push (tran_to_page_request::SEND_DISCONNECT_MSG, std::move (msg));
-	// After sending SEND_DISCONNECT_MSG, the page server may release all resources releated to this connection.
+	// After sending SEND_DISCONNECT_MSG, the page server may release all resources related to this connection.
+	// So, it has to be the last msg.
       }
 
-    // stop_incoming_communication_thread() has to be done explicitly before m_conn.reset () to avoid a request handler or an error handler accesses nullptr of m_conn.
-    m_conn->stop_incoming_communication_thread ();
-    m_conn->stop_outgoing_communication_thread ();
     m_conn.reset (nullptr);
     er_log_debug (ARG_FILE_LINE, "Transaction server has been disconnected from the page server with channel id: %s.\n", channel_id.c_str ());
 
-    /*
-     * - to avoid a deadlock. the order of two mutex must be: m_stat_mtx -> m_conn_mtx
-     * - the m_stat_mtx can't be locked before m_conn_mtx here since m_conn->stop_incoming_communication_thread (); may call disconnect_async while disgesting all requests leading to a deadlock.
-    */
-    ulock_conn.unlock ();
-
-    auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
-    assert (m_state == state::DISCONNECTING);
     m_state = state::IDLE;
   });
 }

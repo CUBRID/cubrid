@@ -329,6 +329,9 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_AUTHORIZATION | CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = shf_heap_reclaim_addresses;
 
+  req_p = &net_Requests[NET_SERVER_HEAP_GET_MAXSLOTTED_RECLENGTH];
+  req_p->processing_function = shf_get_maxslotted_reclength;
+
   /* file */
   req_p = &net_Requests[NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);

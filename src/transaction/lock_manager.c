@@ -475,7 +475,9 @@ static void lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_ind
 static void lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p, int tran_index,
 					      LK_RES * res, LOCK lock);
 static void lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * res, LOCK lock);
+#if defined(ENABLE_UNUSED_FUNCTION)
 static void lock_initialize_resource (LK_RES * res_ptr);
+#endif
 static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
 static unsigned int lock_get_hash_value (const OID * oid, int htsize);
 static int lock_initialize_tran_lock_table (void);
@@ -815,10 +817,8 @@ lock_res_key_copy (void *src, void *dest)
       break;
 
     case LOCK_RESOURCE_OBJECT:
-      /* nothing, it's a free object */
-      break;
-
     default:
+      /* something is wrong */
       assert (false);
       return ER_FAILED;
     }
@@ -960,6 +960,7 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->instant_lock_count = 0;
 }
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 /* initialize lock resource as free state */
 static void
 lock_initialize_resource (LK_RES * res_ptr)
@@ -975,6 +976,7 @@ lock_initialize_resource (LK_RES * res_ptr)
   res_ptr->non2pl = NULL;
   res_ptr->hash_next = NULL;
 }
+#endif
 
 /* initialize lock resource as allocated state */
 static void
@@ -6612,6 +6614,38 @@ void
 lock_unlock_object_donot_move_to_non2pl (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock)
 {
   lock_unlock_object_lock_internal (thread_p, oid, class_oid, lock, false, false);
+}
+
+/*
+ * lock_unlock_object_and_cleaup - Unlock an object lock on the specified object,
+ *                                 release lock entry and do not move to non2pl list
+ *                                 Used by replicator for PTS (atomic_replicator)
+ *   return:
+ *   thread_p(in):
+ *   oid(in):  Identifier of instance to unlock from
+ *   class_oid(in): Identifier of the class of the instance
+ *   lock(in): Lock to release
+ *
+ */
+void
+lock_unlock_object_and_cleanup (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock)
+{
+#if !defined (SERVER_MODE)
+  return;
+#else /* !SERVER_MODE */
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LK_TRAN_LOCK *const tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  assert (tran_lock->non2pl_list == NULL);
+
+  lock_unlock_object_lock_internal (thread_p, oid, class_oid, lock, true, false);
+
+  /* TODO:
+   * We have to decide if deadlock information should be cleared
+   * (like lock_clear_deadlock_victim () in lock_unlock_all ())
+   * this will be handled when handling the deadlock for replicator
+   */
+#endif
 }
 
 /*

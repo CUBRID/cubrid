@@ -42,6 +42,7 @@
 #include "cas_error.h"
 #include "shard_shm.h"
 #include "broker_acl.h"
+#include "system_parameter.h"
 
 #ifndef min
 #define min(a,b)    ((a) < (b) ? (a) : (b))
@@ -928,6 +929,7 @@ proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer)
   int proxy_pid;
   char broker_info[BROKER_INFO_SIZE];
   T_BROKER_VERSION client_version;
+  char oracle_compat_number_behavior = 0;
 
   assert (buffer);
 
@@ -955,7 +957,13 @@ proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer)
       dbms_type = CAS_DBMS_CUBRID;
     }
 
-  cas_bi_make_broker_info (broker_info, dbms_type, shm_as_p->statement_pooling, shm_as_p->cci_pconnect);
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V12))
+    {
+      oracle_compat_number_behavior = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
+    }
+
+  cas_bi_make_broker_info (broker_info, dbms_type, shm_as_p->statement_pooling, shm_as_p->cci_pconnect,
+			   oracle_compat_number_behavior);
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V4))
     {
@@ -3626,8 +3634,6 @@ proxy_cas_alloc_by_ctx (int client_id, int shard_id, int cas_id, int ctx_cid, un
       PROXY_LOG (PROXY_LOG_MODE_ERROR, "Invalid shard/CAS id is requested. " "(shard_id:%d, cas_id:%d). ", shard_id,
 		 cas_id);
 
-      assert (false);
-
       return NULL;
     }
 
@@ -4919,6 +4925,32 @@ proxy_convert_error_code (int error_ind, int error_code, char *driver_info, T_BR
     }
 
   return error_code;
+}
+
+int
+proxy_context_direct_send_error (T_PROXY_CONTEXT * ctx_p)
+{
+  T_CLIENT_IO *cli_io_p = NULL;
+  T_SOCKET_IO *sock_io_p = NULL;
+
+  cli_io_p = proxy_client_io_find_by_ctx (ctx_p->client_id, ctx_p->cid, ctx_p->uid);
+  if (cli_io_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find client. " "(client_id:%d, context id:%d, context uid:%u).",
+		 ctx_p->client_id, ctx_p->cid, ctx_p->uid);
+
+      return -1;
+    }
+
+  sock_io_p = proxy_socket_io_find (cli_io_p->fd);
+  if (sock_io_p == NULL)
+    {
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "Failed to find socket entry. (fd:%d).", cli_io_p->fd);
+      return -1;
+    }
+
+  proxy_socket_io_write (sock_io_p);
+  return 0;
 }
 
 #if defined(LINUX)

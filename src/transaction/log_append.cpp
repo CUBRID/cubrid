@@ -416,6 +416,7 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_END_ATOMIC_REPL:
     case LOG_TRANTABLE_SNAPSHOT:
     case LOG_ASSIGNED_MVCCID:
+    case LOG_SCHEMA_MODIFICATION_LOCK:
       assert (rlength == 0 && rdata == NULL);
 
       error_code = prior_lsa_gen_record (thread_p, node, rec_type, ulength, udata);
@@ -1317,6 +1318,9 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
       break;
     case LOG_SUPPLEMENTAL_INFO:
       node->data_header_length = sizeof (LOG_REC_SUPPLEMENT);
+      break;
+    case LOG_SCHEMA_MODIFICATION_LOCK:
+      node->data_header_length = sizeof (LOG_REC_SCHEMA_MODIFICATION_LOCK);
       break;
     default:
       break;

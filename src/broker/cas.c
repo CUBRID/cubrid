@@ -724,6 +724,8 @@ conn_retry:
     tran_timeout = 0;
     query_timeout = 0;
 
+    er_init (NULL, ER_NEVER_EXIT);
+
     for (;;)
       {
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
@@ -868,8 +870,10 @@ cas_main (void)
   char tmp_name[SRV_CON_DBNAME_SIZE] = { 0, };
   char tmp_user[SRV_CON_DBUSER_SIZE] = { 0, };
   char tmp_passwd[SRV_CON_DBPASSWD_SIZE] = { 0, };
-  SUPPORTED_DBMS_TYPE dbms_type = NOT_SUPPORTED_DBMS;
+  T_DBMS_TYPE dbms_type = CAS_DBMS_NONE;
   char *find_gateway = NULL;
+  char errplog_path[BROKER_PATH_MAX] = { 0, };
+  char errlog_file[BROKER_PATH_MAX] = { 0, };
 #endif
 
 #if defined(CAS_FOR_ORACLE)
@@ -941,6 +945,12 @@ cas_main (void)
   logddl_init (APP_NAME_CAS);
 
 #if defined(CAS_FOR_CGW)
+  sprintf (errlog_file, "%s%s_%d.err",
+	   get_cubrid_file (FID_CUBRID_ERR_DIR, errplog_path, BROKER_PATH_MAX), shm_appl->broker_name,
+	   shm_as_index + 1);
+
+  er_init (errlog_file, ER_NEVER_EXIT);
+
   if (cgw_init () < 0)
     {
       return -1;
@@ -1263,7 +1273,7 @@ cas_main (void)
 	    strncpy (tmp_user, db_user, SRV_CON_DBUSER_SIZE);
 	    strncpy (tmp_passwd, db_passwd, SRV_CON_DBUSER_SIZE);
 
-	    if (dbms_type == SUPPORTED_DBMS_ORACLE)
+	    if (dbms_type == CAS_CGW_DBMS_ORACLE)
 	      {
 		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
@@ -1277,7 +1287,7 @@ cas_main (void)
 			  shm_appl->cgw_link_server_port,
 			  tmp_name, tmp_user, "********", shm_appl->cgw_link_connect_url_property);
 	      }
-	    else if (dbms_type == SUPPORTED_DBMS_MYSQL || dbms_type == SUPPORTED_DBMS_MARIADB)
+	    else if (dbms_type == CAS_CGW_DBMS_MYSQL || dbms_type == CAS_CGW_DBMS_MARIADB)
 	      {
 		snprintf (odbc_connect_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
 			  shm_appl->cgw_link_odbc_driver_name,
@@ -1396,6 +1406,10 @@ cas_main (void)
 				   cas_default_isolation_level, cas_default_lock_timeout);
 
 	    as_info->cur_keep_con = shm_appl->keep_connection;
+#if defined(CAS_FOR_CGW)
+	    cas_bi_set_dbms_type (dbms_type);
+#endif /* CAS_FOR_MYSQL */
+
 	    cas_bi_set_statement_pooling (shm_appl->statement_pooling);
 	    if (shm_appl->statement_pooling)
 	      {
@@ -1406,6 +1420,11 @@ cas_main (void)
 		as_info->cur_statement_pooling = OFF;
 	      }
 	    cas_bi_set_cci_pconnect (shm_appl->cci_pconnect);
+
+	    if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info.client_version, PROTOCOL_V12))
+	      {
+		cas_bi_set_oracle_compat_number_behavior (prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR));
+	      }
 
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 	    /* todo: casting T_BROKER_VERSION to T_CAS_PROTOCOL */
@@ -1699,21 +1718,46 @@ cas_free (bool from_sighandler)
     {
       if ((as_info->pid == as_info->pdh_pid) && (as_info->pdh_workset > shm_appl->appl_server_max_size))
 	{
-	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
-				 as_info->pdh_workset / ONE_K, shm_appl->appl_server_max_size / ONE_K);
+	  if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	    {
+	      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
+				     as_info->pdh_workset / ONE_K, shm_appl->appl_server_max_size / ONE_K);
+	    }
+	  else
+	    {
+	      cas_log_open_and_write (broker_name, 0, true,
+				      "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
+				      as_info->pdh_workset / ONE_K, shm_appl->appl_server_max_size / ONE_K);
+	    }
 	}
 
       if ((as_info->pid == as_info->pdh_pid) && (as_info->pdh_workset > shm_appl->appl_server_hard_limit))
 	{
-	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
-				 as_info->pdh_workset / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	  if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	    {
+	      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				     as_info->pdh_workset / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	    }
+	  else
+	    {
+	      cas_log_open_and_write (broker_name, 0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				      as_info->pdh_workset / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	    }
 	}
     }
   else
     {
       if (cas_req_count > 500)
 	{
-	  cas_log_write_and_end (0, true, "CAS REQUEST COUNT (%d) HAS EXCEEDED MAX LIMIT (%d)", cas_req_count, 500);
+	  if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	    {
+	      cas_log_write_and_end (0, true, "CAS REQUEST COUNT (%d) HAS EXCEEDED MAX LIMIT (%d)", cas_req_count, 500);
+	    }
+	  else
+	    {
+	      cas_log_open_and_write (broker_name, 0, true, "CAS REQUEST COUNT (%d) HAS EXCEEDED MAX LIMIT (%d)",
+				      cas_req_count, 500);
+	    }
 	}
     }
 #else /* WINDOWS */
@@ -1727,18 +1771,42 @@ cas_free (bool from_sighandler)
 #endif
   if (as_info->psize > max_process_size)
     {
-      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)", as_info->psize / ONE_K,
-			     max_process_size / ONE_K);
+
+      if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	{
+	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)", as_info->psize / ONE_K,
+				 max_process_size / ONE_K);
+	}
+      else
+	{
+	  cas_log_open_and_write (broker_name, 0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED MAX SIZE (%dM)",
+				  as_info->psize / ONE_K, max_process_size / ONE_K);
+	}
     }
 
   if (as_info->psize > shm_appl->appl_server_hard_limit)
     {
-      cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)", as_info->psize / ONE_K,
-			     shm_appl->appl_server_hard_limit / ONE_K);
+      if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+	{
+	  cas_log_write_and_end (0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				 as_info->psize / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	}
+      else
+	{
+	  cas_log_open_and_write (broker_name, 0, true, "CAS MEMORY USAGE (%dM) HAS EXCEEDED HARD LIMIT (%dM)",
+				  as_info->psize / ONE_K, shm_appl->appl_server_hard_limit / ONE_K);
+	}
     }
 #endif /* !WINDOWS */
+  if (cas_log_get_fd_status () == CAS_LOG_FD_OPENED)
+    {
+      cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
+    }
+  else
+    {
+      cas_log_open_and_write (broker_name, 0, true, "CAS TERMINATED pid %d", getpid ());
+    }
 
-  cas_log_write_and_end (0, true, "CAS TERMINATED pid %d", getpid ());
   cas_log_close (true);
   cas_slow_log_close ();
   logddl_destroy ();

@@ -1008,6 +1008,10 @@ extern bool cdc_Logging;
   if (prm_get_bool_value (PRM_ID_ER_LOG_QUORUM_CONSENSUS)) \
     _er_log_debug (ARG_FILE_LINE, "[QUORUM_CONSENSUS] " msg, __VA_ARGS__)
 
+#define catchup_er_log(msg, ...) \
+  if (prm_get_bool_value (PRM_ID_ER_LOG_CATCH_UP)) \
+    _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] " msg, __VA_ARGS__)
+
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
 extern void logpb_finalize_pool (THREAD_ENTRY * thread_p);
 extern bool logpb_is_pool_initialized (void);
@@ -1262,6 +1266,11 @@ extern void log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promoti
 extern void log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time);
 
 extern int logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p);
+
+#if defined(SERVER_MODE)
+extern void logpb_catchup_append_page (THREAD_ENTRY * thread_p, const LOG_PAGE * const pgptr);
+extern int logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa);
+#endif // SERVER_MODE
 
 extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 

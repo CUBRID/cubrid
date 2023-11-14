@@ -28,7 +28,8 @@ namespace cublog
   prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
     : m_prior_lsa_info (prior_lsa_info)
   {
-    start_thread ();
+    m_state = state::RUN;
+    m_thread = std::thread (&prior_recver::loop_message_to_prior_info, std::ref (*this));
   }
 
   prior_recver::~prior_recver ()
@@ -39,28 +40,82 @@ namespace cublog
   void
   prior_recver::push_message (std::string &&str)
   {
-    std::unique_lock<std::mutex> ulock (m_messages_mutex);
-    m_messages.push (std::move (str));
-    ulock.unlock ();
-    m_messages_condvar.notify_one ();
-  }
+    {
+      auto lockg = std::lock_guard { m_mutex };
+      assert (m_state == state::RUN || m_state == state::PAUSED);
 
-  void
-  prior_recver::start_thread ()
-  {
-    m_shutdown = false;
-    m_thread = std::thread (&prior_recver::loop_message_to_prior_info, std::ref (*this));
+      m_messages.push (std::move (str));
+    }
+
+    m_messages_push_cv.notify_one ();
   }
 
   void
   prior_recver::stop_thread ()
   {
-    std::unique_lock<std::mutex> ulock (m_messages_mutex);
-    m_shutdown = true;
-    ulock.unlock ();
-    m_messages_condvar.notify_one ();
+    {
+      auto lockg = std::lock_guard { m_mutex };
+      assert (m_state != state::SHUTDOWN);
+
+      m_state = state::SHUTDOWN;
+    }
+
+    m_messages_push_cv.notify_one ();
 
     m_thread.join ();
+  }
+
+  void
+  prior_recver::wait_until_empty_and_pause ()
+  {
+    auto ulock = std::unique_lock { m_mutex };
+
+    if (m_state == state::SHUTDOWN)
+      {
+	return;
+      }
+
+    assert (m_state == state::RUN);
+    m_state = state::PAUSING;
+
+    constexpr auto sleep_30ms = std::chrono::milliseconds (30);
+    while (!m_messages_consume_cv.wait_for (ulock, sleep_30ms, [this]
+    {
+      return m_messages.empty () || m_state == state::SHUTDOWN;
+      }));
+
+    /*
+     * TODO
+     *  Even if the m_messages is empty, some log reocrds can be appended to the log buffer.
+     *    - It moves the messages to the backbuffer internally.
+     *      This could be appended after it assumes all messages are consumed.
+     *    - The pushed prior nodes from the message queue are appended asynchronously by `log_Flush_daemon`.
+     *      This could be appended afterwards.
+     */
+
+    if (m_state != state::SHUTDOWN)
+      {
+	m_state = state::PAUSED;
+      }
+  }
+
+  void
+  prior_recver::resume ()
+  {
+    {
+      auto lockg = std::lock_guard { m_mutex };
+      assert (m_state == state::PAUSED);
+      m_state = state::RUN;
+
+      if (prm_get_bool_value (PRM_ID_ER_LOG_PRIOR_TRANSFER))
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[LOG_PRIOR_TRANSFER] Resume prior_recver: the number of kept messages while paused = %lu.\n", m_messages.size ());
+	}
+    }
+
+    // There may be some pushed msg while pausing.
+    m_messages_push_cv.notify_one ();
   }
 
   void
@@ -68,15 +123,16 @@ namespace cublog
   {
     message_container backbuffer;
 
-    std::unique_lock<std::mutex> ulock (m_messages_mutex);
+    auto ulock = std::unique_lock { m_mutex };
     while (true)
       {
-	m_messages_condvar.wait (ulock, [this]
+	m_messages_push_cv.wait (ulock, [this]
 	{
-	  return m_shutdown || !m_messages.empty ();
+	  return m_state == state::SHUTDOWN
+	  || (m_state != state::PAUSED && !m_messages.empty ());
 	});
 
-	if (m_shutdown)
+	if (m_state == state::SHUTDOWN)
 	  {
 	    break;
 	  }
@@ -102,6 +158,8 @@ namespace cublog
 	    log_wakeup_log_flush_daemon ();
 	    backbuffer.pop ();
 	  }
+
+	m_messages_consume_cv.notify_one ();
 
 	ulock.lock ();
       }

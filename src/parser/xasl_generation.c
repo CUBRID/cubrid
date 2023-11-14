@@ -4126,7 +4126,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   is_agg = pt_is_aggregate_function (parser, tree);
   if (is_agg)
     {
-      FUNC_TYPE code = tree->info.function.function_type;
+      FUNC_CODE code = tree->info.function.function_type;
 
       if (code == PT_GROUPBY_NUM)
 	{
@@ -5434,7 +5434,7 @@ pt_make_cselect_access_spec (XASL_NODE * xasl, METHOD_SIG_LIST * method_sig_list
  *   access(in):
  *   attr_list(in):
  */
-static ACCESS_SPEC_TYPE *
+ACCESS_SPEC_TYPE *
 pt_make_dblink_access_spec (ACCESS_METHOD access,
 			    PRED_EXPR * where_pred,
 			    REGU_VARIABLE_LIST pred_list,
@@ -6809,7 +6809,7 @@ pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABL
   if (regu->value.funcp)
     {
       regu->value.funcp->operand = arg_list;
-      regu->value.funcp->ftype = (FUNC_TYPE) function_code;
+      regu->value.funcp->ftype = (FUNC_CODE) function_code;
       if (node->info.function.hidden_column)
 	{
 	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
@@ -10414,6 +10414,10 @@ pt_to_single_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bo
 	      /* rhs must be set type and (value or function type) */
 	      goto error;
 	    }
+	  if (rhs == NULL)
+	    {
+	      goto error;
+	    }
 	  for (pos = 0; pos < multi_col_pos[i]; pos++)
 	    {
 	      if (!rhs || (rhs && pt_is_set_type (rhs)))
@@ -12983,11 +12987,11 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
 
   if (pdblink->rewritten)
     {
-      sql = (char *) pdblink->rewritten->bytes;
+      sql = pt_append_string (parser, "/* DBLINK SELECT */ ", (char *) pdblink->rewritten->bytes);
     }
   else
     {
-      sql = (char *) pdblink->qstr->info.value.data_value.str->bytes;
+      sql = pt_append_string (parser, "/* DBLINK SELECT */ ", (char *) pdblink->qstr->info.value.data_value.str->bytes);
     }
 
   if (pdblink->pushed_pred)
@@ -18460,6 +18464,49 @@ outofmem:
 
 }
 
+static XASL_NODE *
+pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  assert (parser != NULL && spec != NULL);
+
+  XASL_NODE *xasl = regu_xasl_node_alloc (INSERT_PROC);
+  if (xasl == NULL)
+    {
+      return NULL;
+    }
+
+  PT_NODE *server_spec = spec->info.spec.remote_server_name;
+  PT_DBLINK_INFO *pdblink = &(server_spec->info.dblink_table);
+
+  assert (server_spec->node_type == PT_DBLINK_TABLE_DML);
+  assert (server_spec->info.dblink_table.is_name);
+
+  if (pdblink->host_vars.count > 0)
+    {
+      pdblink->host_vars.index = (int *) parser_alloc (parser, pdblink->host_vars.count * sizeof (int));
+      if (pdblink->host_vars.index == NULL)
+	{
+	  assert (false);
+	}
+
+      for (int i = 0; i < pdblink->host_vars.count; i++)
+	{
+	  pdblink->host_vars.index[i] = i;
+	}
+    }
+
+  char *sql =
+    (char *) (pdblink->rewritten ? pdblink->rewritten->bytes : pdblink->qstr->info.value.data_value.str->bytes);
+
+  xasl->spec_list =
+    pt_make_dblink_access_spec (ACCESS_METHOD_SEQUENTIAL, NULL, NULL, NULL,
+				(char *) pdblink->url->info.value.data_value.str->bytes,
+				(char *) pdblink->user->info.value.data_value.str->bytes,
+				(char *) pdblink->pwd->info.value.data_value.str->bytes,
+				pdblink->host_vars.count, pdblink->host_vars.index, (char *) sql);
+  return xasl;
+}
+
 /*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
@@ -18492,6 +18539,13 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       statement = parser_walk_tree (parser, statement, pt_null_xasl, NULL, NULL, NULL);
     }
+
+  if (statement->info.insert.spec && statement->info.insert.spec->info.spec.remote_server_name)
+    {
+      return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
+    }
+
+  char *name = (char *) statement->info.insert.spec->info.spec.entity_name->info.name.original;
 
   has_uniques = statement->info.insert.has_uniques;
   non_null_attrs = statement->info.insert.non_null_attrs;
@@ -20217,6 +20271,11 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   class_specs = statement->info.delete_.class_specs;
   with = statement->info.delete_.with;
 
+  if (from && from->info.spec.remote_server_name)
+    {
+      return pt_to_xasl_for_dblink (parser, from);
+    }
+
   if (from && from->node_type == PT_SPEC && from->info.spec.range_var)
     {
       PT_NODE *select_node, *select_list = NULL;
@@ -20832,6 +20891,11 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   order_by = statement->info.update.order_by;
   orderby_for = statement->info.update.orderby_for;
   with = statement->info.update.with;
+
+  if (from && from->info.spec.remote_server_name)
+    {
+      return pt_to_xasl_for_dblink (parser, from);
+    }
 
   /* flush all classes */
   p = from;
@@ -22917,10 +22981,10 @@ pt_get_var_regu_variable_p_list (const REGU_VARIABLE * regu, bool is_prior, int 
 
     case TYPE_FUNC:
       {
-	REGU_VARIABLE_LIST *r = &regu->value.funcp->operand;
-	while (*r)
+	REGU_VARIABLE_LIST r = regu->value.funcp->operand;
+	while (r)
 	  {
-	    list1 = pt_get_var_regu_variable_p_list (&(*r)->value, is_prior, err);
+	    list1 = pt_get_var_regu_variable_p_list (&r->value, is_prior, err);
 
 	    if (!list)
 	      {
@@ -22936,7 +23000,7 @@ pt_get_var_regu_variable_p_list (const REGU_VARIABLE * regu, bool is_prior, int 
 		list2->next = list1;
 	      }
 
-	    *r = (*r)->next;
+	    r = r->next;
 	  }
       }
       break;
@@ -25251,11 +25315,18 @@ XASL_NODE *
 pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_upd_attrs,
 		  PT_NODE ** non_null_ins_attrs, PT_NODE * default_expr_attrs)
 {
+  assert (parser != NULL && statement != NULL);
+
   XASL_NODE *xasl, *xptr;
   XASL_NODE *update_xasl = NULL, *insert_xasl = NULL;
   OID *oid = NULL;
   int error = NO_ERROR;
   bool insert_only = (statement->info.merge.flags & PT_MERGE_INFO_INSERT_ONLY);
+
+  if (statement->info.merge.into && statement->info.merge.into->info.spec.remote_server_name)
+    {
+      return pt_to_xasl_for_dblink (parser, statement->info.merge.into);
+    }
 
   xasl = regu_xasl_node_alloc (MERGE_PROC);
   if (xasl == NULL)

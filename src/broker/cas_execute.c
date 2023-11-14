@@ -56,6 +56,7 @@
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
 
+#include "deduplicate_key.h"
 #include "tz_support.h"
 #include "release_string.h"
 #include "perf_monitor.h"
@@ -92,6 +93,7 @@
 
 #define FK_INFO_SORT_BY_PKTABLE_NAME	1
 #define FK_INFO_SORT_BY_FKTABLE_NAME	2
+#define DBLINK_HINT                     "DBLINK"
 
 typedef enum
 {
@@ -289,6 +291,8 @@ static int sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_f
 			   T_BROKER_VERSION client_version);
 static int sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag, char flag,
 			  T_SRV_HANDLE *);
+static int sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag,
+				       char flag, T_SRV_HANDLE *);
 static int sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE *);
 static void sch_method_info (T_NET_BUF * net_buf, char *class_name, char flag, void **result);
 static void sch_methfile_info (T_NET_BUF * net_buf, char *class_name, void **result);
@@ -341,6 +345,9 @@ static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
+#if defined(CAS_FOR_CGW)
+static char ux_cgw_get_stmt_type (char *stmt);
+#endif
 
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
@@ -424,6 +431,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_IMPORTED_KEYS */
   fetch_foreign_keys,		/* SCH_EXPORTED_KEYS */
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
+  fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
 };
 #endif /* CAS_FOR_CGW */
 
@@ -1043,7 +1051,6 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   int srv_h_id = -1;
   int err_code;
   int num_markers;
-  char stmt_type;
   T_BROKER_VERSION client_version = req_info->client_version;
   int result_cache_lifetime;
 
@@ -1072,38 +1079,7 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   srv_handle->schema_type = -1;
   srv_handle->auto_commit_mode = auto_commit_mode;
 
-  if (cgw_get_dbms_type () == SUPPORTED_DBMS_ORACLE)
-    {
-      char *is_cublink = NULL;
-      is_cublink = strstr (sql_stmt, REWRITE_DELIMITER_CUBLINK);
-      if (is_cublink != NULL)
-	{
-	  char *rewrite_sql = NULL;
-	  err_code = cgw_rewrite_query (sql_stmt, &rewrite_sql);
-	  if (err_code == ER_FAILED)
-	    {
-	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
-	      goto prepare_error;
-	    }
-	  else if (err_code == ERR_REWRITE_FAILED)
-	    {
-	      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
-	    }
-	  else
-	    {
-	      srv_handle->sql_stmt = rewrite_sql;
-	    }
-	}
-      else
-	{
-	  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
-	}
-    }
-  else
-    {
-      ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
-    }
-
+  ALLOC_COPY_STRLEN (srv_handle->sql_stmt, sql_stmt);
   if (srv_handle->sql_stmt == NULL)
     {
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
@@ -1134,11 +1110,6 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
 
-  if (get_stmt_type (sql_stmt) != CUBRID_STMT_SELECT)
-    {
-      goto prepare_error;
-    }
-
   err_code = cgw_sql_prepare ((SQLCHAR *) sql_stmt);
   if (err_code < 0)
     {
@@ -1151,12 +1122,20 @@ ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net
   result_cache_lifetime = -1;
   net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
-  stmt_type = get_stmt_type (sql_stmt);
-  net_buf_cp_byte (net_buf, stmt_type);
+  srv_handle->stmt_type = (int) ux_cgw_get_stmt_type (sql_stmt);
+  if (srv_handle->stmt_type == CUBRID_STMT_NONE || srv_handle->stmt_type == CUBRID_MAX_STMT_TYPE)
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
+  net_buf_cp_byte (net_buf, srv_handle->stmt_type);
 
   net_buf_cp_int (net_buf, num_markers, NULL);
 
-  err_code = cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, stmt_type, client_version, net_buf);
+  err_code =
+    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, srv_handle->stmt_type, client_version,
+				      net_buf);
 
   if (err_code < 0)
     {
@@ -1354,8 +1333,8 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 {
   int err_code = 0;
   int num_bind = 0;
+  SQLLEN row_count = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
-  char stmt_type;
   ODBC_BIND_INFO *bind_data_list = NULL;
 
   if (srv_handle->is_prepared == FALSE)
@@ -1407,22 +1386,36 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       goto execute_error;
     }
 
-  err_code = cgw_execute (srv_handle);
+  err_code = cgw_execute (srv_handle, &row_count);
   if (err_code < 0)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
 
-  stmt_type = get_stmt_type (srv_handle->sql_stmt);
-  srv_handle->stmt_type = stmt_type;
-  update_query_execution_count (as_info, stmt_type);
+  update_query_execution_count (as_info, srv_handle->stmt_type);
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
-  srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.
+  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
+    {
+      srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.
+    }
+  else
+    {
+      if (row_count == -1)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_UNKNOWN_AFFECTED_ROWS, 0);
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto execute_error;
+	}
+      else
+	{
+	  srv_handle->total_tuple_count = (int) row_count;
+	}
+    }
 
   if (do_commit_after_execute (*srv_handle))
     {
@@ -1463,7 +1456,8 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
 
 	  err_code =
-	    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, stmt_type, client_version, net_buf);
+	    cgw_prepare_column_list_info_set (srv_handle->cgw_handle->hstmt, flag, srv_handle->stmt_type,
+					      client_version, net_buf);
 	  if (err_code != NO_ERROR)
 	    {
 	      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -3978,6 +3972,9 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
     case CCI_SCH_CLASS_ATTRIBUTE:
       err_code = sch_attr_info (net_buf, arg1, arg2, flag, 1, srv_handle);
       break;
+    case CCI_SCH_ATTR_WITH_SYNONYM:
+      err_code = sch_attr_with_synonym_info (net_buf, arg1, arg2, flag, 0, srv_handle);
+      break;
     case CCI_SCH_METHOD:
       sch_method_info (net_buf, arg1, 0, &(srv_handle->session));
       break;
@@ -4032,7 +4029,8 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
 
   if (schema_type == CCI_SCH_CLASS || schema_type == CCI_SCH_VCLASS || schema_type == CCI_SCH_ATTRIBUTE
       || schema_type == CCI_SCH_CLASS_ATTRIBUTE || schema_type == CCI_SCH_QUERY_SPEC
-      || schema_type == CCI_SCH_DIRECT_SUPER_CLASS || schema_type == CCI_SCH_PRIMARY_KEY)
+      || schema_type == CCI_SCH_DIRECT_SUPER_CLASS || schema_type == CCI_SCH_PRIMARY_KEY
+      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM)
     {
       srv_handle->cursor_pos = 0;
     }
@@ -5777,6 +5775,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   int num_tuple_msg_offset;
   int num_tuple = 0;
   int net_buf_size;
+  SQLLEN row_count = 0;
   char fetch_end_flag = 0;
   SQLSMALLINT num_cols;
   SQLLEN total_row_count = 0;
@@ -5790,7 +5789,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   if (srv_handle->is_cursor_open == false)
     {
-      err_code = cgw_execute (srv_handle);
+      err_code = cgw_execute (srv_handle, &row_count);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -5806,7 +5805,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  goto fetch_error;
 	}
 
-      err_code = cgw_execute (srv_handle);
+      err_code = cgw_execute (srv_handle, &row_count);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -5982,7 +5981,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
     }
 
   net_buf_overwrite_int (net_buf, num_tuple_msg_offset, num_tuple);
-
+  srv_handle->total_tuple_count = num_tuple;
   srv_handle->cursor_pos = cursor_pos;
 
   return 0;
@@ -7732,6 +7731,10 @@ get_stmt_type (char *stmt)
     {
       return CUBRID_STMT_SELECT;
     }
+  else if (strncasecmp (stmt, "merge", 5) == 0)
+    {
+      return CUBRID_STMT_MERGE;
+    }
   else
     {
       return CUBRID_MAX_STMT_TYPE;
@@ -8524,6 +8527,262 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
   schema_attr_meta (net_buf);
 
   return 0;
+}
+
+static int
+sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag,
+			    char class_attr_flag, T_SRV_HANDLE * srv_handle)
+{
+  char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
+  int num_result = 0;
+  char schema_name[DB_MAX_SCHEMA_LENGTH] = { '\0' };
+  char *class_name_only = NULL;
+  char synonym_sql_stmt[QUERY_BUFFER_MAX], *synonym_sql_stmt_p = synonym_sql_stmt;
+  int synonym_avail_size = sizeof (synonym_sql_stmt) - 1;
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_VALUE values[2];
+  const char *target_name = NULL;
+  const char *target_owner_name = NULL;
+  DB_SESSION *session = NULL;
+  int stmt_id = 0;
+  int err_code = NO_ERROR;
+  char target_class_name[DB_MAX_CLASS_LENGTH] = { '\0' };
+
+  ut_tolower (class_name);
+  ut_tolower (attr_name);
+
+  if (class_name)
+    {
+      char *dot = NULL;
+      int len = 0;
+
+      class_name_only = class_name;
+      dot = strchr (class_name, '.');
+      if (dot)
+	{
+	  len = STATIC_CAST (int, dot - class_name);
+	  /* If the length is not correct, the username is invalid, so compare the entire class_name. */
+	  if (len > 0 && len < DB_MAX_SCHEMA_LENGTH)
+	    {
+	      memcpy (schema_name, class_name, len);
+	      schema_name[len] = '\0';
+	      class_name_only = dot + 1;
+	    }
+	}
+    }
+
+  if (schema_name[0] == '\0')
+    {
+      strncpy (schema_name, database_user, DB_MAX_SCHEMA_LENGTH - 1);
+    }
+
+  if (schema_name[0] != '\0' && class_name_only != NULL)
+    {
+      // *INDENT-OFF*
+      STRING_APPEND (synonym_sql_stmt_p, synonym_avail_size,
+        "SELECT "
+            "target_owner_name, "
+            "target_name "
+         "FROM "
+             "db_synonym "
+         "WHERE "
+             "1 = 1 "
+      );
+      // *INDENT-ON*
+
+
+      if (class_name_only == NULL)
+	{
+	  class_name_only = CONST_CAST (char *, "");
+	}
+      STRING_APPEND (synonym_sql_stmt_p, synonym_avail_size, "AND synonym_name = '%s' ", class_name_only);
+
+      if (*schema_name)
+	{
+	  STRING_APPEND (synonym_sql_stmt_p, synonym_avail_size, "AND synonym_owner_name = UPPER ('%s') ", schema_name);
+	}
+
+      db_make_null (&values[0]);
+      db_make_null (&values[1]);
+
+      session = db_open_buffer (synonym_sql_stmt);
+      if (!session)
+	{
+	  goto sql_error;
+	}
+
+      stmt_id = db_compile_statement (session);
+      if (stmt_id < 0)
+	{
+	  goto sql_error;
+	}
+
+      num_result = db_execute_statement (session, stmt_id, &query_result);
+      if (num_result > 0)
+	{
+	  err_code = db_query_first_tuple (query_result);
+	  if (err_code != DB_CURSOR_SUCCESS)
+	    {
+	      goto sql_error;
+	    }
+
+	  err_code = db_query_get_tuple_value (query_result, 0, &values[0]);
+	  if (err_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto sql_error;
+	    }
+
+	  err_code = db_query_get_tuple_value (query_result, 1, &values[1]);
+	  if (err_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto sql_error;
+	    }
+
+	  assert (DB_VALUE_TYPE (&values[0]) == DB_TYPE_STRING);
+	  target_owner_name = db_get_string (&values[0]);
+
+	  assert (DB_VALUE_TYPE (&values[1]) == DB_TYPE_STRING);
+	  target_name = db_get_string (&values[1]);
+
+	  if (target_name)
+	    {
+	      strncpy (target_class_name, target_name, DB_MAX_CLASS_LENGTH - 1);
+	    }
+
+	  if (target_owner_name)
+	    {
+	      strncpy (schema_name, target_owner_name, DB_MAX_SCHEMA_LENGTH - 1);
+	    }
+
+	  db_value_clear (&values[0]);
+	  db_value_clear (&values[1]);
+
+	  if (target_class_name[0] != '\0')
+	    {
+	      class_name_only = target_class_name;
+	    }
+	}
+
+      if (query_result != NULL)
+	{
+	  db_query_end (query_result);
+	  query_result = NULL;
+	}
+
+      if (session != NULL)
+	{
+	  db_close_session (session);
+	}
+
+      if (num_result < 0)
+	{
+	  return num_result;
+	}
+
+      if (num_result == 0)
+	{
+	  net_buf_cp_int (net_buf, num_result, NULL);
+	  schema_attr_meta (net_buf);
+
+	  return 0;
+	}
+    }
+  else
+    {
+
+      net_buf_cp_int (net_buf, 0, NULL);
+      schema_attr_meta (net_buf);
+
+      return 0;
+    }
+
+  // *INDENT-OFF*
+  STRING_APPEND (sql_p, avail_size,
+	"SELECT "
+	  "CASE "
+	    "WHEN ( "
+		"SELECT b.is_system_class "
+		"FROM db_class b "
+		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
+	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
+	    "ELSE a.class_name "
+	    "END AS unique_name, "
+	  "a.attr_name "
+	"FROM "
+	  "db_attribute a "
+	"WHERE 1 = 1 ");
+  // *INDENT-ON*
+
+  if (class_attr_flag)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND a.attr_type = 'CLASS' ");
+    }
+  else
+    {
+      STRING_APPEND (sql_p, avail_size, "AND a.attr_type in {'INSTANCE', 'SHARED'} ");
+    }
+
+  if (class_name_only == NULL)
+    {
+      class_name_only = CONST_CAST (char *, "");
+    }
+  STRING_APPEND (sql_p, avail_size, "AND a.class_name = '%s' ", class_name_only);
+
+  if (pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH)
+    {
+      if (attr_name)
+	{
+	  STRING_APPEND (sql_p, avail_size, "AND a.attr_name LIKE '%s' ESCAPE '%s' ", attr_name,
+			 get_backslash_escape_string ());
+	}
+    }
+  else
+    {
+      if (attr_name == NULL)
+	{
+	  attr_name = CONST_CAST (char *, "");
+	}
+      STRING_APPEND (sql_p, avail_size, "AND a.attr_name = '%s' ", attr_name);
+    }
+
+  if (*schema_name)
+    {
+      STRING_APPEND (sql_p, avail_size, "AND a.owner_name = UPPER ('%s') ", schema_name);
+    }
+
+  STRING_APPEND (sql_p, avail_size, "ORDER BY a.class_name, a.def_order ");
+
+  num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
+  if (num_result < 0)
+    {
+      return num_result;
+    }
+
+  net_buf_cp_int (net_buf, num_result, NULL);
+  schema_attr_meta (net_buf);
+
+  return 0;
+
+sql_error:
+
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  db_value_clear (&values[0]);
+  db_value_clear (&values[1]);
+
+  return err_code;
 }
 
 static int
@@ -9622,6 +9881,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pktable_name, *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
+  int fk_i;
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -9718,8 +9978,9 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
+      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
+      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -9756,6 +10017,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
+  int fk_i;
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -9872,8 +10134,9 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
+      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
+      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -11506,3 +11769,78 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
 
   return err_code;
 }
+
+#if defined(CAS_FOR_CGW)
+void
+ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle)
+{
+  cgw_free_stmt (srv_handle);
+}
+
+static char
+ux_cgw_get_stmt_type (char *stmt)
+{
+  char stmt_type = CUBRID_STMT_NONE;
+  const char *comment_start = strstr (stmt, "/*");
+  const char *comment_end = NULL;
+
+  while (comment_start)
+    {
+      const char *comment_end = strstr (comment_start, "*/");
+      if (comment_end)
+	{
+	  char *comment_str = NULL;
+	  const char *dblink_start = NULL;
+
+	  comment_str = (char *) MALLOC ((comment_end - comment_start) + 1);
+	  if (comment_str == NULL)
+	    {
+	      ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	      return CUBRID_STMT_NONE;
+	    }
+
+	  strncpy (comment_str, comment_start + 2, comment_end - comment_start - 2);
+	  comment_str[comment_end - comment_start - 2] = '\0';
+
+	  dblink_start = strstr (comment_str, DBLINK_HINT);
+	  if (dblink_start)
+	    {
+	      char *type_name = NULL;
+	      size_t dblink_hint_len = 0;
+
+	      dblink_hint_len = (strlen (dblink_start) - strlen (DBLINK_HINT));
+
+	      type_name = (char *) MALLOC (dblink_hint_len + 1);
+	      if (type_name == NULL)
+		{
+		  ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+		  FREE_MEM (comment_str);
+		  return CUBRID_STMT_NONE;
+		}
+
+	      strncpy (type_name, dblink_start + strlen (DBLINK_HINT), dblink_hint_len);
+	      type_name[dblink_hint_len] = '\0';
+
+	      ut_trim (type_name);
+	      ut_tolower (type_name);
+
+	      stmt_type = get_stmt_type (type_name);
+
+	      FREE_MEM (comment_str);
+	      FREE_MEM (type_name);
+	      break;
+	    }
+
+	  FREE_MEM (comment_str);
+
+	  comment_start = strstr (comment_end, "/*");
+	}
+    }
+
+  if (stmt_type == CUBRID_STMT_NONE || stmt_type == CUBRID_MAX_STMT_TYPE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_DBLINT_HINT, 1, stmt);
+    }
+  return stmt_type;
+}
+#endif

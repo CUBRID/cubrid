@@ -510,7 +510,7 @@ utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
 opţiuni valide:\n\
   -S, --SA-mode                     mod de execuţie independent\n\
   -C, --CS-mode                     mod de execuţie client-server\n\
-                                    AVERTISMENT: În modul client-server, numai fișierul de date (-d, --data-file=FILE) poate fi încărcat.\n\
+                                    AVERTISMENT: În modul HA, numai fișierele de date (-d, --data-file=FILE) pot fi încărcate în modul client-server.\n\
   -u, --user=ID                     ID de utilizator pentru acces la baza de date; implicit: "public"\n\
   -p, --password=PAROLA             parola de utilizator; implicit: nulă\n\
       --data-file-check-only        verifică sintaxa fișierului fără a-l încărca; implicit: dezactivat\n\
@@ -519,7 +519,7 @@ opţiuni valide:\n\
       --estimated-size=NUMĂR        NUMĂR estimat de instanţe; implicit: 5000\n\
   -v, --verbose                     activează mesaje detaliate de stare; implicit: dezactivate\n\
   -c, --periodic-commit=CONTOR      CONTOR de inserare pentru salvare periodică;\n\
-                                    implicit: nu se face commit în timpul încărcării\n\
+                                    implicit: 10240\n\
       --no-oid                      nu se va folosi OID\n\
       --no-statistics               nu se vor actualiza statisticile în timpul încărcării\n\
   -s, --schema-file=FIŞIER[:LINIE]  creează schema de la linia, respectiv din fişierul specificat\n\
@@ -576,6 +576,7 @@ opţiuni valide:\n\
   -C, --CS-mode                  mod de execuţie client-server\n\
       --datafile-per-class       creează un fişier obiect pentru fieacre clasă; implicit: dezactivat\n\
       --split-schema-files       împărțiți informațiile de schemă pe obiect și generați fiecare fișier; Implicit: generați un fișier de schemă cu toate obiectele\n\
+      --skip-index-detail        Nu tipăriți opțiunile specificate pentru clauza WITH la crearea indexului; implicit: dezactivat\n\
       --as-dba                   Dacă utilizatorul de conectare este membru al grupului DBA, extrageți același fișier de schemă ca și DBA.\n
 
 

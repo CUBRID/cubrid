@@ -9494,6 +9494,69 @@ error:
   return ER_FAILED;
 }
 
+/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+int
+pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
+				   struct tp_domain *dbvals_domain_list, int tail_null_cnt)
+{
+  TP_DOMAIN *dom;
+  DB_MIDXKEY *midxkey;
+  int i, total_size, bitmap_size;
+  char *new_IDXbuf;
+  char *bound_bits;
+  OR_BUF buf;
+
+  /* phase 1: find old */
+  midxkey = db_get_midxkey (keyval);
+  if (midxkey == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  assert (midxkey->ncolumns == 0 && midxkey->size == 0);
+
+  bitmap_size = OR_MULTI_BOUND_BIT_BYTES (num_dbvals + tail_null_cnt);
+  total_size = bitmap_size;
+
+  /* phase 2: calculate how many bytes need */
+  total_size = pr_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
+
+  /* phase 3: initialize new_IDXbuf */
+  new_IDXbuf = (char *) db_private_alloc (NULL, total_size);
+  if (new_IDXbuf == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  or_init (&buf, new_IDXbuf, -1);
+  bound_bits = buf.ptr;
+
+  /* phase 4: copy new_IDXbuf from old */
+  MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
+  or_advance (&buf, bitmap_size);
+
+  for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
+    {
+      /* check for added val is NULL */
+      if (DB_IS_NULL (&dbvals[i]))
+	{
+	  continue;		/* skip and go ahead */
+	}
+
+      dom->type->index_writeval (&buf, &dbvals[i]);
+
+      OR_ENABLE_BOUND_BIT (bound_bits, midxkey->ncolumns + i);
+    }				/* for (i = 0, ...) */
+
+  assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
+
+  midxkey->buf = buf.buffer;
+  midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
+  midxkey->ncolumns += (num_dbvals + tail_null_cnt);
+
+  return NO_ERROR;
+}
+
 /*
  * pr_data_writeval_disk_size - returns the number of bytes that will be
  * written by the "writeval" type function for this value.
@@ -10271,6 +10334,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	}
 
+      dest->data.ch.medium.length = src->data.ch.medium.length;
       dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
     }
 
@@ -11374,6 +11438,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		  dest->need_clear = true;
 		}
 	    }
+	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
 
@@ -12231,6 +12296,7 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 		  dest->need_clear = true;
 		}
 	    }
+	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
   return error;
@@ -13151,6 +13217,7 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 
 	  dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
+	  dest->data.ch.medium.length = src->data.ch.medium.length;
 	}
     }
 

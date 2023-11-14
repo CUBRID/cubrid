@@ -1387,7 +1387,7 @@
 #define ER_BLOCK_DDL_STMT                           -1099
 #define ER_BLOCK_NOWHERE_STMT                       -1100
 
-#define ER_CANNOT_GET_KEY_LOCK                      -1101
+#define ER_CANNOT_GET_KEY_LOCK                      -1101	/* Obsolete */
 
 #define ER_PRM_BAD_VALUE_NO_DATA                    -1102
 #define ER_PRM_CANNOT_CHANGE_NO_DATA                -1103
@@ -1731,16 +1731,12 @@
 #define ER_SQL_ERROR_LOG_TRACE                      -1353
 #define ER_SQL_ERROR_LOG_MSG_TRACE                  -1354
 
-#define ER_UHOST_INVALID_FORMAT                     -1355
-#define ER_UHOST_HOST_NAME_TOO_LONG                 -1356
-#define ER_UHOST_HOST_NAME_ALREADY_EXIST            -1357
-#define ER_UHOST_HOST_NAME_IP_ADDR_NOT_COMPLETE     -1358
-#define ER_UHOST_CANT_LOOKUP_INFO                   -1359
-#define ER_UHOST_ERROR                              -1360
+#define ER_FILE_NOT_FOUND                           -1355
+#define ER_CGW_INVALID_DBLINT_HINT                  -1356
+#define ER_CGW_SQL_CONV_ERROR                       -1357
+#define ER_CGW_UNKNOWN_AFFECTED_ROWS                -1358
 
-#define ER_FILE_NOT_FOUND                           -1361
-
-#define ER_LAST_ERROR                               -1362
+#define ER_LAST_ERROR                               -1359
 
 /*
  * CAUTION!

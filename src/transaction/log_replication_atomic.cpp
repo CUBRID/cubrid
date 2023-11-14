@@ -20,7 +20,11 @@
 #include "log_replication_atomic.hpp"
 #include "log_replication_jobs.hpp"
 
+#include "heap_file.h"
+#include "locator_sr.h"
 #include "log_recovery_redo_parallel.hpp"
+#include "oid.h"
+#include "xasl_cache.h"
 
 namespace cublog
 {
@@ -118,6 +122,13 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
+
+	    if (m_locked_classes.count (header.trid) > 0)
+	      {
+		discard_caches_for_ddl (thread_entry, header.trid);
+		release_all_locks_for_ddl (thread_entry, header.trid);
+	      }
+
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
@@ -147,6 +158,12 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
+
+	    if (m_locked_classes.count (header.trid) > 0)
+	      {
+		release_all_locks_for_ddl (thread_entry, header.trid);
+	      }
+
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
@@ -214,6 +231,16 @@ namespace cublog
 	      {
 		m_replicator_mvccid->new_assigned_mvccid (header.trid, log_rec.mvccid);
 	      }
+	    break;
+	  }
+	  case LOG_SCHEMA_MODIFICATION_LOCK:
+	  {
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SCHEMA_MODIFICATION_LOCK));
+	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
+
+	    acquire_lock_for_ddl (thread_entry, header.trid, &log_rec.classoid);
+
 	    break;
 	  }
 	  default:
@@ -342,6 +369,74 @@ namespace cublog
 	    // if the postpone operation itself will contain a logical (compound) operation guarded
 	    // by an atomic sequence; that will be treated in a standalone fashion
 	  }
+      }
+  }
+
+  void
+  atomic_replicator::release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
+  {
+    assert (m_locked_classes.count (trid) > 0);
+
+    auto [begin, end] = m_locked_classes.equal_range (trid);
+    for (auto it = begin; it != end; it++)
+      {
+	lock_unlock_object_and_cleanup (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK);
+      }
+
+    m_locked_classes.erase (trid);
+  }
+
+  void
+  atomic_replicator::acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid)
+  {
+    assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
+
+    /* TODO:
+     * If a PTS read transaction holds a lock for an extended period without releasing it for the same class,
+     * the replicator could wait too long to acquire the lock.
+     * In such cases, there might be an introduction of a mechanism to abort read transaction that holds lock.
+     */
+
+    if (lock_object (&thread_entry, classoid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+      {
+	assert_release (false);
+      }
+
+#if !defined (NDEBUG)
+    /* there will be no duplicated object in the map */
+    auto [begin, end] = m_locked_classes.equal_range (trid);
+    if (std::count_if (begin, end, [classoid] (const auto &it)
+    {
+      return it.second == *classoid;
+    }) > 0)
+    {
+      assert (false);
+    }
+#endif
+
+    m_locked_classes.emplace (trid, *classoid);
+  }
+
+  void
+  atomic_replicator::discard_caches_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
+  {
+    assert (m_locked_classes.count (trid) > 0);
+
+    /* TODO:
+     * This is to update locator_Mht_classnames which contains class names,
+     * and it will be replaced with a function to update specific class name only if needed.
+     */
+    locator_initialize (&thread_entry);
+
+    auto [begin, end] = m_locked_classes.equal_range (trid);
+    for (auto it = begin; it != end; it++)
+      {
+	auto classoid = it->second;
+
+	(void) heap_classrepr_decache (&thread_entry, &classoid);
+	(void) heap_delete_hfid_from_cache (&thread_entry, &classoid);
+	xcache_remove_by_oid (&thread_entry, &classoid);
+	partition_decache_class (&thread_entry, &classoid);
       }
   }
 }

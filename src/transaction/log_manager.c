@@ -294,6 +294,8 @@ static LOG_PAGE *log_dump_record_assigned_mvccid (THREAD_ENTRY * thread_p, FILE 
 						  LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_schema_modification_lock (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+							   LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
 				  LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
 static void log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -509,6 +511,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_GENERIC";
     case LOG_SUPPLEMENTAL_INFO:
       return "LOG_SUPPLEMENTAL_INFO";
+    case LOG_SCHEMA_MODIFICATION_LOCK:
+      return "LOG_SCHEMA_MODIFICATION_LOCK";
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:
       break;
@@ -3726,6 +3730,34 @@ log_append_assigned_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 
   auto recp = (LOG_REC_ASSIGNED_MVCCID *) node->data_header;
   recp->mvccid = mvccid;
+
+  (void) prior_lsa_next_record (thread_p, node, tdes);
+}
+
+void
+log_append_schema_modification_lock (THREAD_ENTRY * thread_p, const OID * classoid)
+{
+  assert (!OID_ISNULL (classoid));
+
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == nullptr)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return;
+    }
+
+  LOG_PRIOR_NODE *node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_SCHEMA_MODIFICATION_LOCK, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (node == nullptr)
+    {
+      assert (false);
+      return;
+    }
+
+  auto record = (LOG_REC_SCHEMA_MODIFICATION_LOCK *) node->data_header;
+  COPY_OID (&record->classoid, classoid);
 
   (void) prior_lsa_next_record (thread_p, node, tdes);
 }
@@ -7261,6 +7293,20 @@ log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_L
 }
 
 static LOG_PAGE *
+log_dump_record_schema_modification_lock (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+					  LOG_PAGE * log_page_p)
+{
+  LOG_REC_SCHEMA_MODIFICATION_LOCK *log_rec;
+
+  /* Get the DATA HEADER */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*log_rec), log_lsa, log_page_p);
+  log_rec = ((LOG_REC_SCHEMA_MODIFICATION_LOCK *) ((char *) log_page_p->area + log_lsa->offset));
+  fprintf (out_fp, ", classoid = %d|%d|%d\n", OID_AS_ARGS (&log_rec->classoid));
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
 log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * log_lsa,
 		 LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
 {
@@ -7361,6 +7407,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_SUPPLEMENTAL_INFO:
       log_page_p = log_dump_record_supplemental_info (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_SCHEMA_MODIFICATION_LOCK:
+      log_page_p = log_dump_record_schema_modification_lock (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_2PC_COMMIT_DECISION:
@@ -8290,6 +8340,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_END_ATOMIC_REPL:
 	    case LOG_ASSIGNED_MVCCID:
 	    case LOG_SUPPLEMENTAL_INFO:
+	    case LOG_SCHEMA_MODIFICATION_LOCK:
 	      break;
 
 	    case LOG_RUN_POSTPONE:
@@ -8725,6 +8776,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_SUPPLEMENTAL_INFO:
 		    case LOG_START_ATOMIC_REPL:
 		    case LOG_ASSIGNED_MVCCID:
+		    case LOG_SCHEMA_MODIFICATION_LOCK:
 		    case LOG_END_ATOMIC_REPL:
 		      break;
 
@@ -10833,8 +10885,7 @@ log_checkpoint_trantable_daemon_init ()
 
   if (is_tran_server_with_remote_storage ())
     {
-      constexpr auto loop_time = std::chrono::seconds (60);
-      cubthread::looper looper (loop_time);
+      cubthread::looper looper (log_get_checkpoint_interval);
       cubthread::entry_callable_task * daemon_task =
           new cubthread::entry_callable_task (log_checkpoint_trantable_execute);
       log_Checkpoint_trantable_daemon =
@@ -11786,6 +11837,41 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
   return scan_code;
 }
 
+/*
+ * cdc_log_read_advance_and_preserve_if_needed () - Fetch the next log page and preserve the existing one,
+ *                                                  if the (lsa.offset + size) exceeds the log page size
+ *
+ * return                     : error code
+ * thread_p (in)              : thread entry
+ * size (in)                  : size to read in log page
+ * lsa (in/out)               : log address to read
+ * log_page_p (in/out)        : fetch the next log page if needed
+ * preserved  (in/out)        : preserve existing log page if needed
+ */
+static int
+cdc_log_read_advance_and_preserve_if_needed (THREAD_ENTRY * thread_p, size_t size, LOG_LSA * lsa, LOG_PAGE * log_page_p,
+					     LOG_PAGE * preserved)
+{
+  if (lsa->offset + size >= (int) LOGAREA_SIZE)
+    {
+      /* Before fetching the next page, current log page is required to be preserved */
+      memcpy (preserved, log_page_p, IO_MAX_PAGE_SIZE);
+
+      lsa->pageid++;
+
+      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log page fetch in cdc_log_read_advance_and_preserve_if_needed ()");
+	  return ER_FAILED;
+	}
+
+      lsa->offset = 0;
+    }
+
+  return NO_ERROR;
+}
+
 int
 cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recdes, LOG_LSA * redo_lsa,
 		RECDES * redo_recdes, bool is_flashback)
@@ -11794,10 +11880,11 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   int tmpbuf_index;
 
   char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  LOG_PAGE *log_page_p = NULL;
+  char *preserved_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page_p = NULL;	// log_page for process_lsa : when process_lsa is advanced, then next log_page can be fetched into this buffer
+  LOG_PAGE *preserved_log_page_p = NULL;	// log_page for redo/undo lsa
 
   LOG_LSA process_lsa = LSA_INITIALIZER;
-  LOG_LSA current_logrec_lsa = LSA_INITIALIZER;
   LOG_LSA prev_lsa = LSA_INITIALIZER;
 
   LOG_RECTYPE log_type;
@@ -11822,12 +11909,13 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
   int error_code = NO_ERROR;
 
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  preserved_log_page_p = (LOG_PAGE *) PTR_ALIGN (preserved_log_pgbuf, MAX_ALIGNMENT);
+
   /* Get UNDO RECDES from undo lsa */
 
   /* Because it is unable to know exact size of data (recdes.data), can not use log_get_undo_record.
    * In order to use log_get_undo_record(), memory pool for recdes (assign_recdes_to_area()) is required just as scan cache where log_get_undo_record() is called. */
-
-  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
   if (undo_lsa != NULL)
     {
@@ -11845,7 +11933,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	}
 
       LSA_COPY (&process_lsa, undo_lsa);
-      LSA_COPY (&current_logrec_lsa, undo_lsa);
 
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
 
@@ -11861,7 +11948,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	{
 	case LOG_SUPPLEMENTAL_INFO:
 	  {
-	    scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, undo_recdes);
+	    scan_code = cdc_get_undo_record (thread_p, log_page_p, *undo_lsa, undo_recdes);
 	    if (scan_code != S_SUCCESS)
 	      {
 		error_code = ER_FAILED;
@@ -11875,15 +11962,21 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  {
 	    LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
 
-	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
+	    if ((error_code =
+		 cdc_log_read_advance_and_preserve_if_needed (thread_p, sizeof (*mvcc_undoredo), &process_lsa,
+							      log_page_p, preserved_log_page_p)) != NO_ERROR)
+	      {
+		goto error;
+	      }
 
 	    mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = mvcc_undoredo->undoredo.data.rcvindex;
-	    undo_length = mvcc_undoredo->undoredo.ulength;
+
+	    log_page_p = process_lsa.pageid == undo_lsa->pageid ? log_page_p : preserved_log_page_p;
 
 	    if (rcvindex == RVHF_MVCC_DELETE_MODIFY_HOME || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	      {
-		scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, undo_recdes);
+		scan_code = cdc_get_undo_record (thread_p, log_page_p, *undo_lsa, undo_recdes);
 		if (scan_code != S_SUCCESS)
 		  {
 		    error_code = ER_FAILED;
@@ -11899,15 +11992,22 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  {
 	    LOG_REC_UNDOREDO *undoredo = NULL;
 
-	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
+	    if ((error_code =
+		 cdc_log_read_advance_and_preserve_if_needed (thread_p, sizeof (*undoredo), &process_lsa, log_page_p,
+							      preserved_log_page_p)) != NO_ERROR)
+	      {
+		goto error;
+	      }
 
 	    undoredo = (LOG_REC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undoredo->data.rcvindex;
-	    undo_length = undoredo->ulength;
+
+	    /* if the next log page is fetched into log_page_p, then use the preserved_log_page_p */
+	    log_page_p = process_lsa.pageid == undo_lsa->pageid ? log_page_p : preserved_log_page_p;
 
 	    if (rcvindex == RVHF_DELETE || rcvindex == RVHF_UPDATE)
 	      {
-		scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, undo_recdes);
+		scan_code = cdc_get_undo_record (thread_p, log_page_p, *undo_lsa, undo_recdes);
 		if (scan_code != S_SUCCESS)
 		  {
 		    error_code = ER_FAILED;
@@ -11918,7 +12018,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      {
 		/* GET OVF UNDO IMAGE */
 		if ((error_code =
-		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, prev_lsa, RVOVF_PAGE_UPDATE,
+		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex,
 					      false)) != NO_ERROR)
 		  {
 		    goto error;
@@ -11932,10 +12032,18 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  {
 	    LOG_REC_UNDO *undo = NULL;
 
-	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undo), &process_lsa, log_page_p);
+	    if ((error_code =
+		 cdc_log_read_advance_and_preserve_if_needed (thread_p, sizeof (*undo), &process_lsa, log_page_p,
+							      preserved_log_page_p)) != NO_ERROR)
+	      {
+		goto error;
+	      }
+
 	    undo = (LOG_REC_UNDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undo->data.rcvindex;
-	    undo_length = undo->length;
+
+	    /* if the next log page is fetched into log_page_p, then use the preserved_log_page_p */
+	    log_page_p = process_lsa.pageid == undo_lsa->pageid ? log_page_p : preserved_log_page_p;
 
 	    if (rcvindex == RVOVF_PAGE_UPDATE)
 	      {
@@ -11950,7 +12058,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      }
 	    else if (rcvindex == RVHF_MVCC_UPDATE_OVERFLOW)
 	      {
-		scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, undo_recdes);
+		scan_code = cdc_get_undo_record (thread_p, log_page_p, *undo_lsa, undo_recdes);
 		if (scan_code != S_SUCCESS)
 		  {
 		    error_code = ER_FAILED;
@@ -11967,13 +12075,21 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    LOG_REC_REDO *redo = NULL;
 	    LOG_RCVINDEX rcvindex;
 
-	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*redo), &process_lsa, log_page_p);
+	    if ((error_code =
+		 cdc_log_read_advance_and_preserve_if_needed (thread_p, sizeof (*redo), &process_lsa, log_page_p,
+							      preserved_log_page_p)) != NO_ERROR)
+	      {
+		goto error;
+	      }
 
 	    redo = (LOG_REC_REDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = redo->data.rcvindex;
 
 	    if (rcvindex == RVOVF_PAGE_UPDATE)
 	      {
+		/* if the next log page is fetched into log_page_p, then use the preserved_log_page_p */
+		log_page_p = process_lsa.pageid == undo_lsa->pageid ? log_page_p : preserved_log_page_p;
+
 		/* GET OVF UNDO IMAGE */
 		if ((error_code =
 		     cdc_get_overflow_recdes (thread_p, log_page_p, undo_recdes, *undo_lsa, rcvindex,
@@ -12019,7 +12135,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	}
 
       LSA_COPY (&process_lsa, redo_lsa);
-      LSA_COPY (&current_logrec_lsa, redo_lsa);
 
       log_rec_hdr = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
 
@@ -12039,7 +12154,12 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
 	    LOG_RCVINDEX rcvindex;
 
-	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*mvcc_undoredo), &process_lsa, log_page_p);
+	    if ((error_code =
+		 cdc_log_read_advance_and_preserve_if_needed (thread_p, sizeof (*mvcc_undoredo), &process_lsa,
+							      log_page_p, preserved_log_page_p)) != NO_ERROR)
+	      {
+		goto error;
+	      }
 
 	    mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = mvcc_undoredo->undoredo.data.rcvindex;
@@ -12147,7 +12267,10 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, &tmp_undo_recdes);
+		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
+		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+
+		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
 		      {
 			error_code = ER_FAILED;
@@ -12255,7 +12378,12 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	  {
 	    LOG_REC_UNDOREDO *undoredo = NULL;
 
-	    LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*undoredo), &process_lsa, log_page_p);
+	    if ((error_code =
+		 cdc_log_read_advance_and_preserve_if_needed (thread_p, sizeof (*undoredo), &process_lsa, log_page_p,
+							      preserved_log_page_p)) != NO_ERROR)
+	      {
+		goto error;
+	      }
 
 	    undoredo = (LOG_REC_UNDOREDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undoredo->data.rcvindex;
@@ -12358,7 +12486,10 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    scan_code = cdc_get_undo_record (thread_p, log_page_p, current_logrec_lsa, &tmp_undo_recdes);
+		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
+		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+
+		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
 		      {
 			error_code = ER_FAILED;
@@ -12468,9 +12599,12 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      }
 	    else if (rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVOVF_NEWPAGE_LINK)
 	      {
-		/* GET OVF UNDO IMAGE */
+		/* if the next log page is fetched into log_page_p, then use the preserved_log_page_p */
+		log_page_p = process_lsa.pageid == redo_lsa->pageid ? log_page_p : preserved_log_page_p;
+
+		/* GET OVF REDO IMAGE */
 		if ((error_code =
-		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, prev_lsa, RVOVF_PAGE_UPDATE,
+		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex,
 					      true)) != NO_ERROR)
 		  {
 		    goto error;
@@ -12485,11 +12619,21 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    LOG_REC_REDO *redo = NULL;
 	    LOG_RCVINDEX rcvindex;
 
+	    if ((error_code =
+		 cdc_log_read_advance_and_preserve_if_needed (thread_p, sizeof (*redo), &process_lsa, log_page_p,
+							      preserved_log_page_p)) != NO_ERROR)
+	      {
+		goto error;
+	      }
+
 	    redo = (LOG_REC_REDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = redo->data.rcvindex;
 
 	    if (rcvindex == RVOVF_NEWPAGE_INSERT || rcvindex == RVOVF_PAGE_UPDATE)
 	      {
+		/* if the next log page is fetched into log_page_p, then use the preserved_log_page_p */
+		log_page_p = process_lsa.pageid == redo_lsa->pageid ? log_page_p : preserved_log_page_p;
+
 		/* GET OVF REDO IMAGE */
 		if ((error_code =
 		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex,
@@ -12507,11 +12651,21 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	    LOG_REC_UNDO *undo = NULL;
 	    LOG_RCVINDEX rcvindex;
 
+	    if ((error_code =
+		 cdc_log_read_advance_and_preserve_if_needed (thread_p, sizeof (*undo), &process_lsa, log_page_p,
+							      preserved_log_page_p)) != NO_ERROR)
+	      {
+		goto error;
+	      }
+
 	    undo = (LOG_REC_UNDO *) (log_page_p->area + process_lsa.offset);
 	    rcvindex = undo->data.rcvindex;
 
 	    if (rcvindex == RVOVF_PAGE_UPDATE)
 	      {
+		/* if the next log page is fetched into log_page_p, then use the preserved_log_page_p */
+		log_page_p = process_lsa.pageid == redo_lsa->pageid ? log_page_p : preserved_log_page_p;
+
 		if ((error_code =
 		     cdc_get_overflow_recdes (thread_p, log_page_p, redo_recdes, *redo_lsa, rcvindex,
 					      true)) != NO_ERROR)
@@ -12560,12 +12714,12 @@ error:
       free_and_init (tmp_undo_recdes.data);
     }
 
-  if (redo_recdes->data != NULL)
+  if (redo_recdes != NULL && redo_recdes->data != NULL)
     {
       free_and_init (redo_recdes->data);
     }
 
-  if (undo_recdes->data != NULL)
+  if (undo_recdes != NULL && undo_recdes->data != NULL)
     {
       free_and_init (undo_recdes->data);
     }
@@ -12720,10 +12874,11 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 
   trid = current_log_record->trid;
 
-  if (((current_log_record->type == LOG_UNDO_DATA)
-       && (rcvindex == RVOVF_PAGE_UPDATE) && is_redo)
-      || ((current_log_record->type == LOG_REDO_DATA) && (rcvindex == RVOVF_PAGE_UPDATE) && !is_redo))
+  if (((current_log_record->type == LOG_UNDO_DATA) && (rcvindex == RVOVF_PAGE_UPDATE) && is_redo)
+      || ((current_log_record->type == LOG_REDO_DATA) && (rcvindex == RVOVF_PAGE_UPDATE) && !is_redo)
+      || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVOVF_NEWPAGE_LINK)
     {
+      /* start to traverse with prev_transla log record */
       LSA_COPY (&current_lsa, &current_log_record->prev_tranlsa);
 
       if (current_lsa.pageid != lsa.pageid)
@@ -12733,6 +12888,12 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
 	      error_code = ER_FAILED;
 	      goto end;
 	    }
+	}
+
+      if (rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVOVF_NEWPAGE_LINK)
+	{
+	  /* rcvindex of previous log record is RVOVF_PAGE_UPDATE */
+	  rcvindex = RVOVF_PAGE_UPDATE;
 	}
     }
 
@@ -14942,8 +15103,10 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
   LOG_LSA process_lsa = LSA_INITIALIZER;
   LOG_LSA forw_lsa = LSA_INITIALIZER;
+  LOG_LSA cur_log_lsa = LSA_INITIALIZER;
 
   LOG_RECORD_HEADER *log_rec_header;
+  LOG_RECTYPE log_type;
   LOG_REC_DONETIME *donetime;
   LOG_REC_HA_SERVER_STATE *dummy;
 
@@ -15038,31 +15201,33 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
   while (!LSA_ISNULL (&process_lsa))
     {
+      LSA_COPY (&cur_log_lsa, &process_lsa);	// save the current log record lsa
+
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
+      log_type = log_rec_header->type;
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_pgptr);
 
-      if (log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+      if (log_type == LOG_COMMIT || log_type == LOG_ABORT)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
 	  donetime = (LOG_REC_DONETIME *) (log_pgptr->area + process_lsa.offset);
 
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_pgptr);
-	  LSA_COPY (ret_lsa, &process_lsa);
-
+	  LSA_COPY (ret_lsa, &cur_log_lsa);
 	  *time = donetime->at_time;
+
 	  return NO_ERROR;
 	}
 
-      if (log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+      if (log_type == LOG_DUMMY_HA_SERVER_STATE)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
 	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_pgptr->area + process_lsa.offset);
 
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_pgptr);
-	  LSA_COPY (ret_lsa, &process_lsa);
+	  LSA_COPY (ret_lsa, &cur_log_lsa);
 	  *time = dummy->at_time;
+
 	  return NO_ERROR;
 	}
 
@@ -15081,6 +15246,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	      return error_code;
 	    }
 	}
+
       LSA_COPY (&process_lsa, &forw_lsa);
     }
 
@@ -15101,10 +15267,11 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   LOG_LSA process_lsa;
   LOG_LSA current_lsa;
 
-  LOG_RECORD_HEADER *log_rec_header;
   LOG_PAGE *log_page_p = NULL;
   char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
+  LOG_RECORD_HEADER *log_rec_header;
+  LOG_RECTYPE log_type;
   LOG_REC_DONETIME *donetime;
   LOG_REC_HA_SERVER_STATE *dummy;
   time_t at_time;
@@ -15114,15 +15281,12 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_page_p->hdr.logical_pageid = NULL_PAGEID;
   log_page_p->hdr.offset = NULL_OFFSET;
-  bool is_active = false;
 
   char ctime_buf[CTIME_MAX];
   int error = NO_ERROR;
 
-  if (LSA_ISNULL (start_lsa))
-    {
-      is_active = true;
-    }
+  assert (!LSA_ISNULL (start_lsa));
+  cdc_log ("%s : start point LSA = %3lld|%3d", __func__, LSA_AS_ARGS (start_lsa));
 
   LSA_COPY (&process_lsa, start_lsa);
 
@@ -15138,10 +15302,11 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 
       LSA_COPY (&current_lsa, &process_lsa);
       LSA_COPY (&forw_lsa, &log_rec_header->forw_lsa);
+      log_type = log_rec_header->type;
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec_header), &process_lsa, log_page_p);
 
-      if (log_rec_header->type == LOG_COMMIT || log_rec_header->type == LOG_ABORT)
+      if (log_type == LOG_COMMIT || log_type == LOG_ABORT)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	  donetime = (LOG_REC_DONETIME *) (log_page_p->area + process_lsa.offset);
@@ -15153,11 +15318,9 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 
 	      return NO_ERROR;
 	    }
-
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*donetime), &process_lsa, log_page_p);
 	}
 
-      if (log_rec_header->type == LOG_DUMMY_HA_SERVER_STATE)
+      if (log_type == LOG_DUMMY_HA_SERVER_STATE)
 	{
 	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
 	  dummy = (LOG_REC_HA_SERVER_STATE *) (log_page_p->area + process_lsa.offset);
@@ -15170,8 +15333,6 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
 
 	      return NO_ERROR;
 	    }
-
-	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*dummy), &process_lsa, log_page_p);
 	}
 
       if (process_lsa.pageid != forw_lsa.pageid)

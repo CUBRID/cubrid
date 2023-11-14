@@ -6181,6 +6181,8 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "ADMIN_UTILITY";
     case DB_CLIENT_TYPE_ADMIN_CSQL:
       return "ADMIN_CSQL";
+    case DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG:
+      return "ADMIN_CSQL_REBUILD_CATALOG";
     case DB_CLIENT_TYPE_LOG_COPIER:
       return "LOG_COPIER";
     case DB_CLIENT_TYPE_LOG_APPLIER:
@@ -6197,6 +6199,12 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "SKIP_VACUUM_CSQL";
     case DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL:
       return "SKIP_VACUUM_ADMIN_CSQL";
+    case DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS:
+      return "ADMIN_COMPACTDB_WOS";
+    case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT:
+      return "ADMIN_LOADDB_COMPAT";
+    case DB_CLIENT_TYPE_LOADDB_UTILITY:
+      return "LOADDB_UTILITY";
     case DB_CLIENT_TYPE_UNKNOWN:
     default:
       return "UNKNOWN";

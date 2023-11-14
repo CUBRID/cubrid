@@ -138,10 +138,10 @@ class tran_server
 	 * | IDLE          | O            | X            | X            | X          | X           |
 	 * | CONNECTING    | X            | O            | X            | O          | X           |
 	 * | CONNECTED     | X            | O            | O            | O          | O           |
-	 * | DISCONNECTING | X            | O            | X            | △          | X           |
+	 * | DISCONNECTING | X            | O            | X            | O          | X           |
 	 * +---------------+--------------+--------------+--------------+------------+-------------+
 	 *
-	 * O: Allowed, X: not allowed, △: not certain
+	 * O: Allowed, X: not allowed
 	 *
 	 * m_state and m_conn are coupled and mutexes for them are managed carefully to provide above rules.
 	 */
@@ -177,7 +177,7 @@ class tran_server
 
       private:
 	void set_connection (cubcomm::channel &&chn);
-	// The default error handler for sending reqeust
+	// The default error handler for sending request
 	void send_error_handler (css_error_code error_code, bool &abort_further_processing);
 	void recv_error_handler (css_error_code error_code);
 	// Request handlers for requests in common
@@ -201,8 +201,8 @@ class tran_server
   protected:
     /*
      * Static information about available page server connection peers.
-     * For now, this information is static. In the future this can be maintained dinamically (eg: via cluster
-     * management sofware).
+     * For now, this information is static. In the future this can be maintained dynamically (eg: via cluster
+     * management software).
      */
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
 
@@ -211,7 +211,7 @@ class tran_server
 
   private:
     /*
-     * Try to [re]connect to disconected page servers.
+     * Try to [re]connect to disconnected page servers.
      * TODO This is a temporary feature, which is going to be done by the cluster manager or cub_master. It tries to connect to all page servers periodically, but later on, it is going to connect to PSes that are ready to connect.
     */
     class ps_connector
