@@ -11668,9 +11668,9 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 {
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
-  int buf_size = 0, bitmap_size = 0, i, error = NO_ERROR, attr_count = 0;
+  int buf_size = 0, i, error = NO_ERROR, attr_count = 0;
   unsigned char *bits;
-  char *bound_bits = NULL, *key_ptr = NULL;
+  char *nullmap_ptr = NULL;
   OR_BUF buf;
   DB_VALUE *val = NULL;
   TP_DOMAIN *attr_dom = NULL, *dom = NULL, *setdomain = NULL;
@@ -11717,8 +11717,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       dom = attr_dom;
     }
 
-  bitmap_size = OR_MULTI_BOUND_BIT_BYTES (attr_count);
-  buf_size += bitmap_size;
+  buf_size += or_multi_header_size (attr_count);
 
   midxkey.buf = (char *) db_private_alloc (NULL, buf_size);
   if (midxkey.buf == NULL)
@@ -11727,11 +11726,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       goto error_return;
     }
 
-  bound_bits = midxkey.buf;
-  key_ptr = bound_bits + bitmap_size;
+  or_init (&buf, midxkey.buf, buf_size);
 
-  or_init (&buf, key_ptr, buf_size - bitmap_size);
-  MIDXKEY_BOUNDBITS_INIT (bound_bits, bitmap_size);
+  nullmap_ptr = midxkey.buf;
+  or_multi_clear_header (nullmap_ptr, attr_count);
+
+  or_advance (&buf, or_multi_header_size (attr_count));
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
@@ -11742,16 +11742,20 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 	}
       dom = (*attr)->domain;
 
-      if (val != NULL && !DB_IS_NULL (val))
+      or_multi_put_element_offset (nullmap_ptr, attr_count, CAST_BUFLEN (buf.ptr - buf.buffer), i);
+
+      if (!DB_IS_NULL (val))
 	{
 	  dom->type->index_writeval (&buf, val);
-	  OR_ENABLE_BOUND_BIT (bound_bits, i);
+	  or_multi_set_not_null (nullmap_ptr, i);
 	}
       else
 	{
-	  OR_CLEAR_BOUND_BIT (bound_bits, i);
+	  assert (or_multi_is_null (nullmap_ptr, i));
 	}
     }
+
+  or_multi_put_size_offset (nullmap_ptr, attr_count, buf_size);
 
   midxkey.size = buf_size;
   midxkey.ncolumns = attr_count;

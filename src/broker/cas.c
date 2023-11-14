@@ -2279,14 +2279,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
     }
 
-
-  if (func_code == CAS_FC_EXECUTE || err_info.err_number < 0)
+  if (func_code == CAS_FC_EXECUTE || func_code == CAS_FC_EXECUTE_ARRAY || func_code == CAS_FC_EXECUTE_BATCH
+      || err_info.err_number < 0)
     {
-
-      if (logddl_get_jsp_mode () == false)
-	{
-	  logddl_write_end ();
-	}
+      logddl_write_end ();
     }
 
   if (net_buf->err_code)

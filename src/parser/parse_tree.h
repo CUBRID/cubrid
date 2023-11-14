@@ -41,7 +41,7 @@
 #include "message_catalog.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
-
+#include "hide_password.h"
 
 // forward definitions
 struct json_t;
@@ -3916,6 +3916,8 @@ struct parser_context
   int max_print_len;		/* for pt_short_print */
 
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
+
+  HIDE_PWD_INFO hide_pwd_info;
 
   struct
   {
