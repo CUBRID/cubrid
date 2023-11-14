@@ -11529,12 +11529,12 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 	      break;
 	    }
 
-	  if (bigint > 0 && (bigint >= max_value[desired_domain->precision])
-	      || (bigint < 0) && ((-bigint) >= max_value[desired_domain->precision]));
-	  {
-	    /* can not coerce for overflow */
-	    dom_status = DOMAIN_OVERFLOW;
-	  }
+	  if ((bigint > 0 && (bigint >= max_value[desired_domain->precision]))
+	      || ((bigint < 0) && ((-bigint) >= max_value[desired_domain->precision])))
+	    {
+	      /* can not coerce for overflow */
+	      dom_status = DOMAIN_OVERFLOW;
+	    }
 	}
     }
 
