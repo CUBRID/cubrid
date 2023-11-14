@@ -3562,6 +3562,23 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_EQ;
     }
 
+  /* check for superset of index */
+  if (a->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (a) && qo_is_iscan (a->plan_un.join.inner) &&
+      b->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (b) && qo_is_iscan (b->plan_un.join.inner))
+    {
+      temp_res = qo_plan_iscan_terms_cmp (a->plan_un.join.inner, b->plan_un.join.inner);
+      if (temp_res == PLAN_COMP_LT)
+	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
+	}
+      else if (temp_res == PLAN_COMP_GT)
+	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	  return PLAN_COMP_GT;
+	}
+    }
+
   if ((a->plan_type != QO_PLANTYPE_SCAN && a->plan_type != QO_PLANTYPE_SORT)
       || (b->plan_type != QO_PLANTYPE_SCAN && b->plan_type != QO_PLANTYPE_SORT))
     {
@@ -3657,18 +3674,6 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
   if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SCAN)
     {
-      /* check if it is an unique index and all columns are equi */
-      if (qo_is_all_unique_index_columns_are_equi_terms (a) && !qo_is_all_unique_index_columns_are_equi_terms (b))
-	{
-	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-	  return PLAN_COMP_LT;
-	}
-      if (!qo_is_all_unique_index_columns_are_equi_terms (a) && qo_is_all_unique_index_columns_are_equi_terms (b))
-	{
-	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
-	  return PLAN_COMP_GT;
-	}
-
       /* check multi range optimization */
       if (qo_is_index_mro_scan (a) && !qo_is_index_mro_scan (b))
 	{
