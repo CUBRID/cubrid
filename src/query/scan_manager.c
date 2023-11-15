@@ -1490,18 +1490,18 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   DB_MIDXKEY midxkey;
 
   int idx_ncols = 0, natts, i, j;
-  int buf_size, nullmap_size;
+  int buf_size;
 
   regu_variable_list_node *operand;
 
   char *nullmap_ptr;		/* ponter to boundbits */
-  char *key_ptr;		/* current position in key */
 
   OR_BUF buf;
 
   bool need_new_setdomain = false;
   TP_DOMAIN *idx_setdomain = NULL, *vals_setdomain = NULL;
   TP_DOMAIN *idx_dom = NULL, *val_dom = NULL, *dom = NULL, *next = NULL;
+  DB_TYPE idx_type_id;
   TP_DOMAIN dom_buf;
   DB_VALUE *coerced_values = NULL;
   bool *has_coerced_values = NULL;
@@ -1556,10 +1556,6 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   midxkey.buf = NULL;
   midxkey.min_max_val.position = -1;
 
-  /* bitmap is always fully sized */
-  nullmap_size = OR_MULTI_BOUND_BIT_BYTES (idx_ncols);
-  buf_size = nullmap_size;
-
   /* check to need a new setdomain */
   for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, i = 0; operand != NULL && idx_dom != NULL;
        operand = operand->next, idx_dom = idx_dom->next, i++)
@@ -1584,7 +1580,16 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
+      idx_type_id = TP_DOMAIN_TYPE (idx_dom);
       val_type_id = DB_VALUE_DOMAIN_TYPE (val);
+
+      if (!tp_valid_indextype (val_type_id))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (idx_type_id),
+		  pr_type_name (val_type_id));
+	  goto err_exit;
+	}
+
       if (TP_IS_STRING_TYPE (val_type_id))
 	{
 	  /* we need to check for maxes */
@@ -1599,7 +1604,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      if (TP_DOMAIN_TYPE (idx_dom) != val_type_id)
+      if (idx_type_id != val_type_id)
 	{
 	  /* allocate DB_VALUE array to store coerced values. */
 	  if (has_coerced_values == NULL)
@@ -1634,8 +1639,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	      has_coerced_values[i] = true;
 	    }
 	}
-      else if (TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_NUMERIC || TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_CHAR
-	       || TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_BIT || TP_DOMAIN_TYPE (idx_dom) == DB_TYPE_NCHAR)
+      else if (idx_type_id == DB_TYPE_NUMERIC || idx_type_id == DB_TYPE_CHAR || idx_type_id == DB_TYPE_BIT
+	       || idx_type_id == DB_TYPE_NCHAR)
 	{
 	  /* skip variable string domain : DB_TYPE_VARCHAR, DB_TYPE_VARNCHAR, DB_TYPE_VARBIT */
 
@@ -1746,6 +1751,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
     }
 
+  buf_size += or_multi_header_size (idx_ncols);
+
   midxkey.buf = (char *) db_private_alloc (thread_p, buf_size);
   if (midxkey.buf == NULL)
     {
@@ -1753,11 +1760,12 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       goto err_exit;
     }
 
-  nullmap_ptr = midxkey.buf;
-  key_ptr = nullmap_ptr + nullmap_size;
+  or_init (&buf, midxkey.buf, buf_size);
 
-  or_init (&buf, key_ptr, buf_size - nullmap_size);
-  MIDXKEY_BOUNDBITS_INIT (nullmap_ptr, nullmap_size);
+  nullmap_ptr = midxkey.buf;
+  or_multi_clear_header (nullmap_ptr, idx_ncols);
+
+  or_advance (&buf, or_multi_header_size (idx_ncols));
 
   /* generate multi columns key (values -> midxkey.buf) */
   for (operand = func->value.funcp->operand, i = 0, dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;
@@ -1777,12 +1785,14 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
+      or_multi_put_element_offset (nullmap_ptr, idx_ncols, CAST_BUFLEN (buf.ptr - buf.buffer), i);
+
       if (DB_IS_NULL (val))
 	{
 	  if (is_iss && i == 0)
 	    {
 	      /* There is nothing to write for NULL. Just make sure the bit is not set */
-	      OR_CLEAR_BOUND_BIT (nullmap_ptr, i);
+	      assert (or_multi_is_null (nullmap_ptr, i));
 	      continue;
 	    }
 	  else
@@ -1794,10 +1804,18 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
 
       dom->type->index_writeval (&buf, val);
-      OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
+      or_multi_set_not_null (nullmap_ptr, i);
     }
 
-  assert (buf_size == CAST_BUFLEN (buf.ptr - midxkey.buf));
+  assert (buf_size == CAST_BUFLEN (buf.ptr - buf.buffer));
+
+  for (i = natts; i < idx_ncols; i++)
+    {
+      assert (or_multi_is_null (nullmap_ptr, i));
+      or_multi_put_element_offset (nullmap_ptr, idx_ncols, buf_size, i);
+    }
+
+  or_multi_put_size_offset (nullmap_ptr, idx_ncols, buf_size);
 
   /* Make midxkey DB_VALUE */
   midxkey.size = buf_size;
@@ -3083,7 +3101,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* construct BTID_INT structure */
   BTS->btid_int.sys_btid = btid;
   if (btree_glean_root_header_info
-      (thread_p, root_header, &BTS->btid_int, BTS->btid_int.key_type == NULL ? true : false) != NO_ERROR)
+      (thread_p, root_header, &BTS->btid_int, (BTS->btid_int.key_type == NULL)) != NO_ERROR)
     {
       pgbuf_unfix_and_init (thread_p, Root);
       goto exit_on_error;
@@ -7730,9 +7748,42 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 
       if (scan_id->type == S_HEAP_SCAN)
 	{
-	  if (scan_id->scan_stats.agg_optimized_scan)
+	  if (scan_id->scan_stats.agl)
 	    {
-	      json_object_set_new (scan_stats, "aggregate optimized,", scan);
+	      SCAN_AGL *agl;
+	      char *agl_index;
+	      int len = 0;
+
+	      for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
+		{
+		  len += strlen (agl->agg_index_name) + 2;	/* for ", " */
+		}
+
+	      agl_index = (char *) malloc (len);
+	      if (agl_index == NULL)
+		{
+		  return;
+		}
+
+	      *agl_index = '\0';
+	      for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
+		{
+		  if (*agl_index)
+		    {
+		      sprintf (agl_index + strlen (agl_index), ", %s", agl->agg_index_name);
+		    }
+		  else
+		    {
+		      sprintf (agl_index, "%s", agl->agg_index_name);
+		    }
+		}
+	      json_object_set_new (scan, "agl", json_string (agl_index));
+	      free (agl_index);
+	    }
+
+	  if (scan_id->scan_stats.noscan)
+	    {
+	      json_object_set_new (scan_stats, "noscan", scan);
 	    }
 	  else
 	    {
@@ -7821,9 +7872,9 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-      if (scan_id->scan_stats.agg_optimized_scan)
+      if (scan_id->scan_stats.noscan)
 	{
-	  fprintf (fp, "(aggregate optimized,");
+	  fprintf (fp, "(noscan");	/* aggregate optimization is not a scan */
 	}
       else
 	{
@@ -7887,8 +7938,23 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_LIST_SCAN:
-      fprintf (fp, ", readrows: %llu, rows: %llu)", (unsigned long long int) scan_id->scan_stats.read_rows,
+      fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
+      if (scan_id->scan_stats.agl)
+	{
+	  SCAN_AGL *agl;
+
+	  fprintf (fp, ", agl: ");
+	  for (agl = scan_id->scan_stats.agl; agl; agl = agl->next)
+	    {
+	      fprintf (fp, "%s", agl->agg_index_name);
+	      if (agl->next)
+		{
+		  fprintf (fp, ", ");
+		}
+	    }
+	}
+      fprintf (fp, ")");
       break;
 
     case S_INDX_SCAN:

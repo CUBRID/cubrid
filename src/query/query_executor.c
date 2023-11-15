@@ -34,6 +34,7 @@
 #include "query_executor.h"
 
 #include "binaryheap.h"
+#include "deduplicate_key.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "partition_sr.h"
@@ -1362,7 +1363,17 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   QPROC_DB_VALUE_LIST value_list;
   int i;
 
-  if (xasl->list_id)
+  QFILE_LIST_ID *cte_cached_list_id = NULL;
+
+  if (xasl->type == CTE_PROC)
+    {
+      if (xasl->proc.cte.non_recursive_part && xasl->proc.cte.non_recursive_part->cte_xasl_id)
+	{
+	  cte_cached_list_id = xasl->proc.cte.non_recursive_part->list_id;
+	}
+    }
+
+  if (xasl->list_id && cte_cached_list_id == NULL)
     {				/* destroy list file */
       (void) qfile_close_list (thread_p, xasl->list_id);
       qfile_destroy_list (thread_p, xasl->list_id);
@@ -1802,6 +1813,23 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
+      /* aggregate optimize related should be free */
+      if (p->s_id.scan_stats.agl)
+	{
+	  SCAN_AGL *next, *agl = p->s_id.scan_stats.agl;;
+
+	  while (agl)
+	    {
+	      /* save before free */
+	      next = agl->next;
+
+	      free (agl->agg_index_name);
+	      free (agl);
+
+	      agl = next;
+	    }
+	}
+
       memset (&p->s_id.scan_stats, 0, sizeof (SCAN_STATS));
 
       if (p->parts != NULL)
@@ -7860,7 +7888,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!is_scan_needed)
 	    {
-	      xasl->spec_list->s_id.scan_stats.agg_optimized_scan = true;
 	      return S_SUCCESS;
 	    }
 
@@ -10366,7 +10393,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
+				NULL, false);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -10596,7 +10624,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       is_global_index = false;
 
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
+				NULL, false);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
@@ -11038,7 +11067,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->has_uniques && (insert->do_replace || odku_assignments != NULL))
     {
-      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info) < 0)
+      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info, false) < 0)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -15937,7 +15966,55 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
   /* first the non recursive part from the CTE shall be executed */
   if (non_recursive_part->status == XASL_CLEARED || non_recursive_part->status == XASL_INITIALIZED)
     {
-      if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
+      if (non_recursive_part->cte_xasl_id)
+	{
+	  int i;
+	  int host_var_count = non_recursive_part->cte_host_var_count;
+	  int *host_var_index = non_recursive_part->cte_host_var_index;
+
+	  QFILE_LIST_ID *list_id = NULL;	/* list-id of cached result */
+	  DB_VALUE *dbval_p;	/* db values' pointer for searching cached query */
+	  XASL_CACHE_ENTRY *ent = NULL;	/* xasl for cached query */
+	  QFILE_LIST_CACHE_ENTRY *list_cache_entry_p;
+
+	  xcache_find_sha1 (thread_p, &non_recursive_part->cte_xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &ent, NULL);
+	  if (ent)
+	    {
+	      DB_VALUE_ARRAY params;
+	      bool cached_result;
+
+	      dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
+	      for (i = 0; i < host_var_count; i++)
+		{
+		  db_value_clone (&xasl_state->vd.dbval_ptr[host_var_index[i]], &dbval_p[i]);
+		}
+
+	      params.size = host_var_count;
+	      params.vals = dbval_p;
+
+	      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, ent, &params, &cached_result);
+	      if (cached_result && list_cache_entry_p)
+		{
+		  list_id = &list_cache_entry_p->list_id;
+		}
+
+	      for (i = 0; i < host_var_count; i++)
+		{
+		  pr_clear_value (&dbval_p[i]);
+		}
+
+	      xcache_unfix (thread_p, ent);
+	    }
+
+	  if (ent == NULL || list_cache_entry_p == NULL || list_id == NULL)
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  qfile_copy_list_id (non_recursive_part->list_id, list_id, false);
+	}
+      else if (qexec_execute_mainblock (thread_p, non_recursive_part, xasl_state, NULL) != NO_ERROR)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
 	  GOTO_EXIT_ON_ERROR;
@@ -21838,7 +21915,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   size_values = xasl->outptr_list->valptr_cnt;
-  assert (size_values == 14);
+  assert (size_values == 14);	/* The 14 is number of aliases[] in pt_make_query_show_index() */
   out_values = (DB_VALUE **) malloc (size_values * sizeof (DB_VALUE *));
   if (out_values == NULL)
     {
@@ -21947,7 +22024,13 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
-	  assert (att_id >= 0);
+	  assert (att_id >= 0 || IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
+
+	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
+	    {
+	      assert ((j + 1) == num_idx_att);
+	      break;
+	    }
 
 	  if (index_position == function_index_pos)
 	    {
@@ -23832,7 +23915,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	{
 	  /* scan is needed for this aggregate */
 	  *is_scan_needed = true;
-	  break;
+	  continue;
 	}
 
       /* If we deal with a count optimization and the snapshot wasn't already taken then prepare current class for
@@ -23846,7 +23929,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    {
 	      agg_ptr->flag_agg_optimize = false;
 	      *is_scan_needed = true;
-	      break;
+	      continue;
 	    }
 	  if (tdes->mvccinfo.snapshot.valid)
 	    {
@@ -23854,7 +23937,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		{
 		  agg_ptr->flag_agg_optimize = false;
 		  *is_scan_needed = true;
-		  break;
+		  continue;
 		}
 	    }
 	  else
@@ -23863,7 +23946,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		{
 		  agg_ptr->flag_agg_optimize = false;
 		  *is_scan_needed = true;
-		  break;
+		  continue;
 		}
 	      class_cos->count_state = COS_TO_LOAD;
 
@@ -23872,6 +23955,47 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		  error = er_errid ();
 		  return (error == NO_ERROR ? ER_FAILED : error);
 		}
+
+	    }
+	}
+
+      if (thread_is_on_trace (thread_p))
+	{
+	  char *agg_index_name;
+	  SCAN_AGL *agl;
+
+	  error = heap_get_indexinfo_of_btid (thread_p, &ACCESS_SPEC_CLS_OID (spec), &agg_ptr->btid,
+					      NULL, NULL, NULL, NULL, &agg_index_name, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  for (agl = spec->s_id.scan_stats.agl; agl; agl = agl->next)
+	    {
+	      if (strcmp (agl->agg_index_name, agg_index_name) == 0)
+		{
+		  /* same index name found */
+		  break;
+		}
+	    }
+
+	  if (agl == NULL)
+	    {
+	      agl = (SCAN_AGL *) malloc (sizeof (SCAN_AGL));
+	      if (agl == NULL)
+		{
+		  return ER_FAILED;
+		}
+
+	      agl->agg_index_name = agg_index_name;
+	      agl->next = spec->s_id.scan_stats.agl;
+	      spec->s_id.scan_stats.agl = agl;
+	    }
+	  else
+	    {
+	      /* same index name found */
+	      free (agg_index_name);
 	    }
 	}
     }
@@ -23908,6 +24032,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	    }
 	}
     }
+
+  spec->s_id.scan_stats.noscan = (*is_scan_needed) ? false : true;
 
   return error;
 }

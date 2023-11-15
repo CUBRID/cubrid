@@ -622,17 +622,23 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
     set(CMAKE_EXE_LINKER_FLAGS "-Wl,-bbigtoc -Wl,-brtl -Wl,-bnortllib -Wl,-bnosymbolic -Wl,-bnoautoexp -Wl,-bexpall -Wl,-bmaxdata:0x80000000 -Wl,-bnoipath" CACHE INTERNAL "" FORCE)
   endif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
 elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
-  add_definitions(-DWIN -DWINDOWS -D_CRT_SECURE_NO_WARNINGS /wd4274 /wd4996)
+  add_definitions(-DWIN -DWINDOWS -D_CRT_SECURE_NO_WARNINGS /wd4274 /wd4996 /wd4251 /wd4275)
   string(REPLACE "/DWIN32" "/D_WIN64" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-  if(MSVC_VERSION GREATER 1400)
-    # experimental option (it can lead the build system to a halt or creating a bad object files)
-    set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
-    if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
-      add_definitions(/MP)
-    elseif(PARALLEL_JOBS GREATER 0)
-      add_definitions(/MP${PARALLEL_JOBS})
-    endif(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
-  endif(MSVC_VERSION GREATER 1400)
+  
+  # [WARNING] EXPERIMENTAL OPTION: it can lead the build system to a halt or creating a bad object files.
+  # If the build fails unexpectedly, set PARALLEL_JOBS to "0" and try to compile again.
+  set(PARALLEL_JOBS "0" CACHE STRING "Specifies the number of jots to build parallel. 0 means OFF")
+  if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL})
+    set(PARALLEL_JOBS "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+  endif()
+
+  message(STATUS "Build in parallel: ${PARALLEL_JOBS}")
+
+  if(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
+    add_definitions(/MP)
+  elseif(PARALLEL_JOBS GREATER 0)
+    add_definitions(/MP${PARALLEL_JOBS})
+  endif(PARALLEL_JOBS GREATER $ENV{NUMBER_OF_PROCESSORS})
 endif(CMAKE_SYSTEM_NAME MATCHES "Linux")
 
 # common definitions
@@ -833,6 +839,7 @@ endif(WIN32)
 # for cmserver
 if(WITH_CCI AND WITH_CMSERVER AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server)
   include(ExternalProject)
+  set_property(DIRECTORY PROPERTY EP_BASE "${CMAKE_BINARY_DIR}/3rdparty")
   get_target_property(CCI_PUBLIC_HEADERS cascci PUBLIC_HEADER)
   get_target_property(CMDEP_PUBLIC_HEADERS cmdep PUBLIC_HEADER)
   get_target_property(CMSTAT_PUBLIC_HEADERS cmstat PUBLIC_HEADER)
@@ -889,7 +896,7 @@ if(USE_CUBRID_ENV)
   install(FILES
     ${CMAKE_SOURCE_DIR}/COPYING
     ${CMAKE_SOURCE_DIR}/CREDITS
-    ${CMAKE_SOURCE_DIR}/README
+    ${CMAKE_SOURCE_DIR}/README.md
     ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
     DESTINATION ${CUBRID_PREFIXDIR})
 # on Windows, databases.txt is create from 'make_cubrid_demo.bat' because databases.txt is deleted in MSI file for install.

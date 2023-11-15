@@ -1454,6 +1454,90 @@ end:
   return offset;
 }
 
+static char *
+xts_process_cte_xasl_id (char *ptr, const XASL_ID * cte_xasl_id)
+{
+  int i;
+
+  ptr = or_pack_sha1 (ptr, &cte_xasl_id->sha1);
+
+  OR_PUT_INT (ptr, cte_xasl_id->cache_flag);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, cte_xasl_id->time_stored.sec);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, cte_xasl_id->time_stored.usec);
+  ptr += OR_INT_SIZE;
+
+  return ptr;
+}
+
+static int
+xts_save_cte_xasl_id (const XASL_ID * cte_xasl_id)
+{
+  int offset, i;
+  int size;
+  char *ptr;
+
+  OR_ALIGNED_BUF (sizeof (*cte_xasl_id)) a_buf;
+  char *buf = OR_ALIGNED_BUF_START (a_buf);
+
+  char *buf_p = NULL;
+  bool is_buf_alloced = false;
+
+  if (cte_xasl_id == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  offset = xts_get_offset_visited_ptr (cte_xasl_id);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  size = sizeof (XASL_ID);
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (cte_xasl_id, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
+    {
+      buf_p = buf;
+    }
+  else
+    {
+      buf_p = (char *) malloc (size);
+      if (buf_p == NULL)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+
+      is_buf_alloced = true;
+    }
+
+  buf = xts_process_cte_xasl_id (buf_p, cte_xasl_id);
+  if (buf == NULL)
+    {
+      offset = ER_FAILED;
+      goto end;
+    }
+  assert (buf <= buf_p + size);
+
+  memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+end:
+  if (is_buf_alloced)
+    {
+      free_and_init (buf_p);
+    }
+
+  return offset;
+}
+
 static int
 xts_save_db_value (const DB_VALUE * value)
 {
@@ -2764,7 +2848,7 @@ static char *
 xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 {
   int offset;
-  int cnt;
+  int cnt, i;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
   assert (PTR_ALIGN (ptr, MAX_ALIGNMENT) == ptr);
@@ -3033,6 +3117,27 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ptr = or_pack_int (ptr, xasl->upd_del_class_cnt);
 
   ptr = or_pack_int (ptr, xasl->mvcc_reev_extra_cls_cnt);
+
+  if (xasl->cte_xasl_id == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_cte_xasl_id (xasl->cte_xasl_id);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  ptr = or_pack_int (ptr, xasl->cte_host_var_count);
+
+  for (i = 0; i < xasl->cte_host_var_count; i++)
+    {
+      ptr = or_pack_int (ptr, xasl->cte_host_var_index[i]);
+    }
 
   /*
    * NOTE that the composite lock block is strictly a server side block
@@ -5865,6 +5970,10 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     {
       size += xts_sizeof_access_spec_type (access_spec);
     }
+
+  size += PTR_SIZE;		/* for cte_xasl_id */
+  size += OR_INT_SIZE;		/* for CTE host variable count */
+  size += (OR_INT_SIZE * xasl->cte_host_var_count);
 
   switch (xasl->type)
     {
