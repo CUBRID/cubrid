@@ -519,7 +519,6 @@ extern "C"
   extern int tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result);
   extern int tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const int line_no,
 				      const DB_VALUE * src, const TP_DOMAIN * domain);
-  extern int tp_get_precision (DB_VALUE * value);
 #ifdef __cplusplus
 }
 #endif

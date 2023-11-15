@@ -11489,7 +11489,7 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 {
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
 
-  static INT64 max_value[19];	/* max size of a big integer is 19 */
+  static INT64 max_value[19];	/* max precision of a big integer is 19 */
   static bool init_bigint_value = false;
 
   if (!init_bigint_value)
@@ -11497,7 +11497,7 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
       int i;
 
       max_value[0] = 1;
-      for (i = 1; i < 18; i++)
+      for (i = 1; i < 19; i++)
 	{
 	  max_value[i] = max_value[i - 1] * 10;
 	}
