@@ -108,4 +108,8 @@ extern int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIEN
 			     int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count,
 			     DB_VALUE ** values, int *values_cnt, bool has_delete);
 
+#if defined(WINDOWS)
+#define _GNU_SOURCE
+#endif
+
 #endif /* _EXECUTE_SCHEMA_H_ */
