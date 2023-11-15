@@ -1216,7 +1216,6 @@ extern int or_packed_varbit_length (int bitlen);
  * this file (it references DB_TYPE)
  */
 extern int or_listid_length (void *listid);
-extern int or_method_sig_list_length (void *method_sig_list_ptr);
 extern int or_set_node_length (void *set_node_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_elo_length (void *elo_ptr);
