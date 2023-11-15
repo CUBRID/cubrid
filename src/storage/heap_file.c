@@ -1154,7 +1154,7 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
   (void) heap_stats_entry_free (thread_p, ent, NULL);
   ent = NULL;
 
-  heap_Bestspace->num_stats_entries -= 1;
+  heap_Bestspace->num_stats_entries--;
 
 end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
@@ -7831,6 +7831,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   int get_rec_info = cache_recordinfo != NULL;
   bool is_null_recdata;
   PGBUF_WATCHER old_page_watcher;
+  PGBUF_WATCHER rec_info_page_watcher;
 
   assert (scan_cache != NULL);
 
@@ -8042,8 +8043,10 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       /* A record was found */
       if (get_rec_info)
 	{
+	  PGBUF_INIT_WATCHER (&rec_info_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+	  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &rec_info_page_watcher);
 	  scan =
-	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &scan_cache->page_watcher, scan_cache,
+	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &rec_info_page_watcher, scan_cache,
 				  ispeeking, cache_recordinfo);
 	}
       else
@@ -12474,7 +12477,10 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
   or_init (&buf, midxkey->buf, -1);
 
   nullmap_ptr = midxkey->buf;
-  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_atts));
+  or_multi_clear_header (nullmap_ptr, num_atts);
+
+  or_advance (&buf, or_multi_header_size (num_atts));
+
   k = 0;
   for (i = 0; i < num_atts && k < num_atts; i++)
     {
@@ -12482,11 +12488,17 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	{
 	  assert (func_domain != NULL);
 
-	  if (!db_value_is_null (func_res))
+	  or_multi_put_element_offset (nullmap_ptr, num_atts, CAST_BUFLEN (buf.ptr - buf.buffer), k);
+
+	  if (!DB_IS_NULL (func_res))
 	    {
 	      func_domain->type->index_writeval (&buf, func_res);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	      or_multi_set_not_null (nullmap_ptr, k);
 	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	    }
+	  else
+	    {
+	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 
 	  if (key_domain != NULL)
@@ -12521,29 +12533,42 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	  break;
 	}
 
+      or_multi_put_element_offset (nullmap_ptr, num_atts, CAST_BUFLEN (buf.ptr - buf.buffer), k);
+
       if (IS_DEDUPLICATE_KEY_ATTR_ID (atts[i]->id))
 	{
 	  if (not_null_field_cnt > 0)
 	    {
 	      dk_get_deduplicate_key_value (rec_oid, atts[i]->id, &value);
 	      atts[i]->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      //  In this case, there is no need to clean them up using pr_clear_value().     
+	      or_multi_set_not_null (nullmap_ptr, k);
+	      /* In this case, there is no need to clean them up using pr_clear_value (). */
+	    }
+	  else
+	    {
+	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 	}
       else
 	{
 	  error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
-	  if (error == NO_ERROR && !db_value_is_null (&value))
+	  if (error == NO_ERROR)
 	    {
-	      atts[i]->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-	    }
+	      if (!DB_IS_NULL (&value))
+		{
+		  atts[i]->domain->type->index_writeval (&buf, &value);
+		  or_multi_set_not_null (nullmap_ptr, k);
+		  not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-	  if (DB_NEED_CLEAR (&value))
-	    {
-	      pr_clear_value (&value);
+		  if (DB_NEED_CLEAR (&value))
+		    {
+		      pr_clear_value (&value);
+		    }
+		}
+	      else
+		{
+		  assert (or_multi_is_null (nullmap_ptr, k));
+		}
 	    }
 	}
 
@@ -12581,6 +12606,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	}
       k++;
     }
+
+  or_multi_put_size_offset (nullmap_ptr, num_atts, CAST_BUFLEN (buf.ptr - buf.buffer));
 
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
   midxkey->ncolumns = num_atts;
@@ -12662,30 +12689,38 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	}
     }
 
-  assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
-
-  or_init (&buf, midxkey->buf, -1);
-
-  nullmap_ptr = midxkey->buf;
-
   /* On constructing index */
   num_vals = attrinfo->num_values;
   if (func_res)
     {
       num_vals = func_attr_index_start + 1;
     }
-  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_vals));
+
+  assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
+
+  or_init (&buf, midxkey->buf, -1);
+
+  nullmap_ptr = midxkey->buf;
+  or_multi_clear_header (nullmap_ptr, num_vals);
+
+  or_advance (&buf, or_multi_header_size (num_vals));
 
   for (k = 0, i = 0; k < num_vals; i++, k++)
     {
       if (i == func_col_id)
 	{
-	  if (!db_value_is_null (func_res))
+	  or_multi_put_element_offset (nullmap_ptr, num_vals, CAST_BUFLEN (buf.ptr - buf.buffer), k);
+
+	  if (!DB_IS_NULL (func_res))
 	    {
 	      TP_DOMAIN *domain = tp_domain_resolve_default ((DB_TYPE) func_res->domain.general_info.type);
 	      domain->type->index_writeval (&buf, func_res);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	      or_multi_set_not_null (nullmap_ptr, k);
 	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	    }
+	  else
+	    {
+	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 
 	  if (++k == num_vals)
@@ -12694,6 +12729,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	    }
 	}
 
+      or_multi_put_element_offset (nullmap_ptr, num_vals, CAST_BUFLEN (buf.ptr - buf.buffer), k);
+
       if (IS_DEDUPLICATE_KEY_ATTR_ID (att_ids[i]))
 	{
 	  if (not_null_field_cnt > 0)
@@ -12701,8 +12738,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      att = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (att_ids[i]);
 	      dk_get_deduplicate_key_value (rec_oid, att_ids[i], &value);
 	      att->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      //  In this case, there is no need to clean them up using pr_clear_value().     
+	      or_multi_set_not_null (nullmap_ptr, k);
+	      /* In this case, there is no need to clean them up using pr_clear_value (). */
+	    }
+	  else
+	    {
+	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 	}
       else
@@ -12710,16 +12751,23 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	  att = heap_locate_attribute (att_ids[i], attrinfo);
 
 	  error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
-	  if (error == NO_ERROR && !db_value_is_null (&value))
+	  if (error == NO_ERROR)
 	    {
-	      att->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-	    }
+	      if (!DB_IS_NULL (&value))
+		{
+		  att->domain->type->index_writeval (&buf, &value);
+		  or_multi_set_not_null (nullmap_ptr, k);
+		  not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-	  if (DB_NEED_CLEAR (&value))
-	    {
-	      pr_clear_value (&value);
+		  if (DB_NEED_CLEAR (&value))
+		    {
+		      pr_clear_value (&value);
+		    }
+		}
+	      else
+		{
+		  assert (or_multi_is_null (nullmap_ptr, k));
+		}
 	    }
 	}
     }
@@ -12728,6 +12776,9 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
     {
       pr_clear_value (&value);
     }
+
+  or_multi_put_size_offset (nullmap_ptr, num_vals, CAST_BUFLEN (buf.ptr - buf.buffer));
+
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
   midxkey->ncolumns = num_vals;
   midxkey->domain = midxkey_domain;
@@ -24883,9 +24934,10 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	}
 
       const bool need_check_visibility = scan_cache->mvcc_snapshot != NULL
-	&& scan_cache->mvcc_snapshot->snapshot_fnc != NULL && !mvcc_is_mvcc_disabled_class (class_oid)
-	&& scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
-						    scan_cache->mvcc_snapshot) != SNAPSHOT_SATISFIED;
+	&& scan_cache->mvcc_snapshot->snapshot_fnc != NULL && class_oid != NULL
+	&& !mvcc_is_mvcc_disabled_class (class_oid)
+	&& scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) !=
+	SNAPSHOT_SATISFIED;
 
       if (!need_check_visibility)
 	{
