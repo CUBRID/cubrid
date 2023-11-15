@@ -4484,7 +4484,7 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 	{
 	  DB_VALUE result;
 
-	  pr_midxkey_add_prefix (&result, &(pg_prefix->prefix_key), key, n_prefix);
+	  pr_midxkey_add_prefix (&result, lf_key_ptr, key, n_prefix);
 	  btree_clear_key_value (clear_key, key);
 	  if (pg_prefix == NULL)
 	    {
