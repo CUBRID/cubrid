@@ -1154,7 +1154,7 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
   (void) heap_stats_entry_free (thread_p, ent, NULL);
   ent = NULL;
 
-  heap_Bestspace->num_stats_entries -= 1;
+  heap_Bestspace->num_stats_entries--;
 
 end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
