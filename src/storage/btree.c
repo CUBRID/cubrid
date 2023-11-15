@@ -4430,10 +4430,19 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
   if ((n_prefix != 0) && !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY)
       && !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_FENCE))
     {
-      DB_VALUE lf_key;
-      bool lf_clear_key;
-      DB_VALUE *lf_key_ptr = &lf_key;
-      bool *lf_clear_key_ptr = &lf_clear_key;
+      DB_VALUE lf_key, *lf_key_ptr;;
+      bool lf_clear_key, *lf_clear_key_ptr;
+
+      if (pg_prefix)
+	{
+	  lf_key_ptr = &(pg_prefix->prefix_key);
+	  lf_clear_key_ptr = &(pg_prefix->clear_prefix_key);
+	}
+      else
+	{
+	  lf_key_ptr = &lf_key;
+	  lf_clear_key_ptr = &lf_clear_key;
+	}
 
       if (n_prefix == COMMON_PREFIX_UNKNOWN)
 	{
@@ -4446,8 +4455,6 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 	      VPID_COPY (&(pg_prefix->vpid), &(bts->C_vpid));
 	      LSA_COPY (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr));
 	      btree_clear_key_value (&(pg_prefix->clear_prefix_key), &(pg_prefix->prefix_key));
-	      lf_key_ptr = &(pg_prefix->prefix_key);
-	      lf_clear_key_ptr = &(pg_prefix->clear_prefix_key);
 	    }
 	  else
 	    {
