@@ -37,6 +37,7 @@ import com.cubrid.plcsql.compiler.DateTimeParser;
 import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
 import java.sql.*;
 import java.sql.Date;
@@ -57,6 +58,23 @@ import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
+
+    public static BigDecimal checkPrecision(int prec, short scale, BigDecimal val) {
+        // ParseTreeConverter.visitNumeric_type() guarantees the following assertions
+        assert prec >= 1 && prec <= 38;
+        assert scale >= 0 && scale <= prec;
+
+        if (val.scale() != scale) {
+            val = val.setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        if (val.precision() > prec) {
+            throw new VALUE_ERROR(
+                    "numeric value does not fit in the target type's precision and scale");
+        }
+
+        return val;
+    }
 
     // -------------------------------------------------------------------------------
     // To provide line and column numbers for run-time exceptions
@@ -1446,7 +1464,23 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l.multiply(r);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision = p1 + p2 + 1;
+        int scale = s1 + s2;
+
+        BigDecimal ret =
+                l.multiply(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1516,7 +1550,27 @@ public class SpLib {
         if (r.equals(BigDecimal.ZERO)) {
             throw new ZERO_DIVIDE();
         }
-        return l.divide(r, BigDecimal.ROUND_HALF_UP);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision = (p1 - s1) + s2 + Math.max(9, Math.max(s1, s2));
+        int scale = Math.max(9, Math.max(s1, s2));
+        if (maxPrecision > 38) {
+            scale = Math.min(9, scale - (maxPrecision - 38));
+            maxPrecision = 38;
+        }
+
+        BigDecimal ret =
+                l.divide(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1666,7 +1720,23 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l.add(r);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2) + 1;
+        int scale = Math.max(s1, s2);
+
+        BigDecimal ret =
+                l.add(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1805,7 +1875,26 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l.subtract(r);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision =
+                Math.max(p1 - s1, p2 - s2)
+                        + Math.max(s1, s2)
+                        + 1; // +1: consider subtracting a minus value
+        int scale = Math.max(s1, s2);
+
+        BigDecimal ret =
+                l.subtract(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)

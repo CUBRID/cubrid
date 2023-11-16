@@ -36,22 +36,26 @@ import java.util.Map;
 
 public class TypeSpecSimple extends TypeSpec {
 
-    public static final int IDX_NULL = 0;
-    public static final int IDX_OBJECT = 1;
-    public static final int IDX_BOOLEAN = 2;
-    public static final int IDX_STRING = 3;
-    public static final int IDX_SHORT = 4;
-    public static final int IDX_INT = 5;
-    public static final int IDX_BIGINT = 6;
-    public static final int IDX_NUMERIC = 7;
-    public static final int IDX_FLOAT = 8;
-    public static final int IDX_DOUBLE = 9;
-    public static final int IDX_DATE = 10;
-    public static final int IDX_TIME = 11;
-    public static final int IDX_DATETIME = 12;
-    public static final int IDX_TIMESTAMP = 13;
-    public static final int IDX_SYS_REFCURSOR = 14;
-    public static final int IDX_CURSOR = 15;
+    // types used only by the typechecker
+    public static final int IDX_CURSOR = 0;
+    public static final int IDX_NULL = 1;
+    public static final int IDX_OBJECT = 2;
+
+    // types used by users
+    public static final int IDX_BOOLEAN = 3;
+    public static final int IDX_STRING = 4;
+    public static final int IDX_SHORT = 5;
+    public static final int IDX_INT = 6;
+    public static final int IDX_BIGINT = 7;
+    public static final int IDX_NUMERIC = 8;
+    public static final int IDX_FLOAT = 9;
+    public static final int IDX_DOUBLE = 10;
+    public static final int IDX_DATE = 11;
+    public static final int IDX_TIME = 12;
+    public static final int IDX_DATETIME = 13;
+    public static final int IDX_TIMESTAMP = 14;
+    public static final int IDX_SYS_REFCURSOR = 15;
+
     public static final int COUNT_OF_IDX = 16;
 
     @Override
@@ -60,6 +64,10 @@ public class TypeSpecSimple extends TypeSpec {
     }
 
     public final String fullJavaType;
+
+    public static boolean isUserType(TypeSpecSimple ty) {
+        return (ty.simpleTypeIdx >= IDX_BOOLEAN);
+    }
 
     public static TypeSpecSimple ofJavaName(String javaType) {
         TypeSpecSimple ret = javaNameToSpec.get(javaType);
@@ -73,8 +81,8 @@ public class TypeSpecSimple extends TypeSpec {
     }
 
     // the following two are not actual Java types but only for internal type checking
-    public static TypeSpecSimple NULL = new TypeSpecSimple("Null", "Null", IDX_NULL, "null");
     public static TypeSpecSimple CURSOR = new TypeSpecSimple("Cursor", "Cursor", IDX_CURSOR, null);
+    public static TypeSpecSimple NULL = new TypeSpecSimple("Null", "Null", IDX_NULL, "null");
 
     // (1) used as an argument type of some operators in SpLib
     // (2) used as an expression type when a specific Java type cannot be given
@@ -85,7 +93,7 @@ public class TypeSpecSimple extends TypeSpec {
             new TypeSpecSimple("Boolean", "java.lang.Boolean", IDX_BOOLEAN, null);
     public static TypeSpecSimple STRING =
             new TypeSpecSimple("String", "java.lang.String", IDX_STRING, "cast(? as string)");
-    public static TypeSpecSimple NUMERIC =
+    public static TypeSpecSimple NUMERIC_ANY = // numeric with any precision and scale
             new TypeSpecSimple(
                     "Numeric", "java.math.BigDecimal", IDX_NUMERIC, "cast(? as numeric)");
     public static TypeSpecSimple SHORT =
@@ -115,12 +123,6 @@ public class TypeSpecSimple extends TypeSpec {
                     IDX_SYS_REFCURSOR,
                     null);
 
-    /* TODO: restore later
-    public static TypeSpecSimple SET = of("java.util.Set");
-    public static TypeSpecSimple MULTISET = of("org.apache.commons.collections4.MultiSet");
-    public static TypeSpecSimple LIST = of("java.util.List");
-     */
-
     public boolean isNumber() {
         return simpleTypeIdx == IDX_SHORT
                 || simpleTypeIdx == IDX_INT
@@ -145,7 +147,7 @@ public class TypeSpecSimple extends TypeSpec {
     // Private
     // ------------------------------------------------------------------
 
-    private TypeSpecSimple(
+    protected TypeSpecSimple(
             String plcName, String fullJavaType, int simpleTypeIdx, String typicalValueStr) {
         super(plcName, getJavaCode(fullJavaType), simpleTypeIdx, typicalValueStr);
         this.fullJavaType = fullJavaType;
@@ -176,7 +178,7 @@ public class TypeSpecSimple extends TypeSpec {
         register(OBJECT);
         register(BOOLEAN);
         register(STRING);
-        register(NUMERIC);
+        register(NUMERIC_ANY);
         register(SHORT);
         register(INT);
         register(BIGINT);

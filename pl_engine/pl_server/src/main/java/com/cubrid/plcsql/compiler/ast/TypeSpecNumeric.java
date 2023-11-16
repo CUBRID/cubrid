@@ -31,25 +31,43 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.Map;
+import java.util.HashMap;
 
-public class TypeSpecNumeric extends TypeSpec {
+public class TypeSpecNumeric extends TypeSpecSimple {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitTypeSpecNumeric(this);
-    }
+    // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
 
     public final int precision;
-    public final int scale;
+    public final short scale;
 
-    public TypeSpecNumeric(int precision, int scale) {
-        super("BigDecimal");
+    public static synchronized TypeSpecNumeric getInstance(int precision, short scale) {
+
+        assert precision <= 38 && precision >= 1;
+        assert scale <= precision && scale >= 0;
+
+        int key = precision * 100 + scale;
+        TypeSpecNumeric ret = instances.get(key);
+        if (ret == null) {
+            String typicalValueStr = String.format("cast(? as numeric(%d, %d))", precision, scale);
+            ret = new TypeSpecNumeric(
+                    "Numeric", "java.math.BigDecimal", typicalValueStr, precision, scale);
+            instances.put(key, ret);
+        }
+
+        return ret;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Private
+    // ---------------------------------------------------------------------------
+
+    private static final Map<Integer, TypeSpecNumeric> instances = new HashMap<>();
+
+    private TypeSpecNumeric(String plcName, String fullJavaType, String typicalValueStr, int precision, short scale) {
+        super(plcName, fullJavaType, IDX_NUMERIC, typicalValueStr);
         this.precision = precision;
         this.scale = scale;
     }
 
-    @Override
-    public String toJavaSignature() {
-        return "java.math.BigDecimal";
-    }
 }

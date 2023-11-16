@@ -2278,6 +2278,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static final String[] tmplCastCoercion = new String[] {"(%'TYPE'%)", "  %'+EXPR'%"};
     private static final String[] tmplConvCoercion =
             new String[] {"conv%'SRC-TYPE'%To%'DST-TYPE'%(", "  %'+EXPR'%)"};
+    private static final String[] tmplCoerceAndCheckPrec =
+            new String[] {"checkPrecision(%'PREC'%, (short) %'SCALE'%,", "  %'+EXPR'%)"};
 
     private CodeToResolve applyCoercion(Coercion c, CodeTemplate exprCode) {
 
@@ -2305,6 +2307,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     conv.dst.plcName,
                     "%'+EXPR'%",
                     exprCode);
+        } else if (c instanceof Coercion.CoerceAndCheckPrecision) {
+            Coercion.CoerceAndCheckPrecision checkPrec = (Coercion.CoerceAndCheckPrecision) c;
+            return new CodeTemplate(
+                    "coerce and check precision",
+                    Misc.UNKNOWN_LINE_COLUMN,
+                    tmplCoerceAndCheckPrec,
+                    "%'PREC'%",
+                    "" + checkPrec.prec,
+                    "%'SCALE'%",
+                    "" + checkPrec.scale,
+                    "%'+EXPR'%",
+                    applyCoercion(checkPrec.c, exprCode));
         } else {
             throw new RuntimeException("unreachable");
         }
@@ -2564,7 +2578,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 assert pairs[i] instanceof String
                         : astNode + " - first element of each pair must be a String: " + pairs[i];
                 String hole = (String) pairs[i];
-                assert hole.startsWith("%'")
+                assert hole.startsWith("%'") && hole.endsWith("'%")
                         : astNode
                                 + " - first element of each pair must indicate a hole: "
                                 + pairs[i];
@@ -2667,6 +2681,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 String remainder = line.substring(spaces + bigHole.length());
 
                 Object substitute = substitutions.get(bigHole);
+                assert substitute != null : ("no substitute for a big hole " + bigHole);
                 if (substitute instanceof String) {
                     String l = (String) substitute;
                     if (l.indexOf("%'") == -1) {
@@ -2716,7 +2731,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     }
 
                 } else {
-                    throw new RuntimeException("unreachable");
+                    throw new RuntimeException("unreachable: substitute=" + substitute);
                 }
 
                 // Append the remainder, if any, to the last line.

@@ -31,6 +31,7 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 
 public class DBTypeAdapter {
@@ -56,37 +57,12 @@ public class DBTypeAdapter {
         return false;
     }
 
-    public static TypeSpecSimple getTypeSpec(int dbType) {
-        switch (dbType) {
-            case DBType.DB_NULL:
-                return TypeSpecSimple.NULL;
-            case DBType.DB_CHAR:
-            case DBType.DB_STRING:
-                return TypeSpecSimple.STRING;
-            case DBType.DB_SHORT:
-                return TypeSpecSimple.SHORT;
-            case DBType.DB_INT:
-                return TypeSpecSimple.INT;
-            case DBType.DB_BIGINT:
-                return TypeSpecSimple.BIGINT;
-            case DBType.DB_NUMERIC:
-                return TypeSpecSimple.NUMERIC;
-            case DBType.DB_FLOAT:
-                return TypeSpecSimple.FLOAT;
-            case DBType.DB_DOUBLE:
-                return TypeSpecSimple.DOUBLE;
-            case DBType.DB_DATE:
-                return TypeSpecSimple.DATE;
-            case DBType.DB_TIME:
-                return TypeSpecSimple.TIME;
-            case DBType.DB_DATETIME:
-                return TypeSpecSimple.DATETIME;
-            case DBType.DB_TIMESTAMP:
-                return TypeSpecSimple.TIMESTAMP;
-            default:
-                assert false : "unreachable";
-                throw new RuntimeException("unreachable");
-        }
+    public static TypeSpecSimple getDeclTypeSpec(int dbType, int prec, short scale) {
+        return getTypeSpecSimple(dbType, true, prec, scale);
+    }
+
+    public static TypeSpecSimple getValueType(int dbType) {
+        return getTypeSpecSimple(dbType, false, -1, (short) -1); // ignore precision and scale
     }
 
     public static String getSqlTypeName(int dbType) {
@@ -152,6 +128,51 @@ public class DBTypeAdapter {
                 return "DATETIMELTZ";
             default:
                 return "UNKNOWN (code: " + dbType + ")";
+        }
+    }
+
+    // ---------------------------------------------------------
+    // Private
+    // ---------------------------------------------------------
+
+    private static TypeSpecSimple getTypeSpecSimple(
+            int dbType, boolean includePrecision, int prec, short scale) {
+        switch (dbType) {
+            case DBType.DB_NULL:
+                return TypeSpecSimple.NULL;
+            case DBType.DB_CHAR:
+            case DBType.DB_STRING:
+                return TypeSpecSimple.STRING;
+            case DBType.DB_SHORT:
+                return TypeSpecSimple.SHORT;
+            case DBType.DB_INT:
+                return TypeSpecSimple.INT;
+            case DBType.DB_BIGINT:
+                return TypeSpecSimple.BIGINT;
+            case DBType.DB_NUMERIC:
+                if (includePrecision) {
+                    assert prec >= 1 && prec <= 38 : ("invalid precision " + prec);
+                    assert scale >= 0 && scale <= prec
+                            : ("invalid scale " + scale + " (precision " + prec + ")");
+                    return TypeSpecNumeric.getInstance(prec, scale);
+                } else {
+                    return TypeSpecSimple.NUMERIC_ANY;
+                }
+            case DBType.DB_FLOAT:
+                return TypeSpecSimple.FLOAT;
+            case DBType.DB_DOUBLE:
+                return TypeSpecSimple.DOUBLE;
+            case DBType.DB_DATE:
+                return TypeSpecSimple.DATE;
+            case DBType.DB_TIME:
+                return TypeSpecSimple.TIME;
+            case DBType.DB_DATETIME:
+                return TypeSpecSimple.DATETIME;
+            case DBType.DB_TIMESTAMP:
+                return TypeSpecSimple.TIMESTAMP;
+            default:
+                assert false : "unreachable";
+                throw new RuntimeException("unreachable");
         }
     }
 }

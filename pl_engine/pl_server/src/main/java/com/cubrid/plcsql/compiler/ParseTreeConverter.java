@@ -157,15 +157,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be assignable to because it is to an OUT parameter");
                 }
 
-                String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
-                TypeSpec retType = getTypeSpec(sqlType);
+                TypeSpecSimple retType =
+                        DBTypeAdapter.getDeclTypeSpec(
+                                fs.retType.type, fs.retType.prec, fs.retType.scale);
                 if (retType == null) {
+                    String sqlType = DBTypeAdapter.getSqlTypeName(fs.retType.type);
                     throw new SemanticError( // s418
                             Misc.getLineColumnOf(node.ctx),
                             "the function uses unsupported type "
                                     + sqlType
                                     + " as its return type");
                 }
+                addToImports(retType.fullJavaType);
 
                 gfc.decl = new DeclFunc(null, fs.name, paramList, retType);
 
@@ -176,9 +179,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             } else if (q instanceof ServerAPI.ColumnType) {
                 ServerAPI.ColumnType ct = (ServerAPI.ColumnType) q;
 
-                String sqlType = DBTypeAdapter.getSqlTypeName(ct.colType.type);
-                TypeSpec ty = getTypeSpec(sqlType);
+                TypeSpecSimple ty =
+                        DBTypeAdapter.getDeclTypeSpec(
+                                ct.colType.type, ct.colType.prec, ct.colType.scale);
                 if (ty == null) {
+                    String sqlType = DBTypeAdapter.getSqlTypeName(ct.colType.type);
                     throw new SemanticError( // s410
                             Misc.getLineColumnOf(node.ctx),
                             "the table column "
@@ -188,6 +193,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " has an unsupported type "
                                     + sqlType);
                 }
+                addToImports(ty.fullJavaType);
 
                 assert node instanceof TypeSpecPercent;
                 ((TypeSpecPercent) node).resolvedType = ty;
@@ -302,13 +308,26 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public TypeSpecSimple visitNumeric_type(Numeric_typeContext ctx) {
-        int precision = -1, scale = -1;
+    public TypeSpecNumeric visitNumeric_type(Numeric_typeContext ctx) {
+        int precision = 15; // default
+        short scale = 0; // default
+
         try {
             if (ctx.precision != null) {
                 precision = Integer.parseInt(ctx.precision.getText());
+                if (precision < 1 || precision > 38) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s067
+                            "precision must be between 1 and 38 including the bounds");
+                }
+
                 if (ctx.scale != null) {
-                    scale = Integer.parseInt(ctx.scale.getText());
+                    scale = Short.parseShort(ctx.scale.getText());
+                    if (scale < 0 || scale > precision) {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(ctx), // s054
+                                "scale must be between zero and the precision including the bounds");
+                    }
                 }
             }
         } catch (NumberFormatException e) {
@@ -316,24 +335,32 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new RuntimeException("unreachable");
         }
 
-        // TODO: restore two lines below
-        // addToImports("java.math.BigDecimal");
-        // return new TypeSpecNumeric(precision, scale);
         addToImports("java.math.BigDecimal");
-        return TypeSpecSimple.NUMERIC; // ignore precision and scale for now
+        return TypeSpecNumeric.getInstance(precision, scale);
     }
 
     @Override
     public TypeSpecSimple visitChar_type(Char_typeContext ctx) {
-        // ignore length for now
+        // TODO: consider length
         return TypeSpecSimple.STRING;
     }
 
     @Override
     public TypeSpecSimple visitSimple_type(Simple_typeContext ctx) {
         String plcType = Misc.getNormalizedText(ctx);
-        TypeSpecSimple ret = getTypeSpec(plcType);
-        assert ret != null : "invalid PL/CSQL type " + plcType;
+
+        TypeSpecSimple ret;
+        if ("BOOLEAN".equals(plcType)) {
+            ret = TypeSpecSimple.BOOLEAN;
+        } else if ("SYS_REFCURSOR".equals(plcType)) {
+            ret = TypeSpecSimple.SYS_REFCURSOR;
+        } else {
+            Integer dbType = typeNameToDbType.get(plcType);
+            assert dbType != null : "invalid PL/CSQL type " + plcType; // by syntax
+            ret = DBTypeAdapter.getDeclTypeSpec(dbType, -1, (short) -1);
+        }
+
+        addToImports(ret.fullJavaType);
         return ret;
     }
 
@@ -661,20 +688,24 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public ExprUint visitUint_exp(Uint_expContext ctx) {
 
         try {
-            ExprUint.Type ty;
+            TypeSpecSimple ty;
 
             BigInteger bi = new BigInteger(ctx.UNSIGNED_INTEGER().getText());
-            if (bi.compareTo(UINT_LITERAL_MAX) > 0) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx), // s006
-                        "number of digits of an integer literal may not exceed 38");
-            } else if (bi.compareTo(BIGINT_MAX) > 0) {
+            if (bi.compareTo(BIGINT_MAX) > 0 || bi.compareTo(BIGINT_MIN) < 0) {
+                BigDecimal bd = new BigDecimal(ctx.UNSIGNED_INTEGER().getText());
+                assert bd.scale() == 0;
+                int precision = bd.precision();
+                if (precision > 38) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s006
+                            "number of digits of an integer literal may not exceed 38");
+                }
                 addToImports("java.math.BigDecimal");
-                ty = ExprUint.Type.NUMERIC;
-            } else if (bi.compareTo(INT_MAX) > 0) {
-                ty = ExprUint.Type.BIGINT;
+                ty = TypeSpecSimple.NUMERIC_ANY;
+            } else if (bi.compareTo(INT_MAX) > 0 || bi.compareTo(INT_MIN) < 0) {
+                ty = TypeSpecSimple.BIGINT;
             } else {
-                ty = ExprUint.Type.INT;
+                ty = TypeSpecSimple.INT;
             }
 
             return new ExprUint(ctx, bi.toString(), ty);
@@ -699,7 +730,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 return new ExprFloat(ctx, text, TypeSpecSimple.FLOAT);
             } else {
                 BigDecimal bd = new BigDecimal(text);
-                return new ExprFloat(ctx, text, TypeSpecSimple.NUMERIC);
+                int precision = bd.precision();
+                if (precision > 38) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s057
+                            "number of digits of a floating point number literal may not exceed 38");
+                }
+                return new ExprFloat(ctx, text, TypeSpecSimple.NUMERIC_ANY);
             }
 
         } catch (NumberFormatException e) {
@@ -2109,7 +2146,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private static final BigInteger UINT_LITERAL_MAX =
             new BigInteger("99999999999999999999999999999999999999");
     private static final BigInteger BIGINT_MAX = new BigInteger("9223372036854775807");
+    private static final BigInteger BIGINT_MIN = new BigInteger("-9223372036854775808");
     private static final BigInteger INT_MAX = new BigInteger("2147483647");
+    private static final BigInteger INT_MIN = new BigInteger("-2147483648");
 
     private static final String SYMBOL_TABLE_TOP = "%predefined";
     private static final NodeList<DeclParam> EMPTY_PARAMS = new NodeList<>();
@@ -2123,57 +2162,41 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         && ((DeclIdTyped) decl).typeSpec().equals(TypeSpecSimple.SYS_REFCURSOR)));
     }
 
-    private static final Map<String, TypeSpecSimple> typeSpecs = new HashMap<>();
+    private static final Map<String, Integer> typeNameToDbType = new HashMap<>();
 
     static {
-        typeSpecs.put("BOOLEAN", TypeSpecSimple.BOOLEAN);
+        typeNameToDbType.put("CHAR", DBType.DB_CHAR);
+        typeNameToDbType.put("CHARACTER", DBType.DB_CHAR);
 
-        typeSpecs.put("CHAR", TypeSpecSimple.STRING);
-        typeSpecs.put("CHARACTER", TypeSpecSimple.STRING);
+        typeNameToDbType.put("VARCHAR", DBType.DB_STRING);
+        typeNameToDbType.put("CHAR VARYING", DBType.DB_STRING);
+        typeNameToDbType.put("CHARACTER VARYING", DBType.DB_STRING);
+        typeNameToDbType.put("STRING", DBType.DB_STRING);
 
-        typeSpecs.put("VARCHAR", TypeSpecSimple.STRING);
-        typeSpecs.put("CHAR VARYING", TypeSpecSimple.STRING);
-        typeSpecs.put("CHARACTER VARYING", TypeSpecSimple.STRING);
-        typeSpecs.put("STRING", TypeSpecSimple.STRING);
+        typeNameToDbType.put("SHORT", DBType.DB_SHORT);
+        typeNameToDbType.put("SMALLINT", DBType.DB_SHORT);
 
-        typeSpecs.put("SHORT", TypeSpecSimple.SHORT);
-        typeSpecs.put("SMALLINT", TypeSpecSimple.SHORT);
+        typeNameToDbType.put("INT", DBType.DB_INT);
+        typeNameToDbType.put("INTEGER", DBType.DB_INT);
 
-        typeSpecs.put("INT", TypeSpecSimple.INT);
-        typeSpecs.put("INTEGER", TypeSpecSimple.INT);
+        typeNameToDbType.put("BIGINT", DBType.DB_BIGINT);
 
-        typeSpecs.put("BIGINT", TypeSpecSimple.BIGINT);
+        typeNameToDbType.put("NUMERIC", DBType.DB_NUMERIC);
+        typeNameToDbType.put("DECIMAL", DBType.DB_NUMERIC);
 
-        typeSpecs.put("NUMERIC", TypeSpecSimple.NUMERIC);
-        typeSpecs.put("DECIMAL", TypeSpecSimple.NUMERIC);
+        typeNameToDbType.put("FLOAT", DBType.DB_FLOAT);
+        typeNameToDbType.put("REAL", DBType.DB_FLOAT);
 
-        typeSpecs.put("FLOAT", TypeSpecSimple.FLOAT);
-        typeSpecs.put("REAL", TypeSpecSimple.FLOAT);
+        typeNameToDbType.put("DOUBLE", DBType.DB_DOUBLE);
+        typeNameToDbType.put("DOUBLE PRECISION", DBType.DB_DOUBLE);
 
-        typeSpecs.put("DOUBLE", TypeSpecSimple.DOUBLE);
-        typeSpecs.put("DOUBLE PRECISION", TypeSpecSimple.DOUBLE);
+        typeNameToDbType.put("DATE", DBType.DB_DATE);
 
-        typeSpecs.put("DATE", TypeSpecSimple.DATE);
+        typeNameToDbType.put("TIME", DBType.DB_TIME);
 
-        typeSpecs.put("TIME", TypeSpecSimple.TIME);
+        typeNameToDbType.put("DATETIME", DBType.DB_DATETIME);
 
-        typeSpecs.put("DATETIME", TypeSpecSimple.DATETIME);
-
-        typeSpecs.put("TIMESTAMP", TypeSpecSimple.TIMESTAMP);
-
-        typeSpecs.put("SYS_REFCURSOR", TypeSpecSimple.SYS_REFCURSOR);
-
-        /* TODO: restore later
-        typeSpecs.put("TIMESTAMPTZ", ...);
-        typeSpecs.put("TIMESTAMPLTZ", ...);
-        typeSpecs.put("DATETIMETZ", ...);
-        typeSpecs.put("DATETIMELTZ", ...);
-
-        typeSpecs.put("SET", ...);
-        typeSpecs.put("MULTISET", ...);
-        typeSpecs.put("LIST", ...);
-        typeSpecs.put("SEQUENCE", ...);
-         */
+        typeNameToDbType.put("TIMESTAMP", DBType.DB_TIMESTAMP);
     }
 
     private static boolean isAssignableTo(ExprId id) {
@@ -2325,17 +2348,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    private TypeSpecSimple getTypeSpec(String plcType) {
-        TypeSpecSimple typeSpec = typeSpecs.get(plcType);
-        if (typeSpec == null) {
-            return null;
-        }
-
-        addToImports(typeSpec.fullJavaType);
-
-        return typeSpec;
-    }
-
     private Expr visitExpression(ParserRuleContext ctx) {
         if (ctx == null) {
             return null;
@@ -2411,7 +2423,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     }
 
                     ExprAutoParam autoParam = new ExprAutoParam(ctx, pi.value, pi.type);
-                    addToImports(autoParam.getTypeSpec().fullJavaType);
+                    addToImports(DBTypeAdapter.getValueType(pi.type).fullJavaType);
                     hostExprs.put(
                             autoParam,
                             null); // null: type check is not necessary for auto parameters
@@ -2492,7 +2504,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     }
 
                 } else if (DBTypeAdapter.isSupported(ci.type)) {
-                    typeSpec = DBTypeAdapter.getTypeSpec(ci.type);
+                    typeSpec = DBTypeAdapter.getValueType(ci.type);
                 } else {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s426
@@ -2543,11 +2555,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         int len = params.length;
         for (int i = 0; i < len; i++) {
 
-            String sqlType = DBTypeAdapter.getSqlTypeName(params[i].type);
-            TypeSpec paramType = getTypeSpec(sqlType);
+            TypeSpecSimple paramType =
+                    DBTypeAdapter.getDeclTypeSpec(params[i].type, params[i].prec, params[i].scale);
             if (paramType == null) {
+                String sqlType = DBTypeAdapter.getSqlTypeName(params[i].type);
                 return name + " uses unsupported type " + sqlType + " for parameter " + (i + 1);
             }
+            addToImports(paramType.fullJavaType);
 
             if ((params[i].mode & ServerConstants.PARAM_MODE_OUT) != 0) {
                 boolean alsoIn = (params[i].mode & ServerConstants.PARAM_MODE_IN) != 0;

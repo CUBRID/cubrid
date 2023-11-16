@@ -550,7 +550,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
             TypeSpecSimple ret;
             if (DBTypeAdapter.isSupported(ci.type)) {
-                ret = DBTypeAdapter.getTypeSpec(ci.type);
+                ret = DBTypeAdapter.getValueType(ci.type);
                 assert !ret.equals(TypeSpecSimple.NULL);
             } else {
                 // Allow the other types too, which can lead to run-time type errors,
@@ -588,17 +588,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprUint(ExprUint node) {
-        switch (node.ty) {
-            case NUMERIC:
-                return TypeSpecSimple.NUMERIC;
-            case BIGINT:
-                return TypeSpecSimple.BIGINT;
-            case INT:
-                return TypeSpecSimple.INT;
-            default:
-                assert false : "unreachable";
-                throw new RuntimeException("unreachable");
-        }
+        return node.ty;
     }
 
     @Override
@@ -609,7 +599,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprSerialVal(ExprSerialVal node) {
         assert node.verified;
-        return TypeSpecSimple.NUMERIC; // TODO: apply precision and scale
+        return TypeSpecSimple.NUMERIC_ANY;
     }
 
     @Override
