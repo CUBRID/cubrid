@@ -1957,6 +1957,10 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att, const PT_NOD
   for (specs = db_get_query_specs (vcls); specs && (spec = db_query_spec_string (specs));
        specs = db_query_spec_next (specs))
     {
+      if (spec && spec[0] == '-' && spec[1] == '-')
+	{
+	  continue;
+	}
       qs_clsnam = pt_get_proxy_spec_name (spec);
       if (qs_clsnam && intl_identifier_casecmp (qs_clsnam, qcol_typnam) == 0)
 	{
@@ -7407,6 +7411,10 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
       while (db_query_spec)
 	{
 	  query_spec_string = db_query_spec_string (db_query_spec);
+	  if (query_spec_string[0] == '-' && query_spec_string[1] == '-')
+	    {
+	      goto next;
+	    }
 	  result = parser_parse_string_use_sys_charset (query_cache, query_spec_string);
 
 	  if (result != NULL)
@@ -7422,7 +7430,7 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	      *continue_walk = PT_STOP_WALK;
 	      break;
 	    }
-
+	next:
 	  db_query_spec = db_query_spec_next (db_query_spec);
 	}
       parser_free_parser (query_cache);
