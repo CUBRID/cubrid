@@ -196,6 +196,7 @@ static void pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -9318,6 +9319,61 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_check_create_stored_procedure () - do semantic checks on the create procedure/function statement
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a statement
+ */
+
+static bool
+pt_is_type_supported_by_sp(PT_TYPE_ENUM ty)
+{
+     switch (ty) {
+     case PT_TYPE_SMALLINT:
+     case PT_TYPE_INTEGER:
+     case PT_TYPE_BIGINT:
+     case PT_TYPE_NUMERIC:
+     case PT_TYPE_FLOAT:
+     case PT_TYPE_DOUBLE:
+     case PT_TYPE_CHAR:
+     case PT_TYPE_VARCHAR:
+     case PT_TYPE_DATE:
+     case PT_TYPE_TIME:
+     case PT_TYPE_DATETIME:
+     case PT_TYPE_TIMESTAMP:
+     case PT_TYPE_RESULTSET:
+         return true;
+     default:
+         return false;
+     }
+}
+
+static void
+pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+     int i;
+     PT_NODE* param;
+
+     i = 0;
+     for (param = node->info.sp.param_list; param; param = param->next) {
+         if (!pt_is_type_supported_by_sp(param->type_enum)) {
+	     PT_ERRORmf (parser, node, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_ARG_TYPE),
+                pt_show_type_enum(param->type_enum));
+	     return;
+         }
+         i++;
+     }
+
+     if (node->info.sp.type == PT_SP_FUNCTION) {
+         if (!pt_is_type_supported_by_sp(node->info.sp.ret_type)) {
+	     PT_ERRORmf (parser, node, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_RETURN_TYPE),
+                pt_show_type_enum(node->info.sp.ret_type));
+	     return;
+         }
+     }
+}
+
+/*
  * pt_check_drop () - do semantic checks on the drop statement
  *   return:  none
  *   parser(in): the parser context used to derive the statement
@@ -11840,6 +11896,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
     case PT_RENAME_SYNONYM:
       pt_check_rename_synonym (parser, node);
+      break;
+
+    case PT_CREATE_STORED_PROCEDURE:
+      pt_check_create_stored_procedure (parser, node);
       break;
 
     default:
