@@ -9626,6 +9626,29 @@ pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * l
 }
 
 /*
+ * pt_get_query_limit () - get the limit value from a query
+ * return : error code or NO_ERROR
+ * parser (in)	      : parser context
+ * query (in)	      : query
+ */
+DB_BIGINT
+pt_get_query_limit (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  DB_VALUE limit_val;
+
+  if (pt_get_query_limit_value (parser, query, &limit_val) != NO_ERROR)
+    {
+      return 0;
+    }
+  else if (DB_IS_NULL (&limit_val))
+    {
+      return 0;
+    }
+
+  return db_get_bigint (&limit_val);
+}
+
+/*
  * pt_check_ordby_num_for_multi_range_opt () - checks if limit/order by for is valid for multi range opt
  *
  * return	       : true/false

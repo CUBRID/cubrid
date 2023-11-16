@@ -71,10 +71,11 @@
 #define QO_CPU_WEIGHT   0.0025
 #define MJ_CPU_OVERHEAD_FACTOR   20
 #define ISCAN_IO_HIT_RATIO   0.5
-#define SSCAN_DEFULT_CARD 1000
+#define SSCAN_DEFULT_CARD 100
 
 #define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
+#define RBO_CHECK_LIMIT_RATIO 10
 
 #define	qo_scan_walk	qo_generic_walk
 #define	qo_worst_walk	qo_generic_walk
@@ -3488,13 +3489,27 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   /* Check if RBO is needed */
   ta = af + aa;
   tb = bf + ba;
-  if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
+  if (QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
     {
-      return PLAN_COMP_LT;
+      if (ta * RBO_CHECK_LIMIT_RATIO <= tb)
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if (ta > tb * RBO_CHECK_LIMIT_RATIO)
+	{
+	  return PLAN_COMP_GT;
+	}
     }
-  else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
+  else
     {
-      return PLAN_COMP_GT;
+      if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
+	{
+	  return PLAN_COMP_GT;
+	}
     }
 
   if (qo_is_sort_limit (a))
@@ -3818,6 +3833,18 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     {
       QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
       return PLAN_COMP_GT;
+    }
+
+  if (QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
+    {
+      if ((ta + RBO_CHECK_COST <= tb) && (ta * RBO_CHECK_RATIO <= tb))
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if ((ta > tb + RBO_CHECK_COST) && (ta > tb * RBO_CHECK_RATIO))
+	{
+	  return PLAN_COMP_GT;
+	}
     }
 
   /* iscan vs iscan index rule comparison */

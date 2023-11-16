@@ -1294,6 +1294,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
       if (PT_SPEC_IS_DERIVED (entity))
 	{
 	  XASL_NODE *xasl;
+	  DB_BIGINT limit_val = 0;
 
 	  switch (entity->info.spec.derived_table->node_type)
 	    {
@@ -1305,6 +1306,14 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 	      if (xasl)
 		{
 		  QO_NODE_NCARD (node) = (unsigned long) xasl->cardinality;
+
+		  /* check limit value */
+		  limit_val = pt_get_query_limit (env->parser, entity->info.spec.derived_table);
+		  if (limit_val > 0 && (unsigned long) limit_val < QO_NODE_NCARD (node))
+		    {
+		      QO_NODE_NCARD (node) = (unsigned long) limit_val;
+		    }
+
 		  QO_NODE_TCARD (node) =
 		    (unsigned long) ((QO_NODE_NCARD (node) * (double) xasl->projected_size) / (double) IO_PAGESIZE);
 		  if (QO_NODE_TCARD (node) == 0)
