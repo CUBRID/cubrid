@@ -8336,12 +8336,15 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
   parser->custom_print = save_custom;
   error = dbt_add_query_spec (ctemplate, query);
 
-  select_query = strcasestr (queries->sql_user_text, "select");
-  query = strcat (user_query + 2, select_query);
-
-  if (error == NO_ERROR)
+  if (queries->sql_user_text)
     {
-      error = dbt_add_query_spec (ctemplate, user_query);
+      select_query = strcasestr (queries->sql_user_text, "select");
+      query = strcat (user_query + 2, select_query);
+
+      if (error == NO_ERROR)
+	{
+	  error = dbt_add_query_spec (ctemplate, user_query);
+	}
     }
 
   return (error);
