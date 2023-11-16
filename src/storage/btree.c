@@ -1398,8 +1398,8 @@ static DISK_ISVALID btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTI
 						    char *index_name);
 static DISK_ISVALID btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * idx_btid,
 							 bool repair);
-static bool btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
-static int btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
+static int btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
+static int btree_node_calculate_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
 static int btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, DB_VALUE * fence_key,
 				    int old_prefix, int new_prefix);
 static int btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
@@ -4222,7 +4222,7 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
   assert (rec != NULL);
   assert (rec->type == REC_HOME);
   assert (bts == NULL || bts->common_prefix == -1
-	  || bts->common_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
+	  || bts->common_prefix == btree_node_get_common_prefix (thread_p, btid, pgptr));
 
   if (bts != NULL)
     {
@@ -4243,7 +4243,7 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
       if (n_prefix == COMMON_PREFIX_UNKNOWN)
 	{
 	  /* recalculate n_prefix */
-	  n_prefix = btree_node_common_prefix (thread_p, btid, pgptr);
+	  n_prefix = btree_node_get_common_prefix (thread_p, btid, pgptr);
 	}
 
       assert (n_prefix >= 0);
@@ -5360,7 +5360,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     }
 
   /* for compressed midxkey */
-  n_prefix = btree_node_common_prefix (thread_p, btid, page_ptr);
+  n_prefix = btree_node_get_common_prefix (thread_p, btid, page_ptr);
   if (n_prefix < 0)
     {
       /* Error case? */
@@ -10340,6 +10340,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   BTREE_NODE_HEADER *left_header = NULL;
   BTREE_NODE_HEADER *right_header = NULL;
+  BTREE_NODE_HEADER *header;
 
   /* Remember first and last slot id's for non-fence records in both left and right nodes. */
   int left_first_non_fence_slotid = NULL_SLOTID;
@@ -10407,7 +10408,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       ASSERT_ERROR ();
       return left_used;
     }
-  left_prefix = btree_node_common_prefix (thread_p, btid, left_pg);
+  left_prefix = btree_node_get_common_prefix (thread_p, btid, left_pg);
   if (left_prefix < 0)
     {
       ASSERT_ERROR ();
@@ -10420,7 +10421,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       ASSERT_ERROR ();
       return right_used;
     }
-  right_prefix = btree_node_common_prefix (thread_p, btid, right_pg);
+  right_prefix = btree_node_get_common_prefix (thread_p, btid, right_pg);
   if (right_prefix < 0)
     {
       ASSERT_ERROR ();
@@ -10577,6 +10578,16 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	      goto exit_on_error;
 	    }
 	}
+
+      header = btree_get_node_header (thread_p, left_pg);
+      if (header == NULL)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+
+      header->common_prefix = merged_prefix;
     }
 
   /* Left fence key no longer required. */
@@ -10585,6 +10596,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   /***********************************************************
    ***  STEP 3: copy right page.
    ***********************************************************/
+
   for (i = right_first_non_fence_slotid; i <= right_last_non_fence_slotid; i++)
     {
       NEXT_MERGE_RECORD ();
@@ -10596,12 +10608,29 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
-      ret = btree_recompress_record (thread_p, btid, &rec[rec_idx], &right_fence_key, right_prefix, merged_prefix);
-      if (ret != NO_ERROR)
+
+      if (merged_prefix != right_prefix)
 	{
-	  ASSERT_ERROR ();
+	  ret = btree_recompress_record (thread_p, btid, &rec[rec_idx], &right_fence_key, right_prefix, merged_prefix);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
+	}
+    }
+
+  if (merged_prefix != right_prefix)
+    {
+      header = btree_get_node_header (thread_p, right_pg);
+      if (header == NULL)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
+
+      header->common_prefix = merged_prefix;
     }
 
   /* Right fence key no longer required. */
@@ -10830,7 +10859,7 @@ btree_node_size_uncompressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
 
   used_size = DB_PAGESIZE - spage_get_free_space (thread_p, page_ptr);
 
-  prefix = btree_node_common_prefix (thread_p, btid, page_ptr);
+  prefix = btree_node_get_common_prefix (thread_p, btid, page_ptr);
   if (prefix > 0)
     {
 #if !defined(NDEBUG)
@@ -12618,11 +12647,10 @@ btree_split_next_pivot (BTREE_NODE_SPLIT_INFO * split_info, float new_value, int
   return NO_ERROR;
 }
 
-static bool
-btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
+static int
+btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
 {
   int key_cnt;
-  RECDES peek_rec;
   BTREE_NODE_HEADER *header = NULL;
   BTREE_NODE_TYPE node_type;
 
@@ -12630,57 +12658,73 @@ btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
 
   if (TP_DOMAIN_TYPE (btid->key_type) != DB_TYPE_MIDXKEY)
     {
-      return false;
+      /* Compression is only possible for indexes of DB_TYPE_MIDXKEY. */
+      return 0;			/* not compressed */
     }
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
   if (key_cnt < 2)
     {
-      return false;
+      return 0;			/* not compressed */
     }
 
   header = btree_get_node_header (thread_p, page_ptr);
   if (header == NULL)
     {
-      return false;
+      assert (false);
+      return 0;			/* not compressed */
     }
 
   node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
   if (node_type == BTREE_NON_LEAF_NODE)
     {
-      return false;
+      return 0;			/* not compressed */
     }
+
+#if !defined (NDEBUG)
+  RECDES peek_rec;
+  bool is_compressed = true;
 
   /* check if lower fence key */
   if (spage_get_record (thread_p, page_ptr, 1, &peek_rec, PEEK) != S_SUCCESS)
     {
       assert (false);
     }
+
   if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE) == false)
     {
-      return false;
+      is_compressed = false;
     }
 
   /* check if upper fence key */
-  assert (key_cnt > 0);
   if (spage_get_record (thread_p, page_ptr, key_cnt, &peek_rec, PEEK) != S_SUCCESS)
     {
       assert (false);
     }
+
   if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE) == false)
     {
-      return false;
+      is_compressed = false;
+    }
+#endif /* !NDEBUG */
+
+  if (header->common_prefix > 0 && header->common_prefix < btid->key_type->precision)
+    {
+      assert (is_compressed);
+      return header->common_prefix;
     }
 
-  return true;
+  assert (!is_compressed);
+  return 0;
 }
 
 static int
-btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
+btree_node_calculate_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
 {
+  BTREE_NODE_HEADER *header = NULL;
   RECDES peek_rec;
-  int diff_column;
+  int diff_column = 0;
   int key_cnt;
 
   DB_VALUE lf_key, uf_key;
@@ -12689,57 +12733,92 @@ btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
 
-  if (btree_node_is_compressed (thread_p, btid, page_ptr) == false)
+  if (TP_DOMAIN_TYPE (btid->key_type) != DB_TYPE_MIDXKEY)
     {
-      return 0;
+      /* Compression is only possible for indexes of DB_TYPE_MIDXKEY. */
+      goto not_compressed;
+    }
+
+  key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
+  if (key_cnt < 2)
+    {
+      goto not_compressed;
+    }
+
+  header = btree_get_node_header (thread_p, page_ptr);
+  if (header == NULL)
+    {
+      assert (false);
+      goto not_compressed;
+    }
+
+  if (header->node_level > 1)
+    {
+      /* Compression is only possible at leaf nodes. */
+      goto not_compressed;
     }
 
   btree_init_temp_key_value (&lf_clear_key, &lf_key);
   btree_init_temp_key_value (&uf_clear_key, &uf_key);
 
-  key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
-  assert (key_cnt >= 2);
+  /* check if lower fence key */
+  if (spage_get_record (thread_p, page_ptr, 1, &peek_rec, PEEK) != S_SUCCESS)
+    {
+      assert (false);
+      goto not_compressed;
+    }
 
-  spage_get_record (thread_p, page_ptr, 1, &peek_rec, PEEK);
+  if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE) == false)
+    {
+      goto not_compressed;
+    }
+
   error =
     btree_read_record_without_decompression (thread_p, btid, &peek_rec, &lf_key, &leaf_pnt, BTREE_LEAF_NODE,
 					     &lf_clear_key, &offset, PEEK_KEY_VALUE);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto not_compressed_with_cleanup;
     }
   assert (!btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_KEY));
-  assert (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE));
   assert (DB_VALUE_TYPE (&lf_key) == DB_TYPE_MIDXKEY);
 
-  assert (key_cnt > 0);
+  /* check if upper fence key */
+  if (spage_get_record (thread_p, page_ptr, key_cnt, &peek_rec, PEEK) != S_SUCCESS)
+    {
+      assert (false);
+      goto not_compressed_with_cleanup;
+    }
+
+  if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE) == false)
+    {
+      goto not_compressed_with_cleanup;
+    }
+
   spage_get_record (thread_p, page_ptr, key_cnt, &peek_rec, PEEK);
   error =
     btree_read_record_without_decompression (thread_p, btid, &peek_rec, &uf_key, &leaf_pnt, BTREE_LEAF_NODE,
 					     &uf_clear_key, &offset, PEEK_KEY_VALUE);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto not_compressed_with_cleanup;
     }
   assert (!btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_KEY));
-  assert (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE));
   assert (DB_VALUE_TYPE (&uf_key) == DB_TYPE_MIDXKEY);
 
   diff_column = pr_midxkey_common_prefix (&lf_key, &uf_key);
 
-cleanup:
-  /* clean up */
   btree_clear_key_value (&lf_clear_key, &lf_key);
   btree_clear_key_value (&uf_clear_key, &uf_key);
 
-  if (error == NO_ERROR)
-    {
-      return diff_column;
-    }
-  else
-    {
-      return error;
-    }
+  return diff_column;
+
+not_compressed_with_cleanup:
+  btree_clear_key_value (&lf_clear_key, &lf_key);
+  btree_clear_key_value (&uf_clear_key, &uf_key);
+
+not_compressed:
+  return 0;
 }
 
 /*
@@ -12838,6 +12917,7 @@ btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * 
 static int
 btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
 {
+  BTREE_NODE_HEADER *header;
   int i, key_cnt, diff_column;
   RECDES peek_rec, rec;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -12852,7 +12932,7 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
 
-  diff_column = btree_node_common_prefix (thread_p, btid, page_ptr);
+  diff_column = btree_node_calculate_common_prefix (thread_p, btid, page_ptr);
   if (diff_column == 0)
     {
       return 0;
@@ -12911,6 +12991,15 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr
       spage_update (thread_p, page_ptr, i, &rec);
       btree_clear_key_value (&clear_key, &key);
     }
+
+  header = btree_get_node_header (thread_p, page_ptr);
+  if (header == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  header->common_prefix = diff_column;
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, page_ptr);
@@ -13150,6 +13239,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   rheader->split_info = qheader->split_info;
+  rheader->common_prefix = 0;
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -13971,6 +14061,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   qheader->split_info = split_info;
+  qheader->common_prefix = 0;
 
   if (btree_init_node_header (thread_p, &btid->sys_btid->vfid, Q, qheader, true) != NO_ERROR)
     {
@@ -14000,6 +14091,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   rheader->split_info = split_info;
+  rheader->common_prefix = 0;
 
   if (btree_init_node_header (thread_p, &btid->sys_btid->vfid, R, rheader, true) != NO_ERROR)
     {
@@ -19821,10 +19913,11 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
   btree_init_temp_key_value (&clear_lower_fence_key, &lower_fence_key);
   db_make_null (&uncompressed_value);
 
-  common_prefix = btree_node_common_prefix (thread_p, btid_int, page_ptr);
+  common_prefix = btree_node_get_common_prefix (thread_p, btid_int, page_ptr);
   if (common_prefix > 0)
     {
       assert (btree_is_fence_key (page_ptr, 1));
+      assert (common_prefix == btree_node_calculate_common_prefix (thread_p, btid_int, page_ptr));
       if (spage_get_record (thread_p, page_ptr, 1, &rec, PEEK) != S_SUCCESS)
 	{
 	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr, NULL, 2, 2);
@@ -27643,7 +27736,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
     {
       int diff_column;
 
-      diff_column = btree_node_common_prefix (thread_p, btid_int, leaf_page);
+      diff_column = btree_node_get_common_prefix (thread_p, btid_int, leaf_page);
       if (diff_column > 0)
 	{
 	  /* Remove columns from key value. */
