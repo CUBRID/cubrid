@@ -1233,6 +1233,9 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
   LOCK page_lock;
   PGBUF_LATCH_MODE page_latch_mode;
 
+  /* TODO: simply check if lock can be other LOCKs than X_LOCK or S_LOCK. */
+  assert (lock == S_LOCK || lock == X_LOCK);
+
   if (scan_cache != NULL)
     {
       if (scan_cache->page_latch == NULL_LOCK)
@@ -1241,8 +1244,7 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
 	}
       else
 	{
-	  assert (scan_cache->page_latch >= NULL_LOCK);
-	  assert (lock >= NULL_LOCK);
+	  assert (scan_cache->page_latch > NULL_LOCK);
 	  page_lock = lock_Conv[scan_cache->page_latch][lock];
 	  assert (page_lock != NA_LOCK);
 	}
