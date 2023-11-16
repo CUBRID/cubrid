@@ -140,10 +140,10 @@ extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID
 				       PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 				       UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk);
 // *INDENT-ON*
-extern void locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
-extern void locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname);
-extern void locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classname,
-					    const char *new_classname);
+extern int locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
+extern int locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname);
+extern int locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classname,
+					   const char *new_classname);
 
 // *INDENT-OFF*
 extern bool has_errors_filtered_for_insert (std::vector<int> error_filter_array);

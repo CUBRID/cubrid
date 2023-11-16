@@ -239,6 +239,12 @@ namespace cublog
 	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
 
+	    // check if m_locked_classes[header.trid] has log_rec.classoid
+	    if (is_already_locked_for_ddl (header.trid, &log_rec.classoid))
+	      {
+		break;
+	      }
+
 	    acquire_lock_for_ddl (thread_entry, header.trid, &log_rec.classoid);
 
 	    bookkeep_classname (thread_entry, &log_rec.classoid);
@@ -408,15 +414,14 @@ namespace cublog
   void
   atomic_replicator::bookkeep_classname (cubthread::entry &thread_entry, const OID *classoid)
   {
-    char *classname = NULL;
+    char *classname = nullptr;
 
     assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
 
     (void) heap_get_class_name (&thread_entry, classoid, &classname);
-    if (classname != NULL)
+    if (classname != nullptr)
       {
-	m_classname_map.emplace (*classoid, classname);
-	free_and_init (classname);
+	m_classname_map.emplace (*classoid, std::move (std::string (classname)));
       }
     else
       {
@@ -428,36 +433,57 @@ namespace cublog
   atomic_replicator::update_classname_cache_for_ddl (cubthread::entry &thread_entry, const OID *classoid)
   {
     /* update locator_Mht_classnames only if needed */
-    char *classname = NULL;
+    char *classname = nullptr;
+
+    auto it = m_classname_map.find (*classoid);
+
     (void) heap_get_class_name (&thread_entry, classoid, &classname);
-    if (classname != NULL)
+    if (classname != nullptr)
       {
-	if (m_classname_map.find (*classoid) == m_classname_map.end ())
+	if (it == m_classname_map.end ())
 	  {
-	    /* If the classname is created after DDL, then it is CREATE TABLE/VIEW case */
-	    locator_put_classname_entry (&thread_entry, classname, classoid);
+	    if (locator_put_classname_entry (&thread_entry, classname, classoid) != NO_ERROR)
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to put entry for (%s) to locator_Mht_classnames for classoid\n",
+			       classname);
+	      }
 	  }
 	else
 	  {
-	    if (m_classname_map[*classoid] != classname)
+	    if (it->second != classname)
 	      {
-		/* If the classname is modified after DDL, then it is RENAME TABLE/VIEW case */
-		locator_update_classname_entry (&thread_entry, m_classname_map[*classoid].c_str(), classname);
+		if (locator_update_classname_entry (&thread_entry, it->second.c_str(), classname) != NO_ERROR)
+		  {
+		    _er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to update entry for (%s) to (%s) in locator_Mht_classnames\n",
+				   it->second.c_str (), classname);
+		  }
 	      }
+
 	  }
 
 	free_and_init (classname);
       }
     else
       {
-	/* If the classname is removed after DDL, then it is DROP TABLE/VIEW case */
-	if (m_classname_map.find (*classoid) != m_classname_map.end ())
+	/* if classname == NULL, then it is DROP TABLE/VIEW case */
+	if (it != m_classname_map.end ())
 	  {
-	    locator_remove_classname_entry (&thread_entry, m_classname_map[*classoid].c_str ());
+	    if (locator_remove_classname_entry (&thread_entry, it->second.c_str ()) != NO_ERROR)
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to remove entry for (%s) from locator_Mht_classnames\n",
+			       it->second.c_str ());
+	      }
+	  }
+	else
+	  {
+	    /* This is when the table is CREATEd and DROPped within the same transaction */
 	  }
       }
 
-    m_classname_map.erase (*classoid);
+    if (it != m_classname_map.end ())
+      {
+	m_classname_map.erase (it);
+      }
   }
 
   void
@@ -473,5 +499,19 @@ namespace cublog
 	xcache_remove_by_oid (&thread_entry, &classoid);
 	partition_decache_class (&thread_entry, &classoid);
       }
+  }
+
+  bool
+  atomic_replicator::is_already_locked_for_ddl (const TRANID trid, const OID *classoid)
+  {
+    if (m_locked_classes.count (trid) > 0)
+      {
+	if (m_locked_classes[trid].count (*classoid) > 0)
+	  {
+	    return true;
+	  }
+      }
+
+    return false;
   }
 }

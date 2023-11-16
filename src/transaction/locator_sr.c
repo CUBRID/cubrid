@@ -238,6 +238,9 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 							 MVCC_REC_HEADER * mvcc_header_p,
 							 const OID * curr_row_version_oid_p, RECDES * recdes);
 
+static inline int locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname,
+						      const OID * class_oid);
+
 /*
  * locator_initialize () - Initialize the locator on the server
  *
@@ -13938,17 +13941,36 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
 }
 // *INDENT-ON*
 
+
+static inline int
+locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname, const OID * classoid)
+{
+  entry->e_name = strdup (classname);
+  if (entry->e_name == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (classname));
+      return ER_FAILED;
+    }
+  entry->e_tran_index = NULL_TRAN_INDEX;
+  entry->e_current.action = LC_CLASSNAME_EXIST;
+  COPY_OID (&entry->e_current.oid, classoid);
+  LSA_SET_NULL (&entry->e_current.savep_lsa);
+  entry->e_current.prev = nullptr;
+
+  return NO_ERROR;
+}
+
 /* locator_put_classname_entry () - Put a new entry in the locator_Mht_classnames, used in PTS replicator (atomic_replicator)
  *
- * return	     : void
+ * return	     : error code
  * thread_p (in)     : thread entry
  * classname (in)    : classname to be inserted
  * classoid (in)     : class oid of the classname
  */
-void
+int
 locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, const OID * classoid)
 {
-  assert (classname != NULL);
+  assert (classname != nullptr);
   assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
 
   LOCATOR_CLASSNAME_ENTRY *entry;
@@ -13956,142 +13978,139 @@ locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, con
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
   // *INDENT-OFF*
-  scope_exit <std::function <void ()>> classname_csect_exit ([&thread_p] () {csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE); });
+  scope_exit <std::function <void (void)>> classname_csect_exit ([&thread_p] ()
+      {
+        csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      });
   // *INDENT-ON*
 
   entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry));
-  if (entry == NULL)
+  if (entry == nullptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
-      return;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  entry->e_name = strdup ((char *) classname);
-  if (entry->e_name == NULL)
+  if (locator_initialize_classname_entry (entry, classname, classoid) != NO_ERROR)
     {
+      free_and_init (entry->e_name);
       free_and_init (entry);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (classname) + 1));
-      return;
+      return ER_FAILED;
     }
-
-  entry->e_tran_index = NULL_TRAN_INDEX;
-
-  entry->e_current.action = LC_CLASSNAME_EXIST;
-  COPY_OID (&entry->e_current.oid, classoid);
-  LSA_SET_NULL (&entry->e_current.savep_lsa);
-  entry->e_current.prev = NULL;
 
   (void) mht_put (locator_Mht_classnames, entry->e_name, entry);
+
+  return NO_ERROR;
 }
 
 /* locator_remove_classname_entry () - Remove an entry from the locator_Mht_classnames, used in PTS replicator (atomic_replicator)
  *
- * return	     : void
+ * return	     : error code
  * thread_p (in)     : thread entry
  * classname (in)    : classname to be removed
  */
-void
+int
 locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname)
 {
-  assert (classname != NULL);
-
-  LOCATOR_CLASSNAME_ENTRY *entry = NULL;
+  assert (classname != nullptr);
 
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 
   if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
       csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      return;
+      return ER_FAILED;
     }
 
-  entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
-  if (entry == NULL)
+  // *INDENT-OFF*
+  scope_exit <std::function <void (void)>> classname_csect_exit ([&thread_p, &classname] ()
+      {
+        csect_exit (thread_p, CSECT_CT_OID_TABLE);
+        csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      });
+  // *INDENT-ON*
+
+  LOCATOR_CLASSNAME_ENTRY *const entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
+  if (entry == nullptr)
     {
       assert (false);
-      csect_exit (thread_p, CSECT_CT_OID_TABLE);
-      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      return;
+      return ER_FAILED;
     }
 
   (void) locator_force_drop_class_name_entry (entry->e_name, entry, NULL);
 
-  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-  csect_exit (thread_p, CSECT_CT_OID_TABLE);
+  return NO_ERROR;
 }
 
 /* locator_update_classname_entry () - Update an entry from the locator_Mht_classnames.
  *                                     It remove the old entry (old_classname) and insert the new one (new_classname).
  *                                     used in PTS replicator (atomic_replicator)
- * return	      : void
+ * return	      : error code
  * thread_p (in)      : thread entry
  * old_classname (in) : old classname to be removed
  * new_classname (in) : new classname to be inserted
  */
-void
+int
 locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classname, const char *new_classname)
 {
-  assert (old_classname != NULL);
-  assert (new_classname != NULL);
+  assert (old_classname != nullptr);
+  assert (new_classname != nullptr);
 
-  LOCATOR_CLASSNAME_ENTRY *old_entry = NULL;
-  LOCATOR_CLASSNAME_ENTRY *new_entry = NULL;
+  LOCATOR_CLASSNAME_ENTRY *new_entry = nullptr;
 
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
-
-  // *INDENT-OFF*
-  scope_exit <std::function <void ()>> classname_csect_exit ([&thread_p] () {csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE); });
-  // *INDENT-ON*
-
-  old_entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, old_classname);
-  assert (old_entry != NULL);
-
-  /* create new entry with new key (new_classname) */
-  new_entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*new_entry));
-  if (new_entry == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*new_entry));
-      return;
-    }
-
-  new_entry->e_name = strdup ((char *) new_classname);
-  if (new_entry->e_name == NULL)
-    {
-      free_and_init (new_entry);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (new_classname) + 1));
-      return;
-    }
-
-  new_entry->e_tran_index = NULL_TRAN_INDEX;
-  new_entry->e_current.action = LC_CLASSNAME_EXIST;
-  COPY_OID (&new_entry->e_current.oid, &old_entry->e_current.oid);
-  LSA_SET_NULL (&new_entry->e_current.savep_lsa);
-  new_entry->e_current.prev = NULL;
-
-  (void) mht_put (locator_Mht_classnames, new_entry->e_name, new_entry);
 
   if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
-      return;
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
+      return ER_FAILED;
     }
+
+  // *INDENT-OFF*
+  scope_exit <std::function <void (void)>> classname_csect_exit ([&thread_p] ()
+      {
+        csect_exit (thread_p, CSECT_CT_OID_TABLE);
+        csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      });
+  // *INDENT-ON*
+
+  LOCATOR_CLASSNAME_ENTRY *const old_entry =
+    (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, old_classname);
+  assert (old_entry != nullptr);
+
+  /* create new entry with new key (new_classname) */
+  new_entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*new_entry));
+  if (new_entry == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*new_entry));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (locator_initialize_classname_entry (new_entry, new_classname, &old_entry->e_current.oid) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  (void) mht_put (locator_Mht_classnames, new_entry->e_name, new_entry);
 
   /* drop the existing entry with key (old_classname) */
   (void) locator_force_drop_class_name_entry (old_entry->e_name, old_entry, NULL);
 
-  csect_exit (thread_p, CSECT_CT_OID_TABLE);
+  return NO_ERROR;
 }
 
 void
