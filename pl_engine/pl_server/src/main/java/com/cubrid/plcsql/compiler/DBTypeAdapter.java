@@ -31,9 +31,9 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.jsp.data.DBType;
-import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
-import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import com.cubrid.plcsql.compiler.ast.TypeSpecChar;
+import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
+import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecVarchar;
 
 public class DBTypeAdapter {

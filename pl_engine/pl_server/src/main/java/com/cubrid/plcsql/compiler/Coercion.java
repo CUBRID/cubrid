@@ -178,7 +178,6 @@ public abstract class Coercion {
             assert false; // CoerceAndCheckStrLength is not memoized in CoercionStore
             return null;
         }
-
     }
 
     public static class Identity extends Coercion {
