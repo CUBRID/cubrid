@@ -70,6 +70,10 @@ public class BooleanValue extends Value {
         return new Double(value);
     }
 
+    public Object toObject() {
+        return Boolean.valueOf(value == 1 ? true : false);
+    }
+
     public String toString() {
         return "" + value;
     }
