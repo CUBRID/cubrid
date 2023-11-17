@@ -464,6 +464,7 @@ void _push_msg (int code, int line);
 void pop_msg (void);
 
 char *g_query_string;
+char *g_view_string;
 int g_query_string_len;
 int g_original_buffer_len;
 
@@ -9314,12 +9315,20 @@ opt_as_query_list
 			$$ = NULL;
 
 		DBG_PRINT}}
-	| AS query_list
+	| AS
+		{{
+			int pos = @$.buffer_pos;
+			if (pos > g_original_buffer_len)
+			      {
+				pos = g_original_buffer_len;
+			      }
+			g_view_string = (char*) (this_parser->original_buffer + pos);
+		}}
+
+	  query_list
 		{{ DBG_TRACE_GRAMMAR(opt_as_query_list, | AS query_list);
-
-			$$ = $2;
+			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
 		DBG_PRINT}}
 	;
 

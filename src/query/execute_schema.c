@@ -8314,40 +8314,6 @@ do_add_resolutions (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const P
 
 #define MAX_QUERY_STRING_LENGTH 4096
 
-static char *
-get_user_query_string (const PT_NODE * queries)
-{
-  char user_text[MAX_QUERY_STRING_LENGTH];
-  char *query = NULL;
-  char start_with_select[7] = "SELECT";
-  char start_with_values[7] = "VALUES";
-  int i;
-
-  if (queries->sql_user_text == NULL)
-    {
-      return NULL;
-    }
-
-  for (i = 0; i < strlen (queries->sql_user_text); i++)
-    {
-      user_text[i] = (char) toupper (queries->sql_user_text[i]);
-    }
-
-  query = strstr (user_text, start_with_select);
-  if (query)
-    {
-      return queries->sql_user_text + (int) (query - user_text);
-    }
-
-  query = strstr (user_text, start_with_values);
-  if (query)
-    {
-      return queries->sql_user_text + (int) (query - user_text);
-    }
-
-  return NULL;
-}
-
 /*
  * add_query_to_virtual_class() - Adds a query to a virtual class object
  *   return: Error code
@@ -8360,10 +8326,10 @@ get_user_query_string (const PT_NODE * queries)
 static int
 add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * queries)
 {
-  const char *query, *origin_query;
+  const char *query;
   int error = NO_ERROR;
   unsigned int save_custom;
-  char user_query[MAX_QUERY_STRING_LENGTH] = { '-', '-' };
+  char user_query[MAX_QUERY_STRING_LENGTH + 2] = { '-', '-' };
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
@@ -8377,10 +8343,9 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
       return error;
     }
 
-  origin_query = get_user_query_string (queries);
-  if (origin_query)
+  if (queries->sql_view_text)
     {
-      strncat (user_query + 2, origin_query, MAX_QUERY_STRING_LENGTH);
+      strncat (user_query + 2, queries->sql_view_text, MAX_QUERY_STRING_LENGTH);
       error = dbt_add_query_spec (ctemplate, user_query);
     }
 
