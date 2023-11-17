@@ -15834,13 +15834,14 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, const LOG_RCV * rcv)
 
   if (is_passive_transaction_server ())
     {
-      if (recdes.type != REC_ASSIGN_ADDRESS)
+      if (recdes.type != REC_ASSIGN_ADDRESS && recdes.type != REC_NEWHOME)
 	{
 	  /* Classname cache (locator_Mht_classnames) status should be reverted when
 	   * DROP TABLE statement is rolled back (RVHF_COMPENSATE_WITH_INSERT).
 	   * The cache status is modified at heap_rv_redo_delete() (RVHF_DELETE).
 	   * When CREATE TABLE is executed, recdes.type is always REC_ASSIGN_ADDRESS,
 	   * and we need to filter out the CREATE TABLE case.
+	   * In addition, there is no need to deal with REC_NEWHOME case.
 	   */
 
 	  assert (thread_p->type == TT_REPLICATION_PTS);

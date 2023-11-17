@@ -13937,6 +13937,27 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
 }
 // *INDENT-ON*
 
+/*
+ * locator_change_classname_entry_status_if_exists () - change the status of a classname entry if it exists
+ *
+ * return	  : void
+ * thread_p (in)  : thread entry
+ * classoid (in)  : class oid
+ * status (in)    : status to change to
+ *
+ * NOTE: The classname cache (locator_Mht_classnames) can be accessed by READ transactions in PTS, even if the
+ *       class, which is indicated by the classOID in the entry, is locked by replicator during applying the DDL statement.
+ *       READ transactions in PTS get the entry using the classname, and if the status of the entry is LC_CLASSNAME_EXIST,
+ *       they will try to access the record in the heap using the classOID in the entry to check if it does exist.
+ *       If it does not exist, then the core occurred.
+ *       (xlocator_find_class_oid () -> locator_is_exist_class_name_entry () -> heap_does_exist ())
+ *       The record is deleted by the heap_rv_redo_delete (), when the RVHF_DELETE on root class is replicated.
+ *       Therefore, if we do not change the status of entry to LC_CLASSNAME_DELETED,
+ *       then the READ transactions try to access the deleted record, and crash can occur.
+ *       In addition, if the RVHF_DELETE operation is rolled back, then the status of the entry should be reverted.
+ *       (heap_rv_redo_insert () with RVHF_COMPENSATE_WITH_INSERT)
+ *       If not reverted, then the READ transactions will not be able to access the class.
+ */
 void
 locator_change_classname_entry_status_if_exists (THREAD_ENTRY * thread_p, const OID * classoid,
 						 const LC_FIND_CLASSNAME status)
