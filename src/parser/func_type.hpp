@@ -109,6 +109,7 @@ namespace func_type
       bool check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *arg_node,
 			     signature_compatibility &compat, argument_resolve &resolved_type, bool args_to_utf8);
       void invalid_arg_error (const pt_arg_type &arg_sgn, const PT_NODE *arg_node, const func_signature &func_sgn);
+      void invalid_arg_param_error (const PT_NODE *arg_node);
       void invalid_coll_error (const func_signature &func_sgn);
       void invalid_arg_count_error (std::size_t arg_count, const func_signature &func_sgn);
   }; //class Node
