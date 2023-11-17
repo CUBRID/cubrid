@@ -885,7 +885,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (sqlType.simpleTypeIdx != TypeSpecSimple.IDX_STRING) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.sql.ctx), // s221
-                    "SQL in the EXECUTE IMMEDIATE statement must be of string type");
+                    "SQL in the EXECUTE IMMEDIATE statement must be of a string type");
         }
 
         // check types of expressions in the USING clause
@@ -1019,7 +1019,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (sqlType.simpleTypeIdx != TypeSpecSimple.IDX_STRING) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.sql.ctx), // s225
-                    "SQL in EXECUTE IMMEDIATE statements must be of string type");
+                    "SQL in EXECUTE IMMEDIATE statements must be of a string type");
         }
 
         // check types of expressions in the USING clause

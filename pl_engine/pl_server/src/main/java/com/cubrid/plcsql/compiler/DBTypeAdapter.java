@@ -35,7 +35,6 @@ import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import com.cubrid.plcsql.compiler.ast.TypeSpecChar;
 import com.cubrid.plcsql.compiler.ast.TypeSpecVarchar;
-import com.cubrid.plcsql.compiler.serverapi.PlParamInfo;
 
 public class DBTypeAdapter {
 

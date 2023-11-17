@@ -106,9 +106,9 @@ public abstract class Coercion {
         }
 
         if (ret != null) {
-            if (to instanceof TypeSpecNumeric) {
-                // when 'to' is a NUMERIC type with specific precision and scale
-                TypeSpecNumeric tsNumeric = (TypeSpecNumeric) to;
+            if (dst0 instanceof TypeSpecNumeric) {
+                // when 'dst0' is a NUMERIC type with specific precision and scale
+                TypeSpecNumeric tsNumeric = (TypeSpecNumeric) dst0;
                 ret = new CoerceAndCheckPrecision(ret, tsNumeric.precision, tsNumeric.scale);
             } else if (dst0 instanceof TypeSpecChar) {
                 // when 'dst0' is a CHAR type with a specific length
@@ -161,6 +161,7 @@ public abstract class Coercion {
         public boolean isChar;
 
         public CoerceAndCheckStrLength(Coercion c, int length, boolean isChar) {
+            super(c.src, c.dst);
             this.c = c;
             this.length = length;
             this.isChar = isChar; // true for Char, and false for Varchar
@@ -171,6 +172,13 @@ public abstract class Coercion {
             return String.format(
                     "checkStrLength(%s, %d, %s)", isChar, length, c.javaCode(exprJavaCode));
         }
+
+        @Override
+        Coercion create(TypeSpecSimple src, TypeSpecSimple dst) {
+            assert false; // CoerceAndCheckStrLength is not memoized in CoercionStore
+            return null;
+        }
+
     }
 
     public static class Identity extends Coercion {
@@ -244,7 +252,7 @@ public abstract class Coercion {
                     new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
             instances.put(
                     TypeSpecSimple.IDX_STRING,
-                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING_ANY));
             instances.put(
                     TypeSpecSimple.IDX_SHORT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
             instances.put(
