@@ -4386,14 +4386,14 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 
   if (bts->pg_prefix_info)
     {
-      assert (bts->pg_prefix_info->reader_type != en_reader_none);
+      assert (bts->pg_prefix_info->reader_type != READER_TYPE_NONE);
       pg_prefix = bts->pg_prefix_info;
       if (!pg_prefix->is_midxkey || (pg_prefix->use_comparing == false && pg_prefix->use_index_column == false))
 	{
 	  return NO_ERROR;
 	}
 
-      if (pg_prefix->reader_type == en_reader_range_scan)
+      if (pg_prefix->reader_type == READER_TYPE_RANGE_SCAN)
 	{
 	  assert (pgptr == bts->C_page && VPID_EQ (pgbuf_get_vpid_ptr (pgptr), &bts->C_vpid));
 	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid) && LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)))
@@ -4418,7 +4418,7 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 	}
       else
 	{
-	  // en_reader_stat or en_reader_capacity
+	  // READER_TYPE_STAT or READER_TYPE_CAPACITY
 	  assert (pg_prefix->use_index_column == false);
 	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid) && LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)))
 	    {
@@ -4521,9 +4521,10 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
   pg_prefix_info->is_midxkey = is_midxkey;
   btree_init_temp_key_value (&(pg_prefix_info->clear_prefix_key), &(pg_prefix_info->prefix_key));
 
-  assert (reader_type == en_reader_range_scan || reader_type == en_reader_stat || reader_type == en_reader_capacity);
+  assert (reader_type == READER_TYPE_RANGE_SCAN || reader_type == READER_TYPE_STAT
+	  || reader_type == READER_TYPE_CAPACITY);
 
-  if (reader_type == en_reader_range_scan)
+  if (reader_type == READER_TYPE_RANGE_SCAN)
     {
       assert (pg_prefix_info->use_index_column == true);
       pg_prefix_info->use_comparing = (bool) (bts->key_range.upper_key != NULL);
@@ -4552,10 +4553,10 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
     }
   else
     {
-      // en_reader_stat or en_reader_capacity        
+      // READER_TYPE_STAT or READER_TYPE_CAPACITY        
       pg_prefix_info->use_index_column = false;
       pg_prefix_info->satisfied_range_in_page = true;
-      pg_prefix_info->use_comparing = (is_deduplicate || (reader_type == en_reader_stat));
+      pg_prefix_info->use_comparing = (is_deduplicate || (reader_type == READER_TYPE_STAT));
     }
 
   bts->pg_prefix_info = pg_prefix_info;
@@ -7584,7 +7585,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   bts =
     btree_init_page_prefix_info (&env->btree_scan, (dom_type == DB_TYPE_MIDXKEY), (env->same_prefix_len != -1),
-				 &pg_prefix_info, en_reader_stat);
+				 &pg_prefix_info, READER_TYPE_STAT);
 #endif
 
   if (with_fullscan || npages <= STATS_SAMPLING_THRESHOLD)
@@ -9114,7 +9115,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
       bt_scan.C_page = pg_ptr;
       VPID_COPY (&bt_scan.C_vpid, pgbuf_get_vpid_ptr (pg_ptr));
       bts = btree_init_page_prefix_info (&bt_scan, (TP_DOMAIN_TYPE (btid->key_type) == DB_TYPE_MIDXKEY),
-					 (env->same_prefix_len != -1), &pg_prefix_info, en_reader_capacity);
+					 (env->same_prefix_len != -1), &pg_prefix_info, READER_TYPE_CAPACITY);
 #endif
 
       /* form the cpc structure for a leaf node page */
@@ -25675,7 +25676,7 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 
       bts =
 	btree_init_page_prefix_info (bts, (TP_DOMAIN_TYPE (bts->btid_int.key_type) == DB_TYPE_MIDXKEY), false,
-				     &pg_prefix_info, en_reader_range_scan);
+				     &pg_prefix_info, READER_TYPE_RANGE_SCAN);
 
       ret = btree_range_scan_internal (thread_p, bts, key_func);
 

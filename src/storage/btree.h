@@ -167,11 +167,11 @@ typedef struct btree_scan BTREE_SCAN;	/* BTS */
 
 typedef enum
 {
-  en_reader_none = 0,
-  en_reader_range_scan,
-  en_reader_stat,
-  en_reader_capacity,
-  en_reader_type_max
+  READER_TYPE_NONE = 0,
+  READER_TYPE_RANGE_SCAN,
+  READER_TYPE_STAT,
+  READER_TYPE_CAPACITY,
+  READER_TYPE_MAX
 } READER_TYPE;
 typedef struct
 {
@@ -189,7 +189,7 @@ typedef struct
 
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix)   do {\
     assert((pg_prefix) != NULL);                     \
-    (pg_prefix)->reader_type = en_reader_none;       \
+    (pg_prefix)->reader_type = READER_TYPE_NONE;     \
     (pg_prefix)->is_midxkey = true;                  \
     (pg_prefix)->use_comparing = true;               \
     (pg_prefix)->use_index_column = true;            \
