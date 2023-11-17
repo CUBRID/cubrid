@@ -13949,7 +13949,7 @@ locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char 
   if (entry->e_name == nullptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (classname));
-      return ER_FAILED;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   entry->e_tran_index = NULL_TRAN_INDEX;
   entry->e_current.action = LC_CLASSNAME_EXIST;
