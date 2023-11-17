@@ -8312,6 +8312,42 @@ do_add_resolutions (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const P
   return (error);
 }
 
+#define MAX_QUERY_STRING_LENGTH 4096
+
+static char *
+get_user_query_string (const PT_NODE * queries)
+{
+  char user_text[MAX_QUERY_STRING_LENGTH];
+  char *query = NULL;
+  char start_with_select[7] = "SELECT";
+  char start_with_values[7] = "VALUES";
+  int i;
+
+  if (queries->sql_user_text == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < strlen (queries->sql_user_text); i++)
+    {
+      user_text[i] = (char) toupper (queries->sql_user_text[i]);
+    }
+
+  query = strstr (user_text, start_with_select);
+  if (query)
+    {
+      return queries->sql_user_text + (int) (query - user_text);
+    }
+
+  query = strstr (user_text, start_with_values);
+  if (query)
+    {
+      return queries->sql_user_text + (int) (query - user_text);
+    }
+
+  return NULL;
+}
+
 /*
  * add_query_to_virtual_class() - Adds a query to a virtual class object
  *   return: Error code
@@ -8324,10 +8360,10 @@ do_add_resolutions (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const P
 static int
 add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * queries)
 {
-  const char *query, *select_query;
+  const char *query, *origin_query;
   int error = NO_ERROR;
   unsigned int save_custom;
-  char user_query[4096] = { '-', '-' };
+  char user_query[MAX_QUERY_STRING_LENGTH] = { '-', '-' };
 
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
@@ -8336,18 +8372,19 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
   parser->custom_print = save_custom;
   error = dbt_add_query_spec (ctemplate, query);
 
-  if (queries->sql_user_text)
+  if (error != NO_ERROR)
     {
-      select_query = strcasestr (queries->sql_user_text, "select");
-      query = strcat (user_query + 2, select_query);
-
-      if (error == NO_ERROR)
-	{
-	  error = dbt_add_query_spec (ctemplate, user_query);
-	}
+      return error;
     }
 
-  return (error);
+  origin_query = get_user_query_string (queries);
+  if (origin_query)
+    {
+      strncat (user_query + 2, origin_query, MAX_QUERY_STRING_LENGTH);
+      error = dbt_add_query_spec (ctemplate, user_query);
+    }
+
+  return error;
 }
 
 /*
