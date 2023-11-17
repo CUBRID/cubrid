@@ -238,8 +238,8 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 							 MVCC_REC_HEADER * mvcc_header_p,
 							 const OID * curr_row_version_oid_p, RECDES * recdes);
 
-static inline int locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname,
-						      const OID * class_oid);
+static inline void locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname,
+						       const OID * class_oid);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -13942,22 +13942,18 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
 // *INDENT-ON*
 
 
-static inline int
+static inline void
 locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname, const OID * classoid)
 {
-  entry->e_name = strdup (classname);
-  if (entry->e_name == nullptr)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (classname));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+  assert (classname != nullptr);
+
+  /* Memory for classname is allocated in atomic_replicator::update_classname_cache_for_ddl () */
+  entry->e_name = (char *) classname;
   entry->e_tran_index = NULL_TRAN_INDEX;
   entry->e_current.action = LC_CLASSNAME_EXIST;
   COPY_OID (&entry->e_current.oid, classoid);
   LSA_SET_NULL (&entry->e_current.savep_lsa);
   entry->e_current.prev = nullptr;
-
-  return NO_ERROR;
 }
 
 /* locator_put_classname_entry () - Put a new entry in the locator_Mht_classnames, used in PTS replicator (atomic_replicator)
@@ -13994,12 +13990,7 @@ locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, con
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  if (locator_initialize_classname_entry (entry, classname, classoid) != NO_ERROR)
-    {
-      free_and_init (entry->e_name);
-      free_and_init (entry);
-      return ER_FAILED;
-    }
+  locator_initialize_classname_entry (entry, classname, classoid);
 
   (void) mht_put (locator_Mht_classnames, entry->e_name, entry);
 
@@ -14100,10 +14091,7 @@ locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classna
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  if (locator_initialize_classname_entry (new_entry, new_classname, &old_entry->e_current.oid) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+  locator_initialize_classname_entry (new_entry, new_classname, &old_entry->e_current.oid);
 
   (void) mht_put (locator_Mht_classnames, new_entry->e_name, new_entry);
 

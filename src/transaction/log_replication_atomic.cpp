@@ -434,15 +434,22 @@ namespace cublog
   {
     /* update locator_Mht_classnames only if needed */
     char *classname = nullptr;
+    int error_code = NO_ERROR;
 
     auto it = m_classname_map.find (*classoid);
 
     (void) heap_get_class_name (&thread_entry, classoid, &classname);
     if (classname != nullptr)
       {
+	/* Memory for classname is allocated in heap_get_class_name ().
+	 * The allocated memory will be used within an entry of locator_Mht_classnames.
+	 * (in locator_initialize () called from locator_put_classname_entry () and locator_update_classname_entry ())
+	 * And when that entry is released, this memory will be freed as well
+	 */
 	if (it == m_classname_map.end ())
 	  {
-	    if (locator_put_classname_entry (&thread_entry, classname, classoid) != NO_ERROR)
+	    error_code = locator_put_classname_entry (&thread_entry, classname, classoid);
+	    if (error_code != NO_ERROR)
 	      {
 		_er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to put entry for (%s) to locator_Mht_classnames for classoid\n",
 			       classname);
@@ -452,7 +459,8 @@ namespace cublog
 	  {
 	    if (it->second != classname)
 	      {
-		if (locator_update_classname_entry (&thread_entry, it->second.c_str(), classname) != NO_ERROR)
+		error_code = locator_update_classname_entry (&thread_entry, it->second.c_str(), classname);
+		if (error_code != NO_ERROR)
 		  {
 		    _er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to update entry for (%s) to (%s) in locator_Mht_classnames\n",
 				   it->second.c_str (), classname);
@@ -460,12 +468,10 @@ namespace cublog
 	      }
 
 	  }
-
-	free_and_init (classname);
       }
     else
       {
-	/* if classname == NULL, then it is DROP TABLE/VIEW case */
+	/* if classname == nullptr, then it is DROP TABLE/VIEW case */
 	if (it != m_classname_map.end ())
 	  {
 	    if (locator_remove_classname_entry (&thread_entry, it->second.c_str ()) != NO_ERROR)
@@ -478,6 +484,12 @@ namespace cublog
 	  {
 	    /* This is when the table is CREATEd and DROPped within the same transaction */
 	  }
+      }
+
+    if (classname != nullptr && error_code != NO_ERROR)
+      {
+	/* It fails to move the memory into locator_Mht_classnames */
+	free_and_init (classname);
       }
 
     if (it != m_classname_map.end ())
