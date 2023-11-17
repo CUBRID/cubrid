@@ -10004,6 +10004,11 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
   int a_range, b_range;		/* num iscan range terms */
   int a_filter, b_filter;	/* num iscan filter terms */
 
+  if (QO_NODE_IDX (a->plan_un.scan.node) != QO_NODE_IDX (b->plan_un.scan.node))
+    {
+      return PLAN_COMP_UNK;
+    }
+
   if (!qo_is_interesting_order_scan (a) || !qo_is_interesting_order_scan (b))
     {
       assert_release (qo_is_interesting_order_scan (a));
