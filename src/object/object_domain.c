@@ -2244,6 +2244,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		}
 
 	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->is_desc == transient->is_desc)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
@@ -2254,6 +2255,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	       * string without modification.
 	       */
 	      match = ((domain->precision >= transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->is_desc == transient->is_desc)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
@@ -2268,6 +2270,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	       * destination domain tolerance.
 	       */
 	      match = ((domain->collation_id == transient->collation_id) && (domain->is_desc == transient->is_desc)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
 
@@ -2381,6 +2384,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		}
 
 	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->is_desc == transient->is_desc)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
@@ -2391,6 +2395,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	       * in the DB_TYPE_CHAR case above.
 	       */
 	      match = ((domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (transient->precision == 0 || (transient->precision == TP_FLOATING_PRECISION_VALUE)
 			   || domain->precision >= transient->precision)
 		       && (domain->is_desc == transient->is_desc)
@@ -2421,6 +2426,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		}
 
 	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->is_desc == transient->is_desc)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
@@ -2428,6 +2434,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    {
 	      /* see notes above under the DB_TYPE_VARCHAR clause */
 	      match = ((domain->collation_id == transient->collation_id) && (domain->is_desc == transient->is_desc)
+		       && (domain->codeset == transient->codeset)
 		       && (domain->collation_flag == transient->collation_flag));
 	    }
 
@@ -2683,7 +2690,8 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
 		{
 		  break;	/* found */
 		}
-	      else if (dom->collation_id == collation_id && dom->collation_flag == collation_flag)
+	      else if (dom->collation_id == collation_id && dom->collation_flag == collation_flag
+		       && dom->codeset == codeset)
 		{
 		  /* codeset should be the same if collations are equal */
 		  assert (dom->codeset == codeset);
