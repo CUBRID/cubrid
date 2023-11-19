@@ -3167,7 +3167,7 @@ create_stmt
                                      }
                                      si->pwd = val;
                                       
-                                     if(si->user)
+                                     if (si->user)
                                      {
                                         pt_add_password_offset(si->user->buffer_pos, si->user->buffer_pos, true, en_server_password);
                                      }
