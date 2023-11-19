@@ -2655,7 +2655,8 @@ heap_classrepr_dump_cache (bool simple_dump)
 	      fprintf (stdout, ".....\n");
 	      continue;
 	    }
-	  fprintf (stdout, " Fix count = %d, force_decache = %s\n", cache_entry->fcnt, cache_entry->force_decache ? "true" : "false");
+	  fprintf (stdout, " Fix count = %d, force_decache = %s\n", cache_entry->fcnt,
+		   cache_entry->force_decache ? "true" : "false");
 
 	  if (simple_dump == true)
 	    {
