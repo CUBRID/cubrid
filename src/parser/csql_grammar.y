@@ -3172,8 +3172,7 @@ create_stmt
                                                       : si->port ? si->port->buffer_pos
                                                       : si->host ? si->host->buffer_pos : -1;
 
-                                     if(t_buf_pos == -1)  
-                                        pt_add_password_offset(t_buf_pos, t_buf_pos, true, en_server_password);
+                                     pt_add_password_offset(t_buf_pos, t_buf_pos, true, en_server_password);
                                 }
 
                                 if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
