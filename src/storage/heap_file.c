@@ -3903,7 +3903,8 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
 	  free_space = spage_max_space_for_new_record (thread_p, pg_watcher.pgptr);
 
-	  if (free_space > HEAP_DROP_FREE_SPACE)
+    /* TODO: if the value returned by heap_stats_get_min_freespace (...) changes, this condition should be checked. */
+	  if (/* free_space >= heap_stats_get_min_freespace (heap_hdr) && */ free_space > HEAP_DROP_FREE_SPACE)
 	    {
 	      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 		{
