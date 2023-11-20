@@ -493,7 +493,7 @@ static HEAP_CHNGUESS heap_Guesschn_area = { NULL, NULL, NULL, false, 0,
 static HEAP_CHNGUESS *heap_Guesschn = NULL;
 
 static HEAP_STATS_BESTSPACE_CACHE heap_Bestspace_cache_area =
-  { 0, NULL, NULL, 0, 0, 0, NULL, PTHREAD_MUTEX_INITIALIZER };
+  { 0, NULL, NULL, 0, NULL, PTHREAD_MUTEX_INITIALIZER };
 
 static HEAP_STATS_BESTSPACE_CACHE *heap_Bestspace = NULL;
 
