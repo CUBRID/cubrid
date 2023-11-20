@@ -3727,7 +3727,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
   int num_recs = 0;
   float recs_sumlen = 0.0;
   int free_space = 0;
-  int min_freespace;
   int ret = NO_ERROR;
   int npages = 0, nrecords = 0, rec_length;
   int num_iterations = 0, max_iterations;
@@ -3742,8 +3741,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-
-  min_freespace = heap_stats_get_min_freespace (heap_hdr);
 
   best = 0;
   start_pos = -1;
@@ -3909,7 +3906,8 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
 	  free_space = spage_max_space_for_new_record (thread_p, pg_watcher.pgptr);
 
-	  if (free_space >= min_freespace && free_space > HEAP_DROP_FREE_SPACE)
+	  /* TODO: if the value returned by heap_stats_get_min_freespace (...) changes, this condition should be checked. */
+	  if ( /* free_space >= heap_stats_get_min_freespace (heap_hdr) && */ free_space > HEAP_DROP_FREE_SPACE)
 	    {
 	      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 		{
