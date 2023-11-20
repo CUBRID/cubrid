@@ -311,7 +311,7 @@ struct heap_classrepr_entry
   int fcnt;			/* How many times this structure has been fixed. It cannot be deallocated until this
 				 * value is zero.  */
   int zone;			/* ZONE_VOID, ZONE_LRU, ZONE_FREE */
-  int force_decache;
+  bool force_decache;
 
   THREAD_ENTRY *next_wait_thrd;
   HEAP_CLASSREPR_ENTRY *hash_next;
@@ -1233,6 +1233,9 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
   LOCK page_lock;
   PGBUF_LATCH_MODE page_latch_mode;
 
+  /* TODO: simply check if lock can be other LOCKs than X_LOCK or S_LOCK. */
+  assert (lock == S_LOCK || lock == X_LOCK);
+
   if (scan_cache != NULL)
     {
       if (scan_cache->page_latch == NULL_LOCK)
@@ -1241,8 +1244,7 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
 	}
       else
 	{
-	  assert (scan_cache->page_latch >= NULL_LOCK);
-	  assert (lock >= NULL_LOCK);
+	  assert (scan_cache->page_latch > NULL_LOCK);
 	  page_lock = lock_Conv[scan_cache->page_latch][lock];
 	  assert (page_lock != NA_LOCK);
 	}
@@ -1931,7 +1933,7 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
       heap_Classrepr_cache.num_fix_entries--;
       pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
 #endif /* DEBUG_CLASSREPR_CACHE */
-      if (cache_entry->force_decache != 0)
+      if (cache_entry->force_decache)
 	{
 	  /* cache_entry is already removed from LRU list. */
 
@@ -2653,7 +2655,8 @@ heap_classrepr_dump_cache (bool simple_dump)
 	      fprintf (stdout, ".....\n");
 	      continue;
 	    }
-	  fprintf (stdout, " Fix count = %d, force_decache = %d\n", cache_entry->fcnt, cache_entry->force_decache);
+	  fprintf (stdout, " Fix count = %d, force_decache = %s\n", cache_entry->fcnt,
+		   cache_entry->force_decache ? "true" : "false");
 
 	  if (simple_dump == true)
 	    {
@@ -3724,7 +3727,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
   int num_recs = 0;
   float recs_sumlen = 0.0;
   int free_space = 0;
-  int min_freespace;
   int ret = NO_ERROR;
   int npages = 0, nrecords = 0, rec_length;
   int num_iterations = 0, max_iterations;
@@ -3739,8 +3741,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-
-  min_freespace = heap_stats_get_min_freespace (heap_hdr);
 
   best = 0;
   start_pos = -1;
@@ -3906,7 +3906,8 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
 	  free_space = spage_max_space_for_new_record (thread_p, pg_watcher.pgptr);
 
-	  if (free_space >= min_freespace && free_space > HEAP_DROP_FREE_SPACE)
+	  /* TODO: if the value returned by heap_stats_get_min_freespace (...) changes, this condition should be checked. */
+	  if ( /* free_space >= heap_stats_get_min_freespace (heap_hdr) && */ free_space > HEAP_DROP_FREE_SPACE)
 	    {
 	      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 		{
