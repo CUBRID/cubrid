@@ -3975,6 +3975,11 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	  return NO_ERROR;
 	}
 
+      if (termp->pt_expr->node_type == PT_VALUE)
+	{
+	  return NO_ERROR;
+	}
+
       for (s = bitset_iterate (&(termp->segments), &iter_s); s != -1; s = bitset_next_member (&iter_s))
 	{
 	  bool found = false;
