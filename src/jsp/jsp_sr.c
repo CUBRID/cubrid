@@ -511,13 +511,13 @@ jsp_start_server (const char *db_name, const char *path, int port)
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
   JavaVMOption *options;
-  int vm_n_options = 3;
+  int vm_n_options = 2;
   char classpath[PATH_MAX + 32] = { 0 };
   char logging_prop[PATH_MAX + 32] = { 0 };
   char option_debug[70];
   char debug_flag[] = "-Xdebug";
   char debug_jdwp[] = "-agentlib:jdwp=transport=dt_socket,server=y,address=%d,suspend=n";
-  char disable_sig_handle[] = "-Xrs";
+  // char disable_sig_handle[] = "-Xrs";
   const char *envroot;
   const char *uds_path;
   char jsp_file_path[PATH_MAX];
@@ -570,13 +570,13 @@ jsp_start_server (const char *db_name, const char *path, int port)
     int idx = 3;
     options[0].optionString = classpath;
     options[1].optionString = logging_prop;
-    options[2].optionString = disable_sig_handle;
+    // options[2].optionString = disable_sig_handle;
     if (debug_port != -1)
       {
 	idx += 2;
 	snprintf (option_debug, sizeof (option_debug) - 1, debug_jdwp, debug_port);
-	options[3].optionString = debug_flag;
-	options[4].optionString = option_debug;
+	options[2].optionString = debug_flag;
+	options[3].optionString = option_debug;
       }
 
     for (auto it = opts.begin (); it != opts.end (); ++it)
