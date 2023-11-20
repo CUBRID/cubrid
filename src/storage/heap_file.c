@@ -311,7 +311,7 @@ struct heap_classrepr_entry
   int fcnt;			/* How many times this structure has been fixed. It cannot be deallocated until this
 				 * value is zero.  */
   int zone;			/* ZONE_VOID, ZONE_LRU, ZONE_FREE */
-  int force_decache;
+  bool force_decache;
 
   THREAD_ENTRY *next_wait_thrd;
   HEAP_CLASSREPR_ENTRY *hash_next;
@@ -1933,7 +1933,7 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
       heap_Classrepr_cache.num_fix_entries--;
       pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
 #endif /* DEBUG_CLASSREPR_CACHE */
-      if (cache_entry->force_decache != 0)
+      if (cache_entry->force_decache)
 	{
 	  /* cache_entry is already removed from LRU list. */
 
@@ -2655,7 +2655,8 @@ heap_classrepr_dump_cache (bool simple_dump)
 	      fprintf (stdout, ".....\n");
 	      continue;
 	    }
-	  fprintf (stdout, " Fix count = %d, force_decache = %d\n", cache_entry->fcnt, cache_entry->force_decache);
+	  fprintf (stdout, " Fix count = %d, force_decache = %s\n", cache_entry->fcnt,
+		   cache_entry->force_decache ? "true" : "false");
 
 	  if (simple_dump == true)
 	    {
