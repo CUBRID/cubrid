@@ -65,6 +65,7 @@
 #include <string>
 #include <algorithm>
 #include <array>
+#include <atomic>
 
 #define JAVASP_PING_LEN   PATH_MAX
 
@@ -96,6 +97,16 @@ static int javasp_check_database (const std::string &db_name, std::string &db_pa
 
 static int javasp_get_port_param ();
 
+static void javasp_signal_handler (int sig);
+
+
+static bool is_signal_handling = false;
+static char executable_path[PATH_MAX];
+
+static std::string command;
+static std::string db_name;
+static JAVASP_SERVER_INFO running_info = JAVASP_SERVER_INFO_INITIALIZER;
+
 /*
  * main() - javasp main function
  */
@@ -105,7 +116,6 @@ main (int argc, char *argv[])
 {
   int status = NO_ERROR;
   FILE *redirect = NULL; /* for ping */
-  std::string command, db_name;
 
 #if defined(WINDOWS)
   FARPROC jsp_old_hook = NULL;
@@ -114,6 +124,14 @@ main (int argc, char *argv[])
     {
       return ER_GENERIC_ERROR;
     }
+
+  os_set_signal_handler (SIGABRT, javasp_signal_handler);
+  os_set_signal_handler (SIGILL, javasp_signal_handler);
+  os_set_signal_handler (SIGFPE, javasp_signal_handler);
+  os_set_signal_handler (SIGBUS, javasp_signal_handler);
+  os_set_signal_handler (SIGSEGV, javasp_signal_handler);
+  os_set_signal_handler (SIGSYS, javasp_signal_handler);
+
 #endif /* WINDOWS */
   {
     /*
@@ -226,6 +244,8 @@ main (int argc, char *argv[])
 	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
+	    command = "running";
+	    javasp_read_info (db_name.c_str(), running_info);
 	    do
 	      {
 		SLEEP_MILISEC (0, 100);
@@ -280,6 +300,65 @@ exit:
     }
 
   return status;
+}
+
+static void javasp_signal_handler (int sig)
+{
+  JAVASP_SERVER_INFO jsp_info = JAVASP_SERVER_INFO_INITIALIZER;
+
+  if (os_set_signal_handler (sig, SIG_DFL) == SIG_ERR)
+    {
+      return;
+    }
+
+  if (is_signal_handling == true)
+    {
+      return;
+    }
+
+  int status = javasp_get_server_info (db_name, jsp_info); // if failed,
+  if (status == NO_ERROR && jsp_info.pid != JAVASP_PID_DISABLED)
+    {
+      (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_JAVASP_NAME);
+      if (command.compare ("running") != 0 || db_name.empty ())
+	{
+	  return;
+	}
+
+      if (running_info.pid == jsp_info.pid && running_info.port == jsp_info.port)
+	{
+	  is_signal_handling = true;
+	}
+      else
+	{
+	  return;
+	}
+
+      if (!is_signal_handling) // check again
+	{
+	  return;
+	}
+
+      int pid;
+      pid = fork ();
+      if (pid == 0) // child
+	{
+	  // TODO: log error message
+
+	  execl (executable_path, UTIL_JAVASP_NAME, "start", db_name.c_str (), NULL);
+	  exit (0);
+	}
+      else
+	{
+	  exit (1);
+	}
+    }
+  else
+    {
+      // resume signal hanlding
+      os_set_signal_handler (sig, javasp_signal_handler);
+      is_signal_handling = false;
+    }
 }
 
 static int
