@@ -4366,7 +4366,7 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	}			/* for (i = ... ) */
     }
 
-  if (hint & PT_HINT_LEADING)
+  if (!(hint & PT_HINT_ORDERED) && (hint & PT_HINT_LEADING))
     {
       if (tree->info.query.q.select.leading)
 	{
