@@ -1444,7 +1444,9 @@ $ LOADDB
 1357 将 SQL 字符串转换为宽字符串失败。
 1358 受影响的行数未知。
 
-1359 最后一个错误.
+1359 Java VM crashed: %1$s
+
+1360 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
