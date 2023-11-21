@@ -28,9 +28,9 @@
 
 #if !defined(WINDOWS)
 #include <dlfcn.h>
+#include <execinfo.h>
 #endif
 #include <string.h>
-#include <execinfo.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -102,8 +102,9 @@ static int javasp_check_database (const std::string &db_name, std::string &db_pa
 
 static int javasp_get_port_param ();
 
+#if !defined(WINDOWS)
 static void javasp_signal_handler (int sig);
-
+#endif
 
 static bool is_signal_handling = false;
 static char executable_path[PATH_MAX];
@@ -307,6 +308,7 @@ exit:
   return status;
 }
 
+#if !defined(WINDOWS)
 static void javasp_signal_handler (int sig)
 {
   JAVASP_SERVER_INFO jsp_info = JAVASP_SERVER_INFO_INITIALIZER;
@@ -342,17 +344,14 @@ static void javasp_signal_handler (int sig)
       int pid = getpid ();
       std::string err_msg;
 
-#if !defined(WINDOWS)
       void *addresses[64];
       int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
       char **symbols = backtrace_symbols (addresses, nn_addresses);
-#endif
 
       err_msg += "pid (";
       err_msg += std::to_string (pid);
       err_msg += ")\n";
 
-#if !defined(WINDOWS)
       for (int i = 0; i < nn_addresses; i++)
 	{
 	  err_msg += symbols[i];
@@ -362,7 +361,6 @@ static void javasp_signal_handler (int sig)
 	    }
 	}
       free (symbols);
-#endif
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
       pid = fork ();
@@ -383,6 +381,7 @@ static void javasp_signal_handler (int sig)
       is_signal_handling = false;
     }
 }
+#endif
 
 static int
 javasp_get_port_param ()
