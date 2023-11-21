@@ -360,8 +360,8 @@ static void javasp_signal_handler (int sig)
 	      err_msg += "\n";
 	    }
 	}
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
-      free(symbols);
+      free (symbols);
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
       pid = fork ();
       if (pid == 0) // child
