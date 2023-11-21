@@ -1252,7 +1252,7 @@ dbt_reset_query_spec (DB_CTMPL * def)
  * query_no(in) :
  */
 int
-dbt_change_query_spec (DB_CTMPL * def, const char *new_query, const int query_no)
+dbt_change_query_spec (DB_CTMPL * def, const char *new_query, const char *user_query, const int query_no)
 {
   int error = NO_ERROR;
 
@@ -1260,7 +1260,7 @@ dbt_change_query_spec (DB_CTMPL * def, const char *new_query, const int query_no
   CHECK_2ARGS_ERROR (def, new_query);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_change_query_spec (def, new_query, query_no);
+  error = smt_change_query_spec (def, new_query, user_query, query_no);
 
   return (error);
 }

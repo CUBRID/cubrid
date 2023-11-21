@@ -379,6 +379,8 @@ static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * state
 
 int ib_thread_count = 0;
 
+#define MAX_QUERY_STRING_LENGTH 4096
+
 /*
  * Function Group :
  * DO functions for alter statement
@@ -404,6 +406,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   const char *entity_name, *new_query;
   const char *attr_name, *mthd_name, *mthd_file, *attr_mthd_name;
   const char *new_name, *old_name, *domain;
+  char user_query[MAX_QUERY_STRING_LENGTH + 2] = { '-', '-' };
   DB_CTMPL *ctemplate = NULL;
   DB_OBJECT *vclass, *sup_class;
   int error = NO_ERROR;
@@ -512,8 +515,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       save_custom = parser->custom_print;
       parser->custom_print |= PT_CHARSET_COLLATE_FULL;
       new_query = parser_print_tree_with_quotes (parser, alter->info.alter.alter_clause.query.query);
+      strncpy (user_query + 2, alter->sql_view_text, MAX_QUERY_STRING_LENGTH);
       parser->custom_print = save_custom;
-      error = dbt_change_query_spec (ctemplate, new_query, query_no);
+      error = dbt_change_query_spec (ctemplate, new_query, user_query, query_no);
       if (error != NO_ERROR)
 	{
 	  break;
@@ -8312,8 +8316,6 @@ do_add_resolutions (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const P
   return (error);
 }
 
-#define MAX_QUERY_STRING_LENGTH 4096
-
 /*
  * add_query_to_virtual_class() - Adds a query to a virtual class object
  *   return: Error code
@@ -8345,7 +8347,7 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
 
   if (queries->sql_view_text)
     {
-      strncat (user_query + 2, queries->sql_view_text, MAX_QUERY_STRING_LENGTH);
+      strncpy (user_query + 2, queries->sql_view_text, MAX_QUERY_STRING_LENGTH);
       error = dbt_add_query_spec (ctemplate, user_query);
     }
 

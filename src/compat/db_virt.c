@@ -557,7 +557,7 @@ db_drop_query_spec (DB_OBJECT * vclass, const int query_no)
  * query_no(in) :
  */
 int
-db_change_query_spec (DB_OBJECT * vclass, const char *new_query, const int query_no)
+db_change_query_spec (DB_OBJECT * vclass, const char *new_query, const char *user_query, const int query_no)
 {
 
   int error = NO_ERROR;
@@ -581,7 +581,7 @@ db_change_query_spec (DB_OBJECT * vclass, const char *new_query, const int query
 	}
       else
 	{
-	  error = smt_change_query_spec (def, new_query, query_no);
+	  error = smt_change_query_spec (def, new_query, user_query, query_no);
 	  if (error)
 	    {
 	      smt_quit (def);

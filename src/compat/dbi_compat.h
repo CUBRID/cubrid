@@ -496,7 +496,7 @@ extern "C"
 
   extern int dbt_add_query_spec (DB_CTMPL * def, const char *query);
   extern int dbt_drop_query_spec (DB_CTMPL * def, const int query_no);
-  extern int dbt_change_query_spec (DB_CTMPL * def, const char *new_query, const int query_no);
+  extern int dbt_change_query_spec (DB_CTMPL * def, const char *new_query, const char *user_queyr, const int query_no);
   extern int dbt_set_object_id (DB_CTMPL * def, DB_NAMELIST * id_list);
   extern int dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name, const char **attnames,
 				  const char *ref_class, const char **ref_attrs, int del_action, int upd_action,

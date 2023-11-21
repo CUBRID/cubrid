@@ -154,7 +154,7 @@ extern int smt_delete_class_resolution (SM_TEMPLATE * template_, MOP super_class
 extern int smt_add_query_spec (SM_TEMPLATE * template_, const char *specification);
 extern int smt_drop_query_spec (SM_TEMPLATE * template_, const int index);
 extern int smt_reset_query_spec (SM_TEMPLATE * template_);
-extern int smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index);
+extern int smt_change_query_spec (SM_TEMPLATE * def, const char *query, const char *user_query, const int index);
 extern int smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const char *new_name,
 						const char *new_domain_string, DB_DOMAIN * new_domain,
 						const SM_NAME_SPACE name_space, DB_VALUE * new_default_value,

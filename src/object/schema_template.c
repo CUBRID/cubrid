@@ -4066,12 +4066,18 @@ int
 smt_drop_query_spec (SM_TEMPLATE * def, const int index)
 {
   int error = NO_ERROR;
-  SM_QUERY_SPEC *file, *prev, *found;
+  SM_QUERY_SPEC *file, *prev, *found, *user_query_spec;
   int i;
   char indexname[20];
 
   for (file = def->query_spec, prev = NULL, found = NULL, i = 1; file != NULL && found == NULL; file = file->next, i++)
     {
+      if (file->specification[0] == '-')
+	{
+	  i--;
+	  continue;
+	}
+
       if (index == i)
 	{
 	  found = file;
@@ -4090,13 +4096,24 @@ smt_drop_query_spec (SM_TEMPLATE * def, const int index)
     }
   else
     {
+      user_query_spec = found->next;
       if (prev == NULL)
 	{
 	  def->query_spec = found->next;
+	  if (user_query_spec && user_query_spec->specification[0] == '-')
+	    {
+	      def->query_spec = user_query_spec->next;
+	      classobj_free_query_spec (user_query_spec);
+	    }
 	}
       else
 	{
 	  prev->next = found->next;
+	  if (user_query_spec && user_query_spec->specification[0] == '-')
+	    {
+	      prev->next = user_query_spec->next;
+	      classobj_free_query_spec (user_query_spec);
+	    }
 	}
       classobj_free_query_spec (found);
     }
@@ -4154,15 +4171,21 @@ sm_get_class_type (SM_CLASS * class_)
  */
 
 int
-smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
+smt_change_query_spec (SM_TEMPLATE * def, const char *query, const char *user_query, const int index)
 {
   int error = NO_ERROR;
-  SM_QUERY_SPEC *file, *prev, *found;
+  SM_QUERY_SPEC *file, *prev, *found, *user_query_spec;
   int i;
   char indexname[20];
 
   for (file = def->query_spec, prev = NULL, found = NULL, i = 1; file != NULL && found == NULL; file = file->next, i++)
     {
+      if (file->specification[0] == '-')
+	{
+	  i--;
+	  continue;
+	}
+
       if (index == i)
 	{
 	  found = file;
@@ -4181,6 +4204,7 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
     }
   else
     {
+      user_query_spec = found->next;
       if (prev == NULL)
 	{
 	  def->query_spec = classobj_make_query_spec (query);
@@ -4189,7 +4213,17 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
-	  def->query_spec->next = found->next;
+	  if (user_query_spec && user_query_spec->specification[0] == '-')
+	    {
+	      user_query_spec = classobj_make_query_spec (user_query);
+	      user_query_spec->next = found->next->next;	/* user's query to next */
+	      def->query_spec->next = user_query_spec;	/* query_spec's next = user's query */
+	      classobj_free_query_spec (found->next);
+	    }
+	  else
+	    {
+	      def->query_spec->next = found->next;
+	    }
 	}
       else
 	{
@@ -4199,7 +4233,17 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const int index)
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
-	  prev->next->next = found->next;
+	  if (user_query_spec && user_query_spec->specification[0] == '-')
+	    {
+	      user_query_spec = classobj_make_query_spec (user_query);
+	      user_query_spec->next = found->next->next;	/* user's query to next */
+	      prev->next->next = user_query_spec;	/* query_spec's next = user's query */
+	      classobj_free_query_spec (found->next);
+	    }
+	  else
+	    {
+	      prev->next->next = found->next;
+	    }
 	}
 
       classobj_free_query_spec (found);

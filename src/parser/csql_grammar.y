@@ -1864,6 +1864,7 @@ stmt
 				int len = (int) (curr_ptr - g_query_string);
 				node->sql_user_text_len = len;
 				g_query_string_len = len;
+				node->sql_view_text = g_view_string;
 			      }
 			  }
 
@@ -6192,7 +6193,12 @@ alter_add_clause_cubrid_specific
 			  }
 
 		DBG_PRINT}}
-	| QUERY csql_query opt_vclass_comment_spec
+	| QUERY
+		{{
+			int pos = @$.buffer_pos;
+			g_view_string = (char*) (this_parser->original_buffer + pos);
+		}}
+	  csql_query opt_vclass_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_add_clause_cubrid_specific, | QUERY csql_query opt_vclass_comment_spec );
 
 			PT_NODE *node = parser_get_alter_node ();
@@ -6200,8 +6206,8 @@ alter_add_clause_cubrid_specific
 			if (node)
 			  {
 			    node->info.alter.code = PT_ADD_QUERY;
-			    node->info.alter.alter_clause.query.query = $2;
-			    node->info.alter.alter_clause.query.view_comment = $3;
+			    node->info.alter.alter_clause.query.query = $3;
+			    node->info.alter.alter_clause.query.view_comment = $4;
 			  }
 
 		DBG_PRINT}}
@@ -6492,7 +6498,12 @@ alter_change_clause_cubrid_specific
 			  }
 
 		DBG_PRINT}}
-	| QUERY unsigned_integer csql_query opt_vclass_comment_spec
+	| QUERY unsigned_integer
+		{{
+			int pos = @$.buffer_pos;
+			g_view_string = (char*)this_parser->original_buffer + pos;
+		}}
+	  csql_query opt_vclass_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_change_clause_cubrid_specific, | QUERY unsigned_integer csql_query opt_vclass_comment_spec);
 
 			PT_NODE *node = parser_get_alter_node ();
@@ -6500,13 +6511,18 @@ alter_change_clause_cubrid_specific
 			if (node)
 			  {
 			    node->info.alter.code = PT_MODIFY_QUERY;
-			    node->info.alter.alter_clause.query.query = $3;
+			    node->info.alter.alter_clause.query.query = $4;
 			    node->info.alter.alter_clause.query.query_no_list = $2;
-			    node->info.alter.alter_clause.query.view_comment = $4;
+			    node->info.alter.alter_clause.query.view_comment = $5;
 			  }
 
 		DBG_PRINT}}
-	| QUERY csql_query opt_vclass_comment_spec
+	| QUERY
+		{{
+			int pos = @$.buffer_pos;
+			g_view_string = (char*) (this_parser->original_buffer + pos);
+		}}
+	  csql_query opt_vclass_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_change_clause_cubrid_specific, | QUERY csql_query opt_vclass_comment_spec);
 
 			PT_NODE *node = parser_get_alter_node ();
@@ -6514,9 +6530,9 @@ alter_change_clause_cubrid_specific
 			if (node)
 			  {
 			    node->info.alter.code = PT_MODIFY_QUERY;
-			    node->info.alter.alter_clause.query.query = $2;
+			    node->info.alter.alter_clause.query.query = $3;
 			    node->info.alter.alter_clause.query.query_no_list = NULL;
-			    node->info.alter.alter_clause.query.view_comment = $3;
+			    node->info.alter.alter_clause.query.view_comment = $4;
 			  }
 
 		DBG_PRINT}}
@@ -9318,10 +9334,6 @@ opt_as_query_list
 	| AS
 		{{
 			int pos = @$.buffer_pos;
-			if (pos > g_original_buffer_len)
-			      {
-				pos = g_original_buffer_len;
-			      }
 			g_view_string = (char*) (this_parser->original_buffer + pos);
 		}}
 
