@@ -4355,7 +4355,7 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	{
 	  node = QO_ENV_NODE (env, i);
 	  if (p_node)
-	    {		/* skip out the first ordered node */
+	    {			/* skip out the first ordered node */
 	      bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
 	      bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
 	    }
