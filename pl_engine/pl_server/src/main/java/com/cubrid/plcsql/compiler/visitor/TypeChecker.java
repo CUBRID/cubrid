@@ -551,7 +551,6 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             TypeSpecSimple ret;
             if (DBTypeAdapter.isSupported(ci.type)) {
                 ret = DBTypeAdapter.getValueType(ci.type);
-                assert !ret.equals(TypeSpecSimple.NULL);
             } else {
                 // Allow the other types too, which can lead to run-time type errors,
                 // but accepts some more working programs. For example,
