@@ -1739,7 +1739,6 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
 	{
 	  /* is an always-true WHERE condition */
 	  QO_TERM_SELECTIVITY (term) = 1.0;
-	  QO_TERM_CLASS (term) = QO_TC_OTHER;	/* is dummy */
 	}
 
       if (conjunct->info.value.location == 0)
