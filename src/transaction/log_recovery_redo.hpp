@@ -26,6 +26,7 @@
 #include "log_recovery.h"
 #include "page_buffer.h"
 #include "perf_monitor_trackers.hpp"
+#include "server_type.hpp"
 #include "scope_exit.hpp"
 #include "system_parameter.h"
 #include "type_helper.hpp"
@@ -642,6 +643,12 @@ void log_rv_redo_record_sync_apply (THREAD_ENTRY *thread_p, log_rv_redo_context 
 			 "rcv = {mvccid=%llu, vpid=(%d, %d), offset = %d, data_length = %d}",
 			 LSA_AS_ARGS (&record_info.m_start_lsa), (long long int) rcv.mvcc_id,
 			 VPID_AS_ARGS (&rcv_vpid), (int) rcv.offset, (int) rcv.length);
+    }
+
+  if (is_passive_transaction_server() && log_data.rcvindex == RVPGBUF_DEALLOC)
+    {
+      // rcv.pgptr is invalidated and unfixed by pgbuf_rv_dealloc_redo ()
+      rcv.pgptr = nullptr;
     }
 
   if (rcv.pgptr != nullptr)
