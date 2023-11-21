@@ -339,11 +339,6 @@ static void javasp_signal_handler (int sig)
 	  return;
 	}
 
-      if (!is_signal_handling) // check again
-	{
-	  return;
-	}
-
       int pid = getpid ();
       std::string err_msg;
 
