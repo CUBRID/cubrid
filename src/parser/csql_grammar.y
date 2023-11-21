@@ -93,7 +93,7 @@ extern int is_dblink_query_string;
      ** 2: Display the contents of application of grammar rules in csql_grammar on the screen
      ** 3: Expression of both 1 and 2 above
      */
-#    define DBG_TRACE_LEVEL      2
+#    define DBG_TRACE_LEVEL      0
 #endif
 
 #if (DBG_TRACE_LEVEL == 1 || DBG_TRACE_LEVEL == 3) 

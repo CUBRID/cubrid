@@ -9319,29 +9319,30 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 static bool
-pt_is_undefined_class(PARSER_CONTEXT * parser, PT_NODE* data_type)
+pt_is_undefined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
 {
-        if (data_type && data_type->node_type == PT_DATA_TYPE && data_type->type_enum == PT_TYPE_OBJECT)
-        {
-                PT_NODE* name = data_type->info.data_type.entity;
-                if (name && name->node_type == PT_NAME)
-                {
-                        if (!db_find_class(name->info.name.original))
-                        {
-                                PT_ERRORmf (parser, data_type, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
-                                    name->info.name.original);
-                                return true;
-                        }
-                }
-        }
+  if (data_type && data_type->node_type == PT_DATA_TYPE && data_type->type_enum == PT_TYPE_OBJECT)
+    {
+      PT_NODE *name = data_type->info.data_type.entity;
+      if (name && name->node_type == PT_NAME)
+	{
+	  if (!db_find_class (name->info.name.original))
+	    {
+	      PT_ERRORmf (parser, data_type, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
+			  name->info.name.original);
+	      return true;
+	    }
+	}
+    }
 
-        return false;
+  return false;
 }
 
 static bool
-pt_is_type_supported_by_sp(PARSER_CONTEXT * parser, PT_TYPE_ENUM type_enum, PT_NODE* data_type)
+pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 {
-    switch (type_enum) {
+  switch (type_enum)
+    {
 
     case PT_TYPE_SMALLINT:
     case PT_TYPE_INTEGER:
@@ -9356,41 +9357,48 @@ pt_is_type_supported_by_sp(PARSER_CONTEXT * parser, PT_TYPE_ENUM type_enum, PT_N
     case PT_TYPE_DATETIME:
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_RESULTSET:
-        return true;
+      return true;
 
     case PT_TYPE_OBJECT:
-        return !pt_is_undefined_class(parser, data_type);
+      return !pt_is_undefined_class (parser, data_type);
 
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
-    case PT_TYPE_SEQUENCE: {
-                PT_NODE* dt;
-                for (dt = data_type; dt; dt = dt->next) {
-                        if (pt_is_undefined_class(parser, dt)) {
-                                return false;
-                        }
-                }
-        }
-        return true;
+    case PT_TYPE_SEQUENCE:
+      {
+	PT_NODE *dt;
+	for (dt = data_type; dt; dt = dt->next)
+	  {
+	    if (pt_is_undefined_class (parser, dt))
+	      {
+		return false;
+	      }
+	  }
+      }
+      return true;
 
     default:
-        return false;
+      return false;
     }
 }
 
-static const char*
-pt_get_type_name(PT_TYPE_ENUM type_enum, PT_NODE* data_type) {
+static const char *
+pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
+{
 
-    if (type_enum == PT_TYPE_OBJECT) {
-        if (data_type && data_type->node_type == PT_DATA_TYPE) {
-                PT_NODE* dt_name = data_type->info.data_type.entity;
-                if (dt_name && dt_name->node_type == PT_NAME) {
-                        return dt_name->info.name.original;
-                }
-        }
+  if (type_enum == PT_TYPE_OBJECT)
+    {
+      if (data_type && data_type->node_type == PT_DATA_TYPE)
+	{
+	  PT_NODE *dt_name = data_type->info.data_type.entity;
+	  if (dt_name && dt_name->node_type == PT_NAME)
+	    {
+	      return dt_name->info.name.original;
+	    }
+	}
     }
 
-    return pt_show_type_enum(type_enum);
+  return pt_show_type_enum (type_enum);
 }
 
 /*
@@ -9402,27 +9410,33 @@ pt_get_type_name(PT_TYPE_ENUM type_enum, PT_NODE* data_type) {
 static void
 pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-     PT_NODE* param;
+  PT_NODE *param;
 
-     for (param = node->info.sp.param_list; param; param = param->next) {
-         if (!pt_is_type_supported_by_sp(parser, param->type_enum, param->data_type)) {
-             if (!pt_has_error(parser)) {
-                 PT_ERRORmf (parser, param, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_ARG_TYPE),
-                    pt_get_type_name(param->type_enum, param->data_type));
-             }
-	     return;
-         }
-     }
+  for (param = node->info.sp.param_list; param; param = param->next)
+    {
+      if (!pt_is_type_supported_by_sp (parser, param->type_enum, param->data_type))
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORmf (parser, param, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_ARG_TYPE),
+			  pt_get_type_name (param->type_enum, param->data_type));
+	    }
+	  return;
+	}
+    }
 
-     if (node->info.sp.type == PT_SP_FUNCTION) {
-         if (!pt_is_type_supported_by_sp(parser, node->info.sp.ret_type, node->info.sp.ret_data_type)) {
-             if (!pt_has_error(parser)) {
-                 PT_ERRORmf (parser, node, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_RETURN_TYPE),
-                            pt_get_type_name(node->info.sp.ret_type, node->info.sp.ret_data_type));
-             }
-	     return;
-         }
-     }
+  if (node->info.sp.type == PT_SP_FUNCTION)
+    {
+      if (!pt_is_type_supported_by_sp (parser, node->info.sp.ret_type, node->info.sp.ret_data_type))
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      PT_ERRORmf (parser, node, MSGCAT_SET_ERROR, -(ER_SP_NOT_SUPPORTED_RETURN_TYPE),
+			  pt_get_type_name (node->info.sp.ret_type, node->info.sp.ret_data_type));
+	    }
+	  return;
+	}
+    }
 }
 
 /*
