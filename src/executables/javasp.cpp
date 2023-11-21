@@ -342,24 +342,29 @@ static void javasp_signal_handler (int sig)
 	  return;
 	}
 
-      int pid;
+      int pid = getpid ();
+      std::string err_msg;
+      void *addresses[64];
+      int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
+      char **symbols = backtrace_symbols (addresses, nn_addresses);
+
+      err_msg += "pid (";
+      err_msg += std::to_string (pid);
+      err_msg += ")\n";
+
+      for (int i = 0; i < nn_addresses; i++)
+	{
+	  err_msg += symbols[i];
+	  if (i < nn_addresses - 1)
+	    {
+	      err_msg += "\n";
+	    }
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
+
       pid = fork ();
       if (pid == 0) // child
 	{
-	  std::string err_msg;
-	  void *addresses[64];
-	  int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
-	  char **symbols = backtrace_symbols (addresses, nn_addresses);
-	  for (int i = 0; i < nn_addresses; i++)
-	    {
-	      err_msg += symbols[i];
-	      if (i < nn_addresses - 1)
-		{
-		  err_msg += "\n";
-		}
-	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
-
 	  execl (executable_path, UTIL_JAVASP_NAME, "start", db_name.c_str (), NULL);
 	  exit (0);
 	}
