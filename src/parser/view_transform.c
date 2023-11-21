@@ -4812,8 +4812,8 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
   derived->info.query.q.select.hint = agg_sel->info.query.q.select.hint;
   agg_sel->info.query.q.select.hint = PT_HINT_NONE;
 
-  derived->info.query.q.select.ordered = agg_sel->info.query.q.select.ordered;
-  agg_sel->info.query.q.select.ordered = NULL;
+  derived->info.query.q.select.leading = agg_sel->info.query.q.select.leading;
+  agg_sel->info.query.q.select.leading = NULL;
 
   derived->info.query.q.select.use_nl = agg_sel->info.query.q.select.use_nl;
   agg_sel->info.query.q.select.use_nl = NULL;
@@ -13739,9 +13739,9 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
       dest_query->info.query.q.select.hint =
 	(PT_HINT_ENUM) (dest_query->info.query.q.select.hint | src_query->info.query.q.select.hint);
 
-      dest_query->info.query.q.select.ordered =
-	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.ordered),
-			    dest_query->info.query.q.select.ordered);
+      dest_query->info.query.q.select.leading =
+	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.leading),
+			    dest_query->info.query.q.select.leading);
 
       dest_query->info.query.q.select.use_nl =
 	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_nl),

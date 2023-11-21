@@ -8496,7 +8496,7 @@ pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.delete_.cursor_name, arg);
   PT_APPLY_WALK (parser, p->info.delete_.internal_stmts, arg);
   PT_APPLY_WALK (parser, p->info.delete_.waitsecs_hint, arg);
-  PT_APPLY_WALK (parser, p->info.delete_.ordered_hint, arg);
+  PT_APPLY_WALK (parser, p->info.delete_.leading_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.use_nl_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.use_idx_hint, arg);
   PT_APPLY_WALK (parser, p->info.delete_.use_merge_hint, arg);
@@ -8556,10 +8556,16 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.delete_.hint & PT_HINT_ORDERED)
 	{
 	  /* force join left-to-right */
-	  q = pt_append_nulstring (parser, q, " ORDERED");
-	  if (p->info.delete_.ordered_hint)
+	  q = pt_append_nulstring (parser, q, " ORDERED ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_LEADING)
+	{
+	  /* force join left-to-right */
+	  q = pt_append_nulstring (parser, q, " LEADING");
+	  if (p->info.delete_.leading_hint)
 	    {
-	      r1 = pt_print_bytes_l (parser, p->info.delete_.ordered_hint);
+	      r1 = pt_print_bytes_l (parser, p->info.delete_.leading_hint);
 	      q = pt_append_nulstring (parser, q, "(");
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ") ");
@@ -13859,7 +13865,7 @@ pt_apply_select (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.query.q.select.having, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.using_index, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.with_increment, arg);
-  PT_APPLY_WALK (parser, p->info.query.q.select.ordered, arg);
+  PT_APPLY_WALK (parser, p->info.query.q.select.leading, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.use_nl, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.use_idx, arg);
   PT_APPLY_WALK (parser, p->info.query.q.select.index_ss, arg);
@@ -14048,10 +14054,16 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_ORDERED)
 	    {
 	      /* force join left-to-right */
-	      q = pt_append_nulstring (parser, q, "ORDERED");
-	      if (p->info.query.q.select.ordered)
+	      q = pt_append_nulstring (parser, q, "ORDERED ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_LEADING)
+	    {
+	      /* force join left-to-right */
+	      q = pt_append_nulstring (parser, q, "LEADING");
+	      if (p->info.query.q.select.leading)
 		{
-		  r1 = pt_print_bytes_l (parser, p->info.query.q.select.ordered);
+		  r1 = pt_print_bytes_l (parser, p->info.query.q.select.leading);
 		  q = pt_append_nulstring (parser, q, "(");
 		  q = pt_append_varchar (parser, q, r1);
 		  q = pt_append_nulstring (parser, q, ") ");
@@ -15218,7 +15230,7 @@ pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.update.check_where, arg);
   PT_APPLY_WALK (parser, p->info.update.internal_stmts, arg);
   PT_APPLY_WALK (parser, p->info.update.waitsecs_hint, arg);
-  PT_APPLY_WALK (parser, p->info.update.ordered_hint, arg);
+  PT_APPLY_WALK (parser, p->info.update.leading_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.use_nl_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.use_idx_hint, arg);
   PT_APPLY_WALK (parser, p->info.update.use_merge_hint, arg);
@@ -15276,10 +15288,16 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.update.hint & PT_HINT_ORDERED)
 	{
 	  /* force join left-to-right */
-	  b = pt_append_nulstring (parser, b, " ORDERED");
-	  if (p->info.update.ordered_hint)
+	  b = pt_append_nulstring (parser, b, " ORDERED ");
+	}
+
+      if (p->info.update.hint & PT_HINT_LEADING)
+	{
+	  /* force join left-to-right */
+	  b = pt_append_nulstring (parser, b, " LEADING");
+	  if (p->info.update.leading_hint)
 	    {
-	      r1 = pt_print_bytes_l (parser, p->info.update.ordered_hint);
+	      r1 = pt_print_bytes_l (parser, p->info.update.leading_hint);
 	      b = pt_append_nulstring (parser, b, "(");
 	      b = pt_append_varchar (parser, b, r1);
 	      b = pt_append_nulstring (parser, b, ") ");
