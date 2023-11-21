@@ -1434,13 +1434,6 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1352 Invalid number of columns specified.
 
-1353 Internal CAS error : %1$d 
-1354 Internal CAS error : %1$d, %2$s
-
-1351 The maximum length of the function expression string must be %1$d.
-
-1352 Invalid number of columns specified.
-
 1353 Internal CAS error : %1$d
 1354 Internal CAS error : %1$d, %2$s
 
