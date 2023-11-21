@@ -1443,6 +1443,7 @@ $ LOADDB
 1358 Reserved error 4
 
 1359 Java VM crashed: %1$s
+
 1360 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
