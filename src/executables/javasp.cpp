@@ -26,7 +26,9 @@
 
 #include "config.h"
 
+#if !defined(WINDOWS)
 #include <dlfcn.h>
+#endif
 #include <string.h>
 #include <execinfo.h>
 #include <errno.h>
@@ -344,14 +346,18 @@ static void javasp_signal_handler (int sig)
 
       int pid = getpid ();
       std::string err_msg;
+
+#if !defined(WINDOWS)
       void *addresses[64];
       int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
       char **symbols = backtrace_symbols (addresses, nn_addresses);
+#endif
 
       err_msg += "pid (";
       err_msg += std::to_string (pid);
       err_msg += ")\n";
 
+#if !defined(WINDOWS)
       for (int i = 0; i < nn_addresses; i++)
 	{
 	  err_msg += symbols[i];
@@ -361,6 +367,7 @@ static void javasp_signal_handler (int sig)
 	    }
 	}
       free (symbols);
+#endif
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
       pid = fork ();
