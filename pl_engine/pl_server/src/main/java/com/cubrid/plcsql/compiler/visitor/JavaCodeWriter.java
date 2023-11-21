@@ -671,7 +671,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplExprBuiltinFuncCall =
             new String[] {
-                "(%'RESULT-TYPE'%) invokeBuiltinFunc(conn, \"%'NAME'%\", %'RESULT-TYPE-CODE'%,", "  %'+ARGS'%", ")"
+                "(%'RESULT-TYPE'%) invokeBuiltinFunc(conn, \"%'NAME'%\", %'RESULT-TYPE-CODE'%,",
+                "  %'+ARGS'%",
+                ")"
             };
 
     @Override
@@ -688,8 +690,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     new CodeTemplate(
                             "ExprBuiltinFuncCall",
                             Misc.getLineColumnOf(node.ctx),
-                            String.format("(%s) invokeBuiltinFunc(conn, \"%s\", %d)",
-                                ty, node.name, node.resultType.simpleTypeIdx));
+                            String.format(
+                                    "(%s) invokeBuiltinFunc(conn, \"%s\", %d)",
+                                    ty, node.name, node.resultType.simpleTypeIdx));
         } else {
             tmpl =
                     new CodeTemplate(

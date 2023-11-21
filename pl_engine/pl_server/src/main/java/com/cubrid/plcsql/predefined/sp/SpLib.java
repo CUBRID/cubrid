@@ -33,9 +33,9 @@ package com.cubrid.plcsql.predefined.sp;
 import com.cubrid.jsp.Server;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
-import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.compiler.DateTimeParser;
 import com.cubrid.plcsql.compiler.annotation.Operator;
+import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -175,7 +175,8 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     // -------------------------------------------------------------------------------
 
-    public static Object invokeBuiltinFunc(Connection conn, String name, int resultTypeCode, Object... args) {
+    public static Object invokeBuiltinFunc(
+            Connection conn, String name, int resultTypeCode, Object... args) {
 
         int argsLen = args.length;
         String hostVars = getHostVarsStr(argsLen);
