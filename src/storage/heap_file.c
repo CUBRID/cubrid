@@ -469,8 +469,6 @@ struct heap_stats_bestspace_cache
   int num_stats_entries;	/* number of cache entries in use */
   MHT_TABLE *hfid_ht;		/* HFID Hash table for best space */
   MHT_TABLE *vpid_ht;		/* VPID Hash table for best space */
-  int num_alloc;
-  int num_free;
   int free_list_count;		/* number of entries in free */
   HEAP_STATS_ENTRY *free_list;
   pthread_mutex_t bestspace_mutex;
@@ -494,8 +492,7 @@ static HEAP_CHNGUESS heap_Guesschn_area = { NULL, NULL, NULL, false, 0,
 
 static HEAP_CHNGUESS *heap_Guesschn = NULL;
 
-static HEAP_STATS_BESTSPACE_CACHE heap_Bestspace_cache_area =
-  { 0, NULL, NULL, 0, 0, 0, NULL, PTHREAD_MUTEX_INITIALIZER };
+static HEAP_STATS_BESTSPACE_CACHE heap_Bestspace_cache_area = { 0, NULL, NULL, 0, NULL, PTHREAD_MUTEX_INITIALIZER };
 
 static HEAP_STATS_BESTSPACE_CACHE *heap_Bestspace = NULL;
 
@@ -982,8 +979,6 @@ heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data, void *args)
       else
 	{
 	  free_and_init (ent);
-
-	  heap_Bestspace->num_free++;
 	}
     }
 
@@ -1048,8 +1043,6 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
 
 	  goto end;
 	}
-
-      heap_Bestspace->num_alloc++;
     }
 
   HFID_COPY (&ent->hfid, hfid);
@@ -15231,8 +15224,6 @@ heap_stats_bestspace_initialize (void)
       goto exit_on_error;
     }
 
-  heap_Bestspace->num_alloc = 0;
-  heap_Bestspace->num_free = 0;
   heap_Bestspace->free_list_count = 0;
   heap_Bestspace->free_list = NULL;
 
