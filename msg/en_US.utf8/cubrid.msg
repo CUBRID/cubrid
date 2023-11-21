@@ -1437,7 +1437,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 Last Error
+1355 Reserved error 1
+1356 Reserved error 2
+1357 Reserved error 3
+1358 Reserved error 4
+
+1359 Java VM crashed: %1$s
+1360 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

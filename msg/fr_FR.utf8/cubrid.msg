@@ -1437,7 +1437,13 @@ Vérifiez le chemin du fichier de clé (_keys) et assurez-vous qu'il inclut la c
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
-1355 Dernière erreur
+1355 Reserved error 1
+1356 Reserved error 2
+1357 Reserved error 3
+1358 Reserved error 4
+
+1359 Java VM crashed: %1$s
+1360 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

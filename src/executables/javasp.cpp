@@ -26,6 +26,9 @@
 
 #include "config.h"
 
+#include <dlfcn.h>
+#include <string.h>
+#include <execinfo.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -343,7 +346,19 @@ static void javasp_signal_handler (int sig)
       pid = fork ();
       if (pid == 0) // child
 	{
-	  // TODO: log error message
+	  std::string err_msg;
+	  void *addresses[64];
+	  int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
+	  char **symbols = backtrace_symbols (addresses, nn_addresses);
+	  for (int i = 0; i < nn_addresses; i++)
+	    {
+	      err_msg += symbols[i];
+	      if (i < nn_addresses - 1)
+		{
+		  err_msg += "\n";
+		}
+	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
 
 	  execl (executable_path, UTIL_JAVASP_NAME, "start", db_name.c_str (), NULL);
 	  exit (0);

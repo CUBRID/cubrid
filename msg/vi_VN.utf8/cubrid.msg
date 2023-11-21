@@ -1437,7 +1437,26 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1353 Internal CAS error : %1$d 
 1354 Internal CAS error : %1$d, %2$s
 
+<<<<<<< HEAD
 1355 Last Error
+=======
+1351 The maximum length of the function expression string must be %1$d.
+
+1352 Invalid number of columns specified.
+
+1353 Internal CAS error : %1$d
+1354 Internal CAS error : %1$d, %2$s
+
+
+1355 File "%1$s" was not found.
+1356 There is no hint in the DBLink query, or the statement type is incorrect. %1$s
+1357 Converting SQL string to wide string failed.
+1358 Number of rows affected is unknown.
+
+1359 Java VM crashed: %1$s
+
+1360 Last Error
+>>>>>>> d503a904e (add error message)
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
