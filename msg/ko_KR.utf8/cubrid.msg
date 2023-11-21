@@ -1437,21 +1437,14 @@ $ LOADDB
 1353 CAS 내부 에러 : %1$d 
 1354 CAS 내부 에러 : %1$d, %2$s
 
-<<<<<<< HEAD
-1355 마지막 에러
-=======
+1355 Reserved error 1
+1356 Reserved error 2
+1357 Reserved error 3
+1358 Reserved error 4
 
-1355 파일 "%1$s"을(를) 찾을 수 없습니다.
-1356 DBLink 쿼리에 Hint가 없거나, Statement type 이 잘못되었습니다. : %1$s
-1357 SQL 문자열을 와이드 문자열로 변환 실패.
-1358 영향을 받은 행 수를 알 수 없음.
-
-1359 Java VM crashed: %1$s
-
-1360 Java VM 에 장애가 발생함. : %1$s
+1359 Java VM 에 장애가 발생함. : %1$s
 
 1360 마지막 에러
->>>>>>> d503a904e (add error message)
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
