@@ -93,7 +93,7 @@ extern int is_dblink_query_string;
      ** 2: Display the contents of application of grammar rules in csql_grammar on the screen
      ** 3: Expression of both 1 and 2 above
      */
-#    define DBG_TRACE_LEVEL      0
+#    define DBG_TRACE_LEVEL      2
 #endif
 
 #if (DBG_TRACE_LEVEL == 1 || DBG_TRACE_LEVEL == 3) 
@@ -247,7 +247,6 @@ static bool is_in_create_trigger = false;
 
 #define TO_NUMBER(a)			((UINTPTR)(a))
 #define FROM_NUMBER(a)			((PT_NODE*)(UINTPTR)(a))
-
 
 #define SET_CONTAINER_2(a, i, j)		a.c1 = i, a.c2 = j
 #define SET_CONTAINER_3(a, i, j, k)		a.c1 = i, a.c2 = j, a.c3 = k
@@ -567,7 +566,6 @@ int g_original_buffer_len;
 %type <number> trigger_time
 %type <number> opt_trigger_action_time
 %type <number> event_type
-%type <number> opt_of_data_type_cursor
 %type <number> all_distinct
 %type <number> of_avg_max_etc
 %type <number> of_leading_trailing_both
@@ -1029,6 +1027,7 @@ int g_original_buffer_len;
 %type <c3> delete_from_using
 %type <c3> trigger_status_or_priority_or_change_owner
 
+%type <c2> sp_return_type
 %type <c2> extended_table_spec_list
 %type <c2> opt_startwith_connectby_clause
 %type <c2> opt_of_where_cursor
@@ -3022,6 +3021,7 @@ create_stmt
 			    node->info.sp.type = PT_SP_PROCEDURE;
 			    node->info.sp.param_list = $7;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
+			    node->info.sp.ret_data_type = NULL;
 			    node->info.sp.java_method = $13;
 			    node->info.sp.comment = $14;
 			  }
@@ -3035,7 +3035,7 @@ create_stmt
 	  FUNCTION					/* 3 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION); }	/* 4 */
 	  identifier '('  opt_sp_param_list  ')'	/* 5, 6, 7, 8 */
-	  RETURN opt_of_data_type_cursor		/* 9, 10 */
+	  RETURN sp_return_type                         /* 9, 10 */
 	  opt_of_is_as LANGUAGE JAVA			/* 11, 12, 13 */
 	  NAME char_string_literal			/* 14, 15 */
 	  opt_comment_spec				/* 16 */
@@ -3049,7 +3049,8 @@ create_stmt
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
 			    node->info.sp.param_list = $7;
-			    node->info.sp.ret_type = $10;
+			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($10));
+			    node->info.sp.ret_data_type = CONTAINER_AT_1($10);
 			    node->info.sp.java_method = $15;
 			    node->info.sp.comment = $16;
 			  }
@@ -12428,23 +12429,19 @@ opt_plus
 	| '+'
 	;
 
-opt_of_data_type_cursor
-	: /* empty */
-		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, : );
+sp_return_type
+	: data_type
+		{{ DBG_TRACE_GRAMMAR(sp_return_type, | data_type);
 
-			$$ = PT_TYPE_NONE;
-
-		DBG_PRINT}}
-	| data_type
-		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, | data_type);
-
-			$$ = (int) TO_NUMBER (CONTAINER_AT_0 ($1));
+			$$ = $1;
 
 		DBG_PRINT}}
 	| CURSOR
-		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, | CURSOR);
+		{{ DBG_TRACE_GRAMMAR(sp_return_type, | CURSOR);
 
-			$$ = PT_TYPE_RESULTSET;
+                        container_2 ctn;
+                        SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_RESULTSET), NULL);
+			$$ = ctn;
 
 		DBG_PRINT}}
 	;
@@ -21008,6 +21005,8 @@ primitive_type
 			    dt->type_enum = typ;
 			    dt->info.data_type.entity = $1;
 			    dt->info.data_type.units = $2;
+
+			    PARSER_SAVE_ERR_CONTEXT (dt, @$.buffer_pos)
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
