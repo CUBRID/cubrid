@@ -239,7 +239,6 @@ namespace cublog
 	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
 
-	    // check if m_locked_classes[header.trid] has log_rec.classoid
 	    if (is_already_locked_for_ddl (header.trid, &log_rec.classoid))
 	      {
 		break;
@@ -516,14 +515,6 @@ namespace cublog
   bool
   atomic_replicator::is_already_locked_for_ddl (const TRANID trid, const OID *classoid)
   {
-    if (m_locked_classes.count (trid) > 0)
-      {
-	if (m_locked_classes[trid].count (*classoid) > 0)
-	  {
-	    return true;
-	  }
-      }
-
-    return false;
+    return m_locked_classes.count (trid) > 0 && m_locked_classes[trid].count (*classoid) > 0;
   }
 }

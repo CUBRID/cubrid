@@ -13971,18 +13971,6 @@ locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, con
 
   LOCATOR_CLASSNAME_ENTRY *entry;
 
-  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-  // *INDENT-OFF*
-  scope_exit <std::function <void (void)>> classname_csect_exit ([&thread_p] ()
-      {
-        csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      });
-  // *INDENT-ON*
-
   entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry));
   if (entry == nullptr)
     {
@@ -13991,6 +13979,22 @@ locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, con
     }
 
   locator_initialize_classname_entry (entry, classname, classoid);
+
+  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  // *INDENT-OFF*
+  auto classname_csect_exit = scope_exit ([&thread_p] ()
+      {
+        csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      });
+  // *INDENT-ON*
+
+  assert (locator_is_exist_class_name_entry (thread_p, entry));
+  assert (mht_get (locator_Mht_classnames, classname) == nullptr);
 
   (void) mht_put (locator_Mht_classnames, entry->e_name, entry);
 
@@ -14013,18 +14017,9 @@ locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname)
       assert (false);
       return ER_FAILED;
     }
-
-  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      assert (false);
-      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      return ER_FAILED;
-    }
-
   // *INDENT-OFF*
-  scope_exit <std::function <void (void)>> classname_csect_exit ([&thread_p, &classname] ()
+  auto classname_csect_exit = scope_exit ([&thread_p] ()
       {
-        csect_exit (thread_p, CSECT_CT_OID_TABLE);
         csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       });
   // *INDENT-ON*
@@ -14035,6 +14030,20 @@ locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname)
       assert (false);
       return ER_FAILED;
     }
+
+  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      return ER_FAILED;
+    }
+
+  // *INDENT-OFF*
+  auto catalog_csect_exit = scope_exit ([&thread_p, &classname] ()
+      {
+        csect_exit (thread_p, CSECT_CT_OID_TABLE);
+      });
+  // *INDENT-ON*
 
   (void) locator_force_drop_class_name_entry (entry->e_name, entry, NULL);
 
@@ -14063,18 +14072,9 @@ locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classna
       return ER_FAILED;
     }
 
-  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
-    {
-      assert (false);
-      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-
-      return ER_FAILED;
-    }
-
   // *INDENT-OFF*
-  scope_exit <std::function <void (void)>> classname_csect_exit ([&thread_p] ()
+  auto classname_csect_exit = scope_exit ([&thread_p] ()
       {
-        csect_exit (thread_p, CSECT_CT_OID_TABLE);
         csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       });
   // *INDENT-ON*
@@ -14093,7 +14093,23 @@ locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classna
 
   locator_initialize_classname_entry (new_entry, new_classname, &old_entry->e_current.oid);
 
-  (void) mht_put (locator_Mht_classnames, new_entry->e_name, new_entry);
+  assert (locator_is_exist_class_name_entry (thread_p, new_entry));
+  assert (mht_get (locator_Mht_classnames, new_classname) == nullptr);
+
+  (void) mht_put (locator_Mht_classnames, new_classname, new_entry);
+
+  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  // *INDENT-OFF*
+  auto catalog_csect_exit = scope_exit ([&thread_p, &old_classname] ()
+      {
+        csect_exit (thread_p, CSECT_CT_OID_TABLE);
+      });
+  // *INDENT-ON*
 
   /* drop the existing entry with key (old_classname) */
   (void) locator_force_drop_class_name_entry (old_entry->e_name, old_entry, NULL);
