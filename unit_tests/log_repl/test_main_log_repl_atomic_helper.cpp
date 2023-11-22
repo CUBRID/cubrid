@@ -1120,3 +1120,9 @@ is_passive_transaction_server()
 {
   return false;
 }
+
+int
+pgbuf_get_fix_count (PAGE_PTR /*pgptr*/)
+{
+  return 0;
+}
