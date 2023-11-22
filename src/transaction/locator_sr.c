@@ -14034,7 +14034,6 @@ locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname)
   if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
-      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
       return ER_FAILED;
     }
 
