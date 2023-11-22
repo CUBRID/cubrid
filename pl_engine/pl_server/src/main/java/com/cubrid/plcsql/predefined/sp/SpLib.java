@@ -2861,7 +2861,6 @@ public class SpLib {
         }
 
         BigDecimal bd = strToBigDecimal(e);
-        ;
         return Long.valueOf(bigDecimalToLong(bd));
     }
 
@@ -3384,7 +3383,7 @@ public class SpLib {
         try {
             return new BigDecimal(s);
         } catch (NumberFormatException e) {
-            throw new VALUE_ERROR("not in a NUMERIC format");
+            throw new VALUE_ERROR("not in a number form");
         }
     }
 
