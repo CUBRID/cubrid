@@ -12723,15 +12723,18 @@ btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
     {
       is_compressed = false;
     }
-#endif /* !NDEBUG */
 
   if (header->common_prefix > 0 && header->common_prefix < btid->key_type->precision)
     {
       assert (is_compressed);
+    }
+#endif /* !NDEBUG */
+
+  if (header->common_prefix > 0 && header->common_prefix < btid->key_type->precision)
+    {
       return header->common_prefix;
     }
 
-  assert (!is_compressed);
   return 0;
 }
 
