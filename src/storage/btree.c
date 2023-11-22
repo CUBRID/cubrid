@@ -4388,7 +4388,7 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
     {
       assert (bts->pg_prefix_info->reader_type != READER_TYPE_NONE);
       pg_prefix = bts->pg_prefix_info;
-      if (!pg_prefix->is_midxkey || (pg_prefix->use_comparing == false && pg_prefix->use_index_column == false))
+      if (!pg_prefix->use_comparing && !pg_prefix->use_index_column)
 	{
 	  return NO_ERROR;
 	}
@@ -4399,14 +4399,20 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid) && LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)))
 	    {			// same page         
 	      assert (pg_prefix->n_prefix != COMMON_PREFIX_UNKNOWN);
+	      assert (pg_prefix->n_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
 
-	      if (pg_prefix->satisfied_range_in_page && pg_prefix->use_index_column == false)
+	      n_prefix = pg_prefix->n_prefix;
+	      if (n_prefix == 0)
 		{
 		  return NO_ERROR;
 		}
-
-	      assert (pg_prefix->n_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
-	      n_prefix = pg_prefix->n_prefix;
+	      else if (pg_prefix->satisfied_range_in_page)
+		{
+		  if (pg_prefix->use_index_column == false || n_prefix < pg_prefix->n_first_check_pos)
+		    {
+		      return NO_ERROR;
+		    }
+		}
 	    }
 	  else
 	    {			// new page
@@ -4515,48 +4521,115 @@ static inline BTREE_SCAN *
 btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplicate,
 			     BTREE_PAGE_PREFIX_INFO * pg_prefix_info, READER_TYPE reader_type)
 {
-  INIT_BTREE_PAGE_PREFIX_INFO (pg_prefix_info);
+  INIT_BTREE_PAGE_PREFIX_INFO (pg_prefix_info, reader_type);
 
-  pg_prefix_info->reader_type = reader_type;
-  pg_prefix_info->is_midxkey = is_midxkey;
   btree_init_temp_key_value (&(pg_prefix_info->clear_prefix_key), &(pg_prefix_info->prefix_key));
 
+  assert (bts != NULL);
   assert (reader_type == READER_TYPE_RANGE_SCAN || reader_type == READER_TYPE_STAT
 	  || reader_type == READER_TYPE_CAPACITY);
 
-  if (reader_type == READER_TYPE_RANGE_SCAN)
+  if (reader_type != READER_TYPE_RANGE_SCAN)
     {
+      // READER_TYPE_STAT or READER_TYPE_CAPACITY           
+      pg_prefix_info->use_index_column = false;
+      pg_prefix_info->use_comparing = is_midxkey ? (is_deduplicate || (reader_type == READER_TYPE_STAT)) : false;
+      pg_prefix_info->satisfied_range_in_page = true;	/* There is no need to check whether it is within a specific range. */
+    }
+  else
+    {				// READER_TYPE_RANGE_SCAN
       assert (pg_prefix_info->use_index_column == true);
-      pg_prefix_info->use_comparing = (bool) (bts->key_range.upper_key != NULL);
+      assert (pg_prefix_info->satisfied_range_in_page == false);
+
       if (!is_midxkey)
 	{
+	  pg_prefix_info->use_comparing = false;
 	  pg_prefix_info->use_index_column = false;
 	}
-      else if (!BTS_IS_INDEX_COVERED (bts))
+      else
 	{
 	  FILTER_INFO *filterp = bts->key_filter;
+	  SCAN_ATTRS *scan_attr_ptr = NULL;
+
+	  pg_prefix_info->use_comparing = (bool) (bts->key_range.upper_key != NULL);
+	  pg_prefix_info->use_index_column = false;
+
+#if !defined(NDEBUG)
+	  assert ((bts->key_range.range != INF_INF) || (bts->key_range.upper_key == NULL));
+#endif
 
 	  if (bts->need_to_check_null && bts->key_range.num_index_term > 0)
 	    {
-	      /* do not change */ ;
+	      pg_prefix_info->n_first_check_pos = bts->key_range.num_index_term;
+	      pg_prefix_info->use_index_column = true;
 	    }
 	  else if (filterp && filterp->scan_pred && filterp->scan_attrs && filterp->scan_pred->regu_list
 		   && filterp->scan_pred->pr_eval_fnc && filterp->scan_pred->pred_expr)
 	    {
-	      /* do not change */ ;
+              // Example of a case that gets here: select * from t  where x is not null order by x, y;  
+	      scan_attr_ptr = filterp->scan_attrs;
+	      if (filterp->btree_attr_ids)
+		{
+                  int k, i;      
+		  for (k = 0; k < filterp->btree_num_attrs; k++)
+		    {
+		      for (i = 0; i < scan_attr_ptr->num_attrs; i++)
+			{
+			  if (scan_attr_ptr->attr_ids[i] == filterp->btree_attr_ids[k])
+			    {
+			      break;
+			    }
+			}
+
+		      if (i < scan_attr_ptr->num_attrs)
+			{
+			  pg_prefix_info->n_first_check_pos = k + 1;
+			  pg_prefix_info->use_index_column = true;
+			  break;
+			}
+		    }
+		}
 	    }
-	  else
+	  else if (BTS_IS_INDEX_COVERED (bts))
 	    {
-	      pg_prefix_info->use_index_column = false;
+	      int i, k;
+	      struct indx_scan_id *index_scan_idp = bts->index_scan_idp;
+	      // Example of a case that gets here: select * from t order by x, y;
+	      for (i = 0; i < index_scan_idp->rest_attrs.num_attrs; i++)
+		{
+		  scan_attr_ptr = &index_scan_idp->range_attrs;
+		  for (k = 0; k < scan_attr_ptr->num_attrs; k++)
+		    {
+		      if (index_scan_idp->rest_attrs.attr_ids[i] == scan_attr_ptr->attr_ids[k])
+			{
+			  break;
+			}
+		    }
+
+		  if (k >= scan_attr_ptr->num_attrs)
+		    {
+		      scan_attr_ptr = &index_scan_idp->key_attrs;
+		      for (k = 0; k < scan_attr_ptr->num_attrs; k++)
+			{
+			  if (index_scan_idp->rest_attrs.attr_ids[i] == scan_attr_ptr->attr_ids[k])
+			    {
+			      break;
+			    }
+			}
+		      if (k >= scan_attr_ptr->num_attrs)
+			{
+			  break;	// not found
+			}
+		    }
+		}
+
+	      if (i < index_scan_idp->rest_attrs.num_attrs)
+		{
+		  pg_prefix_info->n_first_check_pos = 0;
+		  pg_prefix_info->use_index_column = true;
+		}
 	    }
 	}
-    }
-  else
-    {
-      // READER_TYPE_STAT or READER_TYPE_CAPACITY        
-      pg_prefix_info->use_index_column = false;
-      pg_prefix_info->satisfied_range_in_page = true;
-      pg_prefix_info->use_comparing = (is_deduplicate || (reader_type == READER_TYPE_STAT));
     }
 
   bts->pg_prefix_info = pg_prefix_info;
@@ -7666,16 +7739,12 @@ end:
   perfmon_inc_stat (thread_p, PSTAT_BT_NUM_GET_STATS);
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  btree_quit_page_prefix_info (bts, false);
+  btree_quit_page_prefix_info (bts, true);
 #endif
 
   return ret;
 
 exit_on_error:
-
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  btree_quit_page_prefix_info (bts, false);
-#endif
 
   ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 
@@ -12985,7 +13054,6 @@ btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
   int key_cnt;
   RECDES peek_rec;
   BTREE_NODE_HEADER *header = NULL;
-  BTREE_NODE_TYPE node_type;
 
   assert (btid != NULL);
 
@@ -13005,12 +13073,9 @@ btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
     {
       return false;
     }
-
-  node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
-
-  if (node_type == BTREE_NON_LEAF_NODE)
+  if (header->node_level > 1)
     {
-      return false;
+      return false;		// BTREE_NON_LEAF_NODE
     }
 
   /* check if lower fence key */
@@ -25664,11 +25729,57 @@ exit_on_error:
   goto end;
 }
 
+// tbl
+char cnm[7][8] = { "v6", "v5", "v4", "v3", "v2", "v1", "id" };
+
+// t1
+//char cnm[2][8] = { "b", "a" };
+
+void
+debug_attrs (char *title, SCAN_ATTRS * attrs)
+{
+  printf ("===[%s] ", title);
+  if (attrs)
+    {
+      printf ("%d: ", attrs->num_attrs);
+      for (int i = 0; i < attrs->num_attrs; i++)
+	{
+	  printf ("%d(%s), ", attrs->attr_ids[i], cnm[attrs->attr_ids[i]]);
+	}
+    }
+  printf ("\n");
+}
+
+void
+debug_key_filter (FILTER_INFO * filter)
+{
+  printf ("****[filter] ");
+  printf ("%d: ", filter->btree_num_attrs);
+  for (int i = 0; i < filter->btree_num_attrs; i++)
+    {
+      printf ("%d(%s), ", filter->btree_attr_ids[i], cnm[filter->btree_attr_ids[i]]);
+    }
+  printf ("\n");
+  debug_attrs ("scan_attrs", filter->scan_attrs);
+}
+
 int
 btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func,
 		  bool use_pg_prefix)
 {
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+
+  // bt_num_attrs;               /* num of attributes of the index key */
+  // ATTR_ID *bt_attr_ids;               /* attr id array of the index key */
+#if 0
+  printf ("root_pageid=%d, num_index_term = %d \n", bts->btid_int.sys_btid->root_pageid, bts->key_range.num_index_term);
+  debug_attrs ("key_attrs", &bts->index_scan_idp->key_attrs);
+  debug_attrs ("pred_attrs", &bts->index_scan_idp->pred_attrs);
+  debug_attrs ("range_attrs", &bts->index_scan_idp->range_attrs);
+  debug_attrs ("rest_attrs", &bts->index_scan_idp->rest_attrs);
+  debug_key_filter (bts->key_filter);
+  printf ("\n====================================================\n");
+#endif
   if (use_pg_prefix)
     {
       int ret;

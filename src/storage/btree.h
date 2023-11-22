@@ -178,36 +178,38 @@ typedef struct
   READER_TYPE reader_type;
   VPID vpid;
   LOG_LSA leaf_lsa;
-  bool is_midxkey;
-  bool use_comparing;		// key compare
-  bool use_index_column;	// result or filtering
+  bool use_comparing;		// key compare  
+  bool use_index_column;	// result column, null check or filtering 
   bool satisfied_range_in_page;	// If true, it guarantees that all keys on the current page satisfy the range condition.
   int n_prefix;			// size of common prefix key parts.
+  int n_first_check_pos;
+
   bool clear_prefix_key;
   DB_VALUE prefix_key;		// common prefix key part 
 } BTREE_PAGE_PREFIX_INFO;
 
-#define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix)   do {\
-    assert((pg_prefix) != NULL);                     \
-    (pg_prefix)->reader_type = READER_TYPE_NONE;     \
-    (pg_prefix)->is_midxkey = true;                  \
-    (pg_prefix)->use_comparing = true;               \
-    (pg_prefix)->use_index_column = true;            \
-    (pg_prefix)->satisfied_range_in_page = false;    \
-    VPID_SET_NULL (&((pg_prefix)->vpid));            \
-    LSA_SET_NULL(&((pg_prefix)->leaf_lsa));          \
-    (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;   \
+#define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix, type)   do {  \
+    assert((pg_prefix) != NULL);                       \
+    (pg_prefix)->reader_type = (type);                 \
+    (pg_prefix)->use_comparing = true;                 \
+    (pg_prefix)->use_index_column = true;              \
+    (pg_prefix)->satisfied_range_in_page = false;      \
+    VPID_SET_NULL (&((pg_prefix)->vpid));              \
+    LSA_SET_NULL(&((pg_prefix)->leaf_lsa));            \
+    (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;     \
+    (pg_prefix)->n_first_check_pos = 0;                \
     btree_init_temp_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
 } while(0)
 
-#define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {\
-    if((pg_prefix))  {                               \
+#define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {  \
+    if((pg_prefix))  {                                 \
        btree_clear_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
-    }                                                \
+       (pg_prefix)->reader_type = READER_TYPE_NONE;    \
+    }                                                  \
 } while(0)
 #else
 #define BTREE_PAGE_PREFIX_INFO  void
-#define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix)
+#define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix, type)
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)
 #endif
 
