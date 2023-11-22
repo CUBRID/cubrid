@@ -12647,6 +12647,22 @@ btree_split_next_pivot (BTREE_NODE_SPLIT_INFO * split_info, float new_value, int
   return NO_ERROR;
 }
 
+/*
+ * btree_node_get_common_prefix () - Reads the BTREE_NODE_HEADER of the given page
+ *                                   and returns the common prefix stored by BTREE_NODE_HEADER.
+ *
+ *   return: Common prefix. If 0, the page was not compressed.
+ *   thread_p(in): Thread entry.
+ *   btid(in): B+tree index identifier
+ *   page_ptr(in): Page pointer
+ * 
+ * note: Leaf nodes of multi-column indexes can be compressed.
+ *       If the page is compressed, the common prefix is stored in BTREE_NODE_HEADER.
+ *       This function reads the common prefix from BTREE_NODE_HEADER and returns.
+ *       Here we do not check whether the page is compressed.
+ *       If the page is not compressed, common prefix must be 0.
+ *       In the debug code, the consistency of the common prefix is checked.
+ */
 static int
 btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
 {
@@ -12719,6 +12735,23 @@ btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
   return 0;
 }
 
+/*
+ * btree_node_calculate_common_prefix () - Checks whether the given page can be compressed
+ *                                         and returns the common prefix if it can.
+ *
+ *   return: Common prefix. If 0, the page was not compressed.
+ *   thread_p(in): Thread entry.
+ *   btid(in): B+tree index identifier
+ *   page_ptr(in): Page pointer
+ * 
+ * note: Leaf nodes of multi-column indexes can be compressed.
+ *       To be compressed, both the lower fence key and upper fence key must exist.
+ *       The common prefix is the number of columns that have the same value
+ *       when comparing the lower fence key and upper fence key.
+ *       This function does not compress the page.
+ *       If the records of the lower fence key and upper fence key have been read,
+ *       they must be cleared before this function ends.
+ */
 static int
 btree_node_calculate_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
 {
