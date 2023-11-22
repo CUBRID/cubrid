@@ -1114,3 +1114,9 @@ log_rv_check_redo_is_needed (const PAGE_PTR & /*pgptr*/, const LOG_LSA & /*rcv_l
   assert_release (false);
   return false;
 }
+
+bool
+is_passive_transaction_server()
+{
+  return false;
+}
