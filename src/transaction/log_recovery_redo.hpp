@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef _LOC_RECOVERY_REDO_HPP_
-#define _LOC_RECOVERY_REDO_HPP_
+#ifndef _LOG_RECOVERY_REDO_HPP_
+#define _LOG_RECOVERY_REDO_HPP_
 
 #include "log_compress.h"
 #include "log_lsa.hpp"
@@ -703,4 +703,4 @@ log_rv_redo_rec_info<T>::log_rv_redo_rec_info (const log_lsa lsa, LOG_RECTYPE ty
 
 }
 
-#endif // _LOC_RECOVERY_REDO_HPP_
+#endif // _LOG_RECOVERY_REDO_HPP_
