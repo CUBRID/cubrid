@@ -12739,7 +12739,7 @@ btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
  * btree_node_calculate_common_prefix () - Checks whether the given page can be compressed
  *                                         and returns the common prefix if it can.
  *
- *   return: Common prefix. If 0, the page was not compressed.
+ *   return: Common prefix. If 0, compression is not possible.
  *   thread_p(in): Thread entry.
  *   btid(in): B+tree index identifier
  *   page_ptr(in): Page pointer
