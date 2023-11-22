@@ -36,8 +36,18 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 
 public class StringValue extends Value {
+    // TODO: consider string value's locale (new SimpleDateFormat("...", Locale.KOREA));
+    private static final String dateTimePattern = "hh:mm:ss.SSS a dd/MM/yyyy";
+    private static final SimpleDateFormat dateFormat =
+            new SimpleDateFormat("hh:mm:ss.SSS a dd/MM/yyyy");
+
     private String value;
 
     public StringValue(String value) {
@@ -149,7 +159,11 @@ public class StringValue extends Value {
 
     public Date toDate() throws TypeMismatchException {
         try {
-            return Date.valueOf(value);
+            LocalDate lDate =
+                    LocalDate.from(
+                            LocalDateTime.parse(
+                                    value, DateTimeFormatter.ofPattern(dateTimePattern)));
+            return Date.valueOf(lDate);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -157,7 +171,11 @@ public class StringValue extends Value {
 
     public Time toTime() throws TypeMismatchException {
         try {
-            return Time.valueOf(value);
+            LocalTime lTime =
+                    LocalTime.from(
+                            LocalDateTime.parse(
+                                    value, DateTimeFormatter.ofPattern(dateTimePattern)));
+            return Time.valueOf(lTime);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -165,7 +183,9 @@ public class StringValue extends Value {
 
     public Timestamp toTimestamp() throws TypeMismatchException {
         try {
-            return Timestamp.valueOf(value);
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern(dateTimePattern);
+            LocalDateTime localDateTime = LocalDateTime.from(formatter.parse(value));
+            return Timestamp.valueOf(localDateTime);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -173,7 +193,9 @@ public class StringValue extends Value {
 
     public Timestamp toDatetime() throws TypeMismatchException {
         try {
-            return Timestamp.valueOf(value);
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern(dateTimePattern);
+            LocalDateTime localDateTime = LocalDateTime.from(formatter.parse(value));
+            return Timestamp.valueOf(localDateTime);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
