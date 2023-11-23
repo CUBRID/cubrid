@@ -1030,6 +1030,10 @@ struct xasl_node
 				 * DELETE in the generated SELECT statement) */
   int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added to the select list in case of
 				 * UPDATE/DELETE in MVCC */
+  XASL_ID *cte_xasl_id;		/* for CTE's query cache */
+  int cte_host_var_count;
+  int *cte_host_var_index;
+
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
   LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate

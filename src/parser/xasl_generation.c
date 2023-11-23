@@ -17277,6 +17277,9 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
       return NULL;
     }
   non_recursive_part_xasl = (XASL_NODE *) non_recursive_part->info.query.xasl;
+  non_recursive_part_xasl->cte_xasl_id = non_recursive_part->xasl_id;
+  non_recursive_part_xasl->cte_host_var_count = non_recursive_part->cte_host_var_count;
+  non_recursive_part_xasl->cte_host_var_index = non_recursive_part->cte_host_var_index;
 
   if (recursive_part)
     {
