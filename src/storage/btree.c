@@ -1270,7 +1270,7 @@ static PAGE_PTR btree_find_leftmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, 
 static PAGE_PTR btree_find_rightmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 					   BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
-					     BTREE_STATS * stat_info_p, bool * found_p);
+					     BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
 					  BTREE_BOUNDARY where);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -6868,9 +6868,8 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 {
   BTREE_SCAN *BTS;
   int n, i;
-  bool found;
   int key_cnt;
-  int exp_ratio;
+  double exp_ratio;
   int ret = NO_ERROR;
 #if !defined(NDEBUG)
   BTREE_NODE_HEADER *header = NULL;
@@ -6889,48 +6888,44 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  break;		/* found all samples */
 	}
 
-      BTS->C_page =
-	btree_find_AR_sampling_leaf (thread_p, BTS->btid_int.sys_btid, &BTS->C_vpid, env->stat_info, &found);
+      BTS->C_page = btree_find_AR_sampling_leaf (thread_p, BTS->btid_int.sys_btid, &BTS->C_vpid, env->stat_info);
       if (BTS->C_page == NULL)
 	{
 	  goto exit_on_error;
 	}
 
       /* found sampling leaf page */
-      if (found)
-	{
-	  key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
+      key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
 
 #if !defined(NDEBUG)
-	  header = btree_get_node_header (thread_p, BTS->C_page);
+      header = btree_get_node_header (thread_p, BTS->C_page);
 
-	  assert (header != NULL);
-	  assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
+      assert (header != NULL);
+      assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
 #endif
 
-	  if (key_cnt > 0)
+      if (key_cnt > 0)
+	{
+	  env->stat_info->leafs++;
+
+	  BTS->slot_id = 1;
+	  BTS->oid_pos = 0;
+
+	  assert_release (BTS->slot_id <= key_cnt);
+
+	  for (i = 0; i < key_cnt; i++)
 	    {
-	      env->stat_info->leafs++;
-
-	      BTS->slot_id = 1;
-	      BTS->oid_pos = 0;
-
-	      assert_release (BTS->slot_id <= key_cnt);
-
-	      for (i = 0; i < key_cnt; i++)
+	      ret = btree_get_stats_key (thread_p, env, NULL);
+	      if (ret != NO_ERROR)
 		{
-		  ret = btree_get_stats_key (thread_p, env, NULL);
-		  if (ret != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+		  goto exit_on_error;
+		}
 
-		  /* get the next index record */
-		  ret = btree_find_next_index_record (thread_p, BTS);
-		  if (ret != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+	      /* get the next index record */
+	      ret = btree_find_next_index_record (thread_p, BTS);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
 		}
 	    }
 	}
@@ -6954,7 +6949,7 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
   /* apply distributed expension */
   if (env->stat_info->leafs > 0)
     {
-      exp_ratio = env->stat_info->pages / env->stat_info->leafs;
+      exp_ratio = (double) env->stat_info->pages / (double) env->stat_info->leafs;
 
       env->stat_info->leafs *= exp_ratio;
       if (env->stat_info->leafs < 0)
@@ -7168,21 +7163,6 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       return ret;
     }
   assert_release (npages >= 1);
-
-  /* For the optimization of the sampling, if the btree file has currently the same pages as we gathered statistics, we
-   * guess the btree file has not been modified; So, we take current stats as it is */
-  if (!with_fullscan)
-    {
-      /* check if the stats has been gathered */
-      if (stat_info_p->keys > 0)
-	{
-	  /* guess the stats has not been modified */
-	  if (npages == stat_info_p->pages)
-	    {
-	      return NO_ERROR;
-	    }
-	}
-    }
 
   /* set environment variable */
   env = &stat_env;
@@ -14832,14 +14812,12 @@ error:
  *   btid(in):
  *   pg_vpid(in):
  *   stat_info_p(in):
- *   found_p(out):
  *
  * Note: Find the page identifier via the Acceptance/Rejection Sampling leaf page of the B+tree index.
  * Note: Random Sampling from Databases (Chapter 3. Random Sampling from B+ Trees)
  */
 static PAGE_PTR
-btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info_p,
-			     bool * found_p)
+btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info_p)
 {
   PAGE_PTR P_page = NULL, C_page = NULL;
   VPID P_vpid, C_vpid;
@@ -14852,12 +14830,8 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
   int est_page_size, free_space;
   int key_cnt = 0;
   int root_level = 0, depth = 0;
-  double prob = 1.0;		/* Acceptance probability */
 
   assert (stat_info_p != NULL);
-  assert (found_p != NULL);
-
-  *found_p = false;		/* init */
 
   VPID_SET_NULL (pg_vpid);
 
@@ -14930,13 +14904,6 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
 
       node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
-      /* update Acceptance probability */
-
-      free_space = spage_max_space_for_new_record (thread_p, C_page);
-      assert (est_page_size > free_space);
-
-      prob *= (((double) est_page_size) - free_space) / ((double) est_page_size);
-
       P_page = C_page;
       C_page = NULL;
       P_vpid = C_vpid;
@@ -14998,18 +14965,6 @@ end:
   assert_release (root_level == depth + 1);
 
   stat_info_p->height = root_level;
-
-  /* do Acceptance/Rejection sampling */
-  if (drand48 () < prob)
-    {
-      /* Acceptance */
-      *found_p = true;
-    }
-  else
-    {
-      /* Rejection */
-      assert (*found_p == false);
-    }
 
   return P_page;
 
