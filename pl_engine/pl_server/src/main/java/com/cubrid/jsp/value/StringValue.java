@@ -41,12 +41,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 public class StringValue extends Value {
-    // TODO: consider string value's locale (new SimpleDateFormat("...", Locale.KOREA));
     private static final String dateTimePattern = "hh:mm:ss.SSS a dd/MM/yyyy";
-    private static final SimpleDateFormat dateFormat =
-            new SimpleDateFormat("hh:mm:ss.SSS a dd/MM/yyyy");
+    // Locale.US: hardcoding. TODO: set it to CUBRID server's locale
+    private static final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(dateTimePattern, Locale.US);
 
     private String value;
 
@@ -159,10 +159,7 @@ public class StringValue extends Value {
 
     public Date toDate() throws TypeMismatchException {
         try {
-            LocalDate lDate =
-                    LocalDate.from(
-                            LocalDateTime.parse(
-                                    value, DateTimeFormatter.ofPattern(dateTimePattern)));
+            LocalDate lDate = LocalDate.from(LocalDateTime.parse(value, dateTimeFormatter));
             return Date.valueOf(lDate);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
@@ -171,10 +168,7 @@ public class StringValue extends Value {
 
     public Time toTime() throws TypeMismatchException {
         try {
-            LocalTime lTime =
-                    LocalTime.from(
-                            LocalDateTime.parse(
-                                    value, DateTimeFormatter.ofPattern(dateTimePattern)));
+            LocalTime lTime = LocalTime.from(LocalDateTime.parse(value, dateTimeFormatter));
             return Time.valueOf(lTime);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
@@ -183,8 +177,7 @@ public class StringValue extends Value {
 
     public Timestamp toTimestamp() throws TypeMismatchException {
         try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern(dateTimePattern);
-            LocalDateTime localDateTime = LocalDateTime.from(formatter.parse(value));
+            LocalDateTime localDateTime = LocalDateTime.from(dateTimeFormatter.parse(value));
             return Timestamp.valueOf(localDateTime);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
@@ -193,8 +186,7 @@ public class StringValue extends Value {
 
     public Timestamp toDatetime() throws TypeMismatchException {
         try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern(dateTimePattern);
-            LocalDateTime localDateTime = LocalDateTime.from(formatter.parse(value));
+            LocalDateTime localDateTime = LocalDateTime.from(dateTimeFormatter.parse(value));
             return Timestamp.valueOf(localDateTime);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
