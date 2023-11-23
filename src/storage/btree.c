@@ -7332,7 +7332,7 @@ end:
       pr_clear_value (&(env->pkeys_val[i]));
     }
 
-  btree_clear_key_value (&env->btree_scan.clear_cur_key, &env->btree_scan.cur_key);
+  btree_scan_clear_key (&env->btree_scan);
 
   perfmon_inc_stat (thread_p, PSTAT_BT_NUM_GET_STATS);
 
@@ -8951,7 +8951,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   /* traverse the tree and store the capacity info */
   BTREE_INIT_SCAN (&(stats_env.btree_scan));
   ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc, &stats_env);
-  btree_clear_key_value (&stats_env.btree_scan.clear_cur_key, &stats_env.btree_scan.cur_key);
+  btree_scan_clear_key (&stats_env.btree_scan);
 
   pr_clear_value (&(stats_env.prev_key_val));
   if (ret != NO_ERROR)
