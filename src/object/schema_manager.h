@@ -36,7 +36,7 @@
 #include "work_space.h"		/* for MOP */
 #include "class_object.h"	/* for SM_CLASS */
 #include "schema_template.h"	/* template interface */
-#include "schema_system_catalog.hpp" /* for comparing system catalog name */
+#include "schema_system_catalog.hpp"	/* for comparing system catalog name */
 #include "trigger_manager.h"	/* for TR_EVENT_TYPE */
 #include "tde.h"
 

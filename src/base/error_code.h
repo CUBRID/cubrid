@@ -1736,9 +1736,10 @@
 #define ER_CGW_SQL_CONV_ERROR                       -1357
 #define ER_CGW_UNKNOWN_AFFECTED_ROWS                -1358
 
-#define ER_SP_COMPILE_ERROR                         -1359
+#define ER_SP_SERVER_CRASHED                        -1359
+#define ER_SP_COMPILE_ERROR                         -1360
 
-#define ER_LAST_ERROR                               -1360
+#define ER_LAST_ERROR                               -1361
 
 /*
  * CAUTION!

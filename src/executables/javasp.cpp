@@ -26,6 +26,11 @@
 
 #include "config.h"
 
+#if !defined(WINDOWS)
+#include <dlfcn.h>
+#include <execinfo.h>
+#endif
+#include <string.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -68,6 +73,7 @@
 #include <string>
 #include <algorithm>
 #include <array>
+#include <atomic>
 
 #define JAVASP_PING_LEN   PATH_MAX
 
@@ -99,6 +105,17 @@ static int javasp_check_database (const std::string &db_name, std::string &db_pa
 
 static int javasp_get_port_param ();
 
+#if !defined(WINDOWS)
+static void javasp_signal_handler (int sig);
+#endif
+
+static bool is_signal_handling = false;
+static char executable_path[PATH_MAX];
+
+static std::string command;
+static std::string db_name;
+static JAVASP_SERVER_INFO running_info = JAVASP_SERVER_INFO_INITIALIZER;
+
 /*
  * main() - javasp main function
  */
@@ -108,7 +125,6 @@ main (int argc, char *argv[])
 {
   int status = NO_ERROR;
   FILE *redirect = NULL; /* for ping */
-  std::string command, db_name;
 
 #if defined(WINDOWS)
   FARPROC jsp_old_hook = NULL;
@@ -117,6 +133,14 @@ main (int argc, char *argv[])
     {
       return ER_GENERIC_ERROR;
     }
+
+  os_set_signal_handler (SIGABRT, javasp_signal_handler);
+  os_set_signal_handler (SIGILL, javasp_signal_handler);
+  os_set_signal_handler (SIGFPE, javasp_signal_handler);
+  os_set_signal_handler (SIGBUS, javasp_signal_handler);
+  os_set_signal_handler (SIGSEGV, javasp_signal_handler);
+  os_set_signal_handler (SIGSYS, javasp_signal_handler);
+
 #endif /* WINDOWS */
   {
     /*
@@ -233,6 +257,8 @@ main (int argc, char *argv[])
 	status = javasp_start_server (jsp_info, db_name, pathname);
 	if (status == NO_ERROR)
 	  {
+	    command = "running";
+	    javasp_read_info (db_name.c_str(), running_info);
 	    do
 	      {
 		SLEEP_MILISEC (0, 100);
@@ -288,6 +314,81 @@ exit:
 
   return status;
 }
+
+#if !defined(WINDOWS)
+static void javasp_signal_handler (int sig)
+{
+  JAVASP_SERVER_INFO jsp_info = JAVASP_SERVER_INFO_INITIALIZER;
+
+  if (os_set_signal_handler (sig, SIG_DFL) == SIG_ERR)
+    {
+      return;
+    }
+
+  if (is_signal_handling == true)
+    {
+      return;
+    }
+
+  int status = javasp_get_server_info (db_name, jsp_info); // if failed,
+  if (status == NO_ERROR && jsp_info.pid != JAVASP_PID_DISABLED)
+    {
+      (void) envvar_bindir_file (executable_path, PATH_MAX, UTIL_JAVASP_NAME);
+      if (command.compare ("running") != 0 || db_name.empty ())
+	{
+	  return;
+	}
+
+      if (running_info.pid == jsp_info.pid && running_info.port == jsp_info.port)
+	{
+	  is_signal_handling = true;
+	}
+      else
+	{
+	  return;
+	}
+
+      int pid = getpid ();
+      std::string err_msg;
+
+      void *addresses[64];
+      int nn_addresses = backtrace (addresses, sizeof (addresses) / sizeof (void *));
+      char **symbols = backtrace_symbols (addresses, nn_addresses);
+
+      err_msg += "pid (";
+      err_msg += std::to_string (pid);
+      err_msg += ")\n";
+
+      for (int i = 0; i < nn_addresses; i++)
+	{
+	  err_msg += symbols[i];
+	  if (i < nn_addresses - 1)
+	    {
+	      err_msg += "\n";
+	    }
+	}
+      free (symbols);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_SERVER_CRASHED, 1, err_msg.c_str ());
+      pid = fork ();
+      if (pid == 0) // child
+	{
+	  execl (executable_path, UTIL_JAVASP_NAME, "start", db_name.c_str (), NULL);
+	  exit (0);
+	}
+      else
+	{
+	  exit (1);
+	}
+    }
+  else
+    {
+      // resume signal hanlding
+      os_set_signal_handler (sig, javasp_signal_handler);
+      is_signal_handling = false;
+    }
+}
+#endif
 
 static int
 javasp_get_port_param ()
