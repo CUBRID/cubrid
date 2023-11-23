@@ -35,6 +35,7 @@ import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.DateTimeParser;
 import com.cubrid.plcsql.compiler.annotation.Operator;
+import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -174,7 +175,8 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     // -------------------------------------------------------------------------------
 
-    public static Object invokeBuiltinFunc(Connection conn, String name, Object... args) {
+    public static Object invokeBuiltinFunc(
+            Connection conn, String name, int resultTypeCode, Object... args) {
 
         int argsLen = args.length;
         String hostVars = getHostVarsStr(argsLen);
@@ -186,7 +188,46 @@ public class SpLib {
             }
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
-                Object ret = rs.getObject(1);
+                Object ret;
+                switch (resultTypeCode) {
+                    case TypeSpecSimple.IDX_NULL:
+                    case TypeSpecSimple.IDX_OBJECT:
+                        ret = rs.getObject(1);
+                        break;
+                    case TypeSpecSimple.IDX_STRING:
+                        ret = rs.getString(1);
+                        break;
+                    case TypeSpecSimple.IDX_SHORT:
+                        ret = rs.getShort(1);
+                        break;
+                    case TypeSpecSimple.IDX_INT:
+                        ret = rs.getInt(1);
+                        break;
+                    case TypeSpecSimple.IDX_BIGINT:
+                        ret = rs.getLong(1);
+                        break;
+                    case TypeSpecSimple.IDX_NUMERIC:
+                        ret = rs.getBigDecimal(1);
+                        break;
+                    case TypeSpecSimple.IDX_FLOAT:
+                        ret = rs.getFloat(1);
+                        break;
+                    case TypeSpecSimple.IDX_DOUBLE:
+                        ret = rs.getDouble(1);
+                        break;
+                    case TypeSpecSimple.IDX_DATE:
+                        ret = rs.getDate(1);
+                        break;
+                    case TypeSpecSimple.IDX_TIME:
+                        ret = rs.getTime(1);
+                        break;
+                    case TypeSpecSimple.IDX_DATETIME:
+                    case TypeSpecSimple.IDX_TIMESTAMP:
+                        ret = rs.getTimestamp(1);
+                        break;
+                    default:
+                        throw new PROGRAM_ERROR(); // unreachable
+                }
                 assert !rs.next(); // it must have only one record
 
                 Statement stmt = rs.getStatement();
@@ -2820,7 +2861,6 @@ public class SpLib {
         }
 
         BigDecimal bd = strToBigDecimal(e);
-        ;
         return Long.valueOf(bigDecimalToLong(bd));
     }
 
@@ -3343,7 +3383,7 @@ public class SpLib {
         try {
             return new BigDecimal(s);
         } catch (NumberFormatException e) {
-            throw new VALUE_ERROR("not in a NUMERIC format");
+            throw new VALUE_ERROR("not in a number form");
         }
     }
 

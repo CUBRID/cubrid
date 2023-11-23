@@ -36,8 +36,18 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 public class StringValue extends Value {
+    private static final String dateTimePattern = "hh:mm:ss.SSS a dd/MM/yyyy";
+    // Locale.US: hardcoding. TODO: set it to CUBRID server's locale
+    private static final DateTimeFormatter dateTimeFormatter =
+            DateTimeFormatter.ofPattern(dateTimePattern, Locale.US);
+
     private String value;
 
     public StringValue(String value) {
@@ -149,7 +159,8 @@ public class StringValue extends Value {
 
     public Date toDate() throws TypeMismatchException {
         try {
-            return Date.valueOf(value);
+            LocalDate lDate = LocalDate.from(LocalDateTime.parse(value, dateTimeFormatter));
+            return Date.valueOf(lDate);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -157,7 +168,8 @@ public class StringValue extends Value {
 
     public Time toTime() throws TypeMismatchException {
         try {
-            return Time.valueOf(value);
+            LocalTime lTime = LocalTime.from(LocalDateTime.parse(value, dateTimeFormatter));
+            return Time.valueOf(lTime);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -165,7 +177,8 @@ public class StringValue extends Value {
 
     public Timestamp toTimestamp() throws TypeMismatchException {
         try {
-            return Timestamp.valueOf(value);
+            LocalDateTime localDateTime = LocalDateTime.from(dateTimeFormatter.parse(value));
+            return Timestamp.valueOf(localDateTime);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
@@ -173,7 +186,8 @@ public class StringValue extends Value {
 
     public Timestamp toDatetime() throws TypeMismatchException {
         try {
-            return Timestamp.valueOf(value);
+            LocalDateTime localDateTime = LocalDateTime.from(dateTimeFormatter.parse(value));
+            return Timestamp.valueOf(localDateTime);
         } catch (IllegalArgumentException e) {
             throw new TypeMismatchException(e.getMessage());
         }
