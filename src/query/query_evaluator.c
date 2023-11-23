@@ -2781,7 +2781,12 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
  * Note: evaluate key filter(predicates) given as FILTER_INFO
  */
 DB_LOGICAL
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_len, DB_VALUE * prefix_value,
+		 FILTER_INFO * filterp)
+#else
 eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filterp)
+#endif
 {
   DB_MIDXKEY *midxkey;
   int i, j;
@@ -2831,6 +2836,18 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 	      return V_ERROR;
 	    }
 
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+	  DB_MIDXKEY *midxkey_prefix = NULL;
+	  if (prefix_value && prefix_len > 0)
+	    {
+	      midxkey_prefix = db_get_midxkey (prefix_value);
+	      if (!midxkey_prefix)
+		{
+		  return V_ERROR;
+		}
+	    }
+#endif
+
 	  prev_j_index = 0;
 	  prev_j_ptr = NULL;
 
@@ -2863,8 +2880,20 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		    {
 		      j = j + 1;
 		    }
-
+// ctshim
 		  /* get j-th element value from the midxkey */
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+		  // j = arr[i]; ctshim  
+		  if (midxkey_prefix && j < prefix_len)
+		    {
+		      if (pr_midxkey_get_element_nocopy (midxkey_prefix, j, valp, &prev_j_index, &prev_j_ptr) !=
+			  NO_ERROR)
+			{
+			  return V_ERROR;
+			}
+		    }
+		  else
+#endif
 		  if (pr_midxkey_get_element_nocopy (midxkey, j, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 		    {
 		      return V_ERROR;

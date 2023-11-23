@@ -7691,7 +7691,11 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
       return ER_FAILED;
     }
 
-  error = btree_attrinfo_read_dbvalues (thread_p, key, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
+  error = btree_attrinfo_read_dbvalues (thread_p, key,
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+					iscan_id->bt_scan.pg_prefix_info,
+#endif
+					iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
 					iscan_id->rest_attrs.attr_cache, -1);
   if (error != NO_ERROR)
     {

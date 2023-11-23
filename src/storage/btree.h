@@ -162,7 +162,8 @@ typedef enum bts_key_status BTS_KEY_STATUS;
  */
 typedef struct btree_scan BTREE_SCAN;	/* BTS */
 
-#define IMPROVE_RANGE_SCAN_IN_BTREE
+//#define IMPROVE_RANGE_SCAN_IN_BTREE
+//#define IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 
 typedef enum
@@ -808,8 +809,12 @@ extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERA
 extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func,
 			     bool use_pg_prefix);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
-extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids,
-					 int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id);
+extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+					 BTREE_PAGE_PREFIX_INFO * pg_prefix_info,
+#endif
+					 int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
+					 int func_index_col_id);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize, TP_DOMAIN * btree_domainp, int key_minmax);
 extern int btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
 			    const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename,
