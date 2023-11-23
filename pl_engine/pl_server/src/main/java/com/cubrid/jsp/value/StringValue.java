@@ -36,7 +36,6 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -46,7 +45,8 @@ import java.util.Locale;
 public class StringValue extends Value {
     private static final String dateTimePattern = "hh:mm:ss.SSS a dd/MM/yyyy";
     // Locale.US: hardcoding. TODO: set it to CUBRID server's locale
-    private static final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern(dateTimePattern, Locale.US);
+    private static final DateTimeFormatter dateTimeFormatter =
+            DateTimeFormatter.ofPattern(dateTimePattern, Locale.US);
 
     private String value;
 
