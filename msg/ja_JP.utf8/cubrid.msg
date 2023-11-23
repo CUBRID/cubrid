@@ -1443,9 +1443,10 @@ $ LOADDB
 1357 SQL 文字列からワイド文字列への変換に失敗しました。
 1358 影響を受ける行数は不明です。
 
-1359 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1360 ラストエラー
+1361 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):
