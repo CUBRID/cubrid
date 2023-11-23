@@ -15766,7 +15766,13 @@ limit_factor
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
                 DBG_PRINT}}
+        | identifier    /* for PL/CSQL Static SQL only */
+                {{ DBG_TRACE_GRAMMAR(limit_factor, | identifier);
 
+                        $$ = $1;
+                        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
         | '(' limit_expr ')'
                 {{ DBG_TRACE_GRAMMAR(limit_factor, | '(' limit_expr ')');
 			PT_NODE *exp = $2;
