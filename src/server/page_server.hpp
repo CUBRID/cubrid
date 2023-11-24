@@ -192,12 +192,12 @@ class page_server
      *  - catchup_lsa: the log lsa where new log records from ATS start to come in. A PS must have log records
      *    until this point. If it doesn’t have, it must fetch log pages until that point via the catch-up mechanism.
      *    Note that the catchup_lsa is different depending on when a PS connects to an ATS.
-     *  - Follower: a page server who is reconnecting to ATS with log records in the past. It must fill the log records
-     *    hole from where the end of log records it has, to catchup_lsa. It fetches log pages from a followee.
+     *  - Follower: a page server who is reconnecting to a cluster with log records in the past. It must fill the log
+     *    records hole from where the end of log records it has, to catchup_lsa. It fetches log pages from a followee.
      *  - Followee: a page server who serves missing log pages to a follower. It’s selected by ATS. A Followee can have
      *    multiple followers at a time. And there can be multiple followees at a time as well.
 
-     *  When a page server connects to an ATS:
+     *  When a page server connects to an ATS in a cluster:
      *
      *         ┌─────┐   ┌──────────┐       ┌──────────┐
      *         │ ats │-->│ follower │ <---> │ followee │
