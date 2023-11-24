@@ -311,7 +311,7 @@ struct heap_classrepr_entry
   int fcnt;			/* How many times this structure has been fixed. It cannot be deallocated until this
 				 * value is zero.  */
   int zone;			/* ZONE_VOID, ZONE_LRU, ZONE_FREE */
-  int force_decache;
+  bool force_decache;
 
   THREAD_ENTRY *next_wait_thrd;
   HEAP_CLASSREPR_ENTRY *hash_next;
@@ -469,8 +469,6 @@ struct heap_stats_bestspace_cache
   int num_stats_entries;	/* number of cache entries in use */
   MHT_TABLE *hfid_ht;		/* HFID Hash table for best space */
   MHT_TABLE *vpid_ht;		/* VPID Hash table for best space */
-  int num_alloc;
-  int num_free;
   int free_list_count;		/* number of entries in free */
   HEAP_STATS_ENTRY *free_list;
   pthread_mutex_t bestspace_mutex;
@@ -494,8 +492,7 @@ static HEAP_CHNGUESS heap_Guesschn_area = { NULL, NULL, NULL, false, 0,
 
 static HEAP_CHNGUESS *heap_Guesschn = NULL;
 
-static HEAP_STATS_BESTSPACE_CACHE heap_Bestspace_cache_area =
-  { 0, NULL, NULL, 0, 0, 0, NULL, PTHREAD_MUTEX_INITIALIZER };
+static HEAP_STATS_BESTSPACE_CACHE heap_Bestspace_cache_area = { 0, NULL, NULL, 0, NULL, PTHREAD_MUTEX_INITIALIZER };
 
 static HEAP_STATS_BESTSPACE_CACHE *heap_Bestspace = NULL;
 
@@ -762,7 +759,7 @@ static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, R
 				       DB_VALUE ** record_info);
 static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, bool ispeeking,
-				     bool reversed_direction, DB_VALUE ** cache_recordinfo);
+				     bool reversed_direction, DB_VALUE ** cache_recordinfo, sampling_info * sampling);
 
 static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * hfid, const VPID * vpid,
 				     const PAGE_PTR pgptr, DB_VALUE ** page_info);
@@ -982,8 +979,6 @@ heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data, void *args)
       else
 	{
 	  free_and_init (ent);
-
-	  heap_Bestspace->num_free++;
 	}
     }
 
@@ -1048,8 +1043,6 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
 
 	  goto end;
 	}
-
-      heap_Bestspace->num_alloc++;
     }
 
   HFID_COPY (&ent->hfid, hfid);
@@ -1154,7 +1147,7 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
   (void) heap_stats_entry_free (thread_p, ent, NULL);
   ent = NULL;
 
-  heap_Bestspace->num_stats_entries -= 1;
+  heap_Bestspace->num_stats_entries--;
 
 end:
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
@@ -1233,6 +1226,9 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
   LOCK page_lock;
   PGBUF_LATCH_MODE page_latch_mode;
 
+  /* TODO: simply check if lock can be other LOCKs than X_LOCK or S_LOCK. */
+  assert (lock == S_LOCK || lock == X_LOCK);
+
   if (scan_cache != NULL)
     {
       if (scan_cache->page_latch == NULL_LOCK)
@@ -1241,8 +1237,7 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
 	}
       else
 	{
-	  assert (scan_cache->page_latch >= NULL_LOCK);
-	  assert (lock >= NULL_LOCK);
+	  assert (scan_cache->page_latch > NULL_LOCK);
 	  page_lock = lock_Conv[scan_cache->page_latch][lock];
 	  assert (page_lock != NA_LOCK);
 	}
@@ -1931,7 +1926,7 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
       heap_Classrepr_cache.num_fix_entries--;
       pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
 #endif /* DEBUG_CLASSREPR_CACHE */
-      if (cache_entry->force_decache != 0)
+      if (cache_entry->force_decache)
 	{
 	  /* cache_entry is already removed from LRU list. */
 
@@ -2653,7 +2648,8 @@ heap_classrepr_dump_cache (bool simple_dump)
 	      fprintf (stdout, ".....\n");
 	      continue;
 	    }
-	  fprintf (stdout, " Fix count = %d, force_decache = %d\n", cache_entry->fcnt, cache_entry->force_decache);
+	  fprintf (stdout, " Fix count = %d, force_decache = %s\n", cache_entry->fcnt,
+		   cache_entry->force_decache ? "true" : "false");
 
 	  if (simple_dump == true)
 	    {
@@ -3724,7 +3720,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
   int num_recs = 0;
   float recs_sumlen = 0.0;
   int free_space = 0;
-  int min_freespace;
   int ret = NO_ERROR;
   int npages = 0, nrecords = 0, rec_length;
   int num_iterations = 0, max_iterations;
@@ -3739,8 +3734,6 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-
-  min_freespace = heap_stats_get_min_freespace (heap_hdr);
 
   best = 0;
   start_pos = -1;
@@ -3906,7 +3899,8 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
 	  free_space = spage_max_space_for_new_record (thread_p, pg_watcher.pgptr);
 
-	  if (free_space >= min_freespace && free_space > HEAP_DROP_FREE_SPACE)
+	  /* TODO: if the value returned by heap_stats_get_min_freespace (...) changes, this condition should be checked. */
+	  if ( /* free_space >= heap_stats_get_min_freespace (heap_hdr) && */ free_space > HEAP_DROP_FREE_SPACE)
 	    {
 	      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
 		{
@@ -5056,6 +5050,58 @@ heap_vpid_next (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID
 	  *next_vpid = chain->next_vpid;
 	}
     }
+
+  return ret;
+}
+
+/*
+ * heap_vpid_skip_next () - Skip pages by skip_cnt
+ *   return: NO_ERROR
+ *   hfid(in): Object heap file identifier
+ *   pgptr(in): Current page pointer
+ *   next_vpid(in/out): Next volume-page identifier
+ *   skip_cnt(in): skip pages by skip_cnt
+ *
+ * Note: Find the next page of heap file.
+ */
+int
+heap_vpid_skip_next (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * curr_page_watcher,
+		     PGBUF_WATCHER * old_page_watcher, int skip_cnt, VPID * vpid, HEAP_SCANCACHE * scan_cache)
+{
+  int ret = NO_ERROR;
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, curr_page_watcher->pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
+
+  for (int i = 0; i < skip_cnt - 1; i++)
+    {
+      (void) heap_vpid_next (thread_p, hfid, curr_page_watcher->pgptr, vpid);
+      if (vpid->pageid == NULL_PAGEID)
+	{
+	  /* must be last page, end scanning */
+	  return ret;
+	}
+      pgbuf_replace_watcher (thread_p, curr_page_watcher, old_page_watcher);
+      curr_page_watcher->pgptr =
+	heap_scan_pb_lock_and_fetch (thread_p, vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, scan_cache, curr_page_watcher);
+      if (old_page_watcher->pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, old_page_watcher);
+	}
+      if (curr_page_watcher->pgptr == NULL)
+	{
+	  if (er_errid () == ER_PB_BAD_PAGEID)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, vpid->volid, vpid->pageid, 1);
+	    }
+
+	  /* something went wrong, return */
+	  return S_ERROR;
+	}
+    }
+
+  (void) heap_vpid_next (thread_p, hfid, curr_page_watcher->pgptr, vpid);
 
   return ret;
 }
@@ -7820,7 +7866,8 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
  */
 static SCAN_CODE
 heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo)
+		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo,
+		    sampling_info * sampling)
 {
   VPID vpid;
   VPID *vpidptr_incache;
@@ -7831,6 +7878,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   int get_rec_info = cache_recordinfo != NULL;
   bool is_null_recdata;
   PGBUF_WATCHER old_page_watcher;
+  PGBUF_WATCHER rec_info_page_watcher;
 
   assert (scan_cache != NULL);
 
@@ -8004,7 +8052,19 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    }
 		  else
 		    {
-		      (void) heap_vpid_next (thread_p, hfid, scan_cache->page_watcher.pgptr, &vpid);
+		      if (sampling)
+			{
+			  /* skip pages */
+			  if (heap_vpid_skip_next (thread_p, hfid, &scan_cache->page_watcher, &old_page_watcher,
+						   sampling->weight, &vpid, scan_cache) == S_ERROR)
+			    {
+			      return S_ERROR;
+			    }
+			}
+		      else
+			{
+			  (void) heap_vpid_next (thread_p, hfid, scan_cache->page_watcher.pgptr, &vpid);
+			}
 		    }
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
 		  oid.volid = vpid.volid;
@@ -8042,8 +8102,10 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       /* A record was found */
       if (get_rec_info)
 	{
+	  PGBUF_INIT_WATCHER (&rec_info_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+	  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &rec_info_page_watcher);
 	  scan =
-	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &scan_cache->page_watcher, scan_cache,
+	    heap_get_record_info (thread_p, oid, recdes, forward_recdes, &rec_info_page_watcher, scan_cache,
 				  ispeeking, cache_recordinfo);
 	}
       else
@@ -11281,7 +11343,8 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   else
     {
       /* the domains don't match, must attempt coercion */
-      dom_status = tp_value_auto_cast (attr_val, &value->dbvalue, value->last_attrepr->domain);
+      dom_status = tp_value_auto_cast_with_precision_check (attr_val, &value->dbvalue, value->last_attrepr->domain);
+
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val, value->last_attrepr->domain);
@@ -12474,7 +12537,10 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
   or_init (&buf, midxkey->buf, -1);
 
   nullmap_ptr = midxkey->buf;
-  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_atts));
+  or_multi_clear_header (nullmap_ptr, num_atts);
+
+  or_advance (&buf, or_multi_header_size (num_atts));
+
   k = 0;
   for (i = 0; i < num_atts && k < num_atts; i++)
     {
@@ -12482,11 +12548,17 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	{
 	  assert (func_domain != NULL);
 
-	  if (!db_value_is_null (func_res))
+	  or_multi_put_element_offset (nullmap_ptr, num_atts, CAST_BUFLEN (buf.ptr - buf.buffer), k);
+
+	  if (!DB_IS_NULL (func_res))
 	    {
 	      func_domain->type->index_writeval (&buf, func_res);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	      or_multi_set_not_null (nullmap_ptr, k);
 	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	    }
+	  else
+	    {
+	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 
 	  if (key_domain != NULL)
@@ -12521,29 +12593,42 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	  break;
 	}
 
+      or_multi_put_element_offset (nullmap_ptr, num_atts, CAST_BUFLEN (buf.ptr - buf.buffer), k);
+
       if (IS_DEDUPLICATE_KEY_ATTR_ID (atts[i]->id))
 	{
 	  if (not_null_field_cnt > 0)
 	    {
 	      dk_get_deduplicate_key_value (rec_oid, atts[i]->id, &value);
 	      atts[i]->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      //  In this case, there is no need to clean them up using pr_clear_value().     
+	      or_multi_set_not_null (nullmap_ptr, k);
+	      /* In this case, there is no need to clean them up using pr_clear_value (). */
+	    }
+	  else
+	    {
+	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 	}
       else
 	{
 	  error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
-	  if (error == NO_ERROR && !db_value_is_null (&value))
+	  if (error == NO_ERROR)
 	    {
-	      atts[i]->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-	    }
+	      if (!DB_IS_NULL (&value))
+		{
+		  atts[i]->domain->type->index_writeval (&buf, &value);
+		  or_multi_set_not_null (nullmap_ptr, k);
+		  not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-	  if (DB_NEED_CLEAR (&value))
-	    {
-	      pr_clear_value (&value);
+		  if (DB_NEED_CLEAR (&value))
+		    {
+		      pr_clear_value (&value);
+		    }
+		}
+	      else
+		{
+		  assert (or_multi_is_null (nullmap_ptr, k));
+		}
 	    }
 	}
 
@@ -12581,6 +12666,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	}
       k++;
     }
+
+  or_multi_put_size_offset (nullmap_ptr, num_atts, CAST_BUFLEN (buf.ptr - buf.buffer));
 
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
   midxkey->ncolumns = num_atts;
@@ -12662,30 +12749,38 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	}
     }
 
-  assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
-
-  or_init (&buf, midxkey->buf, -1);
-
-  nullmap_ptr = midxkey->buf;
-
   /* On constructing index */
   num_vals = attrinfo->num_values;
   if (func_res)
     {
       num_vals = func_attr_index_start + 1;
     }
-  or_advance (&buf, pr_midxkey_init_boundbits (nullmap_ptr, num_vals));
+
+  assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
+
+  or_init (&buf, midxkey->buf, -1);
+
+  nullmap_ptr = midxkey->buf;
+  or_multi_clear_header (nullmap_ptr, num_vals);
+
+  or_advance (&buf, or_multi_header_size (num_vals));
 
   for (k = 0, i = 0; k < num_vals; i++, k++)
     {
       if (i == func_col_id)
 	{
-	  if (!db_value_is_null (func_res))
+	  or_multi_put_element_offset (nullmap_ptr, num_vals, CAST_BUFLEN (buf.ptr - buf.buffer), k);
+
+	  if (!DB_IS_NULL (func_res))
 	    {
 	      TP_DOMAIN *domain = tp_domain_resolve_default ((DB_TYPE) func_res->domain.general_info.type);
 	      domain->type->index_writeval (&buf, func_res);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
+	      or_multi_set_not_null (nullmap_ptr, k);
 	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+	    }
+	  else
+	    {
+	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 
 	  if (++k == num_vals)
@@ -12694,6 +12789,8 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	    }
 	}
 
+      or_multi_put_element_offset (nullmap_ptr, num_vals, CAST_BUFLEN (buf.ptr - buf.buffer), k);
+
       if (IS_DEDUPLICATE_KEY_ATTR_ID (att_ids[i]))
 	{
 	  if (not_null_field_cnt > 0)
@@ -12701,8 +12798,12 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      att = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (att_ids[i]);
 	      dk_get_deduplicate_key_value (rec_oid, att_ids[i], &value);
 	      att->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      //  In this case, there is no need to clean them up using pr_clear_value().     
+	      or_multi_set_not_null (nullmap_ptr, k);
+	      /* In this case, there is no need to clean them up using pr_clear_value (). */
+	    }
+	  else
+	    {
+	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 	}
       else
@@ -12710,16 +12811,23 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	  att = heap_locate_attribute (att_ids[i], attrinfo);
 
 	  error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
-	  if (error == NO_ERROR && !db_value_is_null (&value))
+	  if (error == NO_ERROR)
 	    {
-	      att->domain->type->index_writeval (&buf, &value);
-	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
-	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-	    }
+	      if (!DB_IS_NULL (&value))
+		{
+		  att->domain->type->index_writeval (&buf, &value);
+		  or_multi_set_not_null (nullmap_ptr, k);
+		  not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-	  if (DB_NEED_CLEAR (&value))
-	    {
-	      pr_clear_value (&value);
+		  if (DB_NEED_CLEAR (&value))
+		    {
+		      pr_clear_value (&value);
+		    }
+		}
+	      else
+		{
+		  assert (or_multi_is_null (nullmap_ptr, k));
+		}
 	    }
 	}
     }
@@ -12728,6 +12836,9 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
     {
       pr_clear_value (&value);
     }
+
+  or_multi_put_size_offset (nullmap_ptr, num_vals, CAST_BUFLEN (buf.ptr - buf.buffer));
+
   midxkey->size = CAST_BUFLEN (buf.ptr - buf.buffer);
   midxkey->ncolumns = num_vals;
   midxkey->domain = midxkey_domain;
@@ -15179,8 +15290,6 @@ heap_stats_bestspace_initialize (void)
       goto exit_on_error;
     }
 
-  heap_Bestspace->num_alloc = 0;
-  heap_Bestspace->num_free = 0;
   heap_Bestspace->free_list_count = 0;
   heap_Bestspace->free_list = NULL;
 
@@ -18806,7 +18915,29 @@ SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
+}
+
+/*
+ * heap_next_sampling () - Retrieve or peek next object
+ *   return: SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
+ *   hfid(in):
+ *   class_oid(in):
+ *   next_oid(in/out): Object identifier of current record.
+ *                     Will be set to next available record or NULL_OID when
+ *                     there is not one.
+ *   recdes(in/out): Pointer to a record descriptor. Will be modified to
+ *                   describe the new record.
+ *   scan_cache(in/out): Scan cache or NULL
+ *   ispeeking(in): PEEK when the object is peeked, scan_cache cannot be NULL
+ *                  COPY when the object is copied
+ *
+ */
+SCAN_CODE
+heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
+		    HEAP_SCANCACHE * scan_cache, int ispeeking, sampling_info * sampling)
+{
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, sampling);
 }
 
 /*
@@ -18833,7 +18964,7 @@ heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false,
-			     cache_recordinfo);
+			     cache_recordinfo, NULL);
 }
 
 /*
@@ -18855,7 +18986,7 @@ SCAN_CODE
 heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, NULL, NULL);
 }
 
 /*
@@ -18882,7 +19013,7 @@ heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true,
-			     cache_recordinfo);
+			     cache_recordinfo, NULL);
 }
 
 /*

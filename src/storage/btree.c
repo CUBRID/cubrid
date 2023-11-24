@@ -1270,7 +1270,7 @@ static PAGE_PTR btree_find_leftmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, 
 static PAGE_PTR btree_find_rightmost_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
 					   BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid,
-					     BTREE_STATS * stat_info_p, bool * found_p);
+					     BTREE_STATS * stat_info_p);
 static PAGE_PTR btree_find_boundary_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info,
 					  BTREE_BOUNDARY where);
 static int btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -1398,8 +1398,8 @@ static DISK_ISVALID btree_repair_prev_link_by_btid (THREAD_ENTRY * thread_p, BTI
 						    char *index_name);
 static DISK_ISVALID btree_repair_prev_link_by_class_oid (THREAD_ENTRY * thread_p, OID * oid, BTID * idx_btid,
 							 bool repair);
-static bool btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
-static int btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
+static int btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
+static int btree_node_calculate_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
 static int btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, DB_VALUE * fence_key,
 				    int old_prefix, int new_prefix);
 static int btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr);
@@ -4222,7 +4222,7 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
   assert (rec != NULL);
   assert (rec->type == REC_HOME);
   assert (bts == NULL || bts->common_prefix == -1
-	  || bts->common_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
+	  || bts->common_prefix == btree_node_get_common_prefix (thread_p, btid, pgptr));
 
   if (bts != NULL)
     {
@@ -4243,7 +4243,7 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
       if (n_prefix == COMMON_PREFIX_UNKNOWN)
 	{
 	  /* recalculate n_prefix */
-	  n_prefix = btree_node_common_prefix (thread_p, btid, pgptr);
+	  n_prefix = btree_node_get_common_prefix (thread_p, btid, pgptr);
 	}
 
       assert (n_prefix >= 0);
@@ -5360,7 +5360,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     }
 
   /* for compressed midxkey */
-  n_prefix = btree_node_common_prefix (thread_p, btid, page_ptr);
+  n_prefix = btree_node_get_common_prefix (thread_p, btid, page_ptr);
   if (n_prefix < 0)
     {
       /* Error case? */
@@ -6868,9 +6868,8 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 {
   BTREE_SCAN *BTS;
   int n, i;
-  bool found;
   int key_cnt;
-  int exp_ratio;
+  double exp_ratio;
   int ret = NO_ERROR;
 #if !defined(NDEBUG)
   BTREE_NODE_HEADER *header = NULL;
@@ -6889,48 +6888,44 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  break;		/* found all samples */
 	}
 
-      BTS->C_page =
-	btree_find_AR_sampling_leaf (thread_p, BTS->btid_int.sys_btid, &BTS->C_vpid, env->stat_info, &found);
+      BTS->C_page = btree_find_AR_sampling_leaf (thread_p, BTS->btid_int.sys_btid, &BTS->C_vpid, env->stat_info);
       if (BTS->C_page == NULL)
 	{
 	  goto exit_on_error;
 	}
 
       /* found sampling leaf page */
-      if (found)
-	{
-	  key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
+      key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
 
 #if !defined(NDEBUG)
-	  header = btree_get_node_header (thread_p, BTS->C_page);
+      header = btree_get_node_header (thread_p, BTS->C_page);
 
-	  assert (header != NULL);
-	  assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
+      assert (header != NULL);
+      assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
 #endif
 
-	  if (key_cnt > 0)
+      if (key_cnt > 0)
+	{
+	  env->stat_info->leafs++;
+
+	  BTS->slot_id = 1;
+	  BTS->oid_pos = 0;
+
+	  assert_release (BTS->slot_id <= key_cnt);
+
+	  for (i = 0; i < key_cnt; i++)
 	    {
-	      env->stat_info->leafs++;
-
-	      BTS->slot_id = 1;
-	      BTS->oid_pos = 0;
-
-	      assert_release (BTS->slot_id <= key_cnt);
-
-	      for (i = 0; i < key_cnt; i++)
+	      ret = btree_get_stats_key (thread_p, env, NULL);
+	      if (ret != NO_ERROR)
 		{
-		  ret = btree_get_stats_key (thread_p, env, NULL);
-		  if (ret != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+		  goto exit_on_error;
+		}
 
-		  /* get the next index record */
-		  ret = btree_find_next_index_record (thread_p, BTS);
-		  if (ret != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
+	      /* get the next index record */
+	      ret = btree_find_next_index_record (thread_p, BTS);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
 		}
 	    }
 	}
@@ -6954,7 +6949,7 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
   /* apply distributed expension */
   if (env->stat_info->leafs > 0)
     {
-      exp_ratio = env->stat_info->pages / env->stat_info->leafs;
+      exp_ratio = (double) env->stat_info->pages / (double) env->stat_info->leafs;
 
       env->stat_info->leafs *= exp_ratio;
       if (env->stat_info->leafs < 0)
@@ -7168,21 +7163,6 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       return ret;
     }
   assert_release (npages >= 1);
-
-  /* For the optimization of the sampling, if the btree file has currently the same pages as we gathered statistics, we
-   * guess the btree file has not been modified; So, we take current stats as it is */
-  if (!with_fullscan)
-    {
-      /* check if the stats has been gathered */
-      if (stat_info_p->keys > 0)
-	{
-	  /* guess the stats has not been modified */
-	  if (npages == stat_info_p->pages)
-	    {
-	      return NO_ERROR;
-	    }
-	}
-    }
 
   /* set environment variable */
   env = &stat_env;
@@ -10340,6 +10320,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
   BTREE_NODE_HEADER *left_header = NULL;
   BTREE_NODE_HEADER *right_header = NULL;
+  BTREE_NODE_HEADER *header;
 
   /* Remember first and last slot id's for non-fence records in both left and right nodes. */
   int left_first_non_fence_slotid = NULL_SLOTID;
@@ -10407,7 +10388,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       ASSERT_ERROR ();
       return left_used;
     }
-  left_prefix = btree_node_common_prefix (thread_p, btid, left_pg);
+  left_prefix = btree_node_get_common_prefix (thread_p, btid, left_pg);
   if (left_prefix < 0)
     {
       ASSERT_ERROR ();
@@ -10420,7 +10401,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       ASSERT_ERROR ();
       return right_used;
     }
-  right_prefix = btree_node_common_prefix (thread_p, btid, right_pg);
+  right_prefix = btree_node_get_common_prefix (thread_p, btid, right_pg);
   if (right_prefix < 0)
     {
       ASSERT_ERROR ();
@@ -10577,6 +10558,16 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	      goto exit_on_error;
 	    }
 	}
+
+      header = btree_get_node_header (thread_p, left_pg);
+      if (header == NULL)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+
+      header->common_prefix = merged_prefix;
     }
 
   /* Left fence key no longer required. */
@@ -10585,6 +10576,7 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   /***********************************************************
    ***  STEP 3: copy right page.
    ***********************************************************/
+
   for (i = right_first_non_fence_slotid; i <= right_last_non_fence_slotid; i++)
     {
       NEXT_MERGE_RECORD ();
@@ -10596,12 +10588,29 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
-      ret = btree_recompress_record (thread_p, btid, &rec[rec_idx], &right_fence_key, right_prefix, merged_prefix);
-      if (ret != NO_ERROR)
+
+      if (merged_prefix != right_prefix)
 	{
-	  ASSERT_ERROR ();
+	  ret = btree_recompress_record (thread_p, btid, &rec[rec_idx], &right_fence_key, right_prefix, merged_prefix);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto exit_on_error;
+	    }
+	}
+    }
+
+  if (merged_prefix != right_prefix)
+    {
+      header = btree_get_node_header (thread_p, right_pg);
+      if (header == NULL)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
+
+      header->common_prefix = merged_prefix;
     }
 
   /* Right fence key no longer required. */
@@ -10830,7 +10839,7 @@ btree_node_size_uncompressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
 
   used_size = DB_PAGESIZE - spage_get_free_space (thread_p, page_ptr);
 
-  prefix = btree_node_common_prefix (thread_p, btid, page_ptr);
+  prefix = btree_node_get_common_prefix (thread_p, btid, page_ptr);
   if (prefix > 0)
     {
 #if !defined(NDEBUG)
@@ -12618,11 +12627,26 @@ btree_split_next_pivot (BTREE_NODE_SPLIT_INFO * split_info, float new_value, int
   return NO_ERROR;
 }
 
-static bool
-btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
+/*
+ * btree_node_get_common_prefix () - Reads the BTREE_NODE_HEADER of the given page
+ *                                   and returns the common prefix stored by BTREE_NODE_HEADER.
+ *
+ *   return: Common prefix. If 0, the page was not compressed.
+ *   thread_p(in): Thread entry.
+ *   btid(in): B+tree index identifier
+ *   page_ptr(in): Page pointer
+ * 
+ * note: Leaf nodes of multi-column indexes can be compressed.
+ *       If the page is compressed, the common prefix is stored in BTREE_NODE_HEADER.
+ *       This function reads the common prefix from BTREE_NODE_HEADER and returns.
+ *       Here we do not check whether the page is compressed.
+ *       If the page is not compressed, common prefix must be 0.
+ *       In the debug code, the consistency of the common prefix is checked.
+ */
+static int
+btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
 {
   int key_cnt;
-  RECDES peek_rec;
   BTREE_NODE_HEADER *header = NULL;
   BTREE_NODE_TYPE node_type;
 
@@ -12630,57 +12654,93 @@ btree_node_is_compressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
 
   if (TP_DOMAIN_TYPE (btid->key_type) != DB_TYPE_MIDXKEY)
     {
-      return false;
+      /* Compression is only possible for indexes of DB_TYPE_MIDXKEY. */
+      return 0;			/* not compressed */
     }
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
   if (key_cnt < 2)
     {
-      return false;
+      return 0;			/* not compressed */
     }
 
   header = btree_get_node_header (thread_p, page_ptr);
   if (header == NULL)
     {
-      return false;
+      assert (false);
+      return 0;			/* not compressed */
     }
 
   node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
   if (node_type == BTREE_NON_LEAF_NODE)
     {
-      return false;
+      return 0;			/* not compressed */
     }
+
+#if !defined (NDEBUG)
+  RECDES peek_rec;
+  bool is_compressed = true;
 
   /* check if lower fence key */
   if (spage_get_record (thread_p, page_ptr, 1, &peek_rec, PEEK) != S_SUCCESS)
     {
       assert (false);
     }
+
   if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE) == false)
     {
-      return false;
+      is_compressed = false;
     }
 
   /* check if upper fence key */
-  assert (key_cnt > 0);
   if (spage_get_record (thread_p, page_ptr, key_cnt, &peek_rec, PEEK) != S_SUCCESS)
     {
       assert (false);
     }
+
   if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE) == false)
     {
-      return false;
+      is_compressed = false;
     }
 
-  return true;
+  if (header->common_prefix > 0 && header->common_prefix < btid->key_type->precision)
+    {
+      assert (is_compressed);
+    }
+#endif /* !NDEBUG */
+
+  if (header->common_prefix > 0 && header->common_prefix < btid->key_type->precision)
+    {
+      return header->common_prefix;
+    }
+
+  return 0;
 }
 
+/*
+ * btree_node_calculate_common_prefix () - Checks whether the given page can be compressed
+ *                                         and returns the common prefix if it can.
+ *
+ *   return: Common prefix. If 0, compression is not possible.
+ *   thread_p(in): Thread entry.
+ *   btid(in): B+tree index identifier
+ *   page_ptr(in): Page pointer
+ * 
+ * note: Leaf nodes of multi-column indexes can be compressed.
+ *       To be compressed, both the lower fence key and upper fence key must exist.
+ *       The common prefix is the number of columns that have the same value
+ *       when comparing the lower fence key and upper fence key.
+ *       This function does not compress the page.
+ *       If the records of the lower fence key and upper fence key have been read,
+ *       they must be cleared before this function ends.
+ */
 static int
-btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
+btree_node_calculate_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
 {
+  BTREE_NODE_HEADER *header = NULL;
   RECDES peek_rec;
-  int diff_column;
+  int diff_column = 0;
   int key_cnt;
 
   DB_VALUE lf_key, uf_key;
@@ -12689,57 +12749,92 @@ btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
 
-  if (btree_node_is_compressed (thread_p, btid, page_ptr) == false)
+  if (TP_DOMAIN_TYPE (btid->key_type) != DB_TYPE_MIDXKEY)
     {
-      return 0;
+      /* Compression is only possible for indexes of DB_TYPE_MIDXKEY. */
+      goto not_compressed;
+    }
+
+  key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
+  if (key_cnt < 2)
+    {
+      goto not_compressed;
+    }
+
+  header = btree_get_node_header (thread_p, page_ptr);
+  if (header == NULL)
+    {
+      assert (false);
+      goto not_compressed;
+    }
+
+  if (header->node_level > 1)
+    {
+      /* Compression is only possible at leaf nodes. */
+      goto not_compressed;
     }
 
   btree_init_temp_key_value (&lf_clear_key, &lf_key);
   btree_init_temp_key_value (&uf_clear_key, &uf_key);
 
-  key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
-  assert (key_cnt >= 2);
+  /* check if lower fence key */
+  if (spage_get_record (thread_p, page_ptr, 1, &peek_rec, PEEK) != S_SUCCESS)
+    {
+      assert (false);
+      goto not_compressed;
+    }
 
-  spage_get_record (thread_p, page_ptr, 1, &peek_rec, PEEK);
+  if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE) == false)
+    {
+      goto not_compressed;
+    }
+
   error =
     btree_read_record_without_decompression (thread_p, btid, &peek_rec, &lf_key, &leaf_pnt, BTREE_LEAF_NODE,
 					     &lf_clear_key, &offset, PEEK_KEY_VALUE);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto not_compressed_with_cleanup;
     }
   assert (!btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_KEY));
-  assert (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE));
   assert (DB_VALUE_TYPE (&lf_key) == DB_TYPE_MIDXKEY);
 
-  assert (key_cnt > 0);
+  /* check if upper fence key */
+  if (spage_get_record (thread_p, page_ptr, key_cnt, &peek_rec, PEEK) != S_SUCCESS)
+    {
+      assert (false);
+      goto not_compressed_with_cleanup;
+    }
+
+  if (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE) == false)
+    {
+      goto not_compressed_with_cleanup;
+    }
+
   spage_get_record (thread_p, page_ptr, key_cnt, &peek_rec, PEEK);
   error =
     btree_read_record_without_decompression (thread_p, btid, &peek_rec, &uf_key, &leaf_pnt, BTREE_LEAF_NODE,
 					     &uf_clear_key, &offset, PEEK_KEY_VALUE);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      goto not_compressed_with_cleanup;
     }
   assert (!btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_OVERFLOW_KEY));
-  assert (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE));
   assert (DB_VALUE_TYPE (&uf_key) == DB_TYPE_MIDXKEY);
 
   diff_column = pr_midxkey_common_prefix (&lf_key, &uf_key);
 
-cleanup:
-  /* clean up */
   btree_clear_key_value (&lf_clear_key, &lf_key);
   btree_clear_key_value (&uf_clear_key, &uf_key);
 
-  if (error == NO_ERROR)
-    {
-      return diff_column;
-    }
-  else
-    {
-      return error;
-    }
+  return diff_column;
+
+not_compressed_with_cleanup:
+  btree_clear_key_value (&lf_clear_key, &lf_key);
+  btree_clear_key_value (&uf_clear_key, &uf_key);
+
+not_compressed:
+  return 0;
 }
 
 /*
@@ -12838,6 +12933,7 @@ btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * 
 static int
 btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr)
 {
+  BTREE_NODE_HEADER *header;
   int i, key_cnt, diff_column;
   RECDES peek_rec, rec;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -12852,7 +12948,7 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
 
-  diff_column = btree_node_common_prefix (thread_p, btid, page_ptr);
+  diff_column = btree_node_calculate_common_prefix (thread_p, btid, page_ptr);
   if (diff_column == 0)
     {
       return 0;
@@ -12911,6 +13007,15 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr
       spage_update (thread_p, page_ptr, i, &rec);
       btree_clear_key_value (&clear_key, &key);
     }
+
+  header = btree_get_node_header (thread_p, page_ptr);
+  if (header == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  header->common_prefix = diff_column;
 
 #if !defined(NDEBUG)
   btree_verify_node (thread_p, btid, page_ptr);
@@ -13150,6 +13255,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   rheader->split_info = qheader->split_info;
+  rheader->common_prefix = 0;
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -13971,6 +14077,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   qheader->split_info = split_info;
+  qheader->common_prefix = 0;
 
   if (btree_init_node_header (thread_p, &btid->sys_btid->vfid, Q, qheader, true) != NO_ERROR)
     {
@@ -14000,6 +14107,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   rheader->split_info = split_info;
+  rheader->common_prefix = 0;
 
   if (btree_init_node_header (thread_p, &btid->sys_btid->vfid, R, rheader, true) != NO_ERROR)
     {
@@ -14832,14 +14940,12 @@ error:
  *   btid(in):
  *   pg_vpid(in):
  *   stat_info_p(in):
- *   found_p(out):
  *
  * Note: Find the page identifier via the Acceptance/Rejection Sampling leaf page of the B+tree index.
  * Note: Random Sampling from Databases (Chapter 3. Random Sampling from B+ Trees)
  */
 static PAGE_PTR
-btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info_p,
-			     bool * found_p)
+btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpid, BTREE_STATS * stat_info_p)
 {
   PAGE_PTR P_page = NULL, C_page = NULL;
   VPID P_vpid, C_vpid;
@@ -14852,12 +14958,8 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
   int est_page_size, free_space;
   int key_cnt = 0;
   int root_level = 0, depth = 0;
-  double prob = 1.0;		/* Acceptance probability */
 
   assert (stat_info_p != NULL);
-  assert (found_p != NULL);
-
-  *found_p = false;		/* init */
 
   VPID_SET_NULL (pg_vpid);
 
@@ -14930,13 +15032,6 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
 
       node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
 
-      /* update Acceptance probability */
-
-      free_space = spage_max_space_for_new_record (thread_p, C_page);
-      assert (est_page_size > free_space);
-
-      prob *= (((double) est_page_size) - free_space) / ((double) est_page_size);
-
       P_page = C_page;
       C_page = NULL;
       P_vpid = C_vpid;
@@ -14998,18 +15093,6 @@ end:
   assert_release (root_level == depth + 1);
 
   stat_info_p->height = root_level;
-
-  /* do Acceptance/Rejection sampling */
-  if (drand48 () < prob)
-    {
-      /* Acceptance */
-      *found_p = true;
-    }
-  else
-    {
-      /* Rejection */
-      assert (*found_p == false);
-    }
 
   return P_page;
 
@@ -18419,7 +18502,7 @@ btree_multicol_key_is_null (DB_VALUE * key)
       if (midxkey && midxkey->ncolumns != -1)
 	{
 	  bits = (unsigned char *) midxkey->buf;
-	  nbytes = OR_MULTI_BOUND_BIT_BYTES (midxkey->ncolumns);
+	  nbytes = or_multi_nullmap_size (midxkey->ncolumns);
 	  for (i = 0; i < nbytes; i++)
 	    {
 	      if (bits[i] != (unsigned char) 0)
@@ -18465,7 +18548,7 @@ btree_multicol_key_has_null (DB_VALUE * key)
 	{
 	  for (i = 0; i < midxkey->ncolumns; i++)
 	    {
-	      if (OR_MULTI_ATT_IS_UNBOUND (midxkey->buf, i))
+	      if (or_multi_is_null (midxkey->buf, i))
 		{
 		  return 1;
 		}
@@ -19821,10 +19904,11 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
   btree_init_temp_key_value (&clear_lower_fence_key, &lower_fence_key);
   db_make_null (&uncompressed_value);
 
-  common_prefix = btree_node_common_prefix (thread_p, btid_int, page_ptr);
+  common_prefix = btree_node_get_common_prefix (thread_p, btid_int, page_ptr);
   if (common_prefix > 0)
     {
       assert (btree_is_fence_key (page_ptr, 1));
+      assert (common_prefix == btree_node_calculate_common_prefix (thread_p, btid_int, page_ptr));
       if (spage_get_record (thread_p, page_ptr, 1, &rec, PEEK) != S_SUCCESS)
 	{
 	  btree_dump_page (thread_p, stdout, NULL, btid_int, NULL, page_ptr, NULL, 2, 2);
@@ -27643,7 +27727,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
     {
       int diff_column;
 
-      diff_column = btree_node_common_prefix (thread_p, btid_int, leaf_page);
+      diff_column = btree_node_get_common_prefix (thread_p, btid_int, leaf_page);
       if (diff_column > 0)
 	{
 	  /* Remove columns from key value. */
