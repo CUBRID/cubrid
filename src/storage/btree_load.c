@@ -2062,6 +2062,7 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
       VPID_SET_NULL (&header->prev_vpid);
       header->split_info.pivot = 0.0f;
       header->split_info.index = 0;
+      header->common_prefix = 0;
 
       error_code = btree_init_node_header (thread_p, &btid->vfid, *page_new, header, false);
       if (error_code != NO_ERROR)
