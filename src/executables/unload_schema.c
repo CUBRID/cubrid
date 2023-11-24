@@ -3976,7 +3976,7 @@ is_builtin_package_function (const char *sp_name)
     "get_line",
     "get_lines",
     NULL
-  }
+  };
 
   int dim, i;
 
