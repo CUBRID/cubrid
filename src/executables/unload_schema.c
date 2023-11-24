@@ -244,6 +244,8 @@ static int create_filename_schema_info (const char *output_dirname, const char *
 					const size_t filename_size);
 static void str_tolower (char *str);
 
+static bool is_builtin_package_function (const char *sp_name);
+
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -3961,6 +3963,34 @@ emit_partition_info (extract_context & ctxt, print_output & output_ctx, MOP clso
   output_ctx (";\n");
 }
 
+// TODO: quick fix
+static bool
+is_builtin_package_function (const char *sp_name)
+{
+  static const char *builtin_list[] = {
+    "enable",
+    "disable",
+    "put",
+    "put_line",
+    "new_line",
+    "get_line",
+    "get_lines",
+    NULL
+  }
+
+  int dim, i;
+
+  dim = DIM (builtin_list);
+  for (i = 0; i < dim; i++)
+    {
+      if (strcasecmp (builtin_list[i], sp_name) == 0)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
 /*
  * emit_stored_procedure_args - emit stored procedure arguments
  *    return: 0 if success, error count otherwise
@@ -4073,6 +4103,12 @@ emit_stored_procedure (extract_context & ctxt, print_output & output_ctx)
 	  || (err = db_get (obj, SP_ATTR_COMMENT, &comment_val)) != NO_ERROR)
 	{
 	  err_count++;
+	  continue;
+	}
+
+      const char *sp_name = db_get_string (&sp_name_val);
+      if (is_builtin_package_function (sp_name))
+	{
 	  continue;
 	}
 
