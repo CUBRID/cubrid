@@ -125,17 +125,45 @@ tran_server::boot (const char *db_name)
       return error_code;
     }
 
+  /*
+    * At least one PS is given by the configuration.
+    * Even if uses_remote_storage () == false, the remote storage can exist.
+    */
   if (m_page_server_conn_vec.empty () == false)
     {
-      /*
-       * At least one PS is given by the configuration.
-       * Even if uses_remote_storage () == false, the remote storage can exist.
-       */
-      error_code = reset_main_connection ();
-      if (error_code != NO_ERROR)
+      const auto start_time = std::chrono::steady_clock::now ();
+
+      while (true)
 	{
-	  assert (false);
-	  return error_code;
+	  error_code = reset_main_connection ();
+	  if (error_code == NO_ERROR)
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      /* TEMPORARY waiting and timeout
+	      *
+	      * TODO: Remove this and just make sure reset_main_connection doesn't fail
+	      *       when the ATS recovery with handshakes with multiple page servers comes in.
+	      *
+	      * For now, the main connection may not be able to be set for a while. It can be after one it set to CONNECTED state.
+	      * When the handshakes comes in, it's guaranteed that at least one connection is completely CONNECTED here
+	      * and it will be the main connection. Until then, we just wait here until a conenction is ready.
+	      */
+	      const auto current_time = std::chrono::steady_clock::now ();
+	      const auto duration = std::chrono::duration_cast<std::chrono::seconds> (current_time - start_time).count();
+	      if (duration > 30) // timeout: 30 seconds
+		{
+		  assert (false);
+		  return error_code;
+		}
+	      else
+		{
+		  constexpr auto sleep_time = std::chrono::milliseconds (30);
+		  std::this_thread::sleep_for (sleep_time);
+		}
+	    }
 	}
 
       m_ps_connector.start ();
@@ -383,15 +411,9 @@ tran_server::connection_handler::connect ()
 		  srv_chn.get_channel_id ().c_str ());
   }
 
-  // Do the preliminary jobs depending on the server type before opening the conneciton to the outisde.
-  on_connecting ();
-
-  {
-    auto lockg_state = std::lock_guard<std::shared_mutex> { m_state_mtx };
-    assert (m_state == state::CONNECTING);
-
-    m_state = state::CONNECTED;
-  }
+  // Do the preliminary jobs depending on the server type before opening the connection to the outside.
+  // the state will be transitioned to CONNECTED by transition_to_connected().
+  transition_to_connected ();
 
   return NO_ERROR;
 }

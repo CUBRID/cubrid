@@ -17,24 +17,11 @@
 
 # assign reviewers about all files
 
+# NOTE:
+# this is the contents of the file for the LETS `scalability_dev` feature branch;
+# it is much different from the `develop` branch and it is only added as such to prevent
+# accidental assign as reviewer for PR for people not [yet] involved with the project;
+
 # required default reviewer
-/src/base/ @beyondykk9
-/src/base/memory_monitor_* @hornetmj
-/src/broker/ @kisoo-han
-/src/cm_common/ @kisoo-han
-/src/compat/ @beyondykk9
-/src/jsp/ @beyondykk9
-/src/method/ @beyondykk9
-/src/optimizer/ @shparkcubrid
-/src/parser/ @beyondykk9
-/src/parser/view_transform.* @shparkcubrid
-/src/query/ @beyondykk9
-/src/query/query_executor.* @shparkcubrid
-/src/query/query_hash_scan.* @shparkcubrid
-/src/query/scan_manager.* @shparkcubrid
-/src/query/vacuum.* @hornetmj
-/src/storage/ @hornetmj
-/src/storage/statistics* @shparkcubrid
-/src/transaction/ @hornetmj
-/src/win_tools/ @kisoo-han
-/src/xasl/ @beyondykk9
+/src @wrlawodms @joohok @hornetmj @cristiarg
+/unit_tests @wrlawodms @joohok @hornetmj @cristiarg
