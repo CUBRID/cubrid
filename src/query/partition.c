@@ -3876,7 +3876,7 @@ partition_attrinfo_get_key (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * pcontext,
 	}
     }
   error = btree_attrinfo_read_dbvalues (thread_p, curr_key,
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) && !defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 					NULL,
 #endif
 					btree_attr_ids, btree_num_attr, &pcontext->attr_info, -1);

@@ -163,6 +163,7 @@ typedef enum bts_key_status BTS_KEY_STATUS;
 typedef struct btree_scan BTREE_SCAN;	/* BTS */
 
 //#define IMPROVE_RANGE_SCAN_IN_BTREE
+//#define IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY
 //#define IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 
@@ -208,6 +209,7 @@ typedef struct
        (pg_prefix)->reader_type = READER_TYPE_NONE;    \
     }                                                  \
 } while(0)
+
 #else
 #define BTREE_PAGE_PREFIX_INFO  void
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix, type)
@@ -245,6 +247,11 @@ struct btree_scan
   DB_VALUE cur_key;		/* current key value */
   bool clear_cur_key;		/* clear flag for current key value */
 
+  //---------------------------------------------   
+  // IMPROVE_RANGE_SCAN_IN_BTREE    
+  BTREE_PAGE_PREFIX_INFO *pg_prefix_info;
+  //---------------------------------------------   
+
   BTREE_KEYRANGE key_range;	/* key range information */
   FILTER_INFO *key_filter;	/* key filter information pointer */
   FILTER_INFO key_filter_storage;	/* key filter information storage */
@@ -257,7 +264,6 @@ struct btree_scan
   /* for query trace */
   int read_keys;
   int qualified_keys;
-  BTREE_PAGE_PREFIX_INFO *pg_prefix_info;
 
   bool key_range_max_value_equal;
 
@@ -810,7 +816,7 @@ extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RA
 			     bool use_pg_prefix);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) && !defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 					 BTREE_PAGE_PREFIX_INFO * pg_prefix_info,
 #endif
 					 int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,

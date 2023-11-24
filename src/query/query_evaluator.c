@@ -2781,12 +2781,11 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
  * Note: evaluate key filter(predicates) given as FILTER_INFO
  */
 DB_LOGICAL
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
-eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_len, DB_VALUE * prefix_value,
-		 FILTER_INFO * filterp)
-#else
-eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filterp)
+eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+		 int prefix_len, DB_VALUE * prefix_value,
 #endif
+		 FILTER_INFO * filterp)
 {
   DB_MIDXKEY *midxkey;
   int i, j;
@@ -2836,8 +2835,9 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 	      return V_ERROR;
 	    }
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 	  DB_MIDXKEY *midxkey_prefix = NULL;
+	  DB_MIDXKEY *midxkey_ptr;
 	  if (prefix_value && prefix_len > 0)
 	    {
 	      midxkey_prefix = db_get_midxkey (prefix_value);
@@ -2882,22 +2882,19 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		    }
 // ctshim
 		  /* get j-th element value from the midxkey */
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
 		  // j = arr[i]; ctshim  
-		  if (midxkey_prefix && j < prefix_len)
+		  midxkey_ptr = (midxkey_prefix && j < prefix_len) ? midxkey_prefix : midxkey;
+		  if (pr_midxkey_get_element_nocopy (midxkey_ptr, j, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 		    {
-		      if (pr_midxkey_get_element_nocopy (midxkey_prefix, j, valp, &prev_j_index, &prev_j_ptr) !=
-			  NO_ERROR)
-			{
-			  return V_ERROR;
-			}
+		      return V_ERROR;
 		    }
-		  else
-#endif
+#else
 		  if (pr_midxkey_get_element_nocopy (midxkey, j, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 		    {
 		      return V_ERROR;
 		    }
+#endif
 
 		  found_empty_str = false;
 		  if (oracle_style_empty_string && db_value_is_null (valp))
