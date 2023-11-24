@@ -182,7 +182,59 @@ class page_server
     };
 
     /*
-     *  TODO add some explanation and diagrams for this.
+     *  When a disconnected page server re-connects to a cluster, the cluster, possibly,
+     *  has gone further than the page server. It means the connecting PS has log records only up to LSA(N),
+     *  but the ATS and other PSes in the cluster have log records up to a LSN larger than LSN(N) like LSN(N+1000).
+     *  Because ATS sends log records and just discards them, the connecting PS must get the pages from another PS
+     *  to fill the hole.
+     *
+     *  Terms:
+     *  - catchup_lsa: the log lsa where new log records from ATS start to come in. A PS must have log records
+     *    until this point. If it doesn’t have, it must fetch log pages until that point via the catch-up mechanism.
+     *    Note that the catchup_lsa is different depending on when a PS connects to an ATS.
+     *  - Follower: a page server who is reconnecting to a cluster with log records in the past. It must fill the log
+     *    records hole from where the end of log records it has, to catchup_lsa. It fetches log pages from a followee.
+     *  - Followee: a page server who serves missing log pages to a follower. It’s selected by ATS. A Followee can have
+     *    multiple followers at a time. And there can be multiple followees at a time as well.
+
+     *  When a page server connects to an ATS in a cluster:
+     *
+     *         ┌─────┐   ┌──────────┐       ┌──────────┐
+     *         │ ats │-->│ follower │ <---> │ followee │
+     *         └─────┘   └──────────┘       └──────────┘
+     *
+     *  1. A page server boots up and becomes a follower.
+     *  2. ATS selects a followee page server and sends the node information and the catchup_lsa to the follower.
+     *  3. The follower makes a temporary connection with the followee.
+     *  4. The follower requests log pages to fill the log hole ranging [start_lsa, catchup_lsa)
+     *     - start_lsa: the append_lsa of the follower, where it expects a new log record will be appended.
+     *     - catchup_lsa: the lsa of the first log record that the ATS will send.
+     *     -> The follower fills the log hole [start_lsa, catchup_lsa) to accept new log records from its ATS.
+     *  5. After the catch-up is completed, the follower notifies to its ATS.
+     *  6. The follower destroys the temporary connection.
+     *  7. The follower PS continues by processing log records received from ATS in the interval [catchup_lsa, ....);
+     *
+     *  Note that
+     *  - A followee can have multiple followers at a time.
+     *  - There can be multiple followees in a cluster at a time.
+     *  - Followee is a kind of server, which just serves what Follower wants.
+     *  - If a follower stops or is killed during the catch-up, it can restart the catch-up from where it stops
+     *    if the fetched log pages have been flushed on disk.
+     *  - Even while a follower is catching up with a followee, it can also receive new log records from ATS.
+     *    They are kept and going to be appended after the catch-up is completed.
+     *
+     *  TODO
+     *  - It could be that log volumes in a followee that contain requested log pages have been removed when requested.
+     *    In this case, the follower who requested should be re-initiate the catch-up with another PS.
+     *  - It could be that log volumes in a followee that contain requested log pages can be removed while catching up.
+     *    In this case, the follower who requested should be re-initiate the catch-up with another PS.
+     *  - With other communication errors by its followee, a follower should re-initiate the catch-up with another PS.
+     *  - If the amount of log pages to catch up with is too much, it would be better
+     *    to copy data volumes and log volumes directly without the catch-up and replicating.
+     *  - The log records from ATS while the catch-up are kept on memory in transient. It can consume all memory
+     *    and overflow. This should be addressed. I think we could expand the catch-up range and discard some kept
+     *    log records with a threshold.
+     *  - We can make the replicator and the catch-up process in parallel.
      */
     class follower_connection_handler
     {
