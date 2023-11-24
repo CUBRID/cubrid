@@ -182,14 +182,14 @@ class page_server
     };
 
     /*
-     *  When a disconnected page server re-connects to an ATS, or a cluster, the cluster possibly
+     *  When a disconnected page server re-connects to a cluster, the cluster, possibly,
      *  has gone further than the page server. It means the connecting PS has log records only up to LSA(N),
      *  but the ATS and other PSes in the cluster have log records up to a LSN larger than LSN(N) like LSN(N+1000).
      *  Because ATS sends log records and just discards them, the connecting PS must get the pages from another PS to fill the hole.
      *
      *  Terms:
      *  - catchup_lsa: the log lsa where new log records from ATS start to come in. A PS must have log records
-     *    until this point. If it doesn’t have, it must fetch log pages until the point by the catch-up mechanism.
+     *    until this point. If it doesn’t have, it must fetch log pages until that point via the catch-up mechanism.
      *    Note that the catchup_lsa is different depending on when a PS connects to an ATS.
      *  - Follower: a page server who is reconnecting to ATS with log records in the past. It must fill the log records hole
      *   from where the end of log records it has, to catchup_lsa. It fetches log pages from a followee.
@@ -211,6 +211,7 @@ class page_server
      *     -> The follower fills the log hole [start_lsa, catchup_lsa) to accept new log records from its ATS.
      *  5. After the catch-up is completed, the follower notifies to its ATS.
      *  6. The follower destroys the temporary connection.
+     * 7. The follower PS continues by processing log records received from ATS in the interval [catchup_lsa, ....); The follower PS is not a "regular" PS and can even be assigned by ATS as a "followee PS" in the future.
      *
      *  Note that
      *  - A followee can have multiple followers at a time.
