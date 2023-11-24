@@ -770,7 +770,7 @@ uci_static (int stmt_no, const char *stmt, int length, int num_out_vars)
   else
     {
       /* ad hoc or first trial of repetitive */
-      session = db_open_buffer (stmt);
+      session = db_open_buffer (stmt, 0);
       if (session == NULL)
 	{
 	  /* alwarys er_error() < 0 */
@@ -1033,7 +1033,7 @@ uci_open_cs (int cs_no, const char *stmt, int length, int stmt_no, int readonly)
   else
     {
       /* directly given statement */
-      session = db_open_buffer (stmt);
+      session = db_open_buffer (stmt, 0);
       if (!session)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -1283,7 +1283,7 @@ uci_prepare (int stmt_no, const char *stmt, int length)
   CHK_SQLCODE ();
 
   col_spec = (DB_QUERY_TYPE *) NULL;
-  session = db_open_buffer (stmt);
+  session = db_open_buffer (stmt, 0);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1468,7 +1468,7 @@ uci_execute_immediate (const char *stmt, int length)
 
   CHK_SQLCODE ();
 
-  session = db_open_buffer (stmt);
+  session = db_open_buffer (stmt, 0);
   if (!session)
     {
       assert (er_errid () != NO_ERROR);

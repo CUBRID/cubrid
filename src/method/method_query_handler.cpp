@@ -760,7 +760,7 @@ namespace cubmethod
   {
     int &flag = m_prepare_flag;
 
-    m_session = db_open_buffer (m_sql_stmt.c_str());
+    m_session = db_open_buffer (m_sql_stmt.c_str(), (flag & PREPARE_STATIC_SQL) ? PARSER_FOR_PLCSQL_STATIC_SQL : 0);
     if (!m_session)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
@@ -783,11 +783,6 @@ namespace cubmethod
     if (flag & PREPARE_XASL_CACHE_PINNED)
       {
 	db_session_set_xasl_cache_pinned (m_session, true, false);
-      }
-
-    if (flag & PREPARE_STATIC_SQL)
-      {
-	get_db_session()->parser->flag.is_parsing_static_sql = 1;
       }
 
     m_stmt_type = CUBRID_STMT_NONE;
@@ -840,7 +835,7 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
-    m_session = db_open_buffer (sql_stmt_copy.c_str());
+    m_session = db_open_buffer (sql_stmt_copy.c_str(), 0);
     if (!m_session)
       {
 	m_error_ctx.set_error (db_error_code(), db_error_string (1), __FILE__, __LINE__);

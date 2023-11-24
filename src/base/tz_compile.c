@@ -6505,7 +6505,7 @@ execute_query (const char *str, DB_QUERY_RESULT ** result)
   STATEMENT_ID stmt_id;
   int error = NO_ERROR;
 
-  session = db_open_buffer (str);
+  session = db_open_buffer (str, 0);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);

@@ -200,9 +200,10 @@ initialize_session (DB_SESSION * session)
  * db_open_buffer_local() - Please refer to the db_open_buffer() function
  * returns  : new DB_SESSION
  * buffer(in): contains query text to be compiled
+ * flags(in): flags to control the fine behavior of this function
  */
 DB_SESSION *
-db_open_buffer_local (const char *buffer)
+db_open_buffer_local (const char *buffer, int flags)
 {
   DB_SESSION *session;
 
@@ -212,6 +213,10 @@ db_open_buffer_local (const char *buffer)
 
   if (session)
     {
+      if (flags & PARSER_FOR_PLCSQL_STATIC_SQL) {
+            session->parser->flag.is_parsing_static_sql = 1;
+      }
+
       session->statements = parser_parse_string_with_escapes (session->parser, buffer, false);
       if (session->statements)
 	{
@@ -227,16 +232,17 @@ db_open_buffer_local (const char *buffer)
  *    string
  * return:new DB_SESSION
  * buffer(in) : contains query text to be compiled
+ * flags(in): flags to control the fine behavior of this function
  */
 DB_SESSION *
-db_open_buffer (const char *buffer)
+db_open_buffer (const char *buffer, int flags)
 {
   DB_SESSION *session;
 
   CHECK_1ARG_NULL (buffer);
   CHECK_CONNECT_NULL ();
 
-  session = db_open_buffer_local (buffer);
+  session = db_open_buffer_local (buffer, flags);
 
   return session;
 }
@@ -2317,7 +2323,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   assert (statement->node_type == PT_PREPARE_STATEMENT);
   db_init_prepare_info (&prepare_info);
 
-  prepared_session = db_open_buffer_local (statement_literal);
+  prepared_session = db_open_buffer_local (statement_literal, 0);
   if (prepared_session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2698,7 +2704,7 @@ db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * stateme
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
-  session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
+  session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes, 0);
   if (session == NULL)
     {
       /* error opening session */
@@ -2765,7 +2771,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
-  new_session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
+  new_session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes, 0);
   if (new_session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -3045,7 +3051,7 @@ db_open_buffer_and_compile_first_statement (const char *CSQL_query, DB_QUERY_ERR
   CHECK_CONNECT_ERROR ();
 
   /* Open buffer and generate session */
-  *session = db_open_buffer_local (CSQL_query);
+  *session = db_open_buffer_local (CSQL_query, 0);
   if (*session == NULL)
     {
       assert (er_errid () != NO_ERROR);

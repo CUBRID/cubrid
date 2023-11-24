@@ -1676,7 +1676,7 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
     }
   db_make_string (&val[INDEX_FOR_AUTH_TYPE], type_set[i]);
 
-  session = db_open_buffer (sql_query);
+  session = db_open_buffer (sql_query, 0);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2049,7 +2049,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
 
   assert (class_name != NULL);
 
-  session = db_open_buffer_local (sql_query);
+  session = db_open_buffer_local (sql_query, 0);
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -2982,7 +2982,7 @@ au_compute_groups (MOP member, const char *name)
   db_make_object (&val[0], member);
   db_make_string (&val[1], name);
 
-  session = db_open_buffer (qstr);
+  session = db_open_buffer (qstr, 0);
   if (!session)
     {
       assert (er_errid () != NO_ERROR);
@@ -3489,7 +3489,7 @@ au_drop_user (MOP user)
   for (i = 0; class_name[i] != NULL; i++)
     {
       sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", class_name[i]);
-      session = db_open_buffer (query_buf);
+      session = db_open_buffer (query_buf, 0);
       if (session == NULL)
 	{
 	  goto error;
@@ -3550,7 +3550,7 @@ au_drop_user (MOP user)
 
   session =
     db_open_buffer ("update [db_user] [d] set "
-		    "[d].[direct_groups] = [d].[direct_groups] - ? where ? in [d].[direct_groups];");
+		    "[d].[direct_groups] = [d].[direct_groups] - ? where ? in [d].[direct_groups];", 0);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -3592,7 +3592,7 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  session = db_open_buffer ("select [d] from [db_user] [d] where ? in [d].[groups];");
+  session = db_open_buffer ("select [d] from [db_user] [d] where ? in [d].[groups];", 0);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);

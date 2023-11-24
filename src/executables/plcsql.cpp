@@ -285,7 +285,7 @@ main (int argc, char *argv[])
 	  goto exit_on_end;
 	}
 
-      session = db_open_buffer (sql.c_str ());
+      session = db_open_buffer (sql.c_str (), 0);
       if (!session)
 	{
 	  PLCSQL_LOG_FORCE ("Parsing SQL is failed");

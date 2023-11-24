@@ -880,7 +880,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	  goto prepare_error;
 	}
 
-      session = db_open_buffer (tmp);
+      session = db_open_buffer (tmp, 0);
       if (!session)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -916,7 +916,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       goto prepare_result_set;
     }
 
-  session = db_open_buffer (sql_stmt);
+  session = db_open_buffer (sql_stmt, 0);
   if (!session)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1521,7 +1521,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
     {
       hm_session_free (srv_handle);
 
-      session = db_open_buffer (srv_handle->sql_stmt);
+      session = db_open_buffer (srv_handle->sql_stmt, 0);
       if (!session)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -1844,7 +1844,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
     {
       hm_session_free (srv_handle);
 
-      session = db_open_buffer (srv_handle->sql_stmt);
+      session = db_open_buffer (srv_handle->sql_stmt, 0);
       if (!session)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
@@ -2428,7 +2428,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       net_arg_get_str (&sql_stmt, &sql_size, argv[query_index]);
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
 
-      session = db_open_buffer (sql_stmt);
+      session = db_open_buffer (sql_stmt, 0);
       if (!session)
 	{
 	  cas_log_write_query_string_nonl (sql_stmt, strlen (sql_stmt), NULL);
@@ -2681,7 +2681,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
       if (is_prepared == FALSE)
 	{
-	  session = db_open_buffer (srv_handle->sql_stmt);
+	  session = db_open_buffer (srv_handle->sql_stmt, 0);
 	  if (!session)
 	    {
 	      goto exec_db_error;
@@ -8635,7 +8635,7 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
       db_make_null (&values[0]);
       db_make_null (&values[1]);
 
-      session = db_open_buffer (synonym_sql_stmt);
+      session = db_open_buffer (synonym_sql_stmt, 0);
       if (!session)
 	{
 	  goto sql_error;
@@ -9547,7 +9547,7 @@ sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_bu
 
   lang_set_parser_use_client_charset (false);
 
-  session = db_open_buffer (sql_stmt);
+  session = db_open_buffer (sql_stmt, 0);
   if (!session)
     {
       lang_set_parser_use_client_charset (true);
@@ -11768,7 +11768,7 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
   int stmt_id = 0;
   DB_SESSION *session = NULL;
 
-  session = db_open_buffer (srv_handle->sql_stmt);
+  session = db_open_buffer (srv_handle->sql_stmt, 0);
   if (!session)
     {
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
