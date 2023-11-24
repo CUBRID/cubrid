@@ -213,9 +213,10 @@ db_open_buffer_local (const char *buffer, int flags)
 
   if (session)
     {
-      if (flags & PARSER_FOR_PLCSQL_STATIC_SQL) {
-            session->parser->flag.is_parsing_static_sql = 1;
-      }
+      if (flags & PARSER_FOR_PLCSQL_STATIC_SQL)
+	{
+	  session->parser->flag.is_parsing_static_sql = 1;
+	}
 
       session->statements = parser_parse_string_with_escapes (session->parser, buffer, false);
       if (session->statements)

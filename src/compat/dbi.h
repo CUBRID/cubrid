@@ -574,7 +574,7 @@ extern "C"
   extern char *db_query_get_plan_dump_file ();
 
 /* sql query routines */
-  extern DB_SESSION *db_open_buffer (const char *buffer, int flags); /* flags: enum PARSER_FLAGS */
+  extern DB_SESSION *db_open_buffer (const char *buffer, int flags);	/* flags: enum PARSER_FLAGS */
   extern DB_SESSION *db_open_file (FILE * file);
   extern DB_SESSION *db_open_file_name (const char *name);
 
