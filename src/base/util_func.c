@@ -43,6 +43,7 @@
 #include "utility.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
+#include "memory_cwrapper.h"
 
 #define UTIL_LOG_MAX_HEADER_LEN    (40)
 #define UTIL_LOG_MAX_MSG_SIZE       (1024)

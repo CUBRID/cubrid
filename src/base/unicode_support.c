@@ -35,6 +35,7 @@
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "unicode_support.h"
+#include "memory_cwrapper.h"
 
 
 #define UNICODEDATA_FILE "unicodedata.txt"

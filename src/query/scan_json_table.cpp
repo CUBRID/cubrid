@@ -27,6 +27,7 @@
 #include "storage_common.h"
 
 #include <algorithm>
+#include "memory_cppwrapper.hpp"
 
 namespace cubscan
 {

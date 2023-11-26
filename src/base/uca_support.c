@@ -31,6 +31,7 @@
 #include "intl_support.h"
 #include "uca_support.h"
 #include "unicode_support.h"
+#include "memory_cwrapper.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

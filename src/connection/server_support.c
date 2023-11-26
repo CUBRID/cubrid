@@ -81,6 +81,7 @@
 #include "heartbeat.h"
 #endif
 #include "dbtype.h"
+#include "memory_cppwrapper.hpp"
 
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"

@@ -57,6 +57,7 @@
 #if defined(WINDOWS)
 #include "intl_support.h"
 #endif
+#include "memory_cwrapper.h"
 
 /*
  * MESSAGE CATALOG FILE FORMAT.

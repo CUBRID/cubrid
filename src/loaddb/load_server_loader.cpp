@@ -40,6 +40,7 @@
 #include "xserver_interface.h"
 
 #include <cstring>
+#include "memory_cppwrapper.hpp"
 
 namespace cubload
 {
