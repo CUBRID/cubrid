@@ -40,8 +40,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Locale;
 
 public class StringValue extends Value {
 
@@ -159,7 +157,7 @@ public class StringValue extends Value {
         if (lDate == null) {
             throw new TypeMismatchException("invalid DATE string: " + value);
         } else if (lDate.equals(DateTimeParser.nullDate)) {
-            return new Date(0 - 1900, 0 - 1, 0);    // 0000-00-00
+            return new Date(0 - 1900, 0 - 1, 0); // 0000-00-00
         } else {
             return Date.valueOf(lDate);
         }
@@ -179,18 +177,18 @@ public class StringValue extends Value {
         if (lTimestamp == null) {
             throw new TypeMismatchException("invalid TIMESTAMP string: " + value);
         } else if (lTimestamp.equals(DateTimeParser.nullDatetimeUTC)) {
-            return new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+            return new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // 0000-00-00 00:00:00
         } else {
             return Timestamp.valueOf(lTimestamp.toLocalDateTime());
         }
     }
 
     public Timestamp toDatetime() throws TypeMismatchException {
-        LocalDateTime lDatetime= DateTimeParser.DatetimeLiteral.parse(value);
+        LocalDateTime lDatetime = DateTimeParser.DatetimeLiteral.parse(value);
         if (lDatetime == null) {
             throw new TypeMismatchException("invalid DATETIME string: " + value);
         } else if (lDatetime.equals(DateTimeParser.nullDatetime)) {
-            return new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
+            return new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0); // 0000-00-00 00:00:00.000
         } else {
             return Timestamp.valueOf(lDatetime);
         }
