@@ -138,8 +138,7 @@ static void strcat_with_realloc (PT_STRING_BLOCK * sb, const char *tail);
 static PT_NODE *pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
 					   int *continue_walk);
 static PT_NODE *pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg, int *continue_walk);
-static PT_NODE *pt_lambda_node_pre (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
-				    int *continue_walk);
+static PT_NODE *pt_lambda_node_pre (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg, int *continue_walk);
 static PT_NODE *pt_find_id_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
 static PT_NODE *copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk);
 static PT_NODE *copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, int *continue_walk);
@@ -1076,6 +1075,7 @@ pt_continue_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *conti
 /*
  * pt_lambda_with_arg () - walks a tree and modifies it in place to replace
  * 	                   name nodes with copies of a corresponding tree
+ *			   type 1 : for reduce_eq_term, type 2 : don't walk into subquery
  *   return:
  *   parser(in):
  *   tree_with_names(in):
@@ -1147,8 +1147,8 @@ pt_lambda_with_arg (PARSER_CONTEXT * parser, PT_NODE * tree_with_names, PT_NODE 
     }
 
   tree =
-    parser_walk_tree (parser, tree_with_names, ((type) ? pt_lambda_check_reduce_eq : pt_lambda_node_pre), &lambda_arg,
-		      pt_lambda_node, &lambda_arg);
+    parser_walk_tree (parser, tree_with_names, ((type == 1) ? pt_lambda_check_reduce_eq : (type == 2) ? pt_lambda_node_pre : NULL), &lambda_arg, pt_lambda_node,
+		      &lambda_arg);
 
   if (corresponding_tree && corresponding_tree->node_type == PT_EXPR)
     {
