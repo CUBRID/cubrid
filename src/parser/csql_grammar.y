@@ -3167,7 +3167,10 @@ create_stmt
                                      }
                                      si->pwd = val;
                                       
-                                    pt_add_password_offset(si->user->buffer_pos, si->user->buffer_pos, true, en_server_password);
+                                     if (si->user)
+                                     {
+                                        pt_add_password_offset(si->user->buffer_pos, si->user->buffer_pos, true, en_server_password);
+                                     }
                                 }
 
                                 if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
@@ -25933,6 +25936,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
   INIT_PT_HINT("INDEX_LS", PT_HINT_INDEX_LS),
   INIT_PT_HINT("SELECT_RECORD_INFO", PT_HINT_SELECT_RECORD_INFO),
+  INIT_PT_HINT("SAMPLING_SCAN", PT_HINT_SAMPLING_SCAN),
   INIT_PT_HINT("SELECT_PAGE_INFO", PT_HINT_SELECT_PAGE_INFO),
   INIT_PT_HINT("SELECT_KEY_INFO", PT_HINT_SELECT_KEY_INFO),
   INIT_PT_HINT("SELECT_BTREE_NODE_INFO", PT_HINT_SELECT_BTREE_NODE_INFO),

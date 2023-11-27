@@ -12360,6 +12360,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
 		}
+	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_SAMPLING_SCAN))
+		{
+		  access_method = ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN;
+		}
 	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PAGE_INFO_SCAN))
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN;
@@ -17036,6 +17040,12 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
       buildvalue = &xasl->proc.buildvalue;
     }
 
+  /* check sampling scan */
+  if (xasl->spec_list && xasl->spec_list->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+    {
+      XASL_SET_FLAG (xasl, XASL_SAMPLING_SCAN);
+    }
+
   /* save info for derived table size estimation */
   xasl->projected_size = 1;
   xasl->cardinality = 1.0;
@@ -17267,6 +17277,9 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
       return NULL;
     }
   non_recursive_part_xasl = (XASL_NODE *) non_recursive_part->info.query.xasl;
+  non_recursive_part_xasl->cte_xasl_id = non_recursive_part->xasl_id;
+  non_recursive_part_xasl->cte_host_var_count = non_recursive_part->cte_host_var_count;
+  non_recursive_part_xasl->cte_host_var_index = non_recursive_part->cte_host_var_index;
 
   if (recursive_part)
     {
