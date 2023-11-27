@@ -238,8 +238,8 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 							 MVCC_REC_HEADER * mvcc_header_p,
 							 const OID * curr_row_version_oid_p, RECDES * recdes);
 
-static inline void locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname,
-						       const OID * class_oid);
+static inline int locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname,
+						      const OID * class_oid);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -318,20 +318,11 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      entry->e_name = strdup ((char *) classname);
-      if (entry->e_name == NULL)
+      if (locator_initialize_classname_entry (entry, classname, &class_oid) != NO_ERROR)
 	{
 	  free_and_init (entry);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (classname) + 1));
 	  goto error;
 	}
-
-      entry->e_tran_index = NULL_TRAN_INDEX;
-
-      entry->e_current.action = LC_CLASSNAME_EXIST;
-      COPY_OID (&entry->e_current.oid, &class_oid);
-      LSA_SET_NULL (&entry->e_current.savep_lsa);
-      entry->e_current.prev = NULL;
 
       assert (locator_is_exist_class_name_entry (thread_p, entry));
 
@@ -13942,18 +13933,26 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
 // *INDENT-ON*
 
 
-static inline void
+static inline int
 locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname, const OID * classoid)
 {
   assert (classname != nullptr);
 
   /* Memory for classname is allocated in atomic_replicator::update_classname_cache_for_ddl () */
-  entry->e_name = (char *) classname;
+  entry->e_name = strdup (classname);
+  if (entry->e_name == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
   entry->e_tran_index = NULL_TRAN_INDEX;
   entry->e_current.action = LC_CLASSNAME_EXIST;
   COPY_OID (&entry->e_current.oid, classoid);
   LSA_SET_NULL (&entry->e_current.savep_lsa);
   entry->e_current.prev = nullptr;
+
+  return NO_ERROR;
 }
 
 /* locator_put_classname_entry () - Put a new entry in the locator_Mht_classnames, used in PTS replicator (atomic_replicator)
@@ -13969,21 +13968,42 @@ locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, con
   assert (classname != nullptr);
   assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
 
-  LOCATOR_CLASSNAME_ENTRY *entry;
+  int error_code = NO_ERROR;
 
-  entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry));
+  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry));
   if (entry == nullptr)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      return error_code;
     }
 
-  locator_initialize_classname_entry (entry, classname, classoid);
+  // *INDENT-OFF*
+  auto entry_free = scope_exit ([&entry, &error_code] ()
+      {
+        if (error_code != NO_ERROR)
+          {
+            if (entry->e_name != nullptr)
+              {
+                free_and_init (entry->e_name);
+              }
+
+            free_and_init (entry);
+          }
+      });
+  // *INDENT-ON*
+
+  error_code = locator_initialize_classname_entry (entry, classname, classoid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      return error_code;
     }
 
   // *INDENT-OFF*
@@ -14063,12 +14083,36 @@ locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classna
   assert (old_classname != nullptr);
   assert (new_classname != nullptr);
 
-  LOCATOR_CLASSNAME_ENTRY *new_entry = nullptr;
+  int error_code = NO_ERROR;
+
+  LOCATOR_CLASSNAME_ENTRY *new_entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*new_entry));
+  if (new_entry == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*new_entry));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      return error_code;
+    }
+
+  // *INDENT-OFF*
+  auto entry_free = scope_exit ([&new_entry, &error_code] ()
+      {
+        if (error_code != NO_ERROR)
+          {
+            if (new_entry->e_name != nullptr)
+              {
+                free_and_init (new_entry->e_name);
+              }
+
+            free_and_init (new_entry);
+          }
+      });
+  // *INDENT-ON*
 
   if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      return error_code;
     }
 
   // *INDENT-OFF*
@@ -14082,25 +14126,22 @@ locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classna
     (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, old_classname);
   assert (old_entry != nullptr);
 
-  /* create new entry with new key (new_classname) */
-  new_entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*new_entry));
-  if (new_entry == nullptr)
+  error_code = locator_initialize_classname_entry (new_entry, new_classname, &old_entry->e_current.oid);
+  if (error_code != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*new_entry));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      return error_code;
     }
-
-  locator_initialize_classname_entry (new_entry, new_classname, &old_entry->e_current.oid);
 
   assert (locator_is_exist_class_name_entry (thread_p, new_entry));
   assert (mht_get (locator_Mht_classnames, new_classname) == nullptr);
 
-  (void) mht_put (locator_Mht_classnames, new_classname, new_entry);
+  (void) mht_put (locator_Mht_classnames, new_entry->e_name, new_entry);
 
   if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
     {
       assert (false);
-      return ER_FAILED;
+      error_code = ER_FAILED;
+      return error_code;
     }
 
   // *INDENT-OFF*
@@ -14113,7 +14154,7 @@ locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classna
   /* drop the existing entry with key (old_classname) */
   (void) locator_force_drop_class_name_entry (old_entry->e_name, old_entry, NULL);
 
-  return NO_ERROR;
+  return error_code;
 }
 
 void
