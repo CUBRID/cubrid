@@ -4519,7 +4519,7 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
       assert (n_prefix >= 0);
 
 #if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY) || defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
-      if (n_prefix > 0 && pg_prefix == NULL)
+      if (n_prefix > 0 && (pg_prefix == NULL || (pg_prefix->reader_type != READER_TYPE_RANGE_SCAN)))
 	{
 	  btree_make_complete_key_including_prefix (key, clear_key, n_prefix, lf_key_ptr);
 	  btree_clear_key_value (&lf_clear_key, &lf_key);
@@ -7107,7 +7107,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
       if (btree_read_record_in_leafpage (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
-					 &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, &env->btree_scan) != NO_ERROR)
+					 &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, BTS) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -7213,7 +7213,7 @@ count_keys:
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
       if (btree_read_record_in_leafpage (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
-					 &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, &env->btree_scan) != NO_ERROR)
+					 &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, BTS) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -9081,8 +9081,6 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   BTREE_PAGE_PREFIX_INFO pg_prefix_info;
-  BTREE_SCAN bt_scan;
-  BTREE_SCAN *bts = NULL;
 #endif
 
   /* initialize */
@@ -9170,12 +9168,10 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   else
     {				/* a leaf page */
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-      BTREE_INIT_SCAN (&bt_scan);
-
-      bt_scan.C_page = pg_ptr;
-      VPID_COPY (&bt_scan.C_vpid, pgbuf_get_vpid_ptr (pg_ptr));
-      bts = btree_init_page_prefix_info (&bt_scan, (TP_DOMAIN_TYPE (btid->key_type) == DB_TYPE_MIDXKEY),
-					 (env->same_prefix_len != -1), &pg_prefix_info, READER_TYPE_CAPACITY);
+      BTS->C_page = pg_ptr;
+      VPID_COPY (&BTS->C_vpid, pgbuf_get_vpid_ptr (pg_ptr));
+      btree_init_page_prefix_info (BTS, (TP_DOMAIN_TYPE (btid->key_type) == DB_TYPE_MIDXKEY),
+				   (env->same_prefix_len != -1), &pg_prefix_info, READER_TYPE_CAPACITY);
 #endif
 
       /* form the cpc structure for a leaf node page */
@@ -9197,7 +9193,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 	  if (btree_read_record_in_leafpage
 	      (thread_p, btid, pg_ptr, &rec, &BTS->cur_key, &leaf_pnt, &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE,
-	       bts) != NO_ERROR)
+	       BTS) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -9302,7 +9298,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
     }
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  btree_quit_page_prefix_info (bts, true);
+  btree_quit_page_prefix_info (BTS, true);
 #endif
 
   return ret;
@@ -9310,7 +9306,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 exit_on_error:
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  btree_quit_page_prefix_info (bts, true);
+  btree_quit_page_prefix_info (BTS, true);
 #endif
 
   if (page)
