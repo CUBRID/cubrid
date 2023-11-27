@@ -164,7 +164,7 @@ typedef struct btree_scan BTREE_SCAN;	/* BTS */
 
 //#define IMPROVE_RANGE_SCAN_IN_BTREE
 //#define IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY
-//#define IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF
+//#define IMPROVE_RANGE_SCAN_USE_PREFIX_BUF
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 
 typedef enum
@@ -816,7 +816,7 @@ extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RA
 			     bool use_pg_prefix);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) && !defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
 					 BTREE_PAGE_PREFIX_INFO * pg_prefix_info,
 #endif
 					 int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,

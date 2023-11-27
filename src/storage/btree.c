@@ -4434,7 +4434,7 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 	      assert (pg_prefix->n_prefix != COMMON_PREFIX_UNKNOWN);
 	      assert (pg_prefix->n_prefix == btree_node_common_prefix (thread_p, btid, pgptr));
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
 	      return NO_ERROR;
 #else
 	      n_prefix = pg_prefix->n_prefix;
@@ -4518,7 +4518,7 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 
       assert (n_prefix >= 0);
 
-#if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY) || defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY) || defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
       if (n_prefix > 0 && pg_prefix == NULL)
 	{
 	  btree_make_complete_key_including_prefix (key, clear_key, n_prefix, lf_key_ptr);
@@ -4578,7 +4578,7 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
 	}
       else
 	{
-#if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if  defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 	  pg_prefix_info->use_comparing = (bool) (bts->key_range.upper_key != NULL);
 	  pg_prefix_info->use_index_column = true;
 	  pg_prefix_info->n_first_check_pos = 0;
@@ -4597,9 +4597,6 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
 	  pg_prefix_info->use_index_column = BTS_IS_INDEX_COVERED (bts);
 	  pg_prefix_info->n_first_check_pos = 0;
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
-	  ;			//ctshim ????????????????????????????????????????????
-#endif
 	  if (BTS_NEED_COUNT_ONLY (bts) || (pg_prefix_info->use_index_column == false))
 	    {
 	      pg_prefix_info->use_index_column = false;
@@ -16535,14 +16532,14 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
   int ret = NO_ERROR;
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   bool satisfied_range_all = false;
-#if  defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if  defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
   bool check_divided = false;
 #endif
 
   if (bts->pg_prefix_info)
     {
       assert (bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN);
-#if  defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if  defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
       check_divided = (bool) (bts->pg_prefix_info->n_prefix > 0);
 #endif
       satisfied_range_all = bts->pg_prefix_info->satisfied_range_in_page;
@@ -16563,7 +16560,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     }
   else
     {
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
       if (!check_divided)
 	{
 	  c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key, bts->btid_int.key_type, 1, 1, NULL);
@@ -16624,7 +16621,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	  DB_MIDXKEY *mkey;	/* midxkey ptr */
 	  DB_VALUE ep;		/* element ptr */
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 	  if (check_divided && (bts->pg_prefix_info->n_prefix > (bts->key_range.num_index_term - 1)))
 	    {
 	      mkey = db_get_midxkey (&(bts->pg_prefix_info->prefix_key));	// ctshim            
@@ -16702,7 +16699,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
       *is_key_filter_satisfied = true;
       if (bts->key_filter && bts->key_filter->scan_pred->regu_list)
 	{
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 	  if (bts->pg_prefix_info)
 	    {
 	      ev_res =
@@ -16753,7 +16750,7 @@ exit_on_error:
  */
 int
 btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) && !defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
 			      BTREE_PAGE_PREFIX_INFO * pg_prefix_info,
 #endif
 			      int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
@@ -16826,7 +16823,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
 		}
 	    }
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) && !defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
 	  if (pg_prefix_info && pg_prefix_info->reader_type != READER_TYPE_NONE)
 	    {
 	      assert (pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN);
@@ -16906,16 +16903,13 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
       regu_list = NULL;
     }
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) && !defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 // ctshim
-  error =
-    btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key), bts->pg_prefix_info, filter->btree_attr_ids,
-				  filter->btree_num_attrs, attr_info, iscan_id->indx_cov.func_index_col_id);
-#else
-  error =
-    btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key), filter->btree_attr_ids, filter->btree_num_attrs, attr_info,
-				  iscan_id->indx_cov.func_index_col_id);
+  error = btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key),
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+					bts->pg_prefix_info,
 #endif
+					filter->btree_attr_ids, filter->btree_num_attrs, attr_info,
+					iscan_id->indx_cov.func_index_col_id);
   if (error != NO_ERROR)
     {
       return error;
@@ -16961,6 +16955,10 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
   int oid_size;
   OID class_oid, oid;
   BTREE_SEARCH search_result = BTREE_KEY_NOTFOUND;
+
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  assert (bts->pg_prefix_info == NULL || bts->pg_prefix_info->reader_type == READER_TYPE_NONE);
+#endif
 
 #if defined(BTREE_DEBUG)
   if (BTREE_INVALID_INDEX_ID (btid))
@@ -20576,7 +20574,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   /* Assert expected arguments. */
   assert (bts != NULL);
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+#if 0				// defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
   if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN)
     {
       btree_make_complete_key_including_prefix (&bts->cur_key, &bts->clear_cur_key, bts->pg_prefix_info->n_prefix,
@@ -20737,12 +20735,35 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
 
   dom = curr_key->data.midxkey.domain->setdomain;
+
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+  /* copy prefix of current key into target key */
+  i = 0;
+  if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN
+      && bts->pg_prefix_info->n_prefix > 0)
+    {
+      while (i < prefix_len)
+	{
+	  pr_midxkey_get_element_nocopy (&bts->pg_prefix_info->prefix_key.data.midxkey, i, &new_key_dbvals[i], NULL,
+					 NULL);
+	  dom = dom->next;	/* get to coerce domain */
+	  i++;
+	}
+    }
+  while (i < prefix_len)
+    {
+      pr_midxkey_get_element_nocopy (&curr_key->data.midxkey, i, &new_key_dbvals[i], NULL, NULL);
+      dom = dom->next;		/* get to coerce domain */
+      i++;
+    }
+#else
   /* copy prefix of current key into target key */
   for (i = 0; i < prefix_len; i++)
     {
       pr_midxkey_get_element_nocopy (&curr_key->data.midxkey, i, &new_key_dbvals[i], NULL, NULL);
       dom = dom->next;		/* get to coerce domain */
     }
+#endif
 
   if (prefix_len < curr_key->data.midxkey.ncolumns)
     {
@@ -20813,6 +20834,17 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   db_private_free (thread_p, new_key_dbvals);
 
   /* all ok */
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN)
+    {
+      // ctshim: RANGE 범위가 조정된다.
+      i = btree_scan_update_range (thread_p, bts, key_range);
+      bts->pg_prefix_info->satisfied_range_in_page = false;	// ctshim
+      bts->pg_prefix_info->use_comparing = (bool) (bts->key_range.upper_key != NULL);
+      return i;
+    }
+#endif
+
   return btree_scan_update_range (thread_p, bts, key_range);
 }
 
@@ -25040,7 +25072,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   assert (bts->force_restart_from_root || !VPID_ISNULL (&bts->C_vpid));
   assert (bts->C_page == NULL);
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
   assert (!DB_IS_NULL (&bts->cur_key) ||
 	  (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN
 	   && bts->pg_prefix_info->n_prefix > 0));
@@ -25536,14 +25568,29 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
    * descending scan. Lower key limit is located as first in leaf page. 2. Range scan says strictly less than lower key
    * limit. 3. The algorithm tries to fix go to previous leaf. However, bts->cur_key does not yet store any key values.
    * Set bts->cur_key to lower key limit of range. NOTE: If there is no lower limit, this case cannot happen. */
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+  bool prefix_key_null = true;
+  if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN
+      && bts->pg_prefix_info->n_prefix > 0)
+    {
+      prefix_key_null = false;
+    }
+  if (!bts->is_scan_started && bts->key_range.lower_key != NULL && DB_IS_NULL (&bts->cur_key) && prefix_key_null)
+#else
   if (!bts->is_scan_started && bts->key_range.lower_key != NULL && DB_IS_NULL (&bts->cur_key))
+#endif
     {
       pr_clone_value (bts->key_range.lower_key, &bts->cur_key);
       bts->clear_cur_key = true;
       /* Next steps will go before bts->key_range.lower_key. */
     }
   /* We must have a non-null current key. */
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+  assert (!DB_IS_NULL (&bts->cur_key) || !prefix_key_null);
+#else
   assert (!DB_IS_NULL (&bts->cur_key));
+#endif
+
 
   /* Normally, key is found in current page. */
   error_code = btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int, bts->C_page, &bts->cur_key, &search_key);

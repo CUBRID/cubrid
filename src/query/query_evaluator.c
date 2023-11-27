@@ -2782,7 +2782,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
  */
 DB_LOGICAL
 eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 		 int prefix_len, DB_VALUE * prefix_value,
 #endif
 		 FILTER_INFO * filterp)
@@ -2835,7 +2835,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 	      return V_ERROR;
 	    }
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 	  DB_MIDXKEY *midxkey_prefix = NULL;
 	  DB_MIDXKEY *midxkey_ptr;
 	  if (prefix_value && prefix_len > 0)
@@ -2882,7 +2882,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 		    }
 // ctshim
 		  /* get j-th element value from the midxkey */
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
 		  // j = arr[i]; ctshim  
 		  midxkey_ptr = (midxkey_prefix && j < prefix_len) ? midxkey_prefix : midxkey;
 		  if (pr_midxkey_get_element_nocopy (midxkey_ptr, j, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
