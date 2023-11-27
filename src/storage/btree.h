@@ -180,14 +180,14 @@ typedef struct
   READER_TYPE reader_type;
   VPID vpid;
   LOG_LSA leaf_lsa;
+  int n_prefix;			// size of common prefix key parts.
+  DB_VALUE prefix_key;		// common prefix key part 
+  bool clear_prefix_key;
+
   bool use_comparing;		// key compare  
   bool use_index_column;	// result column, null check or filtering 
-  bool satisfied_range_in_page;	// If true, it guarantees that all keys on the current page satisfy the range condition.
-  int n_prefix;			// size of common prefix key parts.
+  bool satisfied_range_in_page;	// If true, it guarantees that all keys on the current page satisfy the range condition.  
   int n_first_check_pos;
-
-  bool clear_prefix_key;
-  DB_VALUE prefix_key;		// common prefix key part 
 } BTREE_PAGE_PREFIX_INFO;
 
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix, type)   do {  \

@@ -17038,7 +17038,7 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
 
   /* Get key */
   pr_clear_value (key_info[BTREE_KEY_INFO_KEY]);
-  pr_clone_value (&bts->cur_key, key_info[BTREE_KEY_INFO_KEY]);	// ctshim
+  pr_clone_value (&bts->cur_key, key_info[BTREE_KEY_INFO_KEY]);
 
   /* Get overflow key and overflow oids */
   pr_clear_value (key_info[BTREE_KEY_INFO_OVERFLOW_KEY]);
@@ -25271,6 +25271,14 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
   assert (node_header != NULL);
   assert (node_header->node_level == 1);
 
+#if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+  bool do_make_complete_key = false;
+  if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN)
+    {
+      do_make_complete_key = !BTS_NEED_COUNT_ONLY (bts);
+    }
+#endif
+
   if (bts->key_status == BTS_KEY_IS_VERIFIED)
     {
       /* Current key is not yet consumed, but it already passed range/filter checks. Resume scan on current key. */
@@ -25299,7 +25307,7 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
       /* Continue with current key. */
 
 #if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
-      if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN)
+      if (do_make_complete_key)
 	{
 	  btree_make_complete_key_including_prefix (&bts->cur_key, &bts->clear_cur_key, bts->pg_prefix_info->n_prefix,
 						    &bts->pg_prefix_info->prefix_key);
@@ -25442,7 +25450,7 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	    {
 	      /* Filter is satisfied, which means key can be used. */
 #if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
-	      if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN)
+	      if (do_make_complete_key)
 		{
 		  btree_make_complete_key_including_prefix (&bts->cur_key, &bts->clear_cur_key,
 							    bts->pg_prefix_info->n_prefix,
