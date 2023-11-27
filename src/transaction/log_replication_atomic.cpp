@@ -413,18 +413,27 @@ namespace cublog
   void
   atomic_replicator::bookkeep_classname (cubthread::entry &thread_entry, const OID *classoid)
   {
-    char *classname = nullptr;
-
     assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
 
-    (void) heap_get_class_name (&thread_entry, classoid, &classname);
-    if (classname != nullptr)
+    char *classname = nullptr;
+    int error_code = NO_ERROR;
+
+    error_code = heap_get_class_name (&thread_entry, classoid, &classname);
+    if (error_code == NO_ERROR)
       {
-	m_classname_map.emplace (*classoid, std::move (std::string (classname)));
+	assert (classname != nullptr);
+	m_classname_map.emplace (*classoid, std::string (classname));
+
+	free_and_init (classname);
+      }
+    else if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+      {
+	assert (classname == nullptr);
+	/* If there is no class record in the heap, it means it is creating the class */
       }
     else
       {
-	/* if classname == NULL, then it is CREATE TABLE/VIEW case */
+	assert (false);
       }
   }
 
@@ -437,14 +446,10 @@ namespace cublog
 
     auto it = m_classname_map.find (*classoid);
 
-    (void) heap_get_class_name (&thread_entry, classoid, &classname);
-    if (classname != nullptr)
+    error_code = heap_get_class_name (&thread_entry, classoid, &classname);
+    if (error_code == NO_ERROR)
       {
-	/* Memory for classname is allocated in heap_get_class_name ().
-	 * The allocated memory will be used within an entry of locator_Mht_classnames.
-	 * (in locator_initialize () called from locator_put_classname_entry () and locator_update_classname_entry ())
-	 * And when that entry is released, this memory will be freed as well
-	 */
+	assert (classname != nullptr);
 	if (it == m_classname_map.end ())
 	  {
 	    error_code = locator_put_classname_entry (&thread_entry, classname, classoid);
@@ -461,21 +466,25 @@ namespace cublog
 		error_code = locator_update_classname_entry (&thread_entry, it->second.c_str(), classname);
 		if (error_code != NO_ERROR)
 		  {
-		    _er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to update entry for (%s) to (%s) in locator_Mht_classnames\n",
-				   it->second.c_str (), classname);
+		    _er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to update entry for (%s) to locator_Mht_classnames for classoid\n",
+				   classname);
 		  }
 	      }
-
 	  }
+
+	free_and_init (classname);
       }
-    else
+    else if (error_code == ER_HEAP_UNKNOWN_OBJECT)
       {
-	/* if classname == nullptr, then it is DROP TABLE/VIEW case */
+	assert (classname == nullptr);
+	/* If there is no class record in the heap, it means that the class (table/view) has been dropped during the transaction */
+
 	if (it != m_classname_map.end ())
 	  {
-	    if (locator_remove_classname_entry (&thread_entry, it->second.c_str ()) != NO_ERROR)
+	    error_code = locator_remove_classname_entry (&thread_entry, it->second.c_str ());
+	    if (error_code != NO_ERROR)
 	      {
-		_er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to remove entry for (%s) from locator_Mht_classnames\n",
+		_er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to remove entry for (%s) from locator_Mht_classnames for classoid\n",
 			       it->second.c_str ());
 	      }
 	  }
@@ -484,11 +493,9 @@ namespace cublog
 	    /* This is when the table is CREATEd and DROPped within the same transaction */
 	  }
       }
-
-    if (classname != nullptr && error_code != NO_ERROR)
+    else
       {
-	/* It fails to move the memory into locator_Mht_classnames */
-	free_and_init (classname);
+	assert (false);
       }
 
     if (it != m_classname_map.end ())
