@@ -1790,7 +1790,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
       && ((!is_rownum_only && pt_has_inst_num (parser, pred)) || pt_has_analytic (parser, mainquery)
-	  || pt_has_order_sensitive_agg (parser, mainquery) || pt_has_inst_num (parser, select_list)))
+	  || pt_has_order_sensitive_agg (parser, mainquery) || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
       /* not pushable */
       return NON_PUSHABLE;
@@ -2184,6 +2184,10 @@ mq_update_order_by (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * quer
   ins_num->type_enum = PT_TYPE_BIGINT;
   ins_num->info.expr.op = PT_INST_NUM;
   PT_EXPR_INFO_SET_FLAG (ins_num, PT_EXPR_INFO_INSTNUM_C);
+
+  /* replace rownum of select-list to orderby_num */
+  statement->info.query.q.select.list =
+    pt_lambda_with_arg (parser, statement->info.query.q.select.list, ins_num, ord_num, false, 0, false);
 
   /* replace rownum of where to orderby_num */
   where = statement->info.query.q.select.where;
