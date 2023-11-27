@@ -12606,7 +12606,8 @@ locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_EN
       assert (entry->e_tran_index == NULL_TRAN_INDEX);
 
       assert (!OID_ISNULL (&entry->e_current.oid));
-      assert (heap_does_exist (thread_p, oid_Root_class_oid, &entry->e_current.oid));
+      assert (is_passive_transaction_server ()
+	      || heap_does_exist (thread_p, oid_Root_class_oid, &entry->e_current.oid));
 
       assert (LSA_ISNULL (&entry->e_current.savep_lsa));
       assert (entry->e_current.prev == NULL);
