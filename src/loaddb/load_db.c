@@ -1269,7 +1269,12 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
   if (!load_interrupted && !status.is_load_failed () && !args->syntax_check && error_code == NO_ERROR)
     {
       // Update class statistics
-      error_code = loaddb_update_stats ();
+      if (args->verbose)
+	{
+	  print_log_msg (1,
+			 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UPDATING_STATISTICS));
+	}
+      error_code = loaddb_update_stats (args->verbose);
       if (error_code != NO_ERROR)
 	{
 	  print_er_msg ();
