@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.jsp.value;
 
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
