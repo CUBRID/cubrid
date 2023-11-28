@@ -30,7 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.DateTimeParser;
+import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.time.LocalDateTime;
 import org.antlr.v4.runtime.ParserRuleContext;
