@@ -6801,6 +6801,106 @@ pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALUE * set1, D
   return (!pt_has_error (parser));
 }
 
+PT_NODE *
+pt_remove_always_true (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = NULL;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  if (node->node_type == PT_SELECT)
+    {
+      for (spec = node->info.query.q.select.from; spec; spec = spec->next)
+	{
+	  if (spec->node_type == PT_SPEC && spec->info.spec.on_cond)
+	    {
+	      spec->info.spec.on_cond = pt_remove_always_true_internal (parser, spec->info.spec.on_cond);
+	    }
+	}
+
+      node->info.query.q.select.where = pt_remove_always_true_internal (parser, node->info.query.q.select.where);
+    }
+
+  return node;
+}
+
+PT_NODE *
+pt_remove_always_true_internal (PARSER_CONTEXT * parser, PT_NODE * where)
+{
+  PT_NODE *cnf_node, *dnf_node, *cnf_prev, *dnf_prev;
+  bool cut_off;
+  int line = 0, column = 0;
+  short location;
+
+  if (where)
+    {
+      line = where->line_number;
+      column = where->column_number;
+    }
+  else
+    {
+      return where;
+    }
+
+  /* traverse CNF list and keep track the pointer to previous node */
+  cnf_prev = NULL;
+  while ((cnf_node = ((cnf_prev) ? cnf_prev->next : where)))
+    {
+      /* save location */
+      location = 0;
+      cut_off = false;
+      if (cnf_node->node_type == PT_VALUE)
+	{
+	  location = cnf_node->info.value.location;
+	  if (cnf_node->or_next == NULL)
+	    {
+	      if (cnf_node->node_type == PT_VALUE && cnf_node->type_enum == PT_TYPE_LOGICAL
+		  && cnf_node->info.value.data_value.i == 1)
+		{
+		  cut_off = true;
+		}
+	    }
+	  else
+	    {
+	      /* traverse DNF list and keep track of the pointer to previous node */
+	      dnf_prev = NULL;
+	      while ((dnf_node = ((dnf_prev) ? dnf_prev->or_next : cnf_node)))
+		{
+		  if (cnf_node->node_type == PT_VALUE && cnf_node->type_enum == PT_TYPE_LOGICAL
+		      && cnf_node->info.value.data_value.i == 1)
+		    {
+		      cut_off = true;
+		      break;
+		    }
+		  dnf_prev = (dnf_prev) ? dnf_prev->or_next : dnf_node;
+		}		/* while (dnf_node) */
+	    }			/* else (cnf_node->or_next == NULL) */
+	}
+      if (cut_off)
+	{
+	  /* cut if off from CNF list */
+	  if (cnf_prev)
+	    {
+	      cnf_prev->next = cnf_node->next;
+	    }
+	  else
+	    {
+	      where = cnf_node->next;
+	    }
+	  cnf_node->next = NULL;
+	  parser_free_tree (parser, cnf_node);
+	}
+      else
+	{
+	  cnf_prev = (cnf_prev) ? cnf_prev->next : cnf_node;
+	}
+    }				/* while (cnf_node) */
+  return where;
+}
+
 /*
  * pt_where_type () - Test for constant folded where clause,
  * 		      and fold as necessary
@@ -7870,13 +7970,13 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     default:
       break;
     }
-
+/*
   if (node == NULL)
     {
       PT_INTERNAL_ERROR (parser, "pt_fold_constants_post");
       return NULL;
     }
-
+*/
   return node;
 }
 
@@ -18706,6 +18806,16 @@ end:
       else if (result->node_type == PT_VALUE)
 	{
 	  result->info.value.location = location;
+	  /*if (op==PT_EQ&&!pt_false_search_condition (parser, result))
+	     {
+	     DB_VALUE* res = pt_value_to_db(parser,result);
+	     if (res && DB_VALUE_TYPE (res) == DB_TYPE_INTEGER && db_get_int (res) == 1)
+	     {
+	     //parser_free_tree (parser, result);
+	     result->node_type = PT_NODE_NONE;
+	     return result;
+	     }
+	     } */
 	}
 
       return result;
@@ -19190,6 +19300,8 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   /* do constant folding */
   tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
+  /* remove always true condition */
+  tree = parser_walk_tree (parser, tree, NULL, NULL, pt_remove_always_true, NULL);
   if (pt_has_error (parser))
     {
       tree = NULL;

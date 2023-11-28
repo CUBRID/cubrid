@@ -360,6 +360,8 @@ extern "C"
   extern bool pt_false_where (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern PT_NODE *pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where);
   extern PT_NODE *pt_where_type_keep_true (PARSER_CONTEXT * parser, PT_NODE * where);
+  extern PT_NODE *pt_remove_always_true (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern PT_NODE *pt_remove_always_true_internal (PARSER_CONTEXT * parser, PT_NODE * where);
   extern bool pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * statement);
   extern const char *mq_generate_name (PARSER_CONTEXT * parser, const char *root, int *version);
   extern int mq_is_real_class_of_vclass (PARSER_CONTEXT * parser, const PT_NODE * s_class, const PT_NODE * d_class);

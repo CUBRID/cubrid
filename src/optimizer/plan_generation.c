@@ -3975,15 +3975,11 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	  return NO_ERROR;
 	}
 
-      if (termp->pt_expr != NULL && termp->pt_expr->node_type == PT_VALUE && termp->term_class != QO_TC_OTHER)
+      if (termp->pt_expr != NULL && termp->pt_expr->node_type == PT_VALUE)
 	{
 	  /*
-	   * If termp is PT_VALUE, it represents an always-true/false condition. 
-	   * In such cases, when qo_add_term() function identifies an always-true condition, 
-	   * it is classified as QO_TC_OTHER, and thus MRO optimization is performed. 
-	   * On the other hand, in cases of an always-false condition, 
-	   * it may not be classified as QO_TC_OTHER, therefore, MRO optimization is not performed
-	   * in these instances.
+	   * If termp is PT_VALUE, it represents an always-false condition. 
+	   * In cases of an always-false condition, MRO optimization is not performed in these instances.
 	   */
 	  return NO_ERROR;
 	}
