@@ -4070,11 +4070,11 @@ smt_drop_query_spec (SM_TEMPLATE * def, const int index)
   int i;
   char indexname[20];
 
-  for (file = def->query_spec, prev = NULL, found = NULL, i = 1; file != NULL && found == NULL; file = file->next, i++)
+  for (file = def->query_spec, prev = NULL, found = NULL, i = 1; file != NULL && found == NULL; file = file->next)
     {
       if (file->specification[0] == '-')
 	{
-	  i--;
+	  prev = file;
 	  continue;
 	}
 
@@ -4086,6 +4086,8 @@ smt_drop_query_spec (SM_TEMPLATE * def, const int index)
 	{
 	  prev = file;
 	}
+
+      i++;
     }
 
   if (found == NULL)
