@@ -1766,6 +1766,7 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
 	      if (!pt_false_search_condition (QO_ENV_PARSER (env), conjunct))
 		{
 		  /* is an always-true WHERE condition */
+		  QO_TERM_CLASS (term) = QO_TC_OTHER;
 		  QO_TERM_SELECTIVITY (term) = 1.0;
 		}
 	      else
