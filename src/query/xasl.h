@@ -494,6 +494,7 @@ struct cte_proc_node
 #define XASL_NO_FIXED_SCAN	      0x4000	/* disable fixed scan for this proc */
 #define XASL_NEED_SINGLE_TUPLE_SCAN   0x8000	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	      0x10000	/* is any tde class related */
+#define XASL_SAMPLING_SCAN	      0x20000	/* is sampling scan */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -697,7 +698,8 @@ typedef enum
   ACCESS_METHOD_SEQUENTIAL_RECORD_INFO,	/* sequential scan that will read record info */
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
   ACCESS_METHOD_INDEX_KEY_INFO,	/* indexed access to obtain key information */
-  ACCESS_METHOD_INDEX_NODE_INFO	/* indexed access to obtain b-tree node info */
+  ACCESS_METHOD_INDEX_NODE_INFO,	/* indexed access to obtain b-tree node info */
+  ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN	/* sequential sampling scan */
 } ACCESS_METHOD;
 
 #define IS_ANY_INDEX_ACCESS(access_) \
@@ -918,6 +920,7 @@ struct xasl_stat
   struct timeval elapsed_time;
   UINT64 fetches;
   UINT64 ioreads;
+  UINT64 fetch_time;
 };
 
 /* top-n sorting object */
@@ -1027,6 +1030,10 @@ struct xasl_node
 				 * DELETE in the generated SELECT statement) */
   int mvcc_reev_extra_cls_cnt;	/* number of extra OID - CLASS_OID pairs added to the select list in case of
 				 * UPDATE/DELETE in MVCC */
+  XASL_ID *cte_xasl_id;		/* for CTE's query cache */
+  int cte_host_var_count;
+  int *cte_host_var_index;
+
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
   LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate
