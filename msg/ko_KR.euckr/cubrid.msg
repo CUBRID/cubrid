@@ -1931,7 +1931,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 동의어 "%1$s"이(가) 존재하지 않습니다.
 315 이름 바꾸기는 소유자를 변경할 수 없습니다.
 316 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
-317 Identifiers cannot be in a LIMIT clause.
+317 식별자는 LIMIT 절 안에 있을 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
