@@ -20,6 +20,7 @@
 #define _ATOMIC_REPLICATOR_HPP_
 
 #include "atomic_replication_helper.hpp"
+#include "log_record.hpp"
 #include "log_replication.hpp"
 
 namespace cublog
@@ -92,11 +93,11 @@ namespace cublog
 
       /* TODO:
        * Make seperate class for ddl_replication_helper */
-      void bookkeep_classname_for_ddl (cubthread::entry &thread_entry, const OID *classoid);
+      void bookkeep_classname_for_ddl (cubthread::entry &thread_entry, const LOG_REC_LOCKED_OBJECT &log_rec);
       void update_classname_cache_for_ddl (cubthread::entry &thread_entry, const OID *classoid);
 
       void release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
-      void acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid);
+      void acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const LOG_REC_LOCKED_OBJECT &log_rec);
       void discard_caches_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
       bool is_locked_for_ddl (const TRANID trid, const OID *classoid);
 
@@ -111,8 +112,8 @@ namespace cublog
 
       /* Keep track of the locked classes for DDL replication.
        * Since multiple DDL operations can be executed within single transaction,
-       * more than one classes can be mapped to one transaction */
-      std::unordered_map <TRANID, std::unordered_set<OID>> m_locked_classes;
+       * more than one classes or objects(SERIAL) can be mapped to one transaction */
+      std::multimap <TRANID, LOG_REC_LOCKED_OBJECT> m_locked_objects;
       std::unordered_map <OID, std::string> m_classname_map;
   };
 }
