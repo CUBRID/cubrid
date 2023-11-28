@@ -39,6 +39,14 @@ namespace cubschema
   {
   }
 
+  attribute::attribute (const attribute_kind k, const std::string &n)
+    : kind {k}
+    , name {n}
+    , type {""}
+    , dvalue_func {nullptr}
+  {
+  }
+
   attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t)
     : kind {k}
     , name {n}

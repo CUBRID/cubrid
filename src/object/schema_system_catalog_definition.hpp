@@ -37,9 +37,11 @@ namespace cubschema
   enum class attribute_kind
   {
     COLUMN,
+
+    /* for system class */
     CLASS_METHOD,
 
-    /* TODO: for system view */
+    /* for system view */
     QUERY_SPEC
   };
 
@@ -52,8 +54,9 @@ namespace cubschema
     std::string type;
     default_value_init_type dvalue_func;
 
-    attribute (const std::string &n, const std::string &t); // column
-    attribute (const std::string &name, const std::string &type, default_value_init_type dval_f);
+    attribute (const std::string &n, const std::string &t); // attribute_kind::COLUMN
+    attribute (const std::string &name, const std::string &type, default_value_init_type dval_f); // attribute_kind::COLUMN
+    attribute (const attribute_kind kind, const std::string &name);
     attribute (const attribute_kind kind, const std::string &name, const std::string &type);
     attribute (const attribute_kind kind, const std::string &name, const std::string &type, default_value_init_type dval_f);
   };
