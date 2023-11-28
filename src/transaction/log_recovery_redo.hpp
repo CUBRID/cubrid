@@ -647,7 +647,11 @@ void log_rv_redo_record_sync_apply (THREAD_ENTRY *thread_p, log_rv_redo_context 
 
   if (is_passive_transaction_server() && log_data.rcvindex == RVPGBUF_DEALLOC)
     {
-      // rcv pgptr is already unfixed and invalidated by the deallocation (pgbuf_rv_dealloc_redo ())
+      /* TODO:
+       * redofunc for RVPGBUF_DEALLOC (pgbuf_rv_dealloc_redo ()) invalidates the page buffer in PTS,
+       * but it does not set page lsa (pgbuf_set_lsa ()) before invalidation.
+       * We need to set page lsa when redoing RVPGBUF_DEALLOC log, as what ATS does (see the caller of LOG_NEED_TO_SET_LSA ()).
+       */
       assert (rcv.pgptr != nullptr && pgbuf_get_fix_count (rcv.pgptr) <= 0);
       rcv.pgptr = nullptr;
     }
