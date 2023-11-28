@@ -12525,6 +12525,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      /* for index with prefix length */
 	      PT_NODE *where_part_save = NULL, *where_key_part_save = NULL;
 	      PT_NODE *ipl_where_part = NULL;
+	      bool pt_value_where_part = false;
 
 	      if (index_pred->ni_entry && index_pred->ni_entry->head && qo_is_prefix_index (index_pred->ni_entry->head))
 		{
@@ -12591,6 +12592,17 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		      free_and_init (rest_offsets);
 		    }
 		  return NULL;
+		}
+
+	      if (where_part)
+		{
+		  assert (where_part->node_type == PT_NODE_POINTER);
+		  pt_value_where_part = (where_part->info.pointer.node->node_type == PT_VALUE);
+		  if (pt_value_where_part)
+		    {
+		      where_part_save = where_part;
+		      where_part = NULL;
+		    }
 		}
 
 	      regu_alloc (cache_key);
@@ -12662,6 +12674,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  parser_free_tree (parser, where_part);
 		  where_part = where_part_save;
 		  where_key_part = where_key_part_save;
+		}
+
+	      if (pt_value_where_part)
+		{
+		  where_part = where_part_save;
 		}
 	    }
 
