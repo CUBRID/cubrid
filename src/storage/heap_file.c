@@ -20657,8 +20657,9 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	{
 	  /* successfully locked! */
 #if defined (SERVER_MODE)
-	  if ((lock == SCH_M_LOCK && OID_IS_ROOTOID (&context->class_oid))
-	      || (lock == X_LOCK && OID_EQ (&context->class_oid, oid_Serial_class_oid)))
+	  const bool is_lock_for_class = OID_IS_ROOTOID (&context->class_oid) && lock == SCH_M_LOCK;
+	  const bool is_lock_for_serial = OID_EQ (&context->class_oid, oid_Serial_class_oid) && lock == X_LOCK;
+	  if (is_lock_for_class || is_lock_for_serial)
 	    {
 	      assert (!OID_ISNULL (&context->res_oid));
 	      assert (is_active_transaction_server ());
