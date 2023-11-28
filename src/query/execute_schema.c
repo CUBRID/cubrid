@@ -512,15 +512,19 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  query_no = 1;
 	}
+
       save_custom = parser->custom_print;
       parser->custom_print |= PT_CHARSET_COLLATE_FULL;
       new_query = parser_print_tree_with_quotes (parser, alter->info.alter.alter_clause.query.query);
-      strncpy (user_query + 2, alter->sql_view_text, MAX_QUERY_STRING_LENGTH);
-      parser->custom_print = save_custom;
-      error = dbt_change_query_spec (ctemplate, new_query, user_query, query_no);
-      if (error != NO_ERROR)
+      if (alter->info.alter.alter_clause.query.query->sql_view_text)
 	{
-	  break;
+	  strncpy (user_query + 2, alter->info.alter.alter_clause.query.query->sql_view_text, MAX_QUERY_STRING_LENGTH);
+	  parser->custom_print = save_custom;
+	  error = dbt_change_query_spec (ctemplate, new_query, user_query, query_no);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
 	}
 
       /* set vclass comment if it exists */
@@ -8315,6 +8319,9 @@ do_add_resolutions (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const P
 
   return (error);
 }
+
+extern char *g_view_string;
+extern int stream_ptr;
 
 /*
  * add_query_to_virtual_class() - Adds a query to a virtual class object

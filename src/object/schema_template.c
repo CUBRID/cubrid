@@ -4178,11 +4178,11 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const char *user_qu
   int i;
   char indexname[20];
 
-  for (file = def->query_spec, prev = NULL, found = NULL, i = 1; file != NULL && found == NULL; file = file->next, i++)
+  for (file = def->query_spec, prev = NULL, found = NULL, i = 1; file != NULL && found == NULL; file = file->next)
     {
       if (file->specification[0] == '-')
 	{
-	  i--;
+	  prev = file;
 	  continue;
 	}
 
@@ -4194,6 +4194,8 @@ smt_change_query_spec (SM_TEMPLATE * def, const char *query, const char *user_qu
 	{
 	  prev = file;
 	}
+
+      i++;
     }
 
   if (found == NULL)

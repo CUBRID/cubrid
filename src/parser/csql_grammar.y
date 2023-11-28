@@ -85,6 +85,10 @@ extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
 
+/* the stream_buffer and stream_ptr is used to extract query spec of a view in loaddb */
+extern char stream_buffer[];
+extern int stream_ptr;
+
 #if defined(SA_MODE)
      /*
      ** DBG_TRACE_LEVEL is specified by referring to the following.
@@ -241,6 +245,8 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 static bool is_analytic_function = false;
 
 static bool is_in_create_trigger = false;
+
+char *tmp_view_text;
 
 #define PT_EMPTY INT_MAX
 
@@ -463,11 +469,10 @@ static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * n
 void _push_msg (int code, int line);
 void pop_msg (void);
 
+char *g_view_string; /* for extracting view's query spec */
 char *g_query_string;
-char *g_view_string;
 int g_query_string_len;
 int g_original_buffer_len;
-
 
 /*
  * The behavior of location propagation when a rule is matched must
@@ -1840,8 +1845,8 @@ stmt
                          */
 			if (this_parser->original_buffer)
 			  {
-			    int pos = @$.buffer_pos;
 			    PT_NODE *node = $3;
+			    int pos = @$.buffer_pos;
 
 			    if (g_original_buffer_len == 0)
 			      {
@@ -1867,6 +1872,12 @@ stmt
 				node->sql_view_text = g_view_string;
 			      }
 			  }
+
+			  if (stream_ptr > 0)
+			    {
+			      /* g_view_string points to an offset of stream_buf */
+			      stream_buffer[stream_ptr++] = 0;
+			    }
 
 		DBG_PRINT}}
 		{{
@@ -6196,7 +6207,15 @@ alter_add_clause_cubrid_specific
 	| QUERY
 		{{
 			int pos = @$.buffer_pos;
-			g_view_string = (char*) (this_parser->original_buffer + pos);
+			if (stream_ptr > 0 && g_view_string == NULL)
+			  {
+			    /* starting point of a view's query spec */
+			    g_view_string = stream_buffer + pos;
+			  }
+			else
+			  {
+			    g_view_string = (char*)this_parser->original_buffer + pos;
+			  }
 		}}
 	  csql_query opt_vclass_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_add_clause_cubrid_specific, | QUERY csql_query opt_vclass_comment_spec );
@@ -6501,7 +6520,15 @@ alter_change_clause_cubrid_specific
 	| QUERY unsigned_integer
 		{{
 			int pos = @$.buffer_pos;
-			g_view_string = (char*)this_parser->original_buffer + pos;
+			if (stream_ptr > 0 && g_view_string == NULL)
+			  {
+			    /* starting point of a view's query spec */
+			    g_view_string = stream_buffer + pos;
+			  }
+			else
+			  {
+			    g_view_string = (char*)this_parser->original_buffer + pos;
+			  }
 		}}
 	  csql_query opt_vclass_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_change_clause_cubrid_specific, | QUERY unsigned_integer csql_query opt_vclass_comment_spec);
@@ -6520,7 +6547,15 @@ alter_change_clause_cubrid_specific
 	| QUERY
 		{{
 			int pos = @$.buffer_pos;
-			g_view_string = (char*) (this_parser->original_buffer + pos);
+			if (stream_ptr > 0 && g_view_string == NULL)
+			  {
+			    /* starting point of a view's query spec */
+			    g_view_string = stream_buffer + pos;
+			  }
+			else
+			  {
+			    g_view_string = (char*)this_parser->original_buffer + pos;
+			  }
 		}}
 	  csql_query opt_vclass_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_change_clause_cubrid_specific, | QUERY csql_query opt_vclass_comment_spec);
@@ -9334,7 +9369,15 @@ opt_as_query_list
 	| AS
 		{{
 			int pos = @$.buffer_pos;
-			g_view_string = (char*) (this_parser->original_buffer + pos);
+			if (stream_ptr > 0 && g_view_string == NULL)
+			  {
+			    /* starting point of a view's query spec */
+			    g_view_string = stream_buffer + pos;
+			  }
+			else
+			  {
+			    g_view_string = (char*)this_parser->original_buffer + pos;
+			  }
 		}}
 
 	  query_list

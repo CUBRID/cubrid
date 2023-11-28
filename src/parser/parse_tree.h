@@ -3740,7 +3740,6 @@ struct parser_node
   char *sql_user_text;		/* user input sql string */
   char *sql_view_text;		/* user input view string */
   int sql_user_text_len;	/* user input sql string length (one statement) */
-
   PT_NODE *next;		/* forward link for NULL terminated list */
   PT_NODE *or_next;		/* forward link for DNF list */
   PT_NODE *next_row;		/* for PT_VALUE,PT_NAME,PT_EXPR... that belongs to PT_NODE_LIST */
