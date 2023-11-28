@@ -61,11 +61,9 @@ static FILE *loaddb_log_file;
 int interrupt_query = false;
 bool load_interrupted = false;
 
-char stream_buffer[MAX_QUERY_BUFFER_SIZE];
-int stream_ptr;
-
 /* for extrating a view's query spec */
 extern char *g_view_string;
+extern int stream_ptr;
 
 typedef struct t_schema_file_list_info T_SCHEMA_FILE_LIST_INFO;
 struct t_schema_file_list_info

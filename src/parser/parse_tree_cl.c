@@ -75,6 +75,8 @@
            }                                 \
       } while (0)
 
+#define MAX_QUERY_BUFFER_SIZE 4096
+
 typedef struct pt_lambda_arg PT_LAMBDA_ARG;
 struct pt_lambda_arg
 {
@@ -453,13 +455,15 @@ static PARSER_VARCHAR *pt_print_json_table_column_info (PARSER_CONTEXT * parser,
 
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
+/* for extracting view's query spec in loaddb */
+char stream_buffer[MAX_QUERY_BUFFER_SIZE];
+int stream_ptr;
+
 extern "C"
 {
   extern char *g_query_string;
   extern char *g_view_string;
   extern int g_query_string_len;
-  extern char stream_buffer[];
-  extern int stream_ptr;
 }
 /*
  * strcat_with_realloc () -
@@ -1575,7 +1579,6 @@ fgetin (PARSER_CONTEXT * p)
   int c;
 
   c = fgetc (p->file);
-  stream_buffer[stream_ptr++] = (char) c;
 
   /* a statement buffer to extract view's query spec in loaddb */
   stream_buffer[stream_ptr++] = (char) c;
@@ -1965,11 +1968,9 @@ pt_init_one_statement_parser (PARSER_CONTEXT * parser, FILE * file)
     }
 
   /* reset parser node stack and line/column info */
-  stream_ptr = 0;
   parser->stack_top = 0;
   parser->line = 1;
   parser->column = 0;
-  parser->original_buffer = stream_buffer;
   {
     parser_output_host_index = parser_input_host_index = 0;
     this_parser = parser;
@@ -2220,10 +2221,6 @@ parser_new_node (PARSER_CONTEXT * parser, PT_NODE_TYPE node_type)
       node->sql_user_text = g_query_string;
       node->sql_user_text_len = g_query_string_len;
       node->sql_view_text = g_view_string;
-      if (g_view_string != NULL)
-	{
-	  //printf("##### sql_view_text = %s\n", g_view_string);
-	}
     }
   return node;
 }

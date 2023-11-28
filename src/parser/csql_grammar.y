@@ -1780,7 +1780,6 @@ stmt
 			    /* below assert & defence code is for yybuffer_pos mismatch
 			     * (like unput in lexer and do not modify yybuffer_pos)
 			     */
-			    printf("##### pos = %d, buffer_len = %d\n", pos, g_original_buffer_len);
 			    assert (pos <= g_original_buffer_len);
 
 			    if (pos > g_original_buffer_len)
@@ -1870,15 +1869,13 @@ stmt
 				int len = (int) (curr_ptr - g_query_string);
 				node->sql_user_text_len = len;
 				g_query_string_len = len;
-				node->sql_view_text = g_view_string;
 			      }
 			  }
-
-			  if (stream_ptr > 0)
-			    {
-			      /* g_view_string points to an offset of stream_buf */
-			      stream_buffer[stream_ptr++] = 0;
-			    }
+		        else if (stream_ptr > 0)
+			  {
+			    /* g_view_string points to an offset of stream_buf */
+			    stream_buffer[stream_ptr++] = 0;
+			  }
 
 		DBG_PRINT}}
 		{{
