@@ -4519,10 +4519,20 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
       assert (n_prefix >= 0);
 
 #if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY) || defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
-      if (n_prefix > 0 && (pg_prefix == NULL || (pg_prefix->reader_type != READER_TYPE_RANGE_SCAN)))
+      if (n_prefix > 0)
 	{
-	  btree_make_complete_key_including_prefix (key, clear_key, n_prefix, lf_key_ptr);
-	  btree_clear_key_value (&lf_clear_key, &lf_key);
+	  if (pg_prefix == NULL)
+	    {
+	      btree_make_complete_key_including_prefix (key, clear_key, n_prefix, lf_key_ptr);
+	      btree_clear_key_value (&lf_clear_key, &lf_key);
+	    }
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+	  else if (pg_prefix->reader_type != READER_TYPE_RANGE_SCAN)
+	    {
+	      assert (pg_prefix->reader_type != READER_TYPE_NONE);
+	      btree_make_complete_key_including_prefix (key, clear_key, n_prefix, lf_key_ptr);
+	    }
+#endif
 	}
 #else
       if (n_prefix > 0)
