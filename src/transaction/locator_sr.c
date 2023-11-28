@@ -2541,12 +2541,16 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 		}
 
 #if defined (SERVER_MODE)
-	      if (is_active_transaction_server () &&
-		  lock == SCH_M_LOCK || (lock == X_LOCK && OID_EQ (class_oid, oid_Serial_class_oid)))
+	      if (is_active_transaction_server ())
 		{
-		  assert (!OID_ISNULL (p_oid));
+		  const bool is_lock_for_class = OID_IS_ROOTOID (class_oid) && lock == SCH_M_LOCK;
+		  const bool is_lock_for_serial = OID_EQ (class_oid, oid_Serial_class_oid) && lock == X_LOCK;
+		  if (is_lock_for_class || is_lock_for_serial)
+		    {
+		      assert (!OID_ISNULL (p_oid));
 
-		  log_append_locked_object (thread_p, class_oid, p_oid, lock);
+		      log_append_locked_object (thread_p, class_oid, p_oid, lock);
+		    }
 		}
 #endif
 	    }
