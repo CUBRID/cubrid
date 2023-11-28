@@ -554,11 +554,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	  if (error_code == NO_ERROR)
 	    {
 	      catcls_init ();
-	      error_code = catcls_install_class ();
-	      if (error_code == NO_ERROR)
-		{
-		  error_code = catcls_install_vclass ();
-		}
+	      error_code = catcls_install ();
 	      if (error_code == NO_ERROR)
 		{
 		  /*
