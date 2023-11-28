@@ -152,11 +152,11 @@ enum log_rectype
                                  * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
                                  * or undo images that never retrieved from the log. */
 
-  LOG_LOCKED_OBJECT, /* Log when SCH_M_LOCK is acquired, and this is for PTS replication to know
-                                 * when to acquire a SCH_M_LOCK for replicating DDL modification, and
-                                 * which table to be locked.
-                                 * PTS needs to block the read transactions which try to access the same class
+  LOG_LOCKED_OBJECT,            /* Log when the lock is acquired for DDL operations, and this is for PTS replicator
+                                 * to know when to acquire a lock, and which objects to be locked.
+                                 * PTS needs to block the read transactions which try to access the same objects
                                  * being modified by the replicator.
+                                 * (lock is required for the record in root class and db_serial, which is not mvcc class)
                                  */
 
   /* NOTE: add actual (persistent) new values before this */
