@@ -97,6 +97,8 @@ dbcs_start_input (void)
   dbcs_Latter_flag = 0;		/* Two byte code */
 }
 
+extern char stream_buffer[];
+extern int stream_ptr;
 /*
  * dbcs_get_next () - Read one byte
  *   return:
@@ -131,6 +133,8 @@ dbcs_get_next (PARSER_CONTEXT * parser)
     }
   /* a statement buffer to extract view's query spec in loaddb */
   stream_buffer[stream_ptr++] = (char) input_char;
+
+  stream_buffer[stream_ptr++] = (char)input_char;
 
   return input_char;
 }

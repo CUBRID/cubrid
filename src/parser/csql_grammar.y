@@ -1780,6 +1780,7 @@ stmt
 			    /* below assert & defence code is for yybuffer_pos mismatch
 			     * (like unput in lexer and do not modify yybuffer_pos)
 			     */
+			    printf("##### pos = %d, buffer_len = %d\n", pos, g_original_buffer_len);
 			    assert (pos <= g_original_buffer_len);
 
 			    if (pos > g_original_buffer_len)

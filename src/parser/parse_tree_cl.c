@@ -1564,6 +1564,8 @@ pt_void_internal_error (PARSER_CONTEXT * parser, const char *file, int line, con
 }
 #endif
 
+char stream_buffer[80000];
+int stream_ptr;
 /*
  * fgetin() - get input from users file
  *   return: -1 on EOF
@@ -1575,6 +1577,7 @@ fgetin (PARSER_CONTEXT * p)
   int c;
 
   c = fgetc (p->file);
+  stream_buffer[stream_ptr++] = (char)c;
 
   /* a statement buffer to extract view's query spec in loaddb */
   stream_buffer[stream_ptr++] = (char) c;
@@ -1964,10 +1967,11 @@ pt_init_one_statement_parser (PARSER_CONTEXT * parser, FILE * file)
     }
 
   /* reset parser node stack and line/column info */
+  stream_ptr = 0;
   parser->stack_top = 0;
   parser->line = 1;
   parser->column = 0;
-
+  parser->original_buffer = stream_buffer;
   {
     parser_output_host_index = parser_input_host_index = 0;
     this_parser = parser;
