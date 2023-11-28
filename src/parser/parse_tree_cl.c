@@ -455,15 +455,15 @@ static PARSER_VARCHAR *pt_print_json_table_column_info (PARSER_CONTEXT * parser,
 
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
-/* for extracting view's query spec in loaddb */
-char stream_buffer[MAX_QUERY_BUFFER_SIZE];
-int stream_ptr;
-
 extern "C"
 {
   extern char *g_query_string;
   extern char *g_view_string;
   extern int g_query_string_len;
+
+  /* for extracting view's query spec in loaddb */
+  extern char stream_buffer[MAX_QUERY_BUFFER_SIZE];
+  extern int stream_ptr;
 }
 /*
  * strcat_with_realloc () -

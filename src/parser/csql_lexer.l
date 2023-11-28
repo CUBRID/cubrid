@@ -65,6 +65,10 @@ int str_identifier = '\0';
 #define IS_BLANK_CHAR(c) \
                     ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
 
+/* for extracting view's query spec in loaddb */
+char stream_buffer[4096];
+int stream_ptr;
+
 int g_msg[1024];
 int msg_ptr;
 
