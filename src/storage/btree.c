@@ -1742,6 +1742,10 @@ static void btree_check_within_range_in_page (THREAD_ENTRY * thread_p, BTID_INT 
 					      BTREE_SCAN * bts);
 static void btree_make_complete_key_including_prefix (DB_VALUE * key, bool * clear_key, int n_prefix,
 						      DB_VALUE * prefix_key);
+#else
+#define btree_read_record_in_leafpage(thread_p, btid, pgptr, rec, key, rec_header, clear_key, offset, copy_key, bts) \
+                        btree_read_record((thread_p), (btid), (pgptr), (rec), (key), (rec_header), (BTREE_LEAF_NODE),\
+                                          (clear_key), (offset), (copy_key), (bts))
 #endif
 
 /*
@@ -7115,19 +7119,12 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
       /* read key-value */
       assert (BTS->clear_cur_key == false);
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      /* IMPROVE_RANGE_SCAN_IN_BTREE */
       if (btree_read_record_in_leafpage (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
 					 &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, BTS) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
-#else
-      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
-			     BTREE_LEAF_NODE, &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-#endif
 
       /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
       if (btree_is_same_key_for_stats (env, &BTS->cur_key))
@@ -7220,20 +7217,12 @@ count_keys:
       /* read key-value */
 
       assert (BTS->clear_cur_key == false);
-
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      /* IMPROVE_RANGE_SCAN_IN_BTREE */
       if (btree_read_record_in_leafpage (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
 					 &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, BTS) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
-#else
-      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
-			     BTREE_LEAF_NODE, &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-#endif
 
       if (btree_is_same_key_for_stats (env, &BTS->cur_key))
 	{
@@ -9200,21 +9189,13 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  cpc->sum_rec_len += rec.length;
 
 	  /* read the current record key */
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+	  /* IMPROVE_RANGE_SCAN_IN_BTREE */
 	  if (btree_read_record_in_leafpage
 	      (thread_p, btid, pg_ptr, &rec, &BTS->cur_key, &leaf_pnt, &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE,
 	       BTS) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
-#else
-	  if (btree_read_record
-	      (thread_p, btid, pg_ptr, &rec, &BTS->cur_key, &leaf_pnt, BTREE_LEAF_NODE, &BTS->clear_cur_key, &offset,
-	       PEEK_KEY_VALUE, NULL) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-#endif
 
 	  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	  //cpc->sum_key_len += btree_get_disk_size_of_key (&BTS->cur_key);
@@ -25324,12 +25305,9 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   /* Read record key (and other info). */
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   assert (bts != NULL && bts->node_type == BTREE_LEAF_NODE);
+#endif
   return btree_read_record_in_leafpage (thread_p, &bts->btid_int, bts->C_page, &bts->key_record, &bts->cur_key,
 					&bts->leaf_rec_info, &bts->clear_cur_key, &bts->offset, COPY_KEY_VALUE, bts);
-#else
-  return btree_read_record (thread_p, &bts->btid_int, bts->C_page, &bts->key_record, &bts->cur_key, &bts->leaf_rec_info,
-			    bts->node_type, &bts->clear_cur_key, &bts->offset, COPY_KEY_VALUE, bts);
-#endif
 }
 
 /*
