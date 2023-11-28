@@ -1871,7 +1871,7 @@ stmt
 				g_query_string_len = len;
 			      }
 			  }
-		        else if (stream_ptr > 0)
+		        else if (g_view_string)
 			  {
 			    /* g_view_string points to an offset of stream_buf */
 			    stream_buffer[stream_ptr++] = 0;
@@ -25842,6 +25842,8 @@ parser_main (PARSER_CONTEXT * parser)
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
+  g_view_string = NULL;
+  stream_ptr = 0;
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 
@@ -25942,6 +25944,8 @@ parse_one_statement (int state)
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
+  g_view_string = NULL;
+  stream_ptr = 0;
   g_query_string_len = 0;
   g_original_buffer_len = 0;
 

@@ -61,10 +61,6 @@ static FILE *loaddb_log_file;
 int interrupt_query = false;
 bool load_interrupted = false;
 
-/* for extrating a view's query spec */
-extern char *g_view_string;
-extern int stream_ptr;
-
 typedef struct t_schema_file_list_info T_SCHEMA_FILE_LIST_INFO;
 struct t_schema_file_list_info
 {
@@ -1039,10 +1035,6 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	  db_close_session (session);
 	  goto end;
 	}
-
-      /* stream buffer is reset */
-      stream_ptr = 0;
-      g_view_string = NULL;
 
       stmt_cnt = db_parse_one_statement (session);
       if (stmt_cnt > 0)

@@ -462,7 +462,7 @@ extern "C"
   extern int g_query_string_len;
 
   /* for extracting view's query spec in loaddb */
-  extern char stream_buffer[MAX_QUERY_BUFFER_SIZE];
+  extern char stream_buffer[];
   extern int stream_ptr;
 }
 /*
