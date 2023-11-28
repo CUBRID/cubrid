@@ -13938,7 +13938,6 @@ locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char 
 {
   assert (classname != nullptr);
 
-  /* Memory for classname is allocated in atomic_replicator::update_classname_cache_for_ddl () */
   entry->e_name = strdup (classname);
   if (entry->e_name == nullptr)
     {
