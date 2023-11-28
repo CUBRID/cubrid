@@ -9385,6 +9385,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
 
   /* traverse the tree and store the capacity info */
   BTREE_INIT_SCAN (&(stats_env.btree_scan));
+  stats_env.btree_scan.btid_int.sys_btid = btid;
   ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc, &stats_env);
   btree_scan_clear_key (&stats_env.btree_scan);
 
@@ -25319,7 +25320,7 @@ static int
 btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   /* Clear current key value if needed. */
-  btree_scan_clear_key (bts);
+  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
   /* Read record key (and other info). */
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   assert (bts != NULL && bts->node_type == BTREE_LEAF_NODE);
