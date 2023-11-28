@@ -1921,7 +1921,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
     }
   else if (type == STRING_INPUT)
     {				/* string pointer input */
-      session = db_open_buffer ((const char *) stream, 0);
+      session = db_open_buffer ((const char *) stream);
       if (!session)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -1936,7 +1936,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   else
     {				/* command buffer input */
       stmts = csql_edit_contents_get ();
-      session = db_open_buffer (stmts, 0);
+      session = db_open_buffer (stmts);
       if (!session)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -3334,7 +3334,7 @@ csql_execute_query (const char *stmts)
   int stmt_id = -1;
   int db_error = ER_FAILED;
 
-  session = db_open_buffer (stmts, 0);
+  session = db_open_buffer (stmts);
   if (session == NULL)
     {
       goto end;
@@ -3392,7 +3392,7 @@ csql_display_trace (void)
 
   stmts = "SHOW TRACE";
 
-  session = db_open_buffer (stmts, 0);
+  session = db_open_buffer (stmts);
   if (session == NULL)
     {
       return;

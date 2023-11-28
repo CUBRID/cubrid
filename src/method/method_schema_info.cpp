@@ -136,7 +136,7 @@ namespace cubmethod
   {
     lang_set_parser_use_client_charset (false);
 
-    m_session = db_open_buffer (sql_stmt.c_str(), 0);
+    m_session = db_open_buffer (sql_stmt.c_str());
     if (!m_session)
       {
 	lang_set_parser_use_client_charset (true);

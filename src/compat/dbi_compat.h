@@ -127,8 +127,10 @@ extern "C"
 #define SQLX_CMD_CALL_SP CUBRID_STMT_CALL_SP
 #define SQLX_CMD_UNKNOWN CUBRID_STMT_UNKNOWN
 
-  enum PARSER_FLAGS
+  enum OPEN_BUFFER_FLAGS
   { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
+
+  extern int g_open_buffer_control_flags;
 
   extern bool db_is_client_cache_reusable (DB_QUERY_RESULT * result);
   extern int db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode);
@@ -617,7 +619,7 @@ extern "C"
   extern bool db_query_is_plan_dump_opened ();
 
 /* sql query routines */
-  extern DB_SESSION *db_open_buffer (const char *buffer, int flags);	/* flags: enum PARSER_FLAGS */
+  extern DB_SESSION *db_open_buffer (const char *buffer);
   extern DB_SESSION *db_open_file (FILE * file);
   extern DB_SESSION *db_open_file_name (const char *name);
 

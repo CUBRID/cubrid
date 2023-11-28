@@ -1992,7 +1992,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       cas_log_query_info_init (srv_h_id, TRUE);
       srv_handle->query_info_flag = TRUE;
 
-      session = db_open_buffer (sql_stmt, 0);
+      session = db_open_buffer (sql_stmt);
       if (!session)
 	{
 	  ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);

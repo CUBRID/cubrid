@@ -760,7 +760,12 @@ namespace cubmethod
   {
     int &flag = m_prepare_flag;
 
-    m_session = db_open_buffer (m_sql_stmt.c_str(), (flag & PREPARE_STATIC_SQL) ? PARSER_FOR_PLCSQL_STATIC_SQL : 0);
+    if (flag & PREPARE_STATIC_SQL) {
+        g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
+    }
+    m_session = db_open_buffer (m_sql_stmt.c_str());
+    g_open_buffer_control_flags = 0;
+
     if (!m_session)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
@@ -835,7 +840,7 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
-    m_session = db_open_buffer (sql_stmt_copy.c_str(), 0);
+    m_session = db_open_buffer (sql_stmt_copy.c_str());
     if (!m_session)
       {
 	m_error_ctx.set_error (db_error_code(), db_error_string (1), __FILE__, __LINE__);

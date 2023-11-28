@@ -559,7 +559,7 @@ namespace cubschema
 			 "SELECT COUNT(*) FROM [_db_domain] WHERE [data_type]=%d AND ([class_of].[unique_name]='%s' OR [class_of] IS NULL) AND ROWNUM <= %d",
 			 DB_TYPE_OBJECT, class_name, CNT_CATCLS_OBJECTS + 1);
 
-	session = db_open_buffer (select_query, 0);
+	session = db_open_buffer (select_query);
 	if (session == NULL)
 	  {
 	    assert (er_errid () != NO_ERROR);

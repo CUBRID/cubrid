@@ -15500,7 +15500,7 @@ sm_truncate_using_delete (MOP class_mop)
   (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE NO_SUPPLEMENTAL_LOG */ FROM [%s];",
 		   class_name);
 
-  session = db_open_buffer (delete_query, 0);
+  session = db_open_buffer (delete_query);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
