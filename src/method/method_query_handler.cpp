@@ -760,9 +760,10 @@ namespace cubmethod
   {
     int &flag = m_prepare_flag;
 
-    if (flag & PREPARE_STATIC_SQL) {
-        g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
-    }
+    if (flag & PREPARE_STATIC_SQL)
+      {
+	g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
+      }
     m_session = db_open_buffer (m_sql_stmt.c_str());
     g_open_buffer_control_flags = 0;
 
