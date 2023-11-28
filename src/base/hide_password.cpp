@@ -696,7 +696,7 @@ hide_password::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf
 	{
 	  chbk = query[offset];
 	  query[offset] = '\0';
-	  cas_fprintf (fp, "%s ", query);
+	  cas_fprintf (fp, "%s", query);
 	  query[offset] = chbk;
 	  query += offset;
 	}
