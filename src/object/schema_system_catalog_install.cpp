@@ -255,11 +255,12 @@ catcls_init (void)
 }
 
 int
-catcls_install_class (void)
+catcls_install (void)
 {
   int error_code = NO_ERROR;
 
   const size_t num_classes = clist.size ();
+  const size_t num_vclasses = vclist.size ();
   std::vector<MOP> class_mop (num_classes, nullptr);
   int save;
   size_t i;
@@ -291,32 +292,6 @@ catcls_install_class (void)
 	}
     }
 
-
-end:
-  AU_ENABLE (save);
-  clist.clear ();
-
-  return error_code;
-}
-
-/*
- * catcls_vclass_install :
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- */
-int
-catcls_install_vclass (void)
-{
-  int save;
-  size_t i;
-
-  const size_t num_vclasses = vclist.size ();
-  int error_code = NO_ERROR;
-
-  AU_DISABLE (save);
-
-  using catalog_builder = cubschema::system_catalog_builder;
-
   for (i = 0; i < num_vclasses; i++)
     {
       // new routine
@@ -340,6 +315,8 @@ catcls_install_vclass (void)
 
 end:
   AU_ENABLE (save);
+
+  clist.clear ();
   vclist.clear ();
 
   return error_code;
