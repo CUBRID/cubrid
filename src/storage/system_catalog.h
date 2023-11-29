@@ -89,6 +89,7 @@ struct disk_attribute
   OID classoid;			/* source class object id */
   int n_btstats;		/* number of B+tree statistics information */
   BTREE_STATS *bt_stats;	/* pointer to array of BTREE_STATS; BTREE_STATS[n_btstats] */
+  INT64 ndv;			/* Number of Distinct Values of column */
 };				/* disk attribute structure */
 
 typedef struct cls_info CLS_INFO;
