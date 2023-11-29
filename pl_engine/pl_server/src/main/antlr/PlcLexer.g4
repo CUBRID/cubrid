@@ -32,6 +32,7 @@ private boolean checkFirstLParen = false;   // to detect that it is actually not
 }
 
 // keywords that starts Static SQL
+// INSERT, REPLACE, TRAUNCATE: also a built-in function
 WITH:                         W I T H           { staticSqlParenMatch++; mode(STATIC_SQL); };
 SELECT:                       S E L E C T       { staticSqlParenMatch++; mode(STATIC_SQL); };
 INSERT:                       I N S E R T       { staticSqlParenMatch++; checkFirstLParen = true; mode(STATIC_SQL); };
