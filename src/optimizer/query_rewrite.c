@@ -1873,10 +1873,10 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	  if (pt_evaluate_db_value_expr
 	      (parser, expr, expr->info.expr.op, dbv1, dbv2, dbv3, &dbval_res, domain, opd1, opd2, opd3, qualifier))
 	    {
-                if(DB_VALUE_TYPE(&dbval_res)==DB_TYPE_INTEGER && db_get_int(&dbval_res) == 1)
-                {
-                        cut_off = true;
-                }
+	      if (DB_VALUE_TYPE (&dbval_res) == DB_TYPE_INTEGER && db_get_int (&dbval_res) == 1)
+		{
+		  cut_off = true;
+		}
 	    }
 	}
 

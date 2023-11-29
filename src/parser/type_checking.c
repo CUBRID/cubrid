@@ -7870,13 +7870,13 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     default:
       break;
     }
-/*
+
   if (node == NULL)
     {
       PT_INTERNAL_ERROR (parser, "pt_fold_constants_post");
       return NULL;
     }
-*/
+
   return node;
 }
 
@@ -18706,16 +18706,6 @@ end:
       else if (result->node_type == PT_VALUE)
 	{
 	  result->info.value.location = location;
-	  /*if (op==PT_EQ&&!pt_false_search_condition (parser, result))
-	     {
-	     DB_VALUE* res = pt_value_to_db(parser,result);
-	     if (res && DB_VALUE_TYPE (res) == DB_TYPE_INTEGER && db_get_int (res) == 1)
-	     {
-	     //parser_free_tree (parser, result);
-	     result->node_type = PT_NODE_NONE;
-	     return result;
-	     }
-	     } */
 	}
 
       return result;
