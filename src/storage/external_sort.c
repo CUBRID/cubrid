@@ -2197,6 +2197,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
   out_curfile = sort_param->in_half;
 
   output_buffer = sort_param->internal_memory + ((long)(sort_param->tot_buffers - 1) * DB_PAGESIZE);
+  assert (output_buffer > sort_param->internal_memory);
 
   numrecs = 0;
   sort_numrecs = 0;
@@ -2252,12 +2253,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	  goto exit_on_error;
 
 	case SORT_REC_DOESNT_FIT:
-	  if (numrecs <= 0)
-	    {
-	      error = ER_FAILED;
-	      goto exit_on_error;
-	    }
-	  else
+	  if (numrecs > 0)
 	    {
 	      /* Perform internal sorting and flush the run */
 
