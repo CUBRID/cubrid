@@ -1360,6 +1360,15 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   PT_NODE *save_where_next;
   bool copy_arg2;
   PT_NODE *dt1, *dt2;
+  bool cut_off;
+  PT_NODE *dnf_node, *dnf_prev = NULL, *expr_prev = NULL;
+  PT_NODE *opd1, *opd2, *opd3;
+  DB_VALUE *dbv1, *dbv2, *dbv3, dbval_res;
+  PT_TYPE_ENUM type1, type2, result_type;
+  PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
+  TP_DOMAIN *domain;
+//  int line = 0, column = 0;
+//  short location;
 
   /* init */
   orgp = wherep;
@@ -1842,6 +1851,54 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	}
 
       *orgp = parser_append_node (join_term_list, *orgp);
+    }
+
+  /* remove always-true term */
+  while ((expr = ((expr_prev) ? expr_prev->next : *orgp)))
+    {
+      cut_off = false;
+      opd1 = expr->info.expr.arg1;
+      opd2 = expr->info.expr.arg2;
+
+      if (opd1->node_type == PT_VALUE && opd2->node_type == PT_VALUE)
+	{
+	  domain = pt_xasl_node_to_domain (parser, expr);
+	  qualifier = expr->info.expr.qualifier;
+	  dbv1 = pt_value_to_db (parser, opd1);
+	  dbv2 = pt_value_to_db (parser, opd2);
+
+	  opd3 = expr->info.expr.arg3;
+	  dbv3 = pt_value_to_db (parser, opd3);
+
+	  if (pt_evaluate_db_value_expr
+	      (parser, expr, expr->info.expr.op, dbv1, dbv2, dbv3, &dbval_res, domain, opd1, opd2, opd3, qualifier))
+	    {
+                if(DB_VALUE_TYPE(&dbval_res)==DB_TYPE_INTEGER && db_get_int(&dbval_res) == 1)
+                {
+                        cut_off = true;
+                }
+	    }
+	}
+
+
+      if (cut_off)
+	{
+	  /* cut if off from CNF list */
+	  if (expr_prev)
+	    {
+	      expr_prev->next = expr->next;
+	    }
+	  else
+	    {
+	      *orgp = expr->next;
+	    }
+	  expr->next = NULL;
+	  parser_free_tree (parser, expr);
+	}
+      else
+	{
+	  expr_prev = (expr_prev) ? expr_prev->next : expr;
+	}
     }
 
 }
