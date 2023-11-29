@@ -2196,7 +2196,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
   sort_param->tot_runs = 0;
   out_curfile = sort_param->in_half;
 
-  output_buffer = sort_param->internal_memory + ((long)(sort_param->tot_buffers - 1) * DB_PAGESIZE);
+  output_buffer = sort_param->internal_memory + ((long) (sort_param->tot_buffers - 1) * DB_PAGESIZE);
   assert (output_buffer > sort_param->internal_memory);
 
   numrecs = 0;
