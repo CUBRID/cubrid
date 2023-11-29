@@ -271,6 +271,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/schema_system_catalog_builder.cpp
   ${OBJECT_DIR}/schema_system_catalog_definition.cpp
   ${OBJECT_DIR}/schema_system_catalog_install.cpp
+  ${OBJECT_DIR}/schema_system_catalog_install_query_spec.cpp
   ${OBJECT_DIR}/schema_template.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
