@@ -33,21 +33,11 @@ namespace cubschema
 
   struct catcls_function
   {
-    const std::string name;
-    const system_catalog_definition definition;
+    const std::string_view name;
+    const system_catalog_definition &definition;
 
-    catcls_function (const std::string &n, const system_catalog_definition &def)
+    constexpr catcls_function (const std::string_view n, const system_catalog_definition &def)
       : name {n}, definition {def}
-    {}
-
-    // copy
-    catcls_function (const catcls_function &src) = delete;
-    catcls_function &operator= (const catcls_function &x) = delete;
-
-    // move constructor
-    catcls_function (catcls_function &&src)
-      : name {std::move (src.name)}
-      , definition {std::move (src.definition)}
     {}
   };
 
