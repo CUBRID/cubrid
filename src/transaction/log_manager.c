@@ -294,8 +294,8 @@ static LOG_PAGE *log_dump_record_assigned_mvccid (THREAD_ENTRY * thread_p, FILE 
 						  LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
-static LOG_PAGE *log_dump_record_schema_modification_lock (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-							   LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_locked_object (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+						LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
 				  LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p);
 static void log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -7295,15 +7295,16 @@ log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_L
 }
 
 static LOG_PAGE *
-log_dump_record_schema_modification_lock (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-					  LOG_PAGE * log_page_p)
+log_dump_record_locked_object (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_LOCKED_OBJECT *log_rec;
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*log_rec), log_lsa, log_page_p);
   log_rec = ((LOG_REC_LOCKED_OBJECT *) ((char *) log_page_p->area + log_lsa->offset));
-  fprintf (out_fp, ", classoid = %d|%d|%d\n", OID_AS_ARGS (&log_rec->classoid));
+  fprintf (out_fp, ", classoid = %d|%d|%d", OID_AS_ARGS (&log_rec->classoid));
+  fprintf (out_fp, ", oid = %d|%d|%d", OID_AS_ARGS (&log_rec->oid));
+  fprintf (out_fp, ", lock = %s\n", LOCK_TO_LOCKMODE_STRING (log_rec->lock_mode));
 
   return log_page_p;
 }
@@ -7412,7 +7413,7 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
       break;
 
     case LOG_LOCKED_OBJECT:
-      log_page_p = log_dump_record_schema_modification_lock (thread_p, out_fp, log_lsa, log_page_p);
+      log_page_p = log_dump_record_locked_object (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_2PC_COMMIT_DECISION:
