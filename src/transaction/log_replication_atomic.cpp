@@ -240,7 +240,7 @@ namespace cublog
 	    const LOG_REC_LOCKED_OBJECT log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_LOCKED_OBJECT> ();
 
-	    if (is_locked_for_ddl (header.trid, &log_rec.classoid))
+	    if (is_locked_for_ddl (header.trid, &log_rec.oid))
 	      {
 		break;
 	      }
