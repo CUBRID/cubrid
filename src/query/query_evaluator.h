@@ -156,7 +156,7 @@ extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES *
 
 extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 #if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
-				   int prefix_len, DB_VALUE * prefix_value,
+				   int compress_len, DB_VALUE * compress_value,
 #endif
 				   FILTER_INFO * filter);
 

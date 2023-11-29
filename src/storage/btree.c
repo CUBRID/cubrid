@@ -4422,7 +4422,7 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 	    }
 	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid) && LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)))
 	    {
-	      n_prefix = pg_prefix->n_prefix;
+	      n_prefix = pg_prefix->n_compress_size;
 	    }
 	}
       else
@@ -4435,13 +4435,13 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 	  assert (pgptr == bts->C_page && VPID_EQ (pgbuf_get_vpid_ptr (pgptr), &bts->C_vpid));
 	  if (VPID_EQ (&(bts->C_vpid), &pg_prefix->vpid) && LSA_EQ (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr)))
 	    {			// same page         
-	      assert (pg_prefix->n_prefix != COMMON_PREFIX_UNKNOWN);
-	      assert (pg_prefix->n_prefix == btree_node_get_common_prefix (thread_p, btid, pgptr));
+	      assert (pg_prefix->n_compress_size != COMMON_PREFIX_UNKNOWN);
+	      assert (pg_prefix->n_compress_size == btree_node_get_common_prefix (thread_p, btid, pgptr));
 
 #if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
 	      return NO_ERROR;
 #else
-	      n_prefix = pg_prefix->n_prefix;
+	      n_prefix = pg_prefix->n_compress_size;
 	      if (n_prefix == 0)
 		{
 		  return NO_ERROR;
@@ -4473,8 +4473,8 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 
       if (pg_prefix)
 	{
-	  lf_key_ptr = &(pg_prefix->prefix_key);
-	  lf_clear_key_ptr = &(pg_prefix->clear_prefix_key);
+	  lf_key_ptr = &(pg_prefix->compress_key);
+	  lf_clear_key_ptr = &(pg_prefix->clear_compress_key);
 	}
       else
 	{
@@ -4490,10 +4490,10 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PT
 
 	  if (pg_prefix)
 	    {
-	      pg_prefix->n_prefix = n_prefix;
+	      pg_prefix->n_compress_size = n_prefix;
 	      VPID_COPY (&(pg_prefix->vpid), &(bts->C_vpid));
 	      LSA_COPY (&pg_prefix->leaf_lsa, pgbuf_get_lsa (pgptr));
-	      btree_clear_key_value (&(pg_prefix->clear_prefix_key), &(pg_prefix->prefix_key));
+	      btree_clear_key_value (&(pg_prefix->clear_compress_key), &(pg_prefix->compress_key));
 	    }
 
 	  if (n_prefix > 0)
@@ -4567,7 +4567,7 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
 {
   INIT_BTREE_PAGE_PREFIX_INFO (pg_prefix_info, reader_type);
 
-  btree_init_temp_key_value (&(pg_prefix_info->clear_prefix_key), &(pg_prefix_info->prefix_key));
+  btree_init_temp_key_value (&(pg_prefix_info->clear_compress_key), &(pg_prefix_info->compress_key));
 
   assert (bts != NULL);
   assert (reader_type == READER_TYPE_RANGE_SCAN || reader_type == READER_TYPE_STAT
@@ -16609,7 +16609,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
     {
       assert (bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN);
 #if  defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
-      check_divided = (bool) (bts->pg_prefix_info->n_prefix > 0);
+      check_divided = (bool) (bts->pg_prefix_info->n_compress_size > 0);
 #endif
       satisfied_range_all = bts->pg_prefix_info->satisfied_range_in_page;
     }
@@ -16637,11 +16637,11 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
       else
 	{
 	  int start_col = 0;
-	  c = btree_compare_key (bts->key_range.upper_key, &bts->pg_prefix_info->prefix_key, bts->btid_int.key_type,
+	  c = btree_compare_key (bts->key_range.upper_key, &bts->pg_prefix_info->compress_key, bts->btid_int.key_type,
 				 1, 1, &start_col);
-	  if (start_col >= bts->pg_prefix_info->n_prefix)
+	  if (start_col >= bts->pg_prefix_info->n_compress_size)
 	    {
-	      start_col = bts->pg_prefix_info->n_prefix;
+	      start_col = bts->pg_prefix_info->n_compress_size;
 	      c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key, bts->btid_int.key_type, 1, 1, &start_col);
 	    }
 	}
@@ -16691,9 +16691,9 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	  DB_VALUE ep;		/* element ptr */
 
 #if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
-	  if (check_divided && (bts->pg_prefix_info->n_prefix > (bts->key_range.num_index_term - 1)))
+	  if (check_divided && (bts->pg_prefix_info->n_compress_size > (bts->key_range.num_index_term - 1)))
 	    {
-	      mkey = db_get_midxkey (&(bts->pg_prefix_info->prefix_key));	// ctshim            
+	      mkey = db_get_midxkey (&(bts->pg_prefix_info->compress_key));	// ctshim            
 	    }
 	  else
 	    {
@@ -16772,8 +16772,8 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	  if (bts->pg_prefix_info)
 	    {
 	      ev_res =
-		eval_key_filter (thread_p, &bts->cur_key, bts->pg_prefix_info->n_prefix,
-				 &bts->pg_prefix_info->prefix_key, bts->key_filter);
+		eval_key_filter (thread_p, &bts->cur_key, bts->pg_prefix_info->n_compress_size,
+				 &bts->pg_prefix_info->compress_key, bts->key_filter);
 	    }
 	  else
 	    {
@@ -16898,9 +16898,9 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
 	      assert (pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN);
 
 	      // j = arr[i]; ctshim  
-	      if (pg_prefix_info->n_prefix > 0 && j < pg_prefix_info->n_prefix)
+	      if (pg_prefix_info->n_compress_size > 0 && j < pg_prefix_info->n_compress_size)
 		{
-		  curr_key = &pg_prefix_info->prefix_key;
+		  curr_key = &pg_prefix_info->compress_key;
 		}
 	    }
 #endif
@@ -20647,8 +20647,9 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 #if 0				// defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
   if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN)
     {
-      btree_make_complete_key_including_prefix (&bts->cur_key, &bts->clear_cur_key, bts->pg_prefix_info->n_prefix,
-						&bts->pg_prefix_info->prefix_key);
+      btree_make_complete_key_including_prefix (&bts->cur_key, &bts->clear_cur_key,
+						bts->pg_prefix_info->n_compress_size,
+						&bts->pg_prefix_info->compress_key);
     }
 #endif
 
@@ -20810,11 +20811,11 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   /* copy prefix of current key into target key */
   i = 0;
   if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN
-      && bts->pg_prefix_info->n_prefix > 0)
+      && bts->pg_prefix_info->n_compress_size > 0)
     {
       while (i < prefix_len)
 	{
-	  pr_midxkey_get_element_nocopy (&bts->pg_prefix_info->prefix_key.data.midxkey, i, &new_key_dbvals[i], NULL,
+	  pr_midxkey_get_element_nocopy (&bts->pg_prefix_info->compress_key.data.midxkey, i, &new_key_dbvals[i], NULL,
 					 NULL);
 	  dom = dom->next;	/* get to coerce domain */
 	  i++;
@@ -25145,7 +25146,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 #if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
   assert (!DB_IS_NULL (&bts->cur_key) ||
 	  (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN
-	   && bts->pg_prefix_info->n_prefix > 0));
+	   && bts->pg_prefix_info->n_compress_size > 0));
 #else
   assert (!DB_IS_NULL (&bts->cur_key));
 #endif
@@ -25376,8 +25377,9 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 #if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
       if (do_make_complete_key)
 	{
-	  btree_make_complete_key_including_prefix (&bts->cur_key, &bts->clear_cur_key, bts->pg_prefix_info->n_prefix,
-						    &bts->pg_prefix_info->prefix_key);
+	  btree_make_complete_key_including_prefix (&bts->cur_key, &bts->clear_cur_key,
+						    bts->pg_prefix_info->n_compress_size,
+						    &bts->pg_prefix_info->compress_key);
 	}
 #endif
 
@@ -25520,8 +25522,8 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	      if (do_make_complete_key)
 		{
 		  btree_make_complete_key_including_prefix (&bts->cur_key, &bts->clear_cur_key,
-							    bts->pg_prefix_info->n_prefix,
-							    &bts->pg_prefix_info->prefix_key);
+							    bts->pg_prefix_info->n_compress_size,
+							    &bts->pg_prefix_info->compress_key);
 		}
 #endif
 	      bts->read_keys++;
@@ -25646,7 +25648,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
 #if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
   bool prefix_key_null = true;
   if (bts->pg_prefix_info && bts->pg_prefix_info->reader_type == READER_TYPE_RANGE_SCAN
-      && bts->pg_prefix_info->n_prefix > 0)
+      && bts->pg_prefix_info->n_compress_size > 0)
     {
       prefix_key_null = false;
     }

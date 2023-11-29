@@ -180,9 +180,9 @@ typedef struct
   READER_TYPE reader_type;
   VPID vpid;
   LOG_LSA leaf_lsa;
-  int n_prefix;			// size of common prefix key parts.
-  DB_VALUE prefix_key;		// common prefix key part 
-  bool clear_prefix_key;
+  int n_compress_size;		// size of common prefix key parts.
+  DB_VALUE compress_key;	// common prefix key part 
+  bool clear_compress_key;
 
   bool use_comparing;		// key compare  
   bool use_index_column;	// result column, null check or filtering 
@@ -191,21 +191,21 @@ typedef struct
 } BTREE_PAGE_PREFIX_INFO;
 
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix, type)   do {  \
-    assert((pg_prefix) != NULL);                       \
-    (pg_prefix)->reader_type = (type);                 \
-    (pg_prefix)->use_comparing = true;                 \
-    (pg_prefix)->use_index_column = true;              \
-    (pg_prefix)->satisfied_range_in_page = false;      \
-    VPID_SET_NULL (&((pg_prefix)->vpid));              \
-    LSA_SET_NULL(&((pg_prefix)->leaf_lsa));            \
-    (pg_prefix)->n_prefix = COMMON_PREFIX_UNKNOWN;     \
-    (pg_prefix)->n_first_check_pos = 0;                \
-    btree_init_temp_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
+    assert((pg_prefix) != NULL);                             \
+    (pg_prefix)->reader_type = (type);                       \
+    (pg_prefix)->use_comparing = true;                       \
+    (pg_prefix)->use_index_column = true;                    \
+    (pg_prefix)->satisfied_range_in_page = false;            \
+    VPID_SET_NULL (&((pg_prefix)->vpid));                    \
+    LSA_SET_NULL(&((pg_prefix)->leaf_lsa));                  \
+    (pg_prefix)->n_compress_size = COMMON_PREFIX_UNKNOWN;    \
+    (pg_prefix)->n_first_check_pos = 0;                      \
+    btree_init_temp_key_value (&(pg_prefix)->clear_compress_key, &(pg_prefix)->compress_key); \
 } while(0)
 
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {  \
     if((pg_prefix))  {                                 \
-       btree_clear_key_value (&(pg_prefix)->clear_prefix_key, &(pg_prefix)->prefix_key); \
+       btree_clear_key_value (&(pg_prefix)->clear_compress_key, &(pg_prefix)->compress_key); \
        (pg_prefix)->reader_type = READER_TYPE_NONE;    \
     }                                                  \
 } while(0)
