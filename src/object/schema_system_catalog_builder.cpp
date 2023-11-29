@@ -85,9 +85,7 @@ namespace cubschema
 	const char *name = attr.name.data ();
 	const char *type = attr.type.data ();
 
-	switch (attr.kind)
-	  {
-	  case attribute_kind::COLUMN:
+	if (attr.kind == attribute_kind::COLUMN)
 	  {
 	    error_code = smt_add_attribute (def, name, type, NULL);
 	    if (error_code != NO_ERROR)
@@ -103,13 +101,13 @@ namespace cubschema
 		error_code = smt_set_attribute_default (def, name, 0, (DB_VALUE *) &default_value, NULL);
 	      }
 	  }
-	  break;
-	  case attribute_kind::CLASS_METHOD:
+	else if (attr.kind == attribute_kind::CLASS_METHOD)
+	  {
 	    error_code = smt_add_class_method (def, name, type);
-	    break;
-	  default:
+	  }
+	else
+	  {
 	    error_code = ER_FAILED;
-	    break;
 	  }
 
 	if (error_code != NO_ERROR)
@@ -224,17 +222,17 @@ namespace cubschema
 	const char *name = attr.name.data ();
 	const char *type = attr.type.data ();
 
-	switch (attr.kind)
+	if (attr.kind == attribute_kind::COLUMN)
 	  {
-	  case attribute_kind::COLUMN:
 	    error_code = db_add_attribute (class_mop, name, type, NULL);
-	    break;
-	  case attribute_kind::QUERY_SPEC:
-	    error_code = db_add_query_spec (class_mop, name);
-	    break;
-	  default:
+	  }
+	else if (attr.kind == attribute_kind::QUERY_SPEC)
+	  {
+	    error_code = db_add_query_spec (class_mop, attr.name.data ());
+	  }
+	else
+	  {
 	    error_code = ER_FAILED;
-	    break;
 	  }
 
 	if (error_code != NO_ERROR)
