@@ -1856,11 +1856,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   /* remove always-true term */
   while ((expr = ((expr_prev) ? expr_prev->next : *orgp)))
     {
+      PT_OP_TYPE op = expr->info.expr.op;
       cut_off = false;
       opd1 = expr->info.expr.arg1;
       opd2 = expr->info.expr.arg2;
 
-      if (opd1->node_type == PT_VALUE && opd2->node_type == PT_VALUE)
+      if (opd1 && opd2 && op == PT_EQ && opd1->node_type == PT_VALUE && opd2->node_type == PT_VALUE)
 	{
 	  domain = pt_xasl_node_to_domain (parser, expr);
 	  qualifier = expr->info.expr.qualifier;
