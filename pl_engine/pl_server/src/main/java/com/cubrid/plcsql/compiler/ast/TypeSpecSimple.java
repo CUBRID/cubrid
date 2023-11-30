@@ -91,7 +91,7 @@ public class TypeSpecSimple extends TypeSpec {
 
     public static TypeSpecSimple BOOLEAN =
             new TypeSpecSimple("Boolean", "java.lang.Boolean", IDX_BOOLEAN, null);
-    public static TypeSpecSimple STRING =
+    public static TypeSpecSimple STRING_ANY = // CHAR or VARCHAR with any precision (length)
             new TypeSpecSimple("String", "java.lang.String", IDX_STRING, "cast(? as string)");
     public static TypeSpecSimple NUMERIC_ANY = // numeric with any precision and scale
             new TypeSpecSimple(
@@ -177,7 +177,7 @@ public class TypeSpecSimple extends TypeSpec {
     static {
         register(OBJECT);
         register(BOOLEAN);
-        register(STRING);
+        register(STRING_ANY);
         register(NUMERIC_ANY);
         register(SHORT);
         register(INT);

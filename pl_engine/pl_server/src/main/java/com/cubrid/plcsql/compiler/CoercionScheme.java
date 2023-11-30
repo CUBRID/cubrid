@@ -324,7 +324,7 @@ public enum CoercionScheme {
         public List<TypeSpec> getCoercions(
                 List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
             // ||, like
-            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.STRING);
+            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.STRING_ANY);
         }
     },
 
@@ -373,11 +373,11 @@ public enum CoercionScheme {
                 TypeSpecSimple.BOOLEAN;
 
         compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_NULL] =
-                TypeSpecSimple.STRING;
+                TypeSpecSimple.STRING_ANY;
         compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_OBJECT] =
-                TypeSpecSimple.STRING;
+                TypeSpecSimple.STRING_ANY;
         compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] =
-                TypeSpecSimple.STRING;
+                TypeSpecSimple.STRING_ANY;
 
         compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.SHORT;
         compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_OBJECT] =

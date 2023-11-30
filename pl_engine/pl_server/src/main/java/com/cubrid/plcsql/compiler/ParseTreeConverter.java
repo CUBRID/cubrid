@@ -319,7 +319,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (precision < 1 || precision > 38) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s067
-                            "precision must be between 1 and 38 including the bounds");
+                            "precision must be one of the integers 1 to 38");
                 }
 
                 if (ctx.scale != null) {
@@ -327,7 +327,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     if (scale < 0 || scale > precision) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s054
-                                "scale must be between zero and the precision including the bounds");
+                                "scale must be one of the integers zero to the precision");
                     }
                 }
             }
@@ -341,9 +341,45 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public TypeSpecSimple visitChar_type(Char_typeContext ctx) {
-        // TODO: consider length
-        return TypeSpecSimple.STRING;
+    public TypeSpecChar visitChar_type(Char_typeContext ctx) {
+        int length = 1; // default
+
+        try {
+            if (ctx.length != null) {
+                length = Integer.parseInt(ctx.length.getText());
+                if (length < 1 || length > TypeSpecChar.MAX_LEN) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s069
+                            "length must be one of the integers 1 to " + TypeSpecChar.MAX_LEN);
+                }
+            }
+        } catch (NumberFormatException e) {
+            assert false; // by syntax
+            throw new RuntimeException("unreachable");
+        }
+
+        return TypeSpecChar.getInstance(length);
+    }
+
+    @Override
+    public TypeSpecVarchar visitVarchar_type(Varchar_typeContext ctx) {
+        int length = TypeSpecVarchar.MAX_LEN; // default
+
+        try {
+            if (ctx.length != null) {
+                length = Integer.parseInt(ctx.length.getText());
+                if (length < 1 || length > TypeSpecVarchar.MAX_LEN) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx), // s070
+                            "length must be one of the integers 1 to " + TypeSpecVarchar.MAX_LEN);
+                }
+            }
+        } catch (NumberFormatException e) {
+            assert false; // by syntax
+            throw new RuntimeException("unreachable");
+        }
+
+        return TypeSpecVarchar.getInstance(length);
     }
 
     @Override
@@ -422,20 +458,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             opStr = "Lt";
         } else if (op.GT() != null) {
             opStr = "Gt";
-            /* TODO: restore later
-            } else if (op.SETEQ() != null) {
-                opStr = "SetEq";
-            } else if (op.SETNEQ() != null) {
-                opStr = "SetNeq";
-            } else if (op.SUPERSET() != null) {
-                opStr = "Superset";
-            } else if (op.SUBSET() != null) {
-                opStr = "Subset";
-            } else if (op.SUPERSETEQ() != null) {
-                opStr = "SupersetEq";
-            } else if (op.SUBSETEQ() != null) {
-                opStr = "SubsetEq";
-             */
         }
         if (opStr == null) {
             assert false : "unreachable"; // by syntax

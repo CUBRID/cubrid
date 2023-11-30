@@ -30,9 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 
 public class TypeSpecNumeric extends TypeSpecSimple {
 
@@ -50,8 +49,7 @@ public class TypeSpecNumeric extends TypeSpecSimple {
         TypeSpecNumeric ret = instances.get(key);
         if (ret == null) {
             String typicalValueStr = String.format("cast(? as numeric(%d, %d))", precision, scale);
-            ret = new TypeSpecNumeric(
-                    "Numeric", "java.math.BigDecimal", typicalValueStr, precision, scale);
+            ret = new TypeSpecNumeric(typicalValueStr, precision, scale);
             instances.put(key, ret);
         }
 
@@ -64,10 +62,9 @@ public class TypeSpecNumeric extends TypeSpecSimple {
 
     private static final Map<Integer, TypeSpecNumeric> instances = new HashMap<>();
 
-    private TypeSpecNumeric(String plcName, String fullJavaType, String typicalValueStr, int precision, short scale) {
-        super(plcName, fullJavaType, IDX_NUMERIC, typicalValueStr);
+    private TypeSpecNumeric(String typicalValueStr, int precision, short scale) {
+        super("Numeric", "java.math.BigDecimal", IDX_NUMERIC, typicalValueStr);
         this.precision = precision;
         this.scale = scale;
     }
-
 }

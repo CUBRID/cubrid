@@ -43,8 +43,10 @@ import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
@@ -85,16 +87,16 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitCaseExpr(CaseExpr node) {
         TypeSpec caseValType = visit(node.val);
-        assert caseValTypes != null;
-        caseValTypes.add(caseValType);
+        assert caseComparedTypes != null;
+        caseComparedTypes.add(caseValType);
         return visit(node.expr);
     }
 
     @Override
     public TypeSpec visitCaseStmt(CaseStmt node) {
         TypeSpec caseValType = visit(node.val);
-        assert caseValTypes != null;
-        caseValTypes.add(caseValType);
+        assert caseComparedTypes != null;
+        caseComparedTypes.add(caseValType);
         visitNodeList(node.stmts);
         return null;
     }
@@ -231,7 +233,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert outCoercions.size() == 3;
 
         if (op.hasTimestampParam()) {
-            node.setForTimestampParam();
+            node.setOpExtension("Timestamp");
+        } else if (targetType instanceof TypeSpecChar
+                && lowerType instanceof TypeSpecChar
+                && upperType instanceof TypeSpecChar) {
+            node.setOpExtension("Char");
         }
 
         node.target.setCoercion(outCoercions.get(0));
@@ -239,6 +245,19 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         node.upperBound.setCoercion(outCoercions.get(2));
 
         return TypeSpecSimple.BOOLEAN;
+    }
+
+    private static final Set<String> comparisonOp = new HashSet<>();
+
+    static {
+        // see ParseTreeConverter.visitRel_exp()
+        comparisonOp.add("Eq");
+        comparisonOp.add("NullSafeEq");
+        comparisonOp.add("Neq");
+        comparisonOp.add("Le");
+        comparisonOp.add("Ge");
+        comparisonOp.add("Lt");
+        comparisonOp.add("Gt");
     }
 
     @Override
@@ -258,7 +277,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert outCoercions.size() == 2;
 
         if (binOp.hasTimestampParam()) {
-            node.setForTimestampParam();
+            node.setOpExtension("Timestamp");
+        } else if (comparisonOp.contains(node.opStr)
+                && leftType instanceof TypeSpecChar
+                && rightType instanceof TypeSpecChar) {
+            node.setOpExtension("Char");
         }
 
         node.left.setCoercion(outCoercions.get(0));
@@ -270,14 +293,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprCase(ExprCase node) {
 
-        TypeSpec saveCaseSelectorType = caseSelectorType;
-        List<TypeSpec> saveCaseValTypes = caseValTypes;
-        caseValTypes = new ArrayList<>();
+        List<TypeSpec> saveCaseComparedTypes = caseComparedTypes;
+        caseComparedTypes = new ArrayList<>();
         List<TypeSpec> caseExprTypes = new ArrayList<>();
 
         // visit
-        caseSelectorType = visit(node.selector);
-        caseValTypes.add(caseSelectorType);
+        TypeSpec selectorType = visit(node.selector);
+        caseComparedTypes.add(selectorType);
 
         TypeSpec commonType = null;
         for (CaseExpr ce : node.whenParts.nodes) {
@@ -301,15 +323,26 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             caseExprTypes.add(ty);
         }
 
+        boolean comparedAreChars = true;
+        for (TypeSpec ts : caseComparedTypes) {
+            comparedAreChars = comparedAreChars && (ts instanceof TypeSpecChar);
+        }
+        if (comparedAreChars) {
+            for (CaseExpr ce : node.whenParts.nodes) {
+                ce.setOpExtension("Char");
+            }
+        }
+
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(outCoercions, "opIn", caseValTypes.toArray(TYPESPEC_ARR));
+                symbolStack.getOperator(
+                        outCoercions, "opIn", caseComparedTypes.toArray(TYPESPEC_ARR));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s226
                     "one of the values does not have a comparable type");
         }
-        assert outCoercions.size() == caseValTypes.size();
+        assert outCoercions.size() == caseComparedTypes.size();
 
         // set coercions of selector, case values, and case expressions
         node.selector.setCoercion(outCoercions.get(0));
@@ -336,8 +369,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         node.setSelectorType(op.paramList.nodes.get(0).typeSpec);
         node.setResultType(commonType);
 
-        caseSelectorType = saveCaseSelectorType; // restore
-        caseValTypes = saveCaseValTypes; // restore
+        caseComparedTypes = saveCaseComparedTypes; // restore
 
         return commonType;
     }
@@ -488,11 +520,13 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         TypeSpec targetType = visit(node.target);
         args.add(node.target);
         argTypes.add(targetType);
+        boolean argsAreChars = (targetType instanceof TypeSpecChar);
 
         for (Expr e : node.inElements.nodes) {
             TypeSpec eType = visit(e);
             args.add(e);
             argTypes.add(eType);
+            argsAreChars = argsAreChars && (eType instanceof TypeSpecChar);
         }
         int len = args.size();
 
@@ -506,7 +540,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         assert outCoercions.size() == len;
 
         if (op.hasTimestampParam()) {
-            node.setForTimestampParam();
+            node.setOpExtension("Timestamp");
+        } else if (argsAreChars) {
+            node.setOpExtension("Char");
         }
 
         for (int i = 0; i < len; i++) {
@@ -521,7 +557,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitExprLike(ExprLike node) {
         TypeSpec targetType = visit(node.target);
-        Coercion c = Coercion.getCoercion(targetType, TypeSpecSimple.STRING);
+        Coercion c = Coercion.getCoercion(targetType, TypeSpecSimple.STRING_ANY);
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.target.ctx), // s213
@@ -608,7 +644,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprStr(ExprStr node) {
-        return TypeSpecSimple.STRING;
+        return TypeSpecChar.getInstance(TypeSpecChar.MAX_LEN);
     }
 
     @Override
@@ -656,7 +692,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprSqlErrm(ExprSqlErrm node) {
-        return TypeSpecSimple.STRING;
+        return TypeSpecSimple.STRING_ANY;
     }
 
     @Override
@@ -707,27 +743,37 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     @Override
     public TypeSpec visitStmtCase(StmtCase node) {
 
-        TypeSpec saveCaseSelectorType = caseSelectorType;
-        List<TypeSpec> saveCaseValTypes = caseValTypes;
-        caseValTypes = new ArrayList<>();
+        List<TypeSpec> saveCaseComparedTypes = caseComparedTypes;
+        caseComparedTypes = new ArrayList<>();
 
-        caseSelectorType = visit(node.selector);
-        caseValTypes.add(caseSelectorType);
+        TypeSpec selectorType = visit(node.selector);
+        caseComparedTypes.add(selectorType);
 
         visitNodeList(node.whenParts);
         if (node.elsePart != null) {
             visitNodeList(node.elsePart);
         }
 
+        boolean comparedAreChars = true;
+        for (TypeSpec ts : caseComparedTypes) {
+            comparedAreChars = comparedAreChars && (ts instanceof TypeSpecChar);
+        }
+        if (comparedAreChars) {
+            for (CaseStmt cs : node.whenParts.nodes) {
+                cs.setOpExtension("Char");
+            }
+        }
+
         List<Coercion> outCoercions = new ArrayList<>();
         DeclFunc op =
-                symbolStack.getOperator(outCoercions, "opIn", caseValTypes.toArray(TYPESPEC_ARR));
+                symbolStack.getOperator(
+                        outCoercions, "opIn", caseComparedTypes.toArray(TYPESPEC_ARR));
         if (op == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.ctx), // s201
                     "one of the values does not have a comparable type");
         }
-        assert outCoercions.size() == caseValTypes.size();
+        assert outCoercions.size() == caseComparedTypes.size();
 
         // set coercions of selector, case values, and case expressions
         node.selector.setCoercion(outCoercions.get(0));
@@ -736,12 +782,11 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             cs.val.setCoercion(outCoercions.get(i));
             i++;
         }
-        assert i == caseValTypes.size();
+        assert i == caseComparedTypes.size();
 
         node.setSelectorType(op.paramList.nodes.get(0).typeSpec);
 
-        caseSelectorType = saveCaseSelectorType; // restore
-        caseValTypes = saveCaseValTypes; // restore
+        caseComparedTypes = saveCaseComparedTypes; // restore
 
         return null;
     }
@@ -836,10 +881,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
         // type of sql must be STRING
         TypeSpec sqlType = visit(node.sql);
-        if (!sqlType.equals(TypeSpecSimple.STRING)) {
+        if (sqlType.simpleTypeIdx != TypeSpecSimple.IDX_STRING) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.sql.ctx), // s221
-                    "SQL in the EXECUTE IMMEDIATE statement must be of STRING type");
+                    "SQL in the EXECUTE IMMEDIATE statement must be of a string type");
         }
 
         // check types of expressions in the USING clause
@@ -970,10 +1015,10 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
     public TypeSpec visitStmtForExecImmeLoop(StmtForExecImmeLoop node) {
 
         TypeSpec sqlType = visit(node.sql);
-        if (!sqlType.equals(TypeSpecSimple.STRING)) {
+        if (sqlType.simpleTypeIdx != TypeSpecSimple.IDX_STRING) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.sql.ctx), // s225
-                    "SQL in EXECUTE IMMEDIATE statements must be of STRING type");
+                    "SQL in EXECUTE IMMEDIATE statements must be of a string type");
         }
 
         // check types of expressions in the USING clause
@@ -1059,7 +1104,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         }
 
         ty = visit(node.errMsg);
-        if (!ty.equals(TypeSpecSimple.STRING)) {
+        if (ty.simpleTypeIdx != TypeSpecSimple.IDX_STRING) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.errMsg.ctx), // s218
                     "error messages must be a string");
@@ -1115,8 +1160,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     private SymbolStack symbolStack;
 
-    private TypeSpec caseSelectorType;
-    private List<TypeSpec> caseValTypes;
+    private List<TypeSpec> caseComparedTypes;
 
     private TypeSpec getCommonType(TypeSpec former, TypeSpec delta) {
         if (former == null) {

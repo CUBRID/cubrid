@@ -60,7 +60,39 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static String checkStrLength(boolean isChar, int length, String val) {
+
+        if (val == null) {
+            return null;
+        }
+
+        assert length >= 1;
+
+        if (val.length() > length) {
+            throw new VALUE_ERROR("string does not fit in the target type's length");
+        }
+
+        if (isChar) {
+            int d = length - val.length();
+            if (d > 0) {
+
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < d; i++) {
+                    sb.append(" ");
+                }
+                val = val + sb.toString();
+            }
+        }
+
+        return val;
+    }
+
     public static BigDecimal checkPrecision(int prec, short scale, BigDecimal val) {
+
+        if (val == null) {
+            return null;
+        }
+
         // ParseTreeConverter.visitNumeric_type() guarantees the following assertions
         assert prec >= 1 && prec <= 38;
         assert scale >= 0 && scale <= prec;
@@ -672,6 +704,17 @@ public class SpLib {
         return commonOpEq(l, r);
     }
 
+    public static Boolean opEqChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.equals(r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(BigDecimal l, BigDecimal r) {
         return commonOpEq(l, r);
@@ -753,6 +796,19 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(String l, String r) {
         return commonOpNullSafeEq(l, r);
+    }
+
+    public static Boolean opNullSafeEqChar(String l, String r) {
+        if (l == null) {
+            return (r == null);
+        } else if (r == null) {
+            return false;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.equals(r);
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -851,6 +907,17 @@ public class SpLib {
         return commonOpNeq(l, r);
     }
 
+    public static Boolean opNeqChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return !l.equals(r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(BigDecimal l, BigDecimal r) {
         return commonOpNeq(l, r);
@@ -935,6 +1002,17 @@ public class SpLib {
         return commonOpLe(l, r);
     }
 
+    public static Boolean opLeChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) <= 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Short l, Short r) {
         return commonOpLe(l, r);
@@ -1015,6 +1093,17 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(String l, String r) {
         return commonOpGe(l, r);
+    }
+
+    public static Boolean opGeChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) >= 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1099,6 +1188,17 @@ public class SpLib {
         return commonOpLt(l, r);
     }
 
+    public static Boolean opLtChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) < 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Short l, Short r) {
         return commonOpLt(l, r);
@@ -1180,6 +1280,17 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(String l, String r) {
         return commonOpGt(l, r);
+    }
+
+    public static Boolean opGtChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) > 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1268,6 +1379,18 @@ public class SpLib {
         if (o == null || lower == null || upper == null) {
             return null;
         }
+        return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
+    }
+
+    public static Boolean opBetweenChar(String o, String lower, String upper) {
+        if (o == null || lower == null || upper == null) {
+            return null;
+        }
+
+        o = rtrim(o);
+        lower = rtrim(lower);
+        upper = rtrim(upper);
+
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
@@ -1381,6 +1504,28 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(String o, String... arr) {
         return commonOpIn(o, (Object[]) arr);
+    }
+
+    public static Boolean opInChar(String o, String... arr) {
+        assert arr != null; // guaranteed by the syntax
+
+        if (o == null) {
+            return null;
+        }
+        o = rtrim(o);
+
+        boolean nullFound = false;
+        for (String p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                p = rtrim(p);
+                if (o.equals(p)) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null : false;
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -3175,6 +3320,20 @@ public class SpLib {
 
     private static final DateFormat AM_PM = new SimpleDateFormat("a", Locale.US);
     private static final Date ZERO_DATE = new Date(0L);
+
+    private static String rtrim(String s) {
+        assert s != null;
+
+        char[] cArr = s.toCharArray();
+        int i, len = cArr.length;
+        for (i = len - 1; i >= 0; i--) {
+            if (cArr[i] != ' ') {
+                break;
+            }
+        }
+
+        return new String(cArr, 0, i + 1);
+    }
 
     private static Boolean commonOpEq(Object l, Object r) {
         if (l == null || r == null) {

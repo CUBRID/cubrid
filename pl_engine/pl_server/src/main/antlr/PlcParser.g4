@@ -492,6 +492,7 @@ type_spec
 native_datatype
     : numeric_type
     | char_type
+    | varchar_type
     | simple_type
     ;
 
@@ -500,12 +501,16 @@ numeric_type
     ;
 
 char_type
-    : (CHAR | CHARACTER | VARCHAR | CHAR VARYING | CHARACTER VARYING) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    : (CHAR | CHARACTER) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    ;
+
+varchar_type
+    : (VARCHAR | CHAR VARYING | CHARACTER VARYING) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    | STRING
     ;
 
 simple_type
     : BOOLEAN
-    | STRING
     | SHORT | SMALLINT
     | INT | INTEGER
     | BIGINT
