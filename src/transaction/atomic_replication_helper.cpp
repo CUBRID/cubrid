@@ -713,9 +713,10 @@ namespace cublog
 	      }
 	  }
 	// part of scenario (3)
-	// atomic replication sequence within a postpone sequence
+	// atomic replication sequence within a postpone sequence or logical compensation sequence
 	else if (LOG_SYSOP_END == last_entry.m_rectype
-		 && LOG_SYSOP_END_LOGICAL_RUN_POSTPONE == last_entry.m_sysop_end_type)
+		 && (LOG_SYSOP_END_LOGICAL_RUN_POSTPONE == last_entry.m_sysop_end_type
+		     || LOG_SYSOP_END_LOGICAL_COMPENSATE == last_entry.m_sysop_end_type))
 	  {
 	    const atomic_log_entry_vector_type::const_iterator last_but_one_entry_it = (last_entry_it - 1);
 	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
