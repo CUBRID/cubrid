@@ -1905,7 +1905,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		      if (DB_VALUE_TYPE (&dbval_res) == DB_TYPE_INTEGER && db_get_int (&dbval_res) == 1)
 			{
 			  cut_off = true;
-                          break;
+			  break;
 			}
 		    }
 		}
