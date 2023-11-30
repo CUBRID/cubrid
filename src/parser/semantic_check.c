@@ -1957,7 +1957,7 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att, const PT_NOD
   for (specs = db_get_query_specs (vcls); specs && (spec = db_query_spec_string (specs));
        specs = db_query_spec_next (specs))
     {
-      if (spec && spec[0] == '-' && spec[1] == '-')
+      if (spec && spec[0] == '-')	/* check user query */
 	{
 	  continue;
 	}
@@ -7411,9 +7411,9 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
       while (db_query_spec)
 	{
 	  query_spec_string = db_query_spec_string (db_query_spec);
-	  if (query_spec_string[0] == '-' && query_spec_string[1] == '-')
+	  if (query_spec_string[0] == '-')	/* check user query */
 	    {
-	      goto next;
+	      goto next_query;
 	    }
 	  result = parser_parse_string_use_sys_charset (query_cache, query_spec_string);
 
@@ -7430,7 +7430,7 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	      *continue_walk = PT_STOP_WALK;
 	      break;
 	    }
-	next:
+	next_query:
 	  db_query_spec = db_query_spec_next (db_query_spec);
 	}
       parser_free_parser (query_cache);

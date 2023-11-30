@@ -48,8 +48,6 @@
           } \
 	} while (0)
 
-#define MAX_QUERY_BUFFER_SIZE 4096
-
 const int LOAD_INDEX_MIN_SORT_BUFFER_PAGES = 8192;
 const char *LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING = "8192";
 const char *LOADDB_LOG_FILENAME_SUFFIX = "loaddb.log";

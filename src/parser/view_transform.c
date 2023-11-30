@@ -6662,7 +6662,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
     {
       /* parse and compile the next query spec */
       query_spec_string = db_query_spec_string (db_query_spec);
-      if (query_spec_string[0] == '-' && query_spec_string[1] == '-')
+      if (query_spec_string[0] == '-')	/* check user query */
 	{
 	  goto next_query;
 	}

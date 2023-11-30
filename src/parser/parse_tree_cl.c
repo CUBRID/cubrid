@@ -75,8 +75,6 @@
            }                                 \
       } while (0)
 
-#define MAX_QUERY_BUFFER_SIZE 4096
-
 typedef struct pt_lambda_arg PT_LAMBDA_ARG;
 struct pt_lambda_arg
 {

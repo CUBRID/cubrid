@@ -8320,9 +8320,6 @@ do_add_resolutions (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const P
   return (error);
 }
 
-extern char *g_view_string;
-extern int stream_ptr;
-
 /*
  * add_query_to_virtual_class() - Adds a query to a virtual class object
  *   return: Error code

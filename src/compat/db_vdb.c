@@ -3637,7 +3637,12 @@ db_validate (DB_OBJECT * vc)
 	  for (specs = db_get_query_specs (vc); specs; specs = db_query_spec_next (specs))
 	    {
 	      s = db_query_spec_string (specs);
-	      if (s && s[0] == '-' && s[1] == '-')
+	      if (s && s[0] == '-')	/* check user query */
+		{
+		  /* skip valiadtion for user query */
+		  continue;
+		}
+	      if (s)
 		{
 		  retval = db_validate_query_spec (vc, s);
 		  if (retval < 0)
