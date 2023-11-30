@@ -239,8 +239,14 @@ namespace cublog
 	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
 
+	    if (is_locked_for_ddl (header.trid, &log_rec.classoid))
+	      {
+		break;
+	      }
+
 	    acquire_lock_for_ddl (thread_entry, header.trid, &log_rec.classoid);
 
+	    bookkeep_classname_for_ddl (thread_entry, &log_rec.classoid);
 	    break;
 	  }
 	  default:
@@ -377,10 +383,9 @@ namespace cublog
   {
     assert (m_locked_classes.count (trid) > 0);
 
-    auto [begin, end] = m_locked_classes.equal_range (trid);
-    for (auto it = begin; it != end; it++)
+    for (auto classoid : m_locked_classes[trid])
       {
-	lock_unlock_object_and_cleanup (&thread_entry, & (it->second), oid_Root_class_oid, SCH_M_LOCK);
+	lock_unlock_object_and_cleanup (&thread_entry, &classoid, oid_Root_class_oid, SCH_M_LOCK);
       }
 
     m_locked_classes.erase (trid);
@@ -402,19 +407,101 @@ namespace cublog
 	assert_release (false);
       }
 
-#if !defined (NDEBUG)
-    /* there will be no duplicated object in the map */
-    auto [begin, end] = m_locked_classes.equal_range (trid);
-    if (std::count_if (begin, end, [classoid] (const auto &it)
-    {
-      return it.second == *classoid;
-    }) > 0)
-    {
-      assert (false);
-    }
-#endif
+    m_locked_classes[trid].emplace (*classoid);
+  }
 
-    m_locked_classes.emplace (trid, *classoid);
+  void
+  atomic_replicator::bookkeep_classname_for_ddl (cubthread::entry &thread_entry, const OID *classoid)
+  {
+    assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
+
+    char *classname = nullptr;
+    int error_code = NO_ERROR;
+
+    error_code = heap_get_class_name (&thread_entry, classoid, &classname);
+    if (error_code == NO_ERROR)
+      {
+	assert (classname != nullptr);
+	m_classname_map.emplace (*classoid, std::string (classname));
+
+	free_and_init (classname);
+      }
+    else if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+      {
+	assert (classname == nullptr);
+	/* If there is no class record in the heap, it means it is creating the class */
+      }
+    else
+      {
+	assert (false);
+      }
+  }
+
+  void
+  atomic_replicator::update_classname_cache_for_ddl (cubthread::entry &thread_entry, const OID *classoid)
+  {
+    /* update locator_Mht_classnames only if needed */
+    char *classname = nullptr;
+    int error_code = NO_ERROR;
+
+    auto it = m_classname_map.find (*classoid);
+
+    error_code = heap_get_class_name (&thread_entry, classoid, &classname);
+    if (error_code == NO_ERROR)
+      {
+	assert (classname != nullptr);
+	if (it == m_classname_map.end ())
+	  {
+	    error_code = locator_put_classname_entry (&thread_entry, classname, classoid);
+	    if (error_code != NO_ERROR)
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to put entry for (%s) to locator_Mht_classnames for classoid\n",
+			       classname);
+	      }
+	  }
+	else
+	  {
+	    if (it->second != classname)
+	      {
+		error_code = locator_update_classname_entry (&thread_entry, it->second.c_str(), classname);
+		if (error_code != NO_ERROR)
+		  {
+		    _er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to update entry for (%s) to locator_Mht_classnames for classoid\n",
+				   classname);
+		  }
+	      }
+	  }
+
+	free_and_init (classname);
+      }
+    else if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+      {
+	assert (classname == nullptr);
+	/* If there is no class record in the heap, it means that the class (table/view) has been dropped during the transaction */
+
+	if (it != m_classname_map.end ())
+	  {
+	    error_code = locator_remove_classname_entry (&thread_entry, it->second.c_str ());
+	    if (error_code != NO_ERROR)
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to remove entry for (%s) from locator_Mht_classnames for classoid\n",
+			       it->second.c_str ());
+	      }
+	  }
+	else
+	  {
+	    /* This is when the table is CREATEd and DROPped within the same transaction */
+	  }
+      }
+    else
+      {
+	assert (false);
+      }
+
+    if (it != m_classname_map.end ())
+      {
+	m_classname_map.erase (it);
+      }
   }
 
   void
@@ -422,21 +509,19 @@ namespace cublog
   {
     assert (m_locked_classes.count (trid) > 0);
 
-    /* TODO:
-     * This is to update locator_Mht_classnames which contains class names,
-     * and it will be replaced with a function to update specific class name only if needed.
-     */
-    locator_initialize (&thread_entry);
-
-    auto [begin, end] = m_locked_classes.equal_range (trid);
-    for (auto it = begin; it != end; it++)
+    for (auto classoid : m_locked_classes[trid])
       {
-	auto classoid = it->second;
-
+	update_classname_cache_for_ddl (thread_entry, &classoid);
 	(void) heap_classrepr_decache (&thread_entry, &classoid);
 	(void) heap_delete_hfid_from_cache (&thread_entry, &classoid);
 	xcache_remove_by_oid (&thread_entry, &classoid);
 	partition_decache_class (&thread_entry, &classoid);
       }
+  }
+
+  bool
+  atomic_replicator::is_locked_for_ddl (const TRANID trid, const OID *classoid)
+  {
+    return m_locked_classes.count (trid) > 0 && m_locked_classes[trid].count (*classoid) > 0;
   }
 }
