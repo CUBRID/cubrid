@@ -163,7 +163,7 @@ typedef enum bts_key_status BTS_KEY_STATUS;
 typedef struct btree_scan BTREE_SCAN;	/* BTS */
 
 //#define IMPROVE_RANGE_SCAN_IN_BTREE
-//#define IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY
+//#define IMPROVE_RANGE_SCAN_POSTPONED_ADD_PREFIX_KEY
 //#define IMPROVE_RANGE_SCAN_USE_PREFIX_BUF
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 
@@ -246,10 +246,12 @@ struct btree_scan
 
   DB_VALUE cur_key;		/* current key value */
   bool clear_cur_key;		/* clear flag for current key value */
+  /* IMPROVE_RANGE_SCAN_USE_PREFIX_BUF */
+  bool is_cur_key_decompressed;	// If true, cur_key is a complete key.
 
   //---------------------------------------------   
   // IMPROVE_RANGE_SCAN_IN_BTREE    
-  BTREE_PAGE_PREFIX_INFO *pg_prefix_info;
+  BTREE_PAGE_PREFIX_INFO *cur_page_info;
   //---------------------------------------------   
 
   BTREE_KEYRANGE key_range;	/* key range information */
@@ -320,7 +322,8 @@ struct btree_scan
     (bts)->slot_id = NULL_SLOTID;			\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
-    (bts)->pg_prefix_info = NULL;                       \
+    (bts)->cur_page_info = NULL;                        \
+    (bts)->is_cur_key_decompressed = true;              \
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
@@ -367,8 +370,9 @@ struct btree_scan
     (bts)->slot_id = -1;				\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
-    RESET_BTREE_PAGE_PREFIX_INFO((bts)->pg_prefix_info);\
-    (bts)->pg_prefix_info = NULL;                       \
+    RESET_BTREE_PAGE_PREFIX_INFO((bts)->cur_page_info); \
+    (bts)->cur_page_info = NULL;                        \
+    (bts)->is_cur_key_decompressed = true;              \
     pr_clear_value (&(bts)->cur_key);			\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
@@ -817,7 +821,7 @@ extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RA
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
 #if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
-					 BTREE_PAGE_PREFIX_INFO * pg_prefix_info,
+					 BTREE_PAGE_PREFIX_INFO * cur_page_info,
 #endif
 					 int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
 					 int func_index_col_id);

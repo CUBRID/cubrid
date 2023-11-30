@@ -147,15 +147,15 @@ extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES *
 
 #define IMPROVE_RANGE_SCAN_IN_BTREE
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-#define IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY
+#define IMPROVE_RANGE_SCAN_POSTPONED_ADD_PREFIX_KEY
 //#define IMPROVE_RANGE_SCAN_USE_PREFIX_BUF
-#if defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY) && defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_POSTPONED_ADD_PREFIX_KEY) && defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
 #error "ERROR :: check defined!!!!!!!"
 #endif
 #endif
 
 extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
-#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_DELAY_ADD_PREFIX_KEY)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF) || defined(IMPROVE_RANGE_SCAN_POSTPONED_ADD_PREFIX_KEY)
 				   int compress_len, DB_VALUE * compress_value,
 #endif
 				   FILTER_INFO * filter);
