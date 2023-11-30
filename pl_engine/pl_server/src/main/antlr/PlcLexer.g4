@@ -140,7 +140,7 @@ PERIOD:   '.';
 
 // NOTE: a literal with 'e/E' notation is deemed to be a DOUBLE type numeric literal in CUBRID even when
 //       it does not have a floating point
-FLOATING_POINT_NUM: (BASIC_UINT? '.' [0-9]+ ([eE] ('+'|'-')? BASIC_UINT)? [fF]?) | (BASIC_UINT [eE] ('+'|'-')? BASIC_UINT);
+FLOATING_POINT_NUM: FPNUM_W_POINT | FPNUM_WO_POINT;
 UNSIGNED_INTEGER:   BASIC_UINT;
 
 DELIMITED_ID: ('"' | '[' | '`') REGULAR_ID ('"' | ']' | '`') ;
@@ -240,6 +240,8 @@ SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {
 // Fragment rules
 // ************************
 
+fragment FPNUM_W_POINT  : (BASIC_UINT? '.' [0-9]+ | BASIC_UINT '.') ([eE] ('+'|'-')? BASIC_UINT)? [fF]?;
+fragment FPNUM_WO_POINT : BASIC_UINT [eE] ('+'|'-')? BASIC_UINT [fF]?;
 fragment BASIC_UINT     : '0'|[1-9][0-9]*;
 fragment NEWLINE_EOF    : NEWLINE | EOF;
 fragment SIMPLE_LETTER  : [A-Za-z] | [\uAC00-\uD7A3];   // English letters and Korean letters

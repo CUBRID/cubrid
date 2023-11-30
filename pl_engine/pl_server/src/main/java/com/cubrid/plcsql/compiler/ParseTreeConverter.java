@@ -724,12 +724,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             String text = ctx.FLOATING_POINT_NUM().getText().toLowerCase();
 
             if (text.indexOf("e") >= 0) {
+                // double type
                 Double d = new Double(text);
                 return new ExprFloat(ctx, text, TypeSpecSimple.DOUBLE);
             } else if (text.endsWith("f")) {
+                // float type
                 Float f = new Float(text);
                 return new ExprFloat(ctx, text, TypeSpecSimple.FLOAT);
             } else {
+                // numeric type
+                if (text.endsWith(".")) {
+                    text = text + "0";
+                }
                 BigDecimal bd = new BigDecimal(text);
                 int precision = bd.precision();
                 if (precision > 38) {
