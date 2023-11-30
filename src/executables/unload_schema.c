@@ -3983,7 +3983,7 @@ is_builtin_package_function (const char *sp_name)
   dim = DIM (builtin_list);
   for (i = 0; i < dim; i++)
     {
-      if (strcasecmp (builtin_list[i], sp_name) == 0)
+      if (builtin_list[i] != NULL && strcasecmp (builtin_list[i], sp_name) == 0)
 	{
 	  return true;
 	}
