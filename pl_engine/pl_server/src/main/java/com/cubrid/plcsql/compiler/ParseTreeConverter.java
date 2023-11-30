@@ -34,6 +34,7 @@ import static com.cubrid.plcsql.compiler.antlrgen.PlcParser.*;
 
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.serverapi.*;
@@ -745,12 +746,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             String text = ctx.FLOATING_POINT_NUM().getText().toLowerCase();
 
             if (text.indexOf("e") >= 0) {
+                // double type
                 Double d = new Double(text);
                 return new ExprFloat(ctx, text, TypeSpecSimple.DOUBLE);
             } else if (text.endsWith("f")) {
+                // float type
                 Float f = new Float(text);
                 return new ExprFloat(ctx, text, TypeSpecSimple.FLOAT);
             } else {
+                // numeric type
+                if (text.endsWith(".")) {
+                    text = text + "0";
+                }
                 BigDecimal bd = new BigDecimal(text);
                 int precision = bd.precision();
                 if (precision > 38) {
@@ -840,7 +847,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitFunction_call(Function_callContext ctx) {
 
-        String name = Misc.getNormalizedText(ctx.identifier());
+        String name = Misc.getNormalizedText(ctx.function_name());
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         DeclFunc decl = symbolStack.getDeclFunc(name);

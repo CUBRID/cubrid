@@ -3189,7 +3189,10 @@ create_stmt
                                      }
                                      si->pwd = val;
                                       
-                                    pt_add_password_offset(si->user->buffer_pos, si->user->buffer_pos, true, en_server_password);
+                                     if (si->user)
+                                     {
+                                        pt_add_password_offset(si->user->buffer_pos, si->user->buffer_pos, true, en_server_password);
+                                     }
                                 }
 
                                 if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
@@ -15766,7 +15769,35 @@ limit_factor
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
                 DBG_PRINT}}
+        | identifier_without_dot    /* for PL/CSQL Static SQL only */
+                {{ DBG_TRACE_GRAMMAR(limit_factor, | identifier_without_dot);
 
+                        if (this_parser->flag.is_parsing_static_sql) {
+
+                            // interpret the identifier only as a PL/CSQL host variable
+                            PT_NODE *node = parser_new_node (this_parser, PT_HOST_VAR);
+                            if (node)
+                              {
+                                node->info.host_var.var_type = PT_HOST_IN;
+                                node->info.host_var.str = pt_makename("?");
+                                node->info.host_var.label = $1->info.name.original;
+                                node->info.host_var.index = parser_input_host_index++;
+                                node->type_enum = PT_TYPE_NONE;
+
+                                PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
+                              }
+
+                            parser_free_node(this_parser, $1);
+                            $$ = node;
+
+                        } else {
+			    PT_ERRORm(this_parser, $1,
+			        MSGCAT_SET_PARSER_SEMANTIC,
+			        MSGCAT_SEMANTIC_IDENTIFIER_IN_LIMIT_CLAUSE);
+                            $$ = NULL;
+                        }
+
+                DBG_PRINT}}
         | '(' limit_expr ')'
                 {{ DBG_TRACE_GRAMMAR(limit_factor, | '(' limit_expr ')');
 			PT_NODE *exp = $2;
@@ -26038,6 +26069,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
   INIT_PT_HINT("INDEX_LS", PT_HINT_INDEX_LS),
   INIT_PT_HINT("SELECT_RECORD_INFO", PT_HINT_SELECT_RECORD_INFO),
+  INIT_PT_HINT("SAMPLING_SCAN", PT_HINT_SAMPLING_SCAN),
   INIT_PT_HINT("SELECT_PAGE_INFO", PT_HINT_SELECT_PAGE_INFO),
   INIT_PT_HINT("SELECT_KEY_INFO", PT_HINT_SELECT_KEY_INFO),
   INIT_PT_HINT("SELECT_BTREE_NODE_INFO", PT_HINT_SELECT_BTREE_NODE_INFO),

@@ -674,7 +674,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplExprBuiltinFuncCall =
             new String[] {
-                "(%'RESULT-TYPE'%) invokeBuiltinFunc(conn, \"%'NAME'%\",", "  %'+ARGS'%", ")"
+                "(%'RESULT-TYPE'%) invokeBuiltinFunc(conn, \"%'NAME'%\", %'RESULT-TYPE-CODE'%,",
+                "  %'+ARGS'%",
+                ")"
             };
 
     @Override
@@ -691,7 +693,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     new CodeTemplate(
                             "ExprBuiltinFuncCall",
                             Misc.getLineColumnOf(node.ctx),
-                            String.format("(%s) invokeBuiltinFunc(conn, \"%s\")", ty, node.name));
+                            String.format(
+                                    "(%s) invokeBuiltinFunc(conn, \"%s\", %d)",
+                                    ty, node.name, node.resultType.simpleTypeIdx));
         } else {
             tmpl =
                     new CodeTemplate(
@@ -702,6 +706,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             ty,
                             "%'NAME'%",
                             node.name,
+                            "%'RESULT-TYPE-CODE'%",
+                            Integer.toString(node.resultType.simpleTypeIdx),
                             // assumption: built-in functions do not have OUT parameters
                             "%'+ARGS'%",
                             visitNodeList(node.args).setDelimiter(","));
@@ -1057,7 +1063,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+ELSE-PART'%",
                 node.elsePart == null ? "throw new CASE_NOT_FOUND();" : visit(node.elsePart),
                 "%'LEVEL'%",
-                "" + node.level // level replacement must go last
+                Integer.toString(node.level) // level replacement must go last
                 );
     }
 
@@ -1218,7 +1224,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'+HOST-EXPRS'%",
                     hostExprs,
                     "%'LEVEL'%",
-                    "" + node.cursor.scope.level);
+                    Integer.toString(node.cursor.scope.level));
         }
     }
 
@@ -1365,7 +1371,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+HANDLE-INTO-CLAUSE'%",
                 handleIntoClause,
                 "%'LEVEL'%",
-                "" + node.level);
+                Integer.toString(node.level));
     }
 
     @Override
@@ -1433,7 +1439,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'LABEL'%",
                     node.label == null ? "" : node.label + "_%'LEVEL'%:",
                     "%'LEVEL'%",
-                    "" + node.cursor.scope.level,
+                    Integer.toString(node.cursor.scope.level),
                     "%'+STATEMENTS'%",
                     visitNodeList(node.stmts));
         } else {
@@ -1457,7 +1463,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'LABEL'%",
                     node.label == null ? "" : node.label + "_%'LEVEL'%:",
                     "%'LEVEL'%",
-                    "" + node.cursor.scope.level,
+                    Integer.toString(node.cursor.scope.level),
                     "%'+STATEMENTS'%",
                     visitNodeList(node.stmts));
         }
@@ -1511,7 +1517,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 Misc.getLineColumnOf(node.ctx),
                 node.reverse ? tmplStmtForIterLoopReverse : tmplStmtForIterLoop,
                 "%'LVL'%",
-                "" + node.iter.scope.level,
+                Integer.toString(node.iter.scope.level),
                 "%'OPT-LABEL'%",
                 labelStr,
                 "%'I'%",
@@ -1585,7 +1591,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'LABEL'%",
                 node.label == null ? "" : node.label + "_%'LEVEL'%:",
                 "%'LEVEL'%",
-                "" + node.record.scope.level,
+                Integer.toString(node.record.scope.level),
                 "%'+STATEMENTS'%",
                 visitNodeList(node.stmts));
     }
@@ -2127,7 +2133,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                                 Misc.getLineColumnOf(arg.ctx),
                                 tmplDupCursorArg,
                                 "%'INDEX'%",
-                                "" + i,
+                                Integer.toString(i),
                                 "%'+ARG'%",
                                 visit(arg)));
             }
@@ -2263,7 +2269,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             Misc.getLineColumnOf(expr.ctx),
                             tmplSetObject,
                             "%'INDEX'%",
-                            "" + (i + 1),
+                            Integer.toString(i + 1),
                             "%'+VALUE'%",
                             visit(expr));
             ret.addElement(tmpl);
@@ -2325,9 +2331,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     Misc.UNKNOWN_LINE_COLUMN,
                     tmplCoerceAndCheckPrec,
                     "%'PREC'%",
-                    "" + checkPrec.prec,
+                    Integer.toString(checkPrec.prec),
                     "%'SCALE'%",
-                    "" + checkPrec.scale,
+                    Short.toString(checkPrec.scale),
                     "%'+EXPR'%",
                     applyCoercion(checkPrec.c, exprCode));
         } else if (c instanceof Coercion.CoerceAndCheckStrLength) {

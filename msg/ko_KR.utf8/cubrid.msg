@@ -1443,9 +1443,10 @@ $ LOADDB
 1357 SQL 문자열을 와이드 문자열로 변환 실패.
 1358 영향을 받은 행 수를 알 수 없음.
 
-1359 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1359 Java VM 에 장애가 발생함. : %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1360 마지막 에러
+1361 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1930,6 +1931,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 동의어 "%1$s"이(가) 존재하지 않습니다.
 315 이름 바꾸기는 소유자를 변경할 수 없습니다.
 316 이름 바꾸기는 같은 이름으로 변경할 수 없습니다.
+317 식별자는 LIMIT 절 안에 있을 수 없습니다.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

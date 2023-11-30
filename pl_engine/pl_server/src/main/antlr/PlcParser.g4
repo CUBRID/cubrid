@@ -348,7 +348,7 @@ atom
     ;
 
 function_call
-    : identifier function_argument
+    : function_name function_argument
     ;
 
 relational_operator
@@ -549,13 +549,12 @@ quoted_string
     ;
 
 identifier
-    : regular_id
+    : REGULAR_ID
     | DELIMITED_ID
     ;
 
-  // REGULAR_ID + intersection of {lexer words} and {built-in function names}
-regular_id
-    : REGULAR_ID
+function_name
+    : identifier
     | DATE
     | DEFAULT
     | IF

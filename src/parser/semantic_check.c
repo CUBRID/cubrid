@@ -13841,6 +13841,10 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
        * 
        */
     case PT_NAME:
+      if (p->info.name.spec_id != q->info.name.spec_id)
+	{
+	  return 1;
+	}
       if (pt_user_specified_name_compare (p->info.name.original, q->info.name.original))
 	{
 	  return 1;
@@ -13849,11 +13853,7 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	{
 	  return 1;
 	}
-      if (p->info.name.spec_id != q->info.name.spec_id)
-	{
-	  return 1;
-	}
-      break;
+      break;			/* PT_NAME */
 
       /* EXPR must be X.Y.Z. */
     case PT_DOT_:
@@ -13880,7 +13880,52 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
 	  return 1;
 	}
 
-      break;
+      break;			/* PT_DOT_ */
+
+    case PT_EXPR:
+      {
+	if (p->info.expr.op != q->info.expr.op)
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_path_eq (parser, p->info.expr.arg1, q->info.expr.arg1))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_path_eq (parser, p->info.expr.arg2, q->info.expr.arg2))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_path_eq (parser, p->info.expr.arg3, q->info.expr.arg3))
+	  {
+	    return 1;
+	  }
+      }
+      break;			/* PT_EXPR */
+
+    case PT_VALUE:
+      {
+	const char *p_str = NULL;
+	const char *q_str = NULL;
+	unsigned int save_custom;
+
+	save_custom = parser->custom_print;	/* save */
+	parser->custom_print |= PT_CONVERT_RANGE;
+
+	p_str = parser_print_tree (parser, p);
+	q_str = parser_print_tree (parser, q);
+
+	parser->custom_print = save_custom;	/* restore */
+
+	if (pt_str_compare (p_str, q_str, CASE_INSENSITIVE))
+	  {
+	    return 1;
+	  }
+      }
+      break;			/* PT_VALUE */
 
     default:
       PT_ERRORmf (parser, p, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_NAN_PATH,
@@ -13924,15 +13969,39 @@ pt_check_class_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
     {
       /* if a name, the resolved (class name) fields must match */
     case PT_NAME:
-      if (pt_str_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
-	{
-	  return 1;
-	}
       if (p->info.name.spec_id != q->info.name.spec_id)
 	{
 	  return 1;
 	}
-      break;
+      if (pt_str_compare (p->info.name.resolved, q->info.name.resolved, CASE_INSENSITIVE))
+	{
+	  return 1;
+	}
+      break;			/* PT_NAME */
+
+    case PT_EXPR:
+      {
+	if (p->info.expr.op != q->info.expr.op)
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_class_eq (parser, p->info.expr.arg1, q->info.expr.arg1))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_class_eq (parser, p->info.expr.arg2, q->info.expr.arg2))
+	  {
+	    return 1;
+	  }
+
+	if (pt_check_class_eq (parser, p->info.expr.arg3, q->info.expr.arg3))
+	  {
+	    return 1;
+	  }
+      }
+      break;			/* PT_EXPR */
 
     default:
       PT_ERRORmf (parser, p, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_NAN_PATH,
