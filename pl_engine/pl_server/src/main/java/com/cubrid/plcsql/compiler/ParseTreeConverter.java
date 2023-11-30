@@ -825,7 +825,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitFunction_call(Function_callContext ctx) {
 
-        String name = Misc.getNormalizedText(ctx.identifier());
+        String name = Misc.getNormalizedText(ctx.function_name());
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         DeclFunc decl = symbolStack.getDeclFunc(name);
