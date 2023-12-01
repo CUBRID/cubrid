@@ -80,7 +80,7 @@ class server_request_responder
     inline void retire_task (const connection_t *connection_ptr);
 
   private:
-    cubthread::entry_workpool *m_workerpool;
+    cubthread::entry_workpool *const m_workerpool;
 
     /* monitor executing tasks on a per-connection basis
      * because the behavior of the thread pool - when it itself is requested to terminate - like, upon
