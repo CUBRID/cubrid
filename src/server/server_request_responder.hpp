@@ -55,7 +55,7 @@ class server_request_responder
 
     class task;
 
-    server_request_responder (cubthread::entry_workpool &shared_workerpool);
+    server_request_responder (cubthread::entry_workpool *shared_workerpool);
 
     server_request_responder (const server_request_responder &) = delete;
     server_request_responder (server_request_responder &&) = delete;
@@ -80,7 +80,7 @@ class server_request_responder
     inline void retire_task (const connection_t *connection_ptr);
 
   private:
-    cubthread::entry_workpool &m_workerpool;
+    cubthread::entry_workpool *m_workerpool;
 
     /* monitor executing tasks on a per-connection basis
      * because the behavior of the thread pool - when it itself is requested to terminate - like, upon
@@ -160,7 +160,7 @@ class server_request_responder<T_CONN>::task : public cubthread::entry_task
 //
 
 template<typename T_CONN>
-server_request_responder<T_CONN>::server_request_responder (cubthread::entry_workpool &shared_workerpool)
+server_request_responder<T_CONN>::server_request_responder (cubthread::entry_workpool *shared_workerpool)
   : m_workerpool { shared_workerpool }
 {
 }
@@ -193,7 +193,7 @@ template<typename T_CONN>
 void
 server_request_responder<T_CONN>::async_execute (task *a_task)
 {
-  m_workerpool.execute (a_task);
+  m_workerpool->execute (a_task);
 }
 
 template<typename T_CONN>

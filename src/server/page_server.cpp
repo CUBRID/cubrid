@@ -1297,8 +1297,9 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 void
 page_server::init_request_responder ()
 {
-  m_tran_server_responder = std::make_unique<tran_server_responder_t> (*m_worker_pool);
-  m_follower_responder = std::make_unique<follower_responder_t> (*m_worker_pool);
+  assert (m_worker_pool != nullptr);
+  m_tran_server_responder = std::make_unique<tran_server_responder_t> (m_worker_pool);
+  m_follower_responder = std::make_unique<follower_responder_t> (m_worker_pool);
 }
 
 void

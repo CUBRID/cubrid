@@ -126,7 +126,7 @@ struct test_env
     m_worker_pool = cubthread::get_manager ()->create_worker_pool (responder_thread_cnt, responder_max_task_cnt,
 		    "test_async_responder_workers", NULL, 1, false);
 
-    m_rrh = std::make_unique <server_request_responder<test_conn>> (*m_worker_pool);
+    m_rrh = std::make_unique <server_request_responder<test_conn>> (m_worker_pool);
 
     for (const auto &conn : m_conns)
       {
