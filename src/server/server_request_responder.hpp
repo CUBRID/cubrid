@@ -55,7 +55,7 @@ class server_request_responder
 
     class task;
 
-    server_request_responder (cubthread::entry_workpool *shared_workerpool);
+    server_request_responder (cubthread::entry_workpool *const shared_workerpool);
 
     server_request_responder (const server_request_responder &) = delete;
     server_request_responder (server_request_responder &&) = delete;
@@ -160,7 +160,7 @@ class server_request_responder<T_CONN>::task : public cubthread::entry_task
 //
 
 template<typename T_CONN>
-server_request_responder<T_CONN>::server_request_responder (cubthread::entry_workpool *shared_workerpool)
+server_request_responder<T_CONN>::server_request_responder (cubthread::entry_workpool *const shared_workerpool)
   : m_workerpool { shared_workerpool }
 {
 }
