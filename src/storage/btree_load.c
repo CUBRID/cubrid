@@ -3985,6 +3985,10 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       goto end;
     }
 
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+  RESET_BTREE_PAGE_PREFIX_INFO (&pk_bt_scan.C_page_info);
+#endif
+
   /* Set the order. */
   is_fk_scan_desc = (sort_args->key_type->is_desc != pk_bt_scan.btid_int.key_type->is_desc);
 

@@ -6620,6 +6620,9 @@ void
 btree_scan_clear_key (BTREE_SCAN * btree_scan)
 {
   btree_clear_key_value (&btree_scan->clear_cur_key, &btree_scan->cur_key);
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+  RESET_BTREE_PAGE_PREFIX_INFO (&btree_scan->C_page_info);
+#endif
 }
 
 /*
@@ -16185,6 +16188,11 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
   /* Set other arguments specific to scan type. */
   bts->bts_other = bts_other;
 
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+  bool is_midxkey = (bool) (TP_DOMAIN_TYPE (bts->btid_int.key_type) == DB_TYPE_MIDXKEY);
+  bts = btree_init_page_prefix_info (bts, is_midxkey, false, &bts->C_page_info, READER_TYPE_RANGE_SCAN);
+#endif
+
   /* Prepare successful. */
   return NO_ERROR;
 }
@@ -17061,7 +17069,11 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
   BTREE_SEARCH search_result = BTREE_KEY_NOTFOUND;
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+  assert (bts->cur_page_info == NULL || bts->cur_page_info->reader_type == READER_TYPE_RANGE_SCAN);
+#else
   assert (bts->cur_page_info == NULL || bts->cur_page_info->reader_type == READER_TYPE_NONE);
+#endif
 #endif
 
 #if defined(BTREE_DEBUG)
@@ -26081,12 +26093,20 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
   if (use_pg_prefix)
     {
       int ret;
+#if !defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
       BTREE_PAGE_PREFIX_INFO cur_page_info;
-      bool is_midxkey = (bool) (TP_DOMAIN_TYPE (bts->btid_int.key_type) == DB_TYPE_MIDXKEY);
+#endif
 
+#if !defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+      bool is_midxkey = (bool) (TP_DOMAIN_TYPE (bts->btid_int.key_type) == DB_TYPE_MIDXKEY);
       bts = btree_init_page_prefix_info (bts, is_midxkey, false, &cur_page_info, READER_TYPE_RANGE_SCAN);
       ret = btree_range_scan_internal (thread_p, bts, key_func);
       btree_quit_page_prefix_info (bts, false);
+#else
+      //bts = btree_init_page_prefix_info (bts, is_midxkey, false, &bts->C_page_info, READER_TYPE_RANGE_SCAN);
+      ret = btree_range_scan_internal (thread_p, bts, key_func);
+      //btree_quit_page_prefix_info (bts, false);
+#endif
 
       return ret;
     }

@@ -203,11 +203,18 @@ typedef struct
     btree_init_temp_key_value (&(pg_prefix)->clear_compress_key, &(pg_prefix)->compress_key); \
 } while(0)
 
-#define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {  \
-    if((pg_prefix))  {                                 \
+#define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {        \
+    if((pg_prefix))  {                                       \
        btree_clear_key_value (&(pg_prefix)->clear_compress_key, &(pg_prefix)->compress_key); \
-       (pg_prefix)->reader_type = READER_TYPE_NONE;    \
-    }                                                  \
+       (pg_prefix)->reader_type = READER_TYPE_NONE;          \
+       (pg_prefix)->use_comparing = true;                    \
+       (pg_prefix)->use_index_column = true;                 \
+       (pg_prefix)->satisfied_range_in_page = false;         \
+       VPID_SET_NULL (&((pg_prefix)->vpid));                 \
+       LSA_SET_NULL(&((pg_prefix)->leaf_lsa));               \
+       (pg_prefix)->n_compress_size = COMMON_PREFIX_UNKNOWN; \
+       (pg_prefix)->n_first_check_pos = 0;                   \
+    }                                                        \
 } while(0)
 
 #else
@@ -248,6 +255,7 @@ struct btree_scan
   bool clear_cur_key;		/* clear flag for current key value */
   /* IMPROVE_RANGE_SCAN_USE_PREFIX_BUF */
   bool is_cur_key_decompressed;	// If true, cur_key is a complete key.
+  BTREE_PAGE_PREFIX_INFO C_page_info;
 
   //---------------------------------------------   
   // IMPROVE_RANGE_SCAN_IN_BTREE    
@@ -324,6 +332,7 @@ struct btree_scan
     (bts)->restart_scan = 0;                    	\
     (bts)->cur_page_info = NULL;                        \
     (bts)->is_cur_key_decompressed = true;              \
+    INIT_BTREE_PAGE_PREFIX_INFO(&(bts)->C_page_info, READER_TYPE_NONE); \
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
@@ -370,9 +379,9 @@ struct btree_scan
     (bts)->slot_id = -1;				\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
-    RESET_BTREE_PAGE_PREFIX_INFO((bts)->cur_page_info); \
     (bts)->cur_page_info = NULL;                        \
     (bts)->is_cur_key_decompressed = true;              \
+    RESET_BTREE_PAGE_PREFIX_INFO(&(bts)->C_page_info);  \
     pr_clear_value (&(bts)->cur_key);			\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
