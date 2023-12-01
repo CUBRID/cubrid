@@ -40,12 +40,20 @@
 
 page_server::page_server (const char *db_name)
   : m_server_name { db_name }
+  , m_worker_context_manager { TT_SYSTEM_WORKER }
 {
-  const auto thread_count = 4; // Arbitrary chosen
-  const auto task_max_count = thread_count * 4;
+  size_t thread_count = 4; // Arbitrary chosen
+  size_t task_max_count = thread_count * 4;
+
+  // For two async responders: m_tran_server_responder, m_follower_responder
+  const size_t responder_thread_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
+  const size_t responder_max_task_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT);
+
+  thread_count += responder_thread_cnt;
+  task_max_count +=  responder_max_task_cnt;
 
   m_worker_pool = cubthread::get_manager ()->create_worker_pool (thread_count, task_max_count, "page_server_workers",
-		  nullptr, 1, false);
+		  &m_worker_context_manager, 1, false);
 }
 
 page_server::~page_server ()
@@ -59,6 +67,9 @@ page_server::~page_server ()
   assert (m_passive_tran_server_conn.size () == 0);
 
   m_async_disconnect_handler.terminate ();
+
+  assert (m_tran_server_responder == nullptr);
+  assert (m_follower_responder == nullptr);
 
   cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
   assert (m_worker_pool == nullptr);
@@ -1286,8 +1297,9 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 void
 page_server::init_request_responder ()
 {
-  m_tran_server_responder = std::make_unique<tran_server_responder_t> ();
-  m_follower_responder = std::make_unique<follower_responder_t> ();
+  assert (m_worker_pool != nullptr);
+  m_tran_server_responder = std::make_unique<tran_server_responder_t> (m_worker_pool);
+  m_follower_responder = std::make_unique<follower_responder_t> (m_worker_pool);
 }
 
 void
