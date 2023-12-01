@@ -8183,29 +8183,39 @@ mr_index_lengthmem_midxkey (void *memptr, TP_DOMAIN * domain)
       goto exit_on_error;	/* give up */
     }
 
+  /* There is no difference between the disk & memory sizes. */
+  nullmap_ptr = (char *) memptr;
+
 #if !defined (NDEBUG)
   {
-    int dom_ncols = 0;
-    for (dom = domain->setdomain; dom; dom = dom->next)
+    buf_ptr = nullmap_ptr + or_multi_header_size (idx_ncols);
+
+    for (i = 0, dom = domain->setdomain; dom; i++, dom = dom->next)
       {
-	dom_ncols++;
+	/* check for val is NULL */
+	if (or_multi_is_null (nullmap_ptr, i))
+	  {
+	    continue;		/* zero size; go ahead */
+	  }
+
+	/* at here, val is non-NULL */
+
+	buf_ptr += pr_midxkey_element_disk_size (buf_ptr, dom);
       }
 
-    if (dom_ncols <= 0)
+    if (i <= 0)
       {
 	assert (false);
 	goto exit_on_error;
       }
-    assert (dom_ncols == idx_ncols);
+    assert (i == idx_ncols);
   }
 #endif /* NDEBUG */
-
-  /* There is no difference between the disk & memory sizes. */
-  nullmap_ptr = (char *) memptr;
 
   offset = or_multi_get_size_offset (nullmap_ptr, idx_ncols);
   if (offset > 0)
     {
+      assert (offset == CAST_BUFLEN (buf_ptr - nullmap_ptr));
       return offset;
     }
   else
@@ -9104,6 +9114,9 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
   db_make_midxkey (result, &midx_result);
   result->need_clear = true;
 
+  assert (midx_result.size == or_multi_get_size_offset (midx_result.buf, midx_result.domain->precision)
+	  || midx_result.size >= OR_MULTI_MAX_OFFSET);
+
   return NO_ERROR;
 }
 
@@ -9169,6 +9182,12 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
       /* fallthrough: i, domain */
       for (; i < midx_key->domain->precision; i++, domain = domain->next)
 	{
+	  if (or_multi_is_null (midx_key->buf, i))
+	    {
+	      or_multi_put_next_element_offset (midx_key->buf, midx_key->domain->precision, offset, i);
+	      continue;
+	    }
+
 	  advance_size = pr_midxkey_element_disk_size (buf_ptr, domain);
 	  if ((offset + advance_size) < OR_MULTI_MAX_OFFSET)
 	    {
@@ -9190,6 +9209,9 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
     }
 
   midx_key->size -= prefix_size;
+
+  assert (midx_key->size == or_multi_get_size_offset (midx_key->buf, midx_key->domain->precision)
+	  || midx_key->size >= OR_MULTI_MAX_OFFSET);
 
   return NO_ERROR;
 }
