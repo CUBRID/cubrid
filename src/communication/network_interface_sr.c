@@ -3999,7 +3999,7 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  CLASS_ATTR_NDV class_attr_ndv;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
@@ -10389,7 +10389,13 @@ sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 
   session->get_class_registry ().get_all_class_entries (class_entries);
 
-  oid_cnt = class_entries.size ();
+for (const cubload::class_entry * class_entry:class_entries)
+    {
+      if (!class_entry->is_ignored ())
+	{
+	  oid_cnt++;
+	}
+    }
 
   /* start packing result */
   if (oid_cnt > 0)
