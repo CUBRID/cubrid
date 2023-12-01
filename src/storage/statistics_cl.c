@@ -444,7 +444,9 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
       /* The class does not have a heap file (i.e. it has no instances); so no statistics can be obtained for this
        * class; just set to 0 and return. */
       class_attr_ndv->attr_cnt = 0;
-      class_attr_ndv->attr_ndv == NULL;
+      class_attr_ndv->attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV));
+      class_attr_ndv->attr_ndv[0].ndv = 0;
+      class_attr_ndv->attr_ndv[0].id = 0;
       goto end;
     }
 
