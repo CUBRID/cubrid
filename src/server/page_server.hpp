@@ -328,7 +328,9 @@ class page_server
      * It's used by two server_request_responders for tran servers and follower servers,
      * and some extra jobs like the catch-up.
      *
-     * Note that server_request_responders have to be destroyed earlier since they ensure all jobs are done in their dtors.
+     * Note that both tran_server_responder and follower_responder hold references to the worker pool.
+     * Thus, they must be destroyed prior to the worker pool - to avoid dangling references.
+     * The responders ensure that all jobs are waited for completion in their dtors.
      */
     cubthread::system_worker_entry_manager m_worker_context_manager;
     cubthread::entry_workpool *m_worker_pool;
