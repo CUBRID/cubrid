@@ -3985,7 +3985,9 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       goto end;
     }
 
-#if defined(IMPROVE_RANGE_SCAN_USE_PREFIX_BUF)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  // We are not doing btree_range_scan() here. Re-initialize C_page_info. 
+  // TODO: 
   RESET_BTREE_PAGE_PREFIX_INFO (&pk_bt_scan.C_page_info);
 #endif
 
