@@ -812,6 +812,7 @@ int g_original_buffer_len;
 %type <node> alias_enabled_expression_list
 %type <node> alias_enabled_expression_
 %type <node> expression_list
+%type <node> expression_list_for_call
 %type <node> to_param_list
 %type <node> to_param
 %type <node> from_param
@@ -856,6 +857,7 @@ int g_original_buffer_len;
 %type <node> searched_when_clause
 %type <node> extract_expr
 %type <node> opt_expression_list
+%type <node> opt_expression_list_for_call
 %type <node> table_set_function_call
 %type <node> search_condition
 %type <node> boolean_term
@@ -909,6 +911,7 @@ int g_original_buffer_len;
 %type <node> simple_path_id
 %type <node> simple_path_id_list
 %type <node> generic_function
+%type <node> generic_function_for_call
 %type <node> opt_on_target
 %type <node> generic_function_id
 %type <node> pred_lhs
@@ -1046,6 +1049,7 @@ int g_original_buffer_len;
 %type <c2> opt_as_identifier_attr_name
 %type <c2> insert_assignment_list
 %type <c2> expression_queue
+%type <c2> expression_queue_for_call
 %type <c2> of_cast_data_type
 %type <c2> dblink_identifier_col_attrs
 %type <c2> connect_item
@@ -9083,8 +9087,8 @@ call_stmt
                     pwd_info.method_arg_idx = 0;                
                     pwd_info.method_password_arg_idx = -1;
                 }}
-         generic_function into_clause_opt
-		{{ DBG_TRACE_GRAMMAR(call_stmt, : CALL generic_function into_clause_opt);
+         generic_function_for_call into_clause_opt
+		{{ DBG_TRACE_GRAMMAR(call_stmt, : CALL generic_function_for_call into_clause_opt);
 			
                         pwd_info.parser_call_check = false;
                         PT_NODE *node = $3;
@@ -14430,7 +14434,41 @@ expression_list
 	;
 
 expression_queue
-	: expression_queue  ','
+	: expression_queue  ',' expression_
+		{{ DBG_TRACE_GRAMMAR(expression_queue, : expression_queue  ',' expression_);
+			container_2 new_q;
+
+			PT_NODE* q_head = CONTAINER_AT_0($1);
+			PT_NODE* q_tail = CONTAINER_AT_1($1);
+			q_tail->next = $3;
+
+			SET_CONTAINER_2(new_q, q_head, $3);
+			$$ = new_q;
+			PARSER_SAVE_ERR_CONTEXT (q_head, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| expression_
+		{{ DBG_TRACE_GRAMMAR(expression_queue, | expression_);
+			container_2 new_q;
+
+			SET_CONTAINER_2(new_q, $1, $1);
+			$$ = new_q;
+			PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;        
+
+expression_list_for_call
+       	: expression_queue_for_call
+		{{ DBG_TRACE_GRAMMAR(expression_list_for_call, : expression_queue_for_call);
+
+			$$ = CONTAINER_AT_0($1);
+
+		DBG_PRINT}}
+	;
+
+expression_queue_for_call
+	: expression_queue_for_call  ','
             {{
                 if(pwd_info.parser_call_check)
                   {                           
@@ -14441,7 +14479,7 @@ expression_queue
                   }
             }}
           expression_
-		{{ DBG_TRACE_GRAMMAR(expression_queue, : expression_queue  ',' expression_);
+		{{ DBG_TRACE_GRAMMAR(expression_queue_for_call, : expression_queue_for_call  ',' expression_);
 			container_2 new_q;
 
                         if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
@@ -14469,7 +14507,7 @@ expression_queue
                   }
            }}
            expression_
-		{{ DBG_TRACE_GRAMMAR(expression_queue, | expression_);
+		{{ DBG_TRACE_GRAMMAR(expression_queue_for_call, | expression_);
 			container_2 new_q;
 
                         if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
@@ -18824,6 +18862,41 @@ opt_on_target
 	;
 
 generic_function
+	: identifier '(' opt_expression_list ')' opt_on_target
+		{{ DBG_TRACE_GRAMMAR(generic_function, : identifier '(' opt_expression_list ')' opt_on_target );
+
+			PT_NODE *node = NULL;
+
+			if ($5 == NULL)
+			  {
+			    node = parser_keyword_func ($1->info.name.original, $3);
+			  }
+
+			if (node == NULL)
+			  {
+			    node = parser_new_node (this_parser, PT_METHOD_CALL);
+
+			    if (node)
+			      {
+				node->info.method_call.method_name = $1;
+				node->info.method_call.arg_list = $3;
+				node->info.method_call.on_call_target = $5;
+				node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
+			      }
+
+                              if ($5 != NULL && pwd_info.parser_call_check && pwd_info.method_password_arg_idx != 0)
+                              {
+                                 pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, pwd_info.pwd_comma_offset, en_none_password);
+                              }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+generic_function_for_call        
 	: identifier 
         {
             if(pwd_info.parser_call_check)
@@ -18838,8 +18911,8 @@ generic_function
                     pwd_info.method_password_arg_idx = 0;
             }
         }
-        '(' opt_expression_list ')' opt_on_target
-		{{ DBG_TRACE_GRAMMAR(generic_function, : identifier '(' opt_expression_list ')' opt_on_target );
+        '(' opt_expression_list_for_call ')' opt_on_target
+		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : identifier '(' opt_expression_list ')' opt_on_target );
 
 			PT_NODE *node = NULL;
 
@@ -18923,6 +18996,22 @@ opt_expression_list
 		DBG_PRINT}}
 	| expression_list
 		{{ DBG_TRACE_GRAMMAR(opt_expression_list, | expression_list );
+                        
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+opt_expression_list_for_call
+       : /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_expression_list_for_call, : );
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| expression_list_for_call
+		{{ DBG_TRACE_GRAMMAR(opt_expression_list_for_call, | expression_list );
                         
                          if((pwd_info.method_password_arg_idx == 2) && (pwd_info.pwd_start_offset == -1 && pwd_info.pwd_end_offset == -1))
                          {
