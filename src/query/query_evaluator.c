@@ -2882,7 +2882,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 
 		  /* get j-th element value from the midxkey */
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-		  // j = arr[i]; ctshim                   
+		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
 		  if (midxkey_compress && j < compress_len)
 		    {
 		      if (pr_midxkey_get_element_nocopy (midxkey_compress, j, valp, &prev_j_index, &prev_j_ptr) !=
