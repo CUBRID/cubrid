@@ -14460,7 +14460,7 @@ expression_queue
 
 expression_list_for_call
        	: expression_queue_for_call
-		{{ DBG_TRACE_GRAMMAR(expression_list_for_call, : expression_queue);
+		{{ DBG_TRACE_GRAMMAR(expression_list_for_call, : expression_queue_for_call);
 
 			$$ = CONTAINER_AT_0($1);
 
