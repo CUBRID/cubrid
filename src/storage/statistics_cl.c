@@ -380,7 +380,7 @@ void
 stats_ndv_dump (const char *class_name_p, FILE * file_p)
 {
   MOP class_mop;
-  CLASS_ATTR_NDV class_attr_ndv;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
   int i;
 
   class_mop = sm_find_class (class_name_p);
@@ -507,7 +507,7 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
 	{
 	  goto end;
 	}
-      class_attr_ndv->attr_ndv[i].ndv = DB_GET_BIGINT (&value);
+      class_attr_ndv->attr_ndv[i].ndv = MAX (DB_GET_BIGINT (&value), 1);
     }
 
   /* get count(*) */
