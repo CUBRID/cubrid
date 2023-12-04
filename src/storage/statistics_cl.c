@@ -507,7 +507,8 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
 	{
 	  goto end;
 	}
-      class_attr_ndv->attr_ndv[i].ndv = MAX (DB_GET_BIGINT (&value), 1);
+      /* if NDV is 0, it is all null values. */
+      class_attr_ndv->attr_ndv[i].ndv = DB_GET_BIGINT (&value) == 0 ? 1 : DB_GET_BIGINT (&value);
     }
 
   /* get count(*) */
