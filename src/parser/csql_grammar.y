@@ -185,11 +185,20 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 
 #define STACK_SIZE	128
 
+struct _s_passwd{
+  int pwd_start_offset;
+  int pwd_end_offset;
+  bool parser_add_user_check;
+
+  bool parser_call_check;
+  int method_arg_idx;
+  int method_password_arg_idx;
+  bool pwd_comma_offset;
+};
+static struct _s_passwd pwd_info = { -1, -1, false, false, 0, -1, false };
+static void pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING en_add_pwd_string);
 
 static int parser_groupby_exception = 0;
-
-
-
 
 /* xxxnum_check: 0 not allowed, no compatibility check
 		 1 allowed, compatibility check (search_condition)
@@ -1744,6 +1753,14 @@ stmt
 		{{ DBG_TRACE_GRAMMAR(stmt, : );
 			msg_ptr = 0;
 
+                        pwd_info.pwd_start_offset = -1; 
+                        pwd_info.pwd_end_offset = -1;
+                        pwd_info.parser_add_user_check = false;
+                        pwd_info.parser_call_check = false;
+                        pwd_info.method_arg_idx = 0;
+                        pwd_info.method_password_arg_idx = -1;
+                        pwd_info.pwd_comma_offset = false;
+                        
 			if (this_parser->original_buffer)
 			  {
 			    int pos = @$.buffer_pos;
@@ -2877,8 +2894,11 @@ create_stmt
 
 		DBG_PRINT}}
 	| CREATE			/* 1 */
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); }	/* 2 */
-	  USER				/* 3 */
+	  USER				/* 2 */
+		{
+                  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_USER); 
+                  pwd_info.parser_add_user_check = true;
+                }	                /* 3 */
 	  identifier_without_dot	/* 4 */
 	  opt_password			/* 5 */
 	  opt_groups			/* 6 */
@@ -3146,6 +3166,11 @@ create_stmt
                                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
                                      }
                                      si->pwd = val;
+                                      
+                                     if (si->user)
+                                     {
+                                        pt_add_password_offset(si->user->buffer_pos, si->user->buffer_pos, true, en_server_password);
+                                     }
                                 }
 
                                 if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
@@ -3703,76 +3728,38 @@ alter_stmt
 	  INDEX						/* 6 */
 	  identifier					/* 7 */
 	  ON_						/* 8 */
-	  only_class_name				/* 9 */
-	  opt_index_column_name_list			/* 10 */
-	  opt_where_clause				/* 11 */
-	  opt_comment_spec				/* 12 */
-	  REBUILD					/* 13 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ );
+	  only_class_name				/* 9 */	  
+	  opt_comment_spec				/* 10 */
+	  REBUILD					/* 11 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ REBUILD);
 
-			PT_NODE *node = parser_pop_hint_node ();
-			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+		  PT_NODE *node = parser_pop_hint_node ();
+		  
+                  if (node)
+		    {
+		      node->info.index.code = PT_REBUILD_INDEX;
+                      node->info.index.reverse = $4;
+		      node->info.index.unique = $5;
+		      node->info.index.index_name = $7;
+		      node->info.index.comment = $10;
+		      if (node->info.index.index_name)
+		        {
+		          node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+		        }
 
-			if ($5 && $11)
-			  {
-			    /* Currently, not allowed unique with filter/function index.
-			       However, may be introduced later, if it will be usefull.
-			       Unique filter/function index code is removed from
-			       grammar module only. It is kept yet in the others modules.
-			       This will allow us to easily support this feature later by
-			       adding in grammar only. If no need such feature,
-			       filter/function code must be removed from all modules. */
-			    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-			  }
-			if (node && ocs)
-			  {
-			    PT_NODE *col, *temp;
-			    node->info.index.code = PT_REBUILD_INDEX;
-			    node->info.index.reverse = $4;
-			    node->info.index.unique = $5;
-			    node->info.index.index_name = $7;
-			    if (node->info.index.index_name)
-			      {
-				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
-			      }
+		      if ($9 != NULL)
+		        {
+		          PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+		          ocs->info.spec.entity_name = $9;
+		          ocs->info.spec.only_all = PT_ONLY;
+		          ocs->info.spec.meta_class = PT_CLASS;
 
-			    ocs->info.spec.entity_name = $9;
-			    ocs->info.spec.only_all = PT_ONLY;
-			    ocs->info.spec.meta_class = PT_CLASS;
+		          node->info.index.indexed_class = ocs;
+		        }
+		      }
 
-			    node->info.index.indexed_class = ocs;
-			    col = $10;
-			    if (node->info.index.unique)
-			      {
-			        for (temp = col; temp != NULL; temp = temp->next)
-			          {
-			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
-			              {
-			                /* Currently, not allowed unique with
-			                   filter/function index. However, may be
-			                   introduced later, if it will be usefull.
-			                   Unique filter/function index code is removed
-			                   from grammar module only. It is kept yet in
-			                   the others modules. This will allow us to
-			                   easily support this feature later by adding in
-			                   grammar only. If no need such feature,
-			                   filter/function code must be removed from all
-			                   modules. */
-			                PT_ERRORm (this_parser, node,
-			                           MSGCAT_SET_PARSER_SYNTAX,
-			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-			              }
-			          }
-			      }
-
-			    node->info.index.column_names = col;
-			    node->info.index.where = $11;
-			    node->info.index.comment = $12;                            
-			    $$ = node;
-			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			  }
-
+		  $$ = node;
+		  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	| ALTER						/* 1 */
 	  INDEX						/* 2 */
@@ -9025,15 +9012,25 @@ opt_password
 	: /* empty */
 		{{ DBG_TRACE_GRAMMAR(opt_password, : );
 
-			$$ = NULL;
+			$$ = NULL;                        
+                        if(pwd_info.parser_add_user_check)
+                        {
+                           pwd_info.pwd_start_offset = (@$.buffer_pos);
+                           pwd_info.pwd_end_offset = (@$.buffer_pos);
+                           pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, en_user_password);
+                        }
 
 		DBG_PRINT}}
 	| PASSWORD
-		{ push_msg(MSGCAT_SYNTAX_INVALID_PASSWORD); }
+		{ push_msg(MSGCAT_SYNTAX_INVALID_PASSWORD);
+                  pwd_info.pwd_start_offset = (@$.buffer_pos);
+                }
 	  char_string_literal
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(opt_password, | PASSWORD char_string_literal);
 
+                        pwd_info.pwd_end_offset = (@$.buffer_pos);
+                        pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, en_none_password);
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -9079,16 +9076,24 @@ opt_members
 	;
 
 call_stmt
-	: CALL generic_function into_clause_opt
+	: CALL
+                {{
+                    pwd_info.pwd_comma_offset = false;
+                    pwd_info.parser_call_check = true;
+                    pwd_info.method_arg_idx = 0;                
+                    pwd_info.method_password_arg_idx = -1;
+                }}
+         generic_function into_clause_opt
 		{{ DBG_TRACE_GRAMMAR(call_stmt, : CALL generic_function into_clause_opt);
-
-			PT_NODE *node = $2;
+			
+                        pwd_info.parser_call_check = false;
+                        PT_NODE *node = $3;
 			if (node)
 			  {
 			    if (node->node_type == PT_METHOD_CALL)
 			      {
 			        node->info.method_call.call_or_expr = PT_IS_CALL_STMT;
-			        node->info.method_call.to_return_var = $3;
+			        node->info.method_call.to_return_var = $4;
 			      }
 			    else
 			      {
@@ -14425,26 +14430,56 @@ expression_list
 	;
 
 expression_queue
-	: expression_queue  ',' expression_
+	: expression_queue  ','
+            {{
+                if(pwd_info.parser_call_check)
+                  {                           
+                     if(++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
+                       {
+                         pwd_info.pwd_start_offset = (@$.buffer_pos);
+                       }
+                  }
+            }}
+          expression_
 		{{ DBG_TRACE_GRAMMAR(expression_queue, : expression_queue  ',' expression_);
 			container_2 new_q;
 
+                        if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
+                           {
+                              pwd_info.pwd_end_offset = (@$.buffer_pos);
+                           }
+
 			PT_NODE* q_head = CONTAINER_AT_0($1);
 			PT_NODE* q_tail = CONTAINER_AT_1($1);
-			q_tail->next = $3;
+			q_tail->next = $4;
 
-			SET_CONTAINER_2(new_q, q_head, $3);
+			SET_CONTAINER_2(new_q, q_head, $4);
 			$$ = new_q;
 			PARSER_SAVE_ERR_CONTEXT (q_head, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| expression_
+	| 
+           {{ 
+                if(pwd_info.parser_call_check)
+                  {     
+                     if(++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
+                       {
+                          pwd_info.pwd_start_offset = (@$.buffer_pos);
+                       }
+                  }
+           }}
+           expression_
 		{{ DBG_TRACE_GRAMMAR(expression_queue, | expression_);
 			container_2 new_q;
 
-			SET_CONTAINER_2(new_q, $1, $1);
+                        if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
+                           {
+                              pwd_info.pwd_end_offset = (@$.buffer_pos);
+                           }
+
+			SET_CONTAINER_2(new_q, $2, $2);
 			$$ = new_q;
-			PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos)
+			PARSER_SAVE_ERR_CONTEXT ($2, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
@@ -18789,13 +18824,28 @@ opt_on_target
 	;
 
 generic_function
-	: identifier '(' opt_expression_list ')' opt_on_target
+	: identifier 
+        {
+            if(pwd_info.parser_call_check)
+            {
+                if(strcasecmp($1->info.name.original, "set_password")==0)
+                    pwd_info.method_password_arg_idx = 1;
+                else if(strcasecmp($1->info.name.original, "add_user")==0)    
+                   pwd_info.method_password_arg_idx = 2;
+                else if(strcasecmp($1->info.name.original, "login")==0)    
+                    pwd_info.method_password_arg_idx = 2;
+                else
+                    pwd_info.method_password_arg_idx = 0;
+            }
+        }
+        '(' opt_expression_list ')' opt_on_target
 		{{ DBG_TRACE_GRAMMAR(generic_function, : identifier '(' opt_expression_list ')' opt_on_target );
 
 			PT_NODE *node = NULL;
-			if ($5 == NULL)
+
+			if ($6 == NULL)
 			  {
-			    node = parser_keyword_func ($1->info.name.original, $3);
+			    node = parser_keyword_func ($1->info.name.original, $4);
 			  }
 
 			if (node == NULL)
@@ -18805,10 +18855,15 @@ generic_function
 			    if (node)
 			      {
 				node->info.method_call.method_name = $1;
-				node->info.method_call.arg_list = $3;
-				node->info.method_call.on_call_target = $5;
+				node->info.method_call.arg_list = $4;
+				node->info.method_call.on_call_target = $6;
 				node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
 			      }
+
+                              if ($6 != NULL && pwd_info.parser_call_check && pwd_info.method_password_arg_idx != 0)
+                              {
+                                 pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, pwd_info.pwd_comma_offset, en_none_password);
+                              }
 			  }
 
 			$$ = node;
@@ -18868,6 +18923,13 @@ opt_expression_list
 		DBG_PRINT}}
 	| expression_list
 		{{ DBG_TRACE_GRAMMAR(opt_expression_list, | expression_list );
+                        
+                         if((pwd_info.method_password_arg_idx == 2) && (pwd_info.pwd_start_offset == -1 && pwd_info.pwd_end_offset == -1))
+                         {
+                            pwd_info.pwd_start_offset = @$.buffer_pos;
+                            pwd_info.pwd_end_offset = pwd_info.pwd_start_offset;
+                            pwd_info.pwd_comma_offset = true;
+                         }
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -24019,7 +24081,7 @@ connect_info
                 memset(&ctn, 0x00, sizeof(container_10));
 
                 pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $1);    
-	        $$ = ctn;
+	        $$ = ctn;                
            DBG_PRINT}}
         ;
 
@@ -24091,16 +24153,23 @@ connect_item
 	       PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), val);
                $$ = ctn;
+               PARSER_SAVE_ERR_CONTEXT ($3, @$.buffer_pos)
            DBG_PRINT}}            
         | USER '=' identifier
           {{ DBG_TRACE_GRAMMAR(connect_item, | USER '=' identifier);
                 container_2 ctn;
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), $3);
                 $$ = ctn;
+                PARSER_SAVE_ERR_CONTEXT ($3, @$.buffer_pos)
             DBG_PRINT}}
         | PASSWORD '=' 
           {{ DBG_TRACE_GRAMMAR(connect_item,   | PASSWORD '='  );
                container_2 ctn;
+
+               pwd_info.pwd_start_offset = (@$.buffer_pos);
+               pwd_info.pwd_end_offset = (@$.buffer_pos);
+               pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, en_none_password);
+
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
@@ -24120,9 +24189,16 @@ connect_item
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), val);
                  $$ = ctn;
            DBG_PRINT}}
-        | PASSWORD '=' CHAR_STRING
+        | PASSWORD '=' 
+          {
+                pwd_info.pwd_start_offset = (@$.buffer_pos);
+          }
+          CHAR_STRING
           {{ DBG_TRACE_GRAMMAR(connect_item, | PASSWORD '=' CHAR_STRING );
                 container_2 ctn;
+                
+                pwd_info.pwd_end_offset = (@$.buffer_pos);
+                pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, en_none_password);
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
@@ -24131,7 +24207,7 @@ connect_item
                         val->type_enum = PT_TYPE_CHAR;
                         val->info.value.string_type = ' ';
 
-                        if (pt_check_dblink_password(this_parser, $3, cipher, sizeof(cipher)) == NO_ERROR)
+                        if (pt_check_dblink_password(this_parser, $4, cipher, sizeof(cipher)) == NO_ERROR)
                           {                             
                              val->info.value.data_value.str =
                                 pt_append_bytes (this_parser, NULL, cipher, strlen (cipher));
@@ -25860,6 +25936,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
   INIT_PT_HINT("INDEX_LS", PT_HINT_INDEX_LS),
   INIT_PT_HINT("SELECT_RECORD_INFO", PT_HINT_SELECT_RECORD_INFO),
+  INIT_PT_HINT("SAMPLING_SCAN", PT_HINT_SAMPLING_SCAN),
   INIT_PT_HINT("SELECT_PAGE_INFO", PT_HINT_SELECT_PAGE_INFO),
   INIT_PT_HINT("SELECT_KEY_INFO", PT_HINT_SELECT_KEY_INFO),
   INIT_PT_HINT("SELECT_BTREE_NODE_INFO", PT_HINT_SELECT_BTREE_NODE_INFO),
@@ -27829,3 +27906,20 @@ pt_ct_check_select (char* p, char *perr_msg)
    return false;
 }
 
+void
+pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING en_add_pwd_string)
+{
+  if (this_parser->original_buffer == NULL)
+    {
+      // In the case of coming through the following three functions, original_buffer is null.
+      // db_open_file_name(), db_open_file(), db_make_session_for_one_statement_execution()
+      return;
+    }
+
+  if (start < 0 || end < 0)
+    {
+      return;
+    }
+
+  password_add_offset (&this_parser->hide_pwd_info, start, end, is_add_comma, en_add_pwd_string);
+}

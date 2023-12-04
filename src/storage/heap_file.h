@@ -382,6 +382,12 @@ struct heap_get_context
 				 * (like serial increment) require WRITE mode */
 };
 
+typedef struct sampling_info SAMPLING_INFO;
+struct sampling_info
+{
+  int weight;			/* for sampling statistics */
+};
+
 /* Forward definition. */
 struct mvcc_reev_data;
 extern int mvcc_header_size_lookup[8];
@@ -413,6 +419,9 @@ extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE *
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+extern SCAN_CODE heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
+				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+				     sampling_info * sampling);
 extern SCAN_CODE heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					DB_VALUE ** cache_recordinfo);
@@ -615,6 +624,9 @@ extern SCAN_CODE heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid,
 extern SCAN_CODE heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid, VPID * next_vpid,
 				 DB_VALUE ** cache_pageinfo);
 extern int heap_vpid_next (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID * next_vpid);
+extern int heap_vpid_skip_next (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * curr_page_watcher,
+				PGBUF_WATCHER * old_page_watcher, int skip_cnt, VPID * vpid,
+				HEAP_SCANCACHE * scan_cache);
 extern int heap_vpid_prev (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID * prev_vpid);
 extern SCAN_CODE heap_get_mvcc_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 				       MVCC_REC_HEADER * mvcc_header);
@@ -666,8 +678,8 @@ extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * up
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
-						RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-						int old_chn);
+						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
+						int ispeeking, int old_chn);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
