@@ -4697,7 +4697,7 @@ boot_define_view_vclass (void)
 	"SELECT "
 	  "[q].[class_of].[class_name] AS [vclass_name], "
 	  "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
-	  "[q].[spec] AS [vclass_def], "
+	  "CASE [q].[class_of].[is_system_class] when 1 then [q].[spec] else substring ([q].[spec], 4) end AS [vclass_def], "
 	  "[c].[comment] AS [comment] "
 	"FROM "
 	  /* CT_QUERYSPEC_NAME */
@@ -4706,6 +4706,8 @@ boot_define_view_vclass (void)
 	  "[%s] AS [c] "
 	"WHERE "
 	  "[q].[class_of] = [c] "
+          "AND (([q].[class_of].[is_system_class] = 1 and [q].[spec] > 'S')"
+          "  OR ([q].[class_of].[is_system_class] = 0 and [q].[spec] < 'S'))"
 	  "AND ("
 	      "{'DBA'} SUBSETEQ ("
 		  "SELECT "

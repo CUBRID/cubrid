@@ -81,13 +81,6 @@ static int dbcs_process_double_quote_string_decimal (PARSER_CONTEXT * parser, in
 static int dbcs_process_single_quote_string (PARSER_CONTEXT * parser, int input_char, int converted_char);
 static int dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char, int converted_char);
 
-extern "C"
-{
-  /* for extracting view's query spec in loaddb */
-  extern char stream_buffer[];
-  extern int stream_ptr;
-}
-
 /*
  * dbcs_start_input () -
  *   return: none
@@ -132,8 +125,6 @@ dbcs_get_next (PARSER_CONTEXT * parser)
 	    }
 	}
     }
-  /* a statement buffer to extract view's query spec in loaddb */
-  stream_buffer[stream_ptr++] = (char) input_char;
 
   return input_char;
 }

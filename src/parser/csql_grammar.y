@@ -1871,7 +1871,7 @@ stmt
 				g_query_string_len = len;
 			      }
 			  }
-		        else if (g_view_string)
+		        else if (stream_ptr > 0)
 			  {
 			    /* g_view_string points to an offset of stream_buf */
 			    stream_buffer[stream_ptr++] = 0;
