@@ -6975,8 +6975,9 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 	  goto exit_on_error;
 	}
 #else
-      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
-			     BTREE_LEAF_NODE, &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key,
+			     (void *) &BTS->leaf_rec_info, BTREE_LEAF_NODE, &BTS->clear_cur_key,
+			     &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -7084,8 +7085,9 @@ count_keys:
 	  goto exit_on_error;
 	}
 #else
-      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
-			     BTREE_LEAF_NODE, &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key,
+			     (void *) &BTS->leaf_rec_info, BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset,
+			     PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -9045,9 +9047,8 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_P
 	      goto exit_on_error;
 	    }
 #else
-	  if (btree_read_record
-	      (thread_p, btid_int, pg_ptr, &rec, &BTS->cur_key, &leaf_pnt, BTREE_LEAF_NODE, &BTS->clear_cur_key,
-	       &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+	  if (btree_read_record (thread_p, btid_int, pg_ptr, &BTS->key_record, &BTS->cur_key, &BTS->leaf_rec_info,
+				 BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -25206,8 +25207,12 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   /* Read record key (and other info). */
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   assert (bts != NULL && bts->node_type == BTREE_LEAF_NODE);
-#endif
   return btree_read_record_in_leafpage (thread_p, bts->C_page, COPY_KEY_VALUE, bts);
+#else
+  /* Read record key (and other info). */
+  return btree_read_record (thread_p, &bts->btid_int, bts->C_page, &bts->key_record, &bts->cur_key, &bts->leaf_rec_info,
+			    bts->node_type, &bts->clear_cur_key, &bts->offset, COPY_KEY_VALUE, bts);
+#endif
 }
 
 /*

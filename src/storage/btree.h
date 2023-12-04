@@ -212,7 +212,7 @@ typedef struct
 } while(0)
 
 #else
-#define BTREE_PAGE_PREFIX_INFO  void
+#define BTREE_PAGE_PREFIX_INFO  void*
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix, type)
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)
 #endif
