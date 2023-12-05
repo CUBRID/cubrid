@@ -1878,39 +1878,6 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 	    }
 	}
-      else
-	{
-	  dnf_prev = NULL;
-	  while ((dnf_node = ((dnf_prev) ? dnf_prev->or_next : expr)))
-	    {
-	      PT_OP_TYPE op = dnf_node->info.expr.op;
-	      opd1 = dnf_node->info.expr.arg1;
-	      opd2 = dnf_node->info.expr.arg2;
-	      if (opd1 && opd2 && op == PT_EQ && opd1->node_type == PT_VALUE && opd2->node_type == PT_VALUE)
-		{
-		  domain = pt_xasl_node_to_domain (parser, dnf_node);
-		  qualifier = dnf_node->info.expr.qualifier;
-		  dbv1 = pt_value_to_db (parser, opd1);
-		  dbv2 = pt_value_to_db (parser, opd2);
-
-		  opd3 = dnf_node->info.expr.arg3;
-		  dbv3 = pt_value_to_db (parser, opd3);
-
-		  if (pt_evaluate_db_value_expr
-		      (parser, dnf_node, dnf_node->info.expr.op, dbv1, dbv2, dbv3, &dbval_res, domain, opd1, opd2, opd3,
-		       qualifier))
-		    {
-		      if (DB_VALUE_TYPE (&dbval_res) == DB_TYPE_INTEGER && db_get_int (&dbval_res) == 1)
-			{
-			  cut_off = true;
-			  break;
-			}
-		    }
-		}
-	      dnf_prev = (dnf_prev) ? dnf_prev->or_next : dnf_node;
-	    }
-
-	}
 
       if (cut_off)
 	{
