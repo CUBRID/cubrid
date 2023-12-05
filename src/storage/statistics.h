@@ -113,6 +113,7 @@ struct class_attr_ndv
   int attr_cnt;			/* column id */
   ATTR_NDV *attr_ndv;		/* Number of Distinct Values of column */
 };
+#define CLASS_ATTR_NDV_INITIALIZER	{0, NULL}
 
 #if !defined(SERVER_MODE)
 extern int stats_get_statistics (OID * classoid, unsigned int timestamp, CLASS_STATS ** stats_p);
