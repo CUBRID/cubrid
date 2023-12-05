@@ -438,6 +438,19 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
   int i;
   const char *class_name_p = NULL;
 
+  /* if class is not normal class */
+  if (!db_is_class (class_mop))
+    {
+      /* The class does not have a heap file (i.e. it has no instances); so no statistics can be obtained for this
+       * class; just set to 0 and return. */
+      class_attr_ndv->attr_cnt = 0;
+      class_attr_ndv->attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV));
+      class_attr_ndv->attr_ndv[0].ndv = 0;
+      class_attr_ndv->attr_ndv[0].id = 0;
+      goto end;
+    }
+
+
   /* get class_name */
   class_name_p = db_get_class_name (class_mop);
   /* count number of the columns */
