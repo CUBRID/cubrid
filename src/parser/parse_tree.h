@@ -3352,6 +3352,8 @@ struct pt_stored_proc_info
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
   PT_TYPE_ENUM ret_type;
+  PT_NODE *ret_data_type;
+
 };
 
 struct pt_prepare_info

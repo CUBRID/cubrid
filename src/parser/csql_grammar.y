@@ -250,7 +250,6 @@ static bool is_in_create_trigger = false;
 #define TO_NUMBER(a)			((UINTPTR)(a))
 #define FROM_NUMBER(a)			((PT_NODE*)(UINTPTR)(a))
 
-
 #define SET_CONTAINER_2(a, i, j)		a.c1 = i, a.c2 = j
 #define SET_CONTAINER_3(a, i, j, k)		a.c1 = i, a.c2 = j, a.c3 = k
 #define SET_CONTAINER_4(a, i, j, k, l)		a.c1 = i, a.c2 = j, a.c3 = k, a.c4 = l
@@ -574,7 +573,6 @@ static char *g_plcsql_text;
 %type <number> trigger_time
 %type <number> opt_trigger_action_time
 %type <number> event_type
-%type <number> opt_of_data_type_cursor
 %type <number> all_distinct
 %type <number> of_avg_max_etc
 %type <number> of_leading_trailing_both
@@ -1043,6 +1041,7 @@ static char *g_plcsql_text;
 %type <c3> delete_from_using
 %type <c3> trigger_status_or_priority_or_change_owner
 
+%type <c2> sp_return_type
 %type <c2> extended_table_spec_list
 %type <c2> opt_startwith_connectby_clause
 %type <c2> opt_of_where_cursor
@@ -12457,23 +12456,19 @@ opt_plus
 	| '+'
 	;
 
-opt_of_data_type_cursor
-	: /* empty */
-		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, : );
+sp_return_type
+	: data_type
+		{{ DBG_TRACE_GRAMMAR(sp_return_type, | data_type);
 
-			$$ = PT_TYPE_NONE;
-
-		DBG_PRINT}}
-	| data_type
-		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, | data_type);
-
-			$$ = (int) TO_NUMBER (CONTAINER_AT_0 ($1));
+			$$ = $1;
 
 		DBG_PRINT}}
 	| CURSOR
-		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, | CURSOR);
+		{{ DBG_TRACE_GRAMMAR(sp_return_type, | CURSOR);
 
-			$$ = PT_TYPE_RESULTSET;
+                        container_2 ctn;
+                        SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_RESULTSET), NULL);
+			$$ = ctn;
 
 		DBG_PRINT}}
 	;
@@ -21264,6 +21259,8 @@ primitive_type
 			    dt->type_enum = typ;
 			    dt->info.data_type.entity = $1;
 			    dt->info.data_type.units = $2;
+
+			    PARSER_SAVE_ERR_CONTEXT (dt, @$.buffer_pos)
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
