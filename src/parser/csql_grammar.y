@@ -573,6 +573,7 @@ static char *g_plcsql_text;
 %type <number> trigger_time
 %type <number> opt_trigger_action_time
 %type <number> event_type
+%type <number> opt_of_data_type_cursor
 %type <number> all_distinct
 %type <number> of_avg_max_etc
 %type <number> of_leading_trailing_both
@@ -1041,7 +1042,6 @@ static char *g_plcsql_text;
 %type <c3> delete_from_using
 %type <c3> trigger_status_or_priority_or_change_owner
 
-%type <c2> sp_return_type
 %type <c2> extended_table_spec_list
 %type <c2> opt_startwith_connectby_clause
 %type <c2> opt_of_where_cursor
@@ -12456,20 +12456,18 @@ opt_plus
 	| '+'
 	;
 
-sp_return_type
-	: data_type
-		{{ DBG_TRACE_GRAMMAR(sp_return_type, | data_type);
-
-			$$ = $1;
-
+opt_of_data_type_cursor
+        : /* empty */
+                {{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, : );
+                       $$ = PT_TYPE_NONE;
+                DBG_PRINT}}
+        | data_type
+                {{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, | data_type);
+                        $$ = (int) TO_NUMBER (CONTAINER_AT_0 ($1));
 		DBG_PRINT}}
 	| CURSOR
-		{{ DBG_TRACE_GRAMMAR(sp_return_type, | CURSOR);
-
-                        container_2 ctn;
-                        SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_RESULTSET), NULL);
-			$$ = ctn;
-
+		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, | CURSOR);
+                        $$ = PT_TYPE_RESULTSET;
 		DBG_PRINT}}
 	;
 
