@@ -1469,6 +1469,7 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
     case FILE_DROPPED_FILES:
     case FILE_VACUUM_DATA:
     default:
+      fprintf (fp, "\n");
       break;
     }
 }
