@@ -45,6 +45,8 @@ namespace cublog
      * and, thus, does not need to be left in consistent state; thus, no check as to the consistent
      * termination state for atomic replication is needed
      */
+
+    cleanup_lock_resources ();
   }
 
   void
@@ -383,9 +385,17 @@ namespace cublog
   {
     assert (m_locked_classes.count (trid) > 0);
 
-    for (auto classoid : m_locked_classes[trid])
+    if (m_locked_classes.size() == 1)
       {
-	lock_unlock_object_and_cleanup (&thread_entry, &classoid, oid_Root_class_oid, SCH_M_LOCK);
+	// If there are no more DDL statements to replicate, the intention locks should also be removed.
+	lock_unlock_all (&thread_entry);
+      }
+    else
+      {
+	for (auto classoid : m_locked_classes[trid])
+	  {
+	    lock_unlock_object_and_cleanup (&thread_entry, &classoid, oid_Root_class_oid, SCH_M_LOCK);
+	  }
       }
 
     m_locked_classes.erase (trid);
@@ -523,5 +533,12 @@ namespace cublog
   atomic_replicator::is_locked_for_ddl (const TRANID trid, const OID *classoid)
   {
     return m_locked_classes.count (trid) > 0 && m_locked_classes[trid].count (*classoid) > 0;
+  }
+
+  void
+  atomic_replicator::cleanup_lock_resources ()
+  {
+    cubthread::entry &thread_entry = cubthread::get_entry ();
+    lock_unlock_all (&thread_entry);
   }
 }
