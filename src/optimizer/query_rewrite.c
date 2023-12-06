@@ -1862,17 +1862,11 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	{
 	  if (opd1 && opd2 && op == PT_EQ && opd1->node_type == PT_VALUE && opd2->node_type == PT_VALUE)
 	    {
-	      domain = pt_xasl_node_to_domain (parser, expr);
-	      qualifier = expr->info.expr.qualifier;
 	      dbv1 = pt_value_to_db (parser, opd1);
 	      dbv2 = pt_value_to_db (parser, opd2);
-	      if (pt_evaluate_db_value_expr
-		  (parser, expr, expr->info.expr.op, dbv1, dbv2, NULL, &dbval_res, domain, opd1, opd2, NULL, qualifier))
+	      if (db_value_compare (dbv1, dbv2) == DB_EQ)
 		{
-		  if (DB_VALUE_TYPE (&dbval_res) == DB_TYPE_INTEGER && db_get_int (&dbval_res) == 1)
-		    {
-		      cut_off = true;
-		    }
+		  cut_off = true;
 		}
 	    }
 	}
