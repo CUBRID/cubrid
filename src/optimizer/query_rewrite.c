@@ -1362,9 +1362,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   PT_NODE *dt1, *dt2;
   bool cut_off;
   PT_NODE *expr_prev = NULL;
-  PT_NODE *opd1, *opd2, *opd3;
-  DB_VALUE *dbv1, *dbv2, *dbv3, dbval_res;
-  PT_TYPE_ENUM type1, type2, result_type;
+  PT_NODE *opd1, *opd2;
+  DB_VALUE *dbv1, *dbv2, dbval_res;
   PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
   TP_DOMAIN *domain;
 
@@ -1867,10 +1866,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	      qualifier = expr->info.expr.qualifier;
 	      dbv1 = pt_value_to_db (parser, opd1);
 	      dbv2 = pt_value_to_db (parser, opd2);
-	      opd3 = expr->info.expr.arg3;
-	      dbv3 = (opd3 != NULL && opd3->node_type == PT_VALUE) ? pt_value_to_db (parser, opd3) : NULL;
 	      if (pt_evaluate_db_value_expr
-		  (parser, expr, expr->info.expr.op, dbv1, dbv2, dbv3, &dbval_res, domain, opd1, opd2, opd3, qualifier))
+		  (parser, expr, expr->info.expr.op, dbv1, dbv2, NULL, &dbval_res, domain, opd1, opd2, NULL, qualifier))
 		{
 		  if (DB_VALUE_TYPE (&dbval_res) == DB_TYPE_INTEGER && db_get_int (&dbval_res) == 1)
 		    {
