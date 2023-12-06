@@ -1593,16 +1593,15 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	    sig->method_arg_pos[i] = i;
 	  }
 
-
-	sig->arg_info.arg_mode = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
-	if (!sig->arg_info.arg_mode)
+	sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
+	if (!sig->arg_info->arg_mode)
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
 
-	sig->arg_info.arg_type = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
-	if (!sig->arg_info.arg_type)
+	sig->arg_info->arg_type = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
+	if (!sig->arg_info->arg_type)
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
@@ -1610,11 +1609,11 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 
 	for (int i = 0; i < sig_num_args; i++)
 	  {
-	    sig->arg_info.arg_mode[i] = sig_arg_mode[i];
-	    sig->arg_info.arg_type[i] = sig_arg_type[i];
+	    sig->arg_info->arg_mode[i] = sig_arg_mode[i];
+	    sig->arg_info->arg_type[i] = sig_arg_type[i];
 	  }
 
-	sig->arg_info.result_type = sig_result_type;
+	sig->arg_info->result_type = sig_result_type;
 
 	sig_list.num_methods = 1;
       }

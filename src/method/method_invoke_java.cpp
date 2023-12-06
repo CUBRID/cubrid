@@ -188,7 +188,7 @@ namespace cubmethod
     int num_args = m_method_sig->num_method_args;
     for (int i = 0; i < num_args; i++)
       {
-	if (m_method_sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
+	if (m_method_sig->arg_info->arg_mode[i] == METHOD_ARG_MODE_IN)
 	  {
 	    continue;
 	  }

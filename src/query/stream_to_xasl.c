@@ -76,6 +76,7 @@ static int *stx_restore_int_array (THREAD_ENTRY * thread_p, char *ptr, int size)
 static OID *stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int size);
 static METHOD_SIG_LIST *stx_restore_method_sig_list (THREAD_ENTRY * thread_p, char *ptr);
 static METHOD_SIG *stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int size);
+static METHOD_ARG_INFO *stx_restore_method_arg_info (THREAD_ENTRY * thread_p, char *ptr, int num_args);
 static KEY_RANGE *stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr, int size);
 
 static char *stx_build_xasl_node (THREAD_ENTRY * thread_p, char *tmp, XASL_NODE * ptr);
@@ -86,6 +87,7 @@ static char *stx_build_cache_attrinfo (char *tmp);
 static char *stx_build_list_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_ID * ptr);
 static char *stx_build_method_sig_list (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG_LIST * ptr);
 static char *stx_build_method_sig (THREAD_ENTRY * thread_p, char *tmp, METHOD_SIG * ptr, int size);
+static char *stx_build_method_arg_info (THREAD_ENTRY * thread_p, char *tmp, METHOD_ARG_INFO * ptr, int num_args);
 static char *stx_build_union_proc (THREAD_ENTRY * thread_p, char *tmp, UNION_PROC_NODE * ptr);
 static char *stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *tmp, FETCH_PROC_NODE * ptr);
 static char *stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDLIST_PROC_NODE * ptr);
@@ -1261,6 +1263,39 @@ stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int count)
     }
 
   return method_sig;
+}
+
+static METHOD_ARG_INFO *
+stx_restore_method_arg_info (THREAD_ENTRY * thread_p, char *ptr, int num_args)
+{
+  METHOD_ARG_INFO *arg_info;
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  arg_info = (METHOD_ARG_INFO *) stx_get_struct_visited_ptr (thread_p, ptr);
+  if (arg_info != NULL)
+    {
+      return arg_info;
+    }
+
+  arg_info = (METHOD_ARG_INFO *) stx_alloc_struct (thread_p, sizeof (METHOD_ARG_INFO));
+  if (arg_info == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+
+  if (stx_mark_struct_visited (thread_p, ptr, arg_info) == ER_FAILED
+      || stx_build_method_arg_info (thread_p, ptr, arg_info, num_args) == NULL)
+    {
+      return NULL;
+    }
+
+  return arg_info;
 }
 
 static DB_VALUE **
@@ -2450,35 +2485,23 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
       ptr = or_unpack_int (ptr, &(method_sig->method_arg_pos[n]));
     }
 
-  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
+/* is can be null */
+  method_sig->class_name = stx_restore_string (thread_p, ptr);
+
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
     {
-      method_sig->arg_info.arg_mode = (int *) stx_alloc_struct (thread_p, sizeof (int) * method_sig->num_method_args);
-      if (method_sig->arg_info.arg_mode == NULL)
-	{
-	  goto error;
-	}
-
-      method_sig->arg_info.arg_type = (int *) stx_alloc_struct (thread_p, sizeof (int) * method_sig->num_method_args);
-      if (method_sig->arg_info.arg_type == NULL)
-	{
-	  goto error;
-	}
-
-      for (n = 0; n < method_sig->num_method_args; n++)
-	{
-	  ptr = or_unpack_int (ptr, &method_sig->arg_info.arg_mode[n]);
-	}
-      for (n = 0; n < method_sig->num_method_args; n++)
-	{
-	  ptr = or_unpack_int (ptr, &method_sig->arg_info.arg_type[n]);
-	}
-
-      ptr = or_unpack_int (ptr, &method_sig->arg_info.result_type);
+      method_sig->arg_info = NULL;
     }
-  else				/* method */
+  else
     {
-      /* is can be null */
-      method_sig->class_name = stx_restore_string (thread_p, ptr);
+      method_sig->arg_info =
+	stx_restore_method_arg_info (thread_p, &xasl_unpack_info->packed_xasl[offset], method_sig->num_method_args);
+      if (method_sig->arg_info == NULL)
+	{
+	  goto error;
+	}
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -2494,6 +2517,41 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
 	  goto error;
 	}
     }
+
+  return ptr;
+
+error:
+  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+  return NULL;
+}
+
+
+static char *
+stx_build_method_arg_info (THREAD_ENTRY * thread_p, char *ptr, METHOD_ARG_INFO * method_arg_info, int num_args)
+{
+  int n;
+  method_arg_info->arg_mode = (int *) stx_alloc_struct (thread_p, sizeof (int) * num_args);
+  if (method_arg_info->arg_mode == NULL)
+    {
+      goto error;
+    }
+
+  method_arg_info->arg_type = (int *) stx_alloc_struct (thread_p, sizeof (int) * num_args);
+  if (method_arg_info->arg_type == NULL)
+    {
+      goto error;
+    }
+
+  for (n = 0; n < num_args; n++)
+    {
+      ptr = or_unpack_int (ptr, &method_arg_info->arg_mode[n]);
+    }
+  for (n = 0; n < num_args; n++)
+    {
+      ptr = or_unpack_int (ptr, &method_arg_info->arg_type[n]);
+    }
+
+  ptr = or_unpack_int (ptr, &method_arg_info->result_type);
 
   return ptr;
 

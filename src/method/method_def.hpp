@@ -124,6 +124,7 @@ enum METHOD_ARG_MODE
 typedef struct method_arg_info METHOD_ARG_INFO;
 struct method_arg_info
 {
+  int num_args;  /* == num_method_args */
   int *arg_mode; /* IN, OUT, INOUT */
   int *arg_type; /* DB_TYPE */
   int result_type; /* DB_TYPE */
@@ -142,11 +143,8 @@ struct method_sig_node
   int num_method_args;		/* number of arguments */
   int *method_arg_pos;		/* arg position in list file */
 
-  union
-  {
-    char *class_name;		/* class name for the class method */
-    METHOD_ARG_INFO arg_info;  /* argument info for javasp's server-side calling */
-  };
+  char *class_name;		/* class name for the class method */
+  METHOD_ARG_INFO *arg_info;    /* argument info */
 
   void pack (cubpacking::packer &serializator) const;
   void unpack (cubpacking::unpacker &deserializator);

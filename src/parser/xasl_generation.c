@@ -3852,8 +3852,8 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	      (*tail)->method_type = METHOD_TYPE_JAVA_SP;
 
 	      int num_args = (*tail)->num_method_args;
-	      (*tail)->arg_info.arg_mode = regu_int_array_alloc (num_args);
-	      (*tail)->arg_info.arg_type = regu_int_array_alloc (num_args);
+	      (*tail)->arg_info->arg_mode = regu_int_array_alloc (num_args);
+	      (*tail)->arg_info->arg_type = regu_int_array_alloc (num_args);
 
 	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name);
 	      if (mop_p)
@@ -3884,12 +3884,12 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 			    {
 			      if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
 				{
-				  (*tail)->arg_info.arg_mode[i] = db_get_int (&mode);
+				  (*tail)->arg_info->arg_mode[i] = db_get_int (&mode);
 				}
 
 			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
 				{
-				  (*tail)->arg_info.arg_type[i] = db_get_int (&arg_type);
+				  (*tail)->arg_info->arg_type[i] = db_get_int (&arg_type);
 				}
 
 			      pr_clear_value (&mode);
@@ -3912,7 +3912,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  DB_VALUE result_type;
 		  if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type) == NO_ERROR)
 		    {
-		      (*tail)->arg_info.result_type = db_get_int (&result_type);
+		      (*tail)->arg_info->result_type = db_get_int (&result_type);
 		      pr_clear_value (&result_type);
 		    }
 		  else

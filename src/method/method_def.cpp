@@ -60,11 +60,11 @@ method_sig_node::method_sig_node (method_sig_node &&obj)
     }
   else
     {
-      arg_info.arg_mode = obj.arg_info.arg_mode;
-      arg_info.arg_type = obj.arg_info.arg_type;
+      arg_info->arg_mode = obj.arg_info->arg_mode;
+      arg_info->arg_type = obj.arg_info->arg_type;
 
-      obj.arg_info.arg_mode = nullptr;
-      obj.arg_info.arg_type = nullptr;
+      obj.arg_info->arg_mode = nullptr;
+      obj.arg_info->arg_type = nullptr;
     }
 }
 
@@ -123,18 +123,18 @@ method_sig_node::method_sig_node (const method_sig_node &obj)
     {
       if (num_method_args > 0)
 	{
-	  arg_info.arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-	  arg_info.arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 	  for (int n = 0; n < num_method_args; n++)
 	    {
-	      arg_info.arg_mode[n] = obj.arg_info.arg_mode[n];
-	      arg_info.arg_type[n] = obj.arg_info.arg_type[n];
+	      arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
+	      arg_info->arg_type[n] = obj.arg_info->arg_type[n];
 	    }
 	}
       else
 	{
-	  arg_info.arg_mode = nullptr;
-	  arg_info.arg_type = nullptr;
+	  arg_info->arg_mode = nullptr;
+	  arg_info->arg_type = nullptr;
 	}
     }
 }
@@ -165,13 +165,13 @@ method_sig_node::pack (cubpacking::packer &serializator) const
     {
       for (int i = 0; i < num_method_args; i++)
 	{
-	  serializator.pack_int (arg_info.arg_mode[i]);
+	  serializator.pack_int (arg_info->arg_mode[i]);
 	}
       for (int i = 0; i < num_method_args; i++)
 	{
-	  serializator.pack_int (arg_info.arg_type[i]);
+	  serializator.pack_int (arg_info->arg_type[i]);
 	}
-      serializator.pack_int (arg_info.result_type);
+      serializator.pack_int (arg_info->result_type);
     }
 }
 
@@ -204,10 +204,10 @@ method_sig_node::get_packed_size (cubpacking::packer &serializator, std::size_t 
     {
       for (int i = 0; i < num_method_args; i++)
 	{
-	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info.arg_mode[i] */
-	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info.arg_type[i] */
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_mode[i] */
+	  size += serializator.get_packed_int_size (size); /* method_sig->arg_info->arg_type[i] */
 	}
-      size += serializator.get_packed_int_size (size); /* method_sig->arg_info.result_type */
+      size += serializator.get_packed_int_size (size); /* method_sig->arg_info->result_type */
     }
 
   return size;
@@ -271,18 +271,18 @@ method_sig_node::operator= (const method_sig_node &obj)
 	{
 	  if (num_method_args > 0)
 	    {
-	      arg_info.arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-	      arg_info.arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	      arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	      arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 	      for (int n = 0; n < num_method_args; n++)
 		{
-		  arg_info.arg_mode[n] = obj.arg_info.arg_mode[n];
-		  arg_info.arg_type[n] = obj.arg_info.arg_type[n];
+		  arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
+		  arg_info->arg_type[n] = obj.arg_info->arg_type[n];
 		}
 	    }
 	  else
 	    {
-	      arg_info.arg_mode = nullptr;
-	      arg_info.arg_type = nullptr;
+	      arg_info->arg_mode = nullptr;
+	      arg_info->arg_type = nullptr;
 	    }
 	}
     }
@@ -328,26 +328,26 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
     {
       if (num_method_args > 0)
 	{
-	  arg_info.arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-	  arg_info.arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 
 	  for (int i = 0; i < num_method_args; i++)
 	    {
-	      deserializator.unpack_int (arg_info.arg_mode[i]);
+	      deserializator.unpack_int (arg_info->arg_mode[i]);
 	    }
 
 	  for (int i = 0; i < num_method_args; i++)
 	    {
-	      deserializator.unpack_int (arg_info.arg_type[i]);
+	      deserializator.unpack_int (arg_info->arg_type[i]);
 	    }
 	}
       else
 	{
-	  arg_info.arg_mode = nullptr;
-	  arg_info.arg_type = nullptr;
+	  arg_info->arg_mode = nullptr;
+	  arg_info->arg_type = nullptr;
 	}
 
-      deserializator.unpack_int (arg_info.result_type);
+      deserializator.unpack_int (arg_info->result_type);
     }
 }
 
@@ -382,13 +382,13 @@ method_sig_node::freemem ()
     }
   else
     {
-      if (arg_info.arg_mode != nullptr)
+      if (arg_info->arg_mode != nullptr)
 	{
-	  db_private_free_and_init (NULL, arg_info.arg_mode);
+	  db_private_free_and_init (NULL, arg_info->arg_mode);
 	}
-      if (arg_info.arg_type != nullptr)
+      if (arg_info->arg_type != nullptr)
 	{
-	  db_private_free_and_init (NULL, arg_info.arg_type);
+	  db_private_free_and_init (NULL, arg_info->arg_type);
 	}
     }
 }

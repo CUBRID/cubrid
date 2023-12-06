@@ -10480,7 +10480,7 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
       // *INDENT-ON*
       for (int i = 0; i < sig->num_method_args; i++)
 	{
-	  if (sig->arg_info.arg_mode[i] == METHOD_ARG_MODE_IN)
+	  if (sig->arg_info->arg_mode[i] == METHOD_ARG_MODE_IN)
 	    {
 	      continue;
 	    }

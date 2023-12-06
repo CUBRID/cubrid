@@ -210,11 +210,11 @@ namespace cubmethod
     for (int i = 0; i < num_args; i++)
       {
 	arg_pos[i] = sig->method_arg_pos[i];
-	arg_mode[i] = sig->arg_info.arg_mode[i];
-	arg_type[i] = sig->arg_info.arg_type[i];
+	arg_mode[i] = sig->arg_info->arg_mode[i];
+	arg_type[i] = sig->arg_info->arg_type[i];
       }
 
-    result_type = sig->arg_info.result_type;
+    result_type = sig->arg_info->result_type;
     transaction_control = tc;
   }
 
