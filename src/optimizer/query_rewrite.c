@@ -1859,23 +1859,34 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
       opd1 = expr->info.expr.arg1;
       opd2 = expr->info.expr.arg2;
 
-      if (opd1 && opd2 && op == PT_EQ && opd1->node_type == PT_VALUE && opd2->node_type == PT_VALUE)
+      if (expr->or_next == NULL)
 	{
-	  domain = pt_xasl_node_to_domain (parser, expr);
-	  qualifier = expr->info.expr.qualifier;
-	  dbv1 = pt_value_to_db (parser, opd1);
-	  dbv2 = pt_value_to_db (parser, opd2);
-	  opd3 = expr->info.expr.arg3;
-	  dbv3 = pt_value_to_db (parser, opd3);
-	  if (pt_evaluate_db_value_expr
-	      (parser, expr, expr->info.expr.op, dbv1, dbv2, dbv3, &dbval_res, domain, opd1, opd2, opd3, qualifier))
+	  if (opd1 && opd2 && op == PT_EQ && opd1->node_type == PT_VALUE && opd2->node_type == PT_VALUE)
 	    {
-	      if (DB_VALUE_TYPE (&dbval_res) == DB_TYPE_INTEGER && db_get_int (&dbval_res) == 1)
+	      domain = pt_xasl_node_to_domain (parser, expr);
+	      qualifier = expr->info.expr.qualifier;
+	      dbv1 = pt_value_to_db (parser, opd1);
+	      dbv2 = pt_value_to_db (parser, opd2);
+	      opd3 = expr->info.expr.arg3;
+	      dbv3 = pt_value_to_db (parser, opd3);
+	      if (pt_evaluate_db_value_expr
+		  (parser, expr, expr->info.expr.op, dbv1, dbv2, dbv3, &dbval_res, domain, opd1, opd2, opd3, qualifier))
 		{
-		  cut_off = true;
+		  if (DB_VALUE_TYPE (&dbval_res) == DB_TYPE_INTEGER && db_get_int (&dbval_res) == 1)
+		    {
+		      cut_off = true;
+		    }
 		}
 	    }
 	}
+      else
+	{
+	  /*
+	   * give up
+	   */
+	  ;
+	}
+
       if (cut_off)
 	{
 	  /* cut if off from CNF list */
