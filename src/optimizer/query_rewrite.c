@@ -1361,7 +1361,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   bool copy_arg2;
   PT_NODE *dt1, *dt2;
   bool cut_off;
-  PT_NODE *dnf_node, *dnf_prev = NULL, *expr_prev = NULL;
+  PT_NODE *expr_prev = NULL;
   PT_NODE *opd1, *opd2, *opd3;
   DB_VALUE *dbv1, *dbv2, *dbv3, dbval_res;
   PT_TYPE_ENUM type1, type2, result_type;
