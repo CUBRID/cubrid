@@ -3975,7 +3975,8 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	  return NO_ERROR;
 	}
 
-      if (termp->pt_expr != NULL && termp->pt_expr->node_type == PT_VALUE)
+      s = bitset_iterate (&(termp->segments), &iter_s);
+      if (s == -1)
 	{
 	  /*
 	   * If termp is PT_VALUE, it represents an always-false condition. 
@@ -3984,7 +3985,7 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	  return NO_ERROR;
 	}
 
-      for (s = bitset_iterate (&(termp->segments), &iter_s); s != -1; s = bitset_next_member (&iter_s))
+      for (; s != -1; s = bitset_next_member (&iter_s))
 	{
 	  bool found = false;
 	  if (QO_SEG_HEAD (QO_ENV_SEG (env, s)) != node_of_plan)
