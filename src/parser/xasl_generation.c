@@ -17453,6 +17453,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
+      && !(select_node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
       && !select_node->flag.is_system_generated_stmt
       && !((spec = select_node->info.query.q.select.from) != NULL
 	   && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
