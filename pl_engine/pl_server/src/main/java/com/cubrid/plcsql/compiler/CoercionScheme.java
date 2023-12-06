@@ -324,7 +324,7 @@ public enum CoercionScheme {
         public List<TypeSpec> getCoercions(
                 List<Coercion> outCoercions, List<TypeSpec> argTypes, String opName) {
             // ||, like
-            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.STRING);
+            return getCoercionsToFixedType(outCoercions, argTypes, TypeSpecSimple.STRING_ANY);
         }
     },
 
@@ -373,11 +373,11 @@ public enum CoercionScheme {
                 TypeSpecSimple.BOOLEAN;
 
         compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_NULL] =
-                TypeSpecSimple.STRING;
+                TypeSpecSimple.STRING_ANY;
         compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_OBJECT] =
-                TypeSpecSimple.STRING;
+                TypeSpecSimple.STRING_ANY;
         compOpCommonType[TypeSpecSimple.IDX_STRING][TypeSpecSimple.IDX_STRING] =
-                TypeSpecSimple.STRING;
+                TypeSpecSimple.STRING_ANY;
 
         compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.SHORT;
         compOpCommonType[TypeSpecSimple.IDX_SHORT][TypeSpecSimple.IDX_OBJECT] =
@@ -405,19 +405,19 @@ public enum CoercionScheme {
                 TypeSpecSimple.BIGINT;
 
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NULL] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_OBJECT] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] =
                 TypeSpecSimple.DOUBLE;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_SHORT] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_INT] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_BIGINT] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         compOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NUMERIC] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
 
         compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.FLOAT;
         compOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_OBJECT] =
@@ -540,19 +540,19 @@ public enum CoercionScheme {
                 TypeSpecSimple.BIGINT;
 
         arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NULL] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_OBJECT] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_STRING] =
                 TypeSpecSimple.DOUBLE;
         arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_SHORT] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_INT] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_BIGINT] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
         arithOpCommonType[TypeSpecSimple.IDX_NUMERIC][TypeSpecSimple.IDX_NUMERIC] =
-                TypeSpecSimple.NUMERIC;
+                TypeSpecSimple.NUMERIC_ANY;
 
         arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_NULL] = TypeSpecSimple.FLOAT;
         arithOpCommonType[TypeSpecSimple.IDX_FLOAT][TypeSpecSimple.IDX_OBJECT] =

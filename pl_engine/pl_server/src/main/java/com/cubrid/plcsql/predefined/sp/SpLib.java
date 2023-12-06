@@ -31,12 +31,14 @@
 package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.jsp.Server;
+import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
-import com.cubrid.plcsql.compiler.DateTimeParser;
 import com.cubrid.plcsql.compiler.annotation.Operator;
+import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
 import java.sql.*;
 import java.sql.Date;
@@ -52,10 +54,60 @@ import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
+
+    public static String checkStrLength(boolean isChar, int length, String val) {
+
+        if (val == null) {
+            return null;
+        }
+
+        assert length >= 1;
+
+        if (val.length() > length) {
+            throw new VALUE_ERROR("string does not fit in the target type's length");
+        }
+
+        if (isChar) {
+            int d = length - val.length();
+            if (d > 0) {
+
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < d; i++) {
+                    sb.append(" ");
+                }
+                val = val + sb.toString();
+            }
+        }
+
+        return val;
+    }
+
+    public static BigDecimal checkPrecision(int prec, short scale, BigDecimal val) {
+
+        if (val == null) {
+            return null;
+        }
+
+        // ParseTreeConverter.visitNumeric_type() guarantees the following assertions
+        assert prec >= 1 && prec <= 38;
+        assert scale >= 0 && scale <= prec;
+
+        if (val.scale() != scale) {
+            val = val.setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        if (val.precision() > prec) {
+            throw new VALUE_ERROR(
+                    "numeric value does not fit in the target type's precision and scale");
+        }
+
+        return val;
+    }
 
     // -------------------------------------------------------------------------------
     // To provide line and column numbers for run-time exceptions
@@ -115,7 +167,7 @@ public class SpLib {
             boolean isBegin = (s.charAt(0) == '(');
             assert isBegin || (s.charAt(0) == ')');
             if (isBegin) {
-                // beginning marker of the form '(<java-line>,<pcs-line>,<pcs-column>'
+                // beginning marker of the form '(<java-line>,<plc-line>,<plc-column>'
                 stackHeight++;
                 String[] split2 = s.substring(1).split(",");
                 assert split2.length == 3;
@@ -155,11 +207,12 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     // -------------------------------------------------------------------------------
 
-    public static Object invokeBuiltinFunc(Connection conn, String name, Object... args) {
+    public static Object invokeBuiltinFunc(
+            Connection conn, String name, int resultTypeCode, Object... args) {
 
         int argsLen = args.length;
         String hostVars = getHostVarsStr(argsLen);
-        String query = String.format("select %s(%s) from dual", name, hostVars);
+        String query = String.format("select %s%s from dual", name, hostVars);
         try {
             PreparedStatement pstmt = conn.prepareStatement(query);
             for (int i = 0; i < argsLen; i++) {
@@ -167,7 +220,46 @@ public class SpLib {
             }
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
-                Object ret = rs.getObject(1);
+                Object ret;
+                switch (resultTypeCode) {
+                    case TypeSpecSimple.IDX_NULL:
+                    case TypeSpecSimple.IDX_OBJECT:
+                        ret = rs.getObject(1);
+                        break;
+                    case TypeSpecSimple.IDX_STRING:
+                        ret = rs.getString(1);
+                        break;
+                    case TypeSpecSimple.IDX_SHORT:
+                        ret = rs.getShort(1);
+                        break;
+                    case TypeSpecSimple.IDX_INT:
+                        ret = rs.getInt(1);
+                        break;
+                    case TypeSpecSimple.IDX_BIGINT:
+                        ret = rs.getLong(1);
+                        break;
+                    case TypeSpecSimple.IDX_NUMERIC:
+                        ret = rs.getBigDecimal(1);
+                        break;
+                    case TypeSpecSimple.IDX_FLOAT:
+                        ret = rs.getFloat(1);
+                        break;
+                    case TypeSpecSimple.IDX_DOUBLE:
+                        ret = rs.getDouble(1);
+                        break;
+                    case TypeSpecSimple.IDX_DATE:
+                        ret = rs.getDate(1);
+                        break;
+                    case TypeSpecSimple.IDX_TIME:
+                        ret = rs.getTime(1);
+                        break;
+                    case TypeSpecSimple.IDX_DATETIME:
+                    case TypeSpecSimple.IDX_TIMESTAMP:
+                        ret = rs.getTimestamp(1);
+                        break;
+                    default:
+                        throw new PROGRAM_ERROR(); // unreachable
+                }
                 assert !rs.next(); // it must have only one record
 
                 Statement stmt = rs.getStatement();
@@ -612,6 +704,17 @@ public class SpLib {
         return commonOpEq(l, r);
     }
 
+    public static Boolean opEqChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.equals(r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opEq(BigDecimal l, BigDecimal r) {
         return commonOpEq(l, r);
@@ -693,6 +796,19 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNullSafeEq(String l, String r) {
         return commonOpNullSafeEq(l, r);
+    }
+
+    public static Boolean opNullSafeEqChar(String l, String r) {
+        if (l == null) {
+            return (r == null);
+        } else if (r == null) {
+            return false;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.equals(r);
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -791,6 +907,17 @@ public class SpLib {
         return commonOpNeq(l, r);
     }
 
+    public static Boolean opNeqChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return !l.equals(r);
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opNeq(BigDecimal l, BigDecimal r) {
         return commonOpNeq(l, r);
@@ -875,6 +1002,17 @@ public class SpLib {
         return commonOpLe(l, r);
     }
 
+    public static Boolean opLeChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) <= 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLe(Short l, Short r) {
         return commonOpLe(l, r);
@@ -955,6 +1093,17 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGe(String l, String r) {
         return commonOpGe(l, r);
+    }
+
+    public static Boolean opGeChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) >= 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1039,6 +1188,17 @@ public class SpLib {
         return commonOpLt(l, r);
     }
 
+    public static Boolean opLtChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) < 0;
+    }
+
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opLt(Short l, Short r) {
         return commonOpLt(l, r);
@@ -1120,6 +1280,17 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.CompOp)
     public static Boolean opGt(String l, String r) {
         return commonOpGt(l, r);
+    }
+
+    public static Boolean opGtChar(String l, String r) {
+        if (l == null || r == null) {
+            return null;
+        }
+
+        l = rtrim(l);
+        r = rtrim(r);
+
+        return l.compareTo(r) > 0;
     }
 
     @Operator(coercionScheme = CoercionScheme.CompOp)
@@ -1208,6 +1379,18 @@ public class SpLib {
         if (o == null || lower == null || upper == null) {
             return null;
         }
+        return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
+    }
+
+    public static Boolean opBetweenChar(String o, String lower, String upper) {
+        if (o == null || lower == null || upper == null) {
+            return null;
+        }
+
+        o = rtrim(o);
+        lower = rtrim(lower);
+        upper = rtrim(upper);
+
         return o.compareTo(lower) >= 0 && o.compareTo(upper) <= 0;
     }
 
@@ -1321,6 +1504,28 @@ public class SpLib {
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(String o, String... arr) {
         return commonOpIn(o, (Object[]) arr);
+    }
+
+    public static Boolean opInChar(String o, String... arr) {
+        assert arr != null; // guaranteed by the syntax
+
+        if (o == null) {
+            return null;
+        }
+        o = rtrim(o);
+
+        boolean nullFound = false;
+        for (String p : arr) {
+            if (p == null) {
+                nullFound = true;
+            } else {
+                p = rtrim(p);
+                if (o.equals(p)) {
+                    return true;
+                }
+            }
+        }
+        return nullFound ? null : false;
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
@@ -1445,7 +1650,23 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l.multiply(r);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision = p1 + p2 + 1;
+        int scale = s1 + s2;
+
+        BigDecimal ret =
+                l.multiply(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1515,7 +1736,27 @@ public class SpLib {
         if (r.equals(BigDecimal.ZERO)) {
             throw new ZERO_DIVIDE();
         }
-        return l.divide(r, BigDecimal.ROUND_HALF_UP);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision = (p1 - s1) + s2 + Math.max(9, Math.max(s1, s2));
+        int scale = Math.max(9, Math.max(s1, s2));
+        if (maxPrecision > 38) {
+            scale = Math.min(9, scale - (maxPrecision - 38));
+            maxPrecision = 38;
+        }
+
+        BigDecimal ret =
+                l.divide(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1665,7 +1906,23 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l.add(r);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2) + 1;
+        int scale = Math.max(s1, s2);
+
+        BigDecimal ret =
+                l.add(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -1804,7 +2061,26 @@ public class SpLib {
         if (l == null || r == null) {
             return null;
         }
-        return l.subtract(r);
+
+        int p1 = l.precision();
+        int s1 = l.scale();
+        int p2 = r.precision();
+        int s2 = r.scale();
+
+        int maxPrecision =
+                Math.max(p1 - s1, p2 - s2)
+                        + Math.max(s1, s2)
+                        + 1; // +1: consider subtracting a minus value
+        int scale = Math.max(s1, s2);
+
+        BigDecimal ret =
+                l.subtract(r, new MathContext(maxPrecision, RoundingMode.HALF_UP))
+                        .setScale(scale, RoundingMode.HALF_UP);
+        if (ret.precision() > 38) {
+            throw new VALUE_ERROR("the operation results in a precision higher than 38");
+        }
+
+        return ret;
     }
 
     @Operator(coercionScheme = CoercionScheme.ArithOp)
@@ -2730,7 +3006,6 @@ public class SpLib {
         }
 
         BigDecimal bd = strToBigDecimal(e);
-        ;
         return Long.valueOf(bigDecimalToLong(bd));
     }
 
@@ -3035,15 +3310,30 @@ public class SpLib {
     private static final Float FLOAT_ZERO = Float.valueOf(0.0f);
     private static final Double DOUBLE_ZERO = Double.valueOf(0.0);
 
-    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy");
-    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a");
+    // TODO: update the locale with the value got from the server
+    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("MM/dd/yyyy", Locale.US);
+    private static final DateFormat TIME_FORMAT = new SimpleDateFormat("hh:mm:ss a", Locale.US);
     private static final DateFormat DATETIME_FORMAT =
-            new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy");
+            new SimpleDateFormat("hh:mm:ss.SSS a MM/dd/yyyy", Locale.US);
     private static final DateFormat TIMESTAMP_FORMAT =
-            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy");
+            new SimpleDateFormat("hh:mm:ss a MM/dd/yyyy", Locale.US);
 
-    private static final DateFormat AM_PM = new SimpleDateFormat("a");
+    private static final DateFormat AM_PM = new SimpleDateFormat("a", Locale.US);
     private static final Date ZERO_DATE = new Date(0L);
+
+    private static String rtrim(String s) {
+        assert s != null;
+
+        char[] cArr = s.toCharArray();
+        int i, len = cArr.length;
+        for (i = len - 1; i >= 0; i--) {
+            if (cArr[i] != ' ') {
+                break;
+            }
+        }
+
+        return new String(cArr, 0, i + 1);
+    }
 
     private static Boolean commonOpEq(Object l, Object r) {
         if (l == null || r == null) {
@@ -3252,7 +3542,7 @@ public class SpLib {
         try {
             return new BigDecimal(s);
         } catch (NumberFormatException e) {
-            throw new VALUE_ERROR("not in a NUMERIC format");
+            throw new VALUE_ERROR("not in a number form");
         }
     }
 
@@ -3667,9 +3957,13 @@ public class SpLib {
     }
 
     private static String getHostVarsStr(int len) {
-        String[] arr = new String[len];
-        Arrays.fill(arr, "?");
-        return String.join(", ", arr);
+        if (len == 0) {
+            return "";
+        } else {
+            String[] arr = new String[len];
+            Arrays.fill(arr, "?");
+            return "(" + String.join(", ", arr) + ")";
+        }
     }
 
     private static final Date NULL_DATE = new Date(0 - 1900, 0 - 1, 0);

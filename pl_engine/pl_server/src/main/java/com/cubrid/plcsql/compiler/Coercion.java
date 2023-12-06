@@ -31,8 +31,11 @@
 package com.cubrid.plcsql.compiler;
 
 import com.cubrid.plcsql.compiler.ast.TypeSpec;
+import com.cubrid.plcsql.compiler.ast.TypeSpecChar;
+import com.cubrid.plcsql.compiler.ast.TypeSpecNumeric;
 import com.cubrid.plcsql.compiler.ast.TypeSpecPercent;
 import com.cubrid.plcsql.compiler.ast.TypeSpecSimple;
+import com.cubrid.plcsql.compiler.ast.TypeSpecVarchar;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,14 +47,26 @@ public abstract class Coercion {
     public final TypeSpecSimple src;
     public final TypeSpecSimple dst;
 
+    public abstract String javaCode(String exprJavaCode);
+
+    // for dummies in the CoercionStore
+    protected Coercion() {
+        src = dst = null;
+    };
+
     protected Coercion(TypeSpecSimple src, TypeSpecSimple dst) {
         this.src = src;
         this.dst = dst;
     }
 
-    public abstract Coercion getReversion();
+    public Coercion getReversion() {
+        // getReversion() is only used for code generation of argument passing to OUT parameters.
+        // and the src and dst types are those written by the users in the program
+        assert TypeSpecSimple.isUserType(src);
+        assert TypeSpecSimple.isUserType(dst);
 
-    public abstract String javaCode(String exprJavaCode);
+        return getCoercion(dst, src);
+    }
 
     public static Coercion getCoercion(TypeSpec src, TypeSpec dst) {
 
@@ -71,21 +86,99 @@ public abstract class Coercion {
         TypeSpecSimple dst0 = (TypeSpecSimple) dst;
 
         if (src0.equals(dst0)) {
-            return Identity.getInstance(dst0);
+            return Identity.getInstance(src0);
         } else if (src0.equals(TypeSpecSimple.NULL)) {
-            // why cast NULL?: in order for Javac dst pick the right version among operator function
+            // cast NULL: in order for Javac dst pick the right version among operator function
             // overloads when all the arguments are nulls
             return Cast.getInstance(src0, dst0);
         } else if (dst0.equals(TypeSpecSimple.OBJECT)) {
-            return Identity.getInstance(dst0);
+            return Identity.getInstance(src0, dst0);
         }
 
-        return Conversion.getInstance(src0, dst0);
+        Coercion ret = Conversion.getInstance(src0, dst0);
+        if (ret == null && src0.simpleTypeIdx == dst0.simpleTypeIdx) {
+            if (src0.simpleTypeIdx == TypeSpecSimple.IDX_NUMERIC
+                    || src0.simpleTypeIdx == TypeSpecSimple.IDX_STRING) {
+                ret = Identity.getInstance(src0, dst0);
+            } else {
+                assert false;
+            }
+        }
+
+        if (ret != null) {
+            if (dst0 instanceof TypeSpecNumeric) {
+                // when 'dst0' is a NUMERIC type with specific precision and scale
+                TypeSpecNumeric tsNumeric = (TypeSpecNumeric) dst0;
+                ret = new CoerceAndCheckPrecision(ret, tsNumeric.precision, tsNumeric.scale);
+            } else if (dst0 instanceof TypeSpecChar) {
+                // when 'dst0' is a CHAR type with a specific length
+                TypeSpecChar tsChar = (TypeSpecChar) dst0;
+                ret = new CoerceAndCheckStrLength(ret, tsChar.length, true);
+            } else if (dst0 instanceof TypeSpecVarchar) {
+                // when 'dst0' is a VARCHAR type with a specific length
+                TypeSpecVarchar tsVarchar = (TypeSpecVarchar) dst0;
+                ret = new CoerceAndCheckStrLength(ret, tsVarchar.length, false);
+            }
+        }
+
+        return ret;
     }
 
     // ----------------------------------------------
     // coercion cases
     // ----------------------------------------------
+
+    public static class CoerceAndCheckPrecision extends Coercion {
+
+        public Coercion c;
+        public int prec;
+        public short scale;
+
+        public CoerceAndCheckPrecision(Coercion c, int prec, short scale) {
+            super(c.src, c.dst);
+            this.c = c;
+            this.prec = prec;
+            this.scale = scale;
+        }
+
+        @Override
+        public String javaCode(String exprJavaCode) {
+            return String.format(
+                    "checkPrecision(%d, (short) %d, %s)", prec, scale, c.javaCode(exprJavaCode));
+        }
+
+        @Override
+        Coercion create(TypeSpecSimple src, TypeSpecSimple dst) {
+            assert false; // CoerceAndCheckPrecision is not memoized in CoercionStore
+            return null;
+        }
+    }
+
+    public static class CoerceAndCheckStrLength extends Coercion {
+
+        public Coercion c;
+        public int length;
+        public boolean isChar;
+
+        public CoerceAndCheckStrLength(Coercion c, int length, boolean isChar) {
+            super(c.src, c.dst);
+            this.c = c;
+            this.length = length;
+            this.isChar = isChar; // true for Char, and false for Varchar
+        }
+
+        @Override
+        public String javaCode(String exprJavaCode) {
+            return String.format(
+                    "checkStrLength(%s, %d, %s)", isChar, length, c.javaCode(exprJavaCode));
+        }
+
+        @Override
+        Coercion create(TypeSpecSimple src, TypeSpecSimple dst) {
+            assert false; // CoerceAndCheckStrLength is not memoized in CoercionStore
+            return null;
+        }
+    }
 
     public static class Identity extends Coercion {
 
@@ -95,40 +188,32 @@ public abstract class Coercion {
         }
 
         @Override
-        public Identity getReversion() {
-            return this;
+        Identity create(TypeSpecSimple src, TypeSpecSimple dst) {
+            return new Identity(src, dst);
         }
 
         public static Identity getInstance(TypeSpecSimple ty) {
-            return instances.get(ty);
+            return (Identity) memoized.get(ty, ty);
+        }
+
+        public static Identity getInstance(TypeSpecSimple src, TypeSpecSimple dst) {
+            return (Identity) memoized.get(src, dst);
         }
 
         // ----------------------------------------------
         // Private
         // ----------------------------------------------
 
-        private static Map<TypeSpecSimple, Identity> instances = new HashMap<>();
-
-        static {
-            instances.put(TypeSpecSimple.NULL, new Identity(TypeSpecSimple.NULL));
-            instances.put(TypeSpecSimple.OBJECT, new Identity(TypeSpecSimple.OBJECT));
-            instances.put(TypeSpecSimple.BOOLEAN, new Identity(TypeSpecSimple.BOOLEAN));
-            instances.put(TypeSpecSimple.STRING, new Identity(TypeSpecSimple.STRING));
-            instances.put(TypeSpecSimple.SHORT, new Identity(TypeSpecSimple.SHORT));
-            instances.put(TypeSpecSimple.INT, new Identity(TypeSpecSimple.INT));
-            instances.put(TypeSpecSimple.BIGINT, new Identity(TypeSpecSimple.BIGINT));
-            instances.put(TypeSpecSimple.NUMERIC, new Identity(TypeSpecSimple.NUMERIC));
-            instances.put(TypeSpecSimple.FLOAT, new Identity(TypeSpecSimple.FLOAT));
-            instances.put(TypeSpecSimple.DOUBLE, new Identity(TypeSpecSimple.DOUBLE));
-            instances.put(TypeSpecSimple.DATE, new Identity(TypeSpecSimple.DATE));
-            instances.put(TypeSpecSimple.TIME, new Identity(TypeSpecSimple.TIME));
-            instances.put(TypeSpecSimple.DATETIME, new Identity(TypeSpecSimple.DATETIME));
-            instances.put(TypeSpecSimple.TIMESTAMP, new Identity(TypeSpecSimple.TIMESTAMP));
-            instances.put(TypeSpecSimple.SYS_REFCURSOR, new Identity(TypeSpecSimple.SYS_REFCURSOR));
-        }
+        private static CoercionStore memoized = new CoercionStore(new Identity());
 
         private Identity(TypeSpecSimple ty) {
             super(ty, ty);
+        }
+
+        protected Identity() {}; // for dummy in the CoercionStore
+
+        private Identity(TypeSpecSimple src, TypeSpecSimple dst) {
+            super(src, dst);
         }
     }
 
@@ -140,49 +225,60 @@ public abstract class Coercion {
         }
 
         @Override
-        public Cast getReversion() {
-            return Cast.getInstance(dst, src);
+        Cast create(TypeSpecSimple src, TypeSpecSimple dst) {
+            assert false; // Cast is not memoized in CoercionStore
+            return null;
         }
 
         public static Cast getInstance(TypeSpecSimple src, TypeSpecSimple dst) {
-            return instances.get(dst);
+            assert src == TypeSpecSimple.NULL;
+            return instances.get(dst.simpleTypeIdx);
         }
 
         // ----------------------------------------------
         // Private
         // ----------------------------------------------
 
-        private static Map<TypeSpecSimple, Cast> instances = new HashMap<>();
+        private static Map<Integer, Cast> instances = new HashMap<>();
 
         static {
             // NOTE: there is no Cast coercion dst NULL
             instances.put(
-                    TypeSpecSimple.OBJECT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
+                    TypeSpecSimple.IDX_OBJECT,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
             instances.put(
-                    TypeSpecSimple.BOOLEAN, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
+                    TypeSpecSimple.IDX_BOOLEAN,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BOOLEAN));
             instances.put(
-                    TypeSpecSimple.STRING, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING));
+                    TypeSpecSimple.IDX_STRING,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.STRING_ANY));
             instances.put(
-                    TypeSpecSimple.SHORT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
-            instances.put(TypeSpecSimple.INT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
+                    TypeSpecSimple.IDX_SHORT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SHORT));
             instances.put(
-                    TypeSpecSimple.BIGINT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
+                    TypeSpecSimple.IDX_INT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.INT));
             instances.put(
-                    TypeSpecSimple.NUMERIC, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.NUMERIC));
+                    TypeSpecSimple.IDX_BIGINT,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.BIGINT));
             instances.put(
-                    TypeSpecSimple.FLOAT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.FLOAT));
+                    TypeSpecSimple.IDX_NUMERIC,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.NUMERIC_ANY));
             instances.put(
-                    TypeSpecSimple.DOUBLE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
-            instances.put(TypeSpecSimple.DATE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
-            instances.put(TypeSpecSimple.TIME, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
+                    TypeSpecSimple.IDX_FLOAT, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.FLOAT));
             instances.put(
-                    TypeSpecSimple.DATETIME,
+                    TypeSpecSimple.IDX_DOUBLE,
+                    new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DOUBLE));
+            instances.put(
+                    TypeSpecSimple.IDX_DATE, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATE));
+            instances.put(
+                    TypeSpecSimple.IDX_TIME, new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIME));
+            instances.put(
+                    TypeSpecSimple.IDX_DATETIME,
                     new Cast(TypeSpecSimple.NULL, TypeSpecSimple.DATETIME));
             instances.put(
-                    TypeSpecSimple.TIMESTAMP,
+                    TypeSpecSimple.IDX_TIMESTAMP,
                     new Cast(TypeSpecSimple.NULL, TypeSpecSimple.TIMESTAMP));
             instances.put(
-                    TypeSpecSimple.SYS_REFCURSOR,
+                    TypeSpecSimple.IDX_SYS_REFCURSOR,
                     new Cast(TypeSpecSimple.NULL, TypeSpecSimple.SYS_REFCURSOR));
         }
 
@@ -197,42 +293,31 @@ public abstract class Coercion {
 
         @Override
         public String javaCode(String exprJavaCode) {
-            return String.format("conv%sTo%s(%s)", src.pcsName, dst.pcsName, exprJavaCode);
+            return String.format("conv%sTo%s(%s)", src.plcName, dst.plcName, exprJavaCode);
         }
 
         @Override
-        public Conversion getReversion() {
-            return Conversion.getInstance(dst, src);
+        Conversion create(TypeSpecSimple src, TypeSpecSimple dst) {
+            return new Conversion(src, dst);
         }
 
         public static Conversion getInstance(TypeSpecSimple src, TypeSpecSimple dst) {
 
-            Set<TypeSpecSimple> possibleTargets = possibleCasts.get(src);
-            if (possibleTargets == null || !possibleTargets.contains(dst)) {
+            Set<Integer> possibleTargets = possibleCasts.get(src.simpleTypeIdx);
+            if (possibleTargets == null || !possibleTargets.contains(dst.simpleTypeIdx)) {
                 return null;
             }
 
-            Map<TypeSpecSimple, Conversion> instances = memoized.get(src);
-            if (instances == null) {
-                instances = new HashMap<>();
-                memoized.put(src, instances);
-            }
-
-            Conversion c = instances.get(dst);
-            if (c == null) {
-                c = new Conversion(src, dst);
-                instances.put(dst, c);
-            }
-
-            return c;
+            return (Conversion) memoized.get(src, dst);
         }
 
         // ----------------------------------------------
         // Private
         // ----------------------------------------------
 
-        private static Map<TypeSpecSimple, Map<TypeSpecSimple, Conversion>> memoized =
-                new HashMap<>();
+        private static final CoercionStore memoized = new CoercionStore(new Conversion());
+
+        protected Conversion() {}; // for dummy in the CoercionStore
 
         private Conversion(TypeSpecSimple src, TypeSpecSimple dst) {
             super(src, dst);
@@ -244,132 +329,166 @@ public abstract class Coercion {
     // Private
     // ----------------------------------------------
 
-    private static final Map<TypeSpecSimple, Set<TypeSpecSimple>> possibleCasts = new HashMap<>();
+    abstract Coercion create(TypeSpecSimple src, TypeSpecSimple dst); // used inside CoercionStore
+
+    private static class CoercionStore {
+
+        CoercionStore(Coercion dummy) {
+            this.dummy = dummy;
+        }
+
+        synchronized Coercion get(TypeSpecSimple src, TypeSpecSimple dst) {
+
+            Map<TypeSpecSimple, Coercion> storeInner = store.get(src);
+            if (storeInner == null) {
+                storeInner = new HashMap<>();
+                store.put(src, storeInner);
+            }
+
+            Coercion c = storeInner.get(dst);
+            if (c == null) {
+                c = dummy.create(src, dst);
+                storeInner.put(dst, c);
+            }
+
+            return c;
+        }
+
+        // ---------------------------------------
+        // Private
+        // ---------------------------------------
+
+        private final Map<TypeSpecSimple, Map<TypeSpecSimple, Coercion>> store = new HashMap<>();
+        private final Coercion dummy;
+    }
+
+    private static final Map<Integer, Set<Integer>> possibleCasts = new HashMap<>();
 
     static {
         possibleCasts.put(
-                TypeSpecSimple.DATETIME,
+                TypeSpecSimple.IDX_DATETIME,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.DATE,
-                                TypeSpecSimple.TIME,
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.STRING)));
+                                TypeSpecSimple.IDX_DATE,
+                                TypeSpecSimple.IDX_TIME,
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_STRING)));
         possibleCasts.put(
-                TypeSpecSimple.DATE,
+                TypeSpecSimple.IDX_DATE,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.DATETIME,
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.STRING)));
-        possibleCasts.put(TypeSpecSimple.TIME, new HashSet(Arrays.asList(TypeSpecSimple.STRING)));
+                                TypeSpecSimple.IDX_DATETIME,
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_STRING)));
         possibleCasts.put(
-                TypeSpecSimple.TIMESTAMP,
-                new HashSet(
-                        Arrays.asList(
-                                TypeSpecSimple.DATETIME,
-                                TypeSpecSimple.DATE,
-                                TypeSpecSimple.TIME,
-                                TypeSpecSimple.STRING)));
+                TypeSpecSimple.IDX_TIME, new HashSet(Arrays.asList(TypeSpecSimple.IDX_STRING)));
         possibleCasts.put(
-                TypeSpecSimple.DOUBLE,
+                TypeSpecSimple.IDX_TIMESTAMP,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.TIME,
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.INT,
-                                TypeSpecSimple.SHORT,
-                                TypeSpecSimple.STRING,
-                                TypeSpecSimple.FLOAT,
-                                TypeSpecSimple.NUMERIC,
-                                TypeSpecSimple.BIGINT)));
+                                TypeSpecSimple.IDX_DATETIME,
+                                TypeSpecSimple.IDX_DATE,
+                                TypeSpecSimple.IDX_TIME,
+                                TypeSpecSimple.IDX_STRING)));
         possibleCasts.put(
-                TypeSpecSimple.FLOAT,
+                TypeSpecSimple.IDX_DOUBLE,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.TIME,
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.INT,
-                                TypeSpecSimple.SHORT,
-                                TypeSpecSimple.STRING,
-                                TypeSpecSimple.DOUBLE,
-                                TypeSpecSimple.NUMERIC,
-                                TypeSpecSimple.BIGINT)));
+                                TypeSpecSimple.IDX_TIME,
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_INT,
+                                TypeSpecSimple.IDX_SHORT,
+                                TypeSpecSimple.IDX_STRING,
+                                TypeSpecSimple.IDX_FLOAT,
+                                TypeSpecSimple.IDX_NUMERIC,
+                                TypeSpecSimple.IDX_BIGINT)));
         possibleCasts.put(
-                TypeSpecSimple.NUMERIC,
+                TypeSpecSimple.IDX_FLOAT,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.INT,
-                                TypeSpecSimple.SHORT,
-                                TypeSpecSimple.STRING,
-                                TypeSpecSimple.DOUBLE,
-                                TypeSpecSimple.FLOAT,
-                                TypeSpecSimple.BIGINT)));
+                                TypeSpecSimple.IDX_TIME,
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_INT,
+                                TypeSpecSimple.IDX_SHORT,
+                                TypeSpecSimple.IDX_STRING,
+                                TypeSpecSimple.IDX_DOUBLE,
+                                TypeSpecSimple.IDX_NUMERIC,
+                                TypeSpecSimple.IDX_BIGINT)));
         possibleCasts.put(
-                TypeSpecSimple.BIGINT,
+                TypeSpecSimple.IDX_NUMERIC,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.TIME,
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.INT,
-                                TypeSpecSimple.SHORT,
-                                TypeSpecSimple.STRING,
-                                TypeSpecSimple.DOUBLE,
-                                TypeSpecSimple.FLOAT,
-                                TypeSpecSimple.NUMERIC)));
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_INT,
+                                TypeSpecSimple.IDX_SHORT,
+                                TypeSpecSimple.IDX_STRING,
+                                TypeSpecSimple.IDX_DOUBLE,
+                                TypeSpecSimple.IDX_FLOAT,
+                                TypeSpecSimple.IDX_BIGINT)));
         possibleCasts.put(
-                TypeSpecSimple.INT,
+                TypeSpecSimple.IDX_BIGINT,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.TIME,
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.SHORT,
-                                TypeSpecSimple.STRING,
-                                TypeSpecSimple.DOUBLE,
-                                TypeSpecSimple.FLOAT,
-                                TypeSpecSimple.NUMERIC,
-                                TypeSpecSimple.BIGINT)));
+                                TypeSpecSimple.IDX_TIME,
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_INT,
+                                TypeSpecSimple.IDX_SHORT,
+                                TypeSpecSimple.IDX_STRING,
+                                TypeSpecSimple.IDX_DOUBLE,
+                                TypeSpecSimple.IDX_FLOAT,
+                                TypeSpecSimple.IDX_NUMERIC)));
         possibleCasts.put(
-                TypeSpecSimple.SHORT,
+                TypeSpecSimple.IDX_INT,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.TIME,
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.INT,
-                                TypeSpecSimple.STRING,
-                                TypeSpecSimple.DOUBLE,
-                                TypeSpecSimple.FLOAT,
-                                TypeSpecSimple.NUMERIC,
-                                TypeSpecSimple.BIGINT)));
+                                TypeSpecSimple.IDX_TIME,
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_SHORT,
+                                TypeSpecSimple.IDX_STRING,
+                                TypeSpecSimple.IDX_DOUBLE,
+                                TypeSpecSimple.IDX_FLOAT,
+                                TypeSpecSimple.IDX_NUMERIC,
+                                TypeSpecSimple.IDX_BIGINT)));
         possibleCasts.put(
-                TypeSpecSimple.STRING,
+                TypeSpecSimple.IDX_SHORT,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.DATETIME,
-                                TypeSpecSimple.DATE,
-                                TypeSpecSimple.TIME,
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.INT,
-                                TypeSpecSimple.SHORT,
-                                TypeSpecSimple.DOUBLE,
-                                TypeSpecSimple.FLOAT,
-                                TypeSpecSimple.NUMERIC,
-                                TypeSpecSimple.BIGINT)));
+                                TypeSpecSimple.IDX_TIME,
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_INT,
+                                TypeSpecSimple.IDX_STRING,
+                                TypeSpecSimple.IDX_DOUBLE,
+                                TypeSpecSimple.IDX_FLOAT,
+                                TypeSpecSimple.IDX_NUMERIC,
+                                TypeSpecSimple.IDX_BIGINT)));
         possibleCasts.put(
-                TypeSpecSimple.OBJECT,
+                TypeSpecSimple.IDX_STRING,
                 new HashSet(
                         Arrays.asList(
-                                TypeSpecSimple.DATETIME,
-                                TypeSpecSimple.DATE,
-                                TypeSpecSimple.TIME,
-                                TypeSpecSimple.TIMESTAMP,
-                                TypeSpecSimple.INT,
-                                TypeSpecSimple.SHORT,
-                                TypeSpecSimple.STRING,
-                                TypeSpecSimple.DOUBLE,
-                                TypeSpecSimple.FLOAT,
-                                TypeSpecSimple.NUMERIC,
-                                TypeSpecSimple.BIGINT)));
+                                TypeSpecSimple.IDX_DATETIME,
+                                TypeSpecSimple.IDX_DATE,
+                                TypeSpecSimple.IDX_TIME,
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_INT,
+                                TypeSpecSimple.IDX_SHORT,
+                                TypeSpecSimple.IDX_DOUBLE,
+                                TypeSpecSimple.IDX_FLOAT,
+                                TypeSpecSimple.IDX_NUMERIC,
+                                TypeSpecSimple.IDX_BIGINT)));
+        possibleCasts.put(
+                TypeSpecSimple.IDX_OBJECT,
+                new HashSet(
+                        Arrays.asList(
+                                TypeSpecSimple.IDX_DATETIME,
+                                TypeSpecSimple.IDX_DATE,
+                                TypeSpecSimple.IDX_TIME,
+                                TypeSpecSimple.IDX_TIMESTAMP,
+                                TypeSpecSimple.IDX_INT,
+                                TypeSpecSimple.IDX_SHORT,
+                                TypeSpecSimple.IDX_STRING,
+                                TypeSpecSimple.IDX_DOUBLE,
+                                TypeSpecSimple.IDX_FLOAT,
+                                TypeSpecSimple.IDX_NUMERIC,
+                                TypeSpecSimple.IDX_BIGINT)));
     }
 }

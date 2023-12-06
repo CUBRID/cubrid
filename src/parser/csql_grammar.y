@@ -250,7 +250,6 @@ static bool is_in_create_trigger = false;
 #define TO_NUMBER(a)			((UINTPTR)(a))
 #define FROM_NUMBER(a)			((PT_NODE*)(UINTPTR)(a))
 
-
 #define SET_CONTAINER_2(a, i, j)		a.c1 = i, a.c2 = j
 #define SET_CONTAINER_3(a, i, j, k)		a.c1 = i, a.c2 = j, a.c3 = k
 #define SET_CONTAINER_4(a, i, j, k, l)		a.c1 = i, a.c2 = j, a.c3 = k, a.c4 = l
@@ -819,6 +818,7 @@ static char *g_plcsql_text;
 %type <node> alias_enabled_expression_list
 %type <node> alias_enabled_expression_
 %type <node> expression_list
+%type <node> expression_list_for_call
 %type <node> to_param_list
 %type <node> to_param
 %type <node> from_param
@@ -863,6 +863,7 @@ static char *g_plcsql_text;
 %type <node> searched_when_clause
 %type <node> extract_expr
 %type <node> opt_expression_list
+%type <node> opt_expression_list_for_call
 %type <node> table_set_function_call
 %type <node> search_condition
 %type <node> boolean_term
@@ -916,6 +917,7 @@ static char *g_plcsql_text;
 %type <node> simple_path_id
 %type <node> simple_path_id_list
 %type <node> generic_function
+%type <node> generic_function_for_call
 %type <node> opt_on_target
 %type <node> generic_function_id
 %type <node> pred_lhs
@@ -1057,6 +1059,7 @@ static char *g_plcsql_text;
 %type <c2> opt_as_identifier_attr_name
 %type <c2> insert_assignment_list
 %type <c2> expression_queue
+%type <c2> expression_queue_for_call
 %type <c2> of_cast_data_type
 %type <c2> dblink_identifier_col_attrs
 %type <c2> connect_item
@@ -3189,7 +3192,10 @@ create_stmt
                                      }
                                      si->pwd = val;
                                       
-                                    pt_add_password_offset(si->user->buffer_pos, si->user->buffer_pos, true, en_server_password);
+                                     if (si->user)
+                                     {
+                                        pt_add_password_offset(si->user->buffer_pos, si->user->buffer_pos, true, en_server_password);
+                                     }
                                 }
 
                                 if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
@@ -9102,8 +9108,8 @@ call_stmt
                     pwd_info.method_arg_idx = 0;                
                     pwd_info.method_password_arg_idx = -1;
                 }}
-         generic_function into_clause_opt
-		{{ DBG_TRACE_GRAMMAR(call_stmt, : CALL generic_function into_clause_opt);
+         generic_function_for_call into_clause_opt
+		{{ DBG_TRACE_GRAMMAR(call_stmt, : CALL generic_function_for_call into_clause_opt);
 			
                         pwd_info.parser_call_check = false;
                         PT_NODE *node = $3;
@@ -12451,23 +12457,17 @@ opt_plus
 	;
 
 opt_of_data_type_cursor
-	: /* empty */
-		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, : );
-
-			$$ = PT_TYPE_NONE;
-
-		DBG_PRINT}}
-	| data_type
-		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, | data_type);
-
-			$$ = (int) TO_NUMBER (CONTAINER_AT_0 ($1));
-
+        : /* empty */
+                {{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, : );
+                       $$ = PT_TYPE_NONE;
+                DBG_PRINT}}
+        | data_type
+                {{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, | data_type);
+                        $$ = (int) TO_NUMBER (CONTAINER_AT_0 ($1));
 		DBG_PRINT}}
 	| CURSOR
 		{{ DBG_TRACE_GRAMMAR(opt_of_data_type_cursor, | CURSOR);
-
-			$$ = PT_TYPE_RESULTSET;
-
+                        $$ = PT_TYPE_RESULTSET;
 		DBG_PRINT}}
 	;
 
@@ -14563,7 +14563,41 @@ expression_list
 	;
 
 expression_queue
-	: expression_queue  ','
+	: expression_queue  ',' expression_
+		{{ DBG_TRACE_GRAMMAR(expression_queue, : expression_queue  ',' expression_);
+			container_2 new_q;
+
+			PT_NODE* q_head = CONTAINER_AT_0($1);
+			PT_NODE* q_tail = CONTAINER_AT_1($1);
+			q_tail->next = $3;
+
+			SET_CONTAINER_2(new_q, q_head, $3);
+			$$ = new_q;
+			PARSER_SAVE_ERR_CONTEXT (q_head, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| expression_
+		{{ DBG_TRACE_GRAMMAR(expression_queue, | expression_);
+			container_2 new_q;
+
+			SET_CONTAINER_2(new_q, $1, $1);
+			$$ = new_q;
+			PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;        
+
+expression_list_for_call
+       	: expression_queue_for_call
+		{{ DBG_TRACE_GRAMMAR(expression_list_for_call, : expression_queue_for_call);
+
+			$$ = CONTAINER_AT_0($1);
+
+		DBG_PRINT}}
+	;
+
+expression_queue_for_call
+	: expression_queue_for_call  ','
             {{
                 if(pwd_info.parser_call_check)
                   {                           
@@ -14574,7 +14608,7 @@ expression_queue
                   }
             }}
           expression_
-		{{ DBG_TRACE_GRAMMAR(expression_queue, : expression_queue  ',' expression_);
+		{{ DBG_TRACE_GRAMMAR(expression_queue_for_call, : expression_queue_for_call  ',' expression_);
 			container_2 new_q;
 
                         if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
@@ -14602,7 +14636,7 @@ expression_queue
                   }
            }}
            expression_
-		{{ DBG_TRACE_GRAMMAR(expression_queue, | expression_);
+		{{ DBG_TRACE_GRAMMAR(expression_queue_for_call, | expression_);
 			container_2 new_q;
 
                         if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
@@ -15766,7 +15800,35 @@ limit_factor
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
                 DBG_PRINT}}
+        | identifier_without_dot    /* for PL/CSQL Static SQL only */
+                {{ DBG_TRACE_GRAMMAR(limit_factor, | identifier_without_dot);
 
+                        if (this_parser->flag.is_parsing_static_sql) {
+
+                            // interpret the identifier only as a PL/CSQL host variable
+                            PT_NODE *node = parser_new_node (this_parser, PT_HOST_VAR);
+                            if (node)
+                              {
+                                node->info.host_var.var_type = PT_HOST_IN;
+                                node->info.host_var.str = pt_makename("?");
+                                node->info.host_var.label = $1->info.name.original;
+                                node->info.host_var.index = parser_input_host_index++;
+                                node->type_enum = PT_TYPE_NONE;
+
+                                PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
+                              }
+
+                            parser_free_node(this_parser, $1);
+                            $$ = node;
+
+                        } else {
+			    PT_ERRORm(this_parser, $1,
+			        MSGCAT_SET_PARSER_SEMANTIC,
+			        MSGCAT_SEMANTIC_IDENTIFIER_IN_LIMIT_CLAUSE);
+                            $$ = NULL;
+                        }
+
+                DBG_PRINT}}
         | '(' limit_expr ')'
                 {{ DBG_TRACE_GRAMMAR(limit_factor, | '(' limit_expr ')');
 			PT_NODE *exp = $2;
@@ -18957,6 +19019,41 @@ opt_on_target
 	;
 
 generic_function
+	: identifier '(' opt_expression_list ')' opt_on_target
+		{{ DBG_TRACE_GRAMMAR(generic_function, : identifier '(' opt_expression_list ')' opt_on_target );
+
+			PT_NODE *node = NULL;
+
+			if ($5 == NULL)
+			  {
+			    node = parser_keyword_func ($1->info.name.original, $3);
+			  }
+
+			if (node == NULL)
+			  {
+			    node = parser_new_node (this_parser, PT_METHOD_CALL);
+
+			    if (node)
+			      {
+				node->info.method_call.method_name = $1;
+				node->info.method_call.arg_list = $3;
+				node->info.method_call.on_call_target = $5;
+				node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
+			      }
+
+                              if ($5 != NULL && pwd_info.parser_call_check && pwd_info.method_password_arg_idx != 0)
+                              {
+                                 pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, pwd_info.pwd_comma_offset, en_none_password);
+                              }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+generic_function_for_call        
 	: identifier 
         {
             if(pwd_info.parser_call_check)
@@ -18971,8 +19068,8 @@ generic_function
                     pwd_info.method_password_arg_idx = 0;
             }
         }
-        '(' opt_expression_list ')' opt_on_target
-		{{ DBG_TRACE_GRAMMAR(generic_function, : identifier '(' opt_expression_list ')' opt_on_target );
+        '(' opt_expression_list_for_call ')' opt_on_target
+		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : identifier '(' opt_expression_list ')' opt_on_target );
 
 			PT_NODE *node = NULL;
 
@@ -19056,6 +19153,22 @@ opt_expression_list
 		DBG_PRINT}}
 	| expression_list
 		{{ DBG_TRACE_GRAMMAR(opt_expression_list, | expression_list );
+                        
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+opt_expression_list_for_call
+       : /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_expression_list_for_call, : );
+
+			$$ = NULL;
+
+		DBG_PRINT}}
+	| expression_list_for_call
+		{{ DBG_TRACE_GRAMMAR(opt_expression_list_for_call, | expression_list );
                         
                          if((pwd_info.method_password_arg_idx == 2) && (pwd_info.pwd_start_offset == -1 && pwd_info.pwd_end_offset == -1))
                          {
@@ -21144,6 +21257,8 @@ primitive_type
 			    dt->type_enum = typ;
 			    dt->info.data_type.entity = $1;
 			    dt->info.data_type.units = $2;
+
+			    PARSER_SAVE_ERR_CONTEXT (dt, @$.buffer_pos)
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
@@ -26038,6 +26153,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
   INIT_PT_HINT("INDEX_LS", PT_HINT_INDEX_LS),
   INIT_PT_HINT("SELECT_RECORD_INFO", PT_HINT_SELECT_RECORD_INFO),
+  INIT_PT_HINT("SAMPLING_SCAN", PT_HINT_SAMPLING_SCAN),
   INIT_PT_HINT("SELECT_PAGE_INFO", PT_HINT_SELECT_PAGE_INFO),
   INIT_PT_HINT("SELECT_KEY_INFO", PT_HINT_SELECT_KEY_INFO),
   INIT_PT_HINT("SELECT_BTREE_NODE_INFO", PT_HINT_SELECT_BTREE_NODE_INFO),

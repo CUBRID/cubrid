@@ -1443,9 +1443,10 @@ Verifique la ruta del archivo de claves (_keys) y asegúrese de que incluya la c
 1357 Error al convertir una cadena SQL a una cadena ancha.
 1358 Se desconoce el número de filas afectadas.
 
-1359 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1360 Ultimo error
+1361 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
@@ -1930,6 +1931,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.

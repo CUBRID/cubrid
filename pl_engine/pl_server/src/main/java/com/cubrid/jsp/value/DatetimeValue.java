@@ -121,4 +121,8 @@ public class DatetimeValue extends Value {
     public String[] toStringArray() throws TypeMismatchException {
         return new String[] {toString()};
     }
+
+    public Object toObject() throws TypeMismatchException {
+        return toTimestamp();
+    }
 }

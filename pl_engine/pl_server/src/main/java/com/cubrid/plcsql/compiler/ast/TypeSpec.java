@@ -32,15 +32,15 @@ package com.cubrid.plcsql.compiler.ast;
 
 public abstract class TypeSpec extends AstNode {
 
-    public final String pcsName;
+    public final String plcName;
     public final String javaCode;
     public final int simpleTypeIdx;
     public final String typicalValueStr; // used to type builtin function calls
 
-    public TypeSpec(String pcsName, String javaCode, int simpleTypeIdx, String typicalValueStr) {
+    public TypeSpec(String plcName, String javaCode, int simpleTypeIdx, String typicalValueStr) {
 
         super(null);
-        this.pcsName = pcsName;
+        this.plcName = plcName;
         this.javaCode = javaCode;
         this.simpleTypeIdx = simpleTypeIdx;
         this.typicalValueStr = typicalValueStr;
@@ -62,7 +62,7 @@ public abstract class TypeSpec extends AstNode {
 
     @Override
     public String toString() {
-        return pcsName;
+        return plcName;
     }
 
     @Override

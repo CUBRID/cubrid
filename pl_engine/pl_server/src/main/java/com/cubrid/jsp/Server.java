@@ -71,30 +71,20 @@ public class Server {
         // Server's security manager should be set first
         System.setSecurityManager(new SpSecurityManager());
 
-        try {
-            // initialize logger
-            initializeLogger(config);
+        // initialize logger
+        initializeLogger(config);
 
-            // initialize class loader
-            Files.createDirectories(ClassLoaderManager.getRootPath());
+        // initialize class loader
+        Files.createDirectories(ClassLoaderManager.getRootPath());
 
-            // initialize socket
-            initializeSocket(config);
+        // initialize socket
+        initializeSocket(config);
 
-            System.setProperty("cubrid.server.version", config.getVersion());
-            Class.forName("com.cubrid.jsp.jdbc.CUBRIDServerSideDriver");
+        System.setProperty("cubrid.server.version", config.getVersion());
+        Class.forName("com.cubrid.jsp.jdbc.CUBRIDServerSideDriver");
 
-            // store JVM options
-            getJVMArguments();
-        } catch (Exception e) {
-            /* error, serverSocket is not properly initialized */
-            shutdown.set(true);
-            if (loggingThread != null && loggingThread.isRunning()) {
-                log(e);
-                loggingThread.interrupt();
-            }
-            e.printStackTrace();
-        }
+        // store JVM options
+        getJVMArguments();
     }
 
     private synchronized void initializeLogger(ServerConfig config)
@@ -115,7 +105,7 @@ public class Server {
             final Path socketFile = Paths.get(config.getSocketInfo());
 
             // create parent directory if exists
-            if (Files.exists(socketFile.getParent())) {
+            if (!Files.exists(socketFile.getParent())) {
                 Files.createDirectories(socketFile.getParent());
             }
 
@@ -190,7 +180,7 @@ public class Server {
     }
 
     /* For JNI */
-    public static int start(String[] args) {
+    public static int start(String[] args) throws Exception {
         try {
             String name = args[0];
             String dbPath = args[1];
@@ -211,7 +201,13 @@ public class Server {
 
             return startWithConfig(config);
         } catch (Exception e) {
-            return PORT_NUMBER_UNKNOWN;
+            /* error, serverSocket is not properly initialized */
+            shutdown.set(true);
+            if (loggingThread != null && loggingThread.isRunning()) {
+                log(e);
+                loggingThread.interrupt();
+            }
+            throw e;
         }
     }
 
@@ -224,6 +220,7 @@ public class Server {
 
         serverInstance = new Server(config);
         serverInstance.startSocketListener();
+
         return Server.getServer().getServerPort();
     }
 
@@ -238,7 +235,7 @@ public class Server {
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         Server.start(args);
     }
 

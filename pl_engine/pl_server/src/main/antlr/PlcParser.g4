@@ -20,14 +20,14 @@
  * limitations under the License.
  */
 
-parser grammar PcsParser;
+parser grammar PlcParser;
 
 @header {
 package com.cubrid.plcsql.compiler.antlrgen;
 }
 
 options {
-    tokenVocab=PcsLexer;
+    tokenVocab=PlcLexer;
 }
 
 sql_script
@@ -35,7 +35,7 @@ sql_script
     ;
 
 create_routine
-    : CREATE (OR_REPLACE)? routine_definition
+    : CREATE (OR_REPLACE)? routine_definition (COMMENT CHAR_STRING)?
     ;
 
 routine_definition
@@ -348,7 +348,7 @@ atom
     ;
 
 function_call
-    : identifier function_argument
+    : function_name function_argument
     ;
 
 relational_operator
@@ -492,6 +492,7 @@ type_spec
 native_datatype
     : numeric_type
     | char_type
+    | varchar_type
     | simple_type
     ;
 
@@ -500,12 +501,16 @@ numeric_type
     ;
 
 char_type
-    : (CHAR | CHARACTER | VARCHAR | CHAR VARYING | CHARACTER VARYING) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    : (CHAR | CHARACTER) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    ;
+
+varchar_type
+    : (VARCHAR | CHAR VARYING | CHARACTER VARYING) ( LPAREN length=UNSIGNED_INTEGER RPAREN )?
+    | STRING
     ;
 
 simple_type
     : BOOLEAN
-    | STRING
     | SHORT | SMALLINT
     | INT | INTEGER
     | BIGINT
@@ -544,13 +549,12 @@ quoted_string
     ;
 
 identifier
-    : regular_id
+    : REGULAR_ID
     | DELIMITED_ID
     ;
 
-  // REGULAR_ID + intersection of {lexer words} and {built-in function names}
-regular_id
-    : REGULAR_ID
+function_name
+    : identifier
     | DATE
     | DEFAULT
     | IF

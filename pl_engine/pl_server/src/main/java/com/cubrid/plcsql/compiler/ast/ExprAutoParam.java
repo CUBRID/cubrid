@@ -61,7 +61,7 @@ public class ExprAutoParam extends Expr {
     }
 
     public TypeSpecSimple getTypeSpec() {
-        return DBTypeAdapter.getTypeSpec(ty);
+        return DBTypeAdapter.getValueType(ty);
     }
 
     public String javaCode() {

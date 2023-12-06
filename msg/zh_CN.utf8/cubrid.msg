@@ -1444,9 +1444,10 @@ $ LOADDB
 1357 将 SQL 字符串转换为宽字符串失败。
 1358 受影响的行数未知。
 
-1359 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1360 最后一个错误.
+1361 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1931,6 +1932,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.
