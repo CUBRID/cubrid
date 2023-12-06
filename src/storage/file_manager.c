@@ -1444,10 +1444,11 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
 					&index_name, NULL) == NO_ERROR)
 	  {
 	    file_print_name_of_class (thread_p, fp, &fhead->descriptor.btree.class_oid);
-	    fprintf (fp, ", %s, ATTRID: %5d \n", index_name != NULL ? index_name : "*UNKNOWN-INDEX*",
+	    fprintf (fp, ", %s, ATTRID: %5d ", index_name != NULL ? index_name : "*UNKNOWN-INDEX*",
 		     fhead->descriptor.btree.attr_id);
 	  }
       }
+      fprintf (fp, "\n");
       break;
 
     case FILE_BTREE_OVERFLOW_KEY:
