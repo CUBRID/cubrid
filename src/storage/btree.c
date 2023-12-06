@@ -13562,6 +13562,15 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	  ret = ER_FAILED;
 	  goto exit_on_error;
 	}
+
+#if !defined(NDEBUG)
+      if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
+	{
+	  fprintf (stdout, "btree_split_node - lower fence key for R(%d:%d:%d):", R_vpid->volid, R_vpid->pageid, j);
+	  db_value_print (sep_key);
+	  fprintf (stdout, "\n");
+	}
+#endif
     }
 
   /* move the second half of page Q to page R */
@@ -13606,6 +13615,16 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	  goto exit_on_error;
 	}
       leftsize++;
+
+#if !defined(NDEBUG)
+      if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
+	{
+	  fprintf (stdout, "btree_split_node - upper fence key for Q(%d:%d:%d):", Q_vpid->volid, Q_vpid->pageid,
+		   leftcnt + 1);
+	  db_value_print (sep_key);
+	  fprintf (stdout, "\n");
+	}
+#endif
     }
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
@@ -13679,6 +13698,15 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       ret = ER_FAILED;
       goto exit_on_error;
     }
+
+#if !defined(NDEBUG)
+  if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
+    {
+      fprintf (stdout, "btree_split_node - insert sep_key to P(%d:%d:%d):", P_vpid->volid, P_vpid->pageid, p_slot_id);
+      db_value_print (sep_key);
+      fprintf (stdout, "\n");
+    }
+#endif
 
   p_redo_data = PTR_ALIGN (p_redo_data_buf, BTREE_MAX_ALIGN);
 
@@ -14412,6 +14440,15 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	{
 	  goto exit_on_error;
 	}
+
+#if !defined(NDEBUG)
+      if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
+	{
+	  fprintf (stdout, "btree_split_root - lower fence key for R(%d:%d:%d):", R_vpid->volid, R_vpid->pageid, j);
+	  db_value_print (sep_key);
+	  fprintf (stdout, "\n");
+	}
+#endif
     }
 
   for (i = 1; i <= rightcnt; i++, j++)
@@ -14486,6 +14523,15 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 	  goto exit_on_error;
 	}
       leftsize = i;
+
+#if !defined(NDEBUG)
+      if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
+	{
+	  fprintf (stdout, "btree_split_root - upper fence key for Q(%d:%d:%d):", Q_vpid->volid, Q_vpid->pageid, i);
+	  db_value_print (sep_key);
+	  fprintf (stdout, "\n");
+	}
+#endif
     }
   else
     {
@@ -14538,6 +14584,15 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     {
       goto exit_on_error;
     }
+
+#if !defined(NDEBUG)
+  if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
+    {
+      fprintf (stdout, "btree_split_root - insert sep_key to P(%d:%d:%d):", P_vpid->volid, P_vpid->pageid, 1);
+      db_value_print (sep_key);
+      fprintf (stdout, "\n");
+    }
+#endif
 
   /* log the inserted record for undo/redo purposes, */
   btree_rv_write_log_record (recset_data, &recset_length, &rec, BTREE_NON_LEAF_NODE);

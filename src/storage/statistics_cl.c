@@ -380,7 +380,7 @@ void
 stats_ndv_dump (const char *class_name_p, FILE * file_p)
 {
   MOP class_mop;
-  CLASS_ATTR_NDV class_attr_ndv;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
   int i;
 
   class_mop = sm_find_class (class_name_p);
@@ -437,6 +437,19 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
   DB_DOMAIN *dom;
   int i;
   const char *class_name_p = NULL;
+
+  /* if class is not normal class */
+  if (!db_is_class (class_mop))
+    {
+      /* The class does not have a heap file (i.e. it has no instances); so no statistics can be obtained for this
+       * class; just set to 0 and return. */
+      class_attr_ndv->attr_cnt = 0;
+      class_attr_ndv->attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV));
+      class_attr_ndv->attr_ndv[0].ndv = 0;
+      class_attr_ndv->attr_ndv[0].id = 0;
+      goto end;
+    }
+
 
   /* get class_name */
   class_name_p = db_get_class_name (class_mop);
@@ -507,7 +520,8 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
 	{
 	  goto end;
 	}
-      class_attr_ndv->attr_ndv[i].ndv = DB_GET_BIGINT (&value);
+      /* if NDV is 0, it is all null values. */
+      class_attr_ndv->attr_ndv[i].ndv = DB_GET_BIGINT (&value) == 0 ? 1 : DB_GET_BIGINT (&value);
     }
 
   /* get count(*) */
