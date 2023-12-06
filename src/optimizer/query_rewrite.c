@@ -1900,7 +1900,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	}
       else
 	{
-	  expr_prev = (expr_prev) ? expr_prev->next : expr;
+	  expr_prev = expr;
 	}
     }
 
