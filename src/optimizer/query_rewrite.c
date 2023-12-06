@@ -1868,7 +1868,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	      dbv1 = pt_value_to_db (parser, opd1);
 	      dbv2 = pt_value_to_db (parser, opd2);
 	      opd3 = expr->info.expr.arg3;
-	      dbv3 = pt_value_to_db (parser, opd3);
+	      dbv3 = (opd3 != NULL && opd3->node_type == PT_VALUE) ? pt_value_to_db (parser, opd3) : NULL;
 	      if (pt_evaluate_db_value_expr
 		  (parser, expr, expr->info.expr.op, dbv1, dbv2, dbv3, &dbval_res, domain, opd1, opd2, opd3, qualifier))
 		{
