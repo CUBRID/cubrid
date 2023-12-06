@@ -10066,49 +10066,7 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 
   /* STEP 1: check by terms containment */
 
-  if (bitset_is_equivalent (&(a->plan_un.scan.terms), &(b->plan_un.scan.terms)))
-    {
-      /* both plans have the same range terms we will check now the key filter terms */
-      if (a_filter > b_filter)
-	{
-	  return PLAN_COMP_LT;
-	}
-      else if (a_filter < b_filter)
-	{
-	  return PLAN_COMP_GT;
-	}
-
-      /* both have the same range terms and same number of filters */
-      if (a_cum && b_cum)
-	{
-	  /* take the smaller index pages */
-	  if (a_cum->pages < b_cum->pages)
-	    {
-	      return PLAN_COMP_LT;
-	    }
-	  else if (a_cum->pages > b_cum->pages)
-	    {
-	      return PLAN_COMP_GT;
-	    }
-
-	  assert (a_cum->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-	  assert (b_cum->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-
-	  /* take the smaller index pkeys_size */
-	  if (a_cum->pkeys_size < b_cum->pkeys_size)
-	    {
-	      return PLAN_COMP_LT;
-	    }
-	  else if (a_cum->pkeys_size > b_cum->pkeys_size)
-	    {
-	      return PLAN_COMP_GT;
-	    }
-	}
-
-      /* both have the same number of index pages and pkeys_size */
-      return PLAN_COMP_EQ;
-    }
-  else if (a_range > 0 && bitset_subset (&(a->plan_un.scan.terms), &(b->plan_un.scan.terms)))
+  if (a_range > 0 && bitset_subset (&(a->plan_un.scan.terms), &(b->plan_un.scan.terms)))
     {
       return PLAN_COMP_LT;
     }
