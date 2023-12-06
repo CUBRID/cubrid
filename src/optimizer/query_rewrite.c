@@ -1918,14 +1918,14 @@ qo_reduce_order_by_for (PARSER_CONTEXT * parser, PT_NODE * node)
       /* replace orderby_num() to groupby_num() */
       node->info.query.orderby_for = pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, grp_num,
 							 false /* loc_check: DEFAULT */ ,
-							 0 /* type: DEFAULT */ ,
+							 2 /* type: don't walk into subquery */ ,
 							 false /* dont_replace: DEFAULT */ );
 
       /* Even though node->info.q.query.q.select has no orderby_num so far, it is a safe guard to prevent potential
        * rewrite problem. */
       node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, grp_num,
 							   false /* loc_check: DEFAULT */ ,
-							   0 /* type: DEFAULT */ ,
+							   2 /* type: don't walk into subquery */ ,
 							   false /* dont_replace: DEFAULT */ );
 
       node->info.query.q.select.having =
@@ -2207,13 +2207,13 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  node->info.query.orderby_for =
 		    pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, ins_num,
 					false /* loc_check: DEFAULT */ ,
-					0 /* type: DEFAULT */ ,
+					2 /* type: don't walk into subquery */ ,
 					false /* dont_replace: DEFAULT */ );
 
 		  node->info.query.q.select.list =
 		    pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, ins_num,
 					false /* loc_check: DEFAULT */ ,
-					0 /* type: DEFAULT */ ,
+					2 /* type: don't walk into subquery */ ,
 					false /* dont_replace: DEFAULT */ );
 
 		  node->info.query.q.select.where =
@@ -2255,7 +2255,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  /* replace orderby_num() to groupby_num() */
 		  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num,
 								       grp_num, false /* loc_check: DEFAULT */ ,
-								       0 /* type: DEFAULT */ ,
+								       2 /* type: don't walk into subquery */ ,
 								       false /* dont_replace: DEFAULT */ );
 
 		  parser_free_tree (parser, ord_num);
