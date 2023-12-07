@@ -45,7 +45,8 @@
 #include "locator_sr.h"
 #include "btree.h"
 #include "btree_unique.hpp"
-#include "transform.h"		/* for CT_SERIAL_NAME */
+#include "schema_system_catalog_constants.h"	/* for CT_SERIAL_NAME */
+#include "transform.h"
 #include "serial.h"
 #include "object_primitive.h"
 #include "object_representation.h"

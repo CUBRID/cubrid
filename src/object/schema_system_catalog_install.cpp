@@ -27,7 +27,7 @@
 #include "cnv.h"
 #include "db.h"
 #include "dbtype_function.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "work_space.h"
 #include "schema_manager.h"
 #include "schema_system_catalog_builder.hpp"

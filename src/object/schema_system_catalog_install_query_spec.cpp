@@ -25,7 +25,7 @@
 
 #include "authenticate.h"
 #include "deduplicate_key.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "trigger_manager.h"
 
 // TODO: Add checking the following rules in compile time (@hgryoo)
