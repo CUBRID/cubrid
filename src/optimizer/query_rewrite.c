@@ -1918,14 +1918,14 @@ qo_reduce_order_by_for (PARSER_CONTEXT * parser, PT_NODE * node)
       /* replace orderby_num() to groupby_num() */
       node->info.query.orderby_for = pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, grp_num,
 							 false /* loc_check: DEFAULT */ ,
-							 0 /* type: DEFAULT */ ,
+							 2 /* type: don't walk into subquery */ ,
 							 false /* dont_replace: DEFAULT */ );
 
       /* Even though node->info.q.query.q.select has no orderby_num so far, it is a safe guard to prevent potential
        * rewrite problem. */
       node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, grp_num,
 							   false /* loc_check: DEFAULT */ ,
-							   0 /* type: DEFAULT */ ,
+							   2 /* type: don't walk into subquery */ ,
 							   false /* dont_replace: DEFAULT */ );
 
       node->info.query.q.select.having =
@@ -2207,13 +2207,13 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  node->info.query.orderby_for =
 		    pt_lambda_with_arg (parser, node->info.query.orderby_for, ord_num, ins_num,
 					false /* loc_check: DEFAULT */ ,
-					0 /* type: DEFAULT */ ,
+					2 /* type: don't walk into subquery */ ,
 					false /* dont_replace: DEFAULT */ );
 
 		  node->info.query.q.select.list =
 		    pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num, ins_num,
 					false /* loc_check: DEFAULT */ ,
-					0 /* type: DEFAULT */ ,
+					2 /* type: don't walk into subquery */ ,
 					false /* dont_replace: DEFAULT */ );
 
 		  node->info.query.q.select.where =
@@ -2255,7 +2255,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 		  /* replace orderby_num() to groupby_num() */
 		  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, ord_num,
 								       grp_num, false /* loc_check: DEFAULT */ ,
-								       0 /* type: DEFAULT */ ,
+								       2 /* type: don't walk into subquery */ ,
 								       false /* dont_replace: DEFAULT */ );
 
 		  parser_free_tree (parser, ord_num);
@@ -2409,7 +2409,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_check_path_eq (parser, attr, arg1))
+		      if (pt_check_path_eq (parser, attr, arg1) == 0)
 			{
 			  attr->line_number++;	/* increase attribute count */
 			  break;
@@ -2433,7 +2433,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_check_path_eq (parser, attr, arg2))
+		      if (pt_check_path_eq (parser, attr, arg2) == 0)
 			{
 			  attr->line_number++;	/* increase attribute count */
 			  break;
@@ -2627,11 +2627,11 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		  arg1_cnt = arg2_cnt = 0;	/* init */
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_check_path_eq (parser, attr, arg1))
+		      if (pt_check_path_eq (parser, attr, arg1) == 0)
 			{
 			  arg1_cnt = attr->line_number;
 			}
-		      else if (pt_check_path_eq (parser, attr, arg2))
+		      else if (pt_check_path_eq (parser, attr, arg2) == 0)
 			{
 			  arg2_cnt = attr->line_number;
 			}
