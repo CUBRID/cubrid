@@ -4410,7 +4410,22 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
   bts->C_page_info.satisfied_range_in_page = false;
   if (reader_type == READER_TYPE_RANGE_SCAN)
     {
-      bts->C_page_info.use_comparing = (bool) (bts->key_range.upper_key != NULL);
+      if (bts->key_range.range != GE_LE)
+	{
+	  bts->C_page_info.use_comparing = (bool) (bts->key_range.upper_key != NULL);
+	}
+      else
+	{
+	  DB_VALUE_COMPARE_RESULT cmp =
+	    btree_compare_key (bts->key_range.upper_key, bts->key_range.lower_key, bts->btid_int.key_type, 1, 1, NULL);
+	  /* TODO:
+	   *   Even in the case of DB_EQ, it is expected that the setting can be elaborated by considering 
+	   *  the ratio of key_range.num_index_term to index_scan_idp->bt_num_attrs or by utilizing statistical information.
+	   *  r = (double) (bts->key_range.num_index_term / (double) bts->index_scan_idp->bt_num_attrs)
+	   */
+
+	  bts->C_page_info.use_comparing = (bool) (cmp == DB_EQ);
+	}
     }
   else
     {
