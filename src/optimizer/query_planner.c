@@ -9963,11 +9963,11 @@ qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, i
       /* now check if the key segment is in there */
       if (bitset_intersects (&expr_segments, &key_segment))
 	{
-	  int nullable_arg = 0;
-	  qo_check_nullable_expr (parser, tree, &nullable_arg, NULL);
+	  int nullable_terms = 0;
+	  qo_check_nullable_expr (parser, tree, &nullable_terms, NULL);
 	  /* this expr contains the key segment */
 	  if (tree->info.expr.op == PT_IS_NULL || tree->info.expr.op == PT_IS_NOT_NULL
-	      || tree->info.expr.op == PT_IFNULL || tree->info.expr.op == PT_NULLSAFE_EQ || nullable_arg >= 1)
+	      || tree->info.expr.op == PT_IFNULL || tree->info.expr.op == PT_NULLSAFE_EQ || nullable_terms >= 1)
 	    {
 	      /* 0 all the way, suppress other terms found */
 	      env->bail_out = 0;
