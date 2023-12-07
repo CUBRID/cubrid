@@ -120,12 +120,20 @@ method_sig_node::method_sig_node (const method_sig_node &obj)
 
   if (obj.arg_info != nullptr)
     {
-      arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-      arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-      for (int n = 0; n < num_method_args; n++)
+      if (num_method_args > 0)
 	{
-	  arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
-	  arg_info->arg_type[n] = obj.arg_info->arg_type[n];
+	  arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  for (int n = 0; n < num_method_args; n++)
+	    {
+	      arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
+	      arg_info->arg_type[n] = obj.arg_info->arg_type[n];
+	    }
+	}
+      else
+	{
+	  arg_info->arg_mode = nullptr;
+	  arg_info->arg_type = nullptr;
 	}
       arg_info->result_type = obj.arg_info->result_type;
     }
@@ -286,12 +294,15 @@ method_sig_node::operator= (const method_sig_node &obj)
 
       if (obj.arg_info != nullptr)
 	{
-	  arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-	  arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-	  for (int n = 0; n < num_method_args; n++)
+	  if (num_method_args > 0)
 	    {
-	      arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
-	      arg_info->arg_type[n] = obj.arg_info->arg_type[n];
+	      arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	      arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	      for (int n = 0; n < num_method_args; n++)
+		{
+		  arg_info->arg_mode[n] = obj.arg_info->arg_mode[n];
+		  arg_info->arg_type[n] = obj.arg_info->arg_type[n];
+		}
 	    }
 	  arg_info->result_type = obj.arg_info->result_type;
 	}
@@ -354,18 +365,28 @@ method_sig_node::unpack (cubpacking::unpacker &deserializator)
   if (has_attr)
     {
       arg_info = (METHOD_ARG_INFO *) db_private_alloc (NULL, sizeof (METHOD_ARG_INFO));
-      arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
-      arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
 
-      for (int i = 0; i < num_method_args; i++)
+      if (num_method_args > 0)
 	{
-	  deserializator.unpack_int (arg_info->arg_mode[i]);
+	  arg_info->arg_mode = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+	  arg_info->arg_type = (int *) db_private_alloc (NULL, sizeof (int) * (num_method_args));
+
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      deserializator.unpack_int (arg_info->arg_mode[i]);
+	    }
+
+	  for (int i = 0; i < num_method_args; i++)
+	    {
+	      deserializator.unpack_int (arg_info->arg_type[i]);
+	    }
+	}
+      else
+	{
+	  arg_info->arg_mode = nullptr;
+	  arg_info->arg_type = nullptr;
 	}
 
-      for (int i = 0; i < num_method_args; i++)
-	{
-	  deserializator.unpack_int (arg_info->arg_type[i]);
-	}
       deserializator.unpack_int (arg_info->result_type);
     }
   else

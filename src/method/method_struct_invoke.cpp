@@ -202,19 +202,22 @@ namespace cubmethod
     signature.assign (sig->method_name);
     auth.assign (sig->auth_name);
     num_args = sig->num_method_args;
-
-    arg_pos.resize (num_args);
-    arg_mode.resize (num_args);
-    arg_type.resize (num_args);
-
-    for (int i = 0; i < num_args; i++)
+    if (num_args > 0)
       {
-	arg_pos[i] = sig->method_arg_pos[i];
-	arg_mode[i] = sig->arg_info->arg_mode[i];
-	arg_type[i] = sig->arg_info->arg_type[i];
+	arg_pos.resize (num_args);
+	arg_mode.resize (num_args);
+	arg_type.resize (num_args);
+
+	for (int i = 0; i < num_args; i++)
+	  {
+	    arg_pos[i] = sig->method_arg_pos[i];
+	    arg_mode[i] = sig->arg_info->arg_mode[i];
+	    arg_type[i] = sig->arg_info->arg_type[i];
+	  }
+
+	result_type = sig->arg_info->result_type;
       }
 
-    result_type = sig->arg_info->result_type;
     transaction_control = tc;
   }
 
