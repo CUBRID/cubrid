@@ -756,6 +756,26 @@ namespace cublog
 		  }
 	      }
 	  }
+	// scenario (6)
+	else if (LOG_SYSOP_END == last_entry.m_rectype
+		 && LOG_SYSOP_END_LOGICAL_COMPENSATE == last_entry.m_sysop_end_type)
+	  {
+	    const atomic_log_entry_vector_type::const_iterator last_but_one_entry_it = (last_entry_it - 1);
+	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
+
+	    if (!LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) &&
+		(last_but_one_entry.m_lsa > last_entry.m_sysop_end_last_parent_lsa))
+	      {
+		assert (last_but_one_entry.m_rectype == LOG_SYSOP_ATOMIC_START);
+
+		m_log_vec.erase (last_but_one_entry_it, m_log_vec.cend ());
+
+		if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
+		  {
+		    dump ("sequence::can_purge(10) after erase");
+		  }
+	      }
+	  }
 	// scenario (1)
 	else if (LOG_END_ATOMIC_REPL == last_entry.m_rectype)
 	  {
@@ -781,7 +801,7 @@ namespace cublog
 
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-			dump ("sequence::can_purge(10) after erase");
+			dump ("sequence::can_purge(11) after erase");
 		      }
 
 		    break;
@@ -791,7 +811,7 @@ namespace cublog
 		  {
 		    if (prm_get_bool_value (PRM_ID_ER_LOG_PTS_ATOMIC_REPL_DEBUG))
 		      {
-			dump ("sequence::can_purge(11) error");
+			dump ("sequence::can_purge(12) error");
 		      }
 
 		    assert_release ("inconsistent atomic log sequence found" == nullptr);
