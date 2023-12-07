@@ -3975,8 +3975,8 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	  return NO_ERROR;
 	}
 
-      s = bitset_iterate (&(termp->segments), &iter_s);
-      if (s == -1)
+
+      if (bitset_is_empty (&(termp->segments)))
 	{
 	  /*
 	   * We decided not to support MRO (Multiple Row Optimization) if the return value
@@ -3990,7 +3990,7 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	  return NO_ERROR;	/* give up */
 	}
 
-      for (; s != -1; s = bitset_next_member (&iter_s))
+      for (s = bitset_iterate (&(termp->segments), &iter_s); s != -1; s = bitset_next_member (&iter_s))
 	{
 	  bool found = false;
 	  if (QO_SEG_HEAD (QO_ENV_SEG (env, s)) != node_of_plan)
