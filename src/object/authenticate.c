@@ -468,7 +468,8 @@ get_attribute_number (DB_OBJECT * target, DB_VALUE * result, DB_VALUE * attr_nam
  * during au_init even though it is redundant on subsequent
  * restart calls.
  */
-static DB_METHOD_LINK
+static
+  DB_METHOD_LINK
   au_static_links[] = {
   {"au_add_user_method", (METHOD_LINK_FUNCTION) au_add_user_method},
   {"au_drop_user_method", (METHOD_LINK_FUNCTION) au_drop_user_method},
@@ -544,11 +545,13 @@ init_caches (void);
 static void
 flush_caches (void);
 
-static MOP
+static
+  MOP
 au_make_user (const char *name);
 static int
 au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, bool grant_option);
-static MOP
+static
+  MOP
 au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type);
 static int
 au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option);
@@ -567,7 +570,8 @@ static void
 encrypt_password_sha1 (const char *pass, int add_prefix, char *dest);
 static void
 encrypt_password_sha2_512 (const char *pass, char *dest);
-static bool
+static
+  bool
 match_password (const char *user, const char *database);
 static int
 au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
@@ -666,8 +670,7 @@ au_get_set (MOP obj, const char *attname, DB_SET ** set)
 {
   int
     error = NO_ERROR;
-  DB_VALUE
-    value;
+  DB_VALUE value;
 
   *set = NULL;
   error = obj_get (obj, attname, &value);
@@ -723,8 +726,7 @@ au_get_object (MOP obj, const char *attname, MOP * mop_ptr)
 {
   int
     error = NO_ERROR;
-  DB_VALUE
-    value;
+  DB_VALUE value;
 
   *mop_ptr = NULL;
   error = obj_get (obj, attname, &value);
@@ -761,8 +763,7 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
 {
   int
     error = NO_ERROR;
-  DB_VALUE
-    value;
+  DB_VALUE value;
 
   *obj = NULL;
 
@@ -806,8 +807,7 @@ au_make_class_cache (int depth)
     new_class_cache = NULL;
   int
     i;
-  size_t
-    size;
+  size_t size;
 
   if (depth <= 0)
     {
@@ -1284,31 +1284,24 @@ toupper_string (const char *name1, char *name2)
 MOP
 au_find_user (const char *user_name)
 {
-  MOP
-    obj,
-    user = NULL;
+  MOP obj, user = NULL;
   int
     save;
   char *
     query;
   DB_QUERY_RESULT *
     query_result;
-  DB_QUERY_ERROR
-    query_error;
+  DB_QUERY_ERROR query_error;
   int
     error = NO_ERROR;
-  DB_VALUE
-    user_val;
+  DB_VALUE user_val;
   const char *
     qp1 = "select [%s] from [%s] where [name] = '%s' using index none";
-  MOP
-    user_class;
+  MOP user_class;
   char *
     upper_case_name;
-  size_t
-    upper_case_name_size;
-  DB_VALUE
-    user_name_string;
+  size_t upper_case_name_size;
+  DB_VALUE user_name_string;
 
   if (user_name == NULL)
     {
@@ -1436,16 +1429,12 @@ au_find_user_to_drop (const char *user_name, MOP * user)
 {
   int
     error = NO_ERROR;
-  bool
-    existed;
-  MOP
-    user_class;
+  bool existed;
+  MOP user_class;
   char *
     upper_case_name = NULL;
-  size_t
-    upper_case_name_size;
-  DB_VALUE
-    user_name_string;
+  size_t upper_case_name_size;
+  DB_VALUE user_name_string;
 
   *user = NULL;
 
@@ -1519,8 +1508,7 @@ exit:
 int
 au_perform_push_user (MOP user)
 {
-  MOP
-    save_user = Au_user;
+  MOP save_user = Au_user;
   if (AU_SET_USER (user) == NO_ERROR)
     {
       Au_user_stack.push (save_user);
@@ -1564,8 +1552,7 @@ au_perform_pop_user ()
 void
 au_find_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name)
 {
-  MOP
-    user;
+  MOP user;
   int
     error = NO_ERROR;
 
@@ -1596,13 +1583,8 @@ static
   MOP
 au_make_user (const char *name)
 {
-  MOP
-    uclass,
-    aclass,
-    user,
-    auth;
-  DB_VALUE
-    value;
+  MOP uclass, aclass, user, auth;
+  DB_VALUE value;
   DB_SET *
     set;
   char *
@@ -1724,14 +1706,9 @@ au_set_new_auth (MOP au_obj, MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_
 {
   int
     error = NO_ERROR;
-  MOP
-    au_class,
-    db_class = NULL, db_class_inst = NULL;
-  DB_VALUE
-    value,
-    class_name_val;
-  DB_AUTH
-    type;
+  MOP au_class, db_class = NULL, db_class_inst = NULL;
+  DB_VALUE value, class_name_val;
+  DB_AUTH type;
   int
     i;
   const char *
@@ -1808,10 +1785,8 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
 {
   int
     error = NO_ERROR, save, i;
-  DB_AUTH
-    type;
-  MOP
-    ret_obj = NULL;
+  DB_AUTH type;
+  MOP ret_obj = NULL;
   const char *
     class_name;
   const char *
@@ -1828,16 +1803,13 @@ au_get_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
     /* Total count for the above */
     COUNT_FOR_VARIABLES
   };
-  DB_VALUE
-    val[COUNT_FOR_VARIABLES];
-  DB_VALUE
-    grant_value;
+  DB_VALUE val[COUNT_FOR_VARIABLES];
+  DB_VALUE grant_value;
   DB_QUERY_RESULT *
     result = NULL;
   DB_SESSION *
     session = NULL;
-  STATEMENT_ID
-    stmt_id;
+  STATEMENT_ID stmt_id;
   const char *
   type_set[] = { "SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "INDEX", "EXECUTE" };
 
@@ -2016,8 +1988,7 @@ au_insert_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int
 static int
 au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int grant_option)
 {
-  MOP
-    au_obj;
+  MOP au_obj;
   int
     index;
   int
@@ -2064,8 +2035,7 @@ au_update_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type, int
 static int
 au_delete_new_auth (MOP grantor, MOP user, MOP class_mop, DB_AUTH auth_type)
 {
-  MOP
-    au_obj;
+  MOP au_obj;
   int
     index;
   int
@@ -2112,9 +2082,7 @@ au_propagate_del_new_auth (AU_GRANT * glist, DB_AUTH mask)
     g;
   DB_SET *
     grants;
-  DB_VALUE
-    class_,
-    type;
+  DB_VALUE class_, type;
   int
     error = NO_ERROR;
 
@@ -2162,24 +2130,13 @@ au_force_write_new_auth (void)
   DB_OBJLIST *
   list, *
     mop;
-  MOP
-    au_class,
-    au_obj;
-  DB_VALUE
-    grants_val;
+  MOP au_class, au_obj;
+  DB_VALUE grants_val;
   DB_SET *
     grants;
-  DB_VALUE
-    grantor_val,
-    grantee_val,
-    class_val,
-    auth_val;
-  MOP
-    grantor,
-    grantee,
-    class_;
-  DB_AUTH
-    auth;
+  DB_VALUE grantor_val, grantee_val, class_val, auth_val;
+  MOP grantor, grantee, class_;
+  DB_AUTH auth;
   int
     gindex,
     gsize;
@@ -2284,8 +2241,7 @@ au_delete_auth_of_dropping_table (const char *class_name)
     sql_query =
     "DELETE FROM [" CT_CLASSAUTH_NAME "] [au]" " WHERE [au].[class_of] IN" " (SELECT [cl] FROM " CT_CLASS_NAME
     " [cl] WHERE [unique_name] = ?);";
-  DB_VALUE
-    val;
+  DB_VALUE val;
   DB_QUERY_RESULT *
     result = NULL;
   DB_SESSION *
@@ -2380,12 +2336,9 @@ au_is_dba_group_member (MOP user)
 {
   DB_SET *
     groups;
-  DB_VALUE
-    value;
-  bool
-    is_member = false;
-  LC_FETCH_VERSION_TYPE
-    read_fetch_instance_version;
+  DB_VALUE value;
+  bool is_member = false;
+  LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
   if (!user)
     {
@@ -2419,8 +2372,7 @@ au_is_user_group_member (MOP group_user, MOP user)
 {
   DB_SET *
     groups;
-  DB_VALUE
-    group_user_val;
+  DB_VALUE group_user_val;
   int
     error = NO_ERROR;
 
@@ -2474,10 +2426,8 @@ au_is_user_group_member (MOP group_user, MOP user)
 MOP
 au_add_user (const char *name, int *exists)
 {
-  MOP
-    user;
-  DB_VALUE
-    value;
+  MOP user;
+  DB_VALUE value;
   int
     save;
 
@@ -2578,8 +2528,7 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VAL
     error;
   int
     exists;
-  MOP
-    user;
+  MOP user;
   const char *
     tmp = NULL;
 
@@ -2883,11 +2832,8 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 {
   int
     error = NO_ERROR;
-  DB_VALUE
-    value;
-  MOP
-    pass,
-    pclass;
+  DB_VALUE value;
+  MOP pass, pclass;
   int
     save,
     len;
@@ -3157,8 +3103,7 @@ au_set_user_comment (MOP user, const char *comment)
 {
   int
     error = NO_ERROR;
-  DB_VALUE
-    value;
+  DB_VALUE value;
   int
     len = 0, save;
 
@@ -3213,15 +3158,13 @@ au_add_direct_groups (DB_SET * new_groups, DB_VALUE * value)
 {
   int
     error;
-  MOP
-    group;
+  MOP group;
   DB_SET *
     direct_groups;
   int
     gcard,
     g;
-  DB_VALUE
-    gvalue;
+  DB_VALUE gvalue;
 
   if ((error = db_set_add (new_groups, value)) == NO_ERROR)
     {
@@ -3266,21 +3209,15 @@ au_compute_groups (MOP member, const char *name)
   DB_SET *
   new_groups, *
     direct_groups;
-  DB_VALUE
-    value,
-    gvalue,
-    user_val;
-  MOP
-    user;
+  DB_VALUE value, gvalue, user_val;
+  MOP user;
   int
     g,
     gcard;
   DB_SESSION *
     session;
-  DB_VALUE
-    val[3];
-  STATEMENT_ID
-    stmt_id;
+  DB_VALUE val[3];
+  STATEMENT_ID stmt_id;
   DB_QUERY_RESULT *
     result = (DB_QUERY_RESULT *) 0;
   const char *
@@ -3405,10 +3342,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 {
   int
     error = NO_ERROR;
-  DB_VALUE
-    membervalue,
-    member_name_val,
-    groupvalue;
+  DB_VALUE membervalue, member_name_val, groupvalue;
   DB_SET *
     group_groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int
@@ -3526,8 +3460,7 @@ au_add_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval)
 {
   int
     error = NO_ERROR;
-  MOP
-    member;
+  MOP member;
 
   if (memval != NULL)
     {
@@ -3609,9 +3542,7 @@ au_drop_member (MOP group, MOP member)
 {
   int
     syserr = NO_ERROR, error = NO_ERROR;
-  DB_VALUE
-    groupvalue,
-    member_name_val;
+  DB_VALUE groupvalue, member_name_val;
   DB_SET *
     groups = NULL, *member_groups = NULL, *member_direct_groups = NULL;
   int
@@ -3685,8 +3616,7 @@ au_drop_member_method (MOP user, DB_VALUE * returnval, DB_VALUE * memval)
 {
   int
     error = NO_ERROR;
-  MOP
-    member;
+  MOP member;
 
   if (memval != NULL)
     {
@@ -3769,21 +3699,13 @@ au_drop_user (MOP user)
     save;
   DB_SESSION *
     session = NULL;
-  DB_VALUE
-    val[2],
-    user_val,
-    gvalue,
-    value,
-    password_val;
-  STATEMENT_ID
-    stmt_id;
+  DB_VALUE val[2], user_val, gvalue, value, password_val;
+  STATEMENT_ID stmt_id;
   int
     error = NO_ERROR;
   DB_QUERY_RESULT *
     result;
-  MOP
-    auser,
-    password;
+  MOP auser, password;
   DB_SET *
   new_groups, *
     direct_groups;
@@ -3791,8 +3713,7 @@ au_drop_user (MOP user)
     g,
     gcard,
     i;
-  DB_VALUE
-    name;
+  DB_VALUE name;
   static const char *
     class_name[] = {
     /*
@@ -4120,8 +4041,7 @@ au_drop_user_method (MOP root, DB_VALUE * returnval, DB_VALUE * name)
 static int
 find_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor)
 {
-  DB_VALUE
-    element;
+  DB_VALUE element;
   int
     i,
     gsize,
@@ -4157,8 +4077,7 @@ find_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor)
 static int
 add_grant_entry (DB_SET * grants, MOP class_mop, MOP grantor)
 {
-  DB_VALUE
-    value;
+  DB_VALUE value;
   int
     index;
 
@@ -4214,22 +4133,17 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 {
   int
     error = NO_ERROR;
-  DB_VALUE
-    value;
+  DB_VALUE value;
   DB_SET *
     grants = NULL;
-  MOP
-    grantor,
-    gowner,
-    class_;
+  MOP grantor, gowner, class_;
   int
     gsize,
     i,
     j,
     existing,
     cache;
-  bool
-    need_pop_er_stack = false;
+  bool need_pop_er_stack = false;
 
   assert (grant_ptr != NULL);
 
@@ -4418,8 +4332,7 @@ apply_grants (MOP auth, MOP class_mop, unsigned int *bits)
     error = NO_ERROR;
   DB_SET *
     grants;
-  DB_VALUE
-    grvalue;
+  DB_VALUE grvalue;
   int
     i,
     gsize;
@@ -4465,17 +4378,12 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
     i,
     save,
     card;
-  DB_VALUE
-    value;
-  MOP
-    group,
-    auth;
+  DB_VALUE value;
+  MOP group, auth;
   unsigned int *
     bits;
-  bool
-    is_member = false;
-  bool
-    need_pop_er_stack = false;
+  bool is_member = false;
+  bool need_pop_er_stack = false;
 
   /*
    * must disable here because we may be updating the cache of the system
@@ -4837,12 +4745,10 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 {
   int
     error = NO_ERROR;
-  MOP
-    auth;
+  MOP auth;
   DB_SET *
     grants;
-  DB_VALUE
-    value;
+  DB_VALUE value;
   int
     current,
     save = 0, gindex;
@@ -4942,9 +4848,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	      if (catcls_Enable == true)
 #endif /* SA_MODE */
 		{
-		  DB_AUTH
-		    ins_bits,
-		    upd_bits;
+		  DB_AUTH ins_bits, upd_bits;
 
 		  ins_bits = (DB_AUTH) ((~current & AU_TYPE_MASK) & (int) type);
 		  if (ins_bits)
@@ -5070,11 +4974,8 @@ collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked
 {
   int
     error = NO_ERROR;
-  MOP
-    user,
-    auth;
-  DB_VALUE
-    element;
+  MOP user, auth;
+  DB_VALUE element;
   DB_SET *
     grants;
   AU_GRANT *
@@ -5086,14 +4987,11 @@ collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked
     gsize;
   char *
     query;
-  size_t
-    query_size;
+  size_t query_size;
   DB_QUERY_RESULT *
     query_result;
-  DB_QUERY_ERROR
-    query_error;
-  DB_VALUE
-    user_val;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE user_val;
   const char *
     qp1 = "select [%s] from [%s];";
 
@@ -5275,8 +5173,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 {
   int
     error = NO_ERROR;
-  DB_VALUE
-    element;
+  DB_VALUE element;
   DB_SET *
     grants;
   AU_GRANT *
@@ -5396,12 +5293,10 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 {
   int
     error;
-  MOP
-    auth;
+  MOP auth;
   DB_SET *
     grants = NULL;
-  DB_VALUE
-    cache_element;
+  DB_VALUE cache_element;
   int
     current,
     mask,
@@ -5622,8 +5517,7 @@ au_change_owner (MOP class_mop, MOP owner_mop)
     save_constraints = NULL;
   SM_CONSTRAINT_INFO *
     saved = NULL;
-  MOBJ
-    obj = NULL;
+  MOBJ obj = NULL;
   char *
     class_old_name = NULL;
   char *
@@ -5634,8 +5528,7 @@ au_change_owner (MOP class_mop, MOP owner_mop)
   downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   char
   buf[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
-  bool
-    has_savepoint = true;
+  bool has_savepoint = true;
   int
     save = 0;
   int
@@ -5881,22 +5774,19 @@ end:
 void
 au_change_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * class_val, DB_VALUE * owner_val)
 {
-  MOP
-    class_mop = NULL;
+  MOP class_mop = NULL;
   SM_CLASS *
     class_ = NULL;
   MOP *
     sub_partitions = NULL;
-  MOP
-    owner_mop = NULL;
+  MOP owner_mop = NULL;
   const char *
     class_name = NULL;
   const char *
     owner_name = NULL;
   int
     is_partition = DB_NOT_PARTITIONED_CLASS;
-  bool
-    has_savepoint = false;
+  bool has_savepoint = false;
   int
     i;
   int
@@ -6028,12 +5918,10 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
     serial_class_mop = NULL;
   DB_OBJECT *
     serial_obj = NULL;
-  DB_IDENTIFIER
-    serial_obj_id;
+  DB_IDENTIFIER serial_obj_id;
   DB_OTMPL *
     obj_tmpl = NULL;
-  DB_VALUE
-    value;
+  DB_VALUE value;
   const char *
     serial_name = NULL;
   char
@@ -6044,8 +5932,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
     owner_name = NULL;
   char
   downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-  bool
-    is_abort = false;
+  bool is_abort = false;
   int
     save = 0;
   int
@@ -6222,14 +6109,10 @@ end:
 void
 au_change_serial_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * serial_val, DB_VALUE * owner_val)
 {
-  MOP
-    serial_class_mop = NULL;
-  MOP
-    serial_mop = NULL;
-  DB_IDENTIFIER
-    serial_obj_id;
-  MOP
-    owner_mop = NULL;
+  MOP serial_class_mop = NULL;
+  MOP serial_mop = NULL;
+  DB_IDENTIFIER serial_obj_id;
+  MOP owner_mop = NULL;
   const char *
     serial_name = NULL;
   char
@@ -6303,8 +6186,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
     target_class_obj = NULL;
   SM_CLASS *
     target_class = NULL;
-  DB_VALUE
-    value;
+  DB_VALUE value;
   const char *
     trigger_old_name = NULL;
   char
@@ -6437,10 +6319,8 @@ end:
 void
 au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigger_val, DB_VALUE * owner_val)
 {
-  MOP
-    trigger_mop = NULL;
-  MOP
-    owner_mop = NULL;
+  MOP trigger_mop = NULL;
+  MOP owner_mop = NULL;
   const char *
     trigger_name = NULL;
   const char *
@@ -6502,8 +6382,7 @@ au_change_trigger_owner_method (MOP obj, DB_VALUE * return_val, DB_VALUE * trigg
 MOP
 au_get_class_owner (MOP classmop)
 {
-  MOP
-    owner = NULL;
+  MOP owner = NULL;
   SM_CLASS *
     class_;
 
@@ -6536,10 +6415,8 @@ au_get_class_owner (MOP classmop)
 void
 au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
 {
-  MOP
-    user;
-  MOP
-    classmop;
+  MOP user;
+  MOP classmop;
   int
     error = NO_ERROR;
 
@@ -6589,8 +6466,7 @@ au_get_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_)
 void
 au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_, DB_VALUE * auth)
 {
-  MOP
-    classmop;
+  MOP classmop;
   int
     error = NO_ERROR;
 
@@ -6624,8 +6500,7 @@ au_check_authorization_method (MOP obj, DB_VALUE * returnval, DB_VALUE * class_,
 int
 au_add_method_check_authorization (void)
 {
-  MOP
-    auth;
+  MOP auth;
   SM_TEMPLATE *
     def;
   int
@@ -6674,8 +6549,7 @@ au_change_sp_owner (MOP sp, MOP owner)
     error = NO_ERROR;
   int
     save;
-  DB_VALUE
-    value;
+  DB_VALUE value;
 
   AU_DISABLE (save);
   if (!au_is_dba_group_member (Au_user))
@@ -6709,9 +6583,7 @@ end:
 void
 au_change_sp_owner_method (MOP obj, DB_VALUE * returnval, DB_VALUE * sp, DB_VALUE * owner)
 {
-  MOP
-    user,
-    sp_mop;
+  MOP user, sp_mop;
   int
     error;
   int
@@ -6786,8 +6658,7 @@ au_check_user (void)
 const char *
 au_user_name (void)
 {
-  DB_VALUE
-    value;
+  DB_VALUE value;
   const char *
     name = NULL;
 
@@ -6995,8 +6866,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
 {
   int
     error = NO_ERROR;
-  MOP
-    classmop = NULL;
+  MOP classmop = NULL;
   SM_CLASS *
     class_ = NULL;
 
@@ -7020,8 +6890,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
     {
       int
 	is_class;
-      DB_FETCH_MODE
-	purpose;
+      DB_FETCH_MODE purpose;
 
       if (fetchmode == AU_FETCH_READ)
 	{
@@ -7167,8 +7036,7 @@ au_fetch_class_internal (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, 
     error = NO_ERROR;
   SM_CLASS *
     class_;
-  MOP
-    classmop;
+  MOP classmop;
 
   if (class_ptr != NULL)
     {
@@ -7300,8 +7168,7 @@ au_fetch_class_by_classmop (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmod
 int
 au_fetch_class_force (MOP op, SM_CLASS ** class_, AU_FETCHMODE fetchmode)
 {
-  MOP
-    classmop;
+  MOP classmop;
 
   return (fetch_class (op, &classmop, class_, fetchmode, DONT_KNOW));
 }
@@ -7365,8 +7232,7 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION
 {
   int
     error = NO_ERROR;
-  MOBJ
-    obj = NULL;
+  MOBJ obj = NULL;
   int
     pin;
   int
@@ -7499,8 +7365,7 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, LC_FETCH_VERSION_T
     error = NO_ERROR;
   SM_CLASS *
     class_;
-  MOP
-    classmop;
+  MOP classmop;
 
   if (Au_user == NULL && !Au_disable)
     {
@@ -7617,10 +7482,8 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 {
   int
     error = NO_ERROR;
-  MOP
-    user;
-  DB_VALUE
-    value;
+  MOP user;
+  DB_VALUE value;
   const char *
     pass;
   char *
@@ -7882,10 +7745,8 @@ au_start (void)
 {
   int
     error = NO_ERROR;
-  MOPLIST
-    mops;
-  MOP
-    class_mop;
+  MOPLIST mops;
+  MOP class_mop;
 
   /*
    * NEED TO MAKE SURE THIS IS 1 IF THE SERVER CRASHED BECAUSE WE'RE
@@ -8007,15 +7868,13 @@ au_start (void)
 char *
 au_get_user_name (MOP obj)
 {
-  DB_VALUE
-    value;
+  DB_VALUE value;
   db_make_null (&value);
   char *
     name = NULL;
 
   {
-    MOP
-      sc_owner;
+    MOP sc_owner;
     const char *
       sc_name;
     char
@@ -8072,11 +7931,8 @@ au_export_users (extract_context & ctxt, print_output & output_ctx)
     error = NO_ERROR;
   DB_SET *
     direct_groups = NULL;
-  DB_VALUE
-    value,
-    gvalue;
-  MOP
-    user = NULL, pwd = NULL;
+  DB_VALUE value, gvalue;
+  MOP user = NULL, pwd = NULL;
   int
     g,
     gcard;
@@ -8086,16 +7942,14 @@ au_export_users (extract_context & ctxt, print_output & output_ctx)
   passbuf[AU_MAX_PASSWORD_BUF] = { '\0' };
   char *
     query = NULL;
-  size_t
-    query_size;
+  size_t query_size;
   DB_QUERY_RESULT *
     query_result = NULL;
-  DB_QUERY_ERROR
-    query_error;
-  DB_VALUE
-    user_val;
-  DB_VALUE
-  user_group[2] = { 0, };
+  DB_QUERY_ERROR query_error;
+  DB_VALUE user_val;
+  DB_VALUE user_group[2] =
+  {
+  0,};
   const char *
     dba_query = "select [%s] from [%s];";
   const char *
@@ -8107,8 +7961,7 @@ au_export_users (extract_context & ctxt, print_output & output_ctx)
     encrypt_mode = ENCODE_PREFIX_DEFAULT;
   char *
     upper_case_name = NULL;
-  size_t
-    upper_case_name_size = 0;
+  size_t upper_case_name_size = 0;
 
   if (ctxt.is_dba_user || ctxt.is_dba_group_member)
     {
@@ -8755,28 +8608,21 @@ build_class_grant_list (CLASS_AUTH * cl_auth, MOP class_mop)
 {
   int
     error;
-  MOP
-    user,
-    auth,
-    source;
+  MOP user, auth, source;
   DB_SET *
     grants;
-  DB_VALUE
-    value;
+  DB_VALUE value;
   int
     j,
     gsize,
     cache;
   char *
     query;
-  size_t
-    query_size;
+  size_t query_size;
   DB_QUERY_RESULT *
     query_result;
-  DB_QUERY_ERROR
-    query_error;
-  DB_VALUE
-    user_val;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE user_val;
   const char *
     qp1 = "select [%s] from [%s];";
 
@@ -9055,8 +8901,7 @@ au_export_grants (extract_context & ctxt, print_output & output_ctx, MOP class_m
 {
   int
     error = NO_ERROR;
-  CLASS_AUTH
-    cl_auth;
+  CLASS_AUTH cl_auth;
   CLASS_USER *
     u;
   int
@@ -9160,8 +9005,7 @@ au_print_cache (int cache, FILE * fp)
 static void
 au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp)
 {
-  DB_VALUE
-    value;
+  DB_VALUE value;
 
   set_get_element (grants, GRANT_ENTRY_CLASS (grant_index), &value);
   fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CLASS_NAME),
@@ -9189,8 +9033,7 @@ au_print_grant_entry (DB_SET * grants, int grant_index, FILE * fp)
 static void
 au_print_auth (MOP auth, FILE * fp)
 {
-  DB_VALUE
-    value;
+  DB_VALUE value;
   DB_SET *
     grants;
   int
@@ -9245,19 +9088,15 @@ au_print_auth (MOP auth, FILE * fp)
 void
 au_dump_auth (FILE * fp)
 {
-  MOP
-    user,
-    auth;
+  MOP user, auth;
   char *
     query;
   DB_QUERY_RESULT *
     query_result;
-  DB_QUERY_ERROR
-    query_error;
+  DB_QUERY_ERROR query_error;
   int
     error;
-  DB_VALUE
-    user_val;
+  DB_VALUE user_val;
   const char *
     qp1 = "select [%s] from [%s];";
 
@@ -9301,12 +9140,10 @@ au_dump_auth (FILE * fp)
 void
 au_dump_user (MOP user, FILE * fp)
 {
-  DB_VALUE
-    value;
+  DB_VALUE value;
   DB_SET *
     groups = NULL;
-  MOP
-    auth;
+  MOP auth;
   int
     i,
     card;
@@ -9386,27 +9223,22 @@ au_dump_user (MOP user, FILE * fp)
 void
 au_print_class_auth (MOP class_mop)
 {
-  MOP
-    user;
+  MOP user;
   DB_SET *
     grants;
   int
     j,
     title,
     gsize;
-  DB_VALUE
-    element,
-    value;
+  DB_VALUE element, value;
   char *
     query;
   DB_QUERY_RESULT *
     query_result;
-  DB_QUERY_ERROR
-    query_error;
+  DB_QUERY_ERROR query_error;
   int
     error;
-  DB_VALUE
-    user_val;
+  DB_VALUE user_val;
   const char *
     qp1 = "select [%s] from [%s];";
 
@@ -9476,20 +9308,16 @@ au_print_class_auth (MOP class_mop)
 void
 au_dump_to_file (FILE * fp)
 {
-  MOP
-    user;
-  DB_VALUE
-    value;
+  MOP user;
+  DB_VALUE value;
   char *
     query = NULL;
   DB_QUERY_RESULT *
     query_result = NULL;
-  DB_QUERY_ERROR
-    query_error;
+  DB_QUERY_ERROR query_error;
   int
     error = NO_ERROR;
-  DB_VALUE
-    user_val;
+  DB_VALUE user_val;
   const char *
     qp1 = "select [%s] from [%s];";
 
@@ -9667,8 +9495,7 @@ au_link_static_methods (void)
 int
 au_install (void)
 {
-  MOP
-    root = NULL, user = NULL, pass = NULL, auth = NULL, old = NULL;
+  MOP root = NULL, user = NULL, pass = NULL, auth = NULL, old = NULL;
   SM_TEMPLATE *
     def;
   int
@@ -10133,8 +9960,7 @@ au_get_dba_user (void)
 static int
 au_check_owner (DB_VALUE * creator_val)
 {
-  MOP
-    creator;
+  MOP creator;
   DB_SET *
     groups;
   int
@@ -10167,8 +9993,7 @@ au_check_owner (DB_VALUE * creator_val)
 int
 au_check_serial_authorization (MOP serial_object)
 {
-  DB_VALUE
-    creator_val;
+  DB_VALUE creator_val;
   int
     ret_val;
 
@@ -10194,8 +10019,7 @@ au_check_serial_authorization (MOP serial_object)
 int
 au_check_server_authorization (MOP server_object)
 {
-  DB_VALUE
-    creator_val;
+  DB_VALUE creator_val;
   int
     ret_val;
 
