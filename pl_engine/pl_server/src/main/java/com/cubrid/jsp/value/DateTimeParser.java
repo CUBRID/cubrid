@@ -28,7 +28,7 @@
  *
  */
 
-package com.cubrid.plcsql.compiler;
+package com.cubrid.jsp.value;
 
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
@@ -48,8 +48,8 @@ import java.util.Locale;
 public class DateTimeParser {
 
     private static final ZoneOffset TIMEZONE_0 = ZoneOffset.of("Z");
-    private static final ZoneOffset TIMEZONE_SESSION =
-            ZoneOffset.of("+05:00"); // temporary code TODO: fix this
+    // TODO: update the following value along with the server
+    private static final ZoneOffset TIMEZONE_SESSION = ZoneOffset.of("+09:00");
 
     // zoneless part of min timestamp: 1970-01-01 00:00:01
     private static final LocalDateTime minTimestampLocal = LocalDateTime.of(1970, 1, 1, 0, 0, 1);

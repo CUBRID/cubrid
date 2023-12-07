@@ -30,31 +30,39 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.HashMap;
+import java.util.Map;
 
-public class ExprBinaryOp extends Expr {
+public class TypeSpecVarchar extends TypeSpecSimple {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprBinaryOp(this);
+    public static final int MAX_LEN = 1073741823;
+
+    // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
+
+    public final int length;
+
+    public static synchronized TypeSpecVarchar getInstance(int length) {
+
+        assert length <= MAX_LEN && length >= 1;
+
+        TypeSpecVarchar ret = instances.get(length);
+        if (ret == null) {
+            String typicalValueStr = String.format("cast(? as varchar(%d))", length);
+            ret = new TypeSpecVarchar(typicalValueStr, length);
+            instances.put(length, ret);
+        }
+
+        return ret;
     }
 
-    public final String opStr;
-    public final Expr left;
-    public final Expr right;
+    // ---------------------------------------------------------------------------
+    // Private
+    // ---------------------------------------------------------------------------
 
-    public String opExtension = "";
+    private static final Map<Integer, TypeSpecVarchar> instances = new HashMap<>();
 
-    public void setOpExtension(String ext) {
-        opExtension = ext;
-    }
-
-    public ExprBinaryOp(ParserRuleContext ctx, String opStr, Expr left, Expr right) {
-        super(ctx);
-
-        this.opStr = opStr;
-        this.left = left;
-        this.right = right;
+    private TypeSpecVarchar(String typicalValueStr, int length) {
+        super("String", "java.lang.String", IDX_STRING, typicalValueStr);
+        this.length = length;
     }
 }

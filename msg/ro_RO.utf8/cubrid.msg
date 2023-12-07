@@ -1443,9 +1443,10 @@ Verificați calea fișierului cheie (_keys) și asigurați-vă că acesta includ
 1357 Conversia șirului SQL în șir larg a eșuat.
 1358 Numărul de rânduri afectate este necunoscut.
 
-1359 In line %1$d, column %2$d\nStored procedure compile error: %3$s
+1359 Java VM crashed: %1$s
+1360 In line %1$d, column %2$d\nStored procedure compile error: %3$s
 
-1360 Ultima eroare
+1361 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):
@@ -1930,6 +1931,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 314 Synonym "%1$s" does not exist.
 315 Rename cannot change owner.
 316 Rename cannot be changed to the same name.
+317 Identifiers cannot be in a LIMIT clause.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.

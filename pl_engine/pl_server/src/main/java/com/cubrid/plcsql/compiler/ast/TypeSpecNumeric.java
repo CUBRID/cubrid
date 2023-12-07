@@ -30,31 +30,41 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.HashMap;
+import java.util.Map;
 
-public class ExprBinaryOp extends Expr {
+public class TypeSpecNumeric extends TypeSpecSimple {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprBinaryOp(this);
+    // NOTE: no accept() method. inherit it from the parent TypeSpecSimple
+
+    public final int precision;
+    public final short scale;
+
+    public static synchronized TypeSpecNumeric getInstance(int precision, short scale) {
+
+        assert precision <= 38 && precision >= 1;
+        assert scale <= precision && scale >= 0;
+
+        int key = precision * 100 + scale;
+        TypeSpecNumeric ret = instances.get(key);
+        if (ret == null) {
+            String typicalValueStr = String.format("cast(? as numeric(%d, %d))", precision, scale);
+            ret = new TypeSpecNumeric(typicalValueStr, precision, scale);
+            instances.put(key, ret);
+        }
+
+        return ret;
     }
 
-    public final String opStr;
-    public final Expr left;
-    public final Expr right;
+    // ---------------------------------------------------------------------------
+    // Private
+    // ---------------------------------------------------------------------------
 
-    public String opExtension = "";
+    private static final Map<Integer, TypeSpecNumeric> instances = new HashMap<>();
 
-    public void setOpExtension(String ext) {
-        opExtension = ext;
-    }
-
-    public ExprBinaryOp(ParserRuleContext ctx, String opStr, Expr left, Expr right) {
-        super(ctx);
-
-        this.opStr = opStr;
-        this.left = left;
-        this.right = right;
+    private TypeSpecNumeric(String typicalValueStr, int precision, short scale) {
+        super("Numeric", "java.math.BigDecimal", IDX_NUMERIC, typicalValueStr);
+        this.precision = precision;
+        this.scale = scale;
     }
 }

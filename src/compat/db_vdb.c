@@ -98,6 +98,8 @@ static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * pars
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+int g_open_buffer_control_flags = 0;
+
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
  *   pointer array
@@ -212,6 +214,11 @@ db_open_buffer_local (const char *buffer)
 
   if (session)
     {
+      if (g_open_buffer_control_flags & PARSER_FOR_PLCSQL_STATIC_SQL)
+	{
+	  session->parser->flag.is_parsing_static_sql = 1;
+	}
+
       session->statements = parser_parse_string_with_escapes (session->parser, buffer, false);
       if (session->statements)
 	{

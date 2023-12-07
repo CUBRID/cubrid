@@ -687,35 +687,6 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_GET_SET_BOUND_BITS(setptr) \
   (int *) ((char *) (setptr) + OR_SET_HEADER_SIZE)
 
-/* MIDXKEY HEADER */
-
-#define OR_MULTI_BOUND_BIT_BYTES(count)  (((count) + 7) >> 3)
-
-#define OR_MULTI_BOUND_BIT_MASK(element) (1 << ((int) (element) & 7))
-
-#define OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element) \
-  ((char *)(bitptr) + ((int)(element) >> 3))
-
-#define OR_MULTI_GET_BOUND_BIT(bitptr, element) \
-  ((*OR_MULTI_GET_BOUND_BIT_BYTE(bitptr, element)) & OR_MULTI_BOUND_BIT_MASK(element))
-
-#define OR_MULTI_GET_BOUND_BITS(bitptr, fsize) \
-  (char *) (((char *) (bitptr)) + fsize)
-
-#define OR_MULTI_ATT_IS_BOUND(bitptr, element) \
-  OR_MULTI_GET_BOUND_BIT(bitptr, element)
-#define OR_MULTI_ATT_IS_UNBOUND(bitptr, element) \
-  (!OR_MULTI_GET_BOUND_BIT (bitptr, element))
-
-#define OR_MULTI_ENABLE_BOUND_BIT(bitptr, element) \
-  *OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) = (*OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
-						    | OR_MULTI_BOUND_BIT_MASK (element))
-
-#define OR_MULTI_CLEAR_BOUND_BIT(bitptr, element) \
-  *OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) = (*OR_MULTI_GET_BOUND_BIT_BYTE (bitptr, element) \
-						    & ~OR_MULTI_BOUND_BIT_MASK (element))
-
-
 /*
  * OR_SUB_HEADER_SIZE
  *
@@ -1216,7 +1187,6 @@ extern int or_packed_varbit_length (int bitlen);
  * this file (it references DB_TYPE)
  */
 extern int or_listid_length (void *listid);
-extern int or_method_sig_list_length (void *method_sig_list_ptr);
 extern int or_set_node_length (void *set_node_ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_elo_length (void *elo_ptr);
@@ -1428,6 +1398,37 @@ extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 
 #define OR_IS_STRING_LENGTH_COMPRESSABLE(str_length) \
   ((str_length) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && (str_length) <= LZ4_MAX_INPUT_SIZE)
+
+/*
+ * MIDXKEY HEADER ACCESSORS
+ */
+
+STATIC_INLINE int or_multi_nullmap_size (const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_offset_table_size (const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_header_size (const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_clear_header (char *nullmap_ptr, const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_set_not_null (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_set_null (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool or_multi_is_not_null (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool or_multi_is_null (char *nullmap_ptr, const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE char *or_multi_get_offset_table (char *nullmap_ptr, const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE char *or_multi_get_element_offset_ptr (char *nullmap_ptr, const int n_elements, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_get_element_offset_internal (char *nullmap_ptr, const int n_elements, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_get_element_offset (char *nullmap_ptr, const int n_elements, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_get_next_element_offset (char *nullmap_ptr, const int n_elements, const int index)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int or_multi_get_size_offset (char *nullmap_ptr, const int n_elements) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_put_element_offset_internal (char *nullmap_ptr, const int n_elements, const int offset,
+							 const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_put_element_offset (char *nullmap_ptr, const int n_elements, const int offset,
+						const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_put_next_element_offset (char *nullmap_ptr, const int n_elements, const int offset,
+						     const int index) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void or_multi_put_size_offset (char *nullmap_ptr, const int n_elements, const int offset)
+  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * or_init - initialize the field of an OR_BUF
@@ -2804,6 +2805,188 @@ or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
     {
       assert (offset_size == OR_INT_SIZE);
       return or_get_int (buf, error);
+    }
+}
+
+/*
+ * MIDXKEY HEADER ACCESSORS
+ */
+
+STATIC_INLINE int
+or_multi_nullmap_size (const int n_elements)
+{
+  int nullmap_size;
+
+  assert (n_elements > 0);
+
+  nullmap_size = ((n_elements + 7) >> 3);
+  assert (nullmap_size > 0);
+
+  return nullmap_size;
+}
+
+STATIC_INLINE int
+or_multi_offset_table_size (const int n_elements)
+{
+  assert (n_elements > 0);
+
+  return n_elements + 1;
+}
+
+STATIC_INLINE int
+or_multi_header_size (const int n_elements)
+{
+  return or_multi_nullmap_size (n_elements) + or_multi_offset_table_size (n_elements);
+}
+
+STATIC_INLINE void
+or_multi_clear_header (char *nullmap_ptr, const int n_elements)
+{
+  assert (nullmap_ptr != NULL);
+
+  memset (nullmap_ptr, 0x00, or_multi_header_size (n_elements));
+}
+
+STATIC_INLINE void
+or_multi_set_not_null (char *nullmap_ptr, const int index)
+{
+  assert (nullmap_ptr != NULL);
+  assert (index >= 0);
+
+  (*(nullmap_ptr + (index >> 3))) |= (1 << (index & 7));
+}
+
+
+STATIC_INLINE void
+or_multi_set_null (char *nullmap_ptr, const int index)
+{
+  assert (nullmap_ptr != NULL);
+  assert (index >= 0);
+
+  (*(nullmap_ptr + (index >> 3))) &= (~(1 << (index & 7)));
+}
+
+STATIC_INLINE bool
+or_multi_is_not_null (char *nullmap_ptr, const int index)
+{
+  assert (nullmap_ptr != NULL);
+  assert (index >= 0);
+
+  if ((*(nullmap_ptr + (index >> 3))) & (1 << (index & 7)))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+STATIC_INLINE bool
+or_multi_is_null (char *nullmap_ptr, const int index)
+{
+  return !or_multi_is_not_null (nullmap_ptr, index);
+}
+
+STATIC_INLINE char *
+or_multi_get_offset_table (char *nullmap_ptr, const int n_elements)
+{
+  assert (nullmap_ptr != NULL);
+
+  return nullmap_ptr + or_multi_nullmap_size (n_elements);
+}
+
+STATIC_INLINE char *
+or_multi_get_element_offset_ptr (char *nullmap_ptr, const int n_elements, const int index)
+{
+  return or_multi_get_offset_table (nullmap_ptr, n_elements) + index;
+}
+
+STATIC_INLINE int
+or_multi_get_element_offset_internal (char *nullmap_ptr, const int n_elements, const int index)
+{
+  int offset;
+
+  offset = OR_GET_BYTE (or_multi_get_element_offset_ptr (nullmap_ptr, n_elements, index));
+  assert (offset >= or_multi_header_size (n_elements));
+  assert (offset <= OR_MULTI_MAX_OFFSET);
+
+  return offset;
+}
+
+STATIC_INLINE int
+or_multi_get_element_offset (char *nullmap_ptr, const int n_elements, const int index)
+{
+  int offset;
+
+  offset = or_multi_get_element_offset_internal (nullmap_ptr, n_elements, index);
+  if (offset < OR_MULTI_MAX_OFFSET)
+    {
+      return offset;
+    }
+
+  return -1;
+}
+
+STATIC_INLINE int
+or_multi_get_next_element_offset (char *nullmap_ptr, const int n_elements, const int index)
+{
+  return or_multi_get_element_offset (nullmap_ptr, n_elements, index + 1);
+}
+
+STATIC_INLINE int
+or_multi_get_size_offset (char *nullmap_ptr, const int n_elements)
+{
+  int offset;
+
+  offset = or_multi_get_element_offset_internal (nullmap_ptr, n_elements, n_elements);
+  if (offset < OR_MULTI_MAX_OFFSET)
+    {
+      return offset;
+    }
+
+  return -1;
+}
+
+STATIC_INLINE void
+or_multi_put_element_offset_internal (char *nullmap_ptr, const int n_elements, const int offset, const int index)
+{
+  assert (nullmap_ptr != NULL);
+  assert (n_elements > 0);
+  assert (offset >= or_multi_header_size (n_elements));
+  assert (offset <= OR_MULTI_MAX_OFFSET);
+  assert (index >= 0);
+
+  OR_PUT_BYTE (or_multi_get_element_offset_ptr (nullmap_ptr, n_elements, index), offset);
+}
+
+STATIC_INLINE void
+or_multi_put_element_offset (char *nullmap_ptr, const int n_elements, const int offset, const int index)
+{
+  if (offset < OR_MULTI_MAX_OFFSET)
+    {
+      or_multi_put_element_offset_internal (nullmap_ptr, n_elements, offset, index);
+    }
+  else
+    {
+      or_multi_put_element_offset_internal (nullmap_ptr, n_elements, OR_MULTI_MAX_OFFSET, index);
+    }
+}
+
+STATIC_INLINE void
+or_multi_put_next_element_offset (char *nullmap_ptr, const int n_elements, const int offset, const int index)
+{
+  or_multi_put_element_offset (nullmap_ptr, n_elements, offset, index + 1);
+}
+
+STATIC_INLINE void
+or_multi_put_size_offset (char *nullmap_ptr, const int n_elements, const int offset)
+{
+  if (offset < OR_MULTI_MAX_OFFSET)
+    {
+      or_multi_put_element_offset_internal (nullmap_ptr, n_elements, offset, n_elements);
+    }
+  else
+    {
+      or_multi_put_element_offset_internal (nullmap_ptr, n_elements, OR_MULTI_MAX_OFFSET, n_elements);
     }
 }
 

@@ -76,8 +76,6 @@ int mvcc_header_size_lookup[8] = {
 };
 
 static TP_DOMAIN *unpack_domain (OR_BUF * buf, int *is_null);
-static char *or_pack_method_sig (char *ptr, void *method_sig_ptr);
-static char *or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *unpack_str_array (char *buffer, char ***string_array, int count);
 #endif
@@ -5648,37 +5646,6 @@ or_listid_length (void *listid_ptr)
 }
 
 /*
- * or_pack_method_sig - packs a METHOD_SIG descriptor.
- *    return: advanced buffer pointer
- *    ptr(out): starting pointer
- *    method_sig_ptr(in):  opaque pointer to METHOD_SIG structure
- */
-static char *
-or_pack_method_sig (char *ptr, void *method_sig_ptr)
-{
-  METHOD_SIG *method_sig = (METHOD_SIG *) method_sig_ptr;
-  int n;
-
-  if (method_sig == (METHOD_SIG *) 0)
-    {
-      return ptr;
-    }
-
-  ptr = or_pack_method_sig (ptr, method_sig->next);
-  ptr = or_pack_string (ptr, method_sig->method_name);
-  ptr = or_pack_string (ptr, method_sig->class_name);
-  ptr = or_pack_int (ptr, method_sig->method_type);
-  ptr = or_pack_int (ptr, method_sig->num_method_args);
-
-  for (n = 0; n < method_sig->num_method_args + 1; n++)
-    {
-      ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
-    }
-
-  return ptr;
-}
-
-/*
  * or_pack_key_val_range - packs a KEY VALUE RANGE.
  *    return: advanced buffer pointer
  *    ptr(out): starting pointer
@@ -5726,153 +5693,6 @@ or_unpack_key_val_range (char *ptr, void *key_val_range_ptr)
   ptr = or_unpack_db_value (ptr, &key_val_range->key2);
 
   return ptr;
-}
-
-/*
- * or_unpack_method_sig - unpacks a METHOD_SIG descriptor from a buffer.
- *    return: advanced buffer pointer
- *    ptr(in): starting pointer
- *    method_sig_ptr(out): method_sig descriptor
- *    n(in):
- */
-static char *
-or_unpack_method_sig (char *ptr, void **method_sig_ptr, int n)
-{
-  METHOD_SIG *method_sig;
-
-  if (n == 0)
-    {
-      *(METHOD_SIG **) method_sig_ptr = (METHOD_SIG *) 0;
-      return ptr;
-    }
-  method_sig = (METHOD_SIG *) db_private_alloc (NULL, sizeof (METHOD_SIG));
-
-  if (method_sig == (METHOD_SIG *) 0)
-    {
-      return NULL;
-    }
-  ptr = or_unpack_method_sig (ptr, (void **) &method_sig->next, n - 1);
-  ptr = or_unpack_string (ptr, &method_sig->method_name);
-  ptr = or_unpack_string (ptr, &method_sig->class_name);
-  ptr = or_unpack_int (ptr, (int *) &method_sig->method_type);
-  ptr = or_unpack_int (ptr, &method_sig->num_method_args);
-
-  method_sig->method_arg_pos = (int *) db_private_alloc (NULL, sizeof (int) * (method_sig->num_method_args + 1));
-  if (method_sig->method_arg_pos == (int *) 0)
-    {
-      db_private_free_and_init (NULL, method_sig);
-      return NULL;
-    }
-
-  for (n = 0; n < method_sig->num_method_args + 1; n++)
-    {
-      ptr = or_unpack_int (ptr, &method_sig->method_arg_pos[n]);
-    }
-
-  *(METHOD_SIG **) method_sig_ptr = method_sig;
-
-  return ptr;
-}
-
-/*
- * or_pack_method_sig_list - write a method signature list
- *    return: advanced buffer pointer
- *    ptr(out): starting pointer
- *    method_sig_list_ptr(in): method_sig_list descriptor
- * Note:
- *    This packs a METHOD_SIG_LIST descriptor.
- */
-char *
-or_pack_method_sig_list (char *ptr, void *method_sig_list_ptr)
-{
-  METHOD_SIG_LIST *method_sig_list = (METHOD_SIG_LIST *) method_sig_list_ptr;
-
-  ptr = or_pack_int (ptr, method_sig_list->num_methods);
-
-#if !defined(NDEBUG)
-  {
-    int i = 0;
-    METHOD_SIG *sig;
-
-    for (sig = method_sig_list->method_sig; sig; sig = sig->next)
-      {
-	i++;
-      }
-    assert (method_sig_list->num_methods == i);
-  }
-#endif
-
-  ptr = or_pack_method_sig (ptr, method_sig_list->method_sig);
-  return ptr;
-}
-
-/*
- * or_unpack_method_sig_list - read a method signature list
- *    return: advanced buffer pointer
- *    ptr(in): starting pointer
- *    method_sig_list_ptr(out): method_sig_list descriptor
- * Note:
- *    This unpacks a METHOD_SIG_LIST descriptor from a buffer.
- */
-char *
-or_unpack_method_sig_list (char *ptr, void **method_sig_list_ptr)
-{
-  METHOD_SIG_LIST *method_sig_list;
-
-  method_sig_list = (METHOD_SIG_LIST *) db_private_alloc (NULL, sizeof (METHOD_SIG_LIST));
-  if (method_sig_list == (METHOD_SIG_LIST *) 0)
-    {
-      return NULL;
-    }
-
-  ptr = or_unpack_int (ptr, &method_sig_list->num_methods);
-  ptr = or_unpack_method_sig (ptr, (void **) &method_sig_list->method_sig, method_sig_list->num_methods);
-
-#if !defined(NDEBUG)
-  {
-    int i = 0;
-    METHOD_SIG *sig;
-
-    for (sig = method_sig_list->method_sig; sig; sig = sig->next)
-      {
-	i++;
-      }
-    assert (method_sig_list->num_methods == i);
-  }
-#endif
-
-  *(METHOD_SIG_LIST **) method_sig_list_ptr = method_sig_list;
-
-  return ptr;
-}
-
-/*
- * or_method_sig_list_length - get the length of  method signature list
- *    return: length of METHOD_SIG_LIST in bytes.
- *    method_sig_list_ptr(in): method_sig_list descriptor
- * Note:
- *    Calculates the number of bytes required to store the disk/comm
- *    representation of a METHOD_SIG_LIST structure.
- */
-int
-or_method_sig_list_length (void *method_sig_list_ptr)
-{
-  METHOD_SIG_LIST *method_sig_list = (METHOD_SIG_LIST *) method_sig_list_ptr;
-  METHOD_SIG *method_sig;
-  int length = OR_INT_SIZE;	/* num_methods */
-  int n;
-
-  for (n = 0, method_sig = method_sig_list->method_sig; n < method_sig_list->num_methods;
-       ++n, method_sig = method_sig->next)
-    {
-      length += or_packed_string_length (method_sig->method_name, NULL);
-      length += or_packed_string_length (method_sig->class_name, NULL);
-      length += OR_INT_SIZE * 2;	/* method_type & num_method_args */
-      /* + object ptr */
-      length += OR_INT_SIZE * (method_sig->num_method_args + 1);
-      /* method_arg_pos */
-    }
-  return length;
 }
 
 /*

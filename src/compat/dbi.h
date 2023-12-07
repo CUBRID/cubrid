@@ -56,6 +56,11 @@ extern "C"
   enum
   { DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS };
 
+  enum OPEN_BUFFER_FLAGS
+  { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
+
+  extern int g_open_buffer_control_flags;
+
 /* Memory reclamation functions */
   extern void db_objlist_free (DB_OBJLIST * list);
   extern void db_string_free (char *string);

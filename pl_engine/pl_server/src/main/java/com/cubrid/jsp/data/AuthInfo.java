@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -28,34 +29,23 @@
  *
  */
 
-package com.cubrid.plcsql.compiler.ast;
+package com.cubrid.jsp.data;
 
-import com.cubrid.plcsql.compiler.Misc;
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import org.antlr.v4.runtime.ParserRuleContext;
+import com.cubrid.jsp.protocol.PackableObject;
 
-public class ExprList extends Expr {
+public class AuthInfo implements PackableObject {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitExprList(this);
-    }
+    public int command = -1;
+    public String authName = "";
 
-    public final NodeList<Expr> elems;
-
-    public ExprList(ParserRuleContext ctx, NodeList<Expr> elems) {
-        super(ctx);
-
-        assert elems != null;
-        this.elems = elems;
+    public AuthInfo(int command, String authName) {
+        this.command = command;
+        this.authName = authName;
     }
 
     @Override
-    public String exprToJavaCode() {
-        return "Arrays.asList(\n" + Misc.indentLines(elems.toJavaCode(",\n"), 1) + "\n)";
+    public void pack(CUBRIDPacker packer) {
+        packer.packInt(command);
+        packer.packString(authName);
     }
-
-    // --------------------------------------------------
-    // Private
-    // --------------------------------------------------
 }

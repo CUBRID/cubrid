@@ -3823,6 +3823,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	  (sig_list->num_methods)++;
 
 	  (*tail)->method_name = (char *) node->info.method_call.method_name->info.name.original;
+	  (*tail)->auth_name = (char *) PT_METHOD_CALL_AUTH_NAME (node);
 
 	  /* num_method_args does not include the target by convention */
 	  (*tail)->num_method_args = pt_length_of_list (node->info.method_call.arg_list);
@@ -3851,8 +3852,8 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 	      (*tail)->method_type = METHOD_TYPE_JAVA_SP;
 
 	      int num_args = (*tail)->num_method_args;
-	      (*tail)->arg_info.arg_mode = regu_int_array_alloc (num_args);
-	      (*tail)->arg_info.arg_type = regu_int_array_alloc (num_args);
+	      (*tail)->arg_info->arg_mode = regu_int_array_alloc (num_args);
+	      (*tail)->arg_info->arg_type = regu_int_array_alloc (num_args);
 
 	      DB_OBJECT *mop_p = jsp_find_stored_procedure ((*tail)->method_name);
 	      if (mop_p)
@@ -3883,12 +3884,12 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 			    {
 			      if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
 				{
-				  (*tail)->arg_info.arg_mode[i] = db_get_int (&mode);
+				  (*tail)->arg_info->arg_mode[i] = db_get_int (&mode);
 				}
 
 			      if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
 				{
-				  (*tail)->arg_info.arg_type[i] = db_get_int (&arg_type);
+				  (*tail)->arg_info->arg_type[i] = db_get_int (&arg_type);
 				}
 
 			      pr_clear_value (&mode);
@@ -3911,7 +3912,7 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
 		  DB_VALUE result_type;
 		  if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &result_type) == NO_ERROR)
 		    {
-		      (*tail)->arg_info.result_type = db_get_int (&result_type);
+		      (*tail)->arg_info->result_type = db_get_int (&result_type);
 		      pr_clear_value (&result_type);
 		    }
 		  else
@@ -12360,6 +12361,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
 		}
+	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_SAMPLING_SCAN))
+		{
+		  access_method = ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN;
+		}
 	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PAGE_INFO_SCAN))
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN;
@@ -17036,6 +17041,12 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
       buildvalue = &xasl->proc.buildvalue;
     }
 
+  /* check sampling scan */
+  if (xasl->spec_list && xasl->spec_list->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+    {
+      XASL_SET_FLAG (xasl, XASL_SAMPLING_SCAN);
+    }
+
   /* save info for derived table size estimation */
   xasl->projected_size = 1;
   xasl->cardinality = 1.0;
@@ -17267,6 +17278,9 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
       return NULL;
     }
   non_recursive_part_xasl = (XASL_NODE *) non_recursive_part->info.query.xasl;
+  non_recursive_part_xasl->cte_xasl_id = non_recursive_part->xasl_id;
+  non_recursive_part_xasl->cte_host_var_count = non_recursive_part->cte_host_var_count;
+  non_recursive_part_xasl->cte_host_var_index = non_recursive_part->cte_host_var_index;
 
   if (recursive_part)
     {
@@ -17439,6 +17453,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
+      && !(select_node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
       && !select_node->flag.is_system_generated_stmt
       && !((spec = select_node->info.query.q.select.from) != NULL
 	   && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))

@@ -44,10 +44,10 @@ public class ExprBetween extends Expr {
     public final Expr lowerBound;
     public final Expr upperBound;
 
-    public boolean forTimestampParam;
+    public String opExtension = "";
 
-    public void setForTimestampParam() {
-        forTimestampParam = true;
+    public void setOpExtension(String ext) {
+        opExtension = ext;
     }
 
     public ExprBetween(ParserRuleContext ctx, Expr target, Expr lowerBound, Expr upperBound) {

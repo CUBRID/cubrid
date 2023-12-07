@@ -123,6 +123,7 @@ static int xts_save_hfid_array (HFID * ptr, int size);
 static int xts_save_oid_array (OID * ptr, int size);
 static int xts_save_method_sig_list (const METHOD_SIG_LIST * ptr);
 static int xts_save_method_sig (const METHOD_SIG * ptr, int size);
+static int xts_save_method_arg_info (const METHOD_ARG_INFO * ptr, int num_args);
 static int xts_save_key_range_array (const KEY_RANGE * ptr, int size);
 static int xts_save_upddel_class_info_array (const UPDDEL_CLASS_INFO * classes, int nelements);
 static int xts_save_update_assignment_array (const UPDATE_ASSIGNMENT * assigns, int nelements);
@@ -186,6 +187,7 @@ static char *xts_process_srlist_id (char *ptr, const QFILE_SORTED_LIST_ID * sort
 static char *xts_process_sort_list (char *ptr, const SORT_LIST * sort_list);
 static char *xts_process_method_sig_list (char *ptr, const METHOD_SIG_LIST * method_sig_list);
 static char *xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int size);
+static char *xts_process_method_arg_info (char *ptr, const METHOD_ARG_INFO * method_arg_info, int num_args);
 static char *xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_proc);
 static char *xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list);
 
@@ -244,6 +246,7 @@ static int xts_sizeof_srlist_id (const QFILE_SORTED_LIST_ID * ptr);
 static int xts_sizeof_sort_list (const SORT_LIST * ptr);
 static int xts_sizeof_method_sig_list (const METHOD_SIG_LIST * ptr);
 static int xts_sizeof_method_sig (const METHOD_SIG * ptr);
+static int xts_sizeof_method_arg_info (const METHOD_ARG_INFO * method_arg_info, int num_args);
 static int xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * ptr);
 static int xts_sizeof_regu_value_list (const REGU_VALUE_LIST * regu_value_list);
 static int xts_sizeof_cte_proc (const CTE_PROC_NODE * ptr);
@@ -1454,6 +1457,90 @@ end:
   return offset;
 }
 
+static char *
+xts_process_cte_xasl_id (char *ptr, const XASL_ID * cte_xasl_id)
+{
+  int i;
+
+  ptr = or_pack_sha1 (ptr, &cte_xasl_id->sha1);
+
+  OR_PUT_INT (ptr, cte_xasl_id->cache_flag);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, cte_xasl_id->time_stored.sec);
+  ptr += OR_INT_SIZE;
+  OR_PUT_INT (ptr, cte_xasl_id->time_stored.usec);
+  ptr += OR_INT_SIZE;
+
+  return ptr;
+}
+
+static int
+xts_save_cte_xasl_id (const XASL_ID * cte_xasl_id)
+{
+  int offset, i;
+  int size;
+  char *ptr;
+
+  OR_ALIGNED_BUF (sizeof (*cte_xasl_id)) a_buf;
+  char *buf = OR_ALIGNED_BUF_START (a_buf);
+
+  char *buf_p = NULL;
+  bool is_buf_alloced = false;
+
+  if (cte_xasl_id == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  offset = xts_get_offset_visited_ptr (cte_xasl_id);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  size = sizeof (XASL_ID);
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (cte_xasl_id, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
+    {
+      buf_p = buf;
+    }
+  else
+    {
+      buf_p = (char *) malloc (size);
+      if (buf_p == NULL)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+
+      is_buf_alloced = true;
+    }
+
+  buf = xts_process_cte_xasl_id (buf_p, cte_xasl_id);
+  if (buf == NULL)
+    {
+      offset = ER_FAILED;
+      goto end;
+    }
+  assert (buf <= buf_p + size);
+
+  memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+end:
+  if (is_buf_alloced)
+    {
+      free_and_init (buf_p);
+    }
+
+  return offset;
+}
+
 static int
 xts_save_db_value (const DB_VALUE * value)
 {
@@ -2288,6 +2375,76 @@ end:
 }
 
 static int
+xts_save_method_arg_info (const METHOD_ARG_INFO * method_arg_info, int num_args)
+{
+  int offset;
+  int size;
+  OR_ALIGNED_BUF (sizeof (*method_arg_info) * 2) a_buf;
+  char *buf = OR_ALIGNED_BUF_START (a_buf);
+  char *buf_p = NULL;
+  bool is_buf_alloced = false;
+
+  if (method_arg_info == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  offset = xts_get_offset_visited_ptr (method_arg_info);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  size = xts_sizeof_method_arg_info (method_arg_info, num_args);
+  if (size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  offset = xts_reserve_location_in_stream (size);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (method_arg_info, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+
+  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
+    {
+      buf_p = buf;
+    }
+  else
+    {
+      buf_p = (char *) malloc (size);
+      if (buf_p == NULL)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+
+      is_buf_alloced = true;
+    }
+
+  buf = xts_process_method_arg_info (buf_p, method_arg_info, num_args);
+  if (buf == NULL)
+    {
+      offset = ER_FAILED;
+      goto end;
+    }
+  assert (buf <= buf_p + size);
+
+  memcpy (&xts_Stream_buffer[offset], buf_p, size);
+
+end:
+  if (is_buf_alloced)
+    {
+      free_and_init (buf_p);
+    }
+
+  return offset;
+}
+
+
+
+static int
 xts_save_string (const char *string)
 {
   int offset;
@@ -2764,7 +2921,7 @@ static char *
 xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 {
   int offset;
-  int cnt;
+  int cnt, i;
   ACCESS_SPEC_TYPE *access_spec = NULL;
 
   assert (PTR_ALIGN (ptr, MAX_ALIGNMENT) == ptr);
@@ -3033,6 +3190,27 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   ptr = or_pack_int (ptr, xasl->upd_del_class_cnt);
 
   ptr = or_pack_int (ptr, xasl->mvcc_reev_extra_cls_cnt);
+
+  if (xasl->cte_xasl_id == NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+    }
+  else
+    {
+      offset = xts_save_cte_xasl_id (xasl->cte_xasl_id);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
+  ptr = or_pack_int (ptr, xasl->cte_host_var_count);
+
+  for (i = 0; i < xasl->cte_host_var_count; i++)
+    {
+      ptr = or_pack_int (ptr, xasl->cte_host_var_index[i]);
+    }
 
   /*
    * NOTE that the composite lock block is strictly a server side block
@@ -4371,7 +4549,8 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, access_spec->access);
 
   if (access_spec->access == ACCESS_METHOD_SEQUENTIAL || access_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE)
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
     {
       ptr = or_pack_int (ptr, 0);
     }
@@ -5625,6 +5804,13 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_string (method_sig->auth_name);	/* is can be null */
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   ptr = or_pack_int (ptr, method_sig->method_type);
   ptr = or_pack_int (ptr, method_sig->num_method_args);
 
@@ -5633,28 +5819,19 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
       ptr = or_pack_int (ptr, method_sig->method_arg_pos[n]);
     }
 
-  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
+  offset = xts_save_string (method_sig->class_name);	/* is can be null */
+  if (offset == ER_FAILED)
     {
-      for (n = 0; n < method_sig->num_method_args; n++)
-	{
-	  ptr = or_pack_int (ptr, method_sig->arg_info.arg_mode[n]);
-	}
-      for (n = 0; n < method_sig->num_method_args; n++)
-	{
-	  ptr = or_pack_int (ptr, method_sig->arg_info.arg_type[n]);
-	}
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
 
-      ptr = or_pack_int (ptr, method_sig->arg_info.result_type);
-    }
-  else
+  offset = xts_save_method_arg_info (method_sig->arg_info, method_sig->num_method_args);
+  if (offset == ER_FAILED)
     {
-      offset = xts_save_string (method_sig->class_name);	/* is can be null */
-      if (offset == ER_FAILED)
-	{
-	  return NULL;
-	}
-      ptr = or_pack_int (ptr, offset);
+      return NULL;
     }
+  ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_method_sig (method_sig->next, count - 1);
   if (offset == ER_FAILED)
@@ -5662,6 +5839,24 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
+static char *
+xts_process_method_arg_info (char *ptr, const METHOD_ARG_INFO * method_arg_info, int num_args)
+{
+  int n;
+  for (n = 0; n < num_args; n++)
+    {
+      ptr = or_pack_int (ptr, method_arg_info->arg_mode[n]);
+    }
+  for (n = 0; n < num_args; n++)
+    {
+      ptr = or_pack_int (ptr, method_arg_info->arg_type[n]);
+    }
+
+  ptr = or_pack_int (ptr, method_arg_info->result_type);
 
   return ptr;
 }
@@ -5865,6 +6060,10 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
     {
       size += xts_sizeof_access_spec_type (access_spec);
     }
+
+  size += PTR_SIZE;		/* for cte_xasl_id */
+  size += OR_INT_SIZE;		/* for CTE host variable count */
+  size += (OR_INT_SIZE * xasl->cte_host_var_count);
 
   switch (xasl->type)
     {
@@ -7380,21 +7579,26 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
   int size = 0;
 
   size += (PTR_SIZE		/* method_name */
+	   + PTR_SIZE		/* auth_name */
 	   + OR_INT_SIZE	/* method_type */
 	   + OR_INT_SIZE	/* num_method_args */
 	   + (OR_INT_SIZE * (method_sig->num_method_args + 1))	/* method_arg_pos */
 	   + PTR_SIZE);		/* next */
 
-  if (method_sig->method_type == METHOD_TYPE_JAVA_SP)
-    {
-      size += ((method_sig->num_method_args * OR_INT_SIZE)	/* arg_mode */
-	       + (method_sig->num_method_args * OR_INT_SIZE)	/* arg_type */
-	       + (OR_INT_SIZE));	/* result type */
-    }
-  else
-    {
-      size += PTR_SIZE;		/* class_name */
-    }
+  size += PTR_SIZE;		/* class_name */
+  size += PTR_SIZE;		/* arg_list */
+
+  return size;
+}
+
+static int
+xts_sizeof_method_arg_info (const METHOD_ARG_INFO * method_arg_info, int num_args)
+{
+  int size = 0;
+
+  size += ((num_args * OR_INT_SIZE)	/* arg_mode */
+	   + (num_args * OR_INT_SIZE)	/* arg_type */
+	   + (OR_INT_SIZE));	/* result type */
 
   return size;
 }

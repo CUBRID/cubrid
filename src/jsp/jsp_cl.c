@@ -346,6 +346,60 @@ jsp_get_sp_type (const char *name)
   return jsp_map_sp_type_to_pt_misc ((SP_TYPE_ENUM) db_get_int (&sp_type_val));
 }
 
+/*
+ * jsp_get_owner_name - Return Java Stored Procedure'S Owner nmae
+ *   return: if fail return error code
+ *           else return Java Stored Procedure Type
+ *   name(in): java stored procedure name
+ *
+ * Note:
+ */
+
+char *
+jsp_get_owner_name (const char *name)
+{
+  DB_OBJECT *mop_p;
+  DB_VALUE value;
+  int err;
+  int save;
+  char *res = NULL;
+
+  AU_DISABLE (save);
+
+  mop_p = jsp_find_stored_procedure (name);
+  if (mop_p == NULL)
+    {
+      AU_ENABLE (save);
+
+      assert (er_errid () != NO_ERROR);
+      return NULL;
+    }
+
+  /* check type */
+  err = db_get (mop_p, SP_ATTR_OWNER, &value);
+  if (err != NO_ERROR)
+    {
+      AU_ENABLE (save);
+      return NULL;
+    }
+
+  MOP owner = db_get_object (&value);
+  if (owner != NULL)
+    {
+      err = db_get (owner, "name", &value);
+      if (err == NO_ERROR)
+	{
+	  res = ws_copy_string (db_get_string (&value));
+	}
+      pr_clear_value (&value);
+    }
+
+  AU_ENABLE (save);
+  return res;
+}
+
+
+
 static PT_MISC_TYPE
 jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type)
 {
@@ -1378,7 +1432,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 {
   int error = NO_ERROR;
   int save;
-  DB_VALUE method, param_cnt_val, mode, arg_type, temp, result_type;
+  DB_VALUE method, auth, param_cnt_val, mode, arg_type, temp, result_type;
 
   int sig_num_args = pt_length_of_list (node->info.method_call.arg_list);
   std::vector < int >sig_arg_mode;
@@ -1388,6 +1442,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
   METHOD_SIG *sig = nullptr;
 
   db_make_null (&method);
+  db_make_null (&auth);
   db_make_null (&param_cnt_val);
   db_make_null (&mode);
   db_make_null (&arg_type);
@@ -1498,6 +1553,7 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	sig->num_method_args = sig_num_args;
 	sig->method_type = METHOD_TYPE_JAVA_SP;
 
+	// method_name
 	const char *method_name = db_get_string (&method);
 	int method_name_len = db_get_string_size (&method);
 
@@ -1511,6 +1567,19 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	memcpy (sig->method_name, method_name, method_name_len);
 	sig->method_name[method_name_len] = 0;
 
+	// auth_name
+	const char *auth_name = jsp_get_owner_name (parsed_method_name);
+	int auth_name_len = strlen (auth_name);
+
+	sig->auth_name = (char *) db_private_alloc (NULL, auth_name_len + 1);
+	if (!sig->auth_name)
+	  {
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
+	    goto end;
+	  }
+
+	memcpy (sig->auth_name, auth_name, auth_name_len);
+	sig->auth_name[auth_name_len] = 0;
 
 	sig->method_arg_pos = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
 	if (!sig->method_arg_pos)
@@ -1524,16 +1593,15 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 	    sig->method_arg_pos[i] = i;
 	  }
 
-
-	sig->arg_info.arg_mode = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
-	if (!sig->arg_info.arg_mode)
+	sig->arg_info->arg_mode = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
+	if (!sig->arg_info->arg_mode)
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
 
-	sig->arg_info.arg_type = (int *) db_private_alloc (NULL, (sig_num_args + 1) * sizeof (int));
-	if (!sig->arg_info.arg_type)
+	sig->arg_info->arg_type = (int *) db_private_alloc (NULL, (sig_num_args) * sizeof (int));
+	if (!sig->arg_info->arg_type)
 	  {
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
@@ -1541,11 +1609,11 @@ jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_li
 
 	for (int i = 0; i < sig_num_args; i++)
 	  {
-	    sig->arg_info.arg_mode[i] = sig_arg_mode[i];
-	    sig->arg_info.arg_type[i] = sig_arg_type[i];
+	    sig->arg_info->arg_mode[i] = sig_arg_mode[i];
+	    sig->arg_info->arg_type[i] = sig_arg_type[i];
 	  }
 
-	sig->arg_info.result_type = sig_result_type;
+	sig->arg_info->result_type = sig_result_type;
 
 	sig_list.num_methods = 1;
       }

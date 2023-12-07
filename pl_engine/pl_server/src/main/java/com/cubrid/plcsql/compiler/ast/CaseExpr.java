@@ -43,6 +43,12 @@ public class CaseExpr extends AstNode {
     public final Expr val;
     public final Expr expr;
 
+    public String opExtension = "";
+
+    public void setOpExtension(String ext) {
+        opExtension = ext;
+    }
+
     public CaseExpr(ParserRuleContext ctx, Expr val, Expr expr) {
         super(ctx);
 

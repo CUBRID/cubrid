@@ -149,31 +149,17 @@ public class Misc {
         return nonTerminal.toLowerCase();
     }
 
-    public static String peelId(String id) {
-        assert id != null;
-
-        int len = id.length();
-        if (len >= 2) {
-
-            if (id.startsWith("\"") && id.endsWith("\"")
-                    || id.startsWith("[") && id.endsWith("]")
-                    || id.startsWith("`") && id.endsWith("`")) {
-
-                return id.substring(1, len - 1);
-            }
-        }
-
-        return id;
-    }
-
     public static String getIndent(int indentLevel) {
         if (indentLevel < 10) {
             return smallIndents[indentLevel];
         } else {
-            String ret = bigIndents.get(indentLevel);
-            if (ret == null) {
-                ret = makeIndent(indentLevel);
-                bigIndents.put(indentLevel, ret);
+            String ret;
+            synchronized (bigIndents) {
+                ret = bigIndents.get(indentLevel);
+                if (ret == null) {
+                    ret = makeIndent(indentLevel);
+                    bigIndents.put(indentLevel, ret);
+                }
             }
             return ret;
         }
@@ -189,6 +175,23 @@ public class Misc {
                 makeIndent(5), makeIndent(6), makeIndent(7), makeIndent(8), makeIndent(9)
             };
     private static final Map<Integer, String> bigIndents = new HashMap<Integer, String>();
+
+    private static String peelId(String id) {
+        assert id != null;
+
+        int len = id.length();
+        if (len >= 2) {
+
+            if (id.startsWith("\"") && id.endsWith("\"")
+                    || id.startsWith("[") && id.endsWith("]")
+                    || id.startsWith("`") && id.endsWith("`")) {
+
+                return id.substring(1, len - 1);
+            }
+        }
+
+        return id;
+    }
 
     private static String makeIndent(int indentLevel) {
         StringBuffer sbuf = new StringBuffer();

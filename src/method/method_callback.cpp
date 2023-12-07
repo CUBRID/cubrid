@@ -116,6 +116,9 @@ namespace cubmethod
       case METHOD_CALLBACK_GET_GLOBAL_SEMANTICS:
 	error = get_global_semantics (unpacker);
 	break;
+      case METHOD_CALLBACK_CHANGE_RIGHTS:
+	error = change_rights (unpacker);
+	break;
       default:
 	assert (false);
 	error = ER_FAILED;
@@ -868,6 +871,42 @@ exit:
     else
       {
 	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, response);
+      }
+  }
+
+  int
+  callback_handler::change_rights (packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+
+    int command;
+    std::string auth_user_name;
+    unpacker.unpack_all (command, auth_user_name);
+
+    if (command == 0) // PUSH
+      {
+	MOP user = au_find_user (auth_user_name.c_str ());
+	if (user == NULL)
+	  {
+	    error = ER_FAILED;
+	  }
+	else
+	  {
+	    au_perform_push_user (user);
+	  }
+      }
+    else // POP
+      {
+	au_perform_pop_user ();
+      }
+
+    if (error == NO_ERROR)
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_SUCCESS, 1);
+      }
+    else
+      {
+	return mcon_pack_and_queue (METHOD_RESPONSE_ERROR, 0);
       }
   }
 

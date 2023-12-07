@@ -30,13 +30,13 @@
 
 package com.cubrid.plcsql.compiler;
 
-import com.cubrid.plcsql.compiler.antlrgen.PcsParser;
-import com.cubrid.plcsql.compiler.antlrgen.PcsParserBaseListener;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParser;
+import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseListener;
 import java.util.LinkedHashMap;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.TerminalNode;
 
-public class StaticSqlCollector extends PcsParserBaseListener {
+public class StaticSqlCollector extends PlcParserBaseListener {
 
     public LinkedHashMap<ParserRuleContext, String> staticSqlTexts = new LinkedHashMap<>();
 
@@ -49,12 +49,12 @@ public class StaticSqlCollector extends PcsParserBaseListener {
     }
 
     @Override
-    public void enterStatic_sql(PcsParser.Static_sqlContext ctx) {
+    public void enterStatic_sql(PlcParser.Static_sqlContext ctx) {
         startCollect();
     }
 
     @Override
-    public void exitStatic_sql(PcsParser.Static_sqlContext ctx) {
+    public void exitStatic_sql(PlcParser.Static_sqlContext ctx) {
         stopCollect(ctx);
     }
 
