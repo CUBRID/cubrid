@@ -1118,11 +1118,13 @@ log_rv_check_redo_is_needed (const PAGE_PTR & /*pgptr*/, const LOG_LSA & /*rcv_l
 bool
 is_passive_transaction_server()
 {
+  assert_release (false);
   return false;
 }
 
 int
 pgbuf_get_fix_count (PAGE_PTR /*pgptr*/)
 {
+  assert_release (false);
   return 0;
 }
