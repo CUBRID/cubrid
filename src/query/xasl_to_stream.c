@@ -246,7 +246,7 @@ static int xts_sizeof_srlist_id (const QFILE_SORTED_LIST_ID * ptr);
 static int xts_sizeof_sort_list (const SORT_LIST * ptr);
 static int xts_sizeof_method_sig_list (const METHOD_SIG_LIST * ptr);
 static int xts_sizeof_method_sig (const METHOD_SIG * ptr);
-static int xts_sizeof_method_arg_info (const METHOD_ARG_INFO * method_arg_info);
+static int xts_sizeof_method_arg_info (const METHOD_ARG_INFO * method_arg_info, int num_args);
 static int xts_sizeof_connectby_proc (const CONNECTBY_PROC_NODE * ptr);
 static int xts_sizeof_regu_value_list (const REGU_VALUE_LIST * regu_value_list);
 static int xts_sizeof_cte_proc (const CTE_PROC_NODE * ptr);
@@ -2395,7 +2395,7 @@ xts_save_method_arg_info (const METHOD_ARG_INFO * method_arg_info, int num_args)
       return offset;
     }
 
-  size = xts_sizeof_method_arg_info (method_arg_info);
+  size = xts_sizeof_method_arg_info (method_arg_info, num_args);
   if (size == ER_FAILED)
     {
       return ER_FAILED;
@@ -5804,6 +5804,13 @@ xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, int count)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_string (method_sig->auth_name);	/* is can be null */
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   ptr = or_pack_int (ptr, method_sig->method_type);
   ptr = or_pack_int (ptr, method_sig->num_method_args);
 
@@ -7572,6 +7579,7 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
   int size = 0;
 
   size += (PTR_SIZE		/* method_name */
+	   + PTR_SIZE		/* auth_name */
 	   + OR_INT_SIZE	/* method_type */
 	   + OR_INT_SIZE	/* num_method_args */
 	   + (OR_INT_SIZE * (method_sig->num_method_args + 1))	/* method_arg_pos */
@@ -7584,12 +7592,12 @@ xts_sizeof_method_sig (const METHOD_SIG * method_sig)
 }
 
 static int
-xts_sizeof_method_arg_info (const METHOD_ARG_INFO * method_arg_info)
+xts_sizeof_method_arg_info (const METHOD_ARG_INFO * method_arg_info, int num_args)
 {
   int size = 0;
 
-  size += ((method_arg_info->num_args * OR_INT_SIZE)	/* arg_mode */
-	   + (method_arg_info->num_args * OR_INT_SIZE)	/* arg_type */
+  size += ((num_args * OR_INT_SIZE)	/* arg_mode */
+	   + (num_args * OR_INT_SIZE)	/* arg_type */
 	   + (OR_INT_SIZE));	/* result type */
 
   return size;

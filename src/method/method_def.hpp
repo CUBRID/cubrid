@@ -124,7 +124,6 @@ enum METHOD_ARG_MODE
 typedef struct method_arg_info METHOD_ARG_INFO;
 struct method_arg_info
 {
-  int num_args;  /* == num_method_args */
   int *arg_mode; /* IN, OUT, INOUT */
   int *arg_type; /* DB_TYPE */
   int result_type; /* DB_TYPE */

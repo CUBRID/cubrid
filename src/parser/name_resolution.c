@@ -10048,6 +10048,8 @@ pt_make_method_call (PARSER_CONTEXT * parser, PT_NODE * f_node, PT_BIND_NAMES_AR
   new_node->info.method_call.arg_list = parser_copy_tree_list (parser, f_node->info.function.arg_list);
   new_node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
   new_node->info.method_call.on_call_target = NULL;
+  new_node->info.method_call.auth_name = NULL;
+  PT_METHOD_CALL_AUTH_NAME (new_node) = ws_copy_string (au_get_user_name (Au_user));	// default
 
   return new_node;
 }				/* pt_make_method_call */

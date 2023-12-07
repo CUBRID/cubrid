@@ -2546,25 +2546,26 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
       goto error;
     }
 
+  method_sig->auth_name = stx_restore_string (thread_p, ptr);
+
   ptr = or_unpack_int (ptr, (int *) &method_sig->method_type);
   ptr = or_unpack_int (ptr, &method_sig->num_method_args);
 
-  num_args = method_sig->num_method_args + 1;
+  num_args = method_sig->num_method_args;
 
-  method_sig->method_arg_pos = (int *) stx_alloc_struct (thread_p, sizeof (int) * num_args);
+  method_sig->method_arg_pos = (int *) stx_alloc_struct (thread_p, sizeof (int) * (num_args + 1));
   if (method_sig->method_arg_pos == NULL)
     {
       goto error;
     }
 
-  for (n = 0; n < num_args; n++)
+  for (n = 0; n < (num_args + 1); n++)
     {
       ptr = or_unpack_int (ptr, &(method_sig->method_arg_pos[n]));
     }
 
 /* is can be null */
   method_sig->class_name = stx_restore_string (thread_p, ptr);
-
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2573,8 +2574,7 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
     }
   else
     {
-      method_sig->arg_info =
-	stx_restore_method_arg_info (thread_p, &xasl_unpack_info->packed_xasl[offset], method_sig->num_method_args);
+      method_sig->arg_info = stx_restore_method_arg_info (thread_p, &xasl_unpack_info->packed_xasl[offset], num_args);
       if (method_sig->arg_info == NULL)
 	{
 	  goto error;
