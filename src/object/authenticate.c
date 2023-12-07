@@ -354,7 +354,7 @@ MOP Au_user = NULL;
  * This manages the MOP stack to track execution rights of stored procedures.
  */
 // *INDENT-OFF*
-std::stack < MOP > Au_user_stack;
+std::stack <MOP> Au_user_stack;
 // *INDENT-ON*
 
 /*
@@ -1525,6 +1525,9 @@ au_perform_push_user (MOP user)
 /*
  * au_perform_pop_user ()
  */
+int
+au_perform_pop_user ()
+{
   if (Au_user_stack.size () == 0)
     {
       return ER_FAILED;
