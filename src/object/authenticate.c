@@ -38,6 +38,8 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include <stack>
+
 #include "porting.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
@@ -345,6 +347,15 @@ MOP Au_dba_user = NULL;
  * system authorizations.
  */
 MOP Au_user = NULL;
+
+/*
+ * Au_user_stack
+ *
+ * This manages the MOP stack to track execution rights of stored procedures.
+ */
+// *INDENT-OFF*
+std::stack < MOP > Au_user_stack;
+// *INDENT-ON*
 
 /*
  * Au_user_name, Au_user_password
@@ -1370,6 +1381,46 @@ exit:
     }
 
   return error;
+}
+
+/*
+ * au_perform_push_user ()
+ */
+int
+au_perform_push_user (MOP user)
+{
+  MOP save_user = Au_user;
+  if (AU_SET_USER (user) == NO_ERROR)
+    {
+      Au_user_stack.push (save_user);
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
+}
+
+/*
+ * au_perform_pop_user ()
+ */
+int
+au_perform_pop_user ()
+{
+  if (Au_user_stack.size () == 0)
+    {
+      return ER_FAILED;
+    }
+
+  if (AU_SET_USER (Au_user_stack.top ()) == NO_ERROR)
+    {
+      Au_user_stack.pop ();
+      return NO_ERROR;
+    }
+  else
+    {
+      return ER_FAILED;
+    }
 }
 
 /*
