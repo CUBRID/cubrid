@@ -1256,7 +1256,8 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
 		     last_stat.rows_committed, last_stat.rows_failed);
     }
 
-  if (!load_interrupted && !status.is_load_failed () && !args->syntax_check && error_code == NO_ERROR && !args->disable_statistics)
+  if (!load_interrupted && !status.is_load_failed () && !args->syntax_check && error_code == NO_ERROR
+      && !args->disable_statistics)
     {
       // Update class statistics
       if (args->verbose)
