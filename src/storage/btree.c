@@ -4424,7 +4424,7 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
 	   *  r = (double) (bts->key_range.num_index_term / (double) bts->index_scan_idp->bt_num_attrs)
 	   */
 
-	  bts->C_page_info.use_comparing = (bool) (cmp == DB_EQ);
+	  bts->C_page_info.use_comparing = (bool) (cmp != DB_EQ);
 	}
     }
   else
