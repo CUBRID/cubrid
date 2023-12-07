@@ -1363,9 +1363,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   bool cut_off;
   PT_NODE *expr_prev = NULL;
   PT_NODE *opd1, *opd2;
-  DB_VALUE *dbv1, *dbv2, dbval_res;
-  PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
-  TP_DOMAIN *domain;
+  DB_VALUE *dbv1, *dbv2;
 
   /* init */
   orgp = wherep;
