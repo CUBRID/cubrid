@@ -17277,6 +17277,9 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
       return NULL;
     }
   non_recursive_part_xasl = (XASL_NODE *) non_recursive_part->info.query.xasl;
+  non_recursive_part_xasl->cte_xasl_id = non_recursive_part->xasl_id;
+  non_recursive_part_xasl->cte_host_var_count = non_recursive_part->cte_host_var_count;
+  non_recursive_part_xasl->cte_host_var_index = non_recursive_part->cte_host_var_index;
 
   if (recursive_part)
     {
@@ -17449,6 +17452,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
+      && !(select_node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
       && !select_node->flag.is_system_generated_stmt
       && !((spec = select_node->info.query.q.select.from) != NULL
 	   && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
