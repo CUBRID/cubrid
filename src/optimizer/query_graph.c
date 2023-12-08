@@ -5847,7 +5847,8 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
       || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA) || query->flag.is_system_generated_stmt
-      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
+      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
+      || (query->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN))
     {
       env->plan_dump_enabled = false;
     }
