@@ -1227,7 +1227,7 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	  goto cleanup;
 	}
       cls_info_p->ci_tot_pages += subcls_info->ci_tot_pages;
-      cls_info_p->ci_tot_objects += subcls_info->ci_tot_objects;
+      cls_info_p->ci_tot_objects = class_attr_ndv->attr_ndv[class_attr_ndv->attr_cnt].ndv;;
 
       /* get disk repr for subclass */
       error = catalog_get_last_representation_id (thread_p, &partitions[i], &subcls_repr_id);

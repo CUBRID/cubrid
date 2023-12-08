@@ -5786,7 +5786,7 @@ stats_update_statistics (MOP classop, int with_fullscan)
   char *reply;
   char *ptr;
   int request_size;
-  CLASS_ATTR_NDV class_attr_ndv;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
   /* get NDV by query */
   if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
@@ -5837,7 +5837,7 @@ end:
   return error;
 #else /* CS_MODE */
   int success;
-  CLASS_ATTR_NDV class_attr_ndv;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
   /* get NDV by query */
   if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
@@ -5885,7 +5885,7 @@ stats_update_all_statistics (int with_fullscan)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
   char *ptr;
-  CLASS_ATTR_NDV class_attr_ndv;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
   const char *query = "select c.unique_name from _db_class as c where c.class_type = 0 and [partition] is null "
     "union "
     "select c.unique_name from _db_class as c, TABLE(c.partition) as g(x) where c.class_type = 0 and x.pname is null;";
@@ -5996,7 +5996,7 @@ end:
 
 #else /* CS_MODE */
   int error = NO_ERROR;
-  CLASS_ATTR_NDV class_attr_ndv;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
   const char *query = "select c.unique_name from _db_class as c where c.class_type = 0 and [partition] is null "
     "union "
     "select c.unique_name from _db_class as c, TABLE(c.partition) as g(x) where c.class_type = 0 and x.pname is null;";
