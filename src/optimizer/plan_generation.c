@@ -3980,7 +3980,7 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	{
 	  /*
 	   * We decided not to support MRO (Multiple Row Optimization) if the return value
-	   * of the bitset_iterate() function is checked and found to be -1. 
+	   * of the bitset_is_empty() function is checked and found to be true. 
 	   * This is related to the CBRD-24914 issue, which involves a core dump occurring
 	   * when term->pt_expr is converted to PT_VALUE resulting in an always true/false condition.
 	   * Therefore, in the process of reducing the equality term, some parts of the 
