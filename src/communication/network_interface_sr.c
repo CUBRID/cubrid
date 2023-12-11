@@ -10389,7 +10389,7 @@ sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 
   session->get_class_registry ().get_all_class_entries (class_entries);
 
-  for (const cubload::class_entry * class_entry:class_entries)
+for (const cubload::class_entry * class_entry:class_entries)
     {
       if (!class_entry->is_ignored ())
 	{
@@ -10408,7 +10408,7 @@ sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       goto end;
     }
   ptr = or_pack_int (buffer, oid_cnt);
-  for (const cubload::class_entry * class_entry:class_entries)
+for (const cubload::class_entry * class_entry:class_entries)
     {
       if (!class_entry->is_ignored ())
 	{
