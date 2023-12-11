@@ -3240,7 +3240,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
       // passive transaction server is completely transient - and read-only -
       // and, thus, does not need to reach a consistent state at shutdown (because it
       // will pick a consistent state at boot from the page server(s) it connects to), replication
-      // needs to be explicitly terminated gracefully before log infrastructure is finalized
+      // needs to be explicitly terminated gracefully before log infrastructure is finalized.
+      // In addition, replication needs to be terminated before lock manager module is finailized
+      // (which is done in log_final ()), since locks are acquired during replication for ddl statements.
       pts_ptr->finish_replication_during_shutdown (*thread_p);
 
       ts_Gl->stop_outgoing_page_server_messages ();
