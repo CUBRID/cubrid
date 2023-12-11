@@ -9060,11 +9060,13 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
     }
 #endif
 
+  i = n_prefix;
   prefix_size = offset_prefix - or_multi_header_size (midx_prefix->domain->precision);
 
   if (prefix_size < OR_MULTI_MAX_OFFSET)
     {
-      for (i = n_prefix; i < midx_postfix->domain->precision; i++)
+      /* fallthrough: i */
+      for (; i < midx_postfix->domain->precision; i++)
 	{
 	  /* update nullmap */
 	  if (or_multi_is_not_null (midx_postfix->buf, i))
@@ -9073,6 +9075,10 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 	    }
 	  else
 	    {
+	      /* The lower fence key stores from the first column to the columns that begin to differ when compared
+	       * to the upper fence key of the previous page. The number of columns in which the fence key stores
+	       * the value is unrelated to whether or not it is compressed. Therefore, even for columns after prefix,
+	       * it is not guaranteed that the fence key will always store null. */
 	      or_multi_set_null (midx_result.buf, i);
 	    }
 
@@ -9102,7 +9108,11 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 	}
       else
 	{
-	  assert (or_multi_is_null (midx_result.buf, i));
+	  /* The lower fence key stores from the first column to the columns that begin to differ when compared
+	   * to the upper fence key of the previous page. The number of columns in which the fence key stores
+	   * the value is unrelated to whether or not it is compressed. Therefore, even for columns after prefix,
+	   * it is not guaranteed that the fence key will always store null. */
+	  or_multi_set_null (midx_result.buf, i);
 	}
 
       /* update offset */
@@ -9353,7 +9363,7 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
 	  for (; i < index; i++, domain = domain->next)
 	    {
 	      /* check for element is NULL */
-	      if (or_multi_is_null (nullmap_ptr, index))
+	      if (or_multi_is_null (nullmap_ptr, i))
 		{
 		  continue;	/* skip and go ahead */
 		}
