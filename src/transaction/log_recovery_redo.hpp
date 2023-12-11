@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef _LOC_RECOVERY_REDO_HPP_
-#define _LOC_RECOVERY_REDO_HPP_
+#ifndef _LOG_RECOVERY_REDO_HPP_
+#define _LOG_RECOVERY_REDO_HPP_
 
 #include "log_compress.h"
 #include "log_lsa.hpp"
@@ -26,6 +26,7 @@
 #include "log_recovery.h"
 #include "page_buffer.h"
 #include "perf_monitor_trackers.hpp"
+#include "server_type.hpp"
 #include "scope_exit.hpp"
 #include "system_parameter.h"
 #include "type_helper.hpp"
@@ -644,6 +645,17 @@ void log_rv_redo_record_sync_apply (THREAD_ENTRY *thread_p, log_rv_redo_context 
 			 VPID_AS_ARGS (&rcv_vpid), (int) rcv.offset, (int) rcv.length);
     }
 
+  if (log_data.rcvindex == RVPGBUF_DEALLOC && is_passive_transaction_server())
+    {
+      /* TODO:
+       * redofunc for RVPGBUF_DEALLOC (pgbuf_rv_dealloc_redo ()) invalidates the page buffer in PTS,
+       * but it does not set page lsa (pgbuf_set_lsa ()) before invalidation.
+       * We need to set page lsa when redoing RVPGBUF_DEALLOC log, as what ATS does (see the caller of LOG_NEED_TO_SET_LSA ()).
+       */
+      assert (rcv.pgptr != nullptr && pgbuf_get_fix_count (rcv.pgptr) == 0);
+      rcv.pgptr = nullptr;
+    }
+
   if (rcv.pgptr != nullptr)
     {
       pgbuf_set_lsa (thread_p, rcv.pgptr, &record_info.m_start_lsa);
@@ -696,4 +708,4 @@ log_rv_redo_rec_info<T>::log_rv_redo_rec_info (const log_lsa lsa, LOG_RECTYPE ty
 
 }
 
-#endif // _LOC_RECOVERY_REDO_HPP_
+#endif // _LOG_RECOVERY_REDO_HPP_

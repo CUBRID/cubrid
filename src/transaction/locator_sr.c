@@ -12605,7 +12605,17 @@ locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_EN
       assert (entry->e_tran_index == NULL_TRAN_INDEX);
 
       assert (!OID_ISNULL (&entry->e_current.oid));
-      assert (heap_does_exist (thread_p, oid_Root_class_oid, &entry->e_current.oid));
+      /* TODO:
+       * The part in PTS that updates/deletes/queries the locator classname cache (locator_Mht_classnames)
+       * occurs only when the replicator reflects DDL changes. Unlike ATS, it does not update the cache
+       * and heap simultaneously, so having the cache doesn't guarantee the existence of a heap record.
+       * Therefore, since this assertion check is unnecessary for PTS, resolving the issue can be achieved
+       * by simply removing this assertion. However, since the underlying problem stems from not properly
+       * updating the state of the cache, this assertion should be reverted when incorporating logic to
+       * update the cache status in PTS.
+       */
+      assert (is_passive_transaction_server ()
+	      || heap_does_exist (thread_p, oid_Root_class_oid, &entry->e_current.oid));
 
       assert (LSA_ISNULL (&entry->e_current.savep_lsa));
       assert (entry->e_current.prev == NULL);
