@@ -12558,6 +12558,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	    }
 	  else
 	    {
+	      /* Already cleared with the or_multi_clear_header function. */
 	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 
@@ -12606,6 +12607,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 	    }
 	  else
 	    {
+	      /* Already cleared with the or_multi_clear_header function. */
 	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 	}
@@ -12627,6 +12629,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 		}
 	      else
 		{
+		  /* Already cleared with the or_multi_clear_header function. */
 		  assert (or_multi_is_null (nullmap_ptr, k));
 		}
 	    }
@@ -12780,6 +12783,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	    }
 	  else
 	    {
+	      /* Already cleared with the or_multi_clear_header function. */
 	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 
@@ -12803,6 +12807,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	    }
 	  else
 	    {
+	      /* Already cleared with the or_multi_clear_header function. */
 	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 	}
@@ -12826,6 +12831,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 		}
 	      else
 		{
+		  /* Already cleared with the or_multi_clear_header function. */
 		  assert (or_multi_is_null (nullmap_ptr, k));
 		}
 	    }
