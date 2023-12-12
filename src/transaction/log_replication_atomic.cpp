@@ -414,8 +414,8 @@ namespace cublog
     assert (!OID_ISNULL (&log_rec.oid) && !OID_ISTEMP (&log_rec.oid));
 
     /* TODO:
-     * If a PTS read transaction holds a lock for an extended period without releasing it for the same class,
-     * the replicator could wait too long to acquire the lock.
+     * If a PTS read transaction holds a lock for an extended period without releasing it for the same class or
+     * the same object in db_serial, the replicator could wait too long to acquire the lock.
      * In such cases, there might be an introduction of a mechanism to abort read transaction that holds lock.
      */
 
