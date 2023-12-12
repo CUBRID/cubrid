@@ -3738,6 +3738,8 @@ void
 log_append_locked_object (THREAD_ENTRY * thread_p, const OID * classoid, const OID * oid, const LOCK lock)
 {
   assert (!OID_ISNULL (classoid));
+  assert (!OID_IS_ROOTOID (classoid) || lock == SCH_M_LOCK);	// if classoid is rootoid, lock must be SCH_M_LOCK
+  assert (!OID_EQ (classoid, oid_Serial_class_oid) || lock == X_LOCK);	// if classoid is serial class oid, lock must be X_LOCK
 
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
