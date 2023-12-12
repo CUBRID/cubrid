@@ -1443,7 +1443,9 @@ $ LOADDB
 1357 Konvertieren der SQL-Zeichenfolge in eine breite Zeichenfolge ist fehlgeschlagen.
 1358 Die Anzahl der betroffenen Zeilen ist unbekannt.
 
-1359 Letzter Fehler
+1359 Java VM crashed: %1$s
+
+1360 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):

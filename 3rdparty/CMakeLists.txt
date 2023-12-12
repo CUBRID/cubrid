@@ -18,7 +18,7 @@
 set(WITH_FLEX_URL "https://github.com/westes/flex/files/981163/flex-2.6.4.tar.gz")                            # flex
 set(WITH_BISON_URL "https://ftp.gnu.org/gnu/bison/bison-3.4.1.tar.gz")                                        # bison
 set(WITH_LIBEXPAT_URL "https://github.com/libexpat/libexpat/releases/download/R_2_2_5/expat-2.2.5.tar.bz2")   # expat library sources URL
-set(WITH_LIBJANSSON_URL "http://www.digip.org/jansson/releases/jansson-2.10.tar.gz")                          # jansson library sources URL
+set(WITH_LIBJANSSON_URL "https://github.com/akheron/jansson/releases/download/v2.10/jansson-2.10.tar.gz")                          # jansson library sources URL
 set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.1.tar.gz")                  # editline library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/Tencent/rapidjson/archive/v1.1.0.tar.gz")                          # rapidjson library sources URL
 set(WITH_LIBOPENSSL_URL "https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz")                     # openssl library sources URL
@@ -52,9 +52,6 @@ message(STATUS "Build with RE2 library: ${WITH_RE2}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
-    if(CMAKE_VERSION VERSION_LESS "3.2")
-      message(FATAL_ERROR "The Ninja generator requires CMake 3.2+. Try the \"Unix Makefiles\" generator instead.")
-    endif()
     set(${prefix_dependee}_BYPRODUCTS BUILD_BYPRODUCTS "${ARGN}")
   endif()
 endmacro()

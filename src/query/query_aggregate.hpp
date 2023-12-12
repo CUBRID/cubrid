@@ -31,6 +31,7 @@
 #include "query_list.h"
 #include "storage_common.h"   // AGGREGATE_HASH_STATE, SCAN_CODE
 #include "db_function.hpp"  // FUNC_CODE
+#include "heap_file.h"
 
 #include <vector>
 
@@ -128,7 +129,7 @@ int qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::agg
 					HFID *root_hfid, BTID *root_btid,
 					cubquery::hierarchy_aggregate_helper *helper);
 int qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
-				   bool keep_list_file);
+				   bool keep_list_file, sampling_info *sampling);
 
 cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals);
 void qdata_free_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
