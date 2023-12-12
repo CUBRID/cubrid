@@ -297,10 +297,11 @@ extern void pgbuf_ordered_unfix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * 
 
 #define pgbuf_ordered_unfix_and_save_for_refix(thread_p, watcher_object, out_save_vpid, out_save_latch_mode) \
 	pgbuf_ordered_unfix_and_save_for_refix_debug(thread_p, watcher_object, out_save_vpid, out_save_latch_mode, \
-				  __FILE__, __LINE__)
+				  ARG_FILE_LINE_FUNC)
 extern void pgbuf_ordered_unfix_and_save_for_refix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object,
 							  VPID & out_save_vpid, PGBUF_LATCH_MODE & out_save_latch_mode,
-							  const char *caller_file, int caller_line);
+							  const char *caller_file, int caller_line,
+                                                          const char *caller_func);
 
 #define pgbuf_invalidate_all(thread_p, volid) \
 	pgbuf_invalidate_all_debug(thread_p, volid, __FILE__, __LINE__)
@@ -381,7 +382,7 @@ extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);
 extern int pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa);
 
 #if !defined(NDEBUG)
-#define pgbuf_set_lsa(...)   pgbuf_set_lsa_debug(__VA_ARGS__, ARG_FILE_LINE_FUNC)
+#define pgbuf_set_lsa(...)   pgbuf_set_lsa_debug(__VA_ARGS__, __FILE__, __LINE__, __func__)
 extern const LOG_LSA *pgbuf_set_lsa_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr,
 					   const char *caller_file, int caller_line, const char *caller_func);
 #else

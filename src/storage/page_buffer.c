@@ -13158,11 +13158,12 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
  *   watcher_object(in/out): page watcher
  *
  */
-void
 #if !defined (NDEBUG)
+void
 pgbuf_ordered_unfix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object, const char *caller_file,
 			   int caller_line, const char *caller_func)
-#else				/* NDEBUG */
+#else /* NDEBUG */
+void
 pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
 #endif				/* NDEBUG */
 {
@@ -13171,7 +13172,7 @@ pgbuf_ordered_unfix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object)
 
 #if !defined(NDEBUG)
   pgbuf_ordered_unfix_and_save_for_refix_debug (thread_p, watcher_object, save_vpid, save_latch_mode,
-						caller_file, caller_line);
+						caller_file, caller_line, caller_func);
 #else
   pgbuf_ordered_unfix_and_save_for_refix (thread_p, watcher_object, save_vpid, save_latch_mode);
 #endif
@@ -13192,7 +13193,7 @@ void
 #if !defined (NDEBUG)
 pgbuf_ordered_unfix_and_save_for_refix_debug (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object,
 					      VPID & out_save_vpid, PGBUF_LATCH_MODE & out_save_latch_mode,
-					      const char *caller_file, int caller_line)
+					      const char *caller_file, int caller_line, const char *caller_func)
 #else				/* NDEBUG */
 pgbuf_ordered_unfix_and_save_for_refix (THREAD_ENTRY * thread_p, PGBUF_WATCHER * watcher_object,
 					VPID & out_save_vpid, PGBUF_LATCH_MODE & out_save_latch_mode)

@@ -13098,8 +13098,10 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr
  * allocated for the key and its page identifier is returned.
  * The headers of all pages are updated, accordingly.
  *
- * Note: log redo records are recorded in parent-child order to avoid deadlocks when applied by
- * multithreaded passive transaction server replication
+ * NOTE: log redo records are recorded in parent-child order to avoid deadlocks when applied by
+ * multithreaded passive transaction server replication:
+ *  - the develop step "STEP 5: insert sep_key to P" has been moved as step 2
+ *      and other steps re-indexed as needed
  */
 static int
 btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R, VPID * P_vpid,
@@ -13289,6 +13291,15 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       ret = ER_FAILED;
       goto exit_on_error;
     }
+
+#if !defined(NDEBUG)
+  if (prm_get_integer_value (PRM_ID_ER_BTREE_DEBUG) & BTREE_DEBUG_DUMP_SIMPLE)
+    {
+      fprintf (stdout, "btree_split_node - insert sep_key to P(%d:%d:%d):", P_vpid->volid, P_vpid->pageid, p_slot_id);
+      db_value_print (sep_key);
+      fprintf (stdout, "\n");
+    }
+#endif
 
   p_redo_data = PTR_ALIGN (p_redo_data_buf, BTREE_MAX_ALIGN);
 
