@@ -9697,7 +9697,7 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
   QO_CLASS_INFO_ENTRY *index_class;
   QO_SEGMENT *segp = NULL;
   SM_ATTRIBUTE *attr;
-  void *env_seg[2];
+  void *env_seg[3];
 
   /* key_term_status is -1 if no term with key, 0 if isnull or is not null terms with key and 1 if other term with key */
   int old_bail_out, key_term_status;
@@ -9778,6 +9778,7 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
   /* now search for not terms with the key */
   if (attr_notnull != true)
     {
+      bool is_orderby = !(!(QO_ENV_PT_TREE (env)->info.query.order_by));
       /* save old value of bail_out */
       old_bail_out = env->bail_out;
       env->bail_out = -1;	/* no term found value */
@@ -9785,6 +9786,7 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
       /* check for isnull terms with the key */
       env_seg[0] = (void *) env;
       env_seg[1] = (void *) segp;
+      env_seg[2] = (void *) is_orderby;
       parser_walk_tree (env->parser, QO_ENV_PT_TREE (env)->info.query.q.select.where, qo_search_isnull_key_expr,
 			env_seg, NULL, NULL);
 
@@ -9943,10 +9945,12 @@ qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, i
   BITSET expr_segments, key_segment;
   QO_ENV *env;
   QO_SEGMENT *segm;
+  bool is_orderby;
   void **env_seg = (void **) arg;
 
   env = (QO_ENV *) env_seg[0];
   segm = (QO_SEGMENT *) env_seg[1];
+  is_orderby = (bool) env_seg[2];
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -9967,7 +9971,8 @@ qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, i
 	  qo_check_nullable_expr (parser, tree, &nullable_terms, NULL);
 	  /* this expr contains the key segment */
 	  if (tree->info.expr.op == PT_IS_NULL || tree->info.expr.op == PT_IS_NOT_NULL
-	      || tree->info.expr.op == PT_IFNULL || tree->info.expr.op == PT_NULLSAFE_EQ || nullable_terms >= 1)
+	      || tree->info.expr.op == PT_IFNULL || tree->info.expr.op == PT_NULLSAFE_EQ || (is_orderby
+											     && nullable_terms >= 1))
 	    {
 	      /* 0 all the way, suppress other terms found */
 	      env->bail_out = 0;
