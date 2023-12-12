@@ -124,9 +124,13 @@ namespace cublog
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
 
-	    if (m_locked_objects.count (header.trid) > 0)
+	    if (m_locked_classes.count (header.trid) > 0)
 	      {
 		discard_caches_for_ddl (thread_entry, header.trid);
+	      }
+
+	    if (m_locked_classes.count (header.trid) + m_locked_serials.count (header.trid) > 0)
+	      {
 		release_all_locks_for_ddl (thread_entry, header.trid);
 	      }
 
@@ -160,7 +164,7 @@ namespace cublog
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
 
-	    if (m_locked_objects.count (header.trid) > 0)
+	    if (m_locked_classes.count (header.trid) + m_locked_serials.count (header.trid) > 0)
 	      {
 		release_all_locks_for_ddl (thread_entry, header.trid);
 	      }
@@ -240,14 +244,18 @@ namespace cublog
 	    const LOG_REC_LOCKED_OBJECT log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_LOCKED_OBJECT> ();
 
-	    if (is_locked_for_ddl (header.trid, &log_rec.oid))
+	    const bool is_class = OID_EQ (&log_rec.classoid, oid_Root_class_oid);
+	    if (is_locked_for_ddl (header.trid, &log_rec.oid, is_class))
 	      {
 		break;
 	      }
 
-	    acquire_lock_for_ddl (thread_entry, header.trid, log_rec);
+	    acquire_lock_for_ddl (thread_entry, header.trid, log_rec, is_class);
 
-	    bookkeep_classname_for_ddl (thread_entry, log_rec);
+	    if (is_class)
+	      {
+		bookkeep_classname_for_ddl (thread_entry, &log_rec.oid);
+	      }
 	    break;
 	  }
 	  default:
@@ -382,21 +390,25 @@ namespace cublog
   void
   atomic_replicator::release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
   {
-    assert (m_locked_objects.count (trid) > 0);
+    auto unlock_objects_within_transaction = [] (cubthread::entry &thread_entry, const TRANID trid, auto &objects)
+    {
+      auto [begin, end] = objects.equal_range (trid);
+      for (auto it = begin; it != end; ++it)
+	{
+	  const auto &log_rec = it->second;
+	  lock_unlock_object_and_cleanup (nullptr, &log_rec.oid, &log_rec.classoid, log_rec.lock_mode);
+	}
 
-    auto [begin, end] = m_locked_objects.equal_range (trid);
-    for (auto it = begin; it != end; ++it)
-      {
-	auto log_rec = it->second;
-	lock_unlock_object_and_cleanup (&thread_entry, &log_rec.oid, &log_rec.classoid, log_rec.lock_mode);
-      }
+      objects.erase (trid);
+    };
 
-    m_locked_objects.erase (trid);
+    unlock_objects_within_transaction (thread_entry, trid, m_locked_classes);
+    unlock_objects_within_transaction (thread_entry, trid, m_locked_serials);
   }
 
   void
   atomic_replicator::acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid,
-      const LOG_REC_LOCKED_OBJECT &log_rec)
+      const LOG_REC_LOCKED_OBJECT &log_rec, const bool is_class)
   {
     assert (!OID_ISNULL (&log_rec.classoid) && !OID_ISTEMP (&log_rec.classoid));
     assert (!OID_ISNULL (&log_rec.oid) && !OID_ISTEMP (&log_rec.oid));
@@ -412,23 +424,22 @@ namespace cublog
 	assert_release (false);
       }
 
-    m_locked_objects.emplace (trid, log_rec);
+    if (is_class)
+      {
+	m_locked_classes.emplace (trid, log_rec);
+      }
+    else
+      {
+	assert (OID_EQ (&log_rec.classoid, oid_Serial_class_oid));
+	m_locked_serials.emplace (trid, log_rec);
+      }
   }
 
   void
-  atomic_replicator::bookkeep_classname_for_ddl (cubthread::entry &thread_entry, const LOG_REC_LOCKED_OBJECT &log_rec)
+  atomic_replicator::bookkeep_classname_for_ddl (cubthread::entry &thread_entry, const OID *classoid)
   {
-    assert (!OID_ISNULL (&log_rec.oid) && !OID_ISTEMP (&log_rec.oid));
-
-    if (!OID_EQ (&log_rec.classoid, oid_Root_class_oid))
-      {
-	assert (OID_EQ (&log_rec.classoid, oid_Serial_class_oid));
-	return;
-      }
-
     char *classname = nullptr;
     int error_code = NO_ERROR;
-    const OID *classoid = &log_rec.oid;
 
     error_code = heap_get_class_name (&thread_entry, classoid, &classname);
     if (error_code == NO_ERROR)
@@ -519,32 +530,34 @@ namespace cublog
   void
   atomic_replicator::discard_caches_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
   {
-    assert (m_locked_objects.count (trid) > 0);
-
-    auto [begin, end] = m_locked_objects.equal_range (trid);
+    auto [begin, end] = m_locked_classes.equal_range (trid);
     for (auto it = begin; it != end; ++it)
       {
 	auto log_rec = it->second;
-	if (OID_EQ (&log_rec.classoid, oid_Root_class_oid))
-	  {
-	    update_classname_cache_for_ddl (thread_entry, &log_rec.oid);
-	    (void) heap_classrepr_decache (&thread_entry, &log_rec.oid);
-	    (void) heap_delete_hfid_from_cache (&thread_entry, &log_rec.oid);
-	    xcache_remove_by_oid (&thread_entry, &log_rec.oid);
-	    partition_decache_class (&thread_entry, &log_rec.oid);
-	  }
+
+	update_classname_cache_for_ddl (thread_entry, &log_rec.oid);
+	(void) heap_classrepr_decache (&thread_entry, &log_rec.oid);
+	(void) heap_delete_hfid_from_cache (&thread_entry, &log_rec.oid);
+	xcache_remove_by_oid (&thread_entry, &log_rec.oid);
+	partition_decache_class (&thread_entry, &log_rec.oid);
       }
   }
 
   bool
-  atomic_replicator::is_locked_for_ddl (const TRANID trid, const OID *oid)
+  atomic_replicator::is_locked_for_ddl (const TRANID trid, const OID *oid, const bool is_class)
   {
-    auto [begin, end] = m_locked_objects.equal_range (trid);
-    auto it = std::find_if (begin, end, [oid] (const auto &pair)
-    {
-      return &pair.second.oid == oid;
-    });
+    const auto locked_objects = is_class ? m_locked_classes : m_locked_serials;
 
-    return it != end;
+    auto [begin, end] = locked_objects.equal_range (trid);
+    for (auto it = begin; it != end; ++it)
+      {
+	auto log_rec = it->second;
+	if (OID_EQ (&log_rec.oid, oid))
+	  {
+	    return true;
+	  }
+      }
+
+    return false;
   }
 }
