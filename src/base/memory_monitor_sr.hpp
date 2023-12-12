@@ -25,23 +25,46 @@
 #define _MEMORY_MONITOR_SR_HPP_
 
 #include <stdint.h>
+#include <unordered_map>
+#include <vector>
+#include <string>
+#include <atomic>
 
-#define MMON_ALLOC_META_SIZE 8   // 4 byte size + 4 byte tag
+// IMPORTANT!!
+// This meta size is related with allocation byte align
+// Don't adjust it freely
+// 4 byte tag + 8 byte size + 4 byte checksum
+#define MMON_ALLOC_META_SIZE 16
 
 namespace cubmem
 {
   class memory_monitor
   {
     public:
-      memory_monitor() {}
-      ~memory_monitor() {}
+      memory_monitor (const char *server_name);
+      ~memory_monitor () {}
+      size_t get_alloc_size (char *ptr);
+      void add_stat (char *ptr, size_t size, const char *file);
+      void sub_stat (char *ptr);
+      void aggregate_stat_info (std::vector<std::pair<const char *, uint64_t>> &stat_info);
+
+    private:
+      int generate_checksum (int tag_id, uint64_t size);
+
+    private:
+      std::unordered_map<const char *, int> m_tag_map; // filename <-> tag id
+      std::unordered_map<int, std::atomic<uint64_t>> m_stat_map; // tag id <-> memory usage
+      std::string m_server_name;
+      std::atomic<uint64_t> m_total_mem_usage;
   };
 } //namespace cubmem
 
 extern bool is_mem_tracked;
 
-void mmon_initialize ();
+int mmon_initialize (const char *server_name);
+void mmon_finalize ();
+size_t mmon_get_alloc_size (char *ptr);
 void mmon_add_stat (char *ptr, size_t size, const char *file);
 void mmon_sub_stat (char *ptr);
-
+void mmon_aggregate_stat_info (std::vector<std::pair<const char *, uint64_t>> &stat_info);
 #endif // _MEMORY_MONITOR_SR_HPP_

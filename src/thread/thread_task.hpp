@@ -317,5 +317,4 @@ namespace cubthread
   }
 } // namespace cubthread
 
-
 #endif // _THREAD_TASK_HPP_

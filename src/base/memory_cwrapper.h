@@ -27,21 +27,25 @@
 #ifdef SERVER_MODE
 #include <string.h>
 #include <stdlib.h>
+#include <malloc.h>
+#include <assert.h>
 
 #include "memory_monitor_sr.hpp"
+
+#ifndef HAVE_USR_INCLUDE_MALLOC_H
+#define HAVE_USR_INCLUDE_MALLOC_H
+#endif
 
 inline size_t
 get_alloc_size (void *ptr)
 {
-  unsigned int *sz_ptr = (unsigned int *) ptr;
-
   if (ptr == NULL)
     {
       return 0;
     }
   else
     {
-      return (size_t) sz_ptr[0];
+      return mmon_get_alloc_size ((char *) ptr);
     }
 }
 
@@ -50,10 +54,13 @@ cub_free (void *ptr)
 {
   char *p = (char *) ptr;
 
-  if (is_mem_tracked)
+  if (is_mem_tracked && ptr != NULL)
     {
       mmon_sub_stat (p);
+      assert (malloc_usable_size (p) != 0);
     }
+  // XXX: for debug / it will be deleted when the last phase
+  //fprintf(stdout, "cub_free called\n");
   free (p);
 }
 
@@ -67,6 +74,7 @@ cub_alloc (size_t size, const char *file)
       p = malloc (size + MMON_ALLOC_META_SIZE);
       if (p != NULL)
 	{
+	  memset (p, 0, size + MMON_ALLOC_META_SIZE);
 	  mmon_add_stat ((char *) p, size + MMON_ALLOC_META_SIZE, file);
 	}
     }
@@ -89,7 +97,7 @@ cub_calloc (size_t num, size_t size, const char *file)
       if (p != NULL)
 	{
 	  memset (p, 0, num * size + MMON_ALLOC_META_SIZE);
-	  mmon_add_stat ((char *) p, num * size + MMON_ALLOC_META_SIZE, file);
+	  mmon_add_stat ((char *) p, size + MMON_ALLOC_META_SIZE, file);
 	}
     }
   else
@@ -110,7 +118,7 @@ cub_realloc (void *ptr, size_t size, const char *file)
       p = malloc (size + MMON_ALLOC_META_SIZE);
       if (p != NULL)
 	{
-	  mmon_sub_stat ((char *) ptr);
+	  memset (p, 0, size + MMON_ALLOC_META_SIZE);
 	  mmon_add_stat ((char *) p, size + MMON_ALLOC_META_SIZE, file);
 
 	  if (ptr != NULL)
@@ -134,17 +142,9 @@ cub_strdup (const char *str, const char *file)
   void *p = NULL;
   char *ret = NULL;
 
-  fprintf (stdout, "cub_strdup called\n");
-  if (is_mem_tracked)
-    {
-      p = cub_alloc (strlen (str) + MMON_ALLOC_META_SIZE + 1, file);
-      ret = (char *) p;
-      memcpy (ret, str, strlen (str) + 1);
-    }
-  else
-    {
-      ret = strdup (str);
-    }
+  p = cub_alloc (strlen (str) + 1, file);
+  ret = (char *) p;
+  memcpy (ret, str, strlen (str) + 1);
 
   return ret;
 }

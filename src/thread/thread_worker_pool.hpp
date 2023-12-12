@@ -1589,7 +1589,4 @@ namespace cubthread
 
 } // namespace cubthread
 
-
-
-
 #endif // _THREAD_WORKER_POOL_HPP_

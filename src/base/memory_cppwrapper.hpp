@@ -31,14 +31,16 @@
 inline void *operator new (size_t size, const char *file)
 {
   void *p = cub_alloc (size, file);
-  fprintf (stdout, "overloaded new\n");
+  // XXX: for debug / it will be deleted when the last phase
+  //fprintf (stdout, "overloaded new: %s\n", file);
   return p;
 }
 
 inline void *operator new[] (size_t size, const char *file)
 {
   void *p = cub_alloc (size, file);
-  fprintf (stdout, "overloaded new[]\n");
+  // XXX: for debug / it will be deleted when the last phase
+  //fprintf (stdout, "overloaded new[]: %s\n", file);
   return p;
 }
 
@@ -52,9 +54,7 @@ inline void operator delete (void *ptr, size_t sz) noexcept
   cub_free (ptr);
 }
 
-#ifndef SKIP_NEW_OVERLOADING
 #define new new(__FILE__)
-#endif // SKIP_NEW_OVERLOADING
 #endif // SERVER_MODE
 
 #endif // _MEMORY_CPPWRAPPER_HPP_

@@ -1,0 +1,42 @@
+./base/lockfree_freelist.hpp:    , m_trantable (new tran::table (transys))
+./base/lockfree_freelist.hpp:	node = new free_node ();
+./base/lockfree_freelist.hpp:	delete node;
+./base/lockfree_freelist.hpp:    delete m_trantable;
+
+./base/lockfree_hashmap.hpp:    m_freelist = new freelist_type (transys, freelist_block_size, freelist_block_count);
+./base/lockfree_hashmap.hpp:    m_buckets = new T *[m_size] ();
+./base/lockfree_hashmap.hpp:    m_backbuffer = new T *[m_size] ();
+./base/lockfree_hashmap.hpp:    delete [] m_buckets;
+./base/lockfree_hashmap.hpp:    delete [] m_backbuffer;
+./base/lockfree_hashmap.hpp:    delete m_freelist;
+
+./base/lockfree_transaction_reclaimable.hpp:	  delete this;
+
+./base/perf.hpp://    stat_value *values = new stat_value [Mystat_definition.get_value_count ()]; // allocate array to copy values to
+./base/perf.hpp:    , m_values (new generic_value<IsAtomic>[m_value_count])
+./base/perf.hpp:    delete [] m_values;
+
+./loaddb/load_error_handler.hpp:    std::unique_ptr<char[]> msg (new char[size]);
+
+./monitor/monitor_transaction.hpp:    statistic_type *new_collectors = new statistic_type[to];
+./monitor/monitor_transaction.hpp:    delete [] m_sheet_stats;
+./monitor/monitor_transaction.hpp:    delete [] m_sheet_stats;
+
+./thread/thread_task.hpp:	delete this;
+./thread/thread_task.hpp:	delete this;
+./thread/thread_task.hpp:	m_retire_f = [this] { delete this; };
+./thread/thread_task.hpp:	m_retire_f = [this] { delete this; };
+./thread/thread_task.hpp:	m_retire_f = [this] { delete this; };
+./thread/thread_task.hpp:	m_retire_f = [this] { delete this; };
+
+./thread/thread_worker_pool.hpp:    m_core_array = new core[m_core_count];
+./thread/thread_worker_pool.hpp:    m_worker_array = new worker[m_max_workers];
+./thread/thread_worker_pool.hpp:    m_available_workers = new worker*[m_max_workers];
+./thread/thread_worker_pool.hpp:    worker *w = new worker (true);
+./thread/thread_worker_pool.hpp:    delete [] m_core_array;
+./thread/thread_worker_pool.hpp:    delete [] m_worker_array;
+./thread/thread_worker_pool.hpp:    delete [] m_available_workers;
+./thread/thread_worker_pool.hpp:	    delete w;
+./thread/thread_worker_pool.hpp:	delete w;
+
+./thread/thread_worker_pool_taskcap.hpp:    m_worker_pool->execute (new capped_task (*this, task));
