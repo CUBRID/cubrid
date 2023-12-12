@@ -31,7 +31,7 @@ namespace cublog
   int
   redo_job_replication_delay_impl::execute (THREAD_ENTRY *thread_p, log_rv_redo_context &)
   {
-    const int res = log_rpl_calculate_replication_delay (thread_p, m_start_time_msec);
+    const int res = log_rpl_calculate_replication_delay (thread_p, get_log_lsa (), m_start_time_msec);
     return res;
   }
 
@@ -46,7 +46,8 @@ namespace cublog
    *        done in milliseconds as that is the relevant scale needed
    */
   int
-  log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_msec_t a_start_time_msec)
+  log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, const log_lsa &redo_lsa,
+				       time_msec_t a_start_time_msec)
   {
     // only log if both params are active; needed to completely supress logging because
     // logging - being synchronous - affects replication performance in release builds
@@ -68,7 +69,8 @@ namespace cublog
 
 	    if (output_debug_log)
 	      {
-		_er_log_debug (ARG_FILE_LINE, "[CALC_REPL_DELAY]: %lld msec", time_diff_msec);
+		_er_log_debug (ARG_FILE_LINE, "[CALC_REPL_DELAY]: %lld msec, redo_lsa=%lld|%d", time_diff_msec,
+			       LSA_AS_ARGS (&redo_lsa));
 	      }
 
 	    return NO_ERROR;
@@ -86,8 +88,8 @@ namespace cublog
 	    if (output_debug_log)
 	      {
 		_er_log_debug (ARG_FILE_LINE,
-			       "[REPL_DELAY_ERR]: negative delay: start = %lld, end = %lld, diff = %lld msec",
-			       a_start_time_msec, end_time_msec, time_diff_msec);
+			       "[REPL_DELAY_ERR]: negative delay: start = %lld, end = %lld, diff = %lld msec, redo_lsa=%lld|%d",
+			       a_start_time_msec, end_time_msec, time_diff_msec, LSA_AS_ARGS (&redo_lsa));
 	      }
 
 	    return ER_FAILED;
