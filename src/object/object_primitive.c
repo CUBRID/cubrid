@@ -9706,9 +9706,7 @@ pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num
 
   for (i = num_dbvals; i < (num_dbvals + tail_null_cnt); i++)
     {
-      /* Already cleared with the or_multi_clear_header function. */
       assert (or_multi_is_null (nullmap_ptr, i));
-
       or_multi_put_element_offset (nullmap_ptr, num_dbvals + tail_null_cnt, total_size, i);
     }
 

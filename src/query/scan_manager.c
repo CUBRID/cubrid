@@ -1793,10 +1793,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	  if (is_iss && i == 0)
 	    {
 	      /* There is nothing to write for NULL. Just make sure the bit is not set */
-
-	      /* Already cleared with the or_multi_clear_header function. */
 	      assert (or_multi_is_null (nullmap_ptr, i));
-
 	      continue;
 	    }
 	  else
@@ -1815,9 +1812,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   for (i = natts; i < idx_ncols; i++)
     {
-      /* Already cleared with the or_multi_clear_header function. */
       assert (or_multi_is_null (nullmap_ptr, i));
-
       or_multi_put_element_offset (nullmap_ptr, idx_ncols, buf_size, i);
     }
 

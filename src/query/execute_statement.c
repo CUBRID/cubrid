@@ -11751,7 +11751,6 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 	}
       else
 	{
-	  /* Already cleared with the or_multi_clear_header function. */
 	  assert (or_multi_is_null (nullmap_ptr, i));
 	}
     }
