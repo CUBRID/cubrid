@@ -579,9 +579,9 @@ stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
   att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
   while (att != NULL)
     {
-      /* check if type is varchar or lob. */
+      /* check if type is varchar or lob or json. */
       dom = db_attribute_domain (att);
-      if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (dom)) ||
+      if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (dom)) || TP_DOMAIN_TYPE (dom) == DB_TYPE_JSON ||
 	  (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dom)) && dom->precision > STATS_MAX_PRECISION))
 	{
 	  /* These types are not gathered for statistics. */
