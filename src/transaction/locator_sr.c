@@ -2543,6 +2543,11 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 #if defined (SERVER_MODE)
 	      if (is_active_transaction_server ())
 		{
+		  /* lock information is logged to replicate DDL operations on PTS.
+		   * Logging here occurs when a class is fetched for DDL (class_oid == oid_Root_class_oid) or
+		   * when a serial record is fetched for DDL (class_oid == oid_Serial_class_oid).
+		   * ALTER/DROP SERIAL statement will fetch the record in db_serial and update or delete it */
+
 		  const bool is_lock_for_class = OID_IS_ROOTOID (class_oid) && lock == SCH_M_LOCK;
 		  const bool is_lock_for_serial = OID_EQ (class_oid, oid_Serial_class_oid) && lock == X_LOCK;
 		  if (is_lock_for_class || is_lock_for_serial)

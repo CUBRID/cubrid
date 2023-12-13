@@ -20657,6 +20657,10 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	{
 	  /* successfully locked! */
 #if defined (SERVER_MODE)
+	  /* lock information is logged to replicate DDL operations on PTS.
+	   * Logging here occurs when a class is created (class_oid == oid_Root_class_oid) or
+	   * when a serial is created (class_oid == oid_Serial_class_oid).
+	   * The creation of a serial implies the insertion of a record into db_serial*/
 	  const bool is_lock_for_class = OID_IS_ROOTOID (&context->class_oid) && lock == SCH_M_LOCK;
 	  const bool is_lock_for_serial = OID_EQ (&context->class_oid, oid_Serial_class_oid) && lock == X_LOCK;
 	  if (is_lock_for_class || is_lock_for_serial)
