@@ -124,28 +124,6 @@ class tran_server
 	virtual log_lsa get_saved_lsa () const = 0; // used in active_tran_server
 
       protected:
-	connection_handler (tran_server &ts, cubcomm::node &&node)
-	  : m_ts { ts }
-	  , m_node { std::move (node) }
-	  , m_state { state::IDLE }
-	{ }
-
-	virtual request_handlers_map_t get_request_handlers ();
-	void push_request_regardless_of_state (tran_to_page_request reqid, std::string &&payload);
-
-	/*
-	 * Do the server-type-specific jobs before state transtition.
-	 *
-	 * on_connecting:     CONNECTING -> (*) -> CONNECTED
-	 * on_disconnecting:  DISCONNECTING -> (*) -> IDLE
-	 */
-	virtual void on_connecting () = 0;
-	virtual void on_disconnecting () = 0;
-
-      protected:
-	tran_server &m_ts;
-
-      private:
 	/*
 	 * The internal state of connection_handler. A connection_handler must be in one of those states.
 	 *
@@ -160,10 +138,10 @@ class tran_server
 	 * | IDLE          | O            | X            | X            | X          | X           |
 	 * | CONNECTING    | X            | O            | X            | O          | X           |
 	 * | CONNECTED     | X            | O            | O            | O          | O           |
-	 * | DISCONNECTING | X            | O            | X            | △          | X           |
+	 * | DISCONNECTING | X            | O            | X            | O          | X           |
 	 * +---------------+--------------+--------------+--------------+------------+-------------+
 	 *
-	 * O: Allowed, X: not allowed, △: not certain
+	 * O: Allowed, X: not allowed
 	 *
 	 * m_state and m_conn are coupled and mutexes for them are managed carefully to provide above rules.
 	 */
@@ -175,9 +153,31 @@ class tran_server
 	  DISCONNECTING
 	};
 
+      protected:
+	connection_handler (tran_server &ts, cubcomm::node &&node)
+	  : m_ts { ts }
+	  , m_state { state::IDLE }
+	  , m_node { std::move (node) }
+	{ }
+
+	virtual request_handlers_map_t get_request_handlers ();
+	void push_request_regardless_of_state (tran_to_page_request reqid, std::string &&payload);
+
+	// Do the server-type-specific jobs and transition state from CONNECTING to CONNECTED.
+	// The m_state MUST be changed to CONNECTED either synchronously or asynchronously.
+	virtual void transition_to_connected () = 0;
+	// Do the server-type-specific jobs before disconnected. DISCONNECTING -> (*) -> IDLE
+	virtual void on_disconnecting () = 0;
+
+      protected:
+	tran_server &m_ts;
+
+	state m_state;
+	std::shared_mutex m_state_mtx;
+
       private:
 	void set_connection (cubcomm::channel &&chn);
-	// The default error handler for sending reqeust
+	// The default error handler for sending request
 	void send_error_handler (css_error_code error_code, bool &abort_further_processing);
 	void recv_error_handler (css_error_code error_code);
 	// Request handlers for requests in common
@@ -188,9 +188,6 @@ class tran_server
 
 	std::unique_ptr<page_server_conn_t> m_conn;
 	std::shared_mutex m_conn_mtx;
-
-	state m_state;
-	std::shared_mutex m_state_mtx;
 
 	std::future<void> m_disconn_future; // To delete m_conn asynchronously and make sure there is only one m_conn at a time.
     };
@@ -204,8 +201,8 @@ class tran_server
   protected:
     /*
      * Static information about available page server connection peers.
-     * For now, this information is static. In the future this can be maintained dinamically (eg: via cluster
-     * management sofware).
+     * For now, this information is static. In the future this can be maintained dynamically (eg: via cluster
+     * management software).
      */
     std::vector<std::unique_ptr<connection_handler>> m_page_server_conn_vec;
 
@@ -214,7 +211,7 @@ class tran_server
 
   private:
     /*
-     * Try to [re]connect to disconected page servers.
+     * Try to [re]connect to disconnected page servers.
      * TODO This is a temporary feature, which is going to be done by the cluster manager or cub_master. It tries to connect to all page servers periodically, but later on, it is going to connect to PSes that are ready to connect.
     */
     class ps_connector

@@ -20,8 +20,11 @@
 #include "log_replication_atomic.hpp"
 #include "log_replication_jobs.hpp"
 
-#include "log_recovery_redo_parallel.hpp"
 #include "heap_file.h"
+#include "locator_sr.h"
+#include "log_recovery_redo_parallel.hpp"
+#include "oid.h"
+#include "xasl_cache.h"
 
 namespace cublog
 {
@@ -119,6 +122,13 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
+
+	    if (m_locked_classes.count (header.trid) > 0)
+	      {
+		discard_caches_for_ddl (thread_entry, header.trid);
+		release_all_locks_for_ddl (thread_entry, header.trid);
+	      }
+
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
@@ -148,6 +158,12 @@ namespace cublog
 	      {
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
+
+	    if (m_locked_classes.count (header.trid) > 0)
+	      {
+		release_all_locks_for_ddl (thread_entry, header.trid);
+	      }
+
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
@@ -219,24 +235,18 @@ namespace cublog
 	  }
 	  case LOG_SCHEMA_MODIFICATION_LOCK:
 	  {
-	    char *classname = NULL;
-
 	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_SCHEMA_MODIFICATION_LOCK));
 	    const LOG_REC_SCHEMA_MODIFICATION_LOCK log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_SCHEMA_MODIFICATION_LOCK> ();
 
-	    /* TODO:
-	     * All these debug logging part will be removed.
-	     * Lock will be acquired for the class that log_rec.classoid indicates
-	     */
-	    int error = heap_get_class_name (&thread_entry, &log_rec.classoid, &classname);
-	    _er_log_debug (ARG_FILE_LINE,"[REPL_LOCK] Schema modification lock is aquired on %s (OID = %d|%d|%d)\n",
-			   error != NO_ERROR ? "null" : classname, OID_AS_ARGS (&log_rec.classoid));
-
-	    if (classname != NULL)
+	    if (is_locked_for_ddl (header.trid, &log_rec.classoid))
 	      {
-		free_and_init (classname);
+		break;
 	      }
+
+	    acquire_lock_for_ddl (thread_entry, header.trid, &log_rec.classoid);
+
+	    bookkeep_classname_for_ddl (thread_entry, &log_rec.classoid);
 	    break;
 	  }
 	  default:
@@ -366,5 +376,152 @@ namespace cublog
 	    // by an atomic sequence; that will be treated in a standalone fashion
 	  }
       }
+  }
+
+  void
+  atomic_replicator::release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
+  {
+    assert (m_locked_classes.count (trid) > 0);
+
+    for (auto classoid : m_locked_classes[trid])
+      {
+	lock_unlock_object_and_cleanup (&thread_entry, &classoid, oid_Root_class_oid, SCH_M_LOCK);
+      }
+
+    m_locked_classes.erase (trid);
+  }
+
+  void
+  atomic_replicator::acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const OID *classoid)
+  {
+    assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
+
+    /* TODO:
+     * If a PTS read transaction holds a lock for an extended period without releasing it for the same class,
+     * the replicator could wait too long to acquire the lock.
+     * In such cases, there might be an introduction of a mechanism to abort read transaction that holds lock.
+     */
+
+    if (lock_object (&thread_entry, classoid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+      {
+	assert_release (false);
+      }
+
+    m_locked_classes[trid].emplace (*classoid);
+  }
+
+  void
+  atomic_replicator::bookkeep_classname_for_ddl (cubthread::entry &thread_entry, const OID *classoid)
+  {
+    assert (!OID_ISNULL (classoid) && !OID_ISTEMP (classoid));
+
+    char *classname = nullptr;
+    int error_code = NO_ERROR;
+
+    error_code = heap_get_class_name (&thread_entry, classoid, &classname);
+    if (error_code == NO_ERROR)
+      {
+	assert (classname != nullptr);
+	m_classname_map.emplace (*classoid, std::string (classname));
+
+	free_and_init (classname);
+      }
+    else if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+      {
+	assert (classname == nullptr);
+	/* If there is no class record in the heap, it means it is creating the class */
+      }
+    else
+      {
+	assert (false);
+      }
+  }
+
+  void
+  atomic_replicator::update_classname_cache_for_ddl (cubthread::entry &thread_entry, const OID *classoid)
+  {
+    /* update locator_Mht_classnames only if needed */
+    char *classname = nullptr;
+    int error_code = NO_ERROR;
+
+    auto it = m_classname_map.find (*classoid);
+
+    error_code = heap_get_class_name (&thread_entry, classoid, &classname);
+    if (error_code == NO_ERROR)
+      {
+	assert (classname != nullptr);
+	if (it == m_classname_map.end ())
+	  {
+	    error_code = locator_put_classname_entry (&thread_entry, classname, classoid);
+	    if (error_code != NO_ERROR)
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to put entry for (%s) to locator_Mht_classnames for classoid\n",
+			       classname);
+	      }
+	  }
+	else
+	  {
+	    if (it->second != classname)
+	      {
+		error_code = locator_update_classname_entry (&thread_entry, it->second.c_str(), classname);
+		if (error_code != NO_ERROR)
+		  {
+		    _er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to update entry for (%s) to locator_Mht_classnames for classoid\n",
+				   classname);
+		  }
+	      }
+	  }
+
+	free_and_init (classname);
+      }
+    else if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+      {
+	assert (classname == nullptr);
+	/* If there is no class record in the heap, it means that the class (table/view) has been dropped during the transaction */
+
+	if (it != m_classname_map.end ())
+	  {
+	    error_code = locator_remove_classname_entry (&thread_entry, it->second.c_str ());
+	    if (error_code != NO_ERROR)
+	      {
+		_er_log_debug (ARG_FILE_LINE, "[REPL_DDL] Failed to remove entry for (%s) from locator_Mht_classnames for classoid\n",
+			       it->second.c_str ());
+	      }
+	  }
+	else
+	  {
+	    /* This is when the table is CREATEd and DROPped within the same transaction */
+	  }
+      }
+    else
+      {
+	assert (false);
+      }
+
+    if (it != m_classname_map.end ())
+      {
+	m_classname_map.erase (it);
+      }
+  }
+
+  void
+  atomic_replicator::discard_caches_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
+  {
+    assert (m_locked_classes.count (trid) > 0);
+
+    for (auto classoid : m_locked_classes[trid])
+      {
+	update_classname_cache_for_ddl (thread_entry, &classoid);
+	(void) heap_classrepr_decache (&thread_entry, &classoid);
+	(void) heap_delete_hfid_from_cache (&thread_entry, &classoid);
+	xcache_remove_by_oid (&thread_entry, &classoid);
+	partition_decache_class (&thread_entry, &classoid);
+      }
+  }
+
+  bool
+  atomic_replicator::is_locked_for_ddl (const TRANID trid, const OID *classoid)
+  {
+    return m_locked_classes.count (trid) > 0 && m_locked_classes[trid].count (*classoid) > 0;
   }
 }

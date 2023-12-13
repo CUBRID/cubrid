@@ -136,6 +136,8 @@ namespace cubcomm
       void start_thread ();           // start background thread
       void stop_thread ();            // stop background thread
 
+      bool is_thread_started ();
+
     private:
       void loop_send_requests ();     // consume and sent requests in a loop
 
@@ -360,6 +362,13 @@ namespace cubcomm
       {
 	m_thread.join ();
       }
+  }
+
+  template <typename ReqQueue>
+  bool
+  request_queue_autosend<ReqQueue>::is_thread_started ()
+  {
+    return m_shutdown == false && m_thread.joinable ();
   }
 }
 

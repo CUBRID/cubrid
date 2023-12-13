@@ -254,7 +254,7 @@ namespace cubcomm
   request_sync_client_server<T_OUTGOING_MSG_ID, T_INCOMING_MSG_ID, T_PAYLOAD>::push (
 	  T_OUTGOING_MSG_ID a_outgoing_message_id, T_PAYLOAD &&a_payload)
   {
-    assert (m_conn != nullptr && m_conn->is_thread_started ());
+    assert (m_conn != nullptr && m_queue_autosend->is_thread_started ());
 
     // NOTE: if needed, errors can be handled
     m_queue->push (a_outgoing_message_id,

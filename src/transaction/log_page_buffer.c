@@ -3541,7 +3541,7 @@ logpb_catchup_finish (THREAD_ENTRY * thread_p, const LOG_LSA catchup_lsa)
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (log_Pb.partial_append.status = LOGPB_APPENDREC_SUCCESS);
 
-  char log_pgbuf[LOG_PAGESIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
   LOG_LSA nav_lsa = log_Gl.append.prev_lsa;
   LOG_PAGE *log_pgptr = NULL;

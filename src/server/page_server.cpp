@@ -40,12 +40,20 @@
 
 page_server::page_server (const char *db_name)
   : m_server_name { db_name }
+  , m_worker_context_manager { TT_SYSTEM_WORKER }
 {
-  const auto thread_count = 4; // Arbitrary chosen
-  const auto task_max_count = thread_count * 4;
+  size_t thread_count = 4; // Arbitrary chosen
+  size_t task_max_count = thread_count * 4;
+
+  // For two async responders: m_tran_server_responder, m_follower_responder
+  const size_t responder_thread_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
+  const size_t responder_max_task_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT);
+
+  thread_count += responder_thread_cnt;
+  task_max_count +=  responder_max_task_cnt;
 
   m_worker_pool = cubthread::get_manager ()->create_worker_pool (thread_count, task_max_count, "page_server_workers",
-		  nullptr, 1, false);
+		  &m_worker_context_manager, 1, false);
 }
 
 page_server::~page_server ()
@@ -59,6 +67,9 @@ page_server::~page_server ()
   assert (m_passive_tran_server_conn.size () == 0);
 
   m_async_disconnect_handler.terminate ();
+
+  assert (m_tran_server_responder == nullptr);
+  assert (m_follower_responder == nullptr);
 
   cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
   assert (m_worker_pool == nullptr);
@@ -208,7 +219,6 @@ page_server::tran_server_connection_handler::handle_oldest_active_mvccid_request
   m_conn->respond (std::move (a_sp));
 }
 
-
 void
 page_server::tran_server_connection_handler::receive_start_catch_up (tran_server_conn_t::sequenced_payload &&a_sp)
 {
@@ -223,14 +233,13 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
   unpacker.unpack_int (port);
   cublog::lsa_utils::unpack (unpacker, catchup_lsa);
 
-  _er_log_debug (ARG_FILE_LINE,
-		 "[CATCH_UP] It's been requested to start catch-up with the follower (%s:%d), until LSA = (%lld|%d)\n",
-		 host.c_str (), port,LSA_AS_ARGS (&catchup_lsa));
+  catchup_er_log ("It's been requested to start catch-up with the followee (%s:%d), until LSA (catchup_lsa) = (%lld|%d).\n",
+		  host.c_str (), port, LSA_AS_ARGS (&catchup_lsa));
   if (port == -1)
     {
       // TODO: It means that the ATS is booting up.
       // it will be set properly after ATS recovery is implemented.
-      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      m_ps.complete_catchup ();
       return;
     }
 
@@ -240,9 +249,9 @@ page_server::tran_server_connection_handler::receive_start_catch_up (tran_server
 
   if (log_Gl.hdr.append_lsa == catchup_lsa)
     {
-      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] There is nothing to catch up.\n");
+      catchup_er_log ("There is nothing to catch up. append_lsa = (%lld|%d).\n", LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 
-      m_ps.push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      m_ps.complete_catchup ();
       return;
     }
 
@@ -779,6 +788,9 @@ page_server::set_active_tran_server_connection (cubcomm::channel &&chn)
       disconnect_active_tran_server ();
     }
 
+  // Pause the log prior receiver to process log records from the new ATS. It just keeps them until the catch-up is completed.
+  log_Gl.get_log_prior_receiver ().wait_until_empty_and_pause ();
+
   m_active_tran_server_conn.reset (new tran_server_connection_handler (std::move (chn), transaction_server_type::ACTIVE,
 				   *this));
 }
@@ -1131,8 +1143,8 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
     return error_code;
   };
 
-  _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
-		 start_pageid, end_pageid, total_page_count);
+  catchup_er_log ("The catch-up starts with pages ranging from %lld to %lld, count = %lld.\n",
+		  start_pageid, end_pageid, total_page_count);
 
   LOG_PAGEID request_start_pageid = start_pageid;
   size_t remaining_page_cnt = total_page_count;
@@ -1184,11 +1196,10 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
 	  assert_release (false);
 	}
 
-      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up is completed, ranging from %lld to %lld, count = %lld.\n",
-		     start_pageid, end_pageid, total_page_count);
-      // TODO: start appneding log prior nodes from the ATS.
+      catchup_er_log ("The catch-up is completed, ranging from %lld to %lld, count = %lld, append_lsa= (%lld|%d).\n",
+		      start_pageid, end_pageid, total_page_count, LSA_AS_ARGS (&log_Gl.hdr.append_lsa));
 
-      push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
+      complete_catchup ();
 
       with_disc_msg = true;
     }
@@ -1202,12 +1213,19 @@ page_server::execute_catchup (cubthread::entry &entry, const LOG_LSA catchup_lsa
       assert (false);
 
       assert (remaining_page_cnt > 0);
-      _er_log_debug (ARG_FILE_LINE, "[CATCH_UP] The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
-		     error, remaining_page_cnt, total_page_count);
+      catchup_er_log ("The catch-up stops with the error: %d. remainder: %lld total = %lld.\n",
+		      error, remaining_page_cnt, total_page_count);
       with_disc_msg = false;
     }
 
   disconnect_followee_page_server (with_disc_msg);
+}
+
+void
+page_server::complete_catchup ()
+{
+  log_Gl.get_log_prior_receiver ().resume ();
+  push_request_to_active_tran_server (page_to_tran_request::SEND_CATCHUP_COMPLETE, std::string());
 }
 
 bool
@@ -1279,8 +1297,9 @@ page_server::finish_replication_during_shutdown (cubthread::entry &thread_entry)
 void
 page_server::init_request_responder ()
 {
-  m_tran_server_responder = std::make_unique<tran_server_responder_t> ();
-  m_follower_responder = std::make_unique<follower_responder_t> ();
+  assert (m_worker_pool != nullptr);
+  m_tran_server_responder = std::make_unique<tran_server_responder_t> (m_worker_pool);
+  m_follower_responder = std::make_unique<follower_responder_t> (m_worker_pool);
 }
 
 void

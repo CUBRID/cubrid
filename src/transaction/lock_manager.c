@@ -6617,6 +6617,38 @@ lock_unlock_object_donot_move_to_non2pl (THREAD_ENTRY * thread_p, const OID * oi
 }
 
 /*
+ * lock_unlock_object_and_cleaup - Unlock an object lock on the specified object,
+ *                                 release lock entry and do not move to non2pl list
+ *                                 Used by replicator for PTS (atomic_replicator)
+ *   return:
+ *   thread_p(in):
+ *   oid(in):  Identifier of instance to unlock from
+ *   class_oid(in): Identifier of the class of the instance
+ *   lock(in): Lock to release
+ *
+ */
+void
+lock_unlock_object_and_cleanup (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock)
+{
+#if !defined (SERVER_MODE)
+  return;
+#else /* !SERVER_MODE */
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LK_TRAN_LOCK *const tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  assert (tran_lock->non2pl_list == NULL);
+
+  lock_unlock_object_lock_internal (thread_p, oid, class_oid, lock, true, false);
+
+  /* TODO:
+   * We have to decide if deadlock information should be cleared
+   * (like lock_clear_deadlock_victim () in lock_unlock_all ())
+   * this will be handled when handling the deadlock for replicator
+   */
+#endif
+}
+
+/*
  * lock_unlock_object - Unlock an object according to transaction isolation level
  *
  * return: nothing..

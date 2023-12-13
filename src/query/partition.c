@@ -2339,6 +2339,9 @@ reload_from_cache:
       /* Cache the loaded info. If the call below is successful, pinfo will be returned holding the cached information */
       partition_cache_pruning_context (pinfo, &already_exists);
 
+      /* cache is not modified during replication in PTS */
+      assert (thread_p->type != TT_REPLICATION_PTS);
+
       /* Multiple thread can reach here synchronously. In this case redo the action of load from cache. */
       if (already_exists)
 	{

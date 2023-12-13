@@ -115,13 +115,22 @@ struct test_env
   test_thread_init_final m_thread_init_final;   // only to initialize/finalize cubthread
   std::array<test_conn, T_CONN_COUNT> m_conns;
   // responder must be destroyed before connections because responder handles connections in its dtor
-  server_request_responder<test_conn> m_rrh;
+  cubthread::entry_workpool *m_worker_pool;
+  std::unique_ptr<server_request_responder<test_conn>> m_rrh;
 
   test_env ()
   {
+    const size_t responder_thread_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_THREAD_COUNT);
+    const size_t responder_max_task_cnt = (size_t) prm_get_integer_value (PRM_ID_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT);
+
+    m_worker_pool = cubthread::get_manager ()->create_worker_pool (responder_thread_cnt, responder_max_task_cnt,
+		    "test_async_responder_workers", NULL, 1, false);
+
+    m_rrh = std::make_unique <server_request_responder<test_conn>> (m_worker_pool);
+
     for (const auto &conn : m_conns)
       {
-	m_rrh.register_connection (&conn);
+	m_rrh->register_connection (&conn);
       }
   }
 
@@ -129,8 +138,10 @@ struct test_env
   {
     for (const auto &conn : m_conns)
       {
-	m_rrh.wait_connection_to_become_idle (&conn);
+	m_rrh->wait_connection_to_become_idle (&conn);
       }
+
+    cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
   }
 
   void simulate_request (size_t conn_index)
@@ -149,7 +160,7 @@ struct test_env
       std::this_thread::sleep_for (std::chrono::microseconds (1));
     };
 
-    m_rrh.async_execute (conn_ref, std::move (sp), std::move (handler));
+    m_rrh->async_execute (conn_ref, std::move (sp), std::move (handler));
   }
 };
 

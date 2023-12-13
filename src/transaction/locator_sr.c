@@ -61,6 +61,7 @@
 #include "record_descriptor.hpp"
 #include "slotted_page.h"
 #include "server_type.hpp"
+#include "scope_exit.hpp"
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
@@ -237,6 +238,9 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 							 MVCC_REC_HEADER * mvcc_header_p,
 							 const OID * curr_row_version_oid_p, RECDES * recdes);
 
+static inline int locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname,
+						      const OID * class_oid);
+
 /*
  * locator_initialize () - Initialize the locator on the server
  *
@@ -314,20 +318,11 @@ locator_initialize (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      entry->e_name = strdup ((char *) classname);
-      if (entry->e_name == NULL)
+      if (locator_initialize_classname_entry (entry, classname, &class_oid) != NO_ERROR)
 	{
 	  free_and_init (entry);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (strlen (classname) + 1));
 	  goto error;
 	}
-
-      entry->e_tran_index = NULL_TRAN_INDEX;
-
-      entry->e_current.action = LC_CLASSNAME_EXIST;
-      COPY_OID (&entry->e_current.oid, &class_oid);
-      LSA_SET_NULL (&entry->e_current.savep_lsa);
-      entry->e_current.prev = NULL;
 
       assert (locator_is_exist_class_name_entry (thread_p, entry));
 
@@ -12606,7 +12601,17 @@ locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_EN
       assert (entry->e_tran_index == NULL_TRAN_INDEX);
 
       assert (!OID_ISNULL (&entry->e_current.oid));
-      assert (heap_does_exist (thread_p, oid_Root_class_oid, &entry->e_current.oid));
+      /* TODO:
+       * The part in PTS that updates/deletes/queries the locator classname cache (locator_Mht_classnames)
+       * occurs only when the replicator reflects DDL changes. Unlike ATS, it does not update the cache
+       * and heap simultaneously, so having the cache doesn't guarantee the existence of a heap record.
+       * Therefore, since this assertion check is unnecessary for PTS, resolving the issue can be achieved
+       * by simply removing this assertion. However, since the underlying problem stems from not properly
+       * updating the state of the cache, this assertion should be reverted when incorporating logic to
+       * update the cache status in PTS.
+       */
+      assert (is_passive_transaction_server ()
+	      || heap_does_exist (thread_p, oid_Root_class_oid, &entry->e_current.oid));
 
       assert (LSA_ISNULL (&entry->e_current.savep_lsa));
       assert (entry->e_current.prev == NULL);
@@ -13936,6 +13941,230 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
   return false;
 }
 // *INDENT-ON*
+
+
+static inline int
+locator_initialize_classname_entry (LOCATOR_CLASSNAME_ENTRY * entry, const char *classname, const OID * classoid)
+{
+  assert (classname != nullptr);
+
+  entry->e_name = strdup (classname);
+  if (entry->e_name == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (classname));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  entry->e_tran_index = NULL_TRAN_INDEX;
+  entry->e_current.action = LC_CLASSNAME_EXIST;
+  COPY_OID (&entry->e_current.oid, classoid);
+  LSA_SET_NULL (&entry->e_current.savep_lsa);
+  entry->e_current.prev = nullptr;
+
+  return NO_ERROR;
+}
+
+/* locator_put_classname_entry () - Put a new entry in the locator_Mht_classnames, used in PTS replicator (atomic_replicator)
+ *
+ * return	     : error code
+ * thread_p (in)     : thread entry
+ * classname (in)    : classname to be inserted
+ * classoid (in)     : class oid of the classname
+ */
+int
+locator_put_classname_entry (THREAD_ENTRY * thread_p, const char *classname, const OID * classoid)
+{
+  assert (classname != nullptr);
+  assert (strlen (classname) < DB_MAX_IDENTIFIER_LENGTH);
+
+  int error_code = NO_ERROR;
+
+  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*entry));
+  if (entry == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      return error_code;
+    }
+
+  // *INDENT-OFF*
+  auto entry_free = scope_exit ([&entry, &error_code] ()
+      {
+        if (error_code != NO_ERROR)
+          {
+            if (entry->e_name != nullptr)
+              {
+                free_and_init (entry->e_name);
+              }
+
+            free_and_init (entry);
+          }
+      });
+  // *INDENT-ON*
+
+  error_code = locator_initialize_classname_entry (entry, classname, classoid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      error_code = ER_FAILED;
+      return error_code;
+    }
+
+  // *INDENT-OFF*
+  auto classname_csect_exit = scope_exit ([&thread_p] ()
+      {
+        csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      });
+  // *INDENT-ON*
+
+  assert (locator_is_exist_class_name_entry (thread_p, entry));
+  assert (mht_get (locator_Mht_classnames, classname) == nullptr);
+
+  (void) mht_put (locator_Mht_classnames, entry->e_name, entry);
+
+  return NO_ERROR;
+}
+
+/* locator_remove_classname_entry () - Remove an entry from the locator_Mht_classnames, used in PTS replicator (atomic_replicator)
+ *
+ * return	     : error code
+ * thread_p (in)     : thread entry
+ * classname (in)    : classname to be removed
+ */
+int
+locator_remove_classname_entry (THREAD_ENTRY * thread_p, const char *classname)
+{
+  assert (classname != nullptr);
+
+  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  // *INDENT-OFF*
+  auto classname_csect_exit = scope_exit ([&thread_p] ()
+      {
+        csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      });
+  // *INDENT-ON*
+
+  LOCATOR_CLASSNAME_ENTRY *const entry = (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, classname);
+  if (entry == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  // *INDENT-OFF*
+  auto catalog_csect_exit = scope_exit ([&thread_p, &classname] ()
+      {
+        csect_exit (thread_p, CSECT_CT_OID_TABLE);
+      });
+  // *INDENT-ON*
+
+  (void) locator_force_drop_class_name_entry (entry->e_name, entry, NULL);
+
+  return NO_ERROR;
+}
+
+/* locator_update_classname_entry () - Update an entry from the locator_Mht_classnames.
+ *                                     It remove the old entry (old_classname) and insert the new one (new_classname).
+ *                                     used in PTS replicator (atomic_replicator)
+ * return	      : error code
+ * thread_p (in)      : thread entry
+ * old_classname (in) : old classname to be removed
+ * new_classname (in) : new classname to be inserted
+ */
+int
+locator_update_classname_entry (THREAD_ENTRY * thread_p, const char *old_classname, const char *new_classname)
+{
+  assert (old_classname != nullptr);
+  assert (new_classname != nullptr);
+
+  int error_code = NO_ERROR;
+
+  LOCATOR_CLASSNAME_ENTRY *new_entry = (LOCATOR_CLASSNAME_ENTRY *) malloc (sizeof (*new_entry));
+  if (new_entry == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*new_entry));
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      return error_code;
+    }
+
+  // *INDENT-OFF*
+  auto entry_free = scope_exit ([&new_entry, &error_code] ()
+      {
+        if (error_code != NO_ERROR)
+          {
+            if (new_entry->e_name != nullptr)
+              {
+                free_and_init (new_entry->e_name);
+              }
+
+            free_and_init (new_entry);
+          }
+      });
+  // *INDENT-ON*
+
+  if (csect_enter (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      error_code = ER_FAILED;
+      return error_code;
+    }
+
+  // *INDENT-OFF*
+  auto classname_csect_exit = scope_exit ([&thread_p] ()
+      {
+        csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+      });
+  // *INDENT-ON*
+
+  LOCATOR_CLASSNAME_ENTRY *const old_entry =
+    (LOCATOR_CLASSNAME_ENTRY *) mht_get (locator_Mht_classnames, old_classname);
+  assert (old_entry != nullptr);
+
+  error_code = locator_initialize_classname_entry (new_entry, new_classname, &old_entry->e_current.oid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  assert (locator_is_exist_class_name_entry (thread_p, new_entry));
+  assert (mht_get (locator_Mht_classnames, new_classname) == nullptr);
+
+  (void) mht_put (locator_Mht_classnames, new_entry->e_name, new_entry);
+
+  if (csect_enter (thread_p, CSECT_CT_OID_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      error_code = ER_FAILED;
+      return error_code;
+    }
+
+  // *INDENT-OFF*
+  auto catalog_csect_exit = scope_exit ([&thread_p, &old_classname] ()
+      {
+        csect_exit (thread_p, CSECT_CT_OID_TABLE);
+      });
+  // *INDENT-ON*
+
+  /* drop the existing entry with key (old_classname) */
+  (void) locator_force_drop_class_name_entry (old_entry->e_name, old_entry, NULL);
+
+  return error_code;
+}
 
 void
 xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
