@@ -10828,12 +10828,6 @@ loaddb_update_stats (bool verbose)
 
   /* unpack number of returned OIDs */
   ptr = or_unpack_int (data_reply, &oids_count);
-  if (oids_count == 0)
-    {
-      rc = ER_FAILED;
-      goto cleanup;
-
-    }
 
   for (int i = 0; i < oids_count; i++)
     {

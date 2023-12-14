@@ -13948,6 +13948,9 @@ pt_check_path_eq (PARSER_CONTEXT * parser, const PT_NODE * p, const PT_NODE * q)
       return 1;
     }
 
+  CAST_POINTER_TO_NODE (p);
+  CAST_POINTER_TO_NODE (q);
+
   /* check node types are same */
   if (p->node_type != q->node_type)
     {
