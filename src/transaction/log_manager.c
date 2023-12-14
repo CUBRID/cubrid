@@ -3758,7 +3758,7 @@ log_append_locked_object (THREAD_ENTRY * thread_p, const OID * classoid, const O
       return;
     }
 
-  auto record = (LOG_REC_LOCKED_OBJECT *) node->data_header;
+  auto *const record = (LOG_REC_LOCKED_OBJECT *) node->data_header;
   COPY_OID (&record->oid, oid);
   COPY_OID (&record->classoid, classoid);
   record->lock_mode = lock;

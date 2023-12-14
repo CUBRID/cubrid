@@ -244,7 +244,8 @@ namespace cublog
 	    const LOG_REC_LOCKED_OBJECT log_rec =
 		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_LOCKED_OBJECT> ();
 
-	    const bool is_class = OID_EQ (&log_rec.classoid, oid_Root_class_oid);
+	    const bool is_class = OID_IS_ROOTOID (&log_rec.classoid);
+
 	    if (is_locked_for_ddl (header.trid, &log_rec.oid, is_class))
 	      {
 		break;
@@ -396,7 +397,7 @@ namespace cublog
       for (auto it = begin; it != end; ++it)
 	{
 	  const auto &log_rec = it->second;
-	  lock_unlock_object_and_cleanup (nullptr, &log_rec.oid, &log_rec.classoid, log_rec.lock_mode);
+	  lock_unlock_object_and_cleanup (&thread_entry, &log_rec.oid, &log_rec.classoid, log_rec.lock_mode);
 	}
 
       objects.erase (trid);
@@ -430,7 +431,7 @@ namespace cublog
       }
     else
       {
-	assert (OID_EQ (&log_rec.classoid, oid_Serial_class_oid));
+	assert (oid_is_serial (&log_rec.classoid));
 	m_locked_serials.emplace (trid, log_rec);
       }
   }
@@ -544,9 +545,9 @@ namespace cublog
   }
 
   bool
-  atomic_replicator::is_locked_for_ddl (const TRANID trid, const OID *oid, const bool is_class)
+  atomic_replicator::is_locked_for_ddl (const TRANID trid, const OID *oid, const bool is_class) const
   {
-    const auto locked_objects = is_class ? m_locked_classes : m_locked_serials;
+    const auto &locked_objects = is_class ? m_locked_classes : m_locked_serials;
 
     auto [begin, end] = locked_objects.equal_range (trid);
     for (auto it = begin; it != end; ++it)
