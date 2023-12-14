@@ -1443,7 +1443,9 @@ Anahtar dosyasının (_keys) yolunu kontrol edin ve uygun anahtarı içerdiğind
 1357 SQL dizesini geniş dizeye dönüştürme işlemi başarısız oldu.
 1358 Etkilenen satır sayısı bilinmiyor.
 
-1359 Son Hata
+1359 Java VM crashed: %1$s
+
+1360 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

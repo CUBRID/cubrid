@@ -89,7 +89,8 @@ typedef enum
   S_HEAP_PAGE_SCAN,		/* scans heap pages and queries for page information */
   S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
   S_INDX_NODE_INFO_SCAN,	/* scans b-tree nodes for info */
-  S_DBLINK_SCAN			/* scans dblink */
+  S_DBLINK_SCAN,		/* scans dblink */
+  S_HEAP_SAMPLING_SCAN		/* scans sampling data */
 } SCAN_TYPE;
 
 typedef struct dblink_scan_id DBLINK_SCAN_ID;
@@ -116,6 +117,7 @@ struct heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
+  sampling_info sampling;	/* for sampling statistics */
 };				/* Regular Heap File Scan Identifier */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
@@ -397,7 +399,7 @@ extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				int num_attrs_pred, ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred,
 				int num_attrs_rest, ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest,
 				SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-				regu_variable_list_node * regu_list_recordinfo);
+				regu_variable_list_node * regu_list_recordinfo, bool is_partition_table);
 extern int scan_open_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, val_list_node * val_list,
 				     val_descr * vd, OID * cls_oid, HFID * hfid, PRED_EXPR * pr, SCAN_TYPE scan_type,
 				     DB_VALUE ** cache_page_info, regu_variable_list_node * regu_list_page_info);
