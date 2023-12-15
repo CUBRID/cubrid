@@ -346,9 +346,12 @@ tran_server::get_boot_info_from_page_server ()
       return error_code;
     }
 
+  cubpacking::unpacker unpacker { response_message.c_str (), response_message.size () };
+  PGLENGTH io_page_size;
   PGLENGTH log_page_size;
-  PGLENGTH io_page_size = 16*1024;
-  std::memcpy (&log_page_size, response_message.c_str (), sizeof (PGLENGTH));
+
+  unpacker.unpack_short (io_page_size);
+  unpacker.unpack_short (log_page_size);
 
   return db_set_page_size (io_page_size, log_page_size);
 }
