@@ -2060,8 +2060,8 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Thread (Index %1$3d) der Transaktion (Index %2$3d, %3$s, %4$s@%5$s|%6$d) wurde ausgesetzt.\n
-3 Thread (Index %1$3d) der Transaktion (Index %2$3d, %3$s, %4$s@%5$s|%6$d) wurde fortgesetzt.\n
+2 Thread (Index %1$3d) der Transaktion (Index %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) wurde ausgesetzt.\n
+3 Thread (Index %1$3d) der Transaktion (Index %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) wurde fortgesetzt.\n
 4 Transaktionenindex %1$3d ERHIELTE %2$s Lock auf Objekt %3$d|%4$d|%5$d.\n
 5 Transaktionenindex %1$3d ERHIELTE %2$s Lock auf Seite %3$d|%4$d.\n
 6 Transaktionenindex %1$3d KONVERTIERTE sein Lock auf %2$s Lock auf Objekt %3$d|%4$d|%5$d.\n

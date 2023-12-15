@@ -2060,8 +2060,8 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Hilo (indice %1$3d) de transaccion (indice %2$3d, %3$s, %4$s@%5$s|%6$d) ha sido suspendido.\n
-3 Hilo (indice %1$3d) de transaccion (indice %2$3d, %3$s, %4$s@%5$s|%6$d) ha sido reanudado.\n
+2 Hilo (indice %1$3d) de transaccion (indice %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) ha sido suspendido.\n
+3 Hilo (indice %1$3d) de transaccion (indice %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) ha sido reanudado.\n
 4 Indice %1$3d de transaccion ha adquirrido bloqueo %2$s en objeto %3$d|%4$d|%5$d.\n
 5 Indice %1$3d de transaccion ha adquirrido bloqueo %2$s en pagina %3$d|%4$d.\n
 6 Indice %1$3d de transaccion ha convertido su bloqueo en bloqueo %2$s en objeto %3$d|%4$d|%5$d.\n

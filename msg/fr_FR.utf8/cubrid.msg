@@ -2060,8 +2060,8 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Fil d'exécution (indice %1$3d) de transaction (indice %2$3d, %3$s, %4$s@%5$s|%6$d) a été suspendu.\n
-3 Fil d'exécution (indice %1$3d) de transaction (indice %2$3d, %3$s, %4$s@%5$s|%6$d) a été repris.\n
+2 Fil d'exécution (indice %1$3d) de transaction (indice %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) a été suspendu.\n
+3 Fil d'exécution (indice %1$3d) de transaction (indice %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) a été repris.\n
 4 Indice de transaction %1$3d ACQUIS (ACQUIRED) %2$s verrou sur objet %3$d|%4$d|%5$d.\n
 5 Indice de transaction %1$3d ACQUIS (ACQUIRED) %2$s verrou sur page %3$d|%4$d.\n
 6 Indice de transaction %1$3d CONVERTIT (CONVERTED) son verrou à %2$s verrou sur objet %3$d|%4$d|%5$d.\n

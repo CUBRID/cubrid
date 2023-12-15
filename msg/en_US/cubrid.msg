@@ -2060,8 +2060,8 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Thread (index %1$3d) of transaction (index %2$3d, %3$s, %4$s@%5$s|%6$d) has been suspended.\n
-3 Thread (index %1$3d) of transaction (index %2$3d, %3$s, %4$s@%5$s|%6$d) has been resumed.\n
+2 Thread (index %1$3d) of transaction (index %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) has been suspended.\n
+3 Thread (index %1$3d) of transaction (index %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) has been resumed.\n
 4 Transaction index %1$3d ACQUIRED %2$s lock on object %3$d|%4$d|%5$d.\n
 5 Transaction index %1$3d ACQUIRED %2$s lock on page %3$d|%4$d.\n
 6 Transaction index %1$3d CONVERTED its lock to %2$s lock on object %3$d|%4$d|%5$d.\n

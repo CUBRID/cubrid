@@ -2060,8 +2060,8 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Hat (indeks %1$3d) işlemin (indeks %2$3d, %3$s, %4$s@%5$s|%6$d) askıya alındı.\n
-3 Hat (indeks %1$3d) işleminin (indeks %2$3d, %3$s, %4$s@%5$s|%6$d) devam edilmiştir.\n
+2 Hat (indeks %1$3d) işlemin (indeks %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) askıya alındı.\n
+3 Hat (indeks %1$3d) işlemin (indeks %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) devam edilmiştir.\n
 4 İşlem endeksi %1$3d nesne %2$s kilit ACQUIRED %3$d|%4$d|%5$d.\n
 5 İşlem endeksi %1$3d sayfa %2$s kilit ACQUIRED %3$d|%4$d.\n
 6 İşlem endeksi %1$3d nesne %2$s kilit, kilit CONVERTED %3$d|%4$d|%5$d.\n
