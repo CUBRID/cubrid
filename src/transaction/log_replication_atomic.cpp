@@ -238,11 +238,11 @@ namespace cublog
 	      }
 	    break;
 	  }
-	  case LOG_LOCKED_OBJECT:
+	  case LOG_REPL_DDL_LOCK_INFO:
 	  {
-	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_LOCKED_OBJECT));
-	    const LOG_REC_LOCKED_OBJECT log_rec =
-		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_LOCKED_OBJECT> ();
+	    m_redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_REPL_DDL_LOCK_INFO));
+	    const LOG_REC_REPL_DDL_LOCK_INFO log_rec =
+		    m_redo_context.m_reader.reinterpret_copy_and_add_align<LOG_REC_REPL_DDL_LOCK_INFO> ();
 
 	    const bool is_class = OID_IS_ROOTOID (&log_rec.classoid);
 
@@ -409,7 +409,7 @@ namespace cublog
 
   void
   atomic_replicator::acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid,
-      const LOG_REC_LOCKED_OBJECT &log_rec, const bool is_class)
+      const LOG_REC_REPL_DDL_LOCK_INFO &log_rec, const bool is_class)
   {
     assert (!OID_ISNULL (&log_rec.classoid) && !OID_ISTEMP (&log_rec.classoid));
     assert (!OID_ISNULL (&log_rec.oid) && !OID_ISTEMP (&log_rec.oid));

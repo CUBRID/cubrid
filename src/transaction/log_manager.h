@@ -130,7 +130,8 @@ extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_DATA_ADDR * addr);
 extern void log_append_assigned_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
-extern void log_append_locked_object (THREAD_ENTRY * thread_p, const OID * classoid, const OID * oid, const LOCK lock);
+extern void log_append_repl_ddl_lock_info (THREAD_ENTRY * thread_p, const OID * classoid, const OID * oid,
+					   const LOCK lock);
 
 // *INDENT-OFF*
 extern void log_append_trantable_snapshot (THREAD_ENTRY *thread_p, const cublog::checkpoint_info &chkpt_info);

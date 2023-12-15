@@ -2563,7 +2563,7 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY * thread_p, LOG_RECTYPE log_
     case LOG_START_ATOMIC_REPL:
     case LOG_END_ATOMIC_REPL:
     case LOG_TRANTABLE_SNAPSHOT:
-    case LOG_LOCKED_OBJECT:
+    case LOG_REPL_DDL_LOCK_INFO:
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
@@ -4029,7 +4029,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, log_recovery_context & context)
 	    case LOG_END_ATOMIC_REPL:
 	    case LOG_TRANTABLE_SNAPSHOT:
 	    case LOG_ASSIGNED_MVCCID:
-	    case LOG_LOCKED_OBJECT:
+	    case LOG_REPL_DDL_LOCK_INFO:
 	      break;
 
 	    case LOG_SYSOP_END:
@@ -4979,7 +4979,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_END_ATOMIC_REPL:
 		case LOG_TRANTABLE_SNAPSHOT:
 		case LOG_ASSIGNED_MVCCID:
-		case LOG_LOCKED_OBJECT:
+		case LOG_REPL_DDL_LOCK_INFO:
 		  /* Not for UNDO ... */
 		  /* Break switch to go to previous record */
 		  break;
@@ -5943,9 +5943,9 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), &log_lsa, log_pgptr);
       break;
-    case LOG_LOCKED_OBJECT:
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_LOCKED_OBJECT), &log_lsa, log_pgptr);
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_LOCKED_OBJECT), &log_lsa, log_pgptr);
+    case LOG_REPL_DDL_LOCK_INFO:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REPL_DDL_LOCK_INFO), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REPL_DDL_LOCK_INFO), &log_lsa, log_pgptr);
       break;
     case LOG_SMALLER_LOGREC_TYPE:
     case LOG_LARGER_LOGREC_TYPE:

@@ -97,7 +97,7 @@ namespace cublog
       void update_classname_cache_for_ddl (cubthread::entry &thread_entry, const OID *classoid);
 
       void release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
-      void acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const LOG_REC_LOCKED_OBJECT &log_rec,
+      void acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const LOG_REC_REPL_DDL_LOCK_INFO &log_rec,
 				 const bool is_class);
       void discard_caches_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
       bool is_locked_for_ddl (const TRANID trid, const OID *oid, const bool is_class) const;
@@ -114,8 +114,8 @@ namespace cublog
       /* Keep track of the locked objects for DDL replication.
        * Since multiple DDL operations can be executed within single transaction,
        * more than one classes or objects(records in db_serial) can be mapped to one transaction */
-      std::multimap <TRANID, LOG_REC_LOCKED_OBJECT> m_locked_classes;
-      std::multimap <TRANID, LOG_REC_LOCKED_OBJECT> m_locked_serials;
+      std::multimap <TRANID, LOG_REC_REPL_DDL_LOCK_INFO> m_locked_classes;
+      std::multimap <TRANID, LOG_REC_REPL_DDL_LOCK_INFO> m_locked_serials;
       std::unordered_map <OID, std::string> m_classname_map;
   };
 }

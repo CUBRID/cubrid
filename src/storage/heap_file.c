@@ -20668,7 +20668,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	      assert (!OID_ISNULL (&context->res_oid));
 	      assert (is_active_transaction_server ());
 
-	      log_append_locked_object (thread_p, &context->class_oid, &context->res_oid, lock);
+	      log_append_repl_ddl_lock_info (thread_p, &context->class_oid, &context->res_oid, lock);
 	    }
 #endif
 

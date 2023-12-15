@@ -2554,7 +2554,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 		    {
 		      assert (!OID_ISNULL (p_oid));
 
-		      log_append_locked_object (thread_p, class_oid, p_oid, lock);
+		      log_append_repl_ddl_lock_info (thread_p, class_oid, p_oid, lock);
 		    }
 		}
 #endif
