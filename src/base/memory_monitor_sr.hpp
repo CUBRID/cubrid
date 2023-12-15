@@ -24,11 +24,11 @@
 #ifndef _MEMORY_MONITOR_SR_HPP_
 #define _MEMORY_MONITOR_SR_HPP_
 
-#include <stdint.h>
 #include <unordered_map>
-#include <vector>
 #include <string>
 #include <atomic>
+
+#include "memory_monitor_common.hpp"
 
 // IMPORTANT!!
 // This meta size is related with allocation byte align
@@ -46,7 +46,8 @@ namespace cubmem
       size_t get_alloc_size (char *ptr);
       void add_stat (char *ptr, size_t size, const char *file);
       void sub_stat (char *ptr);
-      void aggregate_stat_info (std::vector<std::pair<const char *, uint64_t>> &stat_info);
+      void aggregate_server_info (MMON_SERVER_INFO &server_info);
+      void finalize_dump ();
 
     private:
       int generate_checksum (int tag_id, uint64_t size);
@@ -66,5 +67,5 @@ void mmon_finalize ();
 size_t mmon_get_alloc_size (char *ptr);
 void mmon_add_stat (char *ptr, size_t size, const char *file);
 void mmon_sub_stat (char *ptr);
-void mmon_aggregate_stat_info (std::vector<std::pair<const char *, uint64_t>> &stat_info);
+void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info);
 #endif // _MEMORY_MONITOR_SR_HPP_

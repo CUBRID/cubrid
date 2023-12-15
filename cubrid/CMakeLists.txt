@@ -153,6 +153,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_cppwrapper.hpp
   ${BASE_DIR}/memory_cwrapper.h
+  ${BASE_DIR}/memory_monitor_common.hpp
   ${BASE_DIR}/memory_monitor_sr.hpp
   ${BASE_DIR}/memory_reference_store.hpp
   ${BASE_DIR}/memory_private_allocator.hpp

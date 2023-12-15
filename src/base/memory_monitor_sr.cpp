@@ -158,6 +158,7 @@ namespace cubmem
 	assert ((tag_id >= 0 && tag_id <= m_stat_map.size()));
 	assert (m_stat_map[tag_id] >= size);
 
+	m_total_mem_usage -= size;
 	m_stat_map[tag_id] -= size;
 
 	memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
@@ -169,18 +170,57 @@ namespace cubmem
       }
   }
 
-  void memory_monitor::aggregate_stat_info (std::vector<std::pair<const char *, uint64_t>> &stat_info)
+  void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
   {
+    strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
+    server_info.total_mem_usage = m_total_mem_usage.load ();
+    server_info.num_stat = m_tag_map.size ();
+
     for (auto it = m_tag_map.begin (); it != m_tag_map.end (); ++it)
       {
-	stat_info.push_back (std::make_pair (it->first, m_stat_map[it->second].load ()));
+	server_info.stat_info.push_back (std::make_pair ((char *)it->first, m_stat_map[it->second].load ()));
       }
 
     const auto &comp = [] (const auto& stat_pair1, const auto& stat_pair2)
     {
       return stat_pair1.second > stat_pair2.second;
     };
-    std::sort (stat_info.begin (), stat_info.end (), comp);
+    std::sort (server_info.stat_info.begin (), server_info.stat_info.end (), comp);
+  }
+
+  void memory_monitor::finalize_dump ()
+  {
+    double mem_usage_ratio = 0.0;
+    FILE *outfile_fp = fopen ("finalize_dump.txt", "w+");
+    MMON_SERVER_INFO server_info;
+
+    auto MMON_CONVERT_TO_KB_SIZE = [] (uint64_t size)
+    {
+      return ((size) / 1024);
+    };
+
+    aggregate_server_info (server_info);
+
+    fprintf (outfile_fp, "====================cubrid memmon====================\n");
+    fprintf (outfile_fp, "Server Name: %s\n", server_info.server_name);
+    fprintf (outfile_fp, "Total Memory Usage(KB): %lu\n\n", MMON_CONVERT_TO_KB_SIZE (server_info.total_mem_usage));
+    fprintf (outfile_fp, "-----------------------------------------------------\n");
+
+    fprintf (outfile_fp, "\t%-100s | %17s(%s)\n", "File Name", "Memory Usage", "Ratio");
+
+    for (const auto &s_info : server_info.stat_info)
+      {
+	if (server_info.total_mem_usage != 0)
+	  {
+	    mem_usage_ratio = s_info.second / (double) server_info.total_mem_usage;
+	    mem_usage_ratio *= 100;
+	  }
+	fprintf (outfile_fp, "\t%-100s | %17lu(%3d%%)\n",s_info.first, MMON_CONVERT_TO_KB_SIZE (s_info.second),
+		 (int)mem_usage_ratio);
+      }
+    fprintf (outfile_fp, "-----------------------------------------------------\n");
+    fflush (outfile_fp);
+    fclose (outfile_fp);
   }
 } // namespace cubmem
 
@@ -213,6 +253,9 @@ void mmon_finalize ()
 {
   if (mmon_Gl != nullptr)
     {
+#if !defined (NDEBUG)
+      mmon_Gl->finalize_dump ();
+#endif
       delete mmon_Gl;
       mmon_Gl = nullptr;
       is_mem_tracked = false;
@@ -248,10 +291,10 @@ void mmon_sub_stat (char *ptr)
     }
 }
 
-void mmon_aggregate_stat_info (std::vector<std::pair<const char *, uint64_t>> &stat_info)
+void mmon_aggregate_server_info (MMON_SERVER_INFO &server_info)
 {
   if (mmon_Gl != nullptr)
     {
-      mmon_Gl->aggregate_stat_info (stat_info);
+      mmon_Gl->aggregate_server_info (server_info);
     }
 }

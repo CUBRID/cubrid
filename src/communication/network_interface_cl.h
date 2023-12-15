@@ -54,6 +54,7 @@
 #include "method_def.hpp"
 #include "dynamic_array.h"
 #include "flashback_cl.h"
+#include "memory_monitor_cl.hpp"
 
 // forward declarations
 #if defined (SA_MODE)
@@ -451,5 +452,5 @@ extern int flashback_get_and_show_summary (dynamic_array * class_list, const cha
 extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG_LSA * start_lsa,
 				  LOG_LSA * end_lsa, int *num_item, bool forward, char **info_list,
 				  int *invalid_class_idx);
-
+extern int mmon_get_server_info (MMON_SERVER_INFO & SERVER_INFO);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

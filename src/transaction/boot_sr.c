@@ -2834,7 +2834,7 @@ error:
   er_stack_pop ();
 
 #if defined (SERVER_MODE)
-  mmon_finalize ();
+  //mmon_finalize ();
 #endif
 
 #if defined (SA_MODE)
@@ -3157,7 +3157,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
     }
 
 #if defined (SERVER_MODE)
-  mmon_finalize ();
+  //mmon_finalize ();
 #endif
 
 #if defined (SA_MODE)
