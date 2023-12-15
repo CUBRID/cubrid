@@ -117,6 +117,7 @@ namespace cublog
 	    break;
 	  }
 	  case LOG_COMMIT:
+	  {
 	    assert (!m_atomic_helper.is_part_of_atomic_replication (header.trid));
 
 	    if (m_replicate_mvcc)
@@ -124,12 +125,15 @@ namespace cublog
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::COMMITTED);
 	      }
 
-	    if (m_locked_classes.count (header.trid) > 0)
+	    const bool locked_classes_exist = m_locked_classes.count (header.trid) > 0;
+	    const bool locked_serials_exist = m_locked_serials.count (header.trid) > 0;
+
+	    if (locked_classes_exist)
 	      {
 		discard_caches_for_ddl (thread_entry, header.trid);
 	      }
 
-	    if (m_locked_classes.count (header.trid) + m_locked_serials.count (header.trid) > 0)
+	    if (locked_classes_exist || locked_serials_exist)
 	      {
 		release_all_locks_for_ddl (thread_entry, header.trid);
 	      }
@@ -137,7 +141,9 @@ namespace cublog
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
+	  }
 	  case LOG_ABORT:
+	  {
 	    // TODO: there are 2 identified sources for aborted transactions:
 	    //  *1* transactions aborted by the client
 	    //  *2* unilaterally aborted transactions by the engine (for whatever reason,
@@ -164,7 +170,10 @@ namespace cublog
 		m_replicator_mvccid->complete_mvcc (header.trid, replicator_mvcc::ABORTED);
 	      }
 
-	    if (m_locked_classes.count (header.trid) + m_locked_serials.count (header.trid) > 0)
+	    const bool locked_classes_exist = m_locked_classes.count (header.trid) > 0;
+	    const bool locked_serials_exist = m_locked_serials.count (header.trid) > 0;
+
+	    if (locked_classes_exist || locked_serials_exist)
 	      {
 		release_all_locks_for_ddl (thread_entry, header.trid);
 	      }
@@ -172,6 +181,7 @@ namespace cublog
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_DONETIME> (
 		    thread_entry, m_redo_lsa);
 	    break;
+	  }
 	  case LOG_DUMMY_HA_SERVER_STATE:
 	    calculate_replication_delay_or_dispatch_async<LOG_REC_HA_SERVER_STATE> (
 		    thread_entry, m_redo_lsa);
