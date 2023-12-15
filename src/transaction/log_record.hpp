@@ -152,11 +152,11 @@ enum log_rectype
                                  * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
                                  * or undo images that never retrieved from the log. */
 
-  LOG_SCHEMA_MODIFICATION_LOCK, /* Log when SCH_M_LOCK is acquired, and this is for PTS replication to know
-                                 * when to acquire a SCH_M_LOCK for replicating DDL modification, and
-                                 * which table to be locked.
-                                 * PTS needs to block the read transactions which try to access the same class
+  LOG_REPL_DDL_LOCK_INFO,       /* Log when the lock is acquired for DDL operation, and this is for PTS replicator
+                                 * to know when to acquire the lock, and which object to be locked.
+                                 * PTS needs to block the read transactions which try to access the same object
                                  * being modified by the replicator.
+                                 * (lock is required for the record in root class and db_serial, which are not mvcc classes)
                                  */
 
   /* NOTE: add actual (persistent) new values before this */
@@ -461,10 +461,12 @@ struct log_rec_supplement
   int length;
 };
 
-typedef struct log_rec_schema_modification_lock LOG_REC_SCHEMA_MODIFICATION_LOCK;
-struct log_rec_schema_modification_lock
+typedef struct log_rec_repl_ddl_lock_info LOG_REC_REPL_DDL_LOCK_INFO;
+struct log_rec_repl_ddl_lock_info
 {
+  OID oid;
   OID classoid;
+  LOCK lock_mode;
 };
 
 #define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \
