@@ -5291,7 +5291,7 @@ lock_wait_msecs_to_secs (int msecs)
 #if defined(SERVER_MODE)
 
 /*
- * lock_dump_lk_entry - detailed dump of a lock entry
+ * lock_dump_lk_entry - overly-verbose dump of a lock entry
  *
  * return:
  *
@@ -5312,7 +5312,7 @@ lock_dump_lk_entry (FILE * outfp, const LK_ENTRY * entry_ptr)
 	   "      (this)=%p res_head=%p  tran_index=%d  granted_mode=%s  blocked_mode=%s  count=%d  del_id=%lld\n"
 	   "      tran_next_count=%d  tran_prev_count=%d\n"
 	   "      class_entry=%p  ngranules=%d instant_lock_count=%d  bind_index_in_tran=%d\n"
-	   "          thrd_entry(%p): lockwait=%p lockwait_stime=%lld lockwait_msecs=%d lockwait_state=%d\n",
+	   "          thrd_entry(%p): lockwait=%p lockwait_stime=%lld lockwait_msecs=%d lockwait_state=%s\n",
 	   (void *) entry_ptr,
 	   (void *) entry_ptr->res_head, entry_ptr->tran_index,
 	   LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
@@ -5325,7 +5325,7 @@ lock_dump_lk_entry (FILE * outfp, const LK_ENTRY * entry_ptr)
 	   (entry_ptr->thrd_entry != nullptr ? entry_ptr->thrd_entry->lockwait : nullptr),
 	   (long long) (entry_ptr->thrd_entry != nullptr ? entry_ptr->thrd_entry->lockwait_stime : 0),
 	   (entry_ptr->thrd_entry != nullptr ? entry_ptr->thrd_entry->lockwait_msecs : 0),
-	   (entry_ptr->thrd_entry != nullptr ? entry_ptr->thrd_entry->lockwait_state : 0));
+	   lock_wait_state_to_string ((entry_ptr->thrd_entry != nullptr) ? entry_ptr->thrd_entry->lockwait_state : -1));
 }
 
 /*
