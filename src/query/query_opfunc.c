@@ -6046,9 +6046,12 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
 
-  if (domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL)
+  if (!prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
     {
-      return NO_ERROR;
+      if (domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL)
+	{
+	  return NO_ERROR;
+	}
     }
 
   type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
