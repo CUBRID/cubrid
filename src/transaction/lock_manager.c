@@ -70,8 +70,6 @@
 
 #include <array>
 
-#define LK_DUMP
-
 extern LOCK_COMPATIBILITY lock_Comp[12][12];
 
 #if defined (SERVER_MODE)
