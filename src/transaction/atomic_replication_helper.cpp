@@ -763,7 +763,7 @@ namespace cublog
 	    const atomic_log_entry &last_but_one_entry = *last_but_one_entry_it;
 
 	    if (!LSA_ISNULL (&last_entry.m_sysop_end_last_parent_lsa) &&
-		(last_but_one_entry.m_lsa > last_entry.m_sysop_end_last_parent_lsa))
+		(last_but_one_entry.m_lsa >= last_entry.m_sysop_end_last_parent_lsa))
 	      {
 		assert (last_but_one_entry.m_rectype == LOG_SYSOP_ATOMIC_START);
 
