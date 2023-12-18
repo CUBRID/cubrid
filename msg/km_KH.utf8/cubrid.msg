@@ -1443,7 +1443,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1357 Converting SQL string to wide string failed.
 1358 Number of rows affected is unknown.
 
-1359 Last Error
+1359 Java VM crashed: %1$s
+
+1360 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

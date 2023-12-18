@@ -199,6 +199,7 @@ struct btree_node_header
   VPID next_vpid;		/* Leaf Page Next Node Pointer */
   short node_level;		/* btree depth; Leaf(= 1), Non_leaf(> 1) */
   short max_key_len;		/* Maximum key length for the subtree */
+  int common_prefix;
 };
 
 /* Root header information */

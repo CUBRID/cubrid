@@ -817,7 +817,7 @@ pgbuf_fix_release
 (THREAD_ENTRY * /*thread_p*/, const VPID *vpid, PAGE_FETCH_MODE /*fetch_mode*/
  , PGBUF_LATCH_MODE /*request_mode*/, PGBUF_LATCH_CONDITION /*condition*/
 #if !defined(NDEBUG)
- , const char */*caller_file*/, int /*caller_line*/
+ , const char */*caller_file*/, int /*caller_line*/, const char */*caller_func*/
 #endif /* NDEBUG */
 )
 {
@@ -838,7 +838,7 @@ pgbuf_unfix
 #endif /* NDEBUG */
 (THREAD_ENTRY * /*thread_p*/, PAGE_PTR pgptr
 #if !defined(NDEBUG)
- , const char */*caller_file*/, int /*caller_line*/
+ , const char */*caller_file*/, int /*caller_line*/, const char */*caller_func*/
 #endif /* NDEBUG */
 )
 {
@@ -856,7 +856,7 @@ pgbuf_ordered_fix_release
 (THREAD_ENTRY * /*thread_p*/, const VPID *req_vpid, PAGE_FETCH_MODE /*fetch_mode*/,
  const PGBUF_LATCH_MODE /*request_mode*/, PGBUF_WATCHER *req_watcher
 #if !defined(NDEBUG)
- , const char */*caller_file*/, int /*caller_line*/
+ , const char */*caller_file*/, int /*caller_line*/, const char */*caller_func*/
 #endif /* NDEBUG */
 )
 {
@@ -879,7 +879,7 @@ pgbuf_ordered_unfix
 #endif /* NDEBUG */
 (THREAD_ENTRY * /*thread_p*/, PGBUF_WATCHER *watcher_object
 #if !defined(NDEBUG)
- , const char */*caller_file*/, int /*caller_line*/
+ , const char */*caller_file*/, int /*caller_line*/, const char */*caller_func*/
 #endif /* NDEBUG */
 )
 {
@@ -1040,8 +1040,15 @@ pgbuf_get_lsa (PAGE_PTR /*pgptr*/)
   return nullptr;
 }
 
+
+#if !defined(NDEBUG)
 const LOG_LSA *
-pgbuf_set_lsa (THREAD_ENTRY * /*thread_p*/, PAGE_PTR /*pgptr*/, const LOG_LSA * /*lsa_ptr*/)
+pgbuf_set_lsa_debug (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr, const char *caller_file,
+		     int caller_line, const char *caller_func)
+#else
+const LOG_LSA *
+pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
+#endif
 {
   assert_release (false);
   return nullptr;

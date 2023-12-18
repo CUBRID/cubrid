@@ -138,6 +138,8 @@ static void strcat_with_realloc (PT_STRING_BLOCK * sb, const char *tail);
 static PT_NODE *pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
 					   int *continue_walk);
 static PT_NODE *pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg, int *continue_walk);
+static PT_NODE *pt_lambda_node_pre (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
+				    int *continue_walk);
 static PT_NODE *pt_find_id_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk);
 static PT_NODE *copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, int *continue_walk);
 static PT_NODE *copy_node_in_tree_post (PARSER_CONTEXT * parser, PT_NODE * new_node, void *arg, int *continue_walk);
@@ -566,6 +568,34 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
       break;
     default:
       break;
+    }
+
+  return tree_or_name;
+}
+
+/*
+ * pt_lambda_node_pre () - check query node type
+ *   return:
+ *   parser(in):
+ *   tree_or_name(in/out):
+ *   void_arg(in/out):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_lambda_node_pre (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg, int *continue_walk)
+{
+  if (!tree_or_name)
+    {
+      return tree_or_name;
+    }
+
+  if (PT_IS_QUERY_NODE_TYPE (tree_or_name->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
     }
 
   return tree_or_name;
@@ -1046,6 +1076,7 @@ pt_continue_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *conti
 /*
  * pt_lambda_with_arg () - walks a tree and modifies it in place to replace
  * 	                   name nodes with copies of a corresponding tree
+ *			   type 1 : for reduce_eq_term, type 2 : don't walk into subquery
  *   return:
  *   parser(in):
  *   tree_with_names(in):
@@ -1117,8 +1148,9 @@ pt_lambda_with_arg (PARSER_CONTEXT * parser, PT_NODE * tree_with_names, PT_NODE 
     }
 
   tree =
-    parser_walk_tree (parser, tree_with_names, ((type) ? pt_lambda_check_reduce_eq : NULL), &lambda_arg, pt_lambda_node,
-		      &lambda_arg);
+    parser_walk_tree (parser, tree_with_names,
+		      ((type == 1) ? pt_lambda_check_reduce_eq : (type == 2) ? pt_lambda_node_pre : NULL), &lambda_arg,
+		      pt_lambda_node, &lambda_arg);
 
   if (corresponding_tree && corresponding_tree->node_type == PT_EXPR)
     {
@@ -6285,13 +6317,12 @@ pt_apply_alter_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 static PARSER_VARCHAR *
 pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *b = 0, *r1, *r2, *r3, *comment;
+  PARSER_VARCHAR *b = 0, *r1, *comment;
   unsigned int saved_cp = parser->custom_print;
 
   parser->custom_print |= PT_SUPPRESS_RESOLVED;
 
   r1 = pt_print_bytes (parser, p->info.index.indexed_class);
-  r2 = pt_print_index_columns (parser, p);
 
   parser->custom_print = saved_cp;
 
@@ -6315,26 +6346,10 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   b = pt_append_nulstring (parser, b, " on ");
   b = pt_append_varchar (parser, b, r1);
 
-  if (r2 != NULL)
-    {
-      b = pt_append_nulstring (parser, b, " (");
-      b = pt_append_varchar (parser, b, r2);
-      b = pt_append_nulstring (parser, b, ")");
-    }
-
   b = pt_append_nulstring (parser, b, " ");
 
-  if (p->info.index.code == PT_REBUILD_INDEX)
-    {
-      if (p->info.index.where)
-	{
-	  r3 = pt_print_and_list (parser, p->info.index.where);
-	  b = pt_append_nulstring (parser, b, " where ");
-	  b = pt_append_varchar (parser, b, r3);
-	}
-    }
 #if defined (ENABLE_RENAME_CONSTRAINT)
-  else if (p->info.index.code == PT_RENAME_INDEX)
+  if (p->info.index.code == PT_RENAME_INDEX)
     {
       b = pt_append_nulstring (parser, b, "rename to ");
 
@@ -14249,6 +14264,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)
 	    {
 	      q = pt_append_nulstring (parser, q, "SELECT_RECORD_INFO ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
+	    {
+	      q = pt_append_nulstring (parser, q, "SAMPLING_SCAN ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)

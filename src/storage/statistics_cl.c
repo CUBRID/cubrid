@@ -35,6 +35,8 @@
 #include "network_interface_cl.h"
 #include "tz_support.h"
 #include "db_date.h"
+#include "db.h"
+#include "dbtype_function.h"
 
 static CLASS_STATS *stats_client_unpack_statistics (char *buffer);
 
@@ -85,7 +87,6 @@ stats_client_unpack_statistics (char *buf_p)
   CLASS_STATS *class_stats_p;
   ATTR_STATS *attr_stats_p;
   BTREE_STATS *btree_stats_p;
-  int max_unique_keys;
   int i, j, k;
 
   if (buf_p == NULL)
@@ -149,6 +150,9 @@ stats_client_unpack_statistics (char *buf_p)
 
       attr_stats_p->n_btstats = OR_GET_INT (buf_p);
       buf_p += OR_INT_SIZE;
+
+      OR_GET_INT64 (buf_p, &attr_stats_p->ndv);
+      buf_p += OR_INT64_SIZE;
 
       if (attr_stats_p->n_btstats <= 0)
 	{
@@ -218,14 +222,6 @@ stats_client_unpack_statistics (char *buf_p)
 	      buf_p += OR_INT_SIZE;
 	    }
 	}
-    }
-
-  /* correct estimated num_objects with unique keys */
-  max_unique_keys = OR_GET_INT (buf_p);
-  buf_p += OR_INT_SIZE;
-  if (max_unique_keys > 0)
-    {
-      class_stats_p->heap_num_objects = max_unique_keys;
     }
 
   /* validate key stats info */
@@ -338,149 +334,9 @@ stats_dump (const char *class_name_p, FILE * file_p)
       attr_stats_p = &(class_stats_p->attr_stats[i]);
 
       name_p = sm_get_att_name (class_mop, attr_stats_p->id);
-      fprintf (file_p, " Attribute: %s\n", (name_p ? name_p : "not found"));
-      fprintf (file_p, "    id: %d\n", attr_stats_p->id);
-      fprintf (file_p, "    Type: ");
-
-      switch (attr_stats_p->type)
-	{
-	case DB_TYPE_SHORT:
-	  fprintf (file_p, "DB_TYPE_SHORT\n");
-	  break;
-
-	case DB_TYPE_INTEGER:
-	  fprintf (file_p, "DB_TYPE_INTEGER\n");
-	  break;
-
-	case DB_TYPE_BIGINT:
-	  fprintf (file_p, "DB_TYPE_BIGINT\n");
-	  break;
-
-	case DB_TYPE_FLOAT:
-	  fprintf (file_p, "DB_TYPE_FLOAT\n");
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	  fprintf (file_p, "DB_TYPE_DOUBLE\n");
-	  break;
-
-	case DB_TYPE_STRING:
-	  fprintf (file_p, "DB_TYPE_STRING\n");
-	  break;
-
-	case DB_TYPE_OBJECT:
-	  fprintf (file_p, "DB_TYPE_OBJECT\n");
-	  break;
-
-	case DB_TYPE_SET:
-	  fprintf (file_p, "DB_TYPE_SET\n");
-	  break;
-
-	case DB_TYPE_MULTISET:
-	  fprintf (file_p, "DB_TYPE_MULTISET\n");
-	  break;
-
-	case DB_TYPE_SEQUENCE:
-	  fprintf (file_p, "DB_TYPE_SEQUENCE\n");
-	  break;
-
-	case DB_TYPE_TIME:
-	  fprintf (file_p, "DB_TYPE_TIME\n");
-	  break;
-
-	case DB_TYPE_TIMESTAMP:
-	  fprintf (file_p, "DB_TYPE_TIMESTAMP\n");
-	  break;
-
-	case DB_TYPE_TIMESTAMPLTZ:
-	  fprintf (file_p, "DB_TYPE_TIMESTAMPLTZ\n");
-	  break;
-
-	case DB_TYPE_TIMESTAMPTZ:
-	  fprintf (file_p, "DB_TYPE_TIMESTAMPTZ\n");
-	  break;
-
-	case DB_TYPE_DATETIME:
-	  fprintf (file_p, "DB_TYPE_DATETIME\n");
-	  break;
-
-	case DB_TYPE_DATETIMELTZ:
-	  fprintf (file_p, "DB_TYPE_DATETIMELTZ\n");
-	  break;
-
-	case DB_TYPE_DATETIMETZ:
-	  fprintf (file_p, "DB_TYPE_DATETIMETZ\n");
-	  break;
-
-	case DB_TYPE_MONETARY:
-	  fprintf (file_p, "DB_TYPE_MONETARY\n");
-	  break;
-
-	case DB_TYPE_DATE:
-	  fprintf (file_p, "DB_TYPE_DATE\n");
-	  break;
-
-	case DB_TYPE_BLOB:
-	  fprintf (file_p, "DB_TYPE_BLOB\n");
-	  break;
-
-	case DB_TYPE_CLOB:
-	  fprintf (file_p, "DB_TYPE_CLOB\n");
-	  break;
-
-	case DB_TYPE_VARIABLE:
-	  fprintf (file_p, "DB_TYPE_VARIABLE\n");
-	  break;
-
-	case DB_TYPE_SUB:
-	  fprintf (file_p, "DB_TYPE_SUB\n");
-	  break;
-
-	case DB_TYPE_POINTER:
-	  fprintf (file_p, "DB_TYPE_POINTER\n");
-	  break;
-
-	case DB_TYPE_NULL:
-	  fprintf (file_p, "DB_TYPE_NULL\n");
-	  break;
-
-	case DB_TYPE_NUMERIC:
-	  fprintf (file_p, "DB_TYPE_NUMERIC\n");
-	  break;
-
-	case DB_TYPE_BIT:
-	  fprintf (file_p, "DB_TYPE_BIT\n");
-	  break;
-
-	case DB_TYPE_VARBIT:
-	  fprintf (file_p, "DB_TYPE_VARBIT\n");
-	  break;
-
-	case DB_TYPE_CHAR:
-	  fprintf (file_p, "DB_TYPE_CHAR\n");
-	  break;
-
-	case DB_TYPE_NCHAR:
-	  fprintf (file_p, "DB_TYPE_NCHAR\n");
-	  break;
-
-	case DB_TYPE_VARNCHAR:
-	  fprintf (file_p, "DB_TYPE_VARNCHAR\n");
-	  break;
-
-	case DB_TYPE_DB_VALUE:
-	  fprintf (file_p, "DB_TYPE_DB_VALUE\n");
-	  break;
-
-	case DB_TYPE_ENUMERATION:
-	  fprintf (file_p, "DB_TYPE_ENUMERATION\n");
-	  break;
-
-	default:
-	  assert (false);
-	  fprintf (file_p, "UNKNOWN_TYPE\n");
-	  break;
-	}
+      fprintf (file_p, " Attribute: %s (", (name_p ? name_p : "not found"));
+      fprintf (file_p, "%s)\n", pr_type_name (attr_stats_p->type));
+      fprintf (file_p, "    Number of Distinct Values: %ld\n", attr_stats_p->ndv);
 
       if (attr_stats_p->n_btstats > 0)
 	{
@@ -512,4 +368,275 @@ stats_dump (const char *class_name_p, FILE * file_p)
     }
 
   fprintf (file_p, "\n\n");
+}
+
+/*
+ * stats_ndv_dump () - Dumps the NDV about a class
+ *   return:
+ *   classname(in): The name of class to be printed
+ *   fp(in):
+ */
+void
+stats_ndv_dump (const char *class_name_p, FILE * file_p)
+{
+  MOP class_mop;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
+  int i;
+
+  class_mop = sm_find_class (class_name_p);
+  if (class_mop == NULL)
+    {
+      return;
+    }
+
+  /* get NDV by query */
+  if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, file_p, STATS_WITH_SAMPLING) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* print NDV info */
+  fprintf (file_p, "\nNumber of Distinct Values\n");
+  fprintf (file_p, "****************\n");
+  fprintf (file_p, " Class name: %s\n", sm_get_ch_name (class_mop));
+  for (i = 0; i < class_attr_ndv.attr_cnt; i++)
+    {
+      fprintf (file_p, "  %s (%ld)\n", sm_get_att_name (class_mop, class_attr_ndv.attr_ndv[i].id),
+	       class_attr_ndv.attr_ndv[i].ndv);
+    }
+  fprintf (file_p, "total count : %ld\n", class_attr_ndv.attr_ndv[i].ndv);
+  fprintf (file_p, "\n");
+
+end:
+  if (class_attr_ndv.attr_ndv != NULL)
+    {
+      free_and_init (class_attr_ndv.attr_ndv);
+    }
+  return;
+}
+
+/*
+ * stats_get_ndv_by_query () - get NDV by query
+ *   return:
+ *   class_mop(in):
+ *   attr_ndv(out):
+ */
+int
+stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p, int with_fullscan)
+{
+  DB_ATTRIBUTE *att;
+  int error = NO_ERROR;
+  char *select_list = NULL;
+  const char *query = NULL;
+  char *query_buf = NULL;
+  int buf_size = 0;
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE value;
+  INT64 v1, v2;
+  DB_DOMAIN *dom;
+  int i;
+  const char *class_name_p = NULL;
+
+  /* if class is not normal class */
+  if (!db_is_class (class_mop))
+    {
+      /* The class does not have a heap file (i.e. it has no instances); so no statistics can be obtained for this
+       * class; just set to 0 and return. */
+      class_attr_ndv->attr_cnt = 0;
+      class_attr_ndv->attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV));
+      class_attr_ndv->attr_ndv[0].ndv = 0;
+      class_attr_ndv->attr_ndv[0].id = 0;
+      goto end;
+    }
+
+
+  /* get class_name */
+  class_name_p = db_get_class_name (class_mop);
+  /* count number of the columns */
+  class_attr_ndv->attr_cnt = 0;
+  att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
+  while (att != NULL)
+    {
+      class_attr_ndv->attr_cnt++;
+      att = db_attribute_next (att);
+    }
+
+  class_attr_ndv->attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * (class_attr_ndv->attr_cnt + 1));
+  if (class_attr_ndv->attr_ndv == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  select_list = stats_make_select_list_for_ndv (class_mop, &class_attr_ndv->attr_ndv);
+  if (select_list == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* create sampling SQL statement */
+  if (with_fullscan == STATS_WITH_FULLSCAN)
+    {
+      query = "SELECT %s FROM [%s]";
+    }
+  else
+    {
+      query = "SELECT /*+ SAMPLING_SCAN */ %s FROM [%s]";
+    }
+
+  buf_size = strlen (select_list) + strlen (class_name_p) + 40;
+  query_buf = (char *) malloc (sizeof (char) * buf_size);
+  if (query_buf == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  snprintf (query_buf, buf_size, query, select_list, class_name_p);
+
+  if (file_p != NULL)
+    {
+      fprintf (file_p, "Query : %s\n", query_buf);
+    }
+
+  /* execute sampling SQL */
+  error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
+  if (error < NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* save result to NDV info */
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      goto end;
+    }
+
+  /* get NDV from tuple */
+  for (i = 0; i < class_attr_ndv->attr_cnt; i++)
+    {
+      error = db_query_get_tuple_value (query_result, i, &value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      /* if NDV is 0, it is all null values. */
+      class_attr_ndv->attr_ndv[i].ndv = DB_GET_BIGINT (&value) == 0 ? 1 : DB_GET_BIGINT (&value);
+    }
+
+  /* get count(*) */
+  error = db_query_get_tuple_value (query_result, i, &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  class_attr_ndv->attr_ndv[i].ndv = DB_GET_BIGINT (&value);
+
+end:
+  if (select_list)
+    {
+      free_and_init (select_list);
+    }
+  if (query_buf)
+    {
+      free_and_init (query_buf);
+    }
+  if (query_result)
+    {
+      db_query_end (query_result);
+      query_result = NULL;
+    }
+
+  return error;
+}
+
+/*
+ * stats_make_select_list_for_ndv () - make select-list for ndv
+ *   return:
+ *   class_mop(in): ....
+ *   select_list(in/out):
+ */
+char *
+stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv)
+{
+  DB_ATTRIBUTE *att;
+  char column[DB_MAX_IDENTIFIER_LENGTH + 20] = { '\0' };
+  DB_DOMAIN *dom;
+  size_t buf_size = 1024;
+  ATTR_NDV *att_ndv = *attr_ndv;
+  int i = 0;
+  char *select_list = NULL, *select_buf = NULL;
+
+  select_list = (char *) malloc (sizeof (char) * buf_size);
+  if (select_list == NULL)
+    {
+      return NULL;
+    }
+  /* init select_list */
+  *select_list = '\0';
+
+  /* make select_list */
+  att = (DB_ATTRIBUTE *) db_get_attributes_force (class_mop);
+  while (att != NULL)
+    {
+      /* check if type is varchar or lob. */
+      dom = db_attribute_domain (att);
+      if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (dom)) ||
+	  (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (dom)) && dom->precision > STATS_MAX_PRECISION))
+	{
+	  /* These types are not gathered for statistics. */
+	  snprintf (column, 23, "cast (-1 as BIGINT), ");
+	}
+      else
+	{
+	  /* make column */
+	  snprintf (column, DB_MAX_IDENTIFIER_LENGTH + 20, "count(distinct [%s]), ", db_attribute_name (att));
+	}
+
+      /* alloc memory */
+      if (strlen (select_list) + strlen (column) > buf_size)
+	{
+	  buf_size += 1024;
+	  select_buf = (char *) realloc (select_list, sizeof (char) * buf_size);
+	  if (select_buf == NULL)
+	    {
+	      goto end;
+	    }
+	  else
+	    {
+	      select_list = select_buf;
+	    }
+	}
+
+      /* concat column */
+      strcat (select_list, column);
+
+      /* set column id */
+      att_ndv[i++].id = db_attribute_id (att);
+
+      /* advance to next attribute */
+      att = db_attribute_next (att);
+    }
+
+  /* add "count(*)" */
+  if (strlen (select_list) + strlen ("count(*)") > buf_size)
+    {
+      buf_size += 10;
+      select_list = (char *) realloc (select_list, sizeof (char) * buf_size);
+      if (select_list == NULL)
+	{
+	  goto end;
+	}
+    }
+  att_ndv[i].id = -1;
+  strcat (select_list, "count(*)");
+
+  return select_list;
+
+end:
+  if (select_list)
+    {
+      free_and_init (select_list);
+    }
+  return NULL;
 }

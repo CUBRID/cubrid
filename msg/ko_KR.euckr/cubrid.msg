@@ -16,7 +16,7 @@ $   See the License for the specific language governing permissions and
 $   limitations under the License.
 $ 
 $ 
-$
+
 
 $
 $ $Id$
@@ -1443,7 +1443,9 @@ $ LOADDB
 1357 SQL 문자열을 와이드 문자열로 변환 실패.
 1358 영향을 받은 행 수를 알 수 없음.
 
-1359 마지막 에러
+1359 Java VM 에 장애가 발생함. : %1$s
+
+1360 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

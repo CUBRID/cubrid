@@ -29,7 +29,7 @@ script_dir=$(dirname $(readlink -f $0))
 # variables for options
 build_target="x86_64"
 build_mode="release"
-build_generator="make"
+build_generator="ninja"
 source_dir=`pwd`
 default_java_dir="/usr/lib/jvm/java"
 java_dir=""
