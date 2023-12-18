@@ -11323,11 +11323,13 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
   switch (fhead->type)
     {
     case FILE_BTREE:
+    case FILE_BTREE_OVERFLOW_KEY:
       /* index file */
       spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
+    case FILE_MULTIPAGE_OBJECT_HEAP:
       /* heap file */
       spacedb_ftype = SPACEDB_HEAP_FILE;
       break;
