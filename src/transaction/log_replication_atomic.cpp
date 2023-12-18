@@ -47,7 +47,7 @@ namespace cublog
      * termination state for atomic replication is needed
      */
 
-    cleanup_lock_resources ();
+    cleanup_lock_resources_for_ddl ();
   }
 
   void
@@ -575,7 +575,7 @@ namespace cublog
   }
 
   void
-  atomic_replicator::cleanup_lock_resources ()
+  atomic_replicator::cleanup_lock_resources_for_ddl ()
   {
     cubthread::entry &thread_entry = cubthread::get_entry ();
     lock_unlock_all (&thread_entry);

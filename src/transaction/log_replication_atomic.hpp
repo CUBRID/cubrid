@@ -101,7 +101,7 @@ namespace cublog
 				 const bool is_class);
       void discard_caches_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
       bool is_locked_for_ddl (const TRANID trid, const OID *oid, const bool is_class) const;
-      void cleanup_lock_resources ();
+      void cleanup_lock_resources_for_ddl ();
 
     private:
       atomic_replication_helper m_atomic_helper;
