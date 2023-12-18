@@ -70,6 +70,8 @@
 
 #include <array>
 
+#define LK_DUMP
+
 extern LOCK_COMPATIBILITY lock_Comp[12][12];
 
 #if defined (SERVER_MODE)
@@ -534,6 +536,10 @@ static int lock_compare_lock_info (const void *lockinfo1, const void *lockinfo2)
 static float lock_wait_msecs_to_secs (int msecs);
 static void lock_dump_lk_entry (FILE * outfp, const LK_ENTRY * entry_ptr);
 static void lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr);
+static void lock_dump_internal_lock_action (const char *func_name, int tran_index, const OID * oid,
+					    const OID * class_oid, LOCK lock, int wait_msecs);
+static void lock_dump_internal_lock_alteration (const char *func_name, int tran_index, const OID * oid,
+						const OID * class_oid, LOCK current_lock, LOCK to_be_lock);
 
 static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
@@ -3099,14 +3105,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
   int compat1, compat2;
 
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
-    {
-      fprintf (stderr,
-	       "LK_DUMP::lock_internal_hold_lock_object_instant()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n", tran_index, oid->volid,
-	       oid->pageid, oid->slotid, class_oid ? class_oid->volid : -1, class_oid ? class_oid->pageid : -1,
-	       class_oid ? class_oid->slotid : -1, LOCK_TO_LOCKMODE_STRING (lock));
-    }
+  lock_dump_internal_lock_action (__func__, tran_index, oid, class_oid, lock, -42);
 #endif /* LK_DUMP */
 
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
@@ -3293,15 +3292,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 
   new_mode = group_mode = old_mode = NULL_LOCK;
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
-    {
-      fprintf (stderr,
-	       "LK_DUMP::lock_internal_perform_lock_object()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s) wait_msecs(%d)\n", tran_index,
-	       oid->volid, oid->pageid, oid->slotid, class_oid ? class_oid->volid : -1,
-	       class_oid ? class_oid->pageid : -1, class_oid ? class_oid->slotid : -1, LOCK_TO_LOCKMODE_STRING (lock),
-	       wait_msecs);
-    }
+  lock_dump_internal_lock_action (__func__, tran_index, oid, class_oid, lock, wait_msecs);
 #endif /* LK_DUMP */
 
   /* isolation */
@@ -3972,17 +3963,8 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
   int rv;
 
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
-    {
-      fprintf (stderr,
-	       "LK_DUMP::lock_internal_perform_unlock_object()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n", entry_ptr->tran_index,
-	       entry_ptr->res_head->key.oid.volid, entry_ptr->res_head->key.oid.pageid,
-	       entry_ptr->res_head->key.oid.slotid,
-	       entry_ptr->res_head->key.class_oid.volid, entry_ptr->res_head->key.class_oid.pageid,
-	       entry_ptr->res_head->key.class_oid.slotid,
-               LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
-    }
+  lock_dump_internal_lock_action (__func__, entry_ptr->tran_index, &entry_ptr->res_head->key.oid,
+				  &entry_ptr->res_head->key.class_oid, entry_ptr->granted_mode, -42);
 #endif /* LK_DUMP */
 
   if (entry_ptr == NULL)
@@ -4257,13 +4239,8 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   assert (NULL_LOCK < to_be_lock && to_be_lock != U_LOCK && to_be_lock < holder->granted_mode);
 
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
-    {
-      fprintf (stderr, "LK_DUMP::lk_demote_class_lock ()\n"
-	       "  tran(%2d) : oid(%d|%d|%d), class_oid(%d|%d|%d), LOCK(%7s -> %7s)\n", entry_ptr->tran_index,
-	       OID_AS_ARGS (&entry_ptr->res_head->key.oid), OID_AS_ARGS (&entry_ptr->res_head->key.class_oid),
-	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), LOCK_TO_LOCKMODE_STRING (to_be_lock));
-    }
+  lock_dump_internal_lock_alteration (__func__, entry_ptr->tran_index, &entry_ptr->res_head->key.oid,
+				      &entry_ptr->res_head->key.class_oid, entry_ptr->granted_mode, to_be_lock);
 #endif /* LK_DUMP */
 
   *ex_lock = holder->granted_mode;
@@ -5312,6 +5289,15 @@ lock_wait_msecs_to_secs (int msecs)
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+
+/*
+ * lock_dump_lk_entry - detailed dump of a lock entry
+ *
+ * return:
+ *
+ *   outfp(in): FILE stream where to dump the lock entry.
+ *   entry_ptr(in): pointer to lock resource entry
+ */
 static void
 lock_dump_lk_entry (FILE * outfp, const LK_ENTRY * entry_ptr)
 {
@@ -5552,7 +5538,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 			   entry_ptr->ngranules);
 		}
 
-              // dump each lock entry
+	      // dump each lock entry
 	      lock_dump_lk_entry (outfp, entry_ptr);
 	    }
 	  entry_ptr = entry_ptr->next;
@@ -5597,7 +5583,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
 		}
 
-              // dump each lock entry
+	      // dump each lock entry
 	      lock_dump_lk_entry (outfp, entry_ptr);
 	    }
 	  entry_ptr = entry_ptr->next;
@@ -5623,7 +5609,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
 		   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
 
-          // dump each lock entry
+	  // dump each lock entry
 	  lock_dump_lk_entry (outfp, entry_ptr);
 
 	  entry_ptr = entry_ptr->next;
@@ -5647,6 +5633,51 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
 
 }
+
+#if defined(LK_DUMP)
+/*
+ * lock_dump_internal_lock_action -
+ *
+ * return:
+ *
+ */
+static void
+lock_dump_internal_lock_action (const char *func_name, int tran_index, const OID * oid,
+				const OID * class_oid, LOCK lock, int wait_msecs)
+{
+  if (lk_Gl.dump_level >= 1)
+    {
+      const OID guarded_class_oid = (class_oid != nullptr) ? *class_oid : (OID) { -1, -1, -1 };
+      fprintf (stderr,
+	       "LK_DUMP::%s\n"
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), lock(%7s) wait_msecs(%d)\n",
+	       func_name, tran_index, OID_AS_ARGS (oid), OID_AS_ARGS (&guarded_class_oid),
+	       LOCK_TO_LOCKMODE_STRING (lock), wait_msecs);
+    }
+}
+
+/*
+ * lock_dump_internal_lock_alteration -
+ *
+ * return:
+ *
+ */
+static void
+lock_dump_internal_lock_alteration (const char *func_name, int tran_index, const OID * oid,
+				    const OID * class_oid, LOCK current_lock, LOCK to_be_lock)
+{
+  if (lk_Gl.dump_level >= 1)
+    {
+      const OID guarded_class_oid = (class_oid != nullptr) ? *class_oid : (OID) { -1, -1, -1 };
+      fprintf (stderr,
+	       "LK_DUMP::%s\n"
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), lock(%7s -> %7s)\n",
+	       func_name, tran_index, OID_AS_ARGS (oid), OID_AS_ARGS (&guarded_class_oid),
+	       LOCK_TO_LOCKMODE_STRING (current_lock), LOCK_TO_LOCKMODE_STRING (to_be_lock));
+    }
+}
+#endif /* LK_DUMP */
+
 #endif /* SERVER_MODE */
 
 /*
