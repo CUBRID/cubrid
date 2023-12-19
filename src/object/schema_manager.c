@@ -4116,7 +4116,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (WS_OID (classop), (with_fullscan ? 1 : 0));
+      error = stats_update_statistics (classop, (with_fullscan ? 1 : 0));
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -4292,7 +4292,10 @@ sm_update_all_catalog_statistics (bool with_fullscan)
     CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
     CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
     CT_COLLATION_NAME, CT_CHARSET_NAME, CT_SYNONYM_NAME,
-    NULL
+    CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME, CT_PARTITION_NAME,
+    CT_SERIAL_NAME, CT_USER_NAME, CT_AUTHORIZATION_NAME,
+    CT_TRIGGER_NAME, CT_PASSWORD_NAME, CT_HA_APPLY_INFO_NAME,
+    CT_DB_SERVER_NAME, NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)

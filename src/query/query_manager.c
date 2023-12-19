@@ -214,7 +214,7 @@ qmgr_get_page_type (PAGE_PTR page_p, QMGR_TEMP_FILE * temp_file_p)
   return QMGR_TEMP_FILE_PAGE;
 }
 
-static bool
+bool
 qmgr_is_allowed_result_cache (QUERY_FLAG flag)
 {
   static int query_cache_mode = prm_get_integer_value (PRM_ID_LIST_QUERY_CACHE_MODE);
