@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Veritabanı "%1$s" bilinmiyor veya dosya "databases.txt" erişilemiyor.
 117 Veritabanı için mutlak Pathadı çok uzun. Path in birleştirilmiş toplam uzunluğu "%1$s" artı adı "%2$s" is %3$d; Kombine uzunluğundan daha az olması gerekir %4$d.
 118 Geçerli çalışma dizinini bulamadı.
-119 "%2$s" içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
+119 "%2$s" içinde ana bilgisayar adı ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
 120 Yoğunlukların maksimum sayısı (%1$d) değerini aştı.
 121 "%1$s" kaldırmak için çalışılıyor veritabanından kalıcı bir yoğunluk.
 122 Sistem mesajı kataloguna erişilemiyor.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Ana sunucuya bir kanal kurulamadı.
 348 Servis veya port tanımlayıcı da belirtmeniz gerekir.
 349 TCP için bilinmeyen hizmet: %1$s.
-350 "%2$s" içinde ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
+350 "%2$s" içinde ana bilgisayar adı ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adı olup olmadığını kontrol edin.
 351 TCP soketi oluşturulamıyor.
 352 tcp_open: Ayrılmış bir TCP bağlantı noktası alınamıyor.
 353 Ana sunucuya bağlantı yapamazsınız "%1$s".
@@ -683,8 +683,8 @@ $ LOADDB
 613 Sınıf "%3$s" içinde, "%1$s" yerel bileşeni "%2$s" sınıf için bir takma ad yerine hizmet veremez. Etki alanları uyumsuzdur.
 614 Etkin günlük arşiv sayısı %1$d in max istenilen sayısı aşıldı.
 615 Winsock arayüzü ile temas kurulamaz. Winsock hata: %1$d.
-616 Winsock arabirimini kullanarak makine adını belirleyemiyor. Winsock hata: %1$d.
-617 Winsock arabirimini kullanarak makine kimliği belirlenemiyor. Bu makine için ana bilgisayar adı tablo girdisi olmalıdır. Winsock hata: %1$d.
+616 "%2$s" içinde ana bilgisayar adı ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adının olup olmadığını kontrol edin.
+617 "%2$s" içinde ana bilgisayar adı ("%1$s") bulunamıyor. Lütfen dosyanın izinlerini veya ana bilgisayar adının olup olmadığını kontrol edin.
 618 Öznitelik güncelleştirilebilir değil.
 619 Kötü kaynak karakter kümesi.
 620 Kötü hedef karakter kümesi.
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Bir hatadan sonra INDEX yüklemesi iptal edildi.
 1244 SHARED niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
 1245 CLASS niteliklerinin güncellemelerini nesne dosyalarından güncelleme CS modunda desteklenmiyor.
-1246 "%2$s" içindeki ("%1$s") adresi ve kurallı adı alınamıyor. Lütfen dosyanın iznini veya ana bilgisayar adı olup olmadığını kontrol edin.
+1246 "%2$s" içindeki ana makine adı ("%1$s") adresi ve kurallı adı alınamıyor. Lütfen dosyanın iznini veya ana bilgisayar adı olup olmadığını kontrol edin.
 1247 Belirtilen zaman (%1$s) Belirtilen yedekleme süresi (%2$s) dan sonra olmalıdır.
 1248 Geçersiz Anahtar dosyası: %1$s
 1249 Anahtar bulunamıyor (dizin: %1$d).
