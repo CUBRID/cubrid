@@ -534,10 +534,12 @@ static int lock_compare_lock_info (const void *lockinfo1, const void *lockinfo2)
 static float lock_wait_msecs_to_secs (int msecs);
 static void lock_dump_lk_entry (FILE * outfp, const LK_ENTRY * entry_ptr);
 static void lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr);
+#if defined(LK_DUMP)
 static void lock_dump_internal_lock_action (const char *func_name, int tran_index, const OID * oid,
 					    const OID * class_oid, LOCK lock, int wait_msecs);
 static void lock_dump_internal_lock_alteration (const char *func_name, int tran_index, const OID * oid,
 						const OID * class_oid, LOCK current_lock, LOCK to_be_lock);
+#endif /* LK_DUMP */
 
 static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
