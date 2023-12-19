@@ -58,6 +58,7 @@
 #include <sys/types.h>
 #include <string.h>
 #endif
+#include "memory_cwrapper.h"
 
 #if defined(AIX) && !defined(DONT_HOOK_MALLOC)
 #undef malloc

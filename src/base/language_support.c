@@ -50,6 +50,7 @@
 #include "db.h"
 #endif /* !defined (SERVER_MODE) */
 #include "dbtype.h"
+#include "memory_cwrapper.h"
 
 #define PAD ' '			/* str_pad_char(INTL_CODESET_ISO88591, pad, &pad_size) */
 #define SPACE PAD		/* smallest character in the collation sequence */

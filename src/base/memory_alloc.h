@@ -45,6 +45,7 @@
 #include <memory>
 #include <functional>
 #endif
+#include "memory_cwrapper.h"
 
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \

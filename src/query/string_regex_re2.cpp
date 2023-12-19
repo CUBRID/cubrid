@@ -26,6 +26,7 @@
 #include "intl_support.h"
 
 #include <iostream>
+#include "memory_cppwrapper.hpp"
 
 namespace cubregex
 {

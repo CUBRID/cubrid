@@ -51,6 +51,7 @@
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #endif /* WINDOWS */
+#include "memory_cwrapper.h"
 
 #define EVENT_LOG_FILE_DIR "server"
 #define EVENT_LOG_FILE_SUFFIX ".event"

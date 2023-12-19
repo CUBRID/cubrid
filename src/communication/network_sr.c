@@ -60,6 +60,7 @@
 #include "thread_manager.hpp"
 #include "session.h"
 #include "network_request_def.hpp"
+#include "memory_monitor_sr.hpp"
 
 static void net_server_init (void);
 static int net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int size, char *buffer);
@@ -736,6 +737,10 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_LOGINFO];
   req_p->processing_function = sflashback_get_loginfo;
+
+  /* memmon */
+  req_p = &net_Requests[NET_SERVER_MMON_GET_SERVER_INFO];
+  req_p->processing_function = smmon_get_server_info;
 }
 
 /*
@@ -1174,6 +1179,7 @@ net_server_start (const char *server_name)
 
   cubthread::finalize ();
   cubthread::internal_tasks_worker_pool::finalize ();
+  mmon_finalize ();
   er_final (ER_ALL_FINAL);
   csect_finalize_static_critical_sections ();
   (void) sync_finalize_sync_stats ();

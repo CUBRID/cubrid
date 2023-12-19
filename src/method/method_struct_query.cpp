@@ -26,6 +26,7 @@
 #if defined (CS_MODE)
 #include "method_schema_info.hpp"
 #endif
+#include "memory_cppwrapper.hpp"
 
 namespace cubmethod
 {

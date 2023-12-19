@@ -53,6 +53,7 @@
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 #include "xasl_cache.h"
+#include "memory_cppwrapper.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

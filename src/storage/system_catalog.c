@@ -44,6 +44,7 @@
 #include "object_representation.h"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
+#include "memory_cwrapper.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

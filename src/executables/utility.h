@@ -785,6 +785,7 @@ typedef enum
   CHECKSUMDB,
   TDE,
   FLASHBACK,
+  MEMMON,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -997,6 +998,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_CHECKSUMDB			"checksumdb"
 #define UTIL_OPTION_TDE			        "tde"
 #define UTIL_OPTION_FLASHBACK                   "flashback"
+#define UTIL_OPTION_MEMMON                      "memmon"
 
 #define HIDDEN_CS_MODE_S                        15000
 
@@ -1693,6 +1695,10 @@ typedef struct _ha_config
 #define FLASHBACK_OLDEST_S          14102
 #define FLASHBACK_OLDEST_L          "oldest"
 
+/* memmon option list */
+#define MEMMON_OUTPUT_S             'o'
+#define MEMMON_OUTPUT_L             "output"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1828,6 +1834,7 @@ extern "C"
   extern int checksumdb (UTIL_FUNCTION_ARG * arg_map);
   extern int tde (UTIL_FUNCTION_ARG * arg_map);
   extern int flashback (UTIL_FUNCTION_ARG * arg_map);
+  extern int memmon (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);

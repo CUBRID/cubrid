@@ -30,6 +30,7 @@
 #include "error_manager.h"
 #include "error_code.h"
 #include "memory_alloc.h"
+#include "memory_cwrapper.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

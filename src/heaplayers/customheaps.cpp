@@ -25,6 +25,10 @@
 #include "porting_inline.hpp"
 #include "system.h"
 #include "heaplayers.h"
+#include "memory_cppwrapper.hpp"
+
+#undef malloc
+#undef free
 
 using namespace HL;
 
@@ -136,3 +140,5 @@ hl_ostk_free (UINTPTR heap_id, void *ptr)
     }
 }
 
+#define malloc(sz) cub_alloc(sz, __FILE__)
+#define free(ptr) cub_free(ptr)

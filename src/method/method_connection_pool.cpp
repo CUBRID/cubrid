@@ -26,6 +26,7 @@
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif
+#include "memory_cppwrapper.hpp"
 
 namespace cubmethod
 {

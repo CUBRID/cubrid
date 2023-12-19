@@ -24,6 +24,7 @@
 #include "xserver_interface.h"
 #include "thread_manager.hpp"
 #include "method_error.hpp"
+#include "memory_cppwrapper.hpp"
 
 namespace cubmethod
 {
@@ -66,7 +67,9 @@ namespace cubmethod
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    method_invoke_group *group = new (std::nothrow) cubmethod::method_invoke_group (thread_p, sig_list, is_scan);
+    // XXX: for memory monitoring POC
+    //method_invoke_group *group = new (std::nothrow) cubmethod::method_invoke_group (thread_p, sig_list, is_scan);
+    method_invoke_group *group = new cubmethod::method_invoke_group (thread_p, sig_list, is_scan);
     if (group)
       {
 	m_group_map [group->get_id ()] = group;
@@ -289,7 +292,9 @@ namespace cubmethod
 	    qfile_update_qlist_count (thread_p, query_entry_p->list_id, 1);
 
 	    // store a new cursor in map
-	    cursor = new (std::nothrow) query_cursor (thread_p, query_entry_p, is_oid_included);
+	    cursor = new query_cursor (thread_p, query_entry_p, is_oid_included);
+	    // XXX: for memory monitoring POC
+	    //cursor = new (std::nothrow) query_cursor (thread_p, query_entry_p, is_oid_included);
 	    m_cursor_map [query_id] = cursor;
 
 	    assert (cursor != nullptr);

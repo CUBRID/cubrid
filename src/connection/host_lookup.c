@@ -45,6 +45,7 @@
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "host_lookup.h"
+#include "memory_cwrapper.h"
 
 #define LINE_BUF_SIZE                (512)
 #define HOSTNAME_LEN                 (256)

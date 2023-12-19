@@ -46,6 +46,7 @@
 #include <netinet/in.h>
 #endif /* !WINDOWS */
 #include "locale_support.h"
+#include "memory_cwrapper.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

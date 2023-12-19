@@ -47,6 +47,7 @@
 #include "thread_entry.hpp"
 #include "xasl_cache.h"
 #include "xasl_unpack_info.hpp"
+#include "memory_cwrapper.h"
 
 #if !defined (SERVER_MODE)
 

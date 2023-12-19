@@ -45,6 +45,7 @@
 #include "dbtype.h"
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
+#include "memory_cwrapper.h"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0
 

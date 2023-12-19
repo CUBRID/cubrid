@@ -63,6 +63,7 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "double_write_buffer.h"
+#include "memory_cwrapper.h"
 
 /************************************************************************/
 /* Define structures, globals, and macro's                              */

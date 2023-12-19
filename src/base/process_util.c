@@ -36,6 +36,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 #endif
+#include "memory_cwrapper.h"
 
 int
 create_child_process (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file,

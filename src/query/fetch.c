@@ -55,6 +55,7 @@
 #include "thread_entry.hpp"
 
 #include "dbtype.h"
+#include "memory_cwrapper.h"
 
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);

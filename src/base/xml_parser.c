@@ -31,6 +31,7 @@
 
 #include "xml_parser.h"
 #include "utility.h"
+#include "memory_cwrapper.h"
 
 #if defined(WINDOWS)
 #define strtok_r	strtok_s

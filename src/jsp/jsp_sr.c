@@ -52,6 +52,7 @@
 #include "release_string.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
+#include "memory_cppwrapper.hpp"
 
 #if defined(sparc)
 #define JVM_LIB_PATH "jre/lib/sparc/client"
