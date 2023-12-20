@@ -70,6 +70,8 @@
 
 #include <array>
 
+#define LK_DUMP
+
 extern LOCK_COMPATIBILITY lock_Comp[12][12];
 
 #if defined (SERVER_MODE)
@@ -536,7 +538,7 @@ static void lock_dump_lk_entry (FILE * outfp, const LK_ENTRY * entry_ptr);
 static void lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr);
 #if defined(LK_DUMP)
 static void lock_dump_internal_lock_action (const char *func_name, int tran_index, const OID * oid,
-					    const OID * class_oid, LOCK lock, int wait_msecs);
+					    const OID * class_oid, LOCK lock);
 static void lock_dump_internal_lock_alteration (const char *func_name, int tran_index, const OID * oid,
 						const OID * class_oid, LOCK current_lock, LOCK to_be_lock);
 #endif /* LK_DUMP */
@@ -3105,7 +3107,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
   int compat1, compat2;
 
 #if defined(LK_DUMP)
-  lock_dump_internal_lock_action (__func__, tran_index, oid, class_oid, lock, -42);
+  lock_dump_internal_lock_action (__func__, tran_index, oid, class_oid, lock);
 #endif /* LK_DUMP */
 
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
@@ -3292,7 +3294,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 
   new_mode = group_mode = old_mode = NULL_LOCK;
 #if defined(LK_DUMP)
-  lock_dump_internal_lock_action (__func__, tran_index, oid, class_oid, lock, wait_msecs);
+  lock_dump_internal_lock_action (__func__, tran_index, oid, class_oid, lock);
 #endif /* LK_DUMP */
 
   /* isolation */
@@ -3964,7 +3966,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 
 #if defined(LK_DUMP)
   lock_dump_internal_lock_action (__func__, entry_ptr->tran_index, &entry_ptr->res_head->key.oid,
-				  &entry_ptr->res_head->key.class_oid, entry_ptr->granted_mode, -42);
+				  &entry_ptr->res_head->key.class_oid, entry_ptr->granted_mode);
 #endif /* LK_DUMP */
 
   if (entry_ptr == NULL)
@@ -5643,16 +5645,16 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
  */
 static void
 lock_dump_internal_lock_action (const char *func_name, int tran_index, const OID * oid,
-				const OID * class_oid, LOCK lock, int wait_msecs)
+				const OID * class_oid, LOCK lock)
 {
   if (lk_Gl.dump_level >= 1)
     {
       const OID guarded_class_oid = (class_oid != nullptr) ? *class_oid : (OID) { -1, -1, -1 };
       fprintf (stderr,
 	       "LK_DUMP::%s\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), lock(%7s) wait_msecs(%d)\n",
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), lock(%7s)\n",
 	       func_name, tran_index, OID_AS_ARGS (oid), OID_AS_ARGS (&guarded_class_oid),
-	       LOCK_TO_LOCKMODE_STRING (lock), wait_msecs);
+	       LOCK_TO_LOCKMODE_STRING (lock));
     }
 }
 
