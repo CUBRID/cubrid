@@ -501,6 +501,43 @@ TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_START_POSTPONE/LOG_SYSOP_END - 2 Tr
   test_spec.check_after_execution (trid2, atomic_helper);
 }
 
+TEST_CASE ("LOG_SYSOP_ATOMIC_START/LOG_SYSOP_END-LOG_SYSOP_END_LOGICAL_COMPENSATE", "")
+{
+  // logging snippet:
+  // _CL_ LSA = 136|3880  rectype = LOG_SYSOP_ATOMIC_START  sysop_end_type = N_A  sysop_end_last_parent_lsa = -1|-1
+  // _WK_ LSA = 136|3912  vpid = 0|4096  rcvindex = RVFL_PARTSECT_DEALLOC
+  // _WK_ LSA = 136|3984  vpid = 0|4096  rcvindex = RVFL_FHEAD_DEALLOC
+  // _WK_ LSA = 136|4056  vpid = 0|4096  rcvindex = RVPGBUF_DEALLOC
+  // _CL_ LSA = 136|4320  rectype = LOG_SYSOP_END  sysop_end_type = LOG_SYSOP_END_LOGICAL_COMPENSATE  sysop_end_last_parent_lsa = 136|2544
+
+  test_spec_type test_spec;
+
+  log_record_spec_vector_type &log_rec_vec = test_spec.m_log_record_vec;
+  constexpr TRANID trid = 5;
+  constexpr LOG_LSA start_lsa = { 40, 11 };
+  log_rec_vec =
+  {
+    { trid, INV_LSA, INV_VPID, LOG_SYSOP_ATOMIC_START, INV_RCVINDEX, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+    { trid, INV_LSA, { 60, 0 }, INV_RECTYPE, RVFL_PARTSECT_DEALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+    { trid, INV_LSA, { 60, 0 }, INV_RECTYPE, RVFL_FHEAD_DEALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+    { trid, INV_LSA, { 60, 0 }, INV_RECTYPE, RVPGBUF_DEALLOC, INV_SYSOP_END_TYPE, INV_LSA, FIX_SUCC },
+  };
+  test_spec.calculate_log_records_offsets (start_lsa);
+  const LOG_LSA &sysop_end_last_parent_lsa = log_rec_vec[0].m_lsa;
+  log_rec_vec.push_back (
+  {
+    trid, INV_LSA, INV_VPID, LOG_SYSOP_END, INV_RCVINDEX, LOG_SYSOP_END_LOGICAL_COMPENSATE,
+    sysop_end_last_parent_lsa, FIX_SUCC });
+
+  test_spec.calculate_log_records_offsets (start_lsa);
+
+  gl_Test_Spec = &test_spec;
+
+  cublog::atomic_replication_helper atomic_helper;
+  test_spec.execute (atomic_helper);
+  test_spec.check_after_execution (trid, atomic_helper);
+}
+
 // ****************************************************************
 // test_spec_type implementation
 // ****************************************************************

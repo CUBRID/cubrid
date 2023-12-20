@@ -143,6 +143,16 @@ namespace cublog
    *     |                          RVHF_SET_PREV_VERSION_LSA)
    *     |
    *     \--LOG_END_ATOMIC_REPL
+   *
+   *  (6)
+   *    standalone sysop atomic sequences with sysop end type LOG_SYSOP_END_LOGICAL_COMPENSATE
+   *    occurs when CREATE TABLE statement is aborted
+   *
+   *    LOG_SYSOP_ATOMIC_START
+   *     |
+   *     |  .. redo records .. (eg: RVFL_PARTSECT_DEALLOC, RVFL_FHEAD_DEALLOC, RVPGBUF_DEALLOC)
+   *     |
+   *     \--LOG_SYSOP_END with LOG_SYSOP_END_LOGICAL_COMPENSATE
    */
   class atomic_replication_helper
   {

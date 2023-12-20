@@ -46,6 +46,8 @@ namespace cublog
      * and, thus, does not need to be left in consistent state; thus, no check as to the consistent
      * termination state for atomic replication is needed
      */
+
+    cleanup_lock_resources_for_ddl ();
   }
 
   void
@@ -570,5 +572,12 @@ namespace cublog
       }
 
     return false;
+  }
+
+  void
+  atomic_replicator::cleanup_lock_resources_for_ddl ()
+  {
+    cubthread::entry &thread_entry = cubthread::get_entry ();
+    lock_unlock_all (&thread_entry);
   }
 }
