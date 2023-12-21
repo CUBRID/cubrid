@@ -17,3 +17,4 @@ For more details on how they are built with CUBRID, please refer to the [3rdpart
 - Flex and Bison
   - flex 2.5.34 and bison 3.0.0 (On Linux)
   - winflexbison 2.5.22 (On Windows)
+- fmt 10.1.1

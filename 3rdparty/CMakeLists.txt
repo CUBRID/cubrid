@@ -41,6 +41,8 @@ set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editlin
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
 set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
+set(WITH_FMT          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with fmt library (default: EXTERNAL)")
+
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
@@ -49,6 +51,7 @@ message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 message(STATUS "Build with RE2 library: ${WITH_RE2}")
+message(STATUS "Build with fmt library: ${WITH_FMT}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
@@ -338,7 +341,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
+      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared --libdir=lib # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBOPENSSL_BYPRODUCTS}"
@@ -452,6 +455,37 @@ list(APPEND EP_TARGETS ${RE2_TARGET})
 list(APPEND EP_LIBS ${RE2_LIBS})
 list(APPEND EP_INCLUDES ${RE2_INCLUDES})
 
+# fmt
+set(FMT_TARGET fmt)
+if(WITH_FMT STREQUAL "EXTERNAL")
+  if(UNIX)
+    set(FMT_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
+    set(FMT_LIBS ${3RDPARTY_LIBS_DIR}/lib64/libfmt.a)
+    ADD_BY_PRODUCTS_VARIABLE ("FMT" ${FMT_LIBS})
+    externalproject_add(${FMT_TARGET}
+      GIT_REPOSITORY https://github.com/fmtlib/fmt
+      GIT_TAG f5e5435             # https://github.com/fmtlib/fmt/releases/tag/10.1.1
+      CMAKE_ARGS -DCMAKE_C_FLAGS=-fPIC -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=17 -DFMT_TEST=OFF -DFMT_DOC=OFF -DFMT_INSTALL=ON -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR}
+      STEP_TARGETS build
+      "${FMT_BYPRODUCTS}"
+    )
+  else(UNIX)
+    set(FMT_INCLUDES ${WINDOWS_EXTERNAL_DIR}/fmt/include)
+    set(FMT_LIBS ${WINDOWS_EXTERNAL_DIR}/fmt/lib/fmt.lib)
+    set(FMT_DLL ${WINDOWS_EXTERNAL_DIR}/fmt/bin/fmt.dll)
+    add_custom_target(${FMT_TARGET}
+      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${FMT_TARGET} to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/fmt.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy ${FMT_DLL} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/fmt.dll
+    )
+  endif(UNIX)
+else(WITH_FMT STREQUAL "EXTERNAL")
+  message(FATAL_ERROR "Invalid WITH_FMT option value ${WITH_FMT}")
+endif()
+# add to external project targets
+list(APPEND EP_TARGETS ${FMT_TARGET})
+list(APPEND EP_LIBS ${FMT_LIBS})
+list(APPEND EP_INCLUDES ${FMT_INCLUDES})
+
 # [FIXME!] Expose variables for other CMakeLists
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
@@ -472,3 +506,4 @@ expose_3rdparty_variable(LIBOPENSSL)
 expose_3rdparty_variable(LIBUNIXODBC)
 expose_3rdparty_variable(RAPIDJSON)
 expose_3rdparty_variable(RE2)
+expose_3rdparty_variable(FMT)
