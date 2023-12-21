@@ -24,7 +24,8 @@
 
 namespace cublog
 {
-  extern int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, time_t a_start_time_msec);
+  extern int log_rpl_calculate_replication_delay (THREAD_ENTRY *thread_p, const log_lsa &redo_lsa,
+      time_t a_start_time_msec);
 
   /* job implementation that performs log replication delay calculation
    * using log records that register creation time

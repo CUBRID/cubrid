@@ -70,6 +70,8 @@
 
 #include <array>
 
+#define LK_DUMP
+
 extern LOCK_COMPATIBILITY lock_Comp[12][12];
 
 #if defined (SERVER_MODE)
@@ -532,7 +534,14 @@ static void lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t);
 static void lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile);
 static int lock_compare_lock_info (const void *lockinfo1, const void *lockinfo2);
 static float lock_wait_msecs_to_secs (int msecs);
+static void lock_dump_lk_entry (FILE * outfp, const LK_ENTRY * entry_ptr);
 static void lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr);
+#if defined(LK_DUMP)
+static void lock_dump_internal_lock_action (const char *func_name, int tran_index, const OID * oid,
+					    const OID * class_oid, LOCK lock);
+static void lock_dump_internal_lock_alteration (const char *func_name, int tran_index, const OID * oid,
+						const OID * class_oid, LOCK current_lock, LOCK to_be_lock);
+#endif /* LK_DUMP */
 
 static void lock_increment_class_granules (LK_ENTRY * class_entry);
 
@@ -545,7 +554,7 @@ static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_f
 static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
 static void lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry);
 static void lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry);
-static LK_RES_KEY lock_create_search_key (OID * oid, OID * class_oid);
+static LK_RES_KEY lock_create_search_key (const OID * oid, const OID * class_oid);
 #if defined (SERVER_MODE)
 static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 #endif /* SERVER_MODE */
@@ -624,7 +633,7 @@ LF_ENTRY_DESCRIPTOR lk_Obj_lock_res_desc = {
 
 #if defined(SERVER_MODE)
 static LK_RES_KEY
-lock_create_search_key (OID * oid, OID * class_oid)
+lock_create_search_key (const OID * oid, const OID * class_oid)
 {
   LK_RES_KEY search_key;
 
@@ -2167,7 +2176,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
       logtb_find_client_name_host_pid (entry_ptr->tran_index, &__client_prog_name, &__client_user_name,
 				       &__client_host_name, &__client_pid);
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_SUSPEND_TRAN),
-	       entry_ptr->thrd_entry->index, entry_ptr->tran_index, __client_prog_name, __client_user_name,
+	       entry_ptr->thrd_entry->index, entry_ptr->tran_index, wait_msecs, __client_prog_name, __client_user_name,
 	       __client_host_name, __client_pid);
       fflush (stdout);
     }
@@ -2345,9 +2354,10 @@ lock_resume (LK_ENTRY * entry_ptr, int state)
       fflush (stdout);
       (void) logtb_find_client_name_host_pid (entry_ptr->tran_index, &__client_prog_name, &__client_user_name,
 					      &__client_host_name, &__client_pid);
+      const int timeout_msecs = logtb_find_wait_msecs (entry_ptr->tran_index);
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RESUME_TRAN),
-	       entry_ptr->tran_index, entry_ptr->tran_index, __client_prog_name, __client_user_name, __client_host_name,
-	       __client_pid);
+	       entry_ptr->tran_index, entry_ptr->tran_index, timeout_msecs, __client_prog_name, __client_user_name,
+	       __client_host_name, __client_pid);
       fflush (stdout);
     }
 
@@ -3097,14 +3107,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
   int compat1, compat2;
 
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
-    {
-      fprintf (stderr,
-	       "LK_DUMP::lk_internal_lock_object_instant()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n", tran_index, oid->volid,
-	       oid->pageid, oid->slotid, class_oid ? class_oid->volid : -1, class_oid ? class_oid->pageid : -1,
-	       class_oid ? class_oid->slotid : -1, LOCK_TO_LOCKMODE_STRING (lock));
-    }
+  lock_dump_internal_lock_action (__func__, tran_index, oid, class_oid, lock);
 #endif /* LK_DUMP */
 
   if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
@@ -3118,7 +3121,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
     }
 
   /* search hash table */
-  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid);
+  search_key = lock_create_search_key (oid, class_oid);
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
   if (res_ptr == NULL)
     {
@@ -3291,15 +3294,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 
   new_mode = group_mode = old_mode = NULL_LOCK;
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
-    {
-      fprintf (stderr,
-	       "LK_DUMP::lk_internal_lock_object()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s) wait_msecs(%d)\n", tran_index,
-	       oid->volid, oid->pageid, oid->slotid, class_oid ? class_oid->volid : -1,
-	       class_oid ? class_oid->pageid : -1, class_oid ? class_oid->slotid : -1, LOCK_TO_LOCKMODE_STRING (lock),
-	       wait_msecs);
-    }
+  lock_dump_internal_lock_action (__func__, tran_index, oid, class_oid, lock);
 #endif /* LK_DUMP */
 
   /* isolation */
@@ -3351,7 +3346,7 @@ start:
     }
 
   /* find or add the lockable object in the lock table */
-  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid);
+  search_key = lock_create_search_key (oid, class_oid);
   (void) lk_Gl.m_obj_hash_table.find_or_insert (thread_p, search_key, res_ptr);
   if (res_ptr == NULL)
     {
@@ -3970,15 +3965,8 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
   int rv;
 
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
-    {
-      fprintf (stderr,
-	       "LK_DUMP::lk_internal_unlock_object()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n", entry_ptr->tran_index,
-	       entry_ptr->res_head->oid.volid, entry_ptr->res_head->oid.pageid, entry_ptr->res_head->oid.slotid,
-	       entry_ptr->res_head->class_oid.volid, entry_ptr->res_head->class_oid.pageid,
-	       entry_ptr->res_head->class_oid.slotid, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
-    }
+  lock_dump_internal_lock_action (__func__, entry_ptr->tran_index, &entry_ptr->res_head->key.oid,
+				  &entry_ptr->res_head->key.class_oid, entry_ptr->granted_mode);
 #endif /* LK_DUMP */
 
   if (entry_ptr == NULL)
@@ -4253,13 +4241,8 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   assert (NULL_LOCK < to_be_lock && to_be_lock != U_LOCK && to_be_lock < holder->granted_mode);
 
 #if defined(LK_DUMP)
-  if (lk_Gl.dump_level >= 1)
-    {
-      fprintf (stderr, "LK_DUMP::lk_demote_class_lock ()\n"
-	       "  tran(%2d) : oid(%d|%d|%d), class_oid(%d|%d|%d), LOCK(%7s -> %7s)\n", entry_ptr->tran_index,
-	       OID_AS_ARGS (&entry_ptr->res_head->key.oid), OID_AS_ARGS (&entry_ptr->res_head->key.class_oid),
-	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), LOCK_TO_LOCKMODE_STRING (to_be_lock));
-    }
+  lock_dump_internal_lock_alteration (__func__, entry_ptr->tran_index, &entry_ptr->res_head->key.oid,
+				      &entry_ptr->res_head->key.class_oid, entry_ptr->granted_mode, to_be_lock);
 #endif /* LK_DUMP */
 
   *ex_lock = holder->granted_mode;
@@ -5308,6 +5291,45 @@ lock_wait_msecs_to_secs (int msecs)
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+
+/*
+ * lock_dump_lk_entry - overly-verbose dump of a lock entry
+ *
+ * return:
+ *
+ *   outfp(in): FILE stream where to dump the lock entry.
+ *   entry_ptr(in): pointer to lock resource entry
+ */
+static void
+lock_dump_lk_entry (FILE * outfp, const LK_ENTRY * entry_ptr)
+{
+  int tran_next_count = 0;
+  for (const LK_ENTRY * tran_next_ptr = entry_ptr->tran_next; tran_next_ptr != nullptr;
+       tran_next_ptr = tran_next_ptr->tran_next, ++tran_next_count);
+  int tran_prev_count = 0;
+  for (const LK_ENTRY * tran_prev_ptr = entry_ptr->tran_prev; tran_prev_ptr != nullptr;
+       tran_prev_ptr = tran_prev_ptr->tran_prev, ++tran_prev_count);
+
+  fprintf (outfp,
+	   "      (this)=%p res_head=%p  tran_index=%d  granted_mode=%s  blocked_mode=%s  count=%d  del_id=%lld\n"
+	   "      tran_next_count=%d  tran_prev_count=%d\n"
+	   "      class_entry=%p  ngranules=%d instant_lock_count=%d  bind_index_in_tran=%d\n"
+	   "          thrd_entry(%p): lockwait=%p lockwait_stime=%lld lockwait_msecs=%d lockwait_state=%s\n",
+	   (void *) entry_ptr,
+	   (void *) entry_ptr->res_head, entry_ptr->tran_index,
+	   LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
+	   LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode),
+	   entry_ptr->count, (long long) entry_ptr->del_id,
+	   tran_next_count, tran_prev_count,
+	   (void *) entry_ptr->class_entry, entry_ptr->ngranules,
+	   entry_ptr->instant_lock_count, entry_ptr->bind_index_in_tran,
+	   (void *) entry_ptr->thrd_entry,
+	   (entry_ptr->thrd_entry != nullptr ? entry_ptr->thrd_entry->lockwait : nullptr),
+	   (long long) (entry_ptr->thrd_entry != nullptr ? entry_ptr->thrd_entry->lockwait_stime : 0),
+	   (entry_ptr->thrd_entry != nullptr ? entry_ptr->thrd_entry->lockwait_msecs : 0),
+	   lock_wait_state_to_string ((entry_ptr->thrd_entry != nullptr) ? entry_ptr->thrd_entry->lockwait_state : -1));
+}
+
 /*
  * lock_dump_resource - Dump locks acquired on a resource
  *
@@ -5322,12 +5344,12 @@ static void
 lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 {
 #define TEMP_BUFFER_SIZE  128
-  LK_ENTRY *entry_ptr;
+  const LK_ENTRY *entry_ptr;
   char *classname;		/* Name of the class */
   int num_holders, num_blocked_holders, num_waiters;
   char time_val[CTIME_MAX];
   size_t time_str_len;
-  OID *oid_rr = NULL;
+  const OID *oid_rr = NULL;
   HEAP_SCANCACHE scan_cache;
   OID real_class_oid;
 
@@ -5517,6 +5539,9 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 			   entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count,
 			   entry_ptr->ngranules);
 		}
+
+	      // dump each lock entry
+	      lock_dump_lk_entry (outfp, entry_ptr);
 	    }
 	  entry_ptr = entry_ptr->next;
 	}
@@ -5559,6 +5584,9 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 			   "", LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
 			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
 		}
+
+	      // dump each lock entry
+	      lock_dump_lk_entry (outfp, entry_ptr);
 	    }
 	  entry_ptr = entry_ptr->next;
 	}
@@ -5582,6 +5610,10 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_ENTRY),
 		   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
 		   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+
+	  // dump each lock entry
+	  lock_dump_lk_entry (outfp, entry_ptr);
+
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -5603,6 +5635,51 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
 
 }
+
+#if defined(LK_DUMP)
+/*
+ * lock_dump_internal_lock_action -
+ *
+ * return:
+ *
+ */
+static void
+lock_dump_internal_lock_action (const char *func_name, int tran_index, const OID * oid,
+				const OID * class_oid, LOCK lock)
+{
+  if (lk_Gl.dump_level >= 1)
+    {
+      const OID guarded_class_oid = (class_oid != nullptr) ? *class_oid : oid_Null_oid;
+      fprintf (stderr,
+	       "LK_DUMP::%s\n"
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), lock(%7s)\n",
+	       func_name, tran_index, OID_AS_ARGS (oid), OID_AS_ARGS (&guarded_class_oid),
+	       LOCK_TO_LOCKMODE_STRING (lock));
+    }
+}
+
+/*
+ * lock_dump_internal_lock_alteration -
+ *
+ * return:
+ *
+ */
+static void
+lock_dump_internal_lock_alteration (const char *func_name, int tran_index, const OID * oid,
+				    const OID * class_oid, LOCK current_lock, LOCK to_be_lock)
+{
+  if (lk_Gl.dump_level >= 1)
+    {
+      const OID guarded_class_oid = (class_oid != nullptr) ? *class_oid : oid_Null_oid;
+      fprintf (stderr,
+	       "LK_DUMP::%s\n"
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), lock(%7s -> %7s)\n",
+	       func_name, tran_index, OID_AS_ARGS (oid), OID_AS_ARGS (&guarded_class_oid),
+	       LOCK_TO_LOCKMODE_STRING (current_lock), LOCK_TO_LOCKMODE_STRING (to_be_lock));
+    }
+}
+#endif /* LK_DUMP */
+
 #endif /* SERVER_MODE */
 
 /*
@@ -6964,7 +7041,7 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
     }
 
   /* search hash */
-  search_key = lock_create_search_key ((OID *) oid, NULL);
+  search_key = lock_create_search_key (oid, NULL);
   if (search_key.type != LOCK_RESOURCE_ROOT_CLASS)
     {
       /* override type; we don't insert here, so class_oid is neither passed to us nor needed for the search */
@@ -7799,7 +7876,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 		  (void) ctime_r (&cur_time, time_val);
 		  fprintf (lk_fp, "##########################################\n");
 		  fprintf (lk_fp, "# current time: %s\n", time_val);
-		  lock_dump_resource (lk_fp, res_ptr);
+		  lock_dump_resource (thread_p, lk_fp, res_ptr);
 		  fprintf (lk_fp, "##########################################\n");
 		  fclose (lk_fp);
 		}

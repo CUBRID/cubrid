@@ -2063,8 +2063,8 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1  \n
-2 属于事务 (index %2$3d, %3$s, %4$s@%5$s|%6$d) 的线程 (index %1$3d) 已被挂起.\n
-3 属于事务 (index %2$3d, %3$s, %4$s@%5$s|%6$d) 的线程 (index %1$3d) 已被恢复.\n
+2 属于事务 (index %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) 的线程 (index %1$3d) 已被挂起.\n
+3 属于事务 (index %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) 的线程 (index %1$3d) 已被恢复.\n
 4 事务 index %1$3d 获得在对象 %3$d|%4$d|%5$d 上的 %2$s 锁.\n
 5 事务 index %1$3d 获得在页 %3$d|%4$d 上的 %2$s 锁.\n
 6 事务 index %1$3d 转换它在对象 %3$d|%4$d|%5$d 上的锁为 %2$s 锁.\n

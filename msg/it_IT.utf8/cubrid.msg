@@ -2062,8 +2062,8 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Thread (indice %1$3d) della transazione (indice %2$3d, %3$s, %4$s@%5$s|%6$d) è stato sospeso.\n
-3 Thread (indice %1$3d) della transazione (indice %2$3d, %3$s, %4$s@%5$s|%6$d) è stato ripreso.\n
+2 Thread (indice %1$3d) della transazione (indice %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) è stato sospeso.\n
+3 Thread (indice %1$3d) della transazione (indice %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) è stato ripreso.\n
 4 Indice di transazione %1$3d ACQUIRED %2$s blocco sull'oggetto %3$d|%4$d|%5$d.\n
 5 Indice di transazione %1$3d ACQUIRED %2$s blocco a pagina %3$d|%4$d.\n
 6 Indice di transazione %1$3d CONVERTED suo blocco to %2$s blocco sull'oggetto %3$d|%4$d|%5$d.\n

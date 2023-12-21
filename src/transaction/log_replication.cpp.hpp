@@ -47,14 +47,14 @@ namespace cublog
 	// picked up for completion by a task; this will give an accurate estimate of the actual
 	// delay between log generation on the page server and log recovery on the page server
 	cublog::redo_job_replication_delay_impl *replication_delay_job =
-		new cublog::redo_job_replication_delay_impl (m_redo_lsa, start_time_msec);
+		new cublog::redo_job_replication_delay_impl (rec_lsa, start_time_msec);
 	// ownership of raw pointer remains with the job instance which will delete itself upon retire
 	m_parallel_replication_redo->add (replication_delay_job);
       }
     else
       {
 	// calculate the time difference synchronously
-	log_rpl_calculate_replication_delay (&thread_entry, start_time_msec);
+	log_rpl_calculate_replication_delay (&thread_entry, rec_lsa, start_time_msec);
       }
   }
 }

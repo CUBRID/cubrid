@@ -2062,8 +2062,8 @@ $set 13 MSGCAT_SET_TRIGGER
 
 $set 14 MSGCAT_SET_LOCK
 1 \n
-2 Firul de execuţie (index %1$3d) al tranzacţiei (index %2$3d, %3$s, %4$s@%5$s|%6$d) a fost suspendat.\n
-3 Firul de execuţie (index %1$3d) al tranzacţiei (index %2$3d, %3$s, %4$s@%5$s|%6$d) a fost reluat.\n
+2 Firul de execuţie (index %1$3d) al tranzacţiei (index %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) a fost suspendat.\n
+3 Firul de execuţie (index %1$3d) al tranzacţiei (index %2$3d, msec %3$10d, %4$s, %5$s@%6$s|%7$d) a fost reluat.\n
 4 Indexul de tranzacţie %1$3d a OBŢINUT lock-ul %2$s pe obiectul %3$d|%4$d|%5$d.\n
 5 Indexul de tranzacţie %1$3d a OBŢINUT lock-ul %2$s pe pagina %3$d|%4$d.\n
 6 Indexul de tranzacţie %1$3d a CONVERTIT lock-ul său în lock-ul %2$s pe obiectul %3$d|%4$d|%5$d.\n
