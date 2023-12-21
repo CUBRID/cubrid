@@ -2176,7 +2176,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
       logtb_find_client_name_host_pid (entry_ptr->tran_index, &__client_prog_name, &__client_user_name,
 				       &__client_host_name, &__client_pid);
       fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_SUSPEND_TRAN),
-	       entry_ptr->thrd_entry->index, entry_ptr->tran_index, __client_prog_name, __client_user_name,
+	       entry_ptr->thrd_entry->index, entry_ptr->tran_index, wait_msecs, __client_prog_name, __client_user_name,
 	       __client_host_name, __client_pid);
       fflush (stdout);
     }
@@ -5649,7 +5649,7 @@ lock_dump_internal_lock_action (const char *func_name, int tran_index, const OID
 {
   if (lk_Gl.dump_level >= 1)
     {
-      const OID guarded_class_oid = (class_oid != nullptr) ? *class_oid : (OID) { -1, -1, -1 };
+      const OID guarded_class_oid = (class_oid != nullptr) ? *class_oid : oid_Null_oid;
       fprintf (stderr,
 	       "LK_DUMP::%s\n"
 	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), lock(%7s)\n",
