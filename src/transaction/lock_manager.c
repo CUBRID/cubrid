@@ -5670,7 +5670,7 @@ lock_dump_internal_lock_alteration (const char *func_name, int tran_index, const
 {
   if (lk_Gl.dump_level >= 1)
     {
-      const OID guarded_class_oid = (class_oid != nullptr) ? *class_oid : (OID) { -1, -1, -1 };
+      const OID guarded_class_oid = (class_oid != nullptr) ? *class_oid : oid_Null_oid;
       fprintf (stderr,
 	       "LK_DUMP::%s\n"
 	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), lock(%7s -> %7s)\n",
