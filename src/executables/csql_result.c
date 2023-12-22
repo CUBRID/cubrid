@@ -485,8 +485,6 @@ display_empty_result (int stmt_type, int line_no)
   return;
 }
 
-#define IS_STRING_TYPE(type)     (type == DB_TYPE_STRING || \
-                                  type == DB_TYPE_CHAR)
 /*
  * get_current_result() - get the attribute values of the current result
  *   return: pointer newly allocated value array. On error, NULL.
@@ -562,7 +560,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CS
 	      /* UNKNOWN, maybe host variable */
 	      || result_info->attr_types[i] == DB_TYPE_NULL || result_info->attr_types[i] == DB_TYPE_VARIABLE
 	      || value_type == result_info->attr_types[i]
-	      || (IS_STRING_TYPE (value_type) && IS_STRING_TYPE (result_info->attr_types[i])));
+	      || (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (result_info->attr_types[i])));
 
       switch (value_type)
 	{
