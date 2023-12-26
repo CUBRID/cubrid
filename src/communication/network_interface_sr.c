@@ -3999,7 +3999,7 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  CLASS_ATTR_NDV class_attr_ndv;
+  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
@@ -10389,28 +10389,31 @@ sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 
   session->get_class_registry ().get_all_class_entries (class_entries);
 
-  oid_cnt = class_entries.size ();
+for (const cubload::class_entry * class_entry:class_entries)
+    {
+      if (!class_entry->is_ignored ())
+	{
+	  oid_cnt++;
+	}
+    }
 
   /* start packing result */
-  if (oid_cnt > 0)
+  /* buffer_size is (int:number of OIDs) + size of packed OIDs */
+  buffer_size = OR_INT_SIZE + (oid_cnt * sizeof (OID));
+  buffer = (char *) db_private_alloc (thread_p, buffer_size);
+  if (buffer == NULL)
     {
-      /* buffer_size is (int:number of OIDs) + size of packed OIDs */
-      buffer_size = OR_INT_SIZE + (oid_cnt * sizeof (OID));
-      buffer = (char *) db_private_alloc (thread_p, buffer_size);
-      if (buffer == NULL)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  ptr = or_pack_int (buffer, oid_cnt);
+for (const cubload::class_entry * class_entry:class_entries)
+    {
+      if (!class_entry->is_ignored ())
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-      ptr = or_pack_int (buffer, oid_cnt);
-    for (const cubload::class_entry * class_entry:class_entries)
-	{
-	  if (!class_entry->is_ignored ())
-	    {
-	      OID *class_oid = const_cast < OID * >(&class_entry->get_class_oid ());
-	      ptr = or_pack_oid (ptr, class_oid);
-	    }
+	  OID *class_oid = const_cast < OID * >(&class_entry->get_class_oid ());
+	  ptr = or_pack_oid (ptr, class_oid);
 	}
     }
 
