@@ -6066,6 +6066,7 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
     case PT_TO_CHAR:
       return true;
     case PT_REPLACE:
+    case PT_STRCAT:
       return prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
     default:
       return false;
@@ -18243,9 +18244,10 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       /* use the caching variant of this function ! */
       domain = pt_xasl_node_to_domain (parser, expr);
 
-      if (domain && QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)))
+      if (domain
+	  && (QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)) || type1 == PT_TYPE_NULL || type2 == PT_TYPE_NULL))
 	{
-	  if (opd1 && opd1->node_type == PT_VALUE && type1 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type2))
+	  if (opd1 && opd1->node_type == PT_VALUE && type1 == PT_TYPE_NULL)
 	    {
 	      /* fold 'null || char_opnd' expr to 'char_opnd' */
 	      result = parser_copy_tree (parser, opd2);
@@ -18255,7 +18257,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  goto end;
 		}
 	    }
-	  else if (opd2 && opd2->node_type == PT_VALUE && type2 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type1))
+	  else if (opd2 && opd2->node_type == PT_VALUE && type2 == PT_TYPE_NULL)
 	    {
 	      /* fold 'char_opnd || null' expr to 'char_opnd' */
 	      result = parser_copy_tree (parser, opd1);
