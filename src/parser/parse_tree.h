@@ -2126,6 +2126,8 @@ struct pt_index_info
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
   short deduplicate_level;	/* -1: Not set yet, 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
+  int offset_where_clause;	/* Starting position of the where clause contents (excluding the string "WHERE") in parser->original_buffer */
+  int length_where_clause;
 };
 
 /* CREATE USER INFO */

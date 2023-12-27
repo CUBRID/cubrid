@@ -81,9 +81,9 @@
 #define UNIQUE_SAVEPOINT_GRANT_USER "gRANTuSER"
 #define UNIQUE_SAVEPOINT_REVOKE_USER "rEVOKEuSER"
 
-#define QUERY_MAX_SIZE	1024 * 1024
-#define MAX_FILTER_PREDICATE_STRING_LENGTH 255
-#define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
+#define QUERY_MAX_SIZE	(1024 * 1024)
+#define MAX_FILTER_PREDICATE_STRING_LENGTH     (255)	// smt_add_attribute (def, "filter_expression", "varchar(255)", NULL);
+#define MAX_FUNCTION_EXPRESSION_STRING_LENGTH (1023)	// smt_add_attribute (def, "func", "varchar(1023)", NULL);
 
 typedef enum
 {
@@ -345,6 +345,9 @@ static int do_redistribute_partitions_data (const char *class_name, const char *
 					    int promoted_count, PT_ALTER_CODE alter_op, bool should_update,
 					    bool should_insert);
 static SM_FUNCTION_INFO *compile_partition_expression (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_NODE * pinfo);
+
+static PT_NODE *replace_names_alter_chg_attr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NODE * node,
+								  void *void_arg, int *continue_walk);
 static PT_NODE *replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 					      int *continue_walk);
 static PT_NODE *pt_replace_names_index_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -2917,18 +2920,29 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  idx_info->where->info.expr.paren_type = 0;
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+#if 1
+	  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+#endif
 	  filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser, (PT_NODE *) idx_info->where);
 	  parser->custom_print = save_custom;
 	  if (filter_expr)
 	    {
 	      pred_index_info.pred_string = (char *) filter_expr->bytes;
-	      if (strlen (pred_index_info.pred_string) > MAX_FILTER_PREDICATE_STRING_LENGTH)
+
+	      if (idx_info->length_where_clause > MAX_FILTER_PREDICATE_STRING_LENGTH)
 		{
 		  error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
 		  PT_ERRORmf ((PARSER_CONTEXT *) parser, idx_info->where, MSGCAT_SET_ERROR,
 			      -(ER_SM_INVALID_FILTER_PREDICATE_LENGTH), MAX_FILTER_PREDICATE_STRING_LENGTH);
 		  goto end;
 		}
+
+	      // ********************
+	      memcpy (pred_index_info.pred_string, parser->original_buffer + idx_info->offset_where_clause,
+		      idx_info->length_where_clause);
+	      pred_index_info.pred_string[idx_info->length_where_clause] = '\0';
 	    }
 
 	  pt_enter_packing_buf ();
@@ -14525,9 +14539,9 @@ pt_node_to_function_index (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * no
   parser->custom_print = save_custom;
   assert (expr_str != NULL);
 
-  if (expr_str && (strlen (expr_str) >= MAX_FUNCTION_EXPRESSION_STRING_LENGTH))
+  if (expr_str && (strlen (expr_str) > MAX_FUNCTION_EXPRESSION_STRING_LENGTH))
     {
-      error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
+      error = ER_SM_INVALID_FUNCTION_EXPRESSION_LENGTH;
       PT_ERRORmf ((PARSER_CONTEXT *) parser, node, MSGCAT_SET_ERROR, -(ER_SM_INVALID_FUNCTION_EXPRESSION_LENGTH),
 		  MAX_FUNCTION_EXPRESSION_STRING_LENGTH);
       goto error_exit;
@@ -14769,6 +14783,31 @@ error:
   return error;
 }
 
+typedef struct filter_index_where_positions SFLT_IDX_WHERE_POSITIONS;
+struct filter_index_where_positions
+{
+  PT_NODE *alter;
+  int size;
+  int used;
+  int *ptr;
+  int positions[10];
+
+    filter_index_where_positions (PT_NODE * alter_node)
+  {
+    alter = alter_node;
+    ptr = positions;
+    size = sizeof (positions) / sizeof (int);
+      used = 0;
+  }
+   ~filter_index_where_positions ()
+  {
+    if (ptr && ptr != positions)
+      {
+	free (ptr);
+      }
+  }
+};
+
 /*
  * do_recreate_filter_index_constr () - rebuilds the filter index expression
  *   parser(in): parser context
@@ -14788,6 +14827,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   PT_NODE *where_predicate;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
   PARSER_VARCHAR *filter_expr = NULL;
+  PARSER_VARCHAR *filter_expr_raw = NULL;
   PRED_EXPR_WITH_CONTEXT *filter_predicate;
   int error;
   const char *class_name = NULL;
@@ -14799,6 +14839,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   SM_PREDICATE_INFO new_pred = { NULL, NULL, 0, NULL, 0 };
   bool free_parser = false;
   unsigned int save_custom;
+  int start_pos = 0;
 
   if (parser == NULL)
     {
@@ -14843,6 +14884,9 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_str_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
+  start_pos = snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE ", class_name);
+
   snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE %s", class_name, filter_index_info->pred_string);
   stmt = parser_parse_string_use_sys_charset (parser, query_str);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
@@ -14854,7 +14898,43 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
 
   if (alter)
     {
-      (void) parser_walk_tree (parser, where_predicate, replace_names_alter_chg_attr, alter, NULL, NULL);
+      SFLT_IDX_WHERE_POSITIONS flt_pos (alter);
+      int old_name_len = 0, new_name_len = 0, copy_len;
+      char *pin = filter_index_info->pred_string;
+      const char *new_name;
+      const char *old_name;
+
+      flt_pos.alter = alter;
+      (void) parser_walk_tree (parser, where_predicate, replace_names_alter_chg_attr_for_where_of_filter,
+			       (void *) &flt_pos, NULL, NULL);
+
+      filter_expr_raw = pt_append_nulstring (parser, NULL, "");
+      if (flt_pos.used <= 0)
+	{
+	  filter_expr_raw = pt_append_nulstring (parser, NULL, filter_index_info->pred_string);
+	}
+      else
+	{
+	  if (alter->info.alter.alter_clause.attr_mthd.attr_def_list)
+	    {
+	      new_name = get_attr_name (alter->info.alter.alter_clause.attr_mthd.attr_def_list);
+	      new_name_len = strlen (new_name);
+	    }
+	  old_name = alter->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.original;
+	  old_name_len = strlen (old_name);
+
+	  for (int i = 0; i < flt_pos.used; i++)
+	    {
+	      flt_pos.positions[i] -= (start_pos + old_name_len);
+	      copy_len = flt_pos.positions[i] - (pin - filter_index_info->pred_string);
+
+	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, pin, copy_len);
+	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, new_name, new_name_len);
+
+	      pin += (copy_len + old_name_len);
+	    }
+	  filter_expr_raw = pt_append_nulstring (parser, filter_expr_raw, pin);
+	}
     }
   else
     {
@@ -14874,6 +14954,8 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
 	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
 	}
       (void) parser_walk_tree (parser, where_predicate, pt_replace_names_index_expr, (void *) new_cls_name, NULL, NULL);
+
+      filter_expr_raw = pt_append_nulstring (parser, NULL, filter_index_info->pred_string);
     }
 
   *stmt = pt_resolve_names (parser, *stmt, &sc_info);
@@ -14897,6 +14979,11 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   where_predicate->info.expr.paren_type = 0;
   save_custom = parser->custom_print;
   parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+
+  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+
   filter_expr = pt_print_bytes (parser, where_predicate);
   parser->custom_print = save_custom;
   if (filter_expr)
@@ -14912,13 +14999,16 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
 	}
       memcpy (new_pred.pred_string, pred_str, pred_str_len);
 
-      if (strlen (new_pred.pred_string) > MAX_FILTER_PREDICATE_STRING_LENGTH)
+      if (strlen ((char *) filter_expr_raw->bytes) > MAX_FILTER_PREDICATE_STRING_LENGTH)
 	{
 	  PT_ERRORmf (parser, where_predicate, MSGCAT_SET_ERROR, -(ER_SM_INVALID_FILTER_PREDICATE_LENGTH),
 		      MAX_FILTER_PREDICATE_STRING_LENGTH);
 	  error = ER_FAILED;
 	  goto error;
 	}
+
+      memcpy (new_pred.pred_string, filter_expr_raw->bytes, filter_expr_raw->length);
+      new_pred.pred_string[filter_expr_raw->length] = '\0';
     }
 
   pt_enter_packing_buf ();
@@ -15075,6 +15165,72 @@ replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE * node, void *voi
 	      parser_free_tree (parser, node);
 	      node = new_node;
 	    }
+	}
+    }
+
+  return node;
+}
+
+static PT_NODE *
+replace_names_alter_chg_attr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+						  int *continue_walk)
+{
+  SFLT_IDX_WHERE_POSITIONS *flt_pos = (SFLT_IDX_WHERE_POSITIONS *) void_arg;
+  PT_NODE *alter = flt_pos->alter;
+  PT_NODE *old_name = NULL;
+  const char *new_name = NULL;
+  int *pt = NULL;
+
+  assert (alter->node_type == PT_ALTER);
+
+  if (alter->info.alter.alter_clause.attr_mthd.attr_def_list)
+    {
+      new_name = get_attr_name (alter->info.alter.alter_clause.attr_mthd.attr_def_list);
+    }
+  old_name = alter->info.alter.alter_clause.attr_mthd.attr_old_name;
+  if (old_name == NULL || new_name == NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_NAME_NODE (node))
+    {
+      PT_NODE *new_node = NULL;
+      if (intl_identifier_casecmp (node->info.name.original, old_name->info.name.original) == 0)
+	{
+	  new_node = pt_name (parser, new_name);
+	  if (flt_pos->size <= flt_pos->used)
+	    {
+	      pt = (int *) malloc ((flt_pos->size + 5) * sizeof (int));
+	      if (!pt)
+		{
+		  assert_release (false);
+		  parser_free_tree (parser, new_node);
+		  return NULL;
+		}
+
+	      memcpy (pt, flt_pos->ptr, ((flt_pos->used) * sizeof (int)));
+	      flt_pos->size += 5;
+	      if (flt_pos->ptr != flt_pos->positions)
+		{
+		  free (flt_pos->ptr);
+		}
+	      flt_pos->ptr = pt;
+	    }
+	  flt_pos->ptr[flt_pos->used++] = node->buffer_pos;
+	}
+      else
+	{
+	  new_node = pt_name (parser, node->info.name.original);
+	}
+      if (new_node)
+	{
+	  new_node->next = node->next;
+	  node->next = NULL;
+	  parser_free_tree (parser, node);
+	  node = new_node;
 	}
     }
 

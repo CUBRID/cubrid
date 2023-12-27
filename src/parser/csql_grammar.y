@@ -2718,6 +2718,11 @@ create_stmt
 		{					/* 2 */
                         DBG_TRACE_GRAMMAR(create_stmt, | CREATE);
 			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_INDEX);
+                        if(node)
+                        {
+                            node->info.index.offset_where_clause = -1;
+                            node->info.index.length_where_clause = 0;
+                        }
 			parser_push_hint_node (node);
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
 		}
@@ -2858,7 +2863,7 @@ create_stmt
 				  }
 			      }
                        
-			    node->info.index.where = $12;
+                            node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
                             node->info.index.deduplicate_level = CONTAINER_AT_1($13);
@@ -9719,6 +9724,8 @@ unique_constraint
 				PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 				if (node)
 				  {
+                                    node->info.index.offset_where_clause = -1;    
+                                    node->info.index.length_where_clause = 0;
 				    node->info.index.index_name = $3;
 				    if (node->info.index.index_name)
 				      {
@@ -9728,7 +9735,7 @@ unique_constraint
 				    node->info.index.indexed_class = NULL;
 				    node->info.index.column_names = sort_spec_cols;
 				    node->info.index.unique = 1;
-				    node->info.index.index_status = SM_NORMAL_INDEX;
+				    node->info.index.index_status = SM_NORMAL_INDEX;                                    
 				  }
 			      }
 			  }
@@ -10485,8 +10492,7 @@ attr_index_def
           opt_comment_spec          /* 7 */
 		{{ DBG_TRACE_GRAMMAR(attr_index_def, : index_or_key identifier index_column_name_list opt_where_clause opt_comment_spec opt_invisible);
 			int arg_count = 0, prefix_col_count = 0;
-			PT_NODE* node = parser_new_node(this_parser,
-							PT_CREATE_INDEX);
+			PT_NODE* node = parser_new_node(this_parser, PT_CREATE_INDEX);
 			PT_NODE* col = $3;
 
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
@@ -10499,6 +10505,8 @@ attr_index_def
 			node->info.index.where = $4;
 			node->info.index.comment = $7;
 			node->info.index.index_status = SM_NORMAL_INDEX;
+                        node->info.index.offset_where_clause = -1;
+                        node->info.index.length_where_clause = 0;
 
 			prefix_col_count = parser_count_prefix_columns (col, &arg_count);
 
@@ -14767,16 +14775,49 @@ opt_where_clause
 			assert (parser_connectbyroot_check == 0);
 			parser_save_and_set_sysc (1);
 			parser_save_and_set_prc (1);
-			parser_save_and_set_cbrc (1);
+			parser_save_and_set_cbrc (1);                       
 		}
-	  WHERE search_condition
+	  WHERE 
+                {
+                        PT_NODE* pnode = parser_pop_hint_node();
+                        if(pnode && pnode->node_type == PT_CREATE_INDEX)
+                        {
+                            pnode->info.index.offset_where_clause = @$.buffer_pos;
+                            pnode->info.index.length_where_clause = 0;
+                        }
+                        parser_push_hint_node (pnode);
+                }          
+          search_condition
 		{{ DBG_TRACE_GRAMMAR(opt_where_clause, WHERE search_condition);
+                        PT_NODE* pnode = parser_pop_hint_node();
+                        if(pnode && pnode->node_type == PT_CREATE_INDEX)
+                        {
+                            char *t = this_parser->original_buffer + pnode->info.index.offset_where_clause;
+                            while(*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
+                              {
+                                t++;
+                                pnode->info.index.offset_where_clause++;
+                              }
+
+                            pnode->info.index.length_where_clause = (@$.buffer_pos - pnode->info.index.offset_where_clause);
+                            t = this_parser->original_buffer + @$.buffer_pos;
+                            if(*t != ';'&& *t != '\0' )
+                            {
+                                pnode->info.index.length_where_clause++;
+                            }
+                            while(*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
+                              {
+                                t--;
+                                pnode->info.index.length_where_clause--;
+                              }
+                        }
+                        parser_push_hint_node (pnode);
 
 			parser_restore_ic ();
 			parser_restore_sysc ();
 			parser_restore_prc ();
 			parser_restore_cbrc ();
-			$$ = $3;
+			$$ = $4;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
