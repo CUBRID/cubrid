@@ -2920,11 +2920,11 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  idx_info->where->info.expr.paren_type = 0;
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
-#if 1
+
 	  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
 	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
 	  parser->custom_print |= PT_SUPPRESS_RESOLVED;
-#endif
+
 	  filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser, (PT_NODE *) idx_info->where);
 	  parser->custom_print = save_custom;
 	  if (filter_expr)
@@ -2939,7 +2939,6 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 		  goto end;
 		}
 
-	      // ********************
 	      memcpy (pred_index_info.pred_string, parser->original_buffer + idx_info->offset_where_clause,
 		      idx_info->length_where_clause);
 	      pred_index_info.pred_string[idx_info->length_where_clause] = '\0';
@@ -14833,8 +14832,6 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   const char *class_name = NULL;
   char *query_str = NULL;
   size_t query_str_len = 0;
-  char *pred_str = NULL;
-  int pred_str_len = 0;
   bool free_packing_buff = false;
   SM_PREDICATE_INFO new_pred = { NULL, NULL, 0, NULL, 0 };
   bool free_parser = false;
@@ -14988,18 +14985,16 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   parser->custom_print = save_custom;
   if (filter_expr)
     {
-      pred_str = (char *) filter_expr->bytes;
-      pred_str_len = strlen (pred_str);
-      new_pred.pred_string = (char *) calloc (pred_str_len + 1, sizeof (char));
+      new_pred.pred_string = (char *) calloc (filter_expr_raw->length + 1, sizeof (char));
       if (new_pred.pred_string == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (pred_str_len + 1) * sizeof (char));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (filter_expr_raw->length + 1) * sizeof (char));
 	  goto error;
 	}
-      memcpy (new_pred.pred_string, pred_str, pred_str_len);
 
-      if (strlen ((char *) filter_expr_raw->bytes) > MAX_FILTER_PREDICATE_STRING_LENGTH)
+      assert (filter_expr_raw->length == strlen ((char *) filter_expr_raw->bytes));
+      if (filter_expr_raw->length > MAX_FILTER_PREDICATE_STRING_LENGTH)
 	{
 	  PT_ERRORmf (parser, where_predicate, MSGCAT_SET_ERROR, -(ER_SM_INVALID_FILTER_PREDICATE_LENGTH),
 		      MAX_FILTER_PREDICATE_STRING_LENGTH);

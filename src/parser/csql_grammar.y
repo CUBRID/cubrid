@@ -2720,7 +2720,7 @@ create_stmt
 			PT_NODE* node = parser_new_node (this_parser, PT_CREATE_INDEX);
                         if(node)
                         {
-                            node->info.index.offset_where_clause = -1;
+                            node->info.index.offset_where_clause = -1; 
                             node->info.index.length_where_clause = 0;
                         }
 			parser_push_hint_node (node);
@@ -9724,7 +9724,7 @@ unique_constraint
 				PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 				if (node)
 				  {
-                                    node->info.index.offset_where_clause = -1;    
+                                    node->info.index.offset_where_clause = -1;
                                     node->info.index.length_where_clause = 0;
 				    node->info.index.index_name = $3;
 				    if (node->info.index.index_name)
@@ -10486,15 +10486,25 @@ attr_index_def
 	: index_or_key              /* 1 */
 	  identifier                /* 2 */
 	  index_column_name_list    /* 3 */
-	  opt_where_clause          /* 4 */
-          opt_index_with_clause_no_online  /* 5 */
-	  opt_invisible             /* 6 */
-          opt_comment_spec          /* 7 */
+          {
+              PT_NODE* node = parser_new_node(this_parser, PT_CREATE_INDEX);
+              if(node)
+                {
+                        node->info.index.offset_where_clause = -1;
+                        node->info.index.length_where_clause = 0;
+                        parser_push_hint_node (node);
+                }               
+          } /* 4 */
+	  opt_where_clause          /* 5 */          
+          opt_index_with_clause_no_online  /* 6 */
+	  opt_invisible             /* 7 */
+          opt_comment_spec          /* 8 */
 		{{ DBG_TRACE_GRAMMAR(attr_index_def, : index_or_key identifier index_column_name_list opt_where_clause opt_comment_spec opt_invisible);
 			int arg_count = 0, prefix_col_count = 0;
-			PT_NODE* node = parser_new_node(this_parser, PT_CREATE_INDEX);
+                        PT_NODE* node = parser_pop_hint_node();			
 			PT_NODE* col = $3;
-
+                        assert(node && node->node_type == PT_CREATE_INDEX);
+                        
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 			node->info.index.index_name = $2;
 			if (node->info.index.index_name)
@@ -10502,12 +10512,10 @@ attr_index_def
 			    node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 			  }
 			node->info.index.indexed_class = NULL;
-			node->info.index.where = $4;
-			node->info.index.comment = $7;
+			node->info.index.where = $5;
+			node->info.index.comment = $8;
 			node->info.index.index_status = SM_NORMAL_INDEX;
-                        node->info.index.offset_where_clause = -1;
-                        node->info.index.length_where_clause = 0;
-
+                     
 			prefix_col_count = parser_count_prefix_columns (col, &arg_count);
 
 			if (prefix_col_count > 1 || (prefix_col_count == 1 && arg_count > 1))
@@ -10544,11 +10552,11 @@ attr_index_def
 			      }
 			  }
 
-                        node->info.index.deduplicate_level = $5;
+                        node->info.index.deduplicate_level = $6;
 
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
-			if ($6)
+			if ($7)
 			  {
 			       node->info.index.index_status = SM_INVISIBLE_INDEX;
 			  }
@@ -14801,7 +14809,7 @@ opt_where_clause
 
                             pnode->info.index.length_where_clause = (@$.buffer_pos - pnode->info.index.offset_where_clause);
                             t = this_parser->original_buffer + @$.buffer_pos;
-                            if(*t != ';'&& *t != '\0' )
+                            if(*t != ';' && *t != ',' && *t != ')' && *t != '\0' )
                             {
                                 pnode->info.index.length_where_clause++;
                             }
