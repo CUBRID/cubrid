@@ -197,6 +197,7 @@ struct _s_passwd{
 };
 static struct _s_passwd pwd_info = { -1, -1, false, false, 0, -1, false };
 static void pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING en_add_pwd_string);
+static void pt_get_offset_length_of_where_clause (PT_NODE* node, int buffer_pos);
 
 static int parser_groupby_exception = 0;
 
@@ -14800,24 +14801,7 @@ opt_where_clause
                         PT_NODE* pnode = parser_pop_hint_node();
                         if(pnode && pnode->node_type == PT_CREATE_INDEX)
                         {
-                            char *t = this_parser->original_buffer + pnode->info.index.offset_where_clause;
-                            while(*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
-                              {
-                                t++;
-                                pnode->info.index.offset_where_clause++;
-                              }
-
-                            pnode->info.index.length_where_clause = (@$.buffer_pos - pnode->info.index.offset_where_clause);
-                            t = this_parser->original_buffer + @$.buffer_pos;
-                            if(*t != ';' && *t != ',' && *t != ')' && *t != '\0' )
-                            {
-                                pnode->info.index.length_where_clause++;
-                            }
-                            while(*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
-                              {
-                                t--;
-                                pnode->info.index.length_where_clause--;
-                              }
+                            pt_get_offset_length_of_where_clause(pnode, @$.buffer_pos);
                         }
                         parser_push_hint_node (pnode);
 
@@ -28059,4 +28043,41 @@ pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING
     }
 
   password_add_offset (&this_parser->hide_pwd_info, start, end, is_add_comma, en_add_pwd_string);
+}
+
+static void 
+pt_get_offset_length_of_where_clause(PT_NODE* pnode, int buffer_pos)
+ {
+   char buf[1024];
+   char *buf_ptr = this_parser->original_buffer;
+
+   if(this_parser->original_buffer == NULL)
+     {
+       int t_size = buffer_pos - pnode->info.index.offset_where_clause;
+       int t_fd = fileno(this_parser->file);      
+       lseek64(t_fd, pnode->info.index.offset_where_clause, SEEK_SET);
+       read(t_fd, buf, t_size);
+       buf[t_size] = '\0';
+
+       buf_ptr = buf;
+     }
+   
+   char *t = buf_ptr + pnode->info.index.offset_where_clause;
+   while(*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
+     {
+        t++;
+        pnode->info.index.offset_where_clause++;
+     }
+ 
+   pnode->info.index.length_where_clause = (buffer_pos - pnode->info.index.offset_where_clause);
+   t = buf_ptr + buffer_pos;
+   if(*t != ';' && *t != ',' && *t != ')' && *t != '\0' )
+     {
+        pnode->info.index.length_where_clause++;
+     }
+   while(*t == ' ' || *t == '\t' || *t == '\r' || *t == '\n')
+     {
+        t--;
+        pnode->info.index.length_where_clause--;
+     }     
 }

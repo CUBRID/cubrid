@@ -2941,9 +2941,19 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 		  goto end;
 		}
 
-	      memcpy (pred_index_info.pred_string, parser->original_buffer + idx_info->offset_where_clause,
-		      idx_info->length_where_clause);
-	      pred_index_info.pred_string[idx_info->length_where_clause] = '\0';
+	      if (parser->original_buffer)
+		{
+		  memcpy (pred_index_info.pred_string, parser->original_buffer + idx_info->offset_where_clause,
+			  idx_info->length_where_clause);
+		  pred_index_info.pred_string[idx_info->length_where_clause] = '\0';
+		}
+	      else
+		{
+		  int t_fd = fileno (parser->file);
+		  lseek64 (t_fd, idx_info->offset_where_clause, SEEK_SET);
+		  read (t_fd, pred_index_info.pred_string, idx_info->length_where_clause);
+		  pred_index_info.pred_string[idx_info->length_where_clause] = '\0';
+		}
 	    }
 
 	  pt_enter_packing_buf ();
