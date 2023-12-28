@@ -352,6 +352,8 @@ static PT_NODE *replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE *
 					      int *continue_walk);
 static PT_NODE *pt_replace_names_index_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 					     int *continue_walk);
+static PT_NODE *pt_replace_names_index_expr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NODE * node,
+								 void *void_arg, int *continue_walk);
 static int adjust_partition_range (DB_OBJLIST * objs);
 static int adjust_partition_size (MOP class_, DB_CTMPL * tmpl);
 
@@ -14786,26 +14788,133 @@ typedef struct filter_index_where_positions SFLT_IDX_WHERE_POSITIONS;
 struct filter_index_where_positions
 {
   PT_NODE *alter;
+  const char *old_name;
+  const char *old_user_specified_name;
+  const char *new_name;
+  const char *new_user_specified_name;
+  //
   int size;
   int used;
   int *ptr;
-  int positions[10];
+  int zpositions[10];
 
-    filter_index_where_positions (PT_NODE * alter_node)
+    filter_index_where_positions ()
   {
-    alter = alter_node;
-    ptr = positions;
-    size = sizeof (positions) / sizeof (int);
+    ptr = zpositions;
+    size = sizeof (zpositions) / sizeof (int);
       used = 0;
   }
+
    ~filter_index_where_positions ()
   {
-    if (ptr && ptr != positions)
+    if (ptr && ptr != zpositions)
       {
 	free (ptr);
       }
   }
 };
+
+
+static bool
+get_positions_in_where_of_filter (SFLT_IDX_WHERE_POSITIONS * flt_pos, int buffer_pos, bool is_user_specified)
+{
+  int *pt = NULL;
+
+  if (flt_pos->size <= flt_pos->used)
+    {
+      pt = (int *) malloc ((flt_pos->size + 5) * sizeof (int));
+      if (!pt)
+	{
+	  assert_release (false);
+	  return false;
+	}
+
+      memcpy (pt, flt_pos->ptr, ((flt_pos->used) * sizeof (int)));
+      flt_pos->size += 5;
+      if (flt_pos->ptr != flt_pos->zpositions)
+	{
+	  free (flt_pos->ptr);
+	}
+      flt_pos->ptr = pt;
+    }
+  flt_pos->ptr[flt_pos->used++] = is_user_specified ? (buffer_pos | 0x80000000) : buffer_pos;
+  return true;
+}
+
+static PARSER_VARCHAR *
+rewrite_where_of_filter (PARSER_CONTEXT * parser, char *pred_string, int start_pos, SFLT_IDX_WHERE_POSITIONS * flt_pos)
+{
+  int new_name_len[2], old_name_len[2], copy_len, offset, idx;
+  char *pin = pred_string;
+  char *ptr, *delimiter = NULL;
+  const char *name_ptr;
+  PARSER_VARCHAR *filter_expr_raw;
+
+  filter_expr_raw = pt_append_nulstring (parser, NULL, "");
+  if (flt_pos->used <= 0)
+    {
+      filter_expr_raw = pt_append_nulstring (parser, NULL, pred_string);
+    }
+  else
+    {
+      new_name_len[0] = (flt_pos->new_name && *flt_pos->new_name) ? strlen (flt_pos->new_name) : 0;
+      old_name_len[0] = (flt_pos->old_name && *flt_pos->old_name) ? strlen (flt_pos->old_name) : 0;
+      new_name_len[1] = (flt_pos->new_user_specified_name && *flt_pos->new_user_specified_name)
+	? strlen (flt_pos->new_user_specified_name) : 0;
+      old_name_len[1] = (flt_pos->old_user_specified_name && *flt_pos->old_user_specified_name)
+	? strlen (flt_pos->old_user_specified_name) : 0;
+
+      assert (flt_pos->used <= 0 || flt_pos->ptr != NULL);
+      for (int i = 0; i < flt_pos->used; i++)
+	{
+	  if (flt_pos->ptr[i] & 0x80000000)
+	    {
+	      idx = 1;
+	      name_ptr = flt_pos->new_user_specified_name;
+	      offset = (flt_pos->ptr[i] & 0x7FFFFFFF) - start_pos;
+	    }
+	  else
+	    {
+	      idx = 0;
+	      name_ptr = flt_pos->new_name;
+	      offset = flt_pos->ptr[i] - start_pos;
+	    }
+
+	  ptr = &pred_string[offset];
+	  /* if they are enclosed in double quotes, square brackets, or backtick symbol, they are allowed as an exception. 
+	   * Especially, the double quotations can be used as a symbol enclosing identifiers when the "ansi_quotes" parameter is set to "yes".
+	   * If this value is set to no double quotations are used as a symbol enclosing character strings
+	   * However, since it is clear that the location being checked is the identifier here, the ansi_quotes parameter is not checked.
+	   *  It doesn't work if you fact check it. This is because it is unknown if the settings have been changed since the original was saved.
+	   */
+	  delimiter = (ptr[-1] == ']' || ptr[-1] == '`' || ptr[-1] == '"') ? (ptr - 1) : NULL;
+	  if (delimiter)
+	    {
+	      ptr--;		// end delimiter
+	      ptr -= old_name_len[idx];
+	      copy_len = ptr - pin;
+
+	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, pin, copy_len);
+	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, name_ptr, new_name_len[idx]);
+	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, delimiter, 1);
+	      pin += (copy_len + old_name_len[idx] + 1);
+	    }
+	  else
+	    {
+	      ptr -= old_name_len[idx];
+	      copy_len = ptr - pin;
+
+	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, pin, copy_len);
+	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, name_ptr, new_name_len[idx]);
+	      pin += (copy_len + old_name_len[idx]);
+	    }
+	}
+      filter_expr_raw = pt_append_nulstring (parser, filter_expr_raw, pin);
+    }
+
+  return filter_expr_raw;
+}
+
 
 /*
  * do_recreate_filter_index_constr () - rebuilds the filter index expression
@@ -14895,64 +15004,53 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
 
   if (alter)
     {
-      SFLT_IDX_WHERE_POSITIONS flt_pos (alter);
-      int old_name_len = 0, new_name_len = 0, copy_len;
-      char *pin = filter_index_info->pred_string;
-      const char *new_name;
-      const char *old_name;
+      SFLT_IDX_WHERE_POSITIONS flt_pos;
 
       flt_pos.alter = alter;
+      flt_pos.new_user_specified_name = NULL;
+      flt_pos.old_user_specified_name = NULL;
+
+      if (alter->info.alter.alter_clause.attr_mthd.attr_def_list)
+	{
+	  flt_pos.new_name = get_attr_name (alter->info.alter.alter_clause.attr_mthd.attr_def_list);
+	}
+      flt_pos.old_name = alter->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.original;
+
       (void) parser_walk_tree (parser, where_predicate, replace_names_alter_chg_attr_for_where_of_filter,
 			       (void *) &flt_pos, NULL, NULL);
 
-      filter_expr_raw = pt_append_nulstring (parser, NULL, "");
-      if (flt_pos.used <= 0)
-	{
-	  filter_expr_raw = pt_append_nulstring (parser, NULL, filter_index_info->pred_string);
-	}
-      else
-	{
-	  if (alter->info.alter.alter_clause.attr_mthd.attr_def_list)
-	    {
-	      new_name = get_attr_name (alter->info.alter.alter_clause.attr_mthd.attr_def_list);
-	      new_name_len = strlen (new_name);
-	    }
-	  old_name = alter->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.original;
-	  old_name_len = strlen (old_name);
-
-	  for (int i = 0; i < flt_pos.used; i++)
-	    {
-	      flt_pos.positions[i] -= (start_pos + old_name_len);
-	      copy_len = flt_pos.positions[i] - (pin - filter_index_info->pred_string);
-
-	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, pin, copy_len);
-	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, new_name, new_name_len);
-
-	      pin += (copy_len + old_name_len);
-	    }
-	  filter_expr_raw = pt_append_nulstring (parser, filter_expr_raw, pin);
-	}
+      filter_expr_raw = rewrite_where_of_filter (parser, filter_index_info->pred_string, start_pos, &flt_pos);
     }
   else
     {
+      SFLT_IDX_WHERE_POSITIONS flt_pos;
       PT_NODE *new_node = pt_name (parser, new_cls_name);
       PT_NODE *old_name = (*stmt)->info.query.q.select.from->info.spec.entity_name;
-      if (!old_name)
+      char old_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
+
+      if (!old_name || !new_node)
 	{
 	  error = ER_FAILED;
 	  goto error;
 	}
 
-      if (new_node)
-	{
-	  new_node->next = old_name->next;
-	  old_name->next = NULL;
-	  parser_free_tree (parser, old_name);
-	  (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
-	}
-      (void) parser_walk_tree (parser, where_predicate, pt_replace_names_index_expr, (void *) new_cls_name, NULL, NULL);
+      strcpy (old_name_buf, old_name->info.name.original);
 
-      filter_expr_raw = pt_append_nulstring (parser, NULL, filter_index_info->pred_string);
+      new_node->next = old_name->next;
+      old_name->next = NULL;
+      parser_free_tree (parser, old_name);
+      (*stmt)->info.query.q.select.from->info.spec.entity_name = new_node;
+
+      flt_pos.alter = NULL;
+      flt_pos.old_user_specified_name = old_name_buf;
+      flt_pos.old_name = sm_remove_qualifier_name (old_name_buf);
+      flt_pos.new_user_specified_name = new_cls_name;
+      flt_pos.new_name = sm_remove_qualifier_name (new_cls_name);
+
+      (void) parser_walk_tree (parser, where_predicate, pt_replace_names_index_expr_for_where_of_filter,
+			       (void *) &flt_pos, NULL, NULL);
+
+      filter_expr_raw = rewrite_where_of_filter (parser, filter_index_info->pred_string, start_pos, &flt_pos);
     }
 
   *stmt = pt_resolve_names (parser, *stmt, &sc_info);
@@ -15174,7 +15272,6 @@ replace_names_alter_chg_attr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NO
   PT_NODE *alter = flt_pos->alter;
   PT_NODE *old_name = NULL;
   const char *new_name = NULL;
-  int *pt = NULL;
 
   assert (alter->node_type == PT_ALTER);
 
@@ -15190,31 +15287,38 @@ replace_names_alter_chg_attr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NO
     }
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (PT_IS_NAME_NODE (node))
+  if (node->node_type == PT_DOT_)
+    {
+      if (PT_IS_NAME_NODE (node->info.dot.arg2))
+	{
+	  PT_NODE *new_node = NULL;
+	  if (intl_identifier_casecmp (node->info.dot.arg2->info.name.original, old_name->info.name.original) == 0)
+	    {
+	      new_node = pt_name (parser, new_name);
+	      get_positions_in_where_of_filter (flt_pos, node->buffer_pos, false);
+	    }
+	  else
+	    {
+	      new_node = pt_name (parser, node->info.dot.arg2->info.name.original);
+	    }
+	  if (new_node)
+	    {
+	      new_node->next = node->next;
+	      node->next = NULL;
+	      parser_free_tree (parser, node);
+	      node = new_node;
+	    }
+	}
+
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (PT_IS_NAME_NODE (node))
     {
       PT_NODE *new_node = NULL;
       if (intl_identifier_casecmp (node->info.name.original, old_name->info.name.original) == 0)
 	{
 	  new_node = pt_name (parser, new_name);
-	  if (flt_pos->size <= flt_pos->used)
-	    {
-	      pt = (int *) malloc ((flt_pos->size + 5) * sizeof (int));
-	      if (!pt)
-		{
-		  assert_release (false);
-		  parser_free_tree (parser, new_node);
-		  return NULL;
-		}
-
-	      memcpy (pt, flt_pos->ptr, ((flt_pos->used) * sizeof (int)));
-	      flt_pos->size += 5;
-	      if (flt_pos->ptr != flt_pos->positions)
-		{
-		  free (flt_pos->ptr);
-		}
-	      flt_pos->ptr = pt;
-	    }
-	  flt_pos->ptr[flt_pos->used++] = node->buffer_pos;
+	  get_positions_in_where_of_filter (flt_pos, node->buffer_pos, false);
 	}
       else
 	{
@@ -15260,6 +15364,48 @@ pt_replace_names_index_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *void
 	{
 	  PT_NODE *new_node = pt_name (parser, new_name);
 	  PT_NODE *dot_arg = node->info.dot.arg1;
+	  if (new_node)
+	    {
+	      new_node->next = dot_arg->next;
+	      dot_arg->next = NULL;
+	      parser_free_tree (parser, dot_arg);
+	      node->info.dot.arg1 = new_node;
+	    }
+	}
+    }
+
+  return node;
+}
+
+static PT_NODE *
+pt_replace_names_index_expr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+						 int *continue_walk)
+{
+  SFLT_IDX_WHERE_POSITIONS *flt_pos = (SFLT_IDX_WHERE_POSITIONS *) void_arg;
+  const char *new_name = flt_pos->new_name;
+  int *pt = NULL;
+
+  assert (flt_pos->alter == NULL);
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_DOT_)
+    {
+      if (PT_IS_NAME_NODE (node->info.dot.arg1))
+	{
+	  PT_NODE *new_node = pt_name (parser, new_name);
+	  PT_NODE *dot_arg = node->info.dot.arg1;
+
+	  if (intl_identifier_casecmp (dot_arg->info.name.original, flt_pos->old_name) == 0)
+	    {
+	      get_positions_in_where_of_filter (flt_pos, dot_arg->buffer_pos, false);
+	    }
+	  else
+	    {
+	      assert (intl_identifier_casecmp (dot_arg->info.name.original, flt_pos->old_user_specified_name) == 0);
+	      get_positions_in_where_of_filter (flt_pos, dot_arg->buffer_pos, true);
+	    }
+
 	  if (new_node)
 	    {
 	      new_node->next = dot_arg->next;
