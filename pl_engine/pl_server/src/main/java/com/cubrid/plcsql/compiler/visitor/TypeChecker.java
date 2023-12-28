@@ -48,7 +48,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 
-
 public class TypeChecker extends AstVisitor<TypeSpec> {
 
     public TypeChecker(SymbolStack symbolStack) {
@@ -449,7 +448,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprField(ExprField node) {
-        TypeSpec ret = null;;
+        TypeSpec ret = null;
 
         DeclId declId = node.record.decl;
         assert declId instanceof DeclForRecord;
@@ -457,9 +456,9 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (declForRecord.fieldTypes != null) {
             // this record is for a static SQL
 
-            //ret = declForRecord.fieldTypes.get(node.fieldName);
+            // ret = declForRecord.fieldTypes.get(node.fieldName);
             int i = 1, found = -1;
-            for (Misc.Pair<String, TypeSpec> p: declForRecord.fieldTypes) {
+            for (Misc.Pair<String, TypeSpec> p : declForRecord.fieldTypes) {
                 if (node.fieldName.equals(p.e1)) {
                     if (found > 0) {
                         throw new SemanticError(
