@@ -28055,8 +28055,8 @@ pt_get_offset_length_of_where_clause(PT_NODE* pnode, int buffer_pos)
      {
        int t_size = buffer_pos - pnode->info.index.offset_where_clause;
        int t_fd = fileno(this_parser->file);      
-       lseek64(t_fd, pnode->info.index.offset_where_clause, SEEK_SET);
-       read(t_fd, buf, t_size);
+       lseek (t_fd, pnode->info.index.offset_where_clause, SEEK_SET);
+       read (t_fd, buf, t_size);
        buf[t_size] = '\0';
 
        buf_ptr = buf;

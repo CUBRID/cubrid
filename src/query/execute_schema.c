@@ -2950,7 +2950,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	      else
 		{
 		  int t_fd = fileno (parser->file);
-		  lseek64 (t_fd, idx_info->offset_where_clause, SEEK_SET);
+		  lseek (t_fd, idx_info->offset_where_clause, SEEK_SET);
 		  read (t_fd, pred_index_info.pred_string, idx_info->length_where_clause);
 		  pred_index_info.pred_string[idx_info->length_where_clause] = '\0';
 		}
