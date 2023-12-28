@@ -549,23 +549,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitAdd_exp(Add_expContext ctx) {
-        String opStr =
-                ctx.PLUS_SIGN() != null
-                        ? "Add"
-                        : ctx.MINUS_SIGN() != null
-                                ? "Subtract"
-                                : ctx.CONCAT_OP() != null ? "Concat" : null;
-        if (opStr == null) {
-            assert false : "unreachable"; // by syntax
-            throw new RuntimeException("unreachable");
-        }
-
-        String castTy = opStr.equals("Concat") ? "Object" : "Integer";
 
         Expr l = visitExpression(ctx.concatenation(0));
         Expr r = visitExpression(ctx.concatenation(1));
 
+        String opStr = ctx.PLUS_SIGN() != null ? "Add" : "Subtract";
         return new ExprBinaryOp(ctx, opStr, l, r);
+    }
+
+    @Override
+    public Expr visitStr_concat_exp(Str_concat_expContext ctx) {
+
+        Expr l = visitExpression(ctx.concatenation(0));
+        Expr r = visitExpression(ctx.concatenation(1));
+
+        return new ExprBinaryOp(ctx, "Concat", l, r);
     }
 
     @Override
