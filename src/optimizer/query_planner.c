@@ -9980,9 +9980,10 @@ qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, i
       /* now check if the key segment is in there */
       if (bitset_intersects (&expr_segments, &key_segment))
 	{
+	  int nullable_terms = 0;
+	  qo_check_nullable_expr (parser, tree, &nullable_terms, NULL);
 	  /* this expr contains the key segment */
-	  if (tree->info.expr.op == PT_IS_NULL || tree->info.expr.op == PT_IS_NOT_NULL
-	      || tree->info.expr.op == PT_IFNULL || tree->info.expr.op == PT_NULLSAFE_EQ)
+	  if (nullable_terms >= 1)
 	    {
 	      /* 0 all the way, suppress other terms found */
 	      env->bail_out = 0;
@@ -10074,6 +10075,16 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_LT;
 	}
       else if (a_filter < b_filter)
+	{
+	  return PLAN_COMP_GT;
+	}
+
+      /* prefer covering scan */
+      if (qo_is_index_covering_scan (a) && !qo_is_index_covering_scan (b))
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if (!qo_is_index_covering_scan (a) && qo_is_index_covering_scan (b))
 	{
 	  return PLAN_COMP_GT;
 	}
