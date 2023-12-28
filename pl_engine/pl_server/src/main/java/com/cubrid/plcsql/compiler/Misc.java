@@ -40,6 +40,16 @@ import org.antlr.v4.runtime.tree.ParseTree;
 
 public class Misc {
 
+    public static class Pair<X, Y> {
+        public X e1;
+        public Y e2;
+
+        public Pair(X e1, Y e2) {
+            this.e1 = e1;
+            this.e2 = e2;
+        }
+    }
+
     public static final int[] UNKNOWN_LINE_COLUMN = new int[] {-1, -1};
     public static final String INDENT = "  "; // two spaces
     public static final int INDENT_SIZE = INDENT.length();

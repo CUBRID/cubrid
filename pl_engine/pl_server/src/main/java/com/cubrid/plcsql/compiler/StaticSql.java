@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import org.antlr.v4.runtime.ParserRuleContext;
+import com.cubrid.plcsql.compiler.Misc;
 
 public class StaticSql {
 
@@ -44,7 +45,7 @@ public class StaticSql {
     public final int kind;
     public final String rewritten;
     public final LinkedHashMap<Expr, TypeSpec> hostExprs; // currently, TypeSpecs are always null.
-    public final LinkedHashMap<String, TypeSpec> selectList;
+    public final List<Misc.Pair<String, TypeSpec>> selectList;
     public final List<ExprId> intoVars; // can be null
 
     StaticSql(
@@ -52,7 +53,7 @@ public class StaticSql {
             int kind,
             String rewritten,
             LinkedHashMap<Expr, TypeSpec> hostExprs,
-            LinkedHashMap<String, TypeSpec> selectList,
+            List<Misc.Pair<String, TypeSpec>> selectList,
             List<ExprId> intoVars) {
 
         this.ctx = ctx;
@@ -68,8 +69,8 @@ public class StaticSql {
             return null;
         } else {
             List<TypeSpec> ret = new ArrayList<>();
-            for (String s : selectList.keySet()) {
-                ret.add(selectList.get(s));
+            for (Misc.Pair<String, TypeSpec> p : selectList) {
+                ret.add(p.e2);
             }
             return ret;
         }

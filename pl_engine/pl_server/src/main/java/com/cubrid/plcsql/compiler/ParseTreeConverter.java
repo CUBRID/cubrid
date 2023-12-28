@@ -2435,7 +2435,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private StaticSql checkAndConvertStaticSql(SqlSemantics sws, ParserRuleContext ctx) {
 
         LinkedHashMap<Expr, TypeSpec> hostExprs = new LinkedHashMap<>();
-        LinkedHashMap<String, TypeSpec> selectList = null;
+        List<Misc.Pair<String, TypeSpec>> selectList = null;
         ArrayList<ExprId> intoVars = null;
 
         // check (name-binding) and convert host variables used in the SQL
@@ -2494,7 +2494,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (sws.kind == ServerConstants.CUBRID_STMT_SELECT) {
 
             // convert select list
-            selectList = new LinkedHashMap<>();
+            selectList = new ArrayList<>();
             for (ColumnInfo ci : sws.selectList) {
                 String col = Misc.getNormalizedText(getColumnNameInSelectList(ci));
 
@@ -2544,14 +2544,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
                 assert typeSpec != null;
 
-                TypeSpec old = selectList.put(col, typeSpec);
-                if (old != null) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(ctx), // s427
-                            String.format(
-                                    "more than one columns have the same name '%s' in the SELECT list",
-                                    col));
-                }
+                selectList.add(new Misc.Pair<>(col, typeSpec));
             }
 
             // check (name-binding) and convert into-variables used in the SQL

@@ -31,16 +31,17 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.LinkedHashMap;
+import com.cubrid.plcsql.compiler.Misc;
 import org.antlr.v4.runtime.ParserRuleContext;
+import java.util.List;
 
 public class DeclForRecord extends DeclId {
 
     public final String name;
-    public final LinkedHashMap<String, TypeSpec> fieldTypes;
+    public final List<Misc.Pair<String, TypeSpec>> fieldTypes;
 
     public DeclForRecord(
-            ParserRuleContext ctx, String name, LinkedHashMap<String, TypeSpec> fieldTypes) {
+            ParserRuleContext ctx, String name, List<Misc.Pair<String, TypeSpec>> fieldTypes) {
         super(ctx);
 
         this.name = name;
