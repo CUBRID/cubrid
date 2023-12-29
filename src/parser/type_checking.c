@@ -18268,7 +18268,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      if (result == NULL)
 		{
 		  has_error = true;
-		  goto end;
 		}
 	    }
 	  else if (opd2 && opd2->node_type == PT_VALUE && type2 == PT_TYPE_NULL)
@@ -18278,7 +18277,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      if (result == NULL)
 		{
 		  has_error = true;
-		  goto end;
 		}
 	    }
 
