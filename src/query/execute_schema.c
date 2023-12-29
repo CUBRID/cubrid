@@ -15019,12 +15019,17 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       flt_pos.alter = alter;
       flt_pos.new_user_specified_name = NULL;
       flt_pos.old_user_specified_name = NULL;
+      flt_pos.new_name = NULL;
+      flt_pos.old_name = NULL;
 
       if (alter->info.alter.alter_clause.attr_mthd.attr_def_list)
 	{
 	  flt_pos.new_name = get_attr_name (alter->info.alter.alter_clause.attr_mthd.attr_def_list);
 	}
-      flt_pos.old_name = alter->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.original;
+      if (alter->info.alter.alter_clause.attr_mthd.attr_old_name)
+	{
+	  flt_pos.old_name = alter->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.original;
+	}
 
       (void) parser_walk_tree (parser, where_predicate, replace_names_alter_chg_attr_for_where_of_filter,
 			       (void *) &flt_pos, NULL, NULL);
