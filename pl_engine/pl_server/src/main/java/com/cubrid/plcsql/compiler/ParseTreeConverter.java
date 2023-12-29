@@ -286,7 +286,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public TypeSpec visitPercent_type_spec(Percent_type_specContext ctx) {
 
         if (ctx.table_name() == null) {
-            // case variable%TYPE
+            // case <variable>%TYPE
             ExprId id = visitNonFuncIdentifier(ctx.identifier()); // s000: undeclared id
             if (!(id.decl instanceof DeclIdTyped)) {
                 throw new SemanticError(
@@ -298,8 +298,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             return ((DeclIdTyped) id.decl).typeSpec();
         } else {
-            // case table.column%TYPE
+            // case <table>.<column>%TYPE
             String table = Misc.getNormalizedText(ctx.table_name());
+            if (table.indexOf(".") >= 0) {
+                // table name contains its user schema name
+                table = table.replaceAll(" ", "");
+            }
             String column = Misc.getNormalizedText(ctx.identifier());
 
             TypeSpec ret = new TypeSpecPercent(table, column);

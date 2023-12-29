@@ -469,7 +469,7 @@ record_name
     ;
 
 table_name
-    : identifier
+    : (identifier '.')? identifier
     ;
 
 column_name
