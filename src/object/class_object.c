@@ -4125,6 +4125,36 @@ classobj_check_attr_in_unique_constraint (SM_CLASS_CONSTRAINT * cons_list, char 
   return false;
 }
 
+static PARSER_VARCHAR *
+build_filter_pred_string_for_compare (PARSER_CONTEXT * parser, char *pred_string)
+{
+  PT_NODE **stmt = NULL;
+  PT_NODE *where_predicate;
+  PARSER_VARCHAR *filter_expr = NULL;
+  int save_custom;
+
+  char *class_name = "tbl";
+  char query_buf[1024];
+
+  snprintf (query_buf, sizeof (query_buf), "SELECT * FROM [%s] WHERE %s", class_name, pred_string);
+  stmt = parser_parse_string_use_sys_charset (parser, query_buf);
+  if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+  where_predicate = (*stmt)->info.query.q.select.where;
+
+  save_custom = parser->custom_print;
+  where_predicate->info.expr.paren_type = 0;
+  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
+  parser->custom_print |= (PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_NO_CURRENT_USER_NAME);
+  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+
+  filter_expr = pt_print_bytes (parser, where_predicate);
+  parser->custom_print = save_custom;
+  return filter_expr;
+}
+
 /*
  * classobj_find_cons_index2()
  *   return:
@@ -4146,6 +4176,9 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
   int new_len = 0;
   int new_index_start = 0, con_index_start = 0;
   bool is_uk_new, is_compare_except_dedup_key = false;
+  PARSER_VARCHAR *flt_pred = NULL;
+  PARSER_VARCHAR *cons_pred = NULL;
+  PARSER_CONTEXT *t_parser = NULL;
 
   /* for foreign key, need to check redundancy first */
   if (new_cons == DB_CONSTRAINT_FOREIGN_KEY)
@@ -4300,7 +4333,26 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 
 	  if (strcmp (filter_predicate->pred_string, cons->filter_predicate->pred_string))
 	    {
-	      continue;
+	      if (t_parser == NULL)
+		{
+		  t_parser = parser_create_parser ();
+		  if (t_parser == NULL)
+		    {
+		      assert_release (false);
+		      continue;
+		    }
+		}
+	      if (flt_pred == NULL)
+		{
+		  flt_pred = build_filter_pred_string_for_compare (t_parser, filter_predicate->pred_string);
+		}
+	      cons_pred = build_filter_pred_string_for_compare (t_parser, cons->filter_predicate->pred_string);
+
+	      if ((flt_pred->length != cons_pred->length)
+		  || strcmp ((char *) flt_pred->bytes, (char *) cons_pred->bytes))
+		{
+		  continue;
+		}
 	    }
 	}
 
@@ -4316,9 +4368,13 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	    }
 	}
 
-      return cons;
+      break;
     }
 
+  if (t_parser)
+    {
+      parser_free_parser (t_parser);
+    }
   return cons;
 }
 
