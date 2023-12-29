@@ -4132,11 +4132,9 @@ build_filter_pred_string_for_compare (PARSER_CONTEXT * parser, char *pred_string
   PT_NODE *where_predicate;
   PARSER_VARCHAR *filter_expr = NULL;
   int save_custom;
-
-  char *class_name = "tbl";
   char query_buf[1024];
 
-  snprintf (query_buf, sizeof (query_buf), "SELECT * FROM [%s] WHERE %s", class_name, pred_string);
+  snprintf (query_buf, sizeof (query_buf), "SELECT * FROM [x] WHERE %s", pred_string);
   stmt = parser_parse_string_use_sys_charset (parser, query_buf);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
@@ -4349,7 +4347,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	      cons_pred = build_filter_pred_string_for_compare (t_parser, cons->filter_predicate->pred_string);
 
 	      if ((flt_pred->length != cons_pred->length)
-		  || strcmp ((char *) flt_pred->bytes, (char *) cons_pred->bytes))
+		  || strcasecmp ((char *) flt_pred->bytes, (char *) cons_pred->bytes))
 		{
 		  continue;
 		}
