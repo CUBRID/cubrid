@@ -212,6 +212,9 @@ static int boot_define_view_stored_procedure (void);
 static int boot_define_view_stored_procedure_arguments (void);
 static int boot_define_view_db_collation (void);
 static int boot_define_view_synonym (void);
+static int boot_define_view_all_objects (void);
+static int boot_define_view_dba_objects (void);
+static int boot_define_view_user_objects (void);
 static int catcls_class_install (void);
 static int catcls_vclass_install (void);
 #if defined(CS_MODE)
@@ -6720,6 +6723,255 @@ boot_define_view_synonym (void)
   return NO_ERROR;
 }
 
+#define SELECT_OBJECTS_QUERY  "SELECT \
+      /* CLASS/VCLASS */ \
+       [c].[owner_name] AS [owner], \
+       [c].[class_name] AS [object_name], \
+       CASE [c].[class_type] \
+         WHEN 'CLASS' THEN 'table' \
+         WHEN 'VCLASS' THEN 'view' \
+         ELSE 'unknown' \
+       END AS [object_type], \
+       CASE \
+         WHEN [c].[is_system_class] = 'YES' THEN 'Y' \
+         WHEN [c].[partitioned] = 'YES' THEN 'Y' \
+         ELSE 'N' \
+       END AS [generated] \
+    FROM \
+       [db_class] AS [c] \
+   UNION ALL  \
+    /* INDEX */ \
+    SELECT \
+       [i].[owner_name] AS [owner], \
+       [i].[index_name] AS [object_name], \
+       'index'          AS [object_type], \
+       CASE \
+         WHEN [i].is_primary_key = 'YES' THEN 'Y' \
+         WHEN [i].is_foreign_key = 'YES' THEN 'Y' \
+         ELSE 'N' \
+       END AS [generated] \
+    FROM \
+       [db_index] AS [i] \
+   UNION ALL  \
+    /* TRIGGER */ \
+    SELECT \
+       [t].[target_owner_name] AS [owner], \
+       [t].[trigger_name]      AS [object_name], \
+       'trigger'               AS [object_type], \
+       'N'                     AS [generated] \
+    FROM \
+       [db_trig] AS [t] \
+   UNION ALL  \
+    /* SERIAL */ \
+    SELECT \
+       'PUBLIC'   AS [owner], \
+       [s].[name] AS [object_name], \
+       'serial'   AS [object_type], \
+       'N'        AS [generated] \
+    FROM \
+     [db_serial] AS [s] \
+   UNION ALL  \
+    /* STORED PROCEDURE */ \
+    SELECT \
+       [p].[owner]   AS [owner], \
+       [p].[sp_name] AS [object_name], \
+       [p].[sp_type] AS [object_type], \
+      'N'           AS [generated] \
+    FROM \
+       [db_stored_procedure] AS [p] \
+   UNION ALL  \
+    /* SYNONYM */ \
+    SELECT \
+       [sy].[synonym_owner_name]   AS [owner], \
+       [sy].[synonym_name] AS [object_name], \
+       'synonym'    AS [object_type], \
+      'N'           AS [generated] \
+    FROM \
+       [db_synonym] AS [sy]"
+
+static int
+boot_define_view_dba_objects (void)
+{
+  MOP class_mop;
+  COLUMN columns[] = {
+    {"owner", "varchar(255)"},
+    {"object_name", "varchar(255)"},
+    {"object_type", "varchar(255)"},
+    {"generated", "varchar(1)"}
+  };
+
+  int num_cols = sizeof (columns) / sizeof (columns[0]);
+  int i;
+  char stmt[2048];
+  int error_code = NO_ERROR;
+
+  /* Initialization */
+  memset (stmt, '\0', sizeof (char) * 2048);
+
+  class_mop = db_create_vclass (CTV_DBA_OBJECTS_NAME);
+  if (class_mop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  for (i = 0; i < num_cols; i++)
+    {
+      error_code = db_add_attribute (class_mop, columns[i].name, columns[i].type, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+// *INDENT-OFF*
+  sprintf (stmt, "SELECT [owner], [object_name], [object_type], [generated] FROM ( "
+    SELECT_OBJECTS_QUERY
+  ") ");
+// *INDENT-ON*
+
+  error_code = db_add_query_spec (class_mop, stmt);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+boot_define_view_user_objects (void)
+{
+  MOP class_mop;
+  COLUMN columns[] = {
+    // {"owner", "varchar(255)"},
+    {"object_name", "varchar(255)"},
+    {"object_type", "varchar(255)"},
+    {"generated", "varchar(1)"}
+  };
+
+  int num_cols = sizeof (columns) / sizeof (columns[0]);
+  int i;
+  char stmt[2048];
+  int error_code = NO_ERROR;
+
+  /* Initialization */
+  memset (stmt, '\0', sizeof (char) * 2048);
+
+  class_mop = db_create_vclass (CTV_USER_OBJECTS_NAME);
+  if (class_mop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  for (i = 0; i < num_cols; i++)
+    {
+      error_code = db_add_attribute (class_mop, columns[i].name, columns[i].type, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+// *INDENT-OFF*
+  sprintf (stmt, "SELECT [object_name], [object_type], [generated] FROM ( "
+  SELECT_OBJECTS_QUERY
+  ") WHERE [owner] = CURRENT_USER");
+// *INDENT-ON*
+
+  error_code = db_add_query_spec (class_mop, stmt);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+boot_define_view_all_objects (void)
+{
+  MOP class_mop;
+  COLUMN columns[] = {
+    {"owner", "varchar(255)"},
+    {"object_name", "varchar(255)"},
+    {"object_type", "varchar(255)"},
+    {"generated", "varchar(1)"}
+  };
+
+  int num_cols = sizeof (columns) / sizeof (columns[0]);
+  int i;
+  char stmt[4096];
+  int error_code = NO_ERROR;
+
+  /* Initialization */
+  memset (stmt, '\0', sizeof (char) * 4096);
+
+  class_mop = db_create_vclass (CTV_ALL_OBJECTS_NAME);
+  if (class_mop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  for (i = 0; i < num_cols; i++)
+    {
+      error_code = db_add_attribute (class_mop, columns[i].name, columns[i].type, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  // *INDENT-OFF*
+  sprintf (stmt, "SELECT [owner], [object_name], [object_type], [generated] FROM ( "
+    SELECT_OBJECTS_QUERY
+  ") ");
+  // *INDENT-ON*
+
+  error_code = db_add_query_spec (class_mop, stmt);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_change_owner (class_mop, Au_dba_user);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = au_grant (Au_public_user, class_mop, AU_SELECT, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * boot_define_view_db_server :
  *
@@ -6877,7 +7129,10 @@ catcls_vclass_install (void)
     {boot_define_view_db_collation}, /* CTV_DB_COLLATION_NAME */
     {boot_define_view_db_charset}, /* CTV_DB_CHARSET_NAME */
     {boot_define_view_db_server}, /* CTV_DB_SERVER_NAME */
-    {boot_define_view_synonym} /* CTV_SYNONYM_NAME */
+    {boot_define_view_synonym}, /* CTV_SYNONYM_NAME */    
+    {boot_define_view_all_objects}, /* CTV_ALL_OBJECTS_NAME */
+    {boot_define_view_dba_objects}, /* CTV_DBA_OBJECTS_NAME */
+    {boot_define_view_user_objects} /* CTV_USER_OBJECTS_NAME */
   };
   // *INDENT-ON*
 

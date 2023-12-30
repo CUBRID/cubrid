@@ -149,6 +149,9 @@ static const char *prohibited_classes[] = {
   CTV_DB_CHARSET_NAME,
   CTV_DB_SERVER_NAME,
   CTV_SYNONYM_NAME,
+  CTV_ALL_OBJECTS_NAME,
+  CTV_DBA_OBJECTS_NAME,
+  CTV_USER_OBJECTS_NAME,
   NULL
 };
 
