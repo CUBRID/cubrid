@@ -18255,10 +18255,17 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	{
 	  if (opd3 && opd3->node_type == PT_VALUE && type3 == PT_TYPE_NULL)	/* REPLACE */
 	    {
-	      result = parser_copy_tree (parser, opd1);
-	      if (result == NULL)
+	      /* need to replace the NULL with empty string */
+	      int err =
+		db_string_make_empty_typed_string (&opd3->info.value.db_value, DB_TYPE_STRING, DB_DEFAULT_PRECISION,
+						   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	      if (err != NO_ERROR)
 		{
 		  has_error = true;
+		}
+	      else
+		{
+		  result = expr;
 		}
 	    }
 	  else if (opd1 && opd1->node_type == PT_VALUE && type1 == PT_TYPE_NULL)
