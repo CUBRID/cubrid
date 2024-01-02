@@ -15539,7 +15539,8 @@ pt_get_table_names_index_expr_for_where_of_filter (PARSER_CONTEXT * parser, PT_N
   SFLT_IDX_WHERE_POSITIONS *flt_pos = (SFLT_IDX_WHERE_POSITIONS *) void_arg;
 
   assert (flt_pos->alter == NULL);
-  assert (flt_pos->new_name == NULL && flt_pos->new_user_specified_name == NULL);
+  assert (flt_pos->new_name && flt_pos->new_name[0] == '\0');
+  assert (flt_pos->new_user_specified_name && flt_pos->new_user_specified_name[0] == '\0');
 
   *continue_walk = PT_CONTINUE_WALK;
   if (node->node_type == PT_DOT_)
