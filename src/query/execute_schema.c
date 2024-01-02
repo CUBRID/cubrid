@@ -27,6 +27,9 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <assert.h>
+#if defined(WINDOWS)
+#include "io.h"
+#endif /* WINDOWS */
 
 #include "authenticate.h"
 #include "error_manager.h"
@@ -42,7 +45,6 @@
 #include "system_parameter.h"
 #if defined(WINDOWS)
 #include "misc_string.h"
-#include <io.h>
 #endif /* WINDOWS */
 #include "semantic_check.h"
 #include "xasl_generation.h"
