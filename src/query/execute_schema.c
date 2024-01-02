@@ -347,6 +347,9 @@ static int do_redistribute_partitions_data (const char *class_name, const char *
 					    bool should_insert);
 static SM_FUNCTION_INFO *compile_partition_expression (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_NODE * pinfo);
 
+static PARSER_VARCHAR *pt_get_where_string_of_filter_index (PARSER_CONTEXT * parser, const PT_INDEX_INFO * idx_info);
+static PT_NODE *pt_get_table_names_index_expr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NODE * node,
+								   void *void_arg, int *continue_walk);
 static PT_NODE *replace_names_alter_chg_attr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NODE * node,
 								  void *void_arg, int *continue_walk);
 static PT_NODE *replace_names_alter_chg_attr (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -2917,44 +2920,21 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	{
 	  PARSER_VARCHAR *filter_expr = NULL;
 	  unsigned int save_custom;
+	  PARSER_VARCHAR *filter_expr_raw = NULL;
 
-	  /* free at parser_free_parser */
-	  /* make sure paren_type is 0 so parenthesis are not printed */
-	  idx_info->where->info.expr.paren_type = 0;
-	  save_custom = parser->custom_print;
-	  parser->custom_print |= PT_CHARSET_COLLATE_FULL;
-
-	  parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
-	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
-	  parser->custom_print |= PT_SUPPRESS_RESOLVED;
-
-	  filter_expr = pt_print_bytes ((PARSER_CONTEXT *) parser, (PT_NODE *) idx_info->where);
-	  parser->custom_print = save_custom;
-	  if (filter_expr)
+	  if (idx_info->length_where_clause > MAX_FILTER_PREDICATE_STRING_LENGTH)
 	    {
-	      pred_index_info.pred_string = (char *) filter_expr->bytes;
+	      error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
+	      PT_ERRORmf ((PARSER_CONTEXT *) parser, idx_info->where, MSGCAT_SET_ERROR,
+			  -(ER_SM_INVALID_FILTER_PREDICATE_LENGTH), MAX_FILTER_PREDICATE_STRING_LENGTH);
+	      goto end;
+	    }
 
-	      if (idx_info->length_where_clause > MAX_FILTER_PREDICATE_STRING_LENGTH)
-		{
-		  error = ER_SM_INVALID_FILTER_PREDICATE_LENGTH;
-		  PT_ERRORmf ((PARSER_CONTEXT *) parser, idx_info->where, MSGCAT_SET_ERROR,
-			      -(ER_SM_INVALID_FILTER_PREDICATE_LENGTH), MAX_FILTER_PREDICATE_STRING_LENGTH);
-		  goto end;
-		}
-
-	      if (parser->original_buffer)
-		{
-		  memcpy (pred_index_info.pred_string, parser->original_buffer + idx_info->offset_where_clause,
-			  idx_info->length_where_clause);
-		  pred_index_info.pred_string[idx_info->length_where_clause] = '\0';
-		}
-	      else
-		{
-		  int t_fd = fileno (parser->file);
-		  lseek (t_fd, idx_info->offset_where_clause, SEEK_SET);
-		  read (t_fd, pred_index_info.pred_string, idx_info->length_where_clause);
-		  pred_index_info.pred_string[idx_info->length_where_clause] = '\0';
-		}
+	  filter_expr_raw = pt_get_where_string_of_filter_index (parser, idx_info);
+	  if (filter_expr_raw->length > 0)
+	    {
+	      pred_index_info.pred_string = (char *) filter_expr_raw->bytes;
+	      assert (filter_expr_raw->length <= idx_info->length_where_clause);
 	    }
 
 	  pt_enter_packing_buf ();
@@ -14853,18 +14833,19 @@ get_positions_in_where_of_filter (SFLT_IDX_WHERE_POSITIONS * flt_pos, int buffer
 }
 
 static PARSER_VARCHAR *
-rewrite_where_of_filter (PARSER_CONTEXT * parser, char *pred_string, int start_pos, SFLT_IDX_WHERE_POSITIONS * flt_pos)
+rewrite_where_of_filter_index (PARSER_CONTEXT * parser, char *pred_string, int start_pos,
+			       SFLT_IDX_WHERE_POSITIONS * flt_pos)
 {
   int new_name_len[2], old_name_len[2], copy_len, offset, idx;
   char *pin = pred_string;
   char *ptr, *delimiter = NULL;
   const char *name_ptr;
-  PARSER_VARCHAR *filter_expr_raw;
+  PARSER_VARCHAR *filter_expr_string;
 
-  filter_expr_raw = pt_append_nulstring (parser, NULL, "");
+  filter_expr_string = pt_append_nulstring (parser, NULL, "");
   if (flt_pos->used <= 0)
     {
-      filter_expr_raw = pt_append_nulstring (parser, NULL, pred_string);
+      filter_expr_string = pt_append_nulstring (parser, NULL, pred_string);
     }
   else
     {
@@ -14899,15 +14880,36 @@ rewrite_where_of_filter (PARSER_CONTEXT * parser, char *pred_string, int start_p
 	   *  It doesn't work if you fact check it. This is because it is unknown if the settings have been changed since the original was saved.
 	   */
 	  delimiter = (ptr[-1] == ']' || ptr[-1] == '`' || ptr[-1] == '"') ? (ptr - 1) : NULL;
-	  if (delimiter)
+	  if (new_name_len[idx] == 0)
+	    {
+	      if (delimiter)
+		{
+		  ptr--;	// end delimiter
+		  ptr -= old_name_len[idx];
+		  ptr--;	// begin delimiter
+		  copy_len = ptr - pin;
+
+		  filter_expr_string = pt_append_bytes (parser, filter_expr_string, pin, copy_len);
+		  pin += (copy_len + old_name_len[idx] + 3);	// [].
+		}
+	      else
+		{
+		  ptr -= old_name_len[idx];
+		  copy_len = ptr - pin;
+
+		  filter_expr_string = pt_append_bytes (parser, filter_expr_string, pin, copy_len);
+		  pin += (copy_len + old_name_len[idx] + 1);	// .
+		}
+	    }
+	  else if (delimiter)
 	    {
 	      ptr--;		// end delimiter
 	      ptr -= old_name_len[idx];
 	      copy_len = ptr - pin;
 
-	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, pin, copy_len);
-	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, name_ptr, new_name_len[idx]);
-	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, delimiter, 1);
+	      filter_expr_string = pt_append_bytes (parser, filter_expr_string, pin, copy_len);
+	      filter_expr_string = pt_append_bytes (parser, filter_expr_string, name_ptr, new_name_len[idx]);
+	      filter_expr_string = pt_append_bytes (parser, filter_expr_string, delimiter, 1);
 	      pin += (copy_len + old_name_len[idx] + 1);
 	    }
 	  else
@@ -14915,12 +14917,100 @@ rewrite_where_of_filter (PARSER_CONTEXT * parser, char *pred_string, int start_p
 	      ptr -= old_name_len[idx];
 	      copy_len = ptr - pin;
 
-	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, pin, copy_len);
-	      filter_expr_raw = pt_append_bytes (parser, filter_expr_raw, name_ptr, new_name_len[idx]);
+	      filter_expr_string = pt_append_bytes (parser, filter_expr_string, pin, copy_len);
+	      filter_expr_string = pt_append_bytes (parser, filter_expr_string, name_ptr, new_name_len[idx]);
 	      pin += (copy_len + old_name_len[idx]);
 	    }
 	}
-      filter_expr_raw = pt_append_nulstring (parser, filter_expr_raw, pin);
+      filter_expr_string = pt_append_nulstring (parser, filter_expr_string, pin);
+    }
+
+  return filter_expr_string;
+}
+
+static PARSER_VARCHAR *
+pt_get_where_string_of_filter_index (PARSER_CONTEXT * parser, const PT_INDEX_INFO * idx_info)
+{
+  PT_NODE **stmt;
+  PT_NODE *where_predicate;
+  char *query_str, query_buf[512];
+  size_t query_str_len = 0;
+
+  int start_pos, err = NO_ERROR;
+  PARSER_CONTEXT *tmp_parser = NULL;
+  PARSER_VARCHAR *filter_expr_raw = NULL;
+  SFLT_IDX_WHERE_POSITIONS flt_pos;
+
+  // char str_where[4096];
+  const char *class_name = idx_info->indexed_class->info.spec.entity_name->info.name.original;
+
+  query_str_len = idx_info->length_where_clause + strlen (class_name) + 9 /* strlen("SELECT * ") */  +
+    6 /* strlen(" FROM ") */  +
+    2 /* [] */  +
+    7 /* strlen(" WHERE " */  +
+    1 /* terminating null */ ;
+  if (query_str_len < sizeof (query_buf))
+    {
+      query_str = query_buf;
+    }
+  else
+    {
+      query_str = (char *) malloc (query_str_len);
+      if (query_str == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_str_len);
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return NULL;
+	}
+    }
+
+  start_pos =
+    snprintf (query_str, query_str_len - idx_info->length_where_clause, "SELECT * FROM [%s] WHERE ", class_name);
+
+  if (parser->original_buffer)
+    {
+      memcpy (query_str + start_pos, parser->original_buffer + idx_info->offset_where_clause,
+	      idx_info->length_where_clause);
+    }
+  else
+    {
+      int t_fd = fileno (parser->file);
+      lseek (t_fd, idx_info->offset_where_clause, SEEK_SET);
+      read (t_fd, query_str + start_pos, idx_info->length_where_clause);
+    }
+  query_str[start_pos + idx_info->length_where_clause] = '\0';
+
+  tmp_parser = parser_create_parser ();
+  if (tmp_parser)
+    {
+      stmt = parser_parse_string_use_sys_charset (tmp_parser, query_str);
+      if (stmt == NULL || *stmt == NULL || pt_has_error (tmp_parser))
+	{
+	  err = ER_FAILED;
+	  goto error;
+	}
+      where_predicate = (*stmt)->info.query.q.select.where;
+
+      flt_pos.alter = NULL;
+      flt_pos.old_user_specified_name = class_name;
+      flt_pos.old_name = sm_remove_qualifier_name (class_name);
+      flt_pos.new_user_specified_name = "";
+      flt_pos.new_name = "";
+
+      (void) parser_walk_tree (tmp_parser, where_predicate, pt_get_table_names_index_expr_for_where_of_filter,
+			       (void *) &flt_pos, NULL, NULL);
+
+      filter_expr_raw = rewrite_where_of_filter_index (parser, query_str + start_pos, start_pos, &flt_pos);
+    }
+
+error:
+  if (tmp_parser)
+    {
+      parser_free_parser (tmp_parser);
+    }
+  if (query_str && (query_str != query_buf))
+    {
+      free_and_init (query_str);
     }
 
   return filter_expr_raw;
@@ -14999,7 +15089,8 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   if (query_str == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_str_len);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error;
     }
 
   start_pos = snprintf (query_str, query_str_len, "SELECT * FROM [%s] WHERE ", class_name);
@@ -15016,6 +15107,8 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   if (alter)
     {
       SFLT_IDX_WHERE_POSITIONS flt_pos;
+      char new_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
+
 
       flt_pos.alter = alter;
       flt_pos.new_user_specified_name = NULL;
@@ -15026,6 +15119,10 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       if (alter->info.alter.alter_clause.attr_mthd.attr_def_list)
 	{
 	  flt_pos.new_name = get_attr_name (alter->info.alter.alter_clause.attr_mthd.attr_def_list);
+
+	  sm_downcase_name (flt_pos.new_name, new_name_buf, sizeof (new_name_buf));
+	  flt_pos.new_name = new_name_buf;
+
 	}
       if (alter->info.alter.alter_clause.attr_mthd.attr_old_name)
 	{
@@ -15035,7 +15132,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       (void) parser_walk_tree (parser, where_predicate, replace_names_alter_chg_attr_for_where_of_filter,
 			       (void *) &flt_pos, NULL, NULL);
 
-      filter_expr_raw = rewrite_where_of_filter (parser, filter_index_info->pred_string, start_pos, &flt_pos);
+      filter_expr_raw = rewrite_where_of_filter_index (parser, filter_index_info->pred_string, start_pos, &flt_pos);
     }
   else
     {
@@ -15066,7 +15163,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       (void) parser_walk_tree (parser, where_predicate, pt_replace_names_index_expr_for_where_of_filter,
 			       (void *) &flt_pos, NULL, NULL);
 
-      filter_expr_raw = rewrite_where_of_filter (parser, filter_index_info->pred_string, start_pos, &flt_pos);
+      filter_expr_raw = rewrite_where_of_filter_index (parser, filter_index_info->pred_string, start_pos, &flt_pos);
     }
 
   *stmt = pt_resolve_names (parser, *stmt, &sc_info);
@@ -15429,6 +15526,34 @@ pt_replace_names_index_expr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NOD
 	      parser_free_tree (parser, dot_arg);
 	      node->info.dot.arg1 = new_node;
 	    }
+	}
+    }
+
+  return node;
+}
+
+static PT_NODE *
+pt_get_table_names_index_expr_for_where_of_filter (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
+						   int *continue_walk)
+{
+  SFLT_IDX_WHERE_POSITIONS *flt_pos = (SFLT_IDX_WHERE_POSITIONS *) void_arg;
+
+  assert (flt_pos->alter == NULL);
+  assert (flt_pos->new_name == NULL && flt_pos->new_user_specified_name == NULL);
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_DOT_)
+    {
+      PT_NODE *dot_arg = node->info.dot.arg1;
+
+      if (intl_identifier_casecmp (dot_arg->info.name.original, flt_pos->old_name) == 0)
+	{
+	  get_positions_in_where_of_filter (flt_pos, dot_arg->buffer_pos, false);
+	}
+      else
+	{
+	  assert (intl_identifier_casecmp (dot_arg->info.name.original, flt_pos->old_user_specified_name) == 0);
+	  get_positions_in_where_of_filter (flt_pos, dot_arg->buffer_pos, true);
 	}
     }
 

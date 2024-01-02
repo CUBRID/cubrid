@@ -4134,13 +4134,17 @@ build_filter_pred_string_for_compare (PARSER_CONTEXT * parser, char *pred_string
   int save_custom;
   char query_buf[1024];
 
-  snprintf (query_buf, sizeof (query_buf), "SELECT * FROM [x] WHERE %s", pred_string);
-  stmt = parser_parse_string_use_sys_charset (parser, query_buf);
+  snprintf (query_buf, sizeof (query_buf), "CREATE INDEX i on tbl(v) WHERE %s", pred_string);
+  stmt = parser_parse_string_with_escapes (parser, query_buf, false);
   if (stmt == NULL || *stmt == NULL || pt_has_error (parser))
     {
       return NULL;
     }
-  where_predicate = (*stmt)->info.query.q.select.where;
+
+  /* store user-specified-name in info.name.original. */
+  parser_walk_tree (parser, *stmt, NULL, NULL, pt_set_user_specified_name, NULL);
+
+  where_predicate = (*stmt)->info.index.where;
 
   save_custom = parser->custom_print;
   where_predicate->info.expr.paren_type = 0;
@@ -4347,7 +4351,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	      cons_pred = build_filter_pred_string_for_compare (t_parser, cons->filter_predicate->pred_string);
 
 	      if ((flt_pred->length != cons_pred->length)
-		  || strcasecmp ((char *) flt_pred->bytes, (char *) cons_pred->bytes))
+		  || strcmp ((char *) flt_pred->bytes, (char *) cons_pred->bytes))
 		{
 		  continue;
 		}
