@@ -42,7 +42,7 @@
 #include "system_parameter.h"
 #if defined(WINDOWS)
 #include "misc_string.h"
-#include "porting.h"
+#include <io.h>
 #endif /* WINDOWS */
 #include "semantic_check.h"
 #include "xasl_generation.h"
