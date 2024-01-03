@@ -9638,6 +9638,12 @@ pt_get_query_limit (PARSER_CONTEXT * parser, PT_NODE * query)
 
   if (pt_get_query_limit_value (parser, query, &limit_val) != NO_ERROR)
     {
+      /* remove error which is occured in this function */
+      if (pt_has_error (parser))
+	{
+	  pt_reset_error (parser);
+	  parser->flag.has_internal_error = 0;
+	}
       return 0;
     }
   else if (DB_IS_NULL (&limit_val))
