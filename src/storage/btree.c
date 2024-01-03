@@ -612,6 +612,11 @@ bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   if (bts->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, bts->C_page);
+      //PAGE_INFO_VPID_RESET(&bts->C_page_info);  //----------------------- ctshim
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_FIX_PAGE)
+      VPID_SET_NULL (&(bts->C_page_info.vpid));
+#endif
+
     }
 }
 
@@ -1245,7 +1250,8 @@ static DISK_ISVALID btree_check_page_key (THREAD_ENTRY * thread_p, const OID * c
 static DISK_ISVALID btree_check_pages (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, VPID * pg_vpid);
 static DISK_ISVALID btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 					  const char *btname, PAGE_PTR pg_ptr, VPID * pg_vpid, BTREE_NODE_INFO * INFO);
-static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
+static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR pg_ptr,
+				       BTREE_CAPACITY * cpc,
 				       BTREE_STATS_ENV * env /* support for SUPPORT_DEDUPLICATE_KEY_MODE */ );
 static void btree_print_space (FILE * fp, int n);
 static int btree_delete_meta_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, int slot_id);
@@ -1278,8 +1284,7 @@ static int btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p
 static int btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
 								PAGE_PTR first_page);
 static int btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, bool is_iss,
-					     bool * key_range_satisfied, bool * key_filter_satisfied,
-					     bool need_to_check_null);
+					     bool * key_range_satisfied, bool * key_filter_satisfied);
 static int btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
 				INDX_SCAN_ID * iscan_id);
 static DISK_ISVALID btree_find_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, int key_cnt,
@@ -1729,6 +1734,23 @@ static int btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE 
 
 static int btree_is_key_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr,
 				 MVCC_SNAPSHOT * mvcc_snapshot, int slot_id, bool * is_visible, DB_VALUE * key_value);
+
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+static void btree_init_page_prefix_info (BTREE_SCAN * bt_scan, bool is_midxkey, bool is_deduplicate,
+					 BTREE_READER_TYPE reader_type);
+static int btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int copy_key, BTREE_SCAN * bts);
+
+static void btree_check_within_range_in_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, BTREE_SCAN * bts);
+static void btree_make_complete_key_including_prefix (BTREE_SCAN * bts, int compress_size, DB_VALUE * compress_key);
+static void btree_check_complete_decompressed_key (BTREE_SCAN * bts);
+
+#endif
+
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_FIX_PAGE)
+#define PAGE_INFO_VPID_RESET(pg_info)   VPID_SET_NULL (&((pg_info)->vpid))
+#else
+#define PAGE_INFO_VPID_RESET(pg_info)
+#endif
 
 /*
  *  btree_is_key_visible(): States if current key is visible or not.
@@ -4221,13 +4243,6 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
   assert (pgptr != NULL);
   assert (rec != NULL);
   assert (rec->type == REC_HOME);
-  assert (bts == NULL || bts->common_prefix == -1
-	  || bts->common_prefix == btree_node_get_common_prefix (thread_p, btid, pgptr));
-
-  if (bts != NULL)
-    {
-      n_prefix = bts->common_prefix;
-    }
 
   error =
     btree_read_record_without_decompression (thread_p, btid, rec, key, rec_header, node_type, clear_key, offset,
@@ -4240,14 +4255,9 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
   if (key != NULL && node_type == BTREE_LEAF_NODE && !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY)
       && !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_FENCE))
     {
-      if (n_prefix == COMMON_PREFIX_UNKNOWN)
-	{
-	  /* recalculate n_prefix */
-	  n_prefix = btree_node_get_common_prefix (thread_p, btid, pgptr);
-	}
+      n_prefix = btree_node_get_common_prefix (thread_p, btid, pgptr);
 
       assert (n_prefix >= 0);
-
       if (n_prefix > 0)
 	{
 	  RECDES peek_rec;
@@ -4286,6 +4296,341 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
 
   return NO_ERROR;
 }
+
+
+#if !defined(NDEBUG) && defined(IMPROVE_RANGE_SCAN_IN_BTREE) && !defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_CLONE_VALUE)
+static void
+check_validate (BTREE_SCAN * bts)
+{
+  if (bts->is_cur_key_decompressed == false)
+    {
+      assert (bts->C_page_info.reader_type != BTREE_READER_TYPE_NONE);
+      assert (bts->C_page_info.n_compress_size > 0);
+      assert (VPID_ISNULL (&bts->C_page_info.vpid) == false);
+      assert (VPID_ISNULL (&bts->C_vpid) == false);
+      assert (VPID_EQ (&(bts->C_vpid), &bts->C_page_info.vpid) == true);
+      assert (bts->C_page != NULL);
+      assert (LSA_EQ (&bts->C_page_info.leaf_lsa, pgbuf_get_lsa (bts->C_page)));
+    }
+}
+#else
+#define check_validate(bts) ;
+#endif
+
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+static int
+btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int copy_key, BTREE_SCAN * bts)
+{
+  int error, n_prefix = COMMON_PREFIX_UNKNOWN;
+  BTREE_PAGE_PREFIX_INFO *page_info = NULL;
+
+  assert (bts);
+  assert (pgptr != NULL && bts->key_record.type == REC_HOME);
+
+  error =
+    btree_read_record_without_decompression (thread_p, &bts->btid_int, &bts->key_record, &(bts->cur_key),
+					     (void *) &bts->leaf_rec_info, BTREE_LEAF_NODE, &(bts->clear_cur_key),
+					     &bts->offset, copy_key);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  assert (bts->C_page_info.reader_type != BTREE_READER_TYPE_NONE);
+  page_info = &bts->C_page_info;
+
+  bts->is_cur_key_decompressed = true;
+  if (btree_leaf_is_flaged (&bts->key_record, BTREE_LEAF_RECORD_OVERFLOW_KEY)
+      || btree_leaf_is_flaged (&bts->key_record, BTREE_LEAF_RECORD_FENCE) || !page_info->is_midxkey)
+    {
+      return NO_ERROR;
+    }
+
+  if (page_info->reader_type == BTREE_READER_TYPE_RANGE_SCAN)
+    {
+      assert (pgptr == bts->C_page && VPID_EQ (pgbuf_get_vpid_ptr (pgptr), &bts->C_vpid));
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_FIX_PAGE)
+      if (VPID_EQ (&(bts->C_vpid), &page_info->vpid))
+	{			// same page         
+	  assert (LSA_EQ (&page_info->leaf_lsa, pgbuf_get_lsa (pgptr)));
+#else
+      if (VPID_EQ (&(bts->C_vpid), &page_info->vpid) && LSA_EQ (&page_info->leaf_lsa, pgbuf_get_lsa (pgptr)))
+	{			// same page         
+#endif
+	  assert (page_info->n_compress_size == btree_node_get_common_prefix (thread_p, &bts->btid_int, pgptr));
+
+	  bts->is_cur_key_decompressed = (bool) (page_info->n_compress_size <= 0);
+	  return NO_ERROR;
+	}
+#if !defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_OPTIMIZE)
+      // new page         
+      if (page_info->use_comparing)
+	{
+	  btree_check_within_range_in_page (thread_p, pgptr, bts);
+	}
+#endif
+      bts->is_cur_key_decompressed = false;
+    }
+  else
+    {				// BTREE_READER_TYPE_STAT or BTREE_READER_TYPE_CAPACITY  
+      if (!page_info->use_comparing)
+	{
+	  return NO_ERROR;
+	}
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_FIX_PAGE)
+      if (VPID_EQ (&(bts->C_vpid), &page_info->vpid))
+	{
+	  assert (LSA_EQ (&page_info->leaf_lsa, pgbuf_get_lsa (pgptr)));
+#else
+      if (VPID_EQ (&(bts->C_vpid), &page_info->vpid) && LSA_EQ (&page_info->leaf_lsa, pgbuf_get_lsa (pgptr)))
+	{
+#endif
+	  if (page_info->n_compress_size > 0)
+	    {
+	      btree_make_complete_key_including_prefix (bts, page_info->n_compress_size, &(page_info->compress_key));
+	      return NO_ERROR;
+	    }
+
+	  assert (page_info->n_compress_size == 0);
+	  return NO_ERROR;
+	}
+    }
+
+  /* recalculate n_prefix */
+  n_prefix = btree_node_get_common_prefix (thread_p, &bts->btid_int, pgptr);
+
+  page_info->n_compress_size = n_prefix;
+  VPID_COPY (&(page_info->vpid), &(bts->C_vpid));
+  LSA_COPY (&page_info->leaf_lsa, pgbuf_get_lsa (pgptr));
+  btree_clear_key_value (&(page_info->clear_compress_key), &(page_info->compress_key));
+
+  if (n_prefix > 0)
+    {
+      RECDES peek_rec;
+      LEAF_REC leaf_pnt;
+      int dummy_offset;
+
+      (void) spage_get_record (thread_p, pgptr, 1, &peek_rec, PEEK);
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_CLONE_VALUE)
+      DB_VALUE lf_key;
+      bool lf_clear_key;
+
+      btree_init_temp_key_value (&lf_clear_key, &lf_key);
+
+      error = btree_read_record_without_decompression (thread_p, &bts->btid_int, &peek_rec, &lf_key,
+						       &leaf_pnt, BTREE_LEAF_NODE, &lf_clear_key,
+						       &dummy_offset, PEEK_KEY_VALUE);
+      if (error != NO_ERROR)
+	{
+	  btree_clear_key_value (&lf_clear_key, &lf_key);
+	  bts->is_cur_key_decompressed = true;	// safety
+	  return error;
+	}
+
+      assert (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE));
+      assert (DB_VALUE_TYPE (&lf_key) == DB_TYPE_MIDXKEY);
+
+      pr_clone_value (&lf_key, &(page_info->compress_key));
+      page_info->clear_compress_key = true;
+      btree_clear_key_value (&lf_clear_key, &lf_key);
+
+      if (page_info->reader_type != BTREE_READER_TYPE_RANGE_SCAN)
+	{
+	  btree_make_complete_key_including_prefix (bts, n_prefix, &(page_info->compress_key));
+	}
+#else
+      error = btree_read_record_without_decompression (thread_p, &bts->btid_int, &peek_rec, &(page_info->compress_key),
+						       &leaf_pnt, BTREE_LEAF_NODE, &(page_info->clear_compress_key),
+						       &dummy_offset, PEEK_KEY_VALUE);
+      if (error != NO_ERROR)
+	{
+	  btree_clear_key_value (&(page_info->clear_compress_key), &(page_info->compress_key));
+	  bts->is_cur_key_decompressed = true;	// safety
+	  return error;
+	}
+      assert (btree_leaf_is_flaged (&peek_rec, BTREE_LEAF_RECORD_FENCE));
+      assert (DB_VALUE_TYPE (&(page_info->compress_key)) == DB_TYPE_MIDXKEY);
+
+      if (page_info->reader_type != BTREE_READER_TYPE_RANGE_SCAN)
+	{
+	  btree_make_complete_key_including_prefix (bts, n_prefix, &(page_info->compress_key));
+	}
+#endif
+    }
+  else
+    {
+      bts->is_cur_key_decompressed = true;
+      if (n_prefix < 0)
+	{
+	  assert_release (false);
+	  bts->is_cur_key_decompressed = true;
+	  return n_prefix;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static void
+btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplicate, BTREE_READER_TYPE reader_type)
+{
+  assert (bts != NULL);
+  assert (reader_type == BTREE_READER_TYPE_RANGE_SCAN || reader_type == BTREE_READER_TYPE_STAT
+	  || reader_type == BTREE_READER_TYPE_CAPACITY);
+
+  INIT_BTREE_PAGE_PREFIX_INFO (&bts->C_page_info, reader_type);
+
+  bts->C_page_info.is_midxkey = is_midxkey;
+  if (reader_type == BTREE_READER_TYPE_RANGE_SCAN)
+    {
+      if (bts->key_range.range != GE_LE)
+	{
+	  bts->C_page_info.use_comparing = (bool) (bts->key_range.upper_key != NULL);
+	}
+      else if (is_midxkey)
+	{
+#if !defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_OPTIMIZE)
+	  int diff_column = pr_midxkey_common_prefix (bts->key_range.upper_key, bts->key_range.lower_key);
+	  if (diff_column >= bts->key_range.num_index_term)
+	    {
+	      /* TODO:
+	       *   Even in the case of DB_EQ, it is expected that the setting can be elaborated by considering 
+	       *  the ratio of key_range.num_index_term to index_scan_idp->bt_num_attrs or by utilizing statistical information.
+	       *  r = (double) (bts->key_range.num_index_term / (double) bts->index_scan_idp->bt_num_attrs)
+	       */
+
+	      bts->C_page_info.use_comparing = false;
+	    }
+#else
+	  bts->C_page_info.use_comparing = false;
+#endif
+	}
+    }
+  else
+    {
+      bts->C_page_info.use_comparing = is_midxkey ? (is_deduplicate || (reader_type == BTREE_READER_TYPE_STAT)) : false;
+    }
+}
+
+static void
+btree_check_within_range_in_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, BTREE_SCAN * bts)
+{
+  int error_code = NO_ERROR;
+  int border_key_idx = 1;
+
+  assert (bts->C_page_info.reader_type == BTREE_READER_TYPE_RANGE_SCAN);
+  if (bts->key_range.upper_key == NULL)
+    {
+      assert (bts->key_range.range == GE_INF || bts->key_range.range == GT_INF || bts->key_range.range == INF_INF
+	      || bts->key_range.range == GE_LE /* special case for prefix index */ );
+      bts->C_page_info.satisfied_range_in_page = true;
+      return;
+    }
+
+  assert (bts->key_range.range == GE_LE || bts->key_range.range == GT_LE || bts->key_range.range == GE_LT
+	  || bts->key_range.range == GT_LT || bts->key_range.range == INF_LE || bts->key_range.range == INF_LT);
+
+  bts->C_page_info.satisfied_range_in_page = false;
+  if (bts->use_desc_index == false)
+    {
+      border_key_idx = btree_node_number_of_keys (thread_p, pgptr);
+      if (border_key_idx < 1)
+	{
+	  /* Too few keys to decide. */
+	  assert (false);
+	  return;
+	}
+    }
+
+  //
+  DB_VALUE border_key;
+  RECDES border_record;
+  LEAF_REC dummy_leaf_rec;
+  int dummy_offset;
+  DB_VALUE_COMPARE_RESULT cmp;
+  bool clear_border_key = false;
+
+  btree_init_temp_key_value (&clear_border_key, &border_key);
+  if (spage_get_record (thread_p, pgptr, border_key_idx, &border_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return;
+    }
+
+  error_code =
+    btree_read_record (thread_p, &bts->btid_int, pgptr, &border_record, &border_key, &dummy_leaf_rec, BTREE_LEAF_NODE,
+		       &clear_border_key, &dummy_offset, PEEK_KEY_VALUE, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return;
+    }
+
+  cmp = btree_compare_key (bts->key_range.upper_key, &border_key, bts->btid_int.key_type, 1, 1, NULL);
+  btree_clear_key_value (&clear_border_key, &border_key);
+
+  assert (cmp != DB_UNK);
+  if (cmp == DB_EQ
+      && (bts->key_range.range == GE_LE || bts->key_range.range == GT_LE || bts->key_range.range == INF_LE))
+    {
+      bts->C_page_info.satisfied_range_in_page = true;
+    }
+  else
+    {
+      if (bts->use_desc_index)
+	{
+	  if (cmp == DB_LT)
+	    {
+	      bts->C_page_info.satisfied_range_in_page = true;
+	    }
+	}
+      else if (cmp == DB_GT)
+	{
+	  bts->C_page_info.satisfied_range_in_page = true;
+	}
+    }
+}
+
+static void
+btree_make_complete_key_including_prefix (BTREE_SCAN * bts, int compress_size, DB_VALUE * compress_key)
+{
+  int error = NO_ERROR;
+  if (compress_size > 0)
+    {
+      DB_VALUE decompressed_key;
+      db_make_null (&decompressed_key);
+
+      error = pr_midxkey_add_prefix (&decompressed_key, compress_key, &(bts->cur_key), compress_size);
+      if (error != NO_ERROR)
+	{
+	  assert_release (false);
+	  return;
+	}
+
+      btree_clear_key_value (&(bts->clear_cur_key), &(bts->cur_key));
+      bts->cur_key = decompressed_key;
+      bts->clear_cur_key = true;
+      bts->is_cur_key_decompressed = true;
+    }
+}
+
+static void
+btree_check_complete_decompressed_key (BTREE_SCAN * bts)
+{
+  if (bts->is_cur_key_decompressed == false)
+    {
+      assert (bts->C_page_info.reader_type == BTREE_READER_TYPE_RANGE_SCAN);
+      if (bts->C_page_info.n_compress_size > 0)
+	{
+	  check_validate (bts);
+	  btree_make_complete_key_including_prefix (bts, bts->C_page_info.n_compress_size,
+						    &(bts->C_page_info.compress_key));
+	}
+    }
+}
+#endif // #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+
+
 
 /*
  * btree_read_record_without_decompression () -
@@ -5266,6 +5611,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       ASSERT_ERROR ();
       return error_code;
     }
+
   /* Compare with last key. */
   c = btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
   btree_clear_key_value (&clear_key, &border_key);
@@ -6177,6 +6523,12 @@ void
 btree_scan_clear_key (BTREE_SCAN * btree_scan)
 {
   btree_clear_key_value (&btree_scan->clear_cur_key, &btree_scan->cur_key);
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  btree_scan->is_cur_key_decompressed = true;
+  btree_clear_key_value (&btree_scan->C_page_info.clear_compress_key, &btree_scan->C_page_info.compress_key);
+  btree_scan->C_page_info.n_compress_size = COMMON_PREFIX_UNKNOWN;
+  //RESET_BTREE_PAGE_PREFIX_INFO (&btree_scan->C_page_info);
+#endif
 }
 
 /*
@@ -6450,6 +6802,7 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
 #endif /* !NDEBUG */
 
+	  PAGE_INFO_VPID_RESET (&bts->C_page_info);
 	  ret = btree_get_subtree_stats (thread_p, btid, page, stats_env);
 	  if (ret != NO_ERROR)
 	    {
@@ -6685,9 +7038,6 @@ static int
 btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSHOT * mvcc_snapshot)
 {
   BTREE_SCAN *BTS;
-  RECDES rec;
-  LEAF_REC leaf_pnt;
-  int offset;
   int max_visible_oids, num_visible_oids;
   int ret = NO_ERROR;
 
@@ -6704,13 +7054,13 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 	}
 
       assert (BTS->slot_id > 0);
-      if (spage_get_record (thread_p, BTS->C_page, BTS->slot_id, &rec, PEEK) != S_SUCCESS)
+      if (spage_get_record (thread_p, BTS->C_page, BTS->slot_id, &BTS->key_record, PEEK) != S_SUCCESS)
 	{
 	  goto exit_on_error;
 	}
 
       /* filter out fence_key */
-      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+      if (btree_leaf_is_flaged (&BTS->key_record, BTREE_LEAF_RECORD_FENCE))
 	{
 	  goto count_keys;
 	}
@@ -6718,11 +7068,20 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
       /* read key-value */
       assert (BTS->clear_cur_key == false);
 
-      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
-			     BTREE_LEAF_NODE, &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      if (btree_read_record_in_leafpage (thread_p, BTS->C_page, PEEK_KEY_VALUE, BTS) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
+#else
+      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key,
+			     (void *) &BTS->leaf_rec_info, BTREE_LEAF_NODE, &BTS->clear_cur_key,
+			     &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+#endif
+
 
       /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
       if (btree_is_same_key_for_stats (env, &BTS->cur_key))
@@ -6734,8 +7093,9 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
       max_visible_oids = 1;
       num_visible_oids = 0;
       ret =
-	btree_get_num_visible_from_leaf_and_ovf (thread_p, &BTS->btid_int, &rec, offset, &leaf_pnt, &max_visible_oids,
-						 mvcc_snapshot, &num_visible_oids);
+	btree_get_num_visible_from_leaf_and_ovf (thread_p, &BTS->btid_int, &BTS->key_record, BTS->offset,
+						 &BTS->leaf_rec_info, &max_visible_oids, mvcc_snapshot,
+						 &num_visible_oids);
       if (ret != NO_ERROR)
 	{
 	  /* Error. */
@@ -6767,7 +7127,7 @@ count_keys:
       if (mvcc_snapshot != NULL)
 	{
 	  /* filter out fence_key */
-	  if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	  if (btree_leaf_is_flaged (&BTS->key_record, BTREE_LEAF_RECORD_FENCE))
 	    {
 	      assert (ret == NO_ERROR);
 
@@ -6779,7 +7139,9 @@ count_keys:
 
 	  /* key_value already computed */
 	  assert (!DB_IS_NULL (&BTS->cur_key));
-
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+	  assert (BTS->is_cur_key_decompressed == true);
+#endif
 	  /* get pkeys info */
 	  ret = btree_get_stats_midxkey (thread_p, env, db_get_midxkey (&BTS->cur_key));
 	  if (ret != NO_ERROR)
@@ -6796,13 +7158,13 @@ count_keys:
 	}
 
       assert (BTS->slot_id > 0);
-      if (spage_get_record (thread_p, BTS->C_page, BTS->slot_id, &rec, PEEK) != S_SUCCESS)
+      if (spage_get_record (thread_p, BTS->C_page, BTS->slot_id, &BTS->key_record, PEEK) != S_SUCCESS)
 	{
 	  goto exit_on_error;
 	}
 
       /* filter out fence_key */
-      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+      if (btree_leaf_is_flaged (&BTS->key_record, BTREE_LEAF_RECORD_FENCE))
 	{
 	  assert (ret == NO_ERROR);
 
@@ -6816,11 +7178,20 @@ count_keys:
 
       assert (BTS->clear_cur_key == false);
 
-      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &rec, &BTS->cur_key, (void *) &leaf_pnt,
-			     BTREE_LEAF_NODE, &BTS->clear_cur_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      if (btree_read_record_in_leafpage (thread_p, BTS->C_page, PEEK_KEY_VALUE, BTS) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
+#else
+      if (btree_read_record (thread_p, &BTS->btid_int, BTS->C_page, &BTS->key_record, &BTS->cur_key,
+			     (void *) &BTS->leaf_rec_info, BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset,
+			     PEEK_KEY_VALUE, NULL) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+#endif
+
 
       if (btree_is_same_key_for_stats (env, &BTS->cur_key))
 	{
@@ -6884,6 +7255,8 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	{
 	  goto exit_on_error;
 	}
+
+      PAGE_INFO_VPID_RESET (&BTS->C_page_info);
 
       /* found sampling leaf page */
       key_cnt = btree_node_number_of_keys (thread_p, BTS->C_page);
@@ -7236,6 +7609,11 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
 
   db_make_null (&(env->prev_key_val));
   env->same_prefix_len = env->btree_scan.btid_int.deduplicate_key_idx;
+
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  btree_init_page_prefix_info (&env->btree_scan, (dom_type == DB_TYPE_MIDXKEY), (env->same_prefix_len != -1),
+			       BTREE_READER_TYPE_STAT);
+#endif
 
   if (with_fullscan || npages <= STATS_SAMPLING_THRESHOLD)
     {
@@ -8641,21 +9019,18 @@ btree_keyoid_checkscan_end (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan)
  *   cpc(in):
  */
 static int
-btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
+btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
 			    BTREE_STATS_ENV * env)
 {
-  RECDES rec;			/* Page record descriptor */
   int free_space;		/* Total free space of the Page */
   int key_cnt;			/* Page key count */
   NON_LEAF_REC nleaf_ptr;	/* NonLeaf Record pointer */
   VPID page_vpid;		/* Child page identifier */
   PAGE_PTR page = NULL;		/* Child page pointer */
   int i;			/* Loop counter */
-  int offset;			/* Offset to the beginning of OID list */
   int oid_cnt;			/* Number of OIDs */
   VPID ovfl_vpid;		/* Overflow page identifier */
   RECDES orec;			/* Overflow record descriptor */
-  LEAF_REC leaf_pnt;
 
   PAGE_PTR ovfp = NULL;
   int ret = NO_ERROR;
@@ -8663,12 +9038,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   BTREE_NODE_TYPE node_type;
 
   /* initialize */
-  leaf_pnt.key_len = 0;
-  VPID_SET_NULL (&leaf_pnt.ovfl);
-
   BTREE_SCAN *BTS = &env->btree_scan;
-
   btree_clear_key_value (&BTS->clear_cur_key, &BTS->cur_key);
+
+  BTS->leaf_rec_info.key_len = 0;
+  VPID_SET_NULL (&BTS->leaf_rec_info.ovfl);
 
   /* initialize capacity structure */
   memset (cpc, 0x00, sizeof (BTREE_CAPACITY));
@@ -8694,11 +9068,11 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
       /* traverse all the subtrees of this non_leaf page and accumulate the statistical data in the cpc structure */
       for (i = 1; i <= key_cnt; i++)
 	{
-	  if (spage_get_record (thread_p, pg_ptr, i, &rec, PEEK) != S_SUCCESS)
+	  if (spage_get_record (thread_p, pg_ptr, i, &BTS->key_record, PEEK) != S_SUCCESS)
 	    {
 	      goto exit_on_error;
 	    }
-	  btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf_ptr);
+	  btree_read_fixed_portion_of_non_leaf_record (&BTS->key_record, &nleaf_ptr);
 	  page_vpid = nleaf_ptr.pnt;
 	  page = pgbuf_fix (thread_p, &page_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	  if (page == NULL)
@@ -8710,7 +9084,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_BTREE);
 #endif /* !NDEBUG */
 
-	  ret = btree_get_subtree_capacity (thread_p, btid, page, &cpc2, env);
+	  ret = btree_get_subtree_capacity (thread_p, btid_int, page, &cpc2, env);
 	  pgbuf_unfix_and_init (thread_p, page);
 	  if (ret != NO_ERROR)
 	    {
@@ -8746,6 +9120,12 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
     }
   else
     {				/* a leaf page */
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      VPID_COPY (&BTS->C_vpid, pgbuf_get_vpid_ptr (pg_ptr));
+      btree_init_page_prefix_info (BTS, (TP_DOMAIN_TYPE (btid_int->key_type) == DB_TYPE_MIDXKEY),
+				   (env->same_prefix_len != -1), BTREE_READER_TYPE_CAPACITY);
+#endif
+
       /* form the cpc structure for a leaf node page */
       cpc->dis_key_cnt = 0;
       cpc->deduplicate_dis_key_cnt = key_cnt;
@@ -8755,19 +9135,26 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
       cpc->height = 1;
       for (i = 1; i <= key_cnt; i++)
 	{
-	  if (spage_get_record (thread_p, pg_ptr, i, &rec, PEEK) != S_SUCCESS)
+	  if (spage_get_record (thread_p, pg_ptr, i, &BTS->key_record, PEEK) != S_SUCCESS)
 	    {
 	      goto exit_on_error;
 	    }
-	  cpc->sum_rec_len += rec.length;
+	  cpc->sum_rec_len += BTS->key_record.length;
 
 	  /* read the current record key */
-	  if (btree_read_record
-	      (thread_p, btid, pg_ptr, &rec, &BTS->cur_key, &leaf_pnt, BTREE_LEAF_NODE, &BTS->clear_cur_key, &offset,
-	       PEEK_KEY_VALUE, NULL) != NO_ERROR)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+	  if (btree_read_record_in_leafpage (thread_p, pg_ptr, PEEK_KEY_VALUE, BTS) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
+#else
+	  if (btree_read_record (thread_p, btid_int, pg_ptr, &BTS->key_record, &BTS->cur_key, &BTS->leaf_rec_info,
+				 BTREE_LEAF_NODE, &BTS->clear_cur_key, &BTS->offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+#endif
+
 
 	  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	  //cpc->sum_key_len += btree_get_disk_size_of_key (&BTS->cur_key);
@@ -8779,9 +9166,9 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 	  btree_clear_key_value (&BTS->clear_cur_key, &BTS->cur_key);
 
 	  /* find the value (OID) count for the record */
-	  oid_cnt = btree_record_get_num_oids (thread_p, btid, &rec, offset, BTREE_LEAF_NODE);
+	  oid_cnt = btree_record_get_num_oids (thread_p, btid_int, &BTS->key_record, BTS->offset, BTREE_LEAF_NODE);
 
-	  ovfl_vpid = leaf_pnt.ovfl;
+	  ovfl_vpid = BTS->leaf_rec_info.ovfl;
 	  if (!VPID_ISNULL (&ovfl_vpid))
 	    {			/* overflow pages exist */
 	      int free_space_ovfl, oid_cnt_ovfl, pg_cnt_per_key;
@@ -8810,7 +9197,7 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
 		      goto exit_on_error;
 		    }
 
-		  oid_cnt_ovfl += btree_record_get_num_oids (thread_p, btid, &orec, 0, BTREE_OVERFLOW_NODE);
+		  oid_cnt_ovfl += btree_record_get_num_oids (thread_p, btid_int, &orec, 0, BTREE_OVERFLOW_NODE);
 		  pgbuf_unfix_and_init (thread_p, ovfp);
 
 		  cpc->ovfl_oid_pg.tot_free_space += free_space_ovfl;
@@ -8860,6 +9247,8 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
       cpc->ovfl_oid_pg.avg_pg_free_sp = cpc->ovfl_oid_pg.tot_free_space / cpc->ovfl_oid_pg.tot_pg_cnt;
     }
 
+  btree_scan_clear_key (BTS);
+
   return ret;
 
 exit_on_error:
@@ -8873,7 +9262,7 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, ovfp);
     }
 
-  btree_clear_key_value (&BTS->clear_cur_key, &BTS->cur_key);
+  btree_scan_clear_key (BTS);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -8891,7 +9280,6 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
 {
   VPID root_vpid;		/* root page identifier */
   PAGE_PTR root = NULL;		/* root page pointer */
-  BTID_INT btid_int;
   BTREE_ROOT_HEADER *root_header = NULL;
   int ret = NO_ERROR;
 
@@ -8918,8 +9306,10 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       goto exit_on_error;
     }
 
-  btid_int.sys_btid = btid;
-  ret = btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
+  BTREE_INIT_SCAN (&(stats_env.btree_scan));
+  stats_env.btree_scan.btid_int.sys_btid = btid;
+
+  ret = btree_glean_root_header_info (thread_p, root_header, &stats_env.btree_scan.btid_int, true);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -8929,8 +9319,7 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   stats_env.same_prefix_len = GET_DECOMPRESS_IDX_HEADER (root_header);
 
   /* traverse the tree and store the capacity info */
-  BTREE_INIT_SCAN (&(stats_env.btree_scan));
-  ret = btree_get_subtree_capacity (thread_p, &btid_int, root, cpc, &stats_env);
+  ret = btree_get_subtree_capacity (thread_p, &stats_env.btree_scan.btid_int, root, cpc, &stats_env);
   btree_scan_clear_key (&stats_env.btree_scan);
 
   pr_clear_value (&(stats_env.prev_key_val));
@@ -12645,7 +13034,6 @@ btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
 {
   int key_cnt;
   BTREE_NODE_HEADER *header = NULL;
-  BTREE_NODE_TYPE node_type;
 
   assert (btid != NULL);
 
@@ -12667,10 +13055,7 @@ btree_node_get_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
       assert (false);
       return 0;			/* not compressed */
     }
-
-  node_type = (header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
-
-  if (node_type == BTREE_NON_LEAF_NODE)
+  if (header->node_level > 1)
     {
       return 0;			/* not compressed */
     }
@@ -14695,6 +15080,7 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_ST
       goto exit_on_error;
     }
 
+  PAGE_INFO_VPID_RESET (&bts->C_page_info);
   /* get header information (key_cnt) */
   key_cnt = btree_node_number_of_keys (thread_p, bts->C_page);
 
@@ -15775,6 +16161,11 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
   /* Set other arguments specific to scan type. */
   bts->bts_other = bts_other;
 
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  bool is_midxkey = (bool) (TP_DOMAIN_TYPE (bts->btid_int.key_type) == DB_TYPE_MIDXKEY);
+  btree_init_page_prefix_info (bts, is_midxkey, false, BTREE_READER_TYPE_RANGE_SCAN);
+#endif
+
   /* Prepare successful. */
   return NO_ERROR;
 }
@@ -15866,6 +16257,15 @@ btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, key_val_rang
       bts->key_range.upper_key = swap_key;
     }
 
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  if (bts->C_page_info.reader_type == BTREE_READER_TYPE_RANGE_SCAN)
+    {
+      // The range to scan changes.      
+      bts->C_page_info.use_comparing = (bool) (bts->key_range.upper_key != NULL);
+      bts->C_page_info.satisfied_range_in_page = false;
+    }
+#endif
+
   return NO_ERROR;
 }
 
@@ -15894,11 +16294,13 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
 #endif
 
-  if (first_page != bts->C_page)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  if (bts->C_page_info.reader_type != BTREE_READER_TYPE_NONE && first_page != bts->C_page)
     {
       /* reset common_prefix to recalculate */
-      bts->common_prefix = COMMON_PREFIX_UNKNOWN;
+      VPID_SET_NULL (&(bts->C_page_info.vpid));
     }
+#endif
 
   /*
    * unfix first page if fix next page and move to it
@@ -16151,6 +16553,7 @@ btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BT
 	      goto exit_on_error;
 	    }
 
+	  PAGE_INFO_VPID_RESET (&bts->C_page_info);
 	  (void) pgbuf_check_page_ptype (thread_p, bts->C_page, PAGE_BTREE);
 
 	  /* unfix the previous leaf page */
@@ -16212,28 +16615,56 @@ exit_on_error:
  */
 static int
 btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, bool is_iss, bool * is_key_range_satisfied,
-				  bool * is_key_filter_satisfied, bool need_to_check_null)
+				  bool * is_key_filter_satisfied)
 {
   int c;			/* comparison result */
   DB_LOGICAL ev_res;		/* evaluation result */
-  DB_MIDXKEY *mkey;		/* midxkey ptr */
-  DB_VALUE ep;			/* element ptr */
   bool allow_null_in_midxkey = false;
   DB_TYPE type;
   int ret = NO_ERROR;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  bool satisfied_range_all = false;
+  BTREE_PAGE_PREFIX_INFO *page_info = &bts->C_page_info;
+
+  assert (page_info->reader_type == BTREE_READER_TYPE_RANGE_SCAN);
+  satisfied_range_all = page_info->satisfied_range_in_page;
+#endif
 
   *is_key_range_satisfied = *is_key_filter_satisfied = false;
   bts->key_range_max_value_equal = false;	/* init as false */
 
   /* Key Range Checking */
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  check_validate (bts);
+
+  if (bts->key_range.upper_key == NULL || satisfied_range_all)
+#else
   if (bts->key_range.upper_key == NULL)
+#endif
     {
-      c = DB_GT;
+      *is_key_range_satisfied = true;
     }
   else
     {
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      if (bts->is_cur_key_decompressed)
+	{
+	  c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key, bts->btid_int.key_type, 1, 1, NULL);
+	}
+      else
+	{
+	  int start_col = 0;
+	  c = btree_compare_key (bts->key_range.upper_key, &page_info->compress_key, bts->btid_int.key_type,
+				 1, 1, &start_col);
+	  if (start_col >= page_info->n_compress_size)
+	    {
+	      start_col = page_info->n_compress_size;
+	      c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key, bts->btid_int.key_type, 1, 1, &start_col);
+	    }
+	}
+#else
       c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key, bts->btid_int.key_type, 1, 1, NULL);
-
+#endif
       if (c == DB_UNK)
 	{
 	  /* error should have been set */
@@ -16245,37 +16676,54 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	{
 	  c = -c;
 	}
-    }
 
-  if (c < 0)
-    {
-      *is_key_range_satisfied = false;
-    }
-  else if (c == 0)
-    {
-      if (bts->key_range.range == GT_LE || bts->key_range.range == GE_LE || bts->key_range.range == INF_LE)
-	{
-	  *is_key_range_satisfied = true;
-	  bts->key_range_max_value_equal = true;
-	}
-      else
+      if (c < 0)
 	{
 	  *is_key_range_satisfied = false;
 	}
-    }
-  else
-    {
-      *is_key_range_satisfied = true;
+      else if (c == 0)
+	{
+	  if (bts->key_range.range == GE_LE || bts->key_range.range == GT_LE || bts->key_range.range == INF_LE)
+	    {
+	      *is_key_range_satisfied = true;
+	      bts->key_range_max_value_equal = true;
+	    }
+	  else
+	    {
+	      *is_key_range_satisfied = false;
+	    }
+	}
+      else
+	{
+	  *is_key_range_satisfied = true;
+	}
     }
 
   if (*is_key_range_satisfied)
     {
-      if (need_to_check_null && DB_VALUE_DOMAIN_TYPE (&bts->cur_key) == DB_TYPE_MIDXKEY
+      if (bts->need_to_check_null && DB_VALUE_DOMAIN_TYPE (&bts->cur_key) == DB_TYPE_MIDXKEY
 	  && bts->key_range.num_index_term > 0)
 	{
+	  DB_MIDXKEY *mkey;	/* midxkey ptr */
+	  DB_VALUE ep;		/* element ptr */
+
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+	  if ((bts->is_cur_key_decompressed == false)
+	      && (page_info->n_compress_size > (bts->key_range.num_index_term - 1)))
+	    {
+	      mkey = db_get_midxkey (&(page_info->compress_key));
+	    }
+	  else
+	    {
+	      mkey = db_get_midxkey (&(bts->cur_key));
+	    }
+#else
 	  mkey = db_get_midxkey (&(bts->cur_key));
+#endif
+
 	  /* get the last element from key range elements */
 	  ret = pr_midxkey_get_element_nocopy (mkey, bts->key_range.num_index_term - 1, &ep, NULL, NULL);
+
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -16338,7 +16786,19 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
       *is_key_filter_satisfied = true;
       if (bts->key_filter && bts->key_filter->scan_pred->regu_list)
 	{
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+	  if (bts->is_cur_key_decompressed)
+	    {
+	      ev_res = eval_key_filter (thread_p, &bts->cur_key, -1, NULL, bts->key_filter);
+	    }
+	  else
+	    {
+	      ev_res = eval_key_filter (thread_p, &bts->cur_key,
+					page_info->n_compress_size, &page_info->compress_key, bts->key_filter);
+	    }
+#else
 	  ev_res = eval_key_filter (thread_p, &bts->cur_key, bts->key_filter);
+#endif
 	  if (ev_res != V_TRUE)
 	    {
 	      *is_key_filter_satisfied = false;
@@ -16375,8 +16835,12 @@ exit_on_error:
  * The attr_info structure must have already been initialized with the desired attributes.
  */
 int
-btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids, int btree_num_att,
-			      HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id)
+btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+			      BTREE_PAGE_PREFIX_INFO * cur_page_info,
+#endif
+			      int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
+			      int func_index_col_id)
 {
   int i, j, error = NO_ERROR;
   HEAP_ATTRVALUE *attr_value;
@@ -16444,8 +16908,25 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
 		  j++;
 		}
 	    }
+
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+	  DB_VALUE *pkey = curr_key;
+	  if (cur_page_info && cur_page_info->reader_type != BTREE_READER_TYPE_NONE)
+	    {
+	      assert (cur_page_info->reader_type == BTREE_READER_TYPE_RANGE_SCAN);
+
+	      // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
+	      if (cur_page_info->n_compress_size > 0 && j < cur_page_info->n_compress_size)
+		{
+		  pkey = &cur_page_info->compress_key;
+		}
+	    }
+
+	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (pkey), j, &(attr_value->dbvalue), NULL, NULL) != NO_ERROR)
+#else
 	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (curr_key), j, &(attr_value->dbvalue), NULL, NULL) !=
 	      NO_ERROR)
+#endif
 	    {
 	      error = ER_FAILED;
 	      goto error;
@@ -16512,9 +16993,14 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
       regu_list = NULL;
     }
 
-  error =
-    btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key), filter->btree_attr_ids, filter->btree_num_attrs, attr_info,
-				  iscan_id->indx_cov.func_index_col_id);
+  check_validate (bts);		// ctshim
+
+  error = btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key),
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+					&bts->C_page_info,
+#endif
+					filter->btree_attr_ids, filter->btree_num_attrs, attr_info,
+					iscan_id->indx_cov.func_index_col_id);
   if (error != NO_ERROR)
     {
       return error;
@@ -16595,6 +17081,7 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
 	  ASSERT_ERROR ();
 	  goto error;
 	}
+
       error_code = btree_range_scan_start (thread_p, bts);
       if (error_code != NO_ERROR)
 	{
@@ -16638,7 +17125,21 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
 
   /* Get key */
   pr_clear_value (key_info[BTREE_KEY_INFO_KEY]);
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  assert (bts->C_page_info.reader_type == BTREE_READER_TYPE_RANGE_SCAN);
+  if (bts->is_cur_key_decompressed == false)
+    {
+      check_validate (bts);	// ctshim  
+      pr_midxkey_add_prefix (key_info[BTREE_KEY_INFO_KEY], &(bts->C_page_info.compress_key),
+			     &(bts->cur_key), bts->C_page_info.n_compress_size);
+    }
+  else
+    {
+      pr_clone_value (&bts->cur_key, key_info[BTREE_KEY_INFO_KEY]);
+    }
+#else
   pr_clone_value (&bts->cur_key, key_info[BTREE_KEY_INFO_KEY]);
+#endif
 
   /* Get overflow key and overflow oids */
   pr_clear_value (key_info[BTREE_KEY_INFO_OVERFLOW_KEY]);
@@ -16683,12 +17184,15 @@ end:
   if (bts->C_page != NULL)
     {
       LSA_COPY (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page));
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && !defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_CLONE_VALUE)	// PEEK_KEY_VALUE 후 clone 하지 안는 경우
+      btree_check_complete_decompressed_key (bts);
+#endif
       pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
 
   if (bts->O_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      pgbuf_unfix_and_init (thread_p, bts->O_page);	// ctshim ??
     }
 
   if (bts->P_page != NULL)
@@ -16709,6 +17213,7 @@ end:
   return result;
 
 error:
+
   result = S_ERROR;
   goto end;
 }
@@ -19367,6 +19872,23 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       return ER_FAILED;
     }
 
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  DB_MIDXKEY *compress_mkey = NULL;
+  DB_MIDXKEY *t_mkey = new_mkey;
+  int compress_size = 0;
+  BTREE_PAGE_PREFIX_INFO *page_info = &bts->C_page_info;
+  if (bts->is_cur_key_decompressed == false)
+    {
+      assert (page_info->reader_type == BTREE_READER_TYPE_RANGE_SCAN);
+      assert (page_info->n_compress_size > 0);
+
+      check_validate (bts);	// ctshim
+
+      compress_mkey = db_get_midxkey (&(page_info->compress_key));
+      compress_size = page_info->n_compress_size;
+    }
+#endif
+
   new_mkey = db_get_midxkey (&(bts->cur_key));
   new_key_value = (DB_VALUE *) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (DB_VALUE));
   if (new_key_value == NULL)
@@ -19383,7 +19905,12 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 
   for (i = 0; i < multi_range_opt->num_attrs; i++)
     {
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      t_mkey = (compress_mkey && multi_range_opt->sort_att_idx[i] < compress_size) ? compress_mkey : new_mkey;
+      error = pr_midxkey_get_element_nocopy (t_mkey, multi_range_opt->sort_att_idx[i], &new_key_value[i], NULL, NULL);
+#else
       error = pr_midxkey_get_element_nocopy (new_mkey, multi_range_opt->sort_att_idx[i], &new_key_value[i], NULL, NULL);
+#endif
       if (error != NO_ERROR)
 	{
 	  goto exit;
@@ -19448,8 +19975,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       for (i = 0; i < multi_range_opt->num_attrs; i++)
 	{
 	  db_make_null (&comp_key_value);
-	  error = pr_midxkey_get_element_nocopy (comp_mkey, multi_range_opt->sort_att_idx[i], &comp_key_value, NULL,
-						 NULL);
+	  error =
+	    pr_midxkey_get_element_nocopy (comp_mkey, multi_range_opt->sort_att_idx[i], &comp_key_value, NULL, NULL);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit;
@@ -19485,7 +20012,19 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 
       /* overwrite the last item with the new key and OIDs */
       pr_clear_value (&(last_item->index_value));
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      if (bts->is_cur_key_decompressed == false)
+	{
+	  pr_midxkey_add_prefix (&(last_item->index_value), &(page_info->compress_key), &(bts->cur_key),
+				 page_info->n_compress_size);
+	}
+      else
+	{
+	  pr_clone_value (&(bts->cur_key), &(last_item->index_value));
+	}
+#else
       pr_clone_value (&(bts->cur_key), &(last_item->index_value));
+#endif
       COPY_OID (&(last_item->inst_oid), p_new_oid);
     }
   else
@@ -19502,8 +20041,19 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	}
 
       multi_range_opt->top_n_items[multi_range_opt->cnt] = curr_item;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+      if (bts->is_cur_key_decompressed == false)
+	{
+	  pr_midxkey_add_prefix (&(curr_item->index_value), &(page_info->compress_key), &(bts->cur_key),
+				 page_info->n_compress_size);
+	}
+      else
+	{
+	  pr_clone_value (&(bts->cur_key), &(curr_item->index_value));
+	}
+#else
       pr_clone_value (&(bts->cur_key), &(curr_item->index_value));
-
+#endif
       COPY_OID (&(curr_item->inst_oid), p_new_oid);
 
       multi_range_opt->cnt++;
@@ -19716,7 +20266,20 @@ btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
 
   /* save the found key as bound for next fetch */
   pr_clear_value (&key->value.funcp->operand->value.value.dbval);
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  if (bts->is_cur_key_decompressed == false)
+    {
+      check_validate (bts);	// ctshim
+      pr_midxkey_add_prefix (&(key->value.funcp->operand->value.value.dbval), &(bts->C_page_info.compress_key),
+			     &(bts->cur_key), bts->C_page_info.n_compress_size);
+    }
+  else
+    {
+      ret = pr_clone_value (&bts->cur_key, &key->value.funcp->operand->value.value.dbval);
+    }
+#else
   ret = pr_clone_value (&bts->cur_key, &key->value.funcp->operand->value.value.dbval);
+#endif
   if (ret != NO_ERROR)
     {
       return ret;
@@ -20327,12 +20890,38 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
 
   dom = curr_key->data.midxkey.domain->setdomain;
+
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  /* copy prefix of current key into target key */
+  int compress_size = -1;
+  if (bts->is_cur_key_decompressed == false &&
+      bts->C_page_info.reader_type == BTREE_READER_TYPE_RANGE_SCAN && bts->C_page_info.n_compress_size > 0)
+    {
+      check_validate (bts);	// ctshim  
+      compress_size = bts->C_page_info.n_compress_size;
+    }
+
+  for (i = 0; i < prefix_len; i++)
+    {
+      if (i < compress_size)
+	{
+	  pr_midxkey_get_element_nocopy (&bts->C_page_info.compress_key.data.midxkey, i, &new_key_dbvals[i], NULL,
+					 NULL);
+	}
+      else
+	{
+	  pr_midxkey_get_element_nocopy (&curr_key->data.midxkey, i, &new_key_dbvals[i], NULL, NULL);
+	}
+      dom = dom->next;		/* get to coerce domain */
+    }
+#else
   /* copy prefix of current key into target key */
   for (i = 0; i < prefix_len; i++)
     {
       pr_midxkey_get_element_nocopy (&curr_key->data.midxkey, i, &new_key_dbvals[i], NULL, NULL);
       dom = dom->next;		/* get to coerce domain */
     }
+#endif
 
   if (prefix_len < curr_key->data.midxkey.ncolumns)
     {
@@ -24630,8 +25219,15 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   assert (bts->force_restart_from_root || !VPID_ISNULL (&bts->C_vpid));
   assert (bts->C_page == NULL);
-  assert (!DB_IS_NULL (&bts->cur_key));
   assert (!BTS_IS_INDEX_ILS (bts));
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  // TODO: 
+  btree_check_complete_decompressed_key (bts);
+#endif
+  assert (!DB_IS_NULL (&bts->cur_key));
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  assert (bts->is_cur_key_decompressed == true);
+#endif
 
   /* Resume range scan. It can be resumed from same leaf or by looking up the key again from root. */
   if (!bts->force_restart_from_root)
@@ -24654,6 +25250,8 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	       * current position. */
 	      return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
 	    }
+
+	  PAGE_INFO_VPID_RESET (&bts->C_page_info);
 
 	  /* Page suffered some changes. */
 	  if (BTREE_IS_PAGE_VALID_LEAF (thread_p, bts->C_page))
@@ -24742,6 +25340,9 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   bts->force_restart_from_root = false;
 
   /* Search key from top. */
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  assert (bts->is_cur_key_decompressed == true);
+#endif
   error_code = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, &bts->C_vpid, &bts->slot_id,
 				 &bts->C_page, &found);
   if (error_code != NO_ERROR)
@@ -24783,10 +25384,16 @@ static int
 btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   /* Clear current key value if needed. */
-  btree_scan_clear_key (bts);
+  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
+  /* Read record key (and other info). */
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  assert (bts != NULL && bts->node_type == BTREE_LEAF_NODE);
+  return btree_read_record_in_leafpage (thread_p, bts->C_page, COPY_KEY_VALUE, bts);
+#else
   /* Read record key (and other info). */
   return btree_read_record (thread_p, &bts->btid_int, bts->C_page, &bts->key_record, &bts->cur_key, &bts->leaf_rec_info,
 			    bts->node_type, &bts->clear_cur_key, &bts->offset, COPY_KEY_VALUE, bts);
+#endif
 }
 
 /*
@@ -24845,6 +25452,8 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
       /* Continue with current key. */
       return NO_ERROR;
     }
+
+
   /* Current key is completely consumed or is a new key. */
   assert (bts->key_status == BTS_KEY_IS_CONSUMED || bts->key_status == BTS_KEY_IS_NOT_VERIFIED);
 
@@ -24922,8 +25531,9 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 		  ASSERT_ERROR_AND_SET (error_code);
 		  return error_code;
 		}
+	      PAGE_INFO_VPID_RESET (&bts->C_page_info);
 	      /* Advance to next node. */
-	      pgbuf_unfix (thread_p, bts->C_page);
+	      pgbuf_unfix (thread_p, bts->C_page);	// ctshim              
 	      bts->C_page = next_node_page;
 	      VPID_COPY (&bts->C_vpid, &next_vpid);
 	      next_node_page = NULL;
@@ -24958,7 +25568,7 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	    }
 	  error_code =
 	    btree_apply_key_range_and_filter (thread_p, bts, BTS_IS_INDEX_ISS (bts), &is_range_satisfied,
-					      &is_filter_satisfied, bts->need_to_check_null);
+					      &is_filter_satisfied);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -25038,6 +25648,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       pgbuf_unfix_and_init (thread_p, bts->C_page);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
+      PAGE_INFO_VPID_RESET (&bts->C_page_info);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
       bts->slot_id = *key_count;
       *node_header_ptr = btree_get_node_header (thread_p, bts->C_page);
@@ -25055,6 +25666,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       ASSERT_ERROR ();
       return error_code;
     }
+
   if (prev_leaf == NULL)
     {
       /* deallocated */
@@ -25090,6 +25702,12 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       return error_code;
     }
 
+  PAGE_INFO_VPID_RESET (&bts->C_page_info);
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  // TODO: 
+  btree_check_complete_decompressed_key (bts);
+#endif
+
   /* Before searching the key in leaf page, we must make sure to handle this next peculiar case: 1. First key search of
    * descending scan. Lower key limit is located as first in leaf page. 2. Range scan says strictly less than lower key
    * limit. 3. The algorithm tries to fix go to previous leaf. However, bts->cur_key does not yet store any key values.
@@ -25102,6 +25720,9 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
     }
   /* We must have a non-null current key. */
   assert (!DB_IS_NULL (&bts->cur_key));
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  assert (bts->is_cur_key_decompressed == true);
+#endif
 
   /* Normally, key is found in current page. */
   error_code = btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int, bts->C_page, &bts->cur_key, &search_key);
@@ -25150,6 +25771,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       pgbuf_unfix_and_init (thread_p, bts->C_page);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
+      PAGE_INFO_VPID_RESET (&bts->C_page_info);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
       VPID_COPY (next_vpid, &(*node_header_ptr)->prev_vpid);
       bts->slot_id = *key_count;
@@ -25207,6 +25829,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       /* Update bts and advance to previous key. */
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
+      PAGE_INFO_VPID_RESET (&bts->C_page_info);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
       VPID_COPY (next_vpid, &(*node_header_ptr)->prev_vpid);
       bts->slot_id = search_key.slotid - 1;
@@ -25299,6 +25922,9 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  btree_log_if_enabled ("Notification: descending range scan had to be interrupted and restarted from root.\n");
 	  if (bts->C_page != NULL)
 	    {
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && !defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_CLONE_VALUE)	// PEEK_KEY_VALUE 후 clone 하지 안는 경우
+	      btree_check_complete_decompressed_key (bts);
+#endif
 	      pgbuf_unfix_and_init (thread_p, bts->C_page);
 	    }
 	  if (BTS_IS_INDEX_ILS (bts))
@@ -25355,6 +25981,9 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 				    "root.\n");
 	      if (bts->C_page != NULL)
 		{
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && !defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_CLONE_VALUE)	// PEEK_KEY_VALUE 후 clone 하지 안는 경우
+		  btree_check_complete_decompressed_key (bts);
+#endif
 		  pgbuf_unfix_and_init (thread_p, bts->C_page);
 		}
 	      break;
@@ -25392,6 +26021,9 @@ end:
       /* Unfix current page and save its LSA. */
       assert (bts->end_scan || VPID_EQ (pgbuf_get_vpid_ptr (bts->C_page), &bts->C_vpid));
       LSA_COPY (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page));
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && !defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_CLONE_VALUE)	// PEEK_KEY_VALUE 후 clone 하지 안는 경우
+      btree_check_complete_decompressed_key (bts);
+#endif
       pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
   else
@@ -25925,6 +26557,9 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 
 	  /* Since range scan must be moved on a totally different range, it must restart by looking for the first
 	   * eligible key of the new range. Trick it to think this a new call of btree_range_scan. */
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && !defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_CLONE_VALUE)	// PEEK_KEY_VALUE 후 clone 하지 안는 경우
+	  btree_check_complete_decompressed_key (bts);
+#endif
 	  bts_reset_scan (thread_p, bts);
 
 	  /* Adjust range of scan. */
@@ -25943,6 +26578,9 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 	      return error_code;
 	    }
 	  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+	  bts->is_cur_key_decompressed = true;
+#endif
 	}
       else
 	{
@@ -26212,6 +26850,9 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Unconditional lock on object. */
   /* Must release fixed pages first. */
   bts->is_interrupted = true;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && !defined(IMPROVE_RANGE_SCAN_IN_BTREE_USE_CLONE_VALUE)	// PEEK_KEY_VALUE 후 clone 하지 안는 경우
+  btree_check_complete_decompressed_key (bts);
+#endif
   pgbuf_unfix_and_init (thread_p, bts->C_page);
   if (bts->O_page != NULL)
     {
