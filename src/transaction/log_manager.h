@@ -147,8 +147,11 @@ extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *
 extern bool log_is_class_being_modified (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern TRAN_STATE log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran);
 extern TRAN_STATE log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran);
+extern TRAN_STATE log_abort_local_read_only_on_pts (THREAD_ENTRY * thread_p, LOG_TDES * const tdes);
 extern TRAN_STATE log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock);
 extern TRAN_STATE log_abort (THREAD_ENTRY * thread_p, int tran_index);
+extern TRAN_STATE log_abort_read_only_on_pts (THREAD_ENTRY * thread_p, int tran_index);
+
 extern TRAN_STATE log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA * savept_lsa);
 extern TRAN_STATE log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 				LOG_GETNEWTRID get_newtrid, LOG_WRITE_EOT_LOG wrote_eot_log);

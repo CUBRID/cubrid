@@ -70,6 +70,7 @@
 
 #include <array>
 
+#define CUBRID_DEBUG
 #define LK_DUMP
 
 extern LOCK_COMPATIBILITY lock_Comp[12][12];
@@ -381,6 +382,12 @@ struct lk_global_data
   bool dump_level;
 #endif				/* LK_DUMP */
 
+  /* log replication withheld related fields */
+  pthread_mutex_t log_replication_withheld_mutex;
+  int log_replication_withheld_oid_alloc_count;
+  OID *log_replication_withheld_oid;
+  int log_replication_withheld_oid_free_index;
+
   // *INDENT-OFF*
   lk_global_data ()
     : max_obj_locks (0)
@@ -401,6 +408,10 @@ struct lk_global_data
 #if defined(LK_DUMP)
     , dump_level (0)
 #endif
+    , log_replication_withheld_mutex PTHREAD_MUTEX_INITIALIZER
+    , log_replication_withheld_oid_alloc_count { 0 }
+    , log_replication_withheld_oid { nullptr }
+    , log_replication_withheld_oid_free_index { 0 }
   {
   }
   // *INDENT-ON*
@@ -500,7 +511,7 @@ static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation)
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
 static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
-static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr);
+static void lock_set_error_for_aborted (int tran_index);
 static void lock_set_tran_abort_reason (int tran_index, TRAN_ABORT_REASON abort_reason);
 static LOCK_WAIT_STATE lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs);
 static void lock_resume (LK_ENTRY * entry_ptr, int state);
@@ -509,12 +520,12 @@ static bool lock_wakeup_deadlock_victim_aborted (int tran_index);
 static void lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
 static int lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
 static void lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * from_whom);
-static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
-static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
+static bool lock_check_escalate (THREAD_ENTRY * thread_p, const LK_ENTRY * class_entry, const LK_TRAN_LOCK * tran_lock);
+static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, const int tran_index);
 static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
 						   const OID * class_oid, LOCK lock);
-static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
-					      const OID * class_oid, LOCK lock, int wait_msecs,
+static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * const oid,
+					      const OID * const class_oid, const LOCK lock, const int wait_msecs,
 					      LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry);
 static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
 						 bool move_to_non2pl);
@@ -571,6 +582,15 @@ static void lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & th
 							       size_t & count);
 static void lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_array_type & tran_lock_waiters,
 						       size_t & count);
+
+static void lock_log_replication_withheld_add (int tran_index, const OID * const oid_actually_class_oid);
+static void lock_log_replication_withheld_clear_all (
+#if !defined (NDEBUG)
+						      int tran_index
+#endif				/* !NDEBUG */
+  );
+static bool lock_log_replication_withheld_is_tran_allowed_to_lock (int tran_index,
+								   const OID * const oid_actually_class_oid);
 
 // *INDENT-OFF*
 static cubthread::daemon *lock_Deadlock_detect_daemon = NULL;
@@ -2128,16 +2148,16 @@ lock_set_tran_abort_reason (int tran_index, TRAN_ABORT_REASON abort_reason)
  * Note:set error code for unilaterally aborted deadlock victim
  */
 static void
-lock_set_error_for_aborted (LK_ENTRY * entry_ptr)
+lock_set_error_for_aborted (int tran_index)
 {
   const char *client_prog_name;	/* Client user name for transaction */
   const char *client_user_name;	/* Client user name for transaction */
   const char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process id for transaction */
 
-  (void) logtb_find_client_name_host_pid (entry_ptr->tran_index, &client_prog_name, &client_user_name,
+  (void) logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name,
 					  &client_host_name, &client_pid);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, entry_ptr->tran_index, client_user_name,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, tran_index, client_user_name,
 	  client_host_name, client_pid);
 }
 #endif /* SERVER_MODE */
@@ -2261,7 +2281,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
       if (logtb_is_current_active (thread_p))
 	{
 	  /* set error code */
-	  lock_set_error_for_aborted (entry_ptr);
+	  lock_set_error_for_aborted (entry_ptr->tran_index);
 	  lock_set_tran_abort_reason (entry_ptr->tran_index, TRAN_ABORT_DUE_DEADLOCK);
 
 	  /* wait until other threads finish their works A css_server_thread is always running for this transaction.
@@ -2921,7 +2941,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
  *
  */
 static bool
-lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock)
+lock_check_escalate (THREAD_ENTRY * thread_p, const LK_ENTRY * class_entry, const LK_TRAN_LOCK * tran_lock)
 {
   LK_ENTRY *superclass_entry = NULL;
 
@@ -2983,7 +3003,7 @@ lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LO
  *     releases unnecessary instance locks.
  */
 static int
-lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index)
+lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, const int tran_index)
 {
   LK_TRAN_LOCK *tran_lock;
   LOCK max_class_lock = NULL_LOCK;	/* escalated class lock mode */
@@ -3007,7 +3027,7 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_ROLLBACK_ON_LOCK_ESCALATION, 1,
 	      prm_get_integer_value (PRM_ID_LK_ESCALATION_AT));
 
-      lock_set_error_for_aborted (class_entry);
+      lock_set_error_for_aborted (class_entry->tran_index);
       lock_set_tran_abort_reason (class_entry->tran_index, TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
 
       pthread_mutex_unlock (&tran_lock->hold_mutex);
@@ -3231,12 +3251,12 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
  *     else this transaction is suspended until it can acquire the lock.
  */
 static int
-lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
-				   LOCK lock, int wait_msecs, LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry)
+lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, const int tran_index, const OID * const oid,
+				   const OID * const class_oid, const LOCK lock, const int wait_msecs,
+				   LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry)
 {
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   LK_RES_KEY search_key;
-  TRAN_ISOLATION isolation;
   int ret_val;
   LOCK group_mode, old_mode, new_mode;	/* lock mode */
   LK_RES *res_ptr;
@@ -3252,6 +3272,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
+  bool is_class_lock_request = false;
 
 #if defined(ENABLE_SYSTEMTAP)
   const OID *class_oid_for_marker_p;
@@ -3297,9 +3318,6 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   lock_dump_internal_lock_action (__func__, tran_index, oid, class_oid, lock);
 #endif /* LK_DUMP */
 
-  /* isolation */
-  isolation = logtb_find_isolation (tran_index);
-
   /* initialize */
   *entry_addr_ptr = NULL;
 
@@ -3336,6 +3354,23 @@ start:
   else
     {
       /* Class lock request. */
+      is_class_lock_request = true;
+
+      /* check for replication withheld classes: these are classes that are withheld by the replication transaction
+       * from being locked by user transactions */
+      if (logtb_is_passive_transaction_server_user_transaction (tran_index))
+	{
+	  const bool is_tran_allowed_to_lock = lock_log_replication_withheld_is_tran_allowed_to_lock (tran_index, oid);
+	  if (!is_tran_allowed_to_lock)
+	    {
+	      lock_set_error_for_aborted (tran_index);
+	      lock_set_tran_abort_reason (tran_index, TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
+
+	      ret_val = LK_NOTGRANTED;
+	      goto end;
+	    }
+	}
+
       /* Try to find class lock entry if it already exists to avoid using the expensive resource mutex. */
       entry_ptr = lock_find_class_entry (tran_index, oid);
       if (entry_ptr != NULL)
@@ -3529,6 +3564,7 @@ start:
 	  wait_entry_ptr = wait_entry_ptr->next;
 	}
 
+      /* another thread is lock-waiting for the same transaction */
       if (wait_entry_ptr != NULL)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LK_MANY_LOCK_WAIT_TRAN, 1, tran_index);
@@ -3536,7 +3572,7 @@ start:
 	  thread_lock_entry (wait_entry_ptr->thrd_entry);
 	  if (wait_entry_ptr->thrd_entry->lockwait == NULL)
 	    {
-	      /* */
+	      /* another thread is waiting for the same transaction but no lock entry registered */
 	      thread_unlock_entry (wait_entry_ptr->thrd_entry);
 	      thread_unlock_entry (thrd_entry);
 	      assert (is_res_mutex_locked);
@@ -3583,6 +3619,12 @@ start:
 	    }
 
 	  goto start;
+	}
+
+      /* I am not a holder; my request cannot be granted; am also not a zero wait */
+      if (is_class_lock_request && logtb_is_passive_transaction_server_log_replication_transaction (tran_index))
+	{
+	  lock_log_replication_withheld_add (tran_index, oid);
 	}
 
       /* allocate a lock entry. */
@@ -5736,7 +5778,7 @@ lock_initialize (void)
 #endif /* !CUBRID_DEBUG */
 
 #if defined(LK_DUMP)
-  lk_Gl.dump_level = 0;
+  lk_Gl.dump_level = 2;
   env_value = envvar_get ("LK_DUMP_LEVEL");
   if (env_value != NULL)
     {
@@ -5747,6 +5789,9 @@ lock_initialize (void)
 	}
     }
 #endif /* LK_DUMP */
+
+  /* initialize log replication withheld related fields */
+  pthread_mutex_init (&lk_Gl.log_replication_withheld_mutex, nullptr);
 
   lock_deadlock_detect_daemon_init ();
 
@@ -5947,6 +5992,20 @@ lock_finalize (void)
   lk_Gl.m_obj_hash_table.destroy ();
   lf_freelist_destroy (&lk_Gl.obj_free_entry_list);
 
+  /* destroy log replication withheld related fields */
+  pthread_mutex_destroy (&lk_Gl.log_replication_withheld_mutex);
+  if (lk_Gl.log_replication_withheld_oid != nullptr)
+    {
+      lk_Gl.log_replication_withheld_oid_alloc_count = 0;
+      free_and_init (lk_Gl.log_replication_withheld_oid);
+      lk_Gl.log_replication_withheld_oid_free_index = 0;
+    }
+  else
+    {
+      assert (lk_Gl.log_replication_withheld_oid_alloc_count == 0);
+      assert (lk_Gl.log_replication_withheld_oid_free_index == 0);
+    }
+
   lock_deadlock_detect_daemon_destroy ();
 #endif /* !SERVER_MODE */
 }
@@ -5991,6 +6050,69 @@ lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, const OID * 
 
 #endif /* !SERVER_MODE */
 }
+
+#if defined(SERVER_MODE)
+static void
+lock_interrupt_disconnect_and_free_locks_for_all_holders (THREAD_ENTRY * thread_p, const OID * oid,
+							  const OID * class_oid)
+{
+  LK_RES_KEY search_key = lock_create_search_key (oid, class_oid);
+  while (true)
+    {
+      LK_RES *const res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+      // find will also lock the resource mutex
+
+      //const bool is_class = (OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid)) ? true : false;
+      if (res_ptr != nullptr)
+	{
+	  // get to the last holder (might not matter the order)
+	  LK_ENTRY *last_holder = res_ptr->holder;
+	  while (last_holder != nullptr && last_holder->next != nullptr)
+	    {
+	      last_holder = last_holder->next;
+	    }
+	  assert (last_holder != nullptr || (res_ptr->holder == nullptr && last_holder == nullptr));
+
+	  if (last_holder == nullptr)
+	    {
+	      // stopping condition; might stand a chance ...
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      break;
+	    }
+	  else
+	    {
+	      const int holder_tran_index = last_holder->tran_index;
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+
+	      const int current_tran_index = thread_p->tran_index;
+	      logtb_set_current_tran_index (thread_p, holder_tran_index);
+
+	      // first, disconnect the client
+	      //logtb_slam_transaction(thread_p,  holder_tran_index);
+	      // then, abort the transaction and clean up its resources
+	      log_abort_read_only_on_pts (thread_p, holder_tran_index);
+
+	      // restore
+	      logtb_set_current_tran_index (thread_p, current_tran_index);
+	    }
+
+	  // as a last step, invalidate xasl cache for the resource
+	  assert (res_ptr->key.type == LOCK_RESOURCE_CLASS);
+	  xcache_remove_by_oid (thread_p, &res_ptr->key.oid);
+	  // TODO: invalidate here for each resource, or invalidate outside the loop
+	  // with all collected OIDs?
+	  // TODO: after removing the xasl cache for the class oid; the aborted read-only transactions still
+	  // do not get an error when wanting to retry a previous query; this might either be by design
+	  // or a bug; to be investigated at a later date; might also depend on isolation level
+	}
+      else
+	{
+	  // resource might have already been unlocked
+	  break;
+	}
+    }
+}
+#endif /* !SERVER_MODE */
 
 /*
  * lock_object - Lock an object
@@ -6141,8 +6263,36 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object must not
        * be given. */
+    repl_tran_retry:
       granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
 						   root_class_entry);
+
+      if (logtb_is_passive_transaction_server_log_replication_transaction (tran_index))
+	{
+	  if (granted == LK_NOTGRANTED_DUE_TIMEOUT)
+	    {
+	      // TODO: assert is passive transaction server
+	      // at this moment nothing is locked in the lock manager
+
+	      // TODO: put lock manager in a state to not accept any other actions until we our lock, needed
+	      // to prevent replication transaction starvation
+
+	      (void) lock_interrupt_disconnect_and_free_locks_for_all_holders (thread_p, oid, class_oid);
+	      goto repl_tran_retry;
+	    }
+	  else
+	    {
+	      assert (granted == LK_GRANTED);
+	      // only the replication transaction can clear this
+	      // if it was able to obtain the lock
+	      lock_log_replication_withheld_clear_all (
+#if !defined (NDEBUG)
+							tran_index
+#endif /* !NDEBUG */
+		);
+	    }
+	}
+
       goto end;
     }
   else
@@ -7578,6 +7728,19 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
 
 	  (void) gettimeofday (&tv, NULL);
 	  etime = (tv.tv_sec * 1000000LL + tv.tv_usec) / 1000LL;
+	  if (lk_Gl.verbose_mode)
+	    {
+	      const LK_ENTRY *const lk_entry = (LK_ENTRY *) thrd->lockwait;
+	      assert (lk_entry != nullptr);
+	      fflush (stderr);
+	      fflush (stdout);
+	      fprintf (stdout,
+		       "CRSDBG: mapfunc tran_index=%d lockwait_stime=%lld lockwait_msecs=%d lockwait_state=%d etime=%lld\n",
+		       thrd->tran_index, (long long) thrd->lockwait_stime, thrd->lockwait_msecs,
+		       thrd->lockwait_state, (long long) etime);
+	      lock_dump_resource (thrd, stdout, lk_entry->res_head);
+	      fflush (stdout);
+	    }
 	  if (etime - thrd->lockwait_stime > thrd->lockwait_msecs)
 	    {
 	      /* wake up the thread */
@@ -9956,3 +10119,82 @@ lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_arr
   thread_get_manager ()->map_entries (lock_get_transaction_lock_waiting_threads_mapfunc, tran_index,
 				      tran_lock_waiters, count);
 }
+
+#if defined(SERVER_MODE)
+static void
+lock_log_replication_withheld_add (int tran_index, const OID * const oid_actually_class_oid)
+{
+  assert (logtb_is_passive_transaction_server_log_replication_transaction (tran_index));
+
+  (void) pthread_mutex_lock (&lk_Gl.log_replication_withheld_mutex);
+  // TODO: RAII
+
+  assert (lk_Gl.log_replication_withheld_oid_free_index <= lk_Gl.log_replication_withheld_oid_alloc_count);
+  if (lk_Gl.log_replication_withheld_oid_free_index == lk_Gl.log_replication_withheld_oid_alloc_count)
+    {
+      // extend allocated if needed
+      lk_Gl.log_replication_withheld_oid_alloc_count += 42;
+      lk_Gl.log_replication_withheld_oid
+	=
+	(OID *) realloc (lk_Gl.log_replication_withheld_oid,
+			 sizeof (OID) * lk_Gl.log_replication_withheld_oid_alloc_count);
+    }
+
+  lk_Gl.log_replication_withheld_oid[lk_Gl.log_replication_withheld_oid_free_index] = *oid_actually_class_oid;
+  ++lk_Gl.log_replication_withheld_oid_free_index;
+
+  (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
+}
+
+static void
+lock_log_replication_withheld_clear_all (
+#if !defined (NDEBUG)
+					  int tran_index
+#endif				/* !NDEBUG */
+  )
+{
+  assert (logtb_is_passive_transaction_server_log_replication_transaction (tran_index));
+
+  (void) pthread_mutex_lock (&lk_Gl.log_replication_withheld_mutex);
+  // TODO: RAII
+
+  assert (lk_Gl.log_replication_withheld_oid_free_index <= lk_Gl.log_replication_withheld_oid_alloc_count);
+  assert ((lk_Gl.log_replication_withheld_oid_alloc_count == 0 && lk_Gl.log_replication_withheld_oid == nullptr)
+	  || lk_Gl.log_replication_withheld_oid != nullptr);
+
+  if (lk_Gl.log_replication_withheld_oid_free_index > 0)
+    {
+#if !defined (NDEBUG)
+      // reset only what was occupied
+      memset (lk_Gl.log_replication_withheld_oid, 0, sizeof (OID) * lk_Gl.log_replication_withheld_oid_free_index);
+#endif /* !NDEBUG */
+      // leave memory allocated; only reset occupied indices
+      lk_Gl.log_replication_withheld_oid_free_index = 0;
+    }
+
+  (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
+}
+
+static bool
+lock_log_replication_withheld_is_tran_allowed_to_lock (int tran_index, const OID * const oid_actually_class_oid)
+{
+  assert (logtb_is_passive_transaction_server_user_transaction (tran_index));
+  //assert (!logtb_is_log_replication_transaction (tran_index));
+
+  (void) pthread_mutex_lock (&lk_Gl.log_replication_withheld_mutex);
+  // TODO: RAII
+
+  for (int idx = 0; idx < lk_Gl.log_replication_withheld_oid_free_index; ++idx)
+    {
+      if (OID_EQ (&lk_Gl.log_replication_withheld_oid[idx], oid_actually_class_oid))
+	{
+	  (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
+	  return false;
+	}
+    }
+
+  (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
+
+  return true;
+}
+#endif /* SERVER_MODE */

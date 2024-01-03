@@ -166,6 +166,14 @@ enum thread_resume_suspend_status
   THREAD_DWB_QUEUE_RESUMED = 24
 };
 
+// forward declarations
+namespace cubthread
+{
+  class entry;
+}
+inline void thread_lock_entry (::cubthread::entry *thread_p);
+inline void thread_unlock_entry (cubthread::entry *thread_p);
+
 namespace cubthread
 {
 
@@ -304,9 +312,14 @@ namespace cubthread
 
       void return_lock_free_transaction_entries (void);
 
+    private:
+      friend void ::thread_lock_entry (::cubthread::entry *thread_p);
+      friend void ::thread_unlock_entry (::cubthread::entry *thread_p);
+
       void lock (void);
       void unlock (void);
 
+    public:
       cuberr::context &get_error_context (void)
       {
 	return m_error;

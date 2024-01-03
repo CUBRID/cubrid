@@ -558,6 +558,16 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
 
+  if (is_passive_transaction_server ())
+    {
+      // TODO: extract from sysparam
+      tdes->wait_msecs = 15000;
+
+      tdes->has_deadlock_priority = true;
+
+      tdes->num_log_records_written = INT_MAX;
+    }
+
   return NO_ERROR;
 }
 
@@ -2618,6 +2628,19 @@ logtb_find_wait_msecs (int tran_index)
       assert (false);
       return 0;
     }
+}
+
+// TODO: maybe we can do without this function?
+int
+logtb_is_passive_transaction_server_user_transaction (int tran_index)
+{
+  return (tran_index != LOG_SYSTEM_TRAN_INDEX && is_passive_transaction_server ());
+}
+
+int
+logtb_is_passive_transaction_server_log_replication_transaction (int tran_index)
+{
+  return (tran_index == LOG_SYSTEM_TRAN_INDEX && is_passive_transaction_server ());
 }
 
 /*

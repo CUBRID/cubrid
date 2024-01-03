@@ -5712,6 +5712,59 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
   return tdes->state;
 }
 
+TRAN_STATE
+log_abort_local_read_only_on_pts (THREAD_ENTRY * thread_p, LOG_TDES * const tdes)
+{
+  assert (is_passive_transaction_server ());
+
+  qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
+  // TODO: as far as it concerns, the current function works for read only transactions as well
+  // if a more "tight" implementation is needed, a new function can be done, or the current one
+  // decorated with an "enforce read only" flag
+
+  tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;	// TRAN_UNACTIVE_ABORTED;
+
+  /* destroy transaction's temporary files */
+  file_tempcache_drop_tran_temp_files (thread_p);
+
+  assert (LSA_ISNULL (&tdes->tail_lsa));
+  if (!LSA_ISNULL (&tdes->tail_lsa))
+    {
+      // TODO: needs more elaborate error handling
+      assert_release (LSA_ISNULL (&tdes->tail_lsa));
+    }
+
+  {
+    /*
+     * Transaction did not update anything or we are not logging
+     */
+
+    if (tdes->first_save_entry != NULL)
+      {
+	spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	tdes->first_save_entry = NULL;
+      }
+
+    /* clear mvccid before releasing the locks */
+    // TODO: does this need to be done for read-only transaction on PTS?
+    logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, false);
+
+    lock_unlock_all (thread_p);
+
+    /* There is no need to create a new transaction identifier */
+  }
+
+  assert (tdes->lob_locator_root.rbh_root == nullptr);
+  if (tdes->lob_locator_root.rbh_root != nullptr)
+    {
+      // Scalability architecture does not support LOB just yet.
+      //tx_lob_locator_clear (thread_p, tdes, false, NULL);
+      assert_release (tdes->lob_locator_root.rbh_root == nullptr);
+    }
+
+  return tdes->state;
+}
+
 /*
  * log_commit - COMMIT A TRANSACTION
  *
@@ -5914,6 +5967,84 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       state = log_abort_local (thread_p, tdes, true);
       state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
     }
+
+  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_ROLLBACKS);
+
+  return state;
+}
+
+/*
+ * log_abort - abort a passive transaction server read-only transaction
+ *
+ * return: TRAN_STATE
+ *
+ *   tran_index(in): tran_index
+ *
+ */
+TRAN_STATE
+log_abort_read_only_on_pts (THREAD_ENTRY * thread_p, int tran_index)
+{
+  TRAN_STATE state;		/* State of aborted transaction */
+  int error_code = NO_ERROR;
+
+  assert (is_passive_transaction_server ());
+  assert (thread_p != nullptr);
+  assert (tran_index != NULL_TRAN_INDEX);
+
+  assert (thread_p->tran_index == tran_index);
+  if (thread_p->tran_index != tran_index)
+    {
+      // TODO:
+      assert_release (thread_p->tran_index == tran_index);
+    }
+
+  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == nullptr)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      error_code = ER_LOG_UNKNOWN_TRANINDEX;
+      return TRAN_UNACTIVE_UNKNOWN;
+    }
+  assert (!tdes->is_system_worker_transaction ());
+
+  assert (!LOG_ISTRAN_2PC_PREPARE (tdes));	// 2PC no longer in use
+  if (!LOG_ISTRAN_ACTIVE (tdes))
+    {
+      /*
+       * May be a system error: Transaction is not in an active state nor
+       * prepare to commit state
+       */
+      // TODO: error handling
+      return tdes->state;
+    }
+
+  assert (tdes->topops.last < 0);
+  if (tdes->topops.last >= 0)
+    {
+      // TODO: error handling
+      assert_release (tdes->topops.last < 0);
+    }
+
+  assert (tdes->m_multiupd_stats.empty ());
+  if (!tdes->m_multiupd_stats.empty ())
+    {
+      // TODO: error handling
+      assert_release (tdes->m_multiupd_stats.empty ());
+    }
+
+  assert (!log_2pc_is_tran_distributed (tdes));	// 2PC
+
+  state = log_abort_local_read_only_on_pts (thread_p, tdes);
+
+  // NOTE: do not call "log complete" at this point because transaction bookkeeping structure will be
+  // cleared out; thus, rendering subsequent requests unable to discern state and error
+
+  // - do not set the error here
+  // - because we're not actually entering here with the thread local context of the "offending" thread
+  // - currently, the offending thread is supposed to be "inactive", or at least not suspended
+  // - only mark the error in the transaction descriptor and handle this upon next request from the
+  //    offending transaction
+  tdes->tran_abort_reason = TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION;
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_ROLLBACKS);
 
