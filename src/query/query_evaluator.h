@@ -149,6 +149,7 @@ extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES *
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 //#define IMPROVE_RANGE_SCAN_IN_BTREE_USE_CLONE_VALUE
 //#define IMPROVE_RANGE_SCAN_IN_BTREE_EQ_OPTIMIZE
+#define IMPROVE_RANGE_SCAN_IN_BTREE_FIX_PAGE
 #endif
 
 extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,

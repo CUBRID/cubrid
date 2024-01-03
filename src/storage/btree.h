@@ -160,20 +160,21 @@ typedef enum bts_key_status BTS_KEY_STATUS;
 /* TODO: Move fields used to select visible objects only from BTREE_SCAN to
  *	 a different structure (that is pointed by bts_other).
  */
-typedef struct btree_scan BTREE_SCAN;	/* BTS */
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 typedef enum
 {
-  READER_TYPE_NONE = 0,
-  READER_TYPE_RANGE_SCAN,
-  READER_TYPE_STAT,
-  READER_TYPE_CAPACITY,
-  READER_TYPE_MAX
-} READER_TYPE;
-typedef struct
+  BTREE_READER_TYPE_NONE = 0,
+  BTREE_READER_TYPE_RANGE_SCAN,
+  BTREE_READER_TYPE_STAT,
+  BTREE_READER_TYPE_CAPACITY,
+  BTREE_READER_TYPE_MAX
+} BTREE_READER_TYPE;
+
+typedef struct btree_page_prefix_info BTREE_PAGE_PREFIX_INFO;
+struct btree_page_prefix_info
 {
-  READER_TYPE reader_type;
+  BTREE_READER_TYPE reader_type;
   VPID vpid;
   LOG_LSA leaf_lsa;
 
@@ -184,7 +185,7 @@ typedef struct
   bool is_midxkey;
   bool use_comparing;		// key compare  
   bool satisfied_range_in_page;	// If true, it guarantees that all keys on the current page satisfy the range condition.  
-} BTREE_PAGE_PREFIX_INFO;
+};
 
 #define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix, type)   do {  \
     assert((pg_prefix) != NULL);                             \
@@ -201,7 +202,7 @@ typedef struct
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {        \
     if((pg_prefix))  {                                       \
        btree_clear_key_value (&(pg_prefix)->clear_compress_key, &(pg_prefix)->compress_key); \
-       (pg_prefix)->reader_type = READER_TYPE_NONE;          \
+       (pg_prefix)->reader_type = BTREE_READER_TYPE_NONE;    \
        (pg_prefix)->use_comparing = true;                    \
        (pg_prefix)->is_midxkey = false;                      \
        (pg_prefix)->satisfied_range_in_page = false;         \
@@ -217,6 +218,7 @@ typedef struct
 #define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)
 #endif
 
+typedef struct btree_scan BTREE_SCAN;	/* BTS */
 struct btree_scan
 {
   BTID_INT btid_int;
@@ -324,7 +326,7 @@ struct btree_scan
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
     (bts)->is_cur_key_decompressed = true;              \
-    INIT_BTREE_PAGE_PREFIX_INFO(&(bts)->C_page_info, READER_TYPE_NONE); \
+    INIT_BTREE_PAGE_PREFIX_INFO(&(bts)->C_page_info, BTREE_READER_TYPE_NONE); \
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
