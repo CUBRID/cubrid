@@ -2299,16 +2299,16 @@ logpb_respond_fetch_log_hdr_page_request (THREAD_ENTRY & thread_r, std::string &
     }
 
   // pack error first
-  payload_in_out = { reinterpret_cast < const char *>(&error), sizeof (error) };
+  payload_in_out = { reinterpret_cast <const char *>(&error), sizeof (error) };
 
   if (error == NO_ERROR)
     {
       // pack page data too
-      payload_in_out.append (LOG_PAGESIZE, sizeof (LOG_PAGESIZE));
-      payload_in_out.append (reinterpret_cast < const char *>(lr.get_page ()), LOG_PAGESIZE);
+      PGLENGTH log_page_size = LOG_PAGESIZE;
+      payload_in_out.append (reinterpret_cast <const char*>(&log_page_size), sizeof (log_page_size));
+      payload_in_out.append (reinterpret_cast <const char*>(lr.get_page ()), LOG_PAGESIZE);
     }
 }
-
 // *INDENT-ON*
 #endif // SERVER_MODE
 
