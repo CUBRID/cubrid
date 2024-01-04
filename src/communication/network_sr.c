@@ -838,10 +838,26 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     }
 
   /* call a request processing function */
-  if (thread_p->tran_index > 0)
+  if (thread_p->tran_index > LOG_SYSTEM_TRAN_INDEX)
     {
       perfmon_inc_stat (thread_p, PSTAT_NET_NUM_REQUESTS);
     }
+
+  if (thread_p->tran_index > LOG_SYSTEM_TRAN_INDEX)
+    {
+      const TRAN_STATE tran_state = logtb_find_state (thread_p->tran_index);
+      if (tran_state == TRAN_UNACTIVE_UNILATERALLY_ABORTED)
+	{
+	  er_log_debug (ARG_FILE_LINE, "net_server_request(): unilaterally aborted transaction - request: %s\n",
+			get_net_request_name (request));
+	  //er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "");
+	  return_error_to_client (thread_p, rid);
+	  css_send_abort_to_client (conn, rid);
+	  goto end;
+	}
+
+    }
+
   func = net_Requests[request].processing_function;
   assert (func != NULL);
   if (func)
