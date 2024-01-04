@@ -358,15 +358,18 @@ page_server::tran_server_connection_handler::abnormal_tran_server_disconnect (cs
     }
 }
 
+/* NOTE : Since TS don't need the information about the number of permanent volume during boot,
+ *        this message has no actual use currently. However, this mechanism will be reserved,
+ *        because it can be used in the future when multiple PS's are supported. */
 void
 page_server::tran_server_connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  /* Retreive any information required to boot up. */
-  PGLENGTH log_page_size = LOG_PAGESIZE;
+  /* It is simply a dummy value to check whether the TS (get_boot_info_from_page_server) receives the message well */
+  DKNVOLS nvols_perm = VOLID_MAX;
 
   std::string response_message;
-  response_message.reserve (sizeof (PGLENGTH));
-  response_message.append (reinterpret_cast<const char *> (&log_page_size), sizeof (PGLENGTH));
+  response_message.reserve (sizeof (nvols_perm));
+  response_message.append (reinterpret_cast<const char *> (&nvols_perm), sizeof (nvols_perm));
 
   a_sp.push_payload (std::move (response_message));
   m_conn->respond (std::move (a_sp));
