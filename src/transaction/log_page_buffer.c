@@ -2432,27 +2432,39 @@ logpb_read_page_from_file_or_page_server (THREAD_ENTRY * thread_p, LOG_PAGEID pa
   const SERVER_TYPE server_type = get_server_type ();
   if (server_type == SERVER_TYPE_TRANSACTION && ts_Gl->is_page_server_connected ())
     {
+      // *INDENT-OFF*
+      auto page_request_func = [pageid](LOG_PAGE* log_pgptr) -> int
+        {
+          if (pageid == LOGPB_HEADER_PAGE_ID)
+          {
+            return logpb_request_log_hdr_page_from_page_server (log_pgptr);
+          }
+          else 
+          {
+            return logpb_request_log_page_from_page_server (pageid, log_pgptr);
+          }
+        };
+
       if (!read_from_disk)
 	{
 	  // context 1)
-	  return logpb_request_log_page_from_page_server (pageid, log_pgptr);
+	  return page_request_func (log_pgptr);
 	}
       else
 	{
 	  // context 2)
-	  // *INDENT-OFF*
 	  const size_t log_page_size = static_cast<size_t> (LOG_PAGESIZE);
 	  std::unique_ptr<char []> log_page_buffer_uptr = std::make_unique<char []> (log_page_size);
 	  auto second_log_page = (LOG_PAGE *) log_page_buffer_uptr.get ();
 
-	  int err = logpb_request_log_page_from_page_server (pageid, second_log_page);
+	  int err = page_request_func (second_log_page);
 	  if (err != NO_ERROR)
 	    {
 	      return err;
 	    }
 	  logpb_verify_page_read (pageid, second_log_page, log_pgptr);
-	  // *INDENT-ON*
 	}
+      // *INDENT-ON*
     }
 
   return NO_ERROR;
