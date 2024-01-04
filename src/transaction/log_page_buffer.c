@@ -2089,6 +2089,9 @@ exit:
 static int
 logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr)
 {
+  // LOGPB_HEADER_PAGE_ID should come through logpb_request_log_hdr_page_from_page_server
+  assert (log_pageid != LOGPB_HEADER_PAGE_ID);
+ 
   std::string request_message;
   request_message.append (reinterpret_cast<const char *> (&log_pageid), sizeof (log_pageid));
 
@@ -2166,11 +2169,8 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
   log_lsa fetch_lsa { log_pageid, 0 };
   log_reader lr { LOG_CS_SAFE_READER };
 
-  if (log_pageid == LOGPB_HEADER_PAGE_ID)
-    {
-      // Make sure log page header is updated
-      logpb_force_flush_header_and_pages (&thread_r);
-    }
+  // LOGPB_HEADER_PAGE_ID should come through logpb_respond_fetch_log_hdr_page_request
+  assert (log_pageid != LOGPB_HEADER_PAGE_ID);
 
   int error = lr.set_lsa_and_fetch_page (fetch_lsa);
 
