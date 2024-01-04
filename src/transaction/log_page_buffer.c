@@ -2204,6 +2204,38 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
       payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
     }
 }
+
+void
+logpb_respond_fetch_log_hdr_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out)
+{
+  assert (is_page_server ());
+
+  log_lsa fetch_lsa { LOGPB_HEADER_PAGE_ID, 0 };
+  log_reader lr { LOG_CS_SAFE_READER };
+
+  // Make sure log page header is updated
+  logpb_force_flush_header_and_pages (&thread_r);
+
+  int error = lr.set_lsa_and_fetch_page (fetch_lsa);
+
+  // Response message
+  if (prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "[READ LOG] Sending log page to Active Tran Server. Page ID: %lld Error code: %ld\n",
+		      LOGPB_HEADER_PAGE_ID, error);
+    }
+
+  // pack error first
+  payload_in_out = { reinterpret_cast<const char *> (&error), sizeof (error) };
+
+  if (error == NO_ERROR)
+    {
+      // pack page data too
+      payload_in_out.append (LOG_PAGESIZE, sizeof (LOG_PAGESIZE));
+      payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
+    }
+}
 // *INDENT-ON*
 #endif // SERVER_MODE
 
