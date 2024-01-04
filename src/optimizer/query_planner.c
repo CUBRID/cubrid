@@ -3489,7 +3489,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   /* Check if RBO is needed */
   ta = af + aa;
   tb = bf + ba;
-  if (QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
+  if (QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b) && (ta > 0 || tb > 0))
     {
       if (ta * RBO_CHECK_LIMIT_RATIO <= tb)
 	{
