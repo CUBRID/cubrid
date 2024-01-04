@@ -2097,10 +2097,10 @@ exit:
 }
 
 #if defined(SERVER_MODE)
+// *INDENT-OFF*
 static int
 logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr)
 {
-  // *INDENT-OFF*
   std::string request_message;
   request_message.append (reinterpret_cast<const char *> (&log_pageid), sizeof (log_pageid));
 
@@ -2163,10 +2163,8 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
     }
   assert (message_ptr == (response_message.c_str () + response_message.size ()));
   return error_code;
-  // *INDENT-ON*
 }
 
-// *INDENT-OFF*
 void
 logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out)
 {
@@ -2209,7 +2207,6 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
 static int
 logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
 {
-  // *INDENT-OFF*
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
   if (perform_logging)
     {
@@ -2277,7 +2274,6 @@ logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
 	}
     }
   return error_code;
-  // *INDENT-ON*
 }
 
 void
@@ -2285,12 +2281,8 @@ logpb_respond_fetch_log_hdr_page_request (THREAD_ENTRY & thread_r, std::string &
 {
   assert (is_page_server ());
 
-  log_lsa fetch_lsa
-  {
-  LOGPB_HEADER_PAGE_ID, 0};
-  log_reader lr
-  {
-  LOG_CS_SAFE_READER};
+  log_lsa fetch_lsa { LOGPB_HEADER_PAGE_ID, 0 };
+  log_reader lr { LOG_CS_SAFE_READER };
 
   // Make sure log page header is updated
   logpb_force_flush_header_and_pages (&thread_r);
@@ -2306,9 +2298,7 @@ logpb_respond_fetch_log_hdr_page_request (THREAD_ENTRY & thread_r, std::string &
     }
 
   // pack error first
-  payload_in_out =
-  {
-  reinterpret_cast < const char *>(&error), sizeof (error)};
+  payload_in_out = { reinterpret_cast < const char *>(&error), sizeof (error) };
 
   if (error == NO_ERROR)
     {
