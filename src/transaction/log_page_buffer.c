@@ -2242,6 +2242,7 @@ logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
     {
       PGLENGTH log_page_size = 0;
       std::memcpy (&log_page_size, message_ptr, sizeof (LOG_PAGESIZE));
+      message_ptr += sizeof (LOG_PAGESIZE);
 
       assert_release (log_page_size >= IO_MIN_PAGE_SIZE
           && log_page_size <= IO_MAX_PAGE_SIZE
