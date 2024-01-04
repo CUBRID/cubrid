@@ -448,7 +448,7 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
     @Override
     public TypeSpec visitExprField(ExprField node) {
-        TypeSpec ret;
+        TypeSpec ret = null;
 
         DeclId declId = node.record.decl;
         assert declId instanceof DeclForRecord;
@@ -456,33 +456,36 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (declForRecord.fieldTypes != null) {
             // this record is for a static SQL
 
-            ret = declForRecord.fieldTypes.get(node.fieldName);
+            // ret = declForRecord.fieldTypes.get(node.fieldName);
+            int i = 1, found = -1;
+            for (Misc.Pair<String, TypeSpec> p : declForRecord.fieldTypes) {
+                if (node.fieldName.equals(p.e1)) {
+                    if (found > 0) {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(node.ctx), // s420
+                                String.format("column name '%s' is ambiguous", node.fieldName));
+                    }
+                    ret = p.e2;
+                    found = i;
+                }
+                i++;
+            }
             if (ret == null) {
+
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.ctx), // s401
                         String.format("no such column '%s' in the query result", node.fieldName));
             } else {
 
-                node.setType(ret);
-
-                int i = 1, found = -1;
-                for (String c : declForRecord.fieldTypes.keySet()) {
-                    if (c.equals(node.fieldName)) {
-                        assert found < 0;
-                        found = i;
-                    }
-                    i++;
-                }
                 assert found > 0;
-
+                node.setType(ret);
                 node.setColIndex(found);
             }
         } else {
             // this record is for a dynamic SQL
 
-            ret =
-                    TypeSpecSimple
-                            .OBJECT; // cannot be a specific Java type: type unknown at compile time
+            // it cannot be a specific Java type: type unknown at compile time
+            ret = TypeSpecSimple.OBJECT;
         }
 
         return ret;
@@ -939,8 +942,8 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
 
             // check types of into-variables
             int i = 0;
-            for (String column : staticSql.selectList.keySet()) {
-                TypeSpec tyColumn = staticSql.selectList.get(column);
+            for (Misc.Pair<String, TypeSpec> p : staticSql.selectList) {
+                TypeSpec tyColumn = p.e2;
                 ExprId intoVar = node.intoVarList.get(i);
                 TypeSpec tyIntoVar = visitExprId(intoVar);
                 Coercion c = Coercion.getCoercion(tyColumn, tyIntoVar);
