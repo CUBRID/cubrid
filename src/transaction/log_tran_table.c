@@ -558,6 +558,19 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
 
+  if (is_passive_transaction_server ())
+    {
+      // on a passive transaction server:
+      // - there are no daemons that regularily identify themselves as system
+      //    transactions (ie: no vacuum, no checkpoint, no flush)
+      // - therefore, the system transaction is used by the replication thread (currently, only one thread)
+      //    for the purpose of manipulating the lock manager to always give priority to the replication
+      //    in case of a deadlock between replication and client transactions
+      tdes->wait_msecs = prm_get_integer_value (PRM_ID_LK_PTS_LOG_REPLICATION_WITHHELD_TIMEOUT);
+      tdes->has_deadlock_priority = true;
+      tdes->num_log_records_written = INT_MAX;
+    }
+
   return NO_ERROR;
 }
 
