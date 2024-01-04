@@ -321,7 +321,8 @@ is_null_expression
 concatenation
     : unary_expression                                          # concatenation_prime
     | concatenation ('*' | '/' | DIV | MOD) concatenation       # mult_exp
-    | concatenation ('+' | '-' | '||') concatenation            # add_exp
+    | concatenation ('+' | '-' ) concatenation                  # add_exp
+    | concatenation '||' concatenation                          # str_concat_exp
     | concatenation ('<<' | '>>') concatenation                 # bit_shift_exp
     | concatenation ('&') concatenation                         # bit_and_exp
     | concatenation ('^') concatenation                         # bit_xor_exp
