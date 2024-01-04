@@ -361,19 +361,14 @@ page_server::tran_server_connection_handler::abnormal_tran_server_disconnect (cs
 void
 page_server::tran_server_connection_handler::receive_boot_info_request (tran_server_conn_t::sequenced_payload &&a_sp)
 {
-  cubpacking::packer packer;
-  size_t size = 0;
+  /* Retreive any information required to boot up. */
+  PGLENGTH log_page_size = LOG_PAGESIZE;
 
-  size += packer.get_packed_short_size (size); // IO_PAGESIZE
-  size += packer.get_packed_short_size (size); // LOG_PAGESIZE
+  std::string response_message;
+  response_message.reserve (sizeof (PGLENGTH));
+  response_message.append (reinterpret_cast<const char *> (&log_page_size), sizeof (PGLENGTH));
 
-  std::unique_ptr < char[] > buffer (new char[size]);
-  packer.set_buffer (buffer.get (), size);
-
-  packer.pack_short (IO_PAGESIZE);
-  packer.pack_short (LOG_PAGESIZE);
-
-  a_sp.push_payload (std::string (buffer.get (), size));
+  a_sp.push_payload (std::move (response_message));
   m_conn->respond (std::move (a_sp));
 }
 
