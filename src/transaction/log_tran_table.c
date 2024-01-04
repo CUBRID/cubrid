@@ -1598,6 +1598,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->suppress_replication = 0;
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
+  tdes->ddl_repl_info_vec.clear ();
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
@@ -6199,6 +6200,12 @@ log_tdes::is_allowed_undo () const
   return is_active_worker_transaction () || is_under_sysop ();
 }
 
+bool
+log_tdes::is_ddl_replicated () const
+{
+  return !ddl_repl_info_vec.empty();
+}
+
 void
 log_tdes::lock_topop ()
 {
@@ -6279,5 +6286,16 @@ log_tdes::unlock_global_oldest_visible_mvccid ()
       log_Gl.mvcc_table.unlock_global_oldest_visible ();
       block_global_oldest_active_until_commit = false;
     }
+}
+
+void
+log_tdes::add_ddl_lock_info (const OID * class_oid, const OID * oid, LOCK lock_mode)
+{
+  assert (class_oid != NULL);
+  assert (oid != NULL);
+  assert (lock_mode == SCH_M_LOCK || lock_mode == X_LOCK);
+  
+  log_ddl_repl_info ddl_repl_info = {lock_mode, *class_oid, *oid};
+  ddl_repl_info_vec.push_back (ddl_repl_info);
 }
 // *INDENT-ON*

@@ -2554,6 +2554,10 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
 		    {
 		      assert (!OID_ISNULL (p_oid));
 
+		      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+		      assert (tdes != NULL);
+
+		      tdes->add_ddl_lock_info (class_oid, p_oid, lock);
 		      log_append_repl_ddl_lock_info (thread_p, class_oid, p_oid, lock);
 		    }
 		}
