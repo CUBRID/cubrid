@@ -1601,7 +1601,6 @@ error:
  *   hdr(in/out): Pointer where log header is to be copied
  *   log_pgptr(in/out): log page buffer ptr
  *
- * NOTE: Should be used only: during boot sequence; on a transaction server with remote storage
  */
 // *INDENT-OFF*
 int
@@ -1649,6 +1648,7 @@ logpb_fetch_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char
   LOG_PAGE *const log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
 
   assert (hdr != nullptr);
+  assert (log_Gl.rcv_phase != LOG_RESTARTED);
 
 #if defined (SERVER_MODE)
   int res_code = NO_ERROR;
@@ -1668,19 +1668,7 @@ logpb_fetch_header_from_file_or_page_server (THREAD_ENTRY * thread_p, const char
   const int res_code = logpb_fetch_header_from_file (thread_p, db_fullname, logpath, prefix_logname, hdr, log_pgptr);
 #endif // SERVER_MODE
 
-  if (res_code != NO_ERROR)
-    {
-      return res_code;
-    }
-
-#if !defined(NDEBUG)
-  if (log_Gl.rcv_phase == LOG_RESTARTED)
-    {
-      logpb_debug_check_log_page (thread_p, log_pgptr);
-    }
-#endif
-
-  return NO_ERROR;
+  return res_code;
 }
 
 // it peeks header page of the backuped log active file
