@@ -2465,11 +2465,11 @@ int PRM_SCAL_PERF_PS_REQ_RESPONDER_TASK_COUNT_CURRENT_VALUE = 0;
 static int prm_scal_perf_ps_req_responder_task_count_upper_value = (1 << 16);
 static int prm_scal_perf_ps_req_responder_task_count_lower_value = 0;
 
-static unsigned int prm_lk_pts_log_replication_withheld_timeout_flag = 0;
-static int prm_lk_pts_log_replication_withheld_timeout_lower = 1;	// default, in seconds
-static int prm_lk_pts_log_replication_withheld_timeout_upper = 3600;	// one hour, in seconds
-static int prm_lk_pts_log_replication_withheld_timeout_default = 2;	// 2 seconds
-int PRM_LK_PTS_LOG_REPLICATION_WITHHELD_TIMEOUT_VALUE = prm_lk_pts_log_replication_withheld_timeout_default;
+static unsigned int prm_lk_pts_log_replication_withheld_timeout_msec_flag = 0;
+static int prm_lk_pts_log_replication_withheld_timeout_msec_lower = 100;	// 100 msec
+static int prm_lk_pts_log_replication_withheld_timeout_msec_upper = 3600000;	// 1 h, arbitrary
+static int prm_lk_pts_log_replication_withheld_timeout_msec_default = 10000;	// 10 sec
+int PRM_LK_PTS_LOG_REPLICATION_WITHHELD_TIMEOUT_MSEC_VALUE = prm_lk_pts_log_replication_withheld_timeout_msec_default;
 
 static bool prm_remote_storage_default = false;
 bool PRM_REMOTE_STORAGE_CURRENT_VALUE = prm_remote_storage_default;
@@ -6509,16 +6509,16 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_LK_PTS_LOG_REPLICATION_WITHHELD_TIMEOUT,
    PRM_NAME_LK_PTS_LOG_REPLICATION_WITHHELD_TIMEOUT,
-   (PRM_FOR_SERVER | PRM_TIME_UNIT | PRM_DIFFER_UNIT),
+   (PRM_FOR_SERVER | PRM_TIME_UNIT),
    PRM_INTEGER,
-   &prm_lk_pts_log_replication_withheld_timeout_flag,
-   (void *) &prm_lk_pts_log_replication_withheld_timeout_default,
-   (void *) &PRM_LK_PTS_LOG_REPLICATION_WITHHELD_TIMEOUT_VALUE,
-   (void *) &prm_lk_pts_log_replication_withheld_timeout_upper,
-   (void *) &prm_lk_pts_log_replication_withheld_timeout_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) prm_msec_to_sec,
-   (DUP_PRM_FUNC) prm_sec_to_msec},
+   &prm_lk_pts_log_replication_withheld_timeout_msec_flag,
+   (void *) &prm_lk_pts_log_replication_withheld_timeout_msec_default,
+   (void *) &PRM_LK_PTS_LOG_REPLICATION_WITHHELD_TIMEOUT_MSEC_VALUE,
+   (void *) &prm_lk_pts_log_replication_withheld_timeout_msec_upper,
+   (void *) &prm_lk_pts_log_replication_withheld_timeout_msec_lower,
+   (char *) nullptr,
+   (DUP_PRM_FUNC) nullptr,
+   (DUP_PRM_FUNC) nullptr},
   {PRM_ID_REMOTE_STORAGE,
    PRM_NAME_REMOTE_STORAGE,
    (PRM_FOR_SERVER),
