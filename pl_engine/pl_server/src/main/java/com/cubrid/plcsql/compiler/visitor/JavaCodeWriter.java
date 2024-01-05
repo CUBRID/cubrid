@@ -2777,7 +2777,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             return hole.startsWith("%'+");
         }
 
-        //
+        // collect small holes into 'holes' and return null. 
+        // Or return a big hole immediately if one found
         private static String getHoles(Set<String> holes, String line) {
 
             int i = 0;
@@ -2786,32 +2787,58 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             while (i < len) {
                 int begin = line.indexOf("%'", i);
                 if (begin == -1) {
-                    return null;
-                } else {
-                    int end = line.indexOf("'%", begin + 2);
-                    assert end != -1 : "not closed hole in a line '" + line + "'";
-                    i = end + 2;
-
-                    String hole = line.substring(begin, i);
-                    if (first) {
-                        first = false;
-                        if (isBigHole(hole)) {
-                            for (int j = 0; j < begin; j++) {
-                                assert line.charAt(j) == ' '
-                                        : "only spaces allowed before a big hole: '" + line + "'";
-                            }
-                            assert line.indexOf("%'", i) == -1
-                                    : "no more holes after a big hole: '" + line + "'";
-
-                            return hole;
-                        }
-                    } else {
-                        assert !isBigHole(hole)
-                                : "big holes must be the only hole in the line: '" + hole + "'";
-                    }
-
-                    holes.add(hole);
+                    return null;    // no more holes
                 }
+                int end = line.indexOf("'%", begin + 2);
+                if (end == -1) {
+                    return null;    // no more holes
+                }
+
+                if (end == begin + 2) {
+                    // %''%
+                    i += 3;
+                    continue;   // not a hole
+                }
+
+                int j = begin + 2;
+                if (line.charAt(j) == '+') {
+                    // this is possible for a big hole
+                    j++;
+                }
+                // Hole names can consist of dashes and capital letters
+                for ( ; j < end; j++) {
+                    char c = line.charAt(j);
+                    if (c == '-' || (c >= 'A' && c <= 'Z')) {
+                    } else {
+                        break;
+                    }
+                }
+                if (j < end) {
+                    i += 2;
+                    continue;   // not a hole
+                }
+
+                i = end + 2;
+
+                String hole = line.substring(begin, i);
+                if (first) {
+                    first = false;
+                    if (isBigHole(hole)) {
+                        for (j = 0; j < begin; j++) {
+                            assert line.charAt(j) == ' '
+                                    : "only spaces allowed before a big hole: '" + line + "'";
+                        }
+                        assert line.indexOf("%'", i) == -1
+                                : "no more holes after a big hole: '" + line + "'";
+
+                        return hole;
+                    }
+                } else {
+                    assert !isBigHole(hole)
+                            : "big holes must be the only hole in the line: '" + hole + "'";
+                }
+
+                holes.add(hole);
             }
 
             return null;
