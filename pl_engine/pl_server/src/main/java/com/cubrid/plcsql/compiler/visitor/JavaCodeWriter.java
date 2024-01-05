@@ -2777,7 +2777,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             return hole.startsWith("%'+");
         }
 
-        // collect small holes into 'holes' and return null. 
+        // collect small holes into 'holes' and return null.
         // Or return a big hole immediately if one found
         private static String getHoles(Set<String> holes, String line) {
 
@@ -2787,17 +2787,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             while (i < len) {
                 int begin = line.indexOf("%'", i);
                 if (begin == -1) {
-                    return null;    // no more holes
+                    return null; // no more holes
                 }
                 int end = line.indexOf("'%", begin + 2);
                 if (end == -1) {
-                    return null;    // no more holes
+                    return null; // no more holes
                 }
 
                 if (end == begin + 2) {
                     // %''%
                     i += 3;
-                    continue;   // not a hole
+                    continue; // not a hole
                 }
 
                 int j = begin + 2;
@@ -2806,7 +2806,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     j++;
                 }
                 // Hole names can consist of dashes and capital letters
-                for ( ; j < end; j++) {
+                for (; j < end; j++) {
                     char c = line.charAt(j);
                     if (c == '-' || (c >= 'A' && c <= 'Z')) {
                     } else {
@@ -2815,7 +2815,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 }
                 if (j < end) {
                     i += 2;
-                    continue;   // not a hole
+                    continue; // not a hole
                 }
 
                 i = end + 2;
