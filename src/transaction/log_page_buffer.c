@@ -2085,15 +2085,14 @@ exit:
 }
 
 #if defined(SERVER_MODE)
-// *INDENT-OFF*
 static int
 logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr)
 {
   // LOGPB_HEADER_PAGE_ID should come through logpb_request_log_hdr_page_from_page_server
   assert (log_pageid != LOGPB_HEADER_PAGE_ID);
- 
+
   std::string request_message;
-  request_message.append (reinterpret_cast<const char *> (&log_pageid), sizeof (log_pageid));
+  request_message.append (reinterpret_cast < const char *>(&log_pageid), sizeof (log_pageid));
 
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
   if (perform_logging)
@@ -2102,7 +2101,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
     }
   std::string response_message;
   int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_LOG_PAGE_FETCH,
-                                           std::move (request_message), response_message);
+					std::move (request_message), response_message);
   // there are two layers of errors to he handled here:
   //  - client side communication to page server error
   //  - page server side errors
@@ -2112,9 +2111,10 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
     {
       ASSERT_ERROR ();
       if (perform_logging)
-        {
-	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
-        }
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n",
+			 error_code);
+	}
 
       // TODO handling the case such as shutdown
       assert_release (error_code != ER_CONN_NO_PAGE_SERVER_AVAILABLE);
@@ -2149,18 +2149,21 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
 	}
       if (perform_logging)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n",
+			 error_code);
 	}
     }
   assert (message_ptr == (response_message.c_str () + response_message.size ()));
   return error_code;
 }
 
+// *INDENT-OFF*
 void
 logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &payload_in_out)
 {
   assert (is_page_server ());
 
+  // *INDENT-OFF*
   // Unpack the message data
   LOG_PAGEID log_pageid;
   assert (payload_in_out.size () == sizeof (log_pageid));
@@ -2190,6 +2193,7 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
       // pack page data too
       payload_in_out.append (reinterpret_cast<const char *> (lr.get_page ()), LOG_PAGESIZE);
     }
+  // *INDENT-ON*
 }
 
 static int
@@ -2198,11 +2202,12 @@ logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
   if (perform_logging)
     {
-      _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to Page Server. Page ID: %lld \n", LOGPB_HEADER_PAGE_ID);
+      _er_log_debug (ARG_FILE_LINE, "[READ LOG] Sent request for log to Page Server. Page ID: %lld \n",
+		     LOGPB_HEADER_PAGE_ID);
     }
   std::string response_message;
   int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_LOG_HDR_PAGE_FETCH,
-                                           "", response_message);
+					"", response_message);
   // there are two layers of errors to he handled here:
   //  - client side communication to page server error
   //  - page server side errors
@@ -2212,9 +2217,10 @@ logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
     {
       ASSERT_ERROR ();
       if (perform_logging)
-        {
-	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
-        }
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n",
+			 error_code);
+	}
 
       // TODO handling the case such as shutdown
       assert_release (error_code != ER_CONN_NO_PAGE_SERVER_AVAILABLE);
@@ -2233,9 +2239,8 @@ logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
       message_ptr += sizeof (LOG_PAGESIZE);
 
       assert_release (log_page_size >= IO_MIN_PAGE_SIZE
-          && log_page_size <= IO_MAX_PAGE_SIZE
-          && IS_POWER_OF_2 (log_page_size));
-  
+		      && log_page_size <= IO_MAX_PAGE_SIZE && IS_POWER_OF_2 (log_page_size));
+
       std::memcpy (log_pgptr, message_ptr, log_page_size);
       message_ptr += log_page_size;
 
@@ -2259,7 +2264,8 @@ logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
 	}
       if (perform_logging)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n", error_code);
+	  _er_log_debug (ARG_FILE_LINE, "[READ LOG] Received error log page message from Page Server. Error code: %d\n",
+			 error_code);
 	}
     }
   return error_code;
@@ -2270,6 +2276,7 @@ logpb_respond_fetch_log_hdr_page_request (THREAD_ENTRY & thread_r, std::string &
 {
   assert (is_page_server ());
 
+  // *INDENT-OFF*
   log_lsa fetch_lsa { LOGPB_HEADER_PAGE_ID, 0 };
   log_reader lr { LOG_CS_SAFE_READER };
 
@@ -2296,8 +2303,8 @@ logpb_respond_fetch_log_hdr_page_request (THREAD_ENTRY & thread_r, std::string &
       payload_in_out.append (reinterpret_cast <const char*>(&log_page_size), sizeof (log_page_size));
       payload_in_out.append (reinterpret_cast <const char*>(lr.get_page ()), LOG_PAGESIZE);
     }
+  // *INDENT-ON*
 }
-// *INDENT-ON*
 #endif // SERVER_MODE
 
 #if defined (SERVER_MODE)
