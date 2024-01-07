@@ -25,6 +25,7 @@
 #define _MEMORY_MONITOR_COMMON_HPP_
 
 #include <stdint.h>
+#include <string>
 #include <vector>
 #include <algorithm>
 
@@ -34,7 +35,8 @@ typedef struct mmon_server_info
 {
   char server_name[MMON_MAX_SERVER_NAME_LENGTH];
   uint64_t total_mem_usage;
+  uint64_t monitoring_meta_usage;
   int num_stat;
-  std::vector<std::pair<char *, uint64_t>> stat_info;
+  std::vector<std::pair<std::string, uint64_t>> stat_info;
 } MMON_SERVER_INFO;
 #endif // _MEMORY_MONITOR_COMMON_HPP_

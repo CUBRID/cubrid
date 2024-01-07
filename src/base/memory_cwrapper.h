@@ -64,7 +64,7 @@ cub_free (void *ptr)
 }
 
 inline void *
-cub_alloc (size_t size, const char *file)
+cub_alloc (size_t size, const char *file, const int line)
 {
   void *p = NULL;
 
@@ -74,7 +74,7 @@ cub_alloc (size_t size, const char *file)
       if (p != NULL)
 	{
 	  memset (p, 0, size + MMON_ALLOC_META_SIZE);
-	  mmon_add_stat ((char *) p, size + MMON_ALLOC_META_SIZE, file);
+	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
 	}
     }
   else
@@ -86,7 +86,7 @@ cub_alloc (size_t size, const char *file)
 }
 
 inline void *
-cub_calloc (size_t num, size_t size, const char *file)
+cub_calloc (size_t num, size_t size, const char *file, const int line)
 {
   void *p = NULL;
 
@@ -96,7 +96,7 @@ cub_calloc (size_t num, size_t size, const char *file)
       if (p != NULL)
 	{
 	  memset (p, 0, num * size + MMON_ALLOC_META_SIZE);
-	  mmon_add_stat ((char *) p, size + MMON_ALLOC_META_SIZE, file);
+	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
 	}
     }
   else
@@ -108,7 +108,7 @@ cub_calloc (size_t num, size_t size, const char *file)
 }
 
 inline void *
-cub_realloc (void *ptr, size_t size, const char *file)
+cub_realloc (void *ptr, size_t size, const char *file, const int line)
 {
   void *p = NULL;
 
@@ -118,7 +118,7 @@ cub_realloc (void *ptr, size_t size, const char *file)
       if (p != NULL)
 	{
 	  memset (p, 0, size + MMON_ALLOC_META_SIZE);
-	  mmon_add_stat ((char *) p, size + MMON_ALLOC_META_SIZE, file);
+	  mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
 
 	  if (ptr != NULL)
 	    {
@@ -136,22 +136,22 @@ cub_realloc (void *ptr, size_t size, const char *file)
 }
 
 inline char *
-cub_strdup (const char *str, const char *file)
+cub_strdup (const char *str, const char *file, const int line)
 {
   void *p = NULL;
   char *ret = NULL;
 
-  p = cub_alloc (strlen (str) + 1, file);
+  p = cub_alloc (strlen (str) + 1, file, line);
   ret = (char *) p;
   memcpy (ret, str, strlen (str) + 1);
 
   return ret;
 }
 
-#define malloc(sz) cub_alloc(sz, __FILE__)
-#define calloc(num, sz) cub_calloc(num, sz, __FILE__)
-#define realloc(ptr, sz) cub_realloc(ptr, sz, __FILE__)
-#define strdup(str) cub_strdup(str, __FILE__)
+#define malloc(sz) cub_alloc(sz, __FILE__, __LINE__)
+#define calloc(num, sz) cub_calloc(num, sz, __FILE__, __LINE__)
+#define realloc(ptr, sz) cub_realloc(ptr, sz, __FILE__, __LINE__)
+#define strdup(str) cub_strdup(str, __FILE__, __LINE__)
 #define free(ptr) cub_free(ptr)
 #endif // SERVER_MODE
 

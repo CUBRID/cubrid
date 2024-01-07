@@ -11186,6 +11186,9 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   // Size of total_mem_usage
   size += OR_INT64_SIZE;
 
+  // Size of monitoring_meta_usage
+  size += OR_INT64_SIZE;
+
   // Size of num_stat
   size += OR_INT_SIZE;
 
@@ -11194,7 +11197,7 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   for (const auto &s_info : server_info.stat_info)
     {
       // Size of filename
-      size += or_packed_string_length (s_info.first, NULL);
+      size += or_packed_string_length (s_info.first.c_str (), NULL);
       size = size % MAX_ALIGNMENT ? size + INT_ALIGNMENT : size;
 
       // Size of memory usage
@@ -11214,18 +11217,19 @@ smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
       ptr = buffer;
 
-      ptr = or_pack_string (buffer, server_info.server_name);
+      ptr = or_pack_string (ptr, server_info.server_name);
       ptr = or_pack_int64 (ptr, server_info.total_mem_usage);
+      ptr = or_pack_int64 (ptr, server_info.monitoring_meta_usage);
       ptr = or_pack_int (ptr, server_info.num_stat);
 
       // *INDENT-OFF*
       for (const auto &s_info : server_info.stat_info)
         {
-          ptr = or_pack_string (ptr, s_info.first);
+          ptr = or_pack_string (ptr, s_info.first.c_str ());
           ptr = or_pack_int64 (ptr, s_info.second);
         }
       // *INDENT-ON*
-      assert (size == (ptr - buffer));
+      assert (size == (int) (ptr - buffer));
     }
 
   if (error != NO_ERROR)

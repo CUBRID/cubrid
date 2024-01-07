@@ -60,7 +60,7 @@ throw ();
 	       void *p =::malloc (sz + MMON_ALLOC_META_SIZE);
 	       if (p != NULL)
 		 {
-		   mmon_add_stat ((char *) p, sz + MMON_ALLOC_META_SIZE, __FILE__);
+		   mmon_add_stat ((char *) p, sz + MMON_ALLOC_META_SIZE, __FILE__, __LINE__);
 		 }
 	       return p;
 	     }

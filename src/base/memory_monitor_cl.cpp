@@ -28,7 +28,9 @@ void mmon_print_server_info (MMON_SERVER_INFO &server_info, FILE *outfile_fp)
 
   fprintf (outfile_fp, "====================cubrid memmon====================\n");
   fprintf (outfile_fp, "Server Name: %s\n", server_info.server_name);
-  fprintf (outfile_fp, "Total Memory Usage(KB): %lu\n\n", MMON_CONVERT_TO_KB_SIZE (server_info.total_mem_usage));
+  fprintf (outfile_fp, "Total Memory Usage(KB): %lu\n", MMON_CONVERT_TO_KB_SIZE (server_info.total_mem_usage));
+  fprintf (outfile_fp, "Total Monitoring Meta Usage(KB): %lu\n\n",
+	   MMON_CONVERT_TO_KB_SIZE (server_info.monitoring_meta_usage));
   fprintf (outfile_fp, "-----------------------------------------------------\n");
 
   fprintf (outfile_fp, "\t%-100s | %17s(%s)\n", "File Name", "Memory Usage", "Ratio");
@@ -40,7 +42,7 @@ void mmon_print_server_info (MMON_SERVER_INFO &server_info, FILE *outfile_fp)
 	  mem_usage_ratio = s_info.second / (double) server_info.total_mem_usage;
 	  mem_usage_ratio *= 100;
 	}
-      fprintf (outfile_fp, "\t%-100s | %17lu(%3d%%)\n",s_info.first, MMON_CONVERT_TO_KB_SIZE (s_info.second),
+      fprintf (outfile_fp, "\t%-100s | %17lu(%3d%%)\n",s_info.first.c_str (), MMON_CONVERT_TO_KB_SIZE (s_info.second),
 	       (int)mem_usage_ratio);
     }
   fprintf (outfile_fp, "-----------------------------------------------------\n");

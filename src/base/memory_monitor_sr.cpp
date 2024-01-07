@@ -35,6 +35,15 @@
 #define HAVE_USR_INCLUDE_MALLOC_H
 #endif
 
+typedef struct mmon_metainfo   // 32 bytes
+{
+  uint64_t size;
+  int tag_id;
+  int checksum;
+  int line;
+  char pad[8];
+} MMON_METAINFO;
+
 bool is_mem_tracked = false;
 
 namespace cubmem
@@ -44,32 +53,82 @@ namespace cubmem
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name}
   {
+    //fprintf (stdout, "server name: %s\n", server_name);
+    //m_server_name = server_name;
     m_total_mem_usage = 0;
+    m_tag_name_map.reserve (1000);
     m_tag_map.reserve (1000);
     m_stat_map.reserve (1000);
+    m_meta_alloc_count = 0;
+    /*vacuum_tagid = 0;
+    xasl_tagid = 0;
+    log_fp = fopen ("mleak.log", "w+");*/
   }
 
   size_t memory_monitor::get_alloc_size (char *ptr)
   {
-    int tag_id, checksum;
-    uint64_t size;
     size_t ret;
     size_t alloc_size = malloc_usable_size (ptr);
     char *meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
+    MMON_METAINFO metainfo;
 
-    memcpy (&tag_id, meta_ptr, sizeof (int));
-    memcpy (&size, meta_ptr + sizeof (int), sizeof (uint64_t));
-    memcpy (&checksum, meta_ptr + sizeof (int) + sizeof (uint64_t), sizeof (int));
+    memcpy (&metainfo, meta_ptr, sizeof (MMON_METAINFO));
 
-    if (checksum == generate_checksum (tag_id, size))
+    if (metainfo.checksum == generate_checksum (metainfo.tag_id, metainfo.size))
       {
-	ret = (size_t) size;
+	ret = (size_t) metainfo.size - MMON_ALLOC_META_SIZE;
       }
     else
       {
 	ret = alloc_size;
       }
 
+    return ret;
+  }
+
+  std::string memory_monitor::make_tag_name (const char *file, const int line)
+  {
+    // TODO: for windows, delimiter should change "/" to "\\"
+    char *pathcopy = strdup (file);
+    char *next = NULL;
+    char *token = strtok_r (pathcopy, "/", &next);
+    //char *token = NULL;
+    char *last_token = NULL;
+    std::string ret;
+
+    std::shared_lock<std::shared_mutex> read_lock (m_tag_name_map_mutex);
+    if (auto search = m_tag_name_map.find (file); search != m_tag_name_map.end ())
+      {
+	free (pathcopy);
+	//fprintf (stdout, "[EXISTED-TAG-NAME] %s\n", search->second.c_str ());
+	return std::string (search->second.c_str ());
+      }
+    read_lock.unlock();
+
+    while (token != NULL)
+      {
+	if (!strcmp (token, "src"))
+	  {
+	    last_token = strtok_r (NULL, "", &next);
+	    break;
+	  }
+	token = strtok_r (NULL, "/", &next);
+      }
+
+    //sprintf (temp, "%s:%d", last_token, line);
+    //ret = std::string(temp);
+    if (last_token == NULL)
+      {
+	fprintf (stderr, "last_token == NULL\n");
+	fprintf (stderr, "filename: %s, pathcopy: %s, strlen: %d, line: %d\n", file, pathcopy, strlen (file) + 1, line);
+      }
+    ret = std::string (last_token) + ':' + std::to_string (line);
+    //ret = (char *)malloc (strlen (last_token) + 12); // 12 -> ':' + MAX_INT (10 digits) + '\0'
+    //sprintf (ret, "%s:%d", last_token, line);
+    std::unique_lock<std::shared_mutex> write_lock (m_tag_name_map_mutex);
+    m_tag_name_map.insert (std::make_pair (file, ret));
+    //fprintf (stdout, "[TAG-NAME] %s\n", ret.c_str ());
+    free (pathcopy);
     return ret;
   }
 
@@ -84,37 +143,41 @@ namespace cubmem
     return ret;
   }
 
-  void memory_monitor::add_stat (char *ptr, size_t size, const char *file)
+  void memory_monitor::add_stat (char *ptr, size_t size, const char *file, const int line)
   {
-    int tag_id, checksum;
-    uint64_t temp_size = (uint64_t) size;
-    size_t alloc_size = malloc_usable_size ((void *)ptr);
+    std::string tag_name;
     char *meta_ptr = NULL;
+    MMON_METAINFO metainfo;
 
     assert (size >= 0);
-    assert (alloc_size != 0);
 
-    m_total_mem_usage += temp_size;
+    metainfo.line = line;
+    metainfo.size = (uint64_t) size;
+    m_total_mem_usage += metainfo.size;
 
-    if (auto search = m_tag_map.find (file); search != m_tag_map.end ())
+    tag_name = make_tag_name (file, line);
+
+    std::unique_lock<std::shared_mutex> tag_map_write_lock (m_tag_map_mutex);
+    if (auto search = m_tag_map.find (tag_name); search != m_tag_map.end ())
       {
-	tag_id = search->second;
-	m_stat_map[tag_id] += temp_size;
+	metainfo.tag_id = search->second;
+	m_stat_map[metainfo.tag_id] += metainfo.size;
       }
     else
       {
-	tag_id = m_tag_map.size ();
+	metainfo.tag_id = m_tag_map.size ();
 	// tag is start with 0
-	m_tag_map.insert (std::make_pair (file, tag_id));
-	m_stat_map.insert (std::make_pair (tag_id, temp_size));
+	std::unique_lock<std::shared_mutex> stat_map_write_lock (m_stat_map_mutex);
+	m_tag_map.insert (std::make_pair (tag_name, metainfo.tag_id));
+	m_stat_map.insert (std::make_pair (metainfo.tag_id, metainfo.size));
+	stat_map_write_lock.unlock ();
       }
+    tag_map_write_lock.unlock ();
 
     // put meta info into the alloced chunk
-    meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
-    checksum = generate_checksum (tag_id, temp_size);
-    memcpy (meta_ptr, &tag_id, sizeof (int));
-    memcpy (meta_ptr + sizeof (int), &temp_size, sizeof (uint64_t));
-    memcpy (meta_ptr + sizeof (int) + sizeof (uint64_t), &checksum, sizeof (int));
+    meta_ptr = ptr + metainfo.size - MMON_ALLOC_META_SIZE;
+    metainfo.checksum = generate_checksum (metainfo.tag_id, metainfo.size);
+    memcpy (meta_ptr, &metainfo, sizeof (MMON_METAINFO));
     // XXX: for debug / it will be deleted when the last phase
     /*char *test = meta_ptr + sizeof(int);
     uint64_t *temp_ptr = (uint64_t *)test;
@@ -123,14 +186,26 @@ namespace cubmem
             (temp_size == (uint64_t)temp_ptr[0]) ? "pass" : "fail", size, checksum);
     if (!for_test)
       fprintf(stdout, "size: %lu, temp_ptr[0]: %lu\n", size, (uint64_t)temp_ptr[0]);*/
+    /*if (!strcmp (file, "/home/rudii/work/cubrid_dev/src/query/xasl_cache.c"))
+      {
+        xasl_tagid = metainfo.tag_id;
+        fprintf (log_fp, "[ADD-STAT %s:%d] %llu\n", file, line, metainfo.size);
+        fflush (log_fp);
+      }
+    if (!strcmp (file, "/home/rudii/work/cubrid_dev/src/query/vacuum.c"))
+      {
+        vacuum_tagid = metainfo.tag_id;
+        fprintf (log_fp, "[ADD-STAT %s:%d] %llu\n", file, line, metainfo.size);
+        fflush (log_fp);
+      }*/
+    m_meta_alloc_count++;
   }
 
   void memory_monitor::sub_stat (char *ptr)
   {
-    int tag_id, checksum;
-    uint64_t size;
     size_t alloc_size = malloc_usable_size ((void *)ptr);
     char *meta_ptr = NULL;
+    MMON_METAINFO metainfo;
 
     if (ptr == NULL)
       {
@@ -139,9 +214,7 @@ namespace cubmem
 
     meta_ptr = ptr + alloc_size - MMON_ALLOC_META_SIZE;
 
-    memcpy (&tag_id, meta_ptr, sizeof (int));
-    memcpy (&size, meta_ptr + sizeof (int), sizeof (uint64_t));
-    memcpy (&checksum, meta_ptr + sizeof (int) + sizeof (uint64_t), sizeof (int));
+    memcpy (&metainfo, meta_ptr, sizeof (MMON_METAINFO));
 
     // XXX: for debug / it will be deleted when the last phase
     //char *test = meta_ptr + sizeof(int);
@@ -149,19 +222,32 @@ namespace cubmem
     //int test_checksum = generate_checksum (tag_id, size);
     //fprintf (stdout, "tag_id: %d, size: %llu, checksum: %d, test_checksum: %d\n", tag_id, size, checksum, test_checksum);
 
-    if (checksum == generate_checksum (tag_id, size))
+    if (metainfo.checksum == generate_checksum (metainfo.tag_id, metainfo.size))
       {
 	//fprintf (stdout, "[SUB-STAT] tag_id %d, size %lu\n", (int)meta_ptr[0], temp_ptr[0]);
 	//fprintf (stdout, "tagid: %d, size: %lu, statmap_size: %d\n", tag_id, size, m_stat_map.size());
 
 	// assert (checksum == generate_checksum (tag_id, size));
-	assert ((tag_id >= 0 && tag_id <= m_stat_map.size()));
-	assert (m_stat_map[tag_id] >= size);
+	assert ((metainfo.tag_id >= 0 && metainfo.tag_id <= m_stat_map.size()));
+	assert (m_stat_map[metainfo.tag_id] >= metainfo.size);
 
-	m_total_mem_usage -= size;
-	m_stat_map[tag_id] -= size;
+	m_total_mem_usage -= metainfo.size;
+	//XXX: I think there is no need to add mutex in here
+	//std::shared_lock<std::shared_mutex> stat_map_read_lock (m_stat_map_mutex);
+	m_stat_map[metainfo.tag_id] -= metainfo.size;
 
 	memset (meta_ptr, 0, MMON_ALLOC_META_SIZE);
+	/*if (metainfo.tag_id == xasl_tagid)
+	  {
+	    fprintf (log_fp, "[SUB-STAT %s:%d] %llu\n", "xasl_cache.c", metainfo.line, metainfo.size);
+	    fflush (log_fp);
+	  }
+	if (metainfo.tag_id == vacuum_tagid)
+	  {
+	    fprintf (log_fp, "[SUB-STAT %s:%d] %llu\n", "vacuum.c", metainfo.line, metainfo.size);
+	    fflush (log_fp);
+	  }*/
+	m_meta_alloc_count--;
       }
     else
       {
@@ -174,11 +260,14 @@ namespace cubmem
   {
     strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
     server_info.total_mem_usage = m_total_mem_usage.load ();
+    server_info.monitoring_meta_usage = m_meta_alloc_count * MMON_ALLOC_META_SIZE;
     server_info.num_stat = m_tag_map.size ();
 
+    std::shared_lock<std::shared_mutex> tag_map_read_lock (m_tag_map_mutex);
+    std::shared_lock<std::shared_mutex> stat_map_read_lock (m_stat_map_mutex);
     for (auto it = m_tag_map.begin (); it != m_tag_map.end (); ++it)
       {
-	server_info.stat_info.push_back (std::make_pair ((char *)it->first, m_stat_map[it->second].load ()));
+	server_info.stat_info.push_back (std::make_pair (it->first, m_stat_map[it->second].load ()));
       }
 
     const auto &comp = [] (const auto& stat_pair1, const auto& stat_pair2)
@@ -215,12 +304,13 @@ namespace cubmem
 	    mem_usage_ratio = s_info.second / (double) server_info.total_mem_usage;
 	    mem_usage_ratio *= 100;
 	  }
-	fprintf (outfile_fp, "\t%-100s | %17lu(%3d%%)\n",s_info.first, MMON_CONVERT_TO_KB_SIZE (s_info.second),
+	fprintf (outfile_fp, "\t%-100s | %17lu(%3d%%)\n",s_info.first.c_str (), MMON_CONVERT_TO_KB_SIZE (s_info.second),
 		 (int)mem_usage_ratio);
       }
     fprintf (outfile_fp, "-----------------------------------------------------\n");
     fflush (outfile_fp);
     fclose (outfile_fp);
+    //fclose (log_fp);
   }
 } // namespace cubmem
 
@@ -233,18 +323,20 @@ int mmon_initialize (const char *server_name)
   assert (server_name != NULL);
   assert (mmon_Gl == nullptr);
 
-  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
+  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING) && server_name != NULL)
     {
+      fprintf (stdout, "server name: %s\n", server_name);
       mmon_Gl = new (std::nothrow) memory_monitor (server_name);
 
       if (mmon_Gl == nullptr)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (memory_monitor));
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return error;
 	}
       is_mem_tracked = true;
       // XXX: for debug / it will be deleted when the last phase
-      //fprintf (stdout, "MMON INITIALIZED\n");
+      fprintf (stderr, "MMON INITIALIZED\n");
     }
   return error;
 }
@@ -272,13 +364,13 @@ size_t mmon_get_alloc_size (char *ptr)
     }
 }
 
-void mmon_add_stat (char *ptr, size_t size, const char *file)
+void mmon_add_stat (char *ptr, size_t size, const char *file, const int line)
 {
   if (mmon_Gl != nullptr)
     {
       // XXX: for debug / it will be deleted when the last phase
       //fprintf (stdout, "[%s] mmon_add_stat called\n", file);
-      mmon_Gl->add_stat (ptr, size, file);
+      mmon_Gl->add_stat (ptr, size, file, line);
     }
 }
 

@@ -28,17 +28,17 @@
 #include <stdio.h>
 
 #ifdef SERVER_MODE
-inline void *operator new (size_t size, const char *file)
+inline void *operator new (size_t size, const char *file, const int line)
 {
-  void *p = cub_alloc (size, file);
+  void *p = cub_alloc (size, file, line);
   // XXX: for debug / it will be deleted when the last phase
   //fprintf (stdout, "overloaded new: %s\n", file);
   return p;
 }
 
-inline void *operator new[] (size_t size, const char *file)
+inline void *operator new[] (size_t size, const char *file, const int line)
 {
-  void *p = cub_alloc (size, file);
+  void *p = cub_alloc (size, file, line);
   // XXX: for debug / it will be deleted when the last phase
   //fprintf (stdout, "overloaded new[]: %s\n", file);
   return p;
@@ -54,7 +54,7 @@ inline void operator delete (void *ptr, size_t sz) noexcept
   cub_free (ptr);
 }
 
-#define new new(__FILE__)
+#define new new(__FILE__, __LINE__)
 #endif // SERVER_MODE
 
 #endif // _MEMORY_CPPWRAPPER_HPP_

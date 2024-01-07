@@ -10949,7 +10949,7 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int req_error, dummy;
-  int error = NO_ERROR;;
+  int error = NO_ERROR;
 
   req_error =
     net_client_request2 (NET_SERVER_MMON_GET_SERVER_INFO, NULL, 0, reply,
@@ -10976,6 +10976,9 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
       // unpack server total memory usage
       ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.total_mem_usage));
 
+      // unpack monitoring meta memory usage
+      ptr = or_unpack_int64 (ptr, (int64_t *) & (server_info.monitoring_meta_usage));
+
       // unpack the number of stat
       ptr = or_unpack_int (ptr, (int *) &(server_info.num_stat));
 
@@ -10985,7 +10988,8 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
       // *INDENT-OFF*
       for (auto &s_info : server_info.stat_info)
         {
-          ptr = or_unpack_string_alloc (ptr, &(s_info.first));
+          ptr = or_unpack_string_nocopy (ptr, &temp_str);
+          s_info.first = temp_str;
           ptr = or_unpack_int64 (ptr, (int64_t *) &(s_info.second));
         }
       // *INDENT-ON*
