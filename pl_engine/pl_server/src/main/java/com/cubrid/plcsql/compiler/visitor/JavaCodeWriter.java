@@ -2796,7 +2796,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
                 if (end == begin + 2) {
                     // %''%
-                    i += 3;
+                    i = begin + 3;
                     continue; // not a hole
                 }
 
@@ -2809,12 +2809,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 for (; j < end; j++) {
                     char c = line.charAt(j);
                     if (c == '-' || (c >= 'A' && c <= 'Z')) {
+                        // OK
                     } else {
                         break;
                     }
                 }
                 if (j < end) {
-                    i += 2;
+                    i = j;
                     continue; // not a hole
                 }
 
