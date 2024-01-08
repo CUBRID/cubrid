@@ -3562,6 +3562,23 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_EQ;
     }
 
+  /* check for superset of index */
+  if (a->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (a) && qo_is_iscan (a->plan_un.join.inner) &&
+      b->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (b) && qo_is_iscan (b->plan_un.join.inner))
+    {
+      temp_res = qo_plan_iscan_terms_cmp (a->plan_un.join.inner, b->plan_un.join.inner);
+      if (temp_res == PLAN_COMP_LT)
+	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
+	}
+      else if (temp_res == PLAN_COMP_GT)
+	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	  return PLAN_COMP_GT;
+	}
+    }
+
   if ((a->plan_type != QO_PLANTYPE_SCAN && a->plan_type != QO_PLANTYPE_SORT)
       || (b->plan_type != QO_PLANTYPE_SCAN && b->plan_type != QO_PLANTYPE_SORT))
     {
@@ -3657,18 +3674,6 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
   if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SCAN)
     {
-      /* check if it is an unique index and all columns are equi */
-      if (qo_is_all_unique_index_columns_are_equi_terms (a) && !qo_is_all_unique_index_columns_are_equi_terms (b))
-	{
-	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-	  return PLAN_COMP_LT;
-	}
-      if (!qo_is_all_unique_index_columns_are_equi_terms (a) && qo_is_all_unique_index_columns_are_equi_terms (b))
-	{
-	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
-	  return PLAN_COMP_GT;
-	}
-
       /* check multi range optimization */
       if (qo_is_index_mro_scan (a) && !qo_is_index_mro_scan (b))
 	{
@@ -3688,6 +3693,18 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_LT;
 	}
       if (qo_is_index_covering_scan (b) && qo_is_seq_scan (a))
+	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	  return PLAN_COMP_GT;
+	}
+
+      /* check index scan */
+      if (qo_is_iscan (a) && qo_is_seq_scan (b))
+	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
+	}
+      if (qo_is_iscan (b) && qo_is_seq_scan (a))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -9963,9 +9980,10 @@ qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, i
       /* now check if the key segment is in there */
       if (bitset_intersects (&expr_segments, &key_segment))
 	{
+	  int nullable_terms = 0;
+	  qo_check_nullable_expr (parser, tree, &nullable_terms, NULL);
 	  /* this expr contains the key segment */
-	  if (tree->info.expr.op == PT_IS_NULL || tree->info.expr.op == PT_IS_NOT_NULL
-	      || tree->info.expr.op == PT_IFNULL || tree->info.expr.op == PT_NULLSAFE_EQ)
+	  if (nullable_terms >= 1)
 	    {
 	      /* 0 all the way, suppress other terms found */
 	      env->bail_out = 0;
@@ -9998,6 +10016,11 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
   QO_ATTR_CUM_STATS *a_cum, *b_cum;
   int a_range, b_range;		/* num iscan range terms */
   int a_filter, b_filter;	/* num iscan filter terms */
+
+  if (QO_NODE_IDX (a->plan_un.scan.node) != QO_NODE_IDX (b->plan_un.scan.node))
+    {
+      return PLAN_COMP_UNK;
+    }
 
   if (!qo_is_interesting_order_scan (a) || !qo_is_interesting_order_scan (b))
     {
@@ -10052,6 +10075,16 @@ qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_LT;
 	}
       else if (a_filter < b_filter)
+	{
+	  return PLAN_COMP_GT;
+	}
+
+      /* prefer covering scan */
+      if (qo_is_index_covering_scan (a) && !qo_is_index_covering_scan (b))
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if (!qo_is_index_covering_scan (a) && qo_is_index_covering_scan (b))
 	{
 	  return PLAN_COMP_GT;
 	}
