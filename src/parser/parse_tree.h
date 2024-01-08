@@ -3017,6 +3017,7 @@ struct pt_killstmt_info
 struct pt_sort_spec_info
 {
   PT_NODE *expr;		/* PT_EXPR, PT_VALUE, PT_NAME */
+  PT_NODE *prev_expr;		/* PT_EXPR, PT_VALUE, PT_NAME */
   QFILE_TUPLE_VALUE_POSITION pos_descr;	/* Value position descriptor */
   PT_MISC_TYPE asc_or_desc;	/* enum value will be PT_ASC or PT_DESC */
   PT_MISC_TYPE nulls_first_or_last;	/* enum value will be PT_NULLS_DEFAULT, PT_NULLS_FIRST or PT_NULLS_LAST */

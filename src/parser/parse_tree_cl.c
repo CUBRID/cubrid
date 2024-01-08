@@ -14954,6 +14954,7 @@ static PT_NODE *
 pt_apply_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.sort_spec.expr, arg);
+  PT_APPLY_WALK (parser, p->info.sort_spec.prev_expr, arg);
   return p;
 }
 
