@@ -3759,6 +3759,322 @@ error:
   return ER_FAILED;
 }
 
+#define MAX_HM_KEY_TERM_INFO 3
+#define MAX_HM_LENGTH 200
+
+typedef struct _term_info
+{
+  DB_VALUE rhs;
+  DB_VALUE lhs;
+  REL_OP rel_op;
+} term_info;
+
+typedef struct _hm_key
+{
+  int key_cnt;
+  int pred_cnt;
+  int range_cnt;
+  xasl_node *xasl_addr;
+  term_info key_term[MAX_HM_KEY_TERM_INFO];
+  term_info pred_term[MAX_HM_KEY_TERM_INFO];
+  term_info range_term[MAX_HM_KEY_TERM_INFO];
+} hm_key;
+
+typedef struct _hm_value
+{
+  VAL_LIST *single_tuple;
+  DB_VALUE dbval;
+} hm_value;
+
+typedef struct _hm
+{
+  hm_key keylist[MAX_HM_LENGTH];
+  hm_value valuelist[MAX_HM_LENGTH];
+  int i;
+} hm_src;
+
+hm_src *hm_global;
+bool hm_global_null = true;
+
+void
+hm_init ()
+{
+  hm_global = (hm_src *) malloc (sizeof (hm_src));
+  memset (hm_global, 0, sizeof (hm_src));
+  hm_global_null = false;
+}
+
+void
+hm_free ()
+{
+
+}
+
+bool
+hm_is_empty ()
+{
+  return true;
+}
+
+bool
+hm_eq (hm_key * key1, hm_key * key2)
+{
+  return 0 == memcmp (key1, key2, sizeof (hm_key));
+}
+
+bool
+hm_contains_key (hm_key * key)
+{
+  int i;
+  for (i = 0; i < MAX_HM_LENGTH; i++)
+    {
+      if (hm_eq (key, &(hm_global->keylist[i])))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+hm_value *
+hm_get (hm_key * key)
+{
+  hm_value *value;
+  int i;
+  for (i = 0; i < MAX_HM_LENGTH; i++)
+    {
+      if (hm_eq (key, &(hm_global->keylist[i])))
+	{
+	  return &(hm_global->valuelist[i]);
+	}
+    }
+
+  return NULL;
+}
+
+void
+hm_put (hm_key * key, hm_value * value)
+{
+  int i;
+
+  if (hm_global->i >= MAX_HM_LENGTH)
+    {
+      hm_global->i = 0;
+    }
+
+  i = hm_global->i;
+
+  hm_global->keylist[i] = *key;
+  hm_global->valuelist[i] = *value;
+  hm_global->i++;
+}
+
+void
+save_term_info (term_info * tip, COMP_EVAL_TERM * termp)
+{
+  if (termp->lhs->type == TYPE_CONSTANT)
+    {
+      tip->lhs = *termp->lhs->value.dbvalptr;
+    }
+  else if (termp->lhs->type == TYPE_DBVAL)
+    {
+      tip->lhs = termp->lhs->value.dbval;
+    }
+
+  if (termp->rhs->type == TYPE_CONSTANT)
+    {
+      tip->rhs = *termp->rhs->value.dbvalptr;
+    }
+  else if (termp->rhs->type == TYPE_DBVAL)
+    {
+      tip->rhs = termp->rhs->value.dbval;
+    }
+
+  tip->rel_op = termp->rel_op;
+}
+
+bool
+make_hm_key_by_xasl (xasl_node * xasl, hm_key * keyp)
+{
+
+  ACCESS_SPEC_TYPE *p;
+  memset (keyp, 0, sizeof (hm_key));
+  keyp->xasl_addr = xasl;
+  int cnt = 0;
+  keyp->key_cnt = 0;
+  keyp->pred_cnt = 0;
+  keyp->range_cnt = 0;
+
+  for (p = xasl->spec_list; p; p = p->next)
+    {
+      /* key */
+      if (p->where_key && p->where_key->type == T_EVAL_TERM && p->where_key->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+	{
+	  save_term_info (&(keyp->key_term[keyp->key_cnt]), &(p->where_key->pe.m_eval_term.et.et_comp));
+	  keyp->key_cnt++;
+	}
+      /* pred */
+      if (p->where_pred && p->where_pred->type == T_EVAL_TERM
+	  && p->where_pred->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+	{
+	  save_term_info (&(keyp->pred_term[keyp->pred_cnt]), &(p->where_pred->pe.m_eval_term.et.et_comp));
+	  keyp->pred_cnt++;
+	}
+      /* range */
+      if (p->where_range && p->where_range->type == T_EVAL_TERM
+	  && p->where_range->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+	{
+	  save_term_info (&(keyp->range_term[keyp->range_cnt]), &(p->where_range->pe.m_eval_term.et.et_comp));
+	  keyp->range_cnt++;
+	}
+
+      cnt++;
+    }
+  if (cnt > MAX_HM_KEY_TERM_INFO)
+    {
+      return false;
+    }
+  return true;
+}
+
+void
+copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc)
+{
+  QPROC_DB_VALUE_LIST dblist1, dblist2;
+
+  if (alloc)
+    {
+      *new_val_list = (VAL_LIST *) malloc (sizeof (VAL_LIST));
+      dblist2 = NULL;
+      (*new_val_list)->val_cnt = 0;
+
+      for (dblist1 = val_list_p->valp; dblist1; dblist1 = dblist1->next)
+	{
+	  if (!dblist2)
+	    {
+	      (*new_val_list)->valp = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
+	      (*new_val_list)->valp->dom = 0;
+	      (*new_val_list)->valp->next = 0;
+	      dblist2 = (*new_val_list)->valp;
+	    }
+	  else
+	    {
+	      dblist2->next = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
+	      dblist2 = dblist2->next;
+	      dblist2->next = 0;
+	    }
+	  dblist2->val = db_value_copy (dblist1->val);
+	  dblist2->dom = 0;
+	  (*new_val_list)->val_cnt++;
+	}
+    }
+  else
+    {
+      for (dblist2 = (*new_val_list)->valp; dblist2; dblist2 = dblist2->next)
+	{
+	  /* should free origin? allocated by regu_alloc () */
+	  if (dblist2)
+	    {
+	      pr_free_value (dblist2->val);
+	    }
+	}
+      dblist2 = NULL;
+      (*new_val_list)->val_cnt = 0;
+
+      for (dblist1 = val_list_p->valp; dblist1; dblist1 = dblist1->next)
+	{
+	  if (!dblist2)
+	    {
+	      if (!(*new_val_list)->valp)
+		{
+		  (*new_val_list)->valp = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));	//this never free
+		}
+	      (*new_val_list)->valp->dom = 0;
+	      (*new_val_list)->valp->next = 0;
+	      dblist2 = (*new_val_list)->valp;
+	    }
+	  else
+	    {
+	      if (!dblist2->next)
+		{
+		  dblist2->next = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));	//this never free
+		}
+	      dblist2 = dblist2->next;
+	      dblist2->next = 0;
+	    }
+
+	  dblist2->val = db_value_copy (dblist1->val);
+	  dblist2->dom = 0;
+	  (*new_val_list)->val_cnt++;
+	}
+    }
+
+
+
+  return;
+}
+
+void
+make_hm_value (VAL_LIST * single_tuple, DB_VALUE * peek_dbval, hm_value * ret)
+{
+  ret->dbval = *peek_dbval;
+  copy_val_list (single_tuple, &(ret->single_tuple), true);
+}
+
+bool
+search_result_by_xasl (xasl_node * xasl, DB_VALUE ** peek_dbval)
+{
+  hm_key key;
+  hm_value *value;
+
+  if (hm_global_null)
+    {
+      hm_init ();
+      return false;
+    }
+  if (!make_hm_key_by_xasl (xasl, &key))
+    {
+      return false;
+    }
+
+  if (hm_contains_key (&key))
+    {
+      /* should free orig xasl->single_tuple */
+      ;
+      /* get single_tuple from hm(Hash Map) */
+      value = hm_get (&key);
+      copy_val_list (value->single_tuple, &(xasl->single_tuple), false);
+      *peek_dbval = db_value_copy (&(value->dbval));
+
+      return true;
+    }
+
+  return false;
+}
+
+void
+save_result_by_xasl (xasl_node * xasl, DB_VALUE * result)
+{
+  hm_key key;
+  hm_value value;
+
+  if (hm_global_null)
+    {
+      hm_init ();
+      return;
+    }
+
+  if (!make_hm_key_by_xasl (xasl, &key))
+    {
+      return;
+    }
+
+  make_hm_value (xasl->single_tuple, result, &value);
+
+  hm_put (&key, &value);
+
+}
+
 /*
  * fetch_peek_dbval () - returns a POINTER to an existing db_value
  *   return: NO_ERROR or ER_code
@@ -3871,14 +4187,41 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 
-      /* execute linked query */
-      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
-      if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+      if (regu_var->xasl)
 	{
-	  goto exit_on_error;
+	  bool exist;
+	  exist = false;
+	  if (exist = search_result_by_xasl (regu_var->xasl, peek_dbval))
+	    {
+	      /* exists in scalar subquery result cache */
+	      /* use result from cache. */
+
+	      break;
+	    }
+	  /* execute linked query */
+	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+	    {
+	      goto exit_on_error;
+	    }
+	  *peek_dbval = regu_var->value.dbvalptr;
+	  if (!exist)
+	    {
+	      save_result_by_xasl (regu_var->xasl, *peek_dbval);
+	    }
+	  break;
 	}
-      *peek_dbval = regu_var->value.dbvalptr;
-      break;
+      else
+	{
+	  /* execute linked query */
+	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+	    {
+	      goto exit_on_error;
+	    }
+	  *peek_dbval = regu_var->value.dbvalptr;
+	  break;
+	}
 
     case TYPE_ORDERBY_NUM:
       /* is not constant */
