@@ -16596,9 +16596,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	  select_node->info.query.q.select.list = node;
 
-	  /* we can dispose of the sort columns now as they no longer serve a purpose */
-	  parser_free_tree (parser, select_list_ex);
-	  select_list_ex = NULL;
 	  /* register initial outlist */
 	  xasl->outptr_list = buildlist->a_outptr_list_ex;
 
