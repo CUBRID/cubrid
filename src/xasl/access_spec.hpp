@@ -59,6 +59,10 @@ struct key_val_range
   DB_VALUE key1;
   DB_VALUE key2;
   bool is_truncated;
+#if 1 //defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+  bool is_key_equal;   /* It is used by setting the value in the scan_regu_key_to_index_key() function in the scan_manager.c file.
+                        * It is not used in previous stages. In other words, it is ignored at the xasl_generation stage. */
+#endif
   int num_index_term;		/* #terms associated with index key range */
 };
 

@@ -4337,6 +4337,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 	  key_val_range.range = GE_LE;
 	  key_val_range.num_index_term = 0;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+	  key_val_range.is_key_equal = false;
+#endif
 	  BTREE_INIT_SCAN (&bt_scan);
 
 	  do
@@ -4716,6 +4719,9 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 	  key_val_range.range = GE_LE;
 	  key_val_range.num_index_term = 0;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+	  key_val_range.is_key_equal = false;
+#endif
 	  BTREE_INIT_SCAN (&bt_scan);
 
 	  do
@@ -9599,6 +9605,9 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   db_make_null (&key_val_range.key2);
   key_val_range.range = INF_INF;
   key_val_range.num_index_term = 0;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+  key_val_range.is_key_equal = false;
+#endif
   do
     {
       /* search index */
@@ -10038,6 +10047,9 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
   db_make_null (&key_val_range.key2);
   key_val_range.range = INF_INF;
   key_val_range.num_index_term = 0;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+  key_val_range.is_key_equal = false;
+#endif
 
   do
     {
@@ -12472,6 +12484,9 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID 
   pr_share_value (key, &key_val_range.key2);
   key_val_range.range = GE_LE;
   key_val_range.num_index_term = 0;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+  key_val_range.is_key_equal = false;
+#endif
 
   btree_keyval_search (thread_p, &tmp_btid, S_SELECT, &bt_checkscan_p->btree_scan, &key_val_range, class_oid, NULL,
 		       &isid, false);

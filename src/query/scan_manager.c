@@ -2083,6 +2083,9 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	    {
 	      key_val_range->key2.data.midxkey.min_max_val.type = MIN_COLUMN;
 	    }
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+	  key_val_range->is_key_equal = true;
+#endif
 	}
       else
 	{
@@ -2254,6 +2257,9 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  db_make_null (&key_vals[i].key2);
 	  key_vals[i].is_truncated = false;
 	  key_vals[i].num_index_term = 0;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+	  key_vals[i].is_key_equal = false;
+#endif
 
 	  key_vals[i].range = key_ranges[i].range;
 	  if (key_vals[i].range == INF_INF)

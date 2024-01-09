@@ -142,6 +142,9 @@ struct btree_keyrange
   DB_VALUE *lower_key;
   DB_VALUE *upper_key;
   int num_index_term;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+  bool is_key_equal;
+#endif
 };
 
 /* Forward definition. */

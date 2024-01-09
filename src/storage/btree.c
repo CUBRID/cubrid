@@ -21,7 +21,7 @@
  */
 
 #ident "$Id$"
-
+//#define IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE // ctshim xxx
 #include "btree.h"
 
 #include "btree_load.h"
@@ -4362,7 +4362,7 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int copy
 	  bts->is_cur_key_decompressed = (bool) (page_info->n_compress_size <= 0);
 	  return NO_ERROR;
 	}
-#if !defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_OPTIMIZE)
+#if !defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_OPTIMIZE) || defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
       // new page         
       if (page_info->use_comparing)
 	{
@@ -4481,15 +4481,33 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
   INIT_BTREE_PAGE_PREFIX_INFO (&bts->C_page_info, reader_type);
 
   bts->C_page_info.is_midxkey = is_midxkey;
-  if (reader_type == BTREE_READER_TYPE_RANGE_SCAN)
+  if (reader_type != BTREE_READER_TYPE_RANGE_SCAN)
     {
-      if (bts->key_range.range != GE_LE)
+      bts->C_page_info.use_comparing = is_midxkey ? (is_deduplicate || (reader_type == BTREE_READER_TYPE_STAT)) : false;
+      return;
+    }
+
+  // range scan
+  if (bts->key_range.upper_key == NULL)
+    {
+      bts->C_page_info.use_comparing = false;
+      bts->C_page_info.satisfied_range_in_page = true;
+    }
+  else if (bts->key_range.range == GE_LE)
+    {
+      if (is_midxkey)
 	{
-	  bts->C_page_info.use_comparing = (bool) (bts->key_range.upper_key != NULL);
-	}
-      else if (is_midxkey)
-	{
-#if !defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_OPTIMIZE)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+	  if (bts->key_range.is_key_equal)
+	    {
+	      assert (bts->index_scan_idp->bt_num_attrs == bts->key_filter->btree_num_attrs);
+	      bts->C_page_info.use_comparing = false;
+	      //if(bts->key_filter->btree_num_attrs <= bts->key_range.num_index_term)
+	      //{
+	      //   bts->C_page_info.use_comparing = false;
+	      //} 
+	    }
+#elif !defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_OPTIMIZE)
 	  int diff_column = pr_midxkey_common_prefix (bts->key_range.upper_key, bts->key_range.lower_key);
 	  if (diff_column >= bts->key_range.num_index_term)
 	    {
@@ -4505,10 +4523,6 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
 	  bts->C_page_info.use_comparing = false;
 #endif
 	}
-    }
-  else
-    {
-      bts->C_page_info.use_comparing = is_midxkey ? (is_deduplicate || (reader_type == BTREE_READER_TYPE_STAT)) : false;
     }
 }
 
@@ -6461,6 +6475,9 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
 
   kv_range.range = GE_LE;
   kv_range.num_index_term = 0;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+  kv_range.is_key_equal = !is_newly;
+#endif
 
   /* Initialize not found. */
   OID_SET_NULL (&find_fk_object.found_oid);
@@ -8942,6 +8959,9 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan,
   pr_share_value (key, &kv_range.key2);
   kv_range.range = GE_LE;
   kv_range.num_index_term = 0;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+  kv_range.is_key_equal = true;
+#endif
 
   do
     {
@@ -15908,6 +15928,9 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       inf_key_val_range.range = INF_INF;
       inf_key_val_range.num_index_term = 0;
       inf_key_val_range.is_truncated = false;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+      inf_key_val_range.is_key_equal = false;
+#endif
 
       kv_range = &inf_key_val_range;
     }
@@ -16089,6 +16112,9 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 
   /* range type */
   bts->key_range.range = kv_range->range;
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
+  bts->key_range.is_key_equal = kv_range->is_key_equal;
+#endif
 
   /* Swap range for scan is descending. */
   if ((bts->use_desc_index && !BTREE_IS_PART_KEY_DESC (&bts->btid_int))
@@ -16262,7 +16288,7 @@ btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, key_val_rang
     {
       // The range to scan changes.      
       bts->C_page_info.use_comparing = (bool) (bts->key_range.upper_key != NULL);
-      bts->C_page_info.satisfied_range_in_page = false;
+      bts->C_page_info.satisfied_range_in_page = !(bts->C_page_info.use_comparing);
     }
 #endif
 
@@ -16623,11 +16649,9 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
   DB_TYPE type;
   int ret = NO_ERROR;
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  bool satisfied_range_all = false;
   BTREE_PAGE_PREFIX_INFO *page_info = &bts->C_page_info;
 
   assert (page_info->reader_type == BTREE_READER_TYPE_RANGE_SCAN);
-  satisfied_range_all = page_info->satisfied_range_in_page;
 #endif
 
   *is_key_range_satisfied = *is_key_filter_satisfied = false;
@@ -16637,7 +16661,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   check_validate (bts);
 
-  if (bts->key_range.upper_key == NULL || satisfied_range_all)
+  if (page_info->satisfied_range_in_page)
 #else
   if (bts->key_range.upper_key == NULL)
 #endif
