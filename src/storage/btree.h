@@ -142,9 +142,6 @@ struct btree_keyrange
   DB_VALUE *lower_key;
   DB_VALUE *upper_key;
   int num_index_term;
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
-  bool is_key_equal;
-#endif
 };
 
 /* Forward definition. */
@@ -186,7 +183,9 @@ struct btree_page_prefix_info
   bool clear_compress_key;
 
   bool is_midxkey;
-  bool use_comparing;		// key compare  
+  bool use_comparing;		/* In the case of Range Scan, the purpose is to set whether it is necessary to compare 
+				 * with the maximum value of the key on the page.  
+				 * In other cases, it is used to set whether to use it to compare read key values. */
   bool satisfied_range_in_page;	// If true, it guarantees that all keys on the current page satisfy the range condition.  
 };
 
@@ -257,6 +256,7 @@ struct btree_scan
   /* IMPROVE_RANGE_SCAN_IN_BTREE */
   bool is_cur_key_decompressed;	/* If true, cur_key is a complete key.
 				 * Otherwise it must be combined with C_page_info.compress_key. */
+  bool is_compare_key_equal;	/* If true, it is GE_LE modified from EQ_NA. */
   BTREE_PAGE_PREFIX_INFO C_page_info;
   //---------------------------------------------------------------------------------------------
 

@@ -4498,7 +4498,7 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
       if (is_midxkey)
 	{
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
-	  if (bts->key_range.is_key_equal)
+	  if (bts->is_compare_key_equal)
 	    {
 	      assert (bts->index_scan_idp->bt_num_attrs == bts->key_filter->btree_num_attrs);
 	      bts->C_page_info.use_comparing = false;
@@ -16113,7 +16113,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
   /* range type */
   bts->key_range.range = kv_range->range;
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
-  bts->key_range.is_key_equal = kv_range->is_key_equal;
+  bts->is_compare_key_equal = kv_range->is_key_equal;
 #endif
 
   /* Swap range for scan is descending. */
