@@ -21,7 +21,7 @@
  */
 
 #ident "$Id$"
-//#define IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE // ctshim xxx
+
 #include "btree.h"
 
 #include "btree_load.h"
@@ -4500,7 +4500,8 @@ btree_init_page_prefix_info (BTREE_SCAN * bts, bool is_midxkey, bool is_deduplic
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE_EQ_RANGE)
 	  if (bts->is_compare_key_equal)
 	    {
-	      assert (bts->index_scan_idp->bt_num_attrs == bts->key_filter->btree_num_attrs);
+	      assert (!bts->index_scan_idp || !bts->key_filter
+		      || bts->index_scan_idp->bt_num_attrs == bts->key_filter->btree_num_attrs);
 	      bts->C_page_info.use_comparing = false;
 	      //if(bts->key_filter->btree_num_attrs <= bts->key_range.num_index_term)
 	      //{
