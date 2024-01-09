@@ -2445,7 +2445,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             for (PlParamInfo pi : sws.hostExprs) {
                 if (pi.name.equals("?")) {
                     // auto parameter
-                    assert pi.value != null;
                     if (!DBTypeAdapter.isSupported(pi.type)) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s419
