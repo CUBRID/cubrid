@@ -267,6 +267,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
+  ${QUERY_DIR}/sq_cache.c
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
