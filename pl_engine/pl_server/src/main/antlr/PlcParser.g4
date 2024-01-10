@@ -155,12 +155,12 @@ else_part
     ;
 
 loop_statement
-    : label_declaration? LOOP seq_of_statements END LOOP                        # stmt_basic_loop
-    | label_declaration? WHILE expression LOOP seq_of_statements END LOOP       # stmt_while_loop
-    | label_declaration? FOR iterator LOOP seq_of_statements END LOOP           # stmt_for_iter_loop
-    | label_declaration? FOR for_cursor LOOP seq_of_statements END LOOP         # stmt_for_cursor_loop
-    | label_declaration? FOR for_static_sql LOOP seq_of_statements END LOOP     # stmt_for_static_sql_loop
-    | label_declaration? FOR for_dynamic_sql LOOP seq_of_statements END LOOP    # stmt_for_dynamic_sql_loop
+    : label_declaration? LOOP seq_of_statements END LOOP label_name?                       # stmt_basic_loop
+    | label_declaration? WHILE expression LOOP seq_of_statements END LOOP label_name?      # stmt_while_loop
+    | label_declaration? FOR iterator LOOP seq_of_statements END LOOP label_name?          # stmt_for_iter_loop
+    | label_declaration? FOR for_cursor LOOP seq_of_statements END LOOP label_name?        # stmt_for_cursor_loop
+    | label_declaration? FOR for_static_sql LOOP seq_of_statements END LOOP label_name?    # stmt_for_static_sql_loop
+    | label_declaration? FOR for_dynamic_sql LOOP seq_of_statements END LOOP label_name?   # stmt_for_dynamic_sql_loop
     ;
 
  // actually far more complicated according to the Spec.
@@ -413,7 +413,7 @@ err_msg
     ;
 
 simple_case_statement
-    : CASE expression simple_case_statement_when_part+  case_statement_else_part? END CASE
+    : CASE expression simple_case_statement_when_part+  case_statement_else_part? END CASE label_name?
     ;
 
 simple_case_statement_when_part
@@ -421,7 +421,7 @@ simple_case_statement_when_part
     ;
 
 searched_case_statement
-    : CASE searched_case_statement_when_part+ case_statement_else_part? END CASE
+    : CASE searched_case_statement_when_part+ case_statement_else_part? END CASE label_name?
     ;
 
 searched_case_statement_when_part
