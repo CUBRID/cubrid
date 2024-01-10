@@ -3760,7 +3760,7 @@ error:
 }
 
 #define MAX_HM_KEY_TERM_INFO 3
-#define MAX_HM_LENGTH 200
+#define MAX_HM_LENGTH 10
 
 typedef struct _term_info
 {
@@ -3794,7 +3794,55 @@ typedef struct _hm
 } hm_src;
 
 hm_src *hm_global;
+MHT_TABLE *mht_global;
 bool hm_global_null = true;
+
+unsigned int
+hm_hash_func (const void *key, unsigned int ht_size)
+{
+  hm_key *pk, k;
+  int i;
+  DB_VALUE t;
+  unsigned int h = 0;
+  pk = (hm_key *) key;
+  k = *pk;
+  memset (&t, 0, sizeof (DB_VALUE));
+
+  h = mht_ptrhash ((void *) k.xasl_addr, ht_size);
+  for (i = 0; i < k.key_cnt; i++)
+    {
+
+      h += mht_valhash ((void *) &(k.key_term[i].lhs), ht_size);
+
+      h += mht_valhash ((void *) &(k.key_term[i].rhs), ht_size);
+
+    }
+  for (i = 0; i < k.pred_cnt; i++)
+    {
+
+      h += mht_valhash ((void *) &(k.pred_term[i].lhs), ht_size);
+
+
+      h += mht_valhash ((void *) &(k.pred_term[i].rhs), ht_size);
+
+    }
+  for (i = 0; i < k.range_cnt; i++)
+    {
+
+      h += mht_valhash ((void *) &(k.range_term[i].lhs), ht_size);
+
+
+      h += mht_valhash ((void *) &(k.range_term[i].rhs), ht_size);
+
+    }
+  return h % ht_size;
+}
+
+int
+hm_cmp_func (const void *key1, const void *key2)
+{
+  return 0 == memcmp (key1, key2, sizeof (hm_key));
+}
 
 void
 hm_init ()
@@ -3802,6 +3850,8 @@ hm_init ()
   hm_global = (hm_src *) malloc (sizeof (hm_src));
   memset (hm_global, 0, sizeof (hm_src));
   hm_global_null = false;
+
+  mht_global = mht_create ("Scalar Subquery Result Cache", MAX_HM_LENGTH, hm_hash_func, hm_cmp_func);
 }
 
 void
@@ -3867,6 +3917,8 @@ hm_put (hm_key * key, hm_value * value)
   hm_global->keylist[i] = *key;
   hm_global->valuelist[i] = *value;
   hm_global->i++;
+
+  mht_put_if_not_exists (mht_global, (void *) key, (void *) value);
 }
 
 void
@@ -3880,6 +3932,10 @@ save_term_info (term_info * tip, COMP_EVAL_TERM * termp)
     {
       tip->lhs = termp->lhs->value.dbval;
     }
+  else
+    {
+      tip->lhs.domain.general_info.is_null = 1;
+    }
 
   if (termp->rhs->type == TYPE_CONSTANT)
     {
@@ -3888,6 +3944,10 @@ save_term_info (term_info * tip, COMP_EVAL_TERM * termp)
   else if (termp->rhs->type == TYPE_DBVAL)
     {
       tip->rhs = termp->rhs->value.dbval;
+    }
+  else
+    {
+      tip->lhs.domain.general_info.is_null = 1;
     }
 
   tip->rel_op = termp->rel_op;
