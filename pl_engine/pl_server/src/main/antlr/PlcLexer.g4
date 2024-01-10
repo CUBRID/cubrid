@@ -158,7 +158,7 @@ PERIOD:   '.';
 FLOATING_POINT_NUM: FPNUM_W_POINT | FPNUM_WO_POINT;
 UNSIGNED_INTEGER:   BASIC_UINT;
 
-DELIMITED_ID: ('"' | '[' | '`') REGULAR_ID ('"' | ']' | '`') ;
+DELIMITED_ID: ('"' REGULAR_ID '"') | ('[' REGULAR_ID ']') | ('`' REGULAR_ID '`') ;
 CHAR_STRING: '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'';
 
 NULL_SAFE_EQUALS_OP:          '<=>';
@@ -215,6 +215,10 @@ SPACES: [ \t\r\n]+ -> channel(HIDDEN);
 // ************************
 mode STATIC_SQL;
 // ************************
+
+SS_SINGLE_LINE_COMMENT:    '--' ~('\r' | '\n')* NEWLINE_EOF                 -> channel(HIDDEN);
+SS_SINGLE_LINE_COMMENT2:   '//' ~('\r' | '\n')* NEWLINE_EOF                 -> channel(HIDDEN);
+SS_MULTI_LINE_COMMENT:     '/*' .*? '*/'                                    -> channel(HIDDEN);
 
 SS_SEMICOLON :  ';' {
         setType(PlcParser.SEMICOLON);
