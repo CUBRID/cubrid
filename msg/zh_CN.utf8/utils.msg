@@ -844,6 +844,7 @@ lockdb: 显示数据库的锁状态.\n\
 \n\
 可用选项:\n\
   -o, --output-file=FILE       重定向输出信息到文件 FILE ; 默认: 空\n
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN

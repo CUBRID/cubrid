@@ -848,6 +848,7 @@ usage: %1$s lockdb [OPTION] database-name\n\
 \n\
 options valids:\n\
   -o, --output-file=FICHIER   redirige les messages de sortie à FICHIER; par défaut: aucun\n
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN

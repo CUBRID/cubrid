@@ -845,6 +845,7 @@ lockdb: データベースのロック情報を出力\n\
 \n\
 オプション:\n\
   -o, --output-file=FILE       出力メッセージをセーブするファイル; デフォルト: なし\n
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
