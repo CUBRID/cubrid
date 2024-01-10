@@ -24,6 +24,7 @@
 #include <malloc.h>
 #include <cassert>
 #include <cstring>
+#include <sstream>
 #include <algorithm>
 #include <openssl/md5.h>
 
@@ -89,46 +90,85 @@ namespace cubmem
   std::string memory_monitor::make_tag_name (const char *file, const int line)
   {
     // TODO: for windows, delimiter should change "/" to "\\"
-    char *pathcopy = strdup (file);
-    char *next = NULL;
-    char *token = strtok_r (pathcopy, "/", &next);
+    //char *pathcopy = strdup (file);
+    std::string filecopy (file);
+    std::string fileline = filecopy + ':' + std::to_string (line);
+    //char *next = NULL;
     //char *token = NULL;
-    char *last_token = NULL;
+    //char *last_token = NULL;
+
+    std::lock_guard<std::mutex> lock(m_tag_name_map_mutex);
+    if (filecopy[0] == '/') // absolute path
+      {
+        //std::shared_lock<std::shared_mutex> read_lock (m_tag_name_map_mutex);
+        auto search = m_tag_name_map.find (fileline);
+        //if (auto search = m_tag_name_map.find (fileline); search != m_tag_name_map.end ())
+        if (search != m_tag_name_map.end ())
+          {
+            //free (pathcopy);
+            //fprintf (stdout, "[EXISTED-TAG-NAME] %s | %s\n", fileline.c_str (), search->second.c_str ());
+            //fflush (stdout);
+            return search->second;
+          }
+        //read_lock.unlock();
+      }
+
+        /*token = strtok_r (pathcopy, "/", &next);
+        while (token != NULL)
+          {
+            if (!strcmp (token, "src"))
+              {
+                last_token = strtok_r (NULL, "", &next);
+                break;
+              }
+            token = strtok_r (NULL, "/", &next);
+          }*/
     std::string ret;
-
-    std::shared_lock<std::shared_mutex> read_lock (m_tag_name_map_mutex);
-    if (auto search = m_tag_name_map.find (file); search != m_tag_name_map.end ())
+    std::istringstream iss(filecopy);
+    std::string token;
+    while (std::getline (iss, token, '/'))
       {
-	free (pathcopy);
-	//fprintf (stdout, "[EXISTED-TAG-NAME] %s\n", search->second.c_str ());
-	return std::string (search->second.c_str ());
-      }
-    read_lock.unlock();
-
-    while (token != NULL)
-      {
-	if (!strcmp (token, "src"))
-	  {
-	    last_token = strtok_r (NULL, "", &next);
-	    break;
-	  }
-	token = strtok_r (NULL, "/", &next);
+        if (token == "src")
+          {
+            std::getline (iss, ret);
+            break;
+          }
       }
 
-    //sprintf (temp, "%s:%d", last_token, line);
-    //ret = std::string(temp);
-    if (last_token == NULL)
+        //sprintf (temp, "%s:%d", last_token, line);
+        //ret = std::string(temp);
+        /*if (last_token == NULL)
+          {
+            fprintf (stderr, "last_token == NULL\n");
+            fprintf (stderr, "filename: %s, pathcopy: %s, strlen: %d, line: %d\n", file, pathcopy, strlen (file) + 1, line);
+          }*/
+        //ret = std::string (last_token) + ':' + std::to_string (line);
+        //ret = (char *)malloc (strlen (last_token) + 12); // 12 -> ':' + MAX_INT (10 digits) + '\0'
+        //sprintf (ret, "%s:%d", last_token, line);
+
+    if (ret.empty ())
       {
-	fprintf (stderr, "last_token == NULL\n");
-	fprintf (stderr, "filename: %s, pathcopy: %s, strlen: %d, line: %d\n", file, pathcopy, strlen (file) + 1, line);
+        ret = filecopy;
       }
-    ret = std::string (last_token) + ':' + std::to_string (line);
-    //ret = (char *)malloc (strlen (last_token) + 12); // 12 -> ':' + MAX_INT (10 digits) + '\0'
-    //sprintf (ret, "%s:%d", last_token, line);
-    std::unique_lock<std::shared_mutex> write_lock (m_tag_name_map_mutex);
-    m_tag_name_map.insert (std::make_pair (file, ret));
-    //fprintf (stdout, "[TAG-NAME] %s\n", ret.c_str ());
-    free (pathcopy);
+    ret += ':' + std::to_string (line);
+
+      {
+        //std::unique_lock<std::shared_mutex> write_lock (m_tag_name_map_mutex);
+        std::pair <std::string, std::string> entry (fileline, ret);
+        m_tag_name_map.insert (entry);
+        //fprintf (stdout, "map size: %lu\n", m_tag_name_map.size ());
+        //fprintf (stdout, "[TAG-NAME] %s | %s\n", fileline.c_str (), ret.c_str ());
+        //fflush (stdout);
+      }
+        //m_tag_name_map.insert (std::make_pair (fileline.c_str (), ret));
+        //fprintf (stdout, "[TAG-NAME] %s | %s\n", fileline.c_str (), ret.c_str ());
+        //fflush (stdout);
+      /*}
+    else
+      {
+        ret = fileline;
+      }*/
+    //free (pathcopy);
     return ret;
   }
 
@@ -138,8 +178,11 @@ namespace cubmem
     unsigned char digest[MD5_DIGEST_LENGTH];
     int ret = 0;
     snprintf (input, sizeof (input), "%10d%20llu", tag_id, size);
-    MD5 ((const unsigned char *)input, sizeof (input), digest);
-    memcpy (&ret, digest, sizeof (int));
+    {
+      std::lock_guard<std::mutex> lock (m_checksum_mutex);
+      MD5 ((const unsigned char *)input, sizeof (input), digest);
+      memcpy (&ret, digest, sizeof (int));
+    }
     return ret;
   }
 
@@ -157,7 +200,8 @@ namespace cubmem
 
     tag_name = make_tag_name (file, line);
 
-    std::unique_lock<std::shared_mutex> tag_map_write_lock (m_tag_map_mutex);
+    //std::unique_lock<std::shared_mutex> tag_map_write_lock (m_tag_map_mutex);
+    std::unique_lock<std::mutex> tag_map_lock (m_tag_map_mutex);
     if (auto search = m_tag_map.find (tag_name); search != m_tag_map.end ())
       {
 	metainfo.tag_id = search->second;
@@ -167,12 +211,17 @@ namespace cubmem
       {
 	metainfo.tag_id = m_tag_map.size ();
 	// tag is start with 0
-	std::unique_lock<std::shared_mutex> stat_map_write_lock (m_stat_map_mutex);
-	m_tag_map.insert (std::make_pair (tag_name, metainfo.tag_id));
+	//std::unique_lock<std::shared_mutex> stat_map_write_lock (m_stat_map_mutex);
+        std::pair <std::string, int> tag_map_entry (tag_name, metainfo.tag_id);
+        //std::pair <int, std::atomic <uint64_t>> stat_map_entry (metainfo.tag_id, metainfo.size);
+        m_tag_map.insert (tag_map_entry);
+        //m_stat_map.insert (stat_map_entry);
+	//m_tag_map.insert (std::make_pair (tag_name, metainfo.tag_id));
 	m_stat_map.insert (std::make_pair (metainfo.tag_id, metainfo.size));
-	stat_map_write_lock.unlock ();
+	//stat_map_write_lock.unlock ();
       }
-    tag_map_write_lock.unlock ();
+    tag_map_lock.unlock ();
+    //tag_map_write_lock.unlock ();
 
     // put meta info into the alloced chunk
     meta_ptr = ptr + metainfo.size - MMON_ALLOC_META_SIZE;
@@ -263,8 +312,8 @@ namespace cubmem
     server_info.monitoring_meta_usage = m_meta_alloc_count * MMON_ALLOC_META_SIZE;
     server_info.num_stat = m_tag_map.size ();
 
-    std::shared_lock<std::shared_mutex> tag_map_read_lock (m_tag_map_mutex);
-    std::shared_lock<std::shared_mutex> stat_map_read_lock (m_stat_map_mutex);
+    //std::shared_lock<std::shared_mutex> tag_map_read_lock (m_tag_map_mutex);
+    //std::shared_lock<std::shared_mutex> stat_map_read_lock (m_stat_map_mutex);
     for (auto it = m_tag_map.begin (); it != m_tag_map.end (); ++it)
       {
 	server_info.stat_info.push_back (std::make_pair (it->first, m_stat_map[it->second].load ()));
@@ -325,7 +374,8 @@ int mmon_initialize (const char *server_name)
 
   if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING) && server_name != NULL)
     {
-      fprintf (stdout, "server name: %s\n", server_name);
+      fprintf (stderr, "server name: %s\n", server_name);
+      fflush (stderr);
       mmon_Gl = new (std::nothrow) memory_monitor (server_name);
 
       if (mmon_Gl == nullptr)
@@ -337,6 +387,7 @@ int mmon_initialize (const char *server_name)
       is_mem_tracked = true;
       // XXX: for debug / it will be deleted when the last phase
       fprintf (stderr, "MMON INITIALIZED\n");
+      fflush (stderr);
     }
   return error;
 }

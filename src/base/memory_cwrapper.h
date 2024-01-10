@@ -114,6 +114,9 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 
   if (is_mem_tracked)
     {
+      fprintf (stdout, "[cub_realloc] ptr = %p, get_alloc_size(ptr) = %lu, size = %lu\n",
+                        ptr, get_alloc_size (ptr), size + MMON_ALLOC_META_SIZE);
+      fflush (stdout);
       p = malloc (size + MMON_ALLOC_META_SIZE);
       if (p != NULL)
 	{
@@ -122,6 +125,9 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 
 	  if (ptr != NULL)
 	    {
+              //fprintf (stderr, "[cub_realloc] ptr = %p, get_alloc_size(ptr) = %lu, p = %p, malloc_usable_size(p) = %lu, size = %lu\n",
+              //                  ptr, get_alloc_size (ptr), p, malloc_usable_size(p), size + MMON_ALLOC_META_SIZE);
+              //fflush (stderr);
 	      memcpy (p, ptr, get_alloc_size (ptr));
 	      cub_free (ptr);
 	    }

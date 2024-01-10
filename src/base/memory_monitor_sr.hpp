@@ -56,12 +56,15 @@ namespace cubmem
       int generate_checksum (int tag_id, uint64_t size);
 
     private:
-      std::unordered_map<const char *, std::string> m_tag_name_map; // file nmae <-> tag name
+      std::unordered_map<std::string, std::string> m_tag_name_map; // file nmae <-> tag name
       std::unordered_map<std::string, int> m_tag_map; // tag name <-> tag id
       std::unordered_map<int, std::atomic<uint64_t>> m_stat_map; // tag id <-> memory usage
-      std::shared_mutex m_tag_name_map_mutex;
-      std::shared_mutex m_tag_map_mutex;
-      std::shared_mutex m_stat_map_mutex;
+      mutable std::mutex m_tag_name_map_mutex;
+      mutable std::mutex m_tag_map_mutex;
+      mutable std::mutex m_checksum_mutex;
+      /*mutable std::shared_mutex m_tag_name_map_mutex;
+      mutable std::shared_mutex m_tag_map_mutex;
+      mutable std::shared_mutex m_stat_map_mutex;*/
       std::string m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;
       int m_meta_alloc_count;
