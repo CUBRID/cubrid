@@ -845,7 +845,6 @@ uso: %1$s lockdb [OPZIONE] nome-database\n\
 \n\
 opzioni valide:\n\
   -o, --output-file=FILE       reindirizzare i messaggi di output a FILE; predefinito: nessuno\n
-  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
