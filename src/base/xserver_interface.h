@@ -242,7 +242,7 @@ extern int xcatalog_check_rep_dir (THREAD_ENTRY * thread_p, OID * class_id, OID 
 
 extern int xacl_reload (THREAD_ENTRY * thread_p);
 extern void xacl_dump (THREAD_ENTRY * thread_p, FILE * outfp);
-extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp);
+extern void xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention);
 
 extern int xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_p,
 				       int include_query_exec_info);
