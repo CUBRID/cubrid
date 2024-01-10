@@ -3876,6 +3876,11 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
       if (regu_var->xasl)
 	{
+	  if (sq_get (regu_var->xasl, peek_dbval))
+	    {
+	      break;
+	    }
+
 	  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
 	  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
 	    {

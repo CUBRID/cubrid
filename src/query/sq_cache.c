@@ -43,7 +43,7 @@ typedef struct _sq_key
 typedef struct _sq_val
 {
   VAL_LIST *single_tuple;
-  DB_VALUE dbval;
+  DB_VALUE *dbval;
 } sq_val;
 
 static bool sq_cache_enabled = false;
@@ -55,7 +55,7 @@ static unsigned int sq_hash_func (const void *key, unsigned int ht_size);
 static int sq_cmp_func (const void *key1, const void *key2);
 static sq_key *sq_make_key (xasl_node * xasl);
 static void sq_free_key (sq_key * key);
-void sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc);
+static void sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc);
 static sq_val *sq_make_val (xasl_node * xasl, DB_VALUE * result);
 static void sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp);
 static void sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest);
@@ -72,6 +72,7 @@ sq_cache_initialize ()
     {
       return ER_FAILED;
     }
+  sq_cache_enabled = true;
   return error_code;
 }
 
@@ -112,7 +113,7 @@ sq_cmp_func (const void *key1, const void *key2)
   QPROC_DB_VALUE_LIST p1, p2;
   k1 = (sq_key *) key1;
   k2 = (sq_key *) key2;
-  if (k1->xasl_addr != k2->xasl_addr)
+  if (mht_compare_ptrs_are_equal (k1->xasl_addr, k2->xasl_addr))
     {
       return 0;
     }
@@ -137,7 +138,7 @@ sq_cmp_func (const void *key1, const void *key2)
 	{
 	  return 0;
 	}
-      if (db_value_compare (p1->val, p2->val) != DB_EQ)
+      if (!mht_compare_dbvalues_are_equal (p1->val, p2->val))
 	{
 	  return 0;
 	}
@@ -152,7 +153,7 @@ sq_cmp_func (const void *key1, const void *key2)
 	{
 	  return 0;
 	}
-      if (db_value_compare (p1->val, p2->val) != DB_EQ)
+      if (!mht_compare_dbvalues_are_equal (p1->val, p2->val))
 	{
 	  return 0;
 	}
@@ -167,7 +168,7 @@ sq_cmp_func (const void *key1, const void *key2)
 	{
 	  return 0;
 	}
-      if (db_value_compare (p1->val, p2->val) != DB_EQ)
+      if (!mht_compare_dbvalues_are_equal (p1->val, p2->val))
 	{
 	  return 0;
 	}
@@ -325,7 +326,7 @@ sq_free_key (sq_key * keyp)
 }
 
 
-void
+static void
 sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc)
 {
   QPROC_DB_VALUE_LIST dblist1, dblist2;
@@ -358,9 +359,11 @@ sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc)
     }
   else
     {
+      /* should free origin? allocated by regu_alloc () */
+
       for (dblist2 = (*new_val_list)->valp; dblist2; dblist2 = dblist2->next)
 	{
-	  /* should free origin? allocated by regu_alloc () */
+
 	  if (dblist2)
 	    {
 	      pr_free_value (dblist2->val);
@@ -407,7 +410,7 @@ sq_make_val (xasl_node * xasl, DB_VALUE * result)
 {
   sq_val *val;
   val = (sq_val *) malloc (sizeof (sq_val));
-  val->dbval = *result;
+  val->dbval = db_value_copy (result);
   sq_copy_val_list (xasl->single_tuple, &(val->single_tuple), true);
 
   return val;
@@ -417,8 +420,8 @@ static void
 sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp)
 {
 
-  *retp = db_value_copy (&(val->dbval));
-  sq_copy_val_list (val->single_tuple, &(xasl->single_tuple), 0);
+  *retp = db_value_copy (val->dbval);
+  sq_copy_val_list (val->single_tuple, &(xasl->single_tuple), true);
 
   return;
 }
