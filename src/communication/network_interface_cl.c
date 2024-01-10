@@ -3898,7 +3898,9 @@ lock_dump (FILE * outfp, int is_contention)
   ptr = request;
   ptr = or_pack_int (ptr, is_contention);
 
-  req_error = net_client_request_recv_stream (NET_SERVER_LK_DUMP, request, OR_ALIGNED_BUF_SIZE (a_request), NULL, 0, NULL, 0, outfp);
+  req_error =
+    net_client_request_recv_stream (NET_SERVER_LK_DUMP, request, OR_ALIGNED_BUF_SIZE (a_request), NULL, 0, NULL, 0,
+				    outfp);
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
