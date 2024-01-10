@@ -862,6 +862,7 @@ utilizare: %1$s lockdb [OPŢIUNI] nume-bază-de-date\n\
 \n\
 opţiuni valide:\n\
   -o, --output-file=FIŞIER    redirecţionează mesajele de ieşire către un FIŞIER; implicit: nul\n
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN

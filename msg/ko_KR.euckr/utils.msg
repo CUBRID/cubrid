@@ -845,6 +845,7 @@ lockdb: 데이터베이스의 lock 정보 출력\n\
 \n\
 옵션:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n
+  -c, --contention             display only lock information which has contention\n
 
 
 $set 26 MSGCAT_UTIL_SET_KILLTRAN
