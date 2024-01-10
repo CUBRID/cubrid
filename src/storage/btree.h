@@ -329,6 +329,7 @@ struct btree_scan
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
     (bts)->is_cur_key_decompressed = true;              \
+    (bts)->is_compare_key_equal = false;                \
     INIT_BTREE_PAGE_PREFIX_INFO(&(bts)->C_page_info, BTREE_READER_TYPE_NONE); \
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
@@ -377,6 +378,7 @@ struct btree_scan
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
     (bts)->is_cur_key_decompressed = true;              \
+    (bts)->is_compare_key_equal = false;                \
     RESET_BTREE_PAGE_PREFIX_INFO(&(bts)->C_page_info);  \
     pr_clear_value (&(bts)->cur_key);			\
     db_make_null (&(bts)->cur_key);			\

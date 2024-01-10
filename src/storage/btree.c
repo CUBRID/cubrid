@@ -4615,6 +4615,7 @@ btree_make_complete_key_including_prefix (BTREE_SCAN * bts, int compress_size, D
       DB_VALUE decompressed_key;
       db_make_null (&decompressed_key);
 
+      assert (bts->is_cur_key_decompressed == false);
       error = pr_midxkey_add_prefix (&decompressed_key, compress_key, &(bts->cur_key), compress_size);
       if (error != NO_ERROR)
 	{
@@ -4629,6 +4630,12 @@ btree_make_complete_key_including_prefix (BTREE_SCAN * bts, int compress_size, D
     }
 }
 
+/*
+ * btree_check_complete_decompressed_key () - 
+ *               This is a function to convert the two parts, cur_key and compress_key, into a complete key by combining them with cur_key.
+ *   return:
+ *   bts(in):
+ */
 static void
 btree_check_complete_decompressed_key (BTREE_SCAN * bts)
 {
