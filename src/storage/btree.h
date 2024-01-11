@@ -248,8 +248,6 @@ struct btree_scan
   void *bts_other;
 };
 
-#define COMMON_PREFIX_UNKNOWN	(-1)
-
 #define BTREE_INIT_SCAN(bts)				\
   do {							\
     (bts)->P_vpid.pageid = NULL_PAGEID;			\

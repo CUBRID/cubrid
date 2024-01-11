@@ -4215,7 +4215,6 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
 		   void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset, int copy_key,
 		   BTREE_SCAN * bts)
 {
-  int n_prefix = COMMON_PREFIX_UNKNOWN;
   int error;
 
   assert (pgptr != NULL);
@@ -4233,13 +4232,7 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
   if (key != NULL && node_type == BTREE_LEAF_NODE && !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY)
       && !btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_FENCE))
     {
-      if (n_prefix == COMMON_PREFIX_UNKNOWN)
-	{
-	  /* recalculate n_prefix */
-	  n_prefix = btree_node_get_common_prefix (thread_p, btid, pgptr);
-	}
-
-      assert (n_prefix >= 0);
+      int n_prefix = btree_node_get_common_prefix (thread_p, btid, pgptr);
 
       if (n_prefix > 0)
 	{
@@ -4273,6 +4266,7 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
 	}
       else if (n_prefix < 0)
 	{
+	  assert (0);
 	  return n_prefix;
 	}
     }
