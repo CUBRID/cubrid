@@ -216,9 +216,10 @@ SPACES: [ \t\r\n]+ -> channel(HIDDEN);
 mode STATIC_SQL;
 // ************************
 
-SS_SINGLE_LINE_COMMENT:    '--' ~('\r' | '\n')* NEWLINE_EOF                 -> channel(HIDDEN);
-SS_SINGLE_LINE_COMMENT2:   '//' ~('\r' | '\n')* NEWLINE_EOF                 -> channel(HIDDEN);
-SS_MULTI_LINE_COMMENT:     '/*' .*? '*/'                                    -> channel(HIDDEN);
+// Do not drop comments because they can have a hint.
+SS_SINGLE_LINE_COMMENT:    '--' ~('\r' | '\n')* NEWLINE_EOF     { setType(PlcParser.SS_NON_STR); } ;
+SS_SINGLE_LINE_COMMENT2:   '//' ~('\r' | '\n')* NEWLINE_EOF     { setType(PlcParser.SS_NON_STR); } ;
+SS_MULTI_LINE_COMMENT:     '/*' .*? '*/'                        { setType(PlcParser.SS_NON_STR); } ;
 
 SS_SEMICOLON :  ';' {
         setType(PlcParser.SEMICOLON);
