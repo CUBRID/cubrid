@@ -1043,7 +1043,7 @@ const size_t BTREE_RV_BUFFER_SIZE =
 #endif /* !NDEBUG */
 
 #if defined (NDEBUG)
-#define BTREE_RV_GET_DATA_LENGTH (rv_ptr, rv_start, rv_length)  (rv_length) = CAST_BUFLEN ((rv_ptr) - (rv_start))
+#define BTREE_RV_GET_DATA_LENGTH(rv_ptr, rv_start, rv_length)  (rv_length) = CAST_BUFLEN ((rv_ptr) - (rv_start))
 #else
 static void
 BTREE_RV_GET_DATA_LENGTH (const char *rv_ptr, const char *rv_start, int &rv_length)
