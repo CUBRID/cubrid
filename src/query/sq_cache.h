@@ -30,5 +30,6 @@
 extern int sq_cache_initialize ();
 extern int sq_put (xasl_node * xasl, DB_VALUE * result);
 extern bool sq_get (xasl_node * xasl, DB_VALUE ** retp);
+extern void sq_cache_drop_all ();
 
 #endif /* _SQ_CACHE_H_ */

@@ -113,7 +113,7 @@ sq_cmp_func (const void *key1, const void *key2)
   QPROC_DB_VALUE_LIST p1, p2;
   k1 = (sq_key *) key1;
   k2 = (sq_key *) key2;
-  if (mht_compare_ptrs_are_equal (k1->xasl_addr, k2->xasl_addr))
+  if (!mht_compare_ptrs_are_equal (k1->xasl_addr, k2->xasl_addr))
     {
       return 0;
     }
@@ -320,7 +320,9 @@ sq_free_key (sq_key * keyp)
 	  free (tmp);
 	}
     }
-
+  free (keyp->key_list);
+  free (keyp->pred_list);
+  free (keyp->range_list);
 
   free (keyp);
 }
@@ -331,10 +333,38 @@ sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc)
 {
   QPROC_DB_VALUE_LIST dblist1, dblist2;
 
-  if (alloc)
+  if (!alloc)
+    {
+      QPROC_DB_VALUE_LIST p, tmp;
+      p = (*new_val_list)->valp;
+      while (p != NULL)
+	{
+	  tmp = p;
+	  p = p->next;
+
+	  pr_free_value (tmp->val);
+	  tmp->val = NULL;
+	}
+      dblist2 = (*new_val_list)->valp;
+      (*new_val_list)->val_cnt = 0;
+      for (dblist1 = val_list_p->valp; dblist1; dblist1 = dblist1->next)
+	{
+	  if ((*new_val_list)->valp != dblist2)
+	    {
+	      dblist2->next = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
+	      dblist2 = dblist2->next;
+	      dblist2->next = 0;
+	    }
+	  dblist2->val = db_value_copy (dblist1->val);
+	  dblist2->dom = 0;
+	  (*new_val_list)->val_cnt++;
+	}
+    }
+  else
     {
       *new_val_list = (VAL_LIST *) malloc (sizeof (VAL_LIST));
       dblist2 = NULL;
+
       (*new_val_list)->val_cnt = 0;
 
       for (dblist1 = val_list_p->valp; dblist1; dblist1 = dblist1->next)
@@ -342,7 +372,6 @@ sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc)
 	  if (!dblist2)
 	    {
 	      (*new_val_list)->valp = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
-	      (*new_val_list)->valp->dom = 0;
 	      (*new_val_list)->valp->next = 0;
 	      dblist2 = (*new_val_list)->valp;
 	    }
@@ -357,51 +386,6 @@ sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc)
 	  (*new_val_list)->val_cnt++;
 	}
     }
-  else
-    {
-      /* should free origin? allocated by regu_alloc () */
-
-      for (dblist2 = (*new_val_list)->valp; dblist2; dblist2 = dblist2->next)
-	{
-
-	  if (dblist2)
-	    {
-	      pr_free_value (dblist2->val);
-	    }
-	}
-      dblist2 = NULL;
-      (*new_val_list)->val_cnt = 0;
-
-      for (dblist1 = val_list_p->valp; dblist1; dblist1 = dblist1->next)
-	{
-	  if (!dblist2)
-	    {
-	      if (!(*new_val_list)->valp)
-		{
-		  (*new_val_list)->valp = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));	//this never free
-		}
-	      (*new_val_list)->valp->dom = 0;
-	      (*new_val_list)->valp->next = 0;
-	      dblist2 = (*new_val_list)->valp;
-	    }
-	  else
-	    {
-	      if (!dblist2->next)
-		{
-		  dblist2->next = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));	//this never free
-		}
-	      dblist2 = dblist2->next;
-	      dblist2->next = 0;
-	    }
-
-	  dblist2->val = db_value_copy (dblist1->val);
-	  dblist2->dom = 0;
-	  (*new_val_list)->val_cnt++;
-	}
-    }
-
-
-
   return;
 }
 
@@ -421,7 +405,7 @@ sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp)
 {
 
   *retp = db_value_copy (val->dbval);
-  sq_copy_val_list (val->single_tuple, &(xasl->single_tuple), true);
+  sq_copy_val_list (val->single_tuple, &(xasl->single_tuple), false);
 
   return;
 }
@@ -429,6 +413,23 @@ sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp)
 static void
 sq_free_val (sq_val * val)
 {
+  QPROC_DB_VALUE_LIST p, tmp;
+  pr_free_value (val->dbval);
+
+  if (val->single_tuple->val_cnt > 0)
+    {
+      p = val->single_tuple->valp;
+      while (p != NULL)
+	{
+	  tmp = p;
+	  p = p->next;
+
+	  pr_free_value (tmp->val);
+	  free (tmp);
+	}
+    }
+  free (val->single_tuple);
+  free (val);
 
 }
 
@@ -481,4 +482,22 @@ sq_get (xasl_node * xasl, DB_VALUE ** retp)
   sq_free_key (key);
 
   return true;
+}
+
+static int
+sq_rem_func (const void *key, void *data, void *args)
+{
+  sq_free_key ((sq_key *) key);
+  sq_free_val ((sq_val *) data);
+
+  return NO_ERROR;
+}
+
+void
+sq_cache_drop_all ()
+{
+  if (sq_cache_hashtable != NULL)
+    {
+      mht_clear (sq_cache_hashtable, sq_rem_func, NULL);
+    }
 }
