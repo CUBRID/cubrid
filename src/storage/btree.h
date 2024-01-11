@@ -205,7 +205,6 @@ struct btree_scan
   int read_keys;
   int qualified_keys;
 
-  int common_prefix;
 
   bool key_range_max_value_equal;
 
@@ -262,7 +261,6 @@ struct btree_scan
     (bts)->slot_id = NULL_SLOTID;			\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
-    (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
@@ -309,7 +307,6 @@ struct btree_scan
     (bts)->slot_id = -1;				\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
-    (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
     pr_clear_value (&(bts)->cur_key);			\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\

@@ -4221,13 +4221,6 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
   assert (pgptr != NULL);
   assert (rec != NULL);
   assert (rec->type == REC_HOME);
-  assert (bts == NULL || bts->common_prefix == -1
-	  || bts->common_prefix == btree_node_get_common_prefix (thread_p, btid, pgptr));
-
-  if (bts != NULL)
-    {
-      n_prefix = bts->common_prefix;
-    }
 
   error =
     btree_read_record_without_decompression (thread_p, btid, rec, key, rec_header, node_type, clear_key, offset,
@@ -15894,11 +15887,6 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     }
 #endif
 
-  if (first_page != bts->C_page)
-    {
-      /* reset common_prefix to recalculate */
-      bts->common_prefix = COMMON_PREFIX_UNKNOWN;
-    }
 
   /*
    * unfix first page if fix next page and move to it
