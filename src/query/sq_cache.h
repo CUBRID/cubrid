@@ -23,13 +23,14 @@
 #ifndef _SQ_CACHE_H_
 #define _SQ_CACHE_H_
 
-#include "xasl.h"
-
 #ident "$Id$"
 
-extern int sq_cache_initialize ();
-extern int sq_put (xasl_node * xasl, DB_VALUE * result);
-extern bool sq_get (xasl_node * xasl, DB_VALUE ** retp);
-extern void sq_cache_drop_all ();
+struct _sq_cache;
+
+extern int sq_cache_initialize (THREAD_ENTRY * thread_p);
+extern int sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE * result);
+extern bool sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE ** retp);
+extern void sq_cache_drop_all (THREAD_ENTRY * thread_p);
+extern void sq_cache_destroy (THREAD_ENTRY * thread_p);
 
 #endif /* _SQ_CACHE_H_ */

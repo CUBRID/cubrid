@@ -25,12 +25,20 @@
 #include <stdio.h>
 #include <string.h>
 
-
+#include "xasl.h"
 #include "xasl_predicate.hpp"
 #include "dbtype.h"
 
 
 #include "sq_cache.h"
+
+typedef struct _sq_cache
+{
+  MHT_TABLE *hashtable;
+  bool enabled;
+} sq_cache;
+
+sq_cache sq_cache_by_thread[100];
 
 typedef struct _sq_key
 {
@@ -46,8 +54,6 @@ typedef struct _sq_val
   DB_VALUE *dbval;
 } sq_val;
 
-static bool sq_cache_enabled = false;
-static MHT_TABLE *sq_cache_hashtable;
 static int sq_hm_entries = 10;
 static int sq_key_max_term = 3;
 
@@ -63,17 +69,17 @@ static void sq_add_val_to_list (DB_VALUE * dbv, VAL_LIST * list);
 static void sq_free_val (sq_val * val);
 
 int
-sq_cache_initialize ()
+sq_cache_initialize (THREAD_ENTRY * thread_p)
 {
-  int error_code = NO_ERROR;
-  sq_cache_enabled = false;
-  sq_cache_hashtable = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
-  if (!sq_cache_hashtable)
+  sq_cache *p = &sq_cache_by_thread[thread_p->index % 100];
+  assert (!p->enabled);
+  p->hashtable = mht_create ("sq_cache", sq_hm_entries, sq_hash_func, sq_cmp_func);
+  if (!p->hashtable)
     {
       return ER_FAILED;
     }
-  sq_cache_enabled = true;
-  return error_code;
+  p->enabled = true;
+  return NO_ERROR;
 }
 
 static unsigned int
@@ -434,20 +440,20 @@ sq_free_val (sq_val * val)
 }
 
 int
-sq_put (xasl_node * xasl, DB_VALUE * result)
+sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE * result)
 {
-
+  sq_cache *sq_cache = &sq_cache_by_thread[thread_p->index % 100];
   const void *ret;
-  if (!sq_cache_enabled)
+  if (sq_cache->enabled == false)
     {
-      sq_cache_initialize ();
+      sq_cache_initialize (thread_p);
     }
 
 
   sq_key *key = sq_make_key (xasl);
   sq_val *val = sq_make_val (xasl, result);
 
-  ret = mht_put_if_not_exists (sq_cache_hashtable, key, val);
+  ret = mht_put_if_not_exists (sq_cache->hashtable, key, val);
 
   if (!ret)
     {
@@ -458,18 +464,19 @@ sq_put (xasl_node * xasl, DB_VALUE * result)
 }
 
 bool
-sq_get (xasl_node * xasl, DB_VALUE ** retp)
+sq_get (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE ** retp)
 {
-  if (!sq_cache_enabled)
-    {
-      sq_cache_initialize ();
-    }
+  sq_cache *sq_cache = &sq_cache_by_thread[thread_p->index % 100];
 
+  if (sq_cache->enabled == false)
+    {
+      sq_cache_initialize (thread_p);
+    }
 
   sq_key *key = sq_make_key (xasl);
   sq_val *ret;
 
-  ret = (sq_val *) mht_get (sq_cache_hashtable, key);
+  ret = (sq_val *) mht_get (sq_cache->hashtable, key);
 
   if (ret == NULL)
     {
@@ -494,10 +501,23 @@ sq_rem_func (const void *key, void *data, void *args)
 }
 
 void
-sq_cache_drop_all ()
+sq_cache_drop_all (THREAD_ENTRY * thread_p)
 {
-  if (sq_cache_hashtable != NULL)
+  sq_cache *sq_cache = &sq_cache_by_thread[thread_p->index % 100];
+  if (sq_cache->hashtable != NULL)
     {
-      mht_clear (sq_cache_hashtable, sq_rem_func, NULL);
+      mht_clear (sq_cache->hashtable, sq_rem_func, NULL);
+    }
+}
+
+void
+sq_cache_destroy (THREAD_ENTRY * thread_p)
+{
+  sq_cache *sq_cache = &sq_cache_by_thread[thread_p->index % 100];
+  if (sq_cache && sq_cache->enabled && sq_cache->hashtable)
+    {
+      sq_cache_drop_all (thread_p);
+      mht_destroy (sq_cache->hashtable);
+      sq_cache->enabled = false;
     }
 }

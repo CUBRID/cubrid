@@ -14948,7 +14948,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
       xasl->query_in_progress = true;
       stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
       xasl->query_in_progress = false;
-      sq_cache_drop_all ();
+      sq_cache_destroy (thread_p);
 
 #if defined(SERVER_MODE)
       if (thread_is_on_trace (thread_p))

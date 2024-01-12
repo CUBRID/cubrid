@@ -3760,8 +3760,6 @@ error:
   return ER_FAILED;
 }
 
-
-
 /*
  * fetch_peek_dbval () - returns a POINTER to an existing db_value
  *   return: NO_ERROR or ER_code
@@ -3876,7 +3874,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
       if (regu_var->xasl)
 	{
-	  if (sq_get (regu_var->xasl, peek_dbval))
+	  if (sq_get (thread_p, regu_var->xasl, peek_dbval))
 	    {
 	      break;
 	    }
@@ -3888,7 +3886,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  *peek_dbval = regu_var->value.dbvalptr;
 
-	  sq_put (regu_var->xasl, *peek_dbval);
+	  sq_put (thread_p, regu_var->xasl, *peek_dbval);
 
 	}
       else
