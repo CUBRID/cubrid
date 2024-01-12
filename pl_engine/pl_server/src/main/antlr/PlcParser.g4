@@ -310,7 +310,7 @@ in_expression
 
 like_expression
     : is_null_expression                                                                # like_expression_prime
-    | like_expression NOT? LIKE pattern=quoted_string (ESCAPE escape=quoted_string)?    # like_exp
+    | like_expression NOT? LIKE pattern=concatenation (ESCAPE escape=quoted_string)?    # like_exp
     ;
 
 is_null_expression

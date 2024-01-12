@@ -564,9 +564,19 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
         if (c == null) {
             throw new SemanticError(
                     Misc.getLineColumnOf(node.target.ctx), // s213
-                    "tested expression cannot be coerced to STRING type");
+                    "tested expression cannot be coerced to a string type");
         } else {
             node.target.setCoercion(c);
+        }
+
+        TypeSpec patternType = visit(node.pattern);
+        c = Coercion.getCoercion(patternType, TypeSpecSimple.STRING_ANY);
+        if (c == null) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(node.pattern.ctx), // s232
+                    "pattern cannot be coerced to a string type");
+        } else {
+            node.pattern.setCoercion(c);
         }
 
         return TypeSpecSimple.BOOLEAN;
