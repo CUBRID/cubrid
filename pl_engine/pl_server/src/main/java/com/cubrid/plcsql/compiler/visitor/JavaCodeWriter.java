@@ -206,7 +206,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "DeclRoutine",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplDeclRoutine,
                 "%'RETURN-TYPE'%",
                 node.retType == null ? "void" : node.retType.javaCode(),
@@ -235,13 +235,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitDeclParamIn(DeclParamIn node) {
         String code = String.format("%s %s", node.typeSpec.javaCode(), node.name);
-        return new CodeTemplate("DeclParamIn", Misc.getLineColumnOf(node.ctx), code);
+        return new CodeTemplate("DeclParamIn", Misc.UNKNOWN_LINE_COLUMN, code);
     }
 
     @Override
     public CodeToResolve visitDeclParamOut(DeclParamOut node) {
         String code = String.format("%s[] %s", node.typeSpec.javaCode(), node.name);
-        return new CodeTemplate("DeclParamOut", Misc.getLineColumnOf(node.ctx), code);
+        return new CodeTemplate("DeclParamOut", Misc.UNKNOWN_LINE_COLUMN, code);
     }
 
     // -----------------------------------------------------------------
@@ -262,11 +262,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String ty = node.typeSpec.javaCode();
         if (node.val == null) {
             String code = String.format("%s[] %s = new %s[] { null };", ty, node.name, ty);
-            return new CodeTemplate("DeclVar", Misc.getLineColumnOf(node.ctx), code);
+            return new CodeTemplate("DeclVar", Misc.UNKNOWN_LINE_COLUMN, code);
         } else {
             return new CodeTemplate(
                     "DeclVar",
-                    Misc.getLineColumnOf(node.ctx),
+                    Misc.UNKNOWN_LINE_COLUMN,
                     node.notNull ? tmplNotNullVar : tmplNullableVar,
                     "%'TYPE'%",
                     ty,
@@ -294,7 +294,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "DeclConst",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 node.notNull ? tmplNotNullConst : tmplNullableConst,
                 "%'TYPE'%",
                 node.typeSpec.javaCode(),
@@ -314,7 +314,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         node.staticSql.rewritten,
                         Arrays.toString(node.paramRefCounts),
                         Arrays.toString(node.paramNumOfHostExpr));
-        return new CodeTemplate("DeclCursor", Misc.getLineColumnOf(node.ctx), code);
+        return new CodeTemplate("DeclCursor", Misc.UNKNOWN_LINE_COLUMN, code);
     }
 
     @Override
@@ -325,7 +325,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitDeclException(DeclException node) {
         String code = "class " + node.name + " extends $APP_ERROR {}";
-        return new CodeTemplate("DeclException", Misc.getLineColumnOf(node.ctx), code);
+        return new CodeTemplate("DeclException", Misc.UNKNOWN_LINE_COLUMN, code);
     }
 
     // -------------------------------------------------------------------------
@@ -416,12 +416,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         if (node.resultType.equals(TypeSpecSimple.NULL)) {
             // in this case, every branch including else-part has null as its expression.
-            tmpl = new CodeTemplate("ExprCase", Misc.getLineColumnOf(node.ctx), "null");
+            tmpl = new CodeTemplate("ExprCase", Misc.UNKNOWN_LINE_COLUMN, "null");
         } else {
             tmpl =
                     new CodeTemplate(
                             "ExprCase",
-                            Misc.getLineColumnOf(node.ctx),
+                            Misc.UNKNOWN_LINE_COLUMN,
                             tmplExprCase,
                             "%'SELECTOR-TYPE'%",
                             node.selectorType.javaCode(),
@@ -454,12 +454,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         if (node.resultType.equals(TypeSpecSimple.NULL)) {
             // in this case, every branch including else has null as its expression.
-            tmpl = new CodeTemplate("ExprCond", Misc.getLineColumnOf(node.ctx), "null");
+            tmpl = new CodeTemplate("ExprCond", Misc.UNKNOWN_LINE_COLUMN, "null");
         } else {
             tmpl =
                     new CodeTemplate(
                             "ExprCond",
-                            Misc.getLineColumnOf(node.ctx),
+                            Misc.UNKNOWN_LINE_COLUMN,
                             tmplExprCond,
                             "%'+COND-PARTS'%",
                             visitNodeList(node.condParts),
@@ -953,7 +953,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             return new CodeTemplate(
                     "ExprBinaryOp",
-                    Misc.getLineColumnOf(node.ctx),
+                    Misc.UNKNOWN_LINE_COLUMN,
                     tmplAssignNullable,
                     "%'VAR'%",
                     node.var.javaCode(),
@@ -986,7 +986,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public CodeToResolve visitStmtBasicLoop(StmtBasicLoop node) {
         return new CodeTemplate(
                 "StmtBasicLoop",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplStmtBasicLoop,
                 "%'OPT-LABEL'%",
                 node.declLabel == null ? "" : node.declLabel.javaCode(),
@@ -1018,7 +1018,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "StmtBlock",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplStmtBlock,
                 "%'+DECL-CLASS'%",
                 declClass,
@@ -1028,7 +1028,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitStmtExit(StmtExit node) {
-        return new CodeTemplate("StmtExit", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        return new CodeTemplate("StmtExit", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
     }
 
     // -------------------------------------------------------------------------
@@ -1052,7 +1052,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "StmtCase",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplStmtCase,
                 "%'SELECTOR-TYPE'%",
                 node.selectorType.javaCode(),
@@ -1089,7 +1089,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitStmtContinue(StmtContinue node) {
-        return new CodeTemplate("StmtContinue", Misc.getLineColumnOf(node.ctx), node.javaCode());
+        return new CodeTemplate("StmtContinue", Misc.UNKNOWN_LINE_COLUMN, node.javaCode());
     }
 
     // -------------------------------------------------------------------------
@@ -1514,7 +1514,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "StmtForIterLoop",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 node.reverse ? tmplStmtForIterLoopReverse : tmplStmtForIterLoop,
                 "%'LVL'%",
                 Integer.toString(node.iter.scope.level),
@@ -1675,7 +1675,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             return new CodeTemplate(
                     "StmtIf",
-                    Misc.getLineColumnOf(node.ctx),
+                    Misc.UNKNOWN_LINE_COLUMN,
                     tmplStmtIfWithoutElse,
                     "%'+COND-PARTS'%",
                     visitNodeList(node.condStmtParts).setDelimiter(" else"));
@@ -1728,7 +1728,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return Misc.isEmpty(node.args)
                 ? new CodeTemplate(
                         "StmtLocalProcCall",
-                        Misc.getLineColumnOf(node.ctx),
+                        Misc.UNKNOWN_LINE_COLUMN,
                         block + node.name + "();")
                 : new CodeTemplate(
                         "StmtLocalProcCall",
@@ -1752,7 +1752,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitStmtNull(StmtNull node) {
-        return new CodeTemplate("StmtNull", Misc.getLineColumnOf(node.ctx), ";");
+        return new CodeTemplate("StmtNull", Misc.UNKNOWN_LINE_COLUMN, ";");
     }
 
     // -------------------------------------------------------------------------
@@ -1851,11 +1851,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitStmtReturn(StmtReturn node) {
         if (node.retVal == null) {
-            return new CodeTemplate("StmtReturn", Misc.getLineColumnOf(node.ctx), "return;");
+            return new CodeTemplate("StmtReturn", Misc.UNKNOWN_LINE_COLUMN, "return;");
         } else {
             return new CodeTemplate(
                     "StmtReturn",
-                    Misc.getLineColumnOf(node.ctx),
+                    Misc.UNKNOWN_LINE_COLUMN,
                     tmplStmtReturn,
                     "%'+RETVAL'%",
                     visit(node.retVal));
@@ -1900,7 +1900,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "StmtWhileLoop",
-                Misc.getLineColumnOf(node.cond.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplStmtWhileLoop,
                 "%'OPT-LABEL'%",
                 node.declLabel == null ? "" : node.declLabel.javaCode(),
@@ -1939,7 +1939,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 ? visitNodeList(node.stmts)
                 : new CodeTemplate(
                         "Body",
-                        Misc.getLineColumnOf(node.ctx),
+                        Misc.UNKNOWN_LINE_COLUMN,
                         tmplBody,
                         "%'+STATEMENTS'%",
                         visitNodeList(node.stmts),
@@ -1978,7 +1978,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "ExHandler",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplExHandler,
                 "%'EXCEPTIONS'%",
                 sbuf.toString(),
@@ -2022,7 +2022,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "CaseExpr",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplCaseExpr,
                 "%'OP-EXTENSION'%",
                 node.opExtension,
@@ -2049,7 +2049,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "CaseStmt",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplCaseStmt,
                 "%'OP-EXTENSION'%",
                 node.opExtension,
@@ -2071,7 +2071,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "CondExpr",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplCondExpr,
                 "%'+CONDITION'%",
                 visit(node.cond),
@@ -2093,7 +2093,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "CondStmt",
-                Misc.getLineColumnOf(node.ctx),
+                Misc.UNKNOWN_LINE_COLUMN,
                 tmplCondStmt,
                 "%'+CONDITION'%",
                 visit(node.cond),
@@ -2130,7 +2130,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 ret.addElement(
                         new CodeTemplate(
                                 "duplicate cursor argument",
-                                Misc.getLineColumnOf(arg.ctx),
+                                Misc.UNKNOWN_LINE_COLUMN,
                                 tmplDupCursorArg,
                                 "%'INDEX'%",
                                 Integer.toString(i),
@@ -2201,7 +2201,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 tmpl =
                         new CodeTemplate(
                                 "to OUT",
-                                Misc.getLineColumnOf(a.ctx),
+                                Misc.UNKNOWN_LINE_COLUMN,
                                 ((ExprId) a).javaCodeForOutParam());
             } else {
                 tmpl = (CodeTemplate) visit(a);
