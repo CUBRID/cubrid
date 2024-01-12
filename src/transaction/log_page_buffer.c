@@ -1601,7 +1601,7 @@ error:
  *   hdr(in/out): Pointer where log header is to be copied
  *   log_pgptr(in/out): log page buffer ptr
  *
- * NOTE: Should be used only during boot sequence
+ * NOTE: Should be used only: during boot sequence; on a transaction server with remote storage
  */
 // *INDENT-OFF*
 int
@@ -2171,10 +2171,10 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
   log_reader lr { LOG_CS_SAFE_READER };
 
   if (log_pageid == LOGPB_HEADER_PAGE_ID)
-     {
-       // Make sure log page header is updated
-       logpb_force_flush_header_and_pages (&thread_r);
-     }
+    {
+      // Make sure log page header is updated
+      logpb_force_flush_header_and_pages (&thread_r);
+    }
 
   int error = lr.set_lsa_and_fetch_page (fetch_lsa);
 
