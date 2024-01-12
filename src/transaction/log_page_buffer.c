@@ -2197,6 +2197,11 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
   // *INDENT-ON*
 }
 
+/*
+ * Similar to logpb_request_log_page_from_page_server, but for the speical case while booting.
+ * Before the log page size is determined while booting, the page size for the header can be different
+ * than expected because the information ifself is in the log page for header.
+ */
 static int
 logpb_request_log_hdr_page_on_boot_from_page_server (LOG_PAGE * log_pgptr)
 {
