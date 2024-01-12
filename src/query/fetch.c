@@ -3874,8 +3874,9 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
       if (regu_var->xasl)
 	{
-	  if (sq_get (thread_p, regu_var->xasl, peek_dbval))
+	  if (sq_get (thread_p, regu_var->xasl, &regu_var->value.dbvalptr))
 	    {
+	      *peek_dbval = regu_var->value.dbvalptr;
 	      break;
 	    }
 

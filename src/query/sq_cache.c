@@ -296,7 +296,7 @@ sq_free_key (sq_key * keyp)
 	  tmp = p;
 	  p = p->next;
 
-	  pr_free_value (tmp->val);
+	  pr_free_ext_value (tmp->val);
 	  free (tmp);
 	}
     }
@@ -309,7 +309,7 @@ sq_free_key (sq_key * keyp)
 	  tmp = p;
 	  p = p->next;
 
-	  pr_free_value (tmp->val);
+	  pr_free_ext_value (tmp->val);
 	  free (tmp);
 	}
     }
@@ -322,7 +322,7 @@ sq_free_key (sq_key * keyp)
 	  tmp = p;
 	  p = p->next;
 
-	  pr_free_value (tmp->val);
+	  pr_free_ext_value (tmp->val);
 	  free (tmp);
 	}
     }
@@ -343,25 +343,36 @@ sq_copy_val_list (VAL_LIST * val_list_p, VAL_LIST ** new_val_list, bool alloc)
     {
       QPROC_DB_VALUE_LIST p, tmp;
       p = (*new_val_list)->valp;
-      while (p != NULL)
-	{
-	  tmp = p;
-	  p = p->next;
-
-	  pr_free_value (tmp->val);
-	  tmp->val = NULL;
-	}
       dblist2 = (*new_val_list)->valp;
       (*new_val_list)->val_cnt = 0;
       for (dblist1 = val_list_p->valp; dblist1; dblist1 = dblist1->next)
 	{
 	  if ((*new_val_list)->valp != dblist2)
 	    {
-	      dblist2->next = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
-	      dblist2 = dblist2->next;
-	      dblist2->next = 0;
+	      if (!dblist2->next)
+		{
+		  dblist2->next = (QPROC_DB_VALUE_LIST) malloc (sizeof (qproc_db_value_list));
+		  dblist2 = dblist2->next;
+		  dblist2->next = 0;
+		  dblist2->val = 0;
+		}
+	      else
+		{
+		  dblist2 = dblist2->next;
+		}
+
 	    }
-	  dblist2->val = db_value_copy (dblist1->val);
+
+	  if (dblist2->val)
+	    {
+	      db_value_clone (dblist1->val, dblist2->val);
+	    }
+	  else
+	    {
+	      dblist2->val = db_value_copy (dblist1->val);
+	    }
+
+
 	  dblist2->dom = 0;
 	  (*new_val_list)->val_cnt++;
 	}
@@ -410,8 +421,16 @@ static void
 sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp)
 {
 
-  *retp = db_value_copy (val->dbval);
-  sq_copy_val_list (val->single_tuple, &(xasl->single_tuple), false);
+  //sq_copy_val_list (val->single_tuple, &(xasl->single_tuple), false);
+
+  if (*retp)
+    {
+      db_value_clone (val->dbval, *retp);
+    }
+  else
+    {
+      *retp = db_value_copy (val->dbval);
+    }
 
   return;
 }
@@ -420,7 +439,7 @@ static void
 sq_free_val (sq_val * val)
 {
   QPROC_DB_VALUE_LIST p, tmp;
-  pr_free_value (val->dbval);
+  pr_free_ext_value (val->dbval);
 
   if (val->single_tuple->val_cnt > 0)
     {
@@ -430,7 +449,7 @@ sq_free_val (sq_val * val)
 	  tmp = p;
 	  p = p->next;
 
-	  pr_free_value (tmp->val);
+	  pr_free_ext_value (tmp->val);
 	  free (tmp);
 	}
     }
