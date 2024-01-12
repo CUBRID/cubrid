@@ -1727,9 +1727,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return Misc.isEmpty(node.args)
                 ? new CodeTemplate(
-                        "StmtLocalProcCall",
-                        Misc.UNKNOWN_LINE_COLUMN,
-                        block + node.name + "();")
+                        "StmtLocalProcCall", Misc.UNKNOWN_LINE_COLUMN, block + node.name + "();")
                 : new CodeTemplate(
                         "StmtLocalProcCall",
                         Misc.UNKNOWN_LINE_COLUMN,
@@ -2305,7 +2303,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         } else {
 
             int[] exprPlcsqlPos = exprCode.plcsqlPos;
-            exprCode.plcsqlPos = Misc.UNKNOWN_LINE_COLUMN;  // to reduce code range markers
+            exprCode.plcsqlPos = Misc.UNKNOWN_LINE_COLUMN; // to reduce code range markers
 
             if (c instanceof Coercion.Cast) {
                 Coercion.Cast cast = (Coercion.Cast) c;
@@ -2567,7 +2565,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         boolean resolved;
 
-        int[] plcsqlPos;    // not final: can be cleared later
+        int[] plcsqlPos; // not final: can be cleared later
 
         final String astNode;
         final String[] template;
@@ -2641,10 +2639,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             // does not change
             // once this method is done for the AST node.
 
-            boolean markCodeRange = plcsqlPos[0] > 0;   // line > 0
+            boolean markCodeRange = plcsqlPos[0] > 0; // line > 0
             if (markCodeRange) {
                 codeRangeMarkers.append(
-                        String.format(" (%d,%d,%d", codeLines.size() + 1, plcsqlPos[0], plcsqlPos[1]));
+                        String.format(
+                                " (%d,%d,%d", codeLines.size() + 1, plcsqlPos[0], plcsqlPos[1]));
             }
 
             for (String line : template) {
