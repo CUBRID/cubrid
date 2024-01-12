@@ -2100,7 +2100,7 @@ logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_p
   std::string response_message;
   int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_LOG_PAGE_FETCH,
 					std::move (request_message), response_message);
-  // there are two layers of errors to he handled here:
+  // there are two layers of errors to be handled here:
   //  - client side communication to page server error
   //  - page server side errors
 
@@ -2198,9 +2198,9 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
 }
 
 /*
- * Similar to logpb_request_log_page_from_page_server, but for the speical case while booting.
+ * Similar to logpb_request_log_page_from_page_server, but for the special case while booting.
  * Before the log page size is determined while booting, the page size for the header can be different
- * than expected because the information ifself is in the log page for header.
+ * than expected because the information itself is in the log header page.
  */
 static int
 logpb_request_log_hdr_page_on_boot_from_page_server (LOG_PAGE * log_pgptr)
@@ -2216,7 +2216,7 @@ logpb_request_log_hdr_page_on_boot_from_page_server (LOG_PAGE * log_pgptr)
   std::string response_message;
   int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_LOG_HDR_PAGE_FETCH_ON_BOOT,
 					"", response_message);
-  // there are two layers of errors to he handled here:
+  // there are two layers of errors to be handled here:
   //  - client side communication to page server error
   //  - page server side errors
 
