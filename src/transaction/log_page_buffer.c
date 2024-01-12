@@ -2205,7 +2205,9 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
 static int
 logpb_request_log_hdr_page_on_boot_from_page_server (LOG_PAGE * log_pgptr)
 {
-  assert (log_Gl.rcv_phase != LOG_RESTARTED);	// on boot
+  // On boot Only; It can be used in other cases, but logpb_request_log_page_from_page_server is
+  // better since that costs less. 
+  assert (log_Gl.rcv_phase != LOG_RESTARTED);
 
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
   if (perform_logging)
