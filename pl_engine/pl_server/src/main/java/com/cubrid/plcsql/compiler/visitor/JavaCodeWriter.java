@@ -1732,7 +1732,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         block + node.name + "();")
                 : new CodeTemplate(
                         "StmtLocalProcCall",
-                        Misc.getLineColumnOf(node.ctx),
+                        Misc.UNKNOWN_LINE_COLUMN,
                         tmplStmtLocalProcCall,
                         "%'BLOCK'%",
                         block,
@@ -2022,7 +2022,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "CaseExpr",
-                Misc.UNKNOWN_LINE_COLUMN,
+                Misc.getLineColumnOf(node.ctx),
                 tmplCaseExpr,
                 "%'OP-EXTENSION'%",
                 node.opExtension,
@@ -2049,7 +2049,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "CaseStmt",
-                Misc.UNKNOWN_LINE_COLUMN,
+                Misc.getLineColumnOf(node.ctx),
                 tmplCaseStmt,
                 "%'OP-EXTENSION'%",
                 node.opExtension,
