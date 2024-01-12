@@ -2302,54 +2302,60 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         if (c == null || c instanceof Coercion.Identity) {
             return exprCode;
-        } else if (c instanceof Coercion.Cast) {
-            Coercion.Cast cast = (Coercion.Cast) c;
-            return new CodeTemplate(
-                    "cast coercion",
-                    Misc.UNKNOWN_LINE_COLUMN,
-                    tmplCastCoercion,
-                    "%'TYPE'%",
-                    cast.dst.javaCode(),
-                    "%'+EXPR'%",
-                    exprCode);
-        } else if (c instanceof Coercion.Conversion) {
-            Coercion.Conversion conv = (Coercion.Conversion) c;
-            return new CodeTemplate(
-                    "conversion coercion",
-                    Misc.UNKNOWN_LINE_COLUMN,
-                    tmplConvCoercion,
-                    "%'SRC-TYPE'%",
-                    conv.src.plcName,
-                    "%'DST-TYPE'%",
-                    conv.dst.plcName,
-                    "%'+EXPR'%",
-                    exprCode);
-        } else if (c instanceof Coercion.CoerceAndCheckPrecision) {
-            Coercion.CoerceAndCheckPrecision checkPrec = (Coercion.CoerceAndCheckPrecision) c;
-            return new CodeTemplate(
-                    "coerce and check precision",
-                    Misc.UNKNOWN_LINE_COLUMN,
-                    tmplCoerceAndCheckPrec,
-                    "%'PREC'%",
-                    Integer.toString(checkPrec.prec),
-                    "%'SCALE'%",
-                    Short.toString(checkPrec.scale),
-                    "%'+EXPR'%",
-                    applyCoercion(checkPrec.c, exprCode));
-        } else if (c instanceof Coercion.CoerceAndCheckStrLength) {
-            Coercion.CoerceAndCheckStrLength checkStrLen = (Coercion.CoerceAndCheckStrLength) c;
-            return new CodeTemplate(
-                    "coerce and check precision",
-                    Misc.UNKNOWN_LINE_COLUMN,
-                    tmplCoerceAndCheckStrLength,
-                    "%'IS-CHAR'%",
-                    checkStrLen.isChar ? "true" : "false",
-                    "%'LENGTH'%",
-                    "" + checkStrLen.length,
-                    "%'+EXPR'%",
-                    applyCoercion(checkStrLen.c, exprCode));
         } else {
-            throw new RuntimeException("unreachable");
+
+            int[] exprPlcsqlPos = exprCode.plcsqlPos;
+            exprCode.plcsqlPos = Misc.UNKNOWN_LINE_COLUMN;  // to reduce code range markers
+
+            if (c instanceof Coercion.Cast) {
+                Coercion.Cast cast = (Coercion.Cast) c;
+                return new CodeTemplate(
+                        "cast coercion",
+                        exprPlcsqlPos,
+                        tmplCastCoercion,
+                        "%'TYPE'%",
+                        cast.dst.javaCode(),
+                        "%'+EXPR'%",
+                        exprCode);
+            } else if (c instanceof Coercion.Conversion) {
+                Coercion.Conversion conv = (Coercion.Conversion) c;
+                return new CodeTemplate(
+                        "conversion coercion",
+                        exprPlcsqlPos,
+                        tmplConvCoercion,
+                        "%'SRC-TYPE'%",
+                        conv.src.plcName,
+                        "%'DST-TYPE'%",
+                        conv.dst.plcName,
+                        "%'+EXPR'%",
+                        exprCode);
+            } else if (c instanceof Coercion.CoerceAndCheckPrecision) {
+                Coercion.CoerceAndCheckPrecision checkPrec = (Coercion.CoerceAndCheckPrecision) c;
+                return new CodeTemplate(
+                        "coerce and check precision",
+                        exprPlcsqlPos,
+                        tmplCoerceAndCheckPrec,
+                        "%'PREC'%",
+                        Integer.toString(checkPrec.prec),
+                        "%'SCALE'%",
+                        Short.toString(checkPrec.scale),
+                        "%'+EXPR'%",
+                        applyCoercion(checkPrec.c, exprCode));
+            } else if (c instanceof Coercion.CoerceAndCheckStrLength) {
+                Coercion.CoerceAndCheckStrLength checkStrLen = (Coercion.CoerceAndCheckStrLength) c;
+                return new CodeTemplate(
+                        "coerce and check precision",
+                        exprPlcsqlPos,
+                        tmplCoerceAndCheckStrLength,
+                        "%'IS-CHAR'%",
+                        checkStrLen.isChar ? "true" : "false",
+                        "%'LENGTH'%",
+                        "" + checkStrLen.length,
+                        "%'+EXPR'%",
+                        applyCoercion(checkStrLen.c, exprCode));
+            } else {
+                throw new RuntimeException("unreachable");
+            }
         }
     }
 
@@ -2561,8 +2567,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         boolean resolved;
 
+        int[] plcsqlPos;    // not final: can be cleared later
+
         final String astNode;
-        final String plcsqlLineColumn;
         final String[] template;
         final LinkedHashMap<String, Object> substitutions = new LinkedHashMap<>();
         // key (String) - template hole name
@@ -2578,19 +2585,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             assert template != null;
 
             this.astNode = astNode;
+            this.plcsqlPos = plcsqlPos;
 
             int plcsqlLine = plcsqlPos[0];
             int plcsqlColumn = plcsqlPos[1];
 
-            // used: plcsqlLineColumn, template, substitutions
             if (plcsqlLine < 0 && plcsqlColumn < 0) {
-                this.plcsqlLineColumn = null; // do not mark code range in this case
+                // OK
             } else {
                 assert plcsqlLine > 0 && plcsqlColumn > 0
                         : String.format(
                                 "%s - line and column numbers of code templates must be positive integers: (%d, %d)",
                                 astNode, plcsqlLine, plcsqlColumn);
-                this.plcsqlLineColumn = String.format("%d,%d", plcsqlLine, plcsqlColumn);
             }
 
             for (String s : template) {
@@ -2635,10 +2641,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             // does not change
             // once this method is done for the AST node.
 
-            boolean markCodeRange = plcsqlLineColumn != null;
+            boolean markCodeRange = plcsqlPos[0] > 0;   // line > 0
             if (markCodeRange) {
                 codeRangeMarkers.append(
-                        String.format(" (%d,%s", codeLines.size() + 1, plcsqlLineColumn));
+                        String.format(" (%d,%d,%d", codeLines.size() + 1, plcsqlPos[0], plcsqlPos[1]));
             }
 
             for (String line : template) {
