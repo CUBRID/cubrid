@@ -746,12 +746,13 @@ exit:
     if (dot_cnt == 2) // with owner name
       {
 	split_str (name, prev, cur, owner_name);
+	owner_name += ".";
       }
 
     split_str (name, prev, cur, class_name);
     split_str (name, prev, cur, attr_name);
 
-    std::string class_name_with_owner = owner_name + "." + class_name;
+    std::string class_name_with_owner = owner_name + class_name;
     char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
     sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH);
 
