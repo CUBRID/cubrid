@@ -266,7 +266,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         } else {
             return new CodeTemplate(
                     "DeclVar",
-                    Misc.UNKNOWN_LINE_COLUMN,
+                    node.notNull ? Misc.getLineColumnOf(node.ctx) : Misc.UNKNOWN_LINE_COLUMN,
                     node.notNull ? tmplNotNullVar : tmplNullableVar,
                     "%'TYPE'%",
                     ty,
@@ -294,7 +294,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "DeclConst",
-                Misc.UNKNOWN_LINE_COLUMN,
+                node.notNull ? Misc.getLineColumnOf(node.ctx) : Misc.UNKNOWN_LINE_COLUMN,
                 node.notNull ? tmplNotNullConst : tmplNullableConst,
                 "%'TYPE'%",
                 node.typeSpec.javaCode(),
@@ -1052,7 +1052,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "StmtCase",
-                Misc.UNKNOWN_LINE_COLUMN,
+                Misc.getLineColumnOf(node.ctx),
                 tmplStmtCase,
                 "%'SELECTOR-TYPE'%",
                 node.selectorType.javaCode(),
@@ -1514,7 +1514,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         return new CodeTemplate(
                 "StmtForIterLoop",
-                Misc.UNKNOWN_LINE_COLUMN,
+                Misc.getLineColumnOf(node.ctx),
                 node.reverse ? tmplStmtForIterLoopReverse : tmplStmtForIterLoop,
                 "%'LVL'%",
                 Integer.toString(node.iter.scope.level),
