@@ -517,7 +517,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public Expr visitLike_exp(Like_expContext ctx) {
 
         Expr target = visitExpression(ctx.like_expression());
-        ExprStr pattern = visitQuoted_string(ctx.pattern);
+        Expr pattern = visitExpression(ctx.pattern);
         ExprStr escape = ctx.escape == null ? null : visitQuoted_string(ctx.escape);
 
         if (escape != null) {

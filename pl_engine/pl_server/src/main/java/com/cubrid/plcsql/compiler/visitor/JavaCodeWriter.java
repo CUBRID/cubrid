@@ -648,7 +648,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     //
 
     private static String[] tmplExprLike =
-            new String[] {"opLike(", "  %'+TARGET'%,", "  %'PATTERN'%,", "  %'ESCAPE'%", ")"};
+            new String[] {"opLike(", "  %'+TARGET'%,", "  %'+PATTERN'%,", "  %'ESCAPE'%", ")"};
 
     @Override
     public CodeToResolve visitExprLike(ExprLike node) {
@@ -660,8 +660,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         tmplExprLike,
                         "%'+TARGET'%",
                         visit(node.target),
-                        "%'PATTERN'%",
-                        node.pattern.javaCode(),
+                        "%'+PATTERN'%",
+                        visit(node.pattern),
                         "%'ESCAPE'%",
                         node.escape == null ? "null" : node.escape.javaCode());
 
