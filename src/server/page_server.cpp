@@ -103,8 +103,8 @@ page_server::tran_server_connection_handler::tran_server_connection_handler (cub
       std::bind (&page_server::tran_server_connection_handler::receive_log_page_fetch, std::ref (*this), std::placeholders::_1)
     },
     {
-      tran_to_page_request::SEND_LOG_HDR_PAGE_FETCH,
-      std::bind (&page_server::tran_server_connection_handler::receive_log_hdr_page_fetch, std::ref (*this), std::placeholders::_1)
+      tran_to_page_request::SEND_LOG_HDR_PAGE_FETCH_ON_BOOT,
+      std::bind (&page_server::tran_server_connection_handler::receive_log_hdr_page_fetch_on_boot, std::ref (*this), std::placeholders::_1)
     },
     {
       tran_to_page_request::SEND_DATA_PAGE_FETCH,
@@ -204,9 +204,10 @@ page_server::tran_server_connection_handler::receive_log_page_fetch (tran_server
 }
 
 void
-page_server::tran_server_connection_handler::receive_log_hdr_page_fetch (tran_server_conn_t::sequenced_payload &&a_sp)
+page_server::tran_server_connection_handler::receive_log_hdr_page_fetch_on_boot (tran_server_conn_t::sequenced_payload
+    &&a_sp)
 {
-  push_async_response (logpb_respond_fetch_log_hdr_page_request, std::move (a_sp));
+  push_async_response (logpb_respond_fetch_log_hdr_page_on_boot_request, std::move (a_sp));
 }
 
 void

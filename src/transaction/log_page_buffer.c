@@ -376,7 +376,7 @@ static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE 
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
 static int logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr);
-static int logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr);
+static int logpb_request_log_hdr_page_on_boot_from_page_server (LOG_PAGE * log_pgptr);
 
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
@@ -1601,6 +1601,7 @@ error:
  *   hdr(in/out): Pointer where log header is to be copied
  *   log_pgptr(in/out): log page buffer ptr
  *
+ * NOTE: Should be used only during boot sequence
  */
 // *INDENT-OFF*
 int
@@ -1608,7 +1609,7 @@ logpb_fetch_header_from_page_server (LOG_HEADER * hdr, LOG_PAGE * log_pgptr)
 {
   assert (is_tran_server_with_remote_storage ());
 
-  int err = logpb_request_log_hdr_page_from_page_server (log_pgptr);
+  int err = logpb_request_log_hdr_page_on_boot_from_page_server (log_pgptr);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2088,9 +2089,6 @@ exit:
 static int
 logpb_request_log_page_from_page_server (LOG_PAGEID log_pageid, LOG_PAGE * log_pgptr)
 {
-  // LOGPB_HEADER_PAGE_ID should come through logpb_request_log_hdr_page_from_page_server
-  assert (log_pageid != LOGPB_HEADER_PAGE_ID);
-
   std::string request_message;
   request_message.append (reinterpret_cast < const char *>(&log_pageid), sizeof (log_pageid));
 
@@ -2172,8 +2170,11 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
   log_lsa fetch_lsa { log_pageid, 0 };
   log_reader lr { LOG_CS_SAFE_READER };
 
-  // LOGPB_HEADER_PAGE_ID should come through logpb_respond_fetch_log_hdr_page_request
-  assert (log_pageid != LOGPB_HEADER_PAGE_ID);
+  if (log_pageid == LOGPB_HEADER_PAGE_ID)
+     {
+       // Make sure log page header is updated
+       logpb_force_flush_header_and_pages (&thread_r);
+     }
 
   int error = lr.set_lsa_and_fetch_page (fetch_lsa);
 
@@ -2197,8 +2198,10 @@ logpb_respond_fetch_log_page_request (THREAD_ENTRY &thread_r, std::string &paylo
 }
 
 static int
-logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
+logpb_request_log_hdr_page_on_boot_from_page_server (LOG_PAGE * log_pgptr)
 {
+  assert (log_Gl.rcv_phase != LOG_RESTARTED);	// on boot
+
   const bool perform_logging = prm_get_bool_value (PRM_ID_ER_LOG_READ_LOG_PAGE);
   if (perform_logging)
     {
@@ -2206,7 +2209,7 @@ logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
 		     LOGPB_HEADER_PAGE_ID);
     }
   std::string response_message;
-  int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_LOG_HDR_PAGE_FETCH,
+  int error_code = ts_Gl->send_receive (tran_to_page_request::SEND_LOG_HDR_PAGE_FETCH_ON_BOOT,
 					"", response_message);
   // there are two layers of errors to he handled here:
   //  - client side communication to page server error
@@ -2272,7 +2275,7 @@ logpb_request_log_hdr_page_from_page_server (LOG_PAGE * log_pgptr)
 }
 
 void
-logpb_respond_fetch_log_hdr_page_request (THREAD_ENTRY & thread_r, std::string & payload_in_out)
+logpb_respond_fetch_log_hdr_page_on_boot_request (THREAD_ENTRY & thread_r, std::string & payload_in_out)
 {
   assert (is_page_server ());
 

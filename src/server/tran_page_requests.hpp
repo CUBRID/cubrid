@@ -27,7 +27,7 @@ enum class tran_to_page_request
   // Common
   GET_BOOT_INFO,
   SEND_LOG_PAGE_FETCH,
-  SEND_LOG_HDR_PAGE_FETCH,
+  SEND_LOG_HDR_PAGE_FETCH_ON_BOOT,
   SEND_DATA_PAGE_FETCH,
   SEND_DISCONNECT_MSG, /* response-less */
 
