@@ -5250,7 +5250,7 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 	}
     }
 
-  xlock_dump (thread_p, outfile, 0 /* is_contention */ );
+  xlock_dump (thread_p, outfile, 0/* is_contention */);
 }
 #endif /* SERVER_MODE */
 
@@ -8456,7 +8456,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   int old_wait_msecs = 0;	/* Old transaction lock wait */
   int tran_index;
   LK_RES *res_ptr;
-  int num_locked, num_alloc, size_alloc;
+  int num_locked, num_entry_alloc, num_resource_alloc, size_alloc;
   float lock_timeout_sec;
   char lock_timeout_string[64];
 
@@ -8518,24 +8518,25 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
 
   /* compute number of lock res entries */
   num_locked = (int) lk_Gl.m_obj_hash_table.get_element_count ();
-  num_alloc = (int) lk_Gl.obj_free_entry_list.alloc_cnt;
-  size_alloc = num_alloc * sizeof (LK_ENTRY);
+  num_resource_alloc = (int) lk_Gl.m_obj_hash_table.get_alloc_element_count ();
+  num_entry_alloc = (int) lk_Gl.obj_free_entry_list.alloc_cnt;
+  size_alloc = (num_entry_alloc * sizeof (LK_ENTRY)) + (num_resource_alloc * sizeof (LK_RES));
 
   /* dump object lock table */
   fprintf (outfp, "Object Lock Table:\n");
   fprintf (outfp, "\tCurrent number of objects which are locked    = %d\n", num_locked);
-  fprintf (outfp, "\tCurrent number of objects which are allocated = %d\n", num_alloc);
+  fprintf (outfp, "\tCurrent number of objects which are allocated = %d\n", num_resource_alloc);
   if (size_alloc < 1024)
     {
       fprintf (outfp, "\tCurrent size of objects which are allocated = %d\n\n", size_alloc);
     }
   else if (size_alloc >= 1024 && size_alloc < 1048576)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %dK\n\n", size_alloc / 1024);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %dK\n\n", size_alloc/1024);
     }
   else
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %dM\n\n", size_alloc / 1024 / 1024);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %dM\n\n", size_alloc/1024/1024);
     }
 
   // *INDENT-OFF*
@@ -8543,8 +8544,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   // *INDENT-ON*
   for (res_ptr = iterator.iterate (); res_ptr != NULL; res_ptr = iterator.iterate ())
     {
-      if (!is_contention || (res_ptr->holder != NULL && res_ptr->holder->blocked_mode != NULL_LOCK)
-	  || res_ptr->waiter != NULL)
+      if (!is_contention || (res_ptr->holder != NULL && res_ptr->holder->blocked_mode != NULL_LOCK) || res_ptr->waiter != NULL)
 	{
 	  lock_dump_resource (thread_p, outfp, res_ptr);
 	}
