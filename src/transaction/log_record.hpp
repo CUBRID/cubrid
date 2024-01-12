@@ -467,6 +467,15 @@ struct log_rec_repl_ddl_lock_info
   OID oid;
   OID classoid;
   LOCK lock_mode;
+
+  // *INDENT-OFF*
+  log_rec_repl_ddl_lock_info () {};
+  log_rec_repl_ddl_lock_info (OID oid, OID classoid, LOCK lock_mode)
+    : oid (oid), classoid (classoid), lock_mode (lock_mode) {};
+  log_rec_repl_ddl_lock_info (const log_rec_repl_ddl_lock_info &other)
+    : oid (other.oid), classoid (other.classoid), lock_mode (other.lock_mode) {};
+  log_rec_repl_ddl_lock_info (log_rec_repl_ddl_lock_info &&other) = delete;
+  // *INDENT-ON*
 };
 
 #define LOG_GET_LOG_RECORD_HEADER(log_page_p, lsa) \

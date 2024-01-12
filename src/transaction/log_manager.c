@@ -3495,6 +3495,8 @@ log_pack_log_boot_info (THREAD_ENTRY &thread_r, std::string &payload_in_out,
     payload_in_out.append(reinterpret_cast<const char *> (&most_recent_trantable_snapshot_lsa),
 			  sizeof (log_lsa));
 
+    payload_in_out.append (reinterpret_cast<const char *> (oid_Root_class_oid), sizeof (OID));
+
     // within the same locks, initialize log prior dispatch to the newly connected passive transaction server
     (void) log_Gl.get_log_prior_sender ().add_sink (log_prior_sender_sink);
     // TODO: in the future, this needs to be made explicit:

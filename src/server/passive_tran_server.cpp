@@ -18,6 +18,7 @@
 
 #include "log_impl.h"
 #include "log_replication_atomic.hpp"
+#include "oid.h"
 #include "passive_tran_server.hpp"
 #include "server_type.hpp"
 #include "system_parameter.h"
@@ -88,6 +89,7 @@ passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
     log_lsa &most_recent_trantable_snapshot_lsa)
 {
   std::string log_boot_info;
+  OID root_class_oid = OID_INITIALIZER;
 
   const int error_code = send_receive (tran_to_page_request::SEND_LOG_BOOT_INFO_FETCH, std::string (),
 				       log_boot_info);
@@ -123,6 +125,11 @@ passive_tran_server::send_and_receive_log_boot_info (THREAD_ENTRY *thread_p,
 	       message_buf, sizeof (log_lsa));
   message_buf += sizeof (log_lsa);
 
+  std::memcpy (reinterpret_cast<char *> (&root_class_oid), message_buf, sizeof (OID));
+  message_buf += sizeof (OID);
+
+  oid_set_root (&root_class_oid);
+
   // safe-guard that the entire message has been consumed
   assert (message_buf == log_boot_info.c_str () + log_boot_info.size ());
 
@@ -145,9 +152,11 @@ void passive_tran_server::start_log_replicator (const log_lsa &start_lsa, const 
 {
   assert (m_replicator == nullptr);
 
+  gather_ddl_tran_list ();
   // passive transaction server executes replication synchronously, for the time being, due to complexity of
   // executing it in parallel while also providing a consistent view of the data
-  m_replicator.reset (new cublog::atomic_replicator (start_lsa, prev_lsa, TT_REPLICATION_PTS));
+  m_replicator.reset (new cublog::atomic_replicator (start_lsa, prev_lsa, TT_REPLICATION_PTS, m_ddl_tran_list));
+  m_replicator->initialize();
 }
 
 void passive_tran_server::send_and_receive_stop_log_prior_dispatch ()
@@ -231,4 +240,28 @@ passive_tran_server::connection_handler::receive_log_prior_list (page_server_con
 {
   std::string message = a_sp.pull_payload ();
   log_Gl.get_log_prior_receiver ().push_message (std::move (message));
+}
+
+void
+passive_tran_server::gather_ddl_tran_list ()
+{
+  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      if (i == LOG_SYSTEM_TRAN_INDEX)
+	{
+	  continue;
+	}
+
+      auto tdes = LOG_FIND_TDES (i);
+      if (tdes == nullptr)
+	{
+	  assert (false);
+	  continue;
+	}
+
+      if (tdes->is_ddl_replicated())
+	{
+	  m_ddl_tran_list.emplace (tdes->trid, tdes->ddl_repl_info_vec);
+	}
+    }
 }

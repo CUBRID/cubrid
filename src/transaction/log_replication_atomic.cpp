@@ -31,10 +31,12 @@ namespace cublog
 {
 
   atomic_replicator::atomic_replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa,
-					thread_type replication_thread_type)
+					thread_type replication_thread_type,
+					const std::unordered_map<TRANID, std::vector<log_rec_repl_ddl_lock_info>> &ddl_lock_info)
     : replicator (start_redo_lsa, OLD_PAGE_IF_IN_BUFFER_OR_IN_TRANSIT, 0, replication_thread_type)
     , m_processed_lsa { prev_redo_lsa }
     , m_lowest_unapplied_lsa { start_redo_lsa }
+    , m_ddl_lock_info { ddl_lock_info }
   {
 
   }
@@ -48,6 +50,13 @@ namespace cublog
      */
 
     cleanup_lock_resources_for_ddl ();
+  }
+
+  void
+  atomic_replicator::initialize ()
+  {
+    acquire_locks_before_replicate ();
+    replicator::initialize ();
   }
 
   void
@@ -174,6 +183,11 @@ namespace cublog
 
 	    const bool locked_classes_exist = m_locked_classes.count (header.trid) > 0;
 	    const bool locked_serials_exist = m_locked_serials.count (header.trid) > 0;
+
+	    if (locked_classes_exist)
+	      {
+		update_classname_cache_for_ddl (thread_entry, header.trid);
+	      }
 
 	    if (locked_classes_exist || locked_serials_exist)
 	      {
@@ -556,6 +570,16 @@ namespace cublog
       }
   }
 
+  void
+  atomic_replicator::update_classname_cache_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
+  {
+    auto [begin, end] = m_locked_classes.equal_range (trid);
+    for (auto it = begin; it != end; ++it)
+      {
+	update_classname_cache_for_ddl (thread_entry, &it->second.oid);
+      }
+  }
+
   bool
   atomic_replicator::is_locked_for_ddl (const TRANID trid, const OID *oid, const bool is_class) const
   {
@@ -579,5 +603,26 @@ namespace cublog
   {
     cubthread::entry &thread_entry = cubthread::get_entry ();
     lock_unlock_all (&thread_entry);
+  }
+
+  void
+  atomic_replicator::acquire_locks_before_replicate ()
+  {
+    cubthread::entry &thread_entry = cubthread::get_entry ();
+
+    for (auto &it : m_ddl_lock_info)
+      {
+	auto trid = it.first;
+	for (auto &lock_info : it.second)
+	  {
+	    const bool is_class = OID_IS_ROOTOID (&lock_info.classoid);
+	    acquire_lock_for_ddl (thread_entry, trid, lock_info, is_class);
+
+	    if (is_class)
+	      {
+		bookkeep_classname_for_ddl (thread_entry, &lock_info.oid);
+	      }
+	  }
+      }
   }
 }

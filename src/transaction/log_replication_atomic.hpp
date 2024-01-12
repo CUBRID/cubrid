@@ -70,7 +70,9 @@ namespace cublog
     public:
       atomic_replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa,
 			 thread_type replication_thread_type);
-
+      atomic_replicator (const log_lsa &start_redo_lsa, const log_lsa &prev_redo_lsa,
+			 thread_type replication_thread_type,
+			 const std::unordered_map<TRANID, std::vector<log_rec_repl_ddl_lock_info>> &ddl_lock_info);
       atomic_replicator (const atomic_replicator &) = delete;
       atomic_replicator (atomic_replicator &&) = delete;
 
@@ -83,6 +85,7 @@ namespace cublog
       log_lsa get_highest_processed_lsa () const;
       /* return the lowest value lsa that was not applied, the next in line lsa */
       log_lsa get_lowest_unapplied_lsa () const;
+      void initialize () override;
     private:
       void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa) override;
       template <typename T>
@@ -95,6 +98,7 @@ namespace cublog
        * Make seperate class for ddl_replication_helper */
       void bookkeep_classname_for_ddl (cubthread::entry &thread_entry, const OID *classoid);
       void update_classname_cache_for_ddl (cubthread::entry &thread_entry, const OID *classoid);
+      void update_classname_cache_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
 
       void release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
       void acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const LOG_REC_REPL_DDL_LOCK_INFO &log_rec,
@@ -103,6 +107,7 @@ namespace cublog
       bool is_locked_for_ddl (const TRANID trid, const OID *oid, const bool is_class) const;
       void cleanup_lock_resources_for_ddl ();
 
+      void acquire_locks_before_replicate ();
     private:
       atomic_replication_helper m_atomic_helper;
 
@@ -118,6 +123,8 @@ namespace cublog
       std::multimap <TRANID, LOG_REC_REPL_DDL_LOCK_INFO> m_locked_classes;
       std::multimap <TRANID, LOG_REC_REPL_DDL_LOCK_INFO> m_locked_serials;
       std::unordered_map <OID, std::string> m_classname_map;
+
+      std::unordered_map <TRANID, std::vector<log_rec_repl_ddl_lock_info>> m_ddl_lock_info;
   };
 }
 

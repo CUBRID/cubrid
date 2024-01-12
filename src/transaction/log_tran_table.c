@@ -6294,8 +6294,7 @@ log_tdes::add_ddl_lock_info (const OID * class_oid, const OID * oid, LOCK lock_m
   assert (class_oid != NULL);
   assert (oid != NULL);
   assert (lock_mode == SCH_M_LOCK || lock_mode == X_LOCK);
-  
-  log_ddl_repl_info ddl_repl_info = {lock_mode, *class_oid, *oid};
-  ddl_repl_info_vec.push_back (ddl_repl_info);
+
+  ddl_repl_info_vec.emplace_back (*oid, *class_oid, lock_mode);
 }
 // *INDENT-ON*

@@ -72,6 +72,8 @@ static int log_rv_analysis_sysop_start_postpone (THREAD_ENTRY * thread_p, int tr
 static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa);
 static int log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
 					    LOG_PAGE * log_page_p, log_recovery_context & context);
+static int log_rv_analysis_repl_ddl_lock_info (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa,
+					       LOG_PAGE * log_page_p);
 static void log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES * tdes);
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				     LOG_LSA * prev_lsa, log_recovery_context & context);
@@ -1775,6 +1777,33 @@ log_rv_analysis_assigned_mvccid (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA *
   return NO_ERROR;
 }
 
+static int
+log_rv_analysis_repl_ddl_lock_info (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  if (!is_passive_transaction_server ())
+    {
+      /* This record is only used on PTS. */
+      return NO_ERROR;
+    }
+
+  LOG_TDES *tdes = logtb_rv_find_allocate_tran_index (thread_p, tran_id, log_lsa);
+  if (tdes == nullptr)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rv_analysis_sysop_start_postpone");
+      return ER_FAILED;
+    }
+
+  // move read pointer past the log header which is actually read upper in the stack
+  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
+  // align to read the specific record info
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REPL_DDL_LOCK_INFO), log_lsa, log_page_p);
+  auto rec = (const LOG_REC_REPL_DDL_LOCK_INFO *) (log_page_p->area + log_lsa->offset);
+
+  tdes->add_ddl_lock_info (&rec->classoid, &rec->oid, rec->lock_mode);
+
+  return NO_ERROR;
+}
+
 static void
 log_rv_analysis_complete_mvccid (int tran_index, const LOG_TDES * tdes)
 {
@@ -1870,6 +1899,8 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 	  LOG_TDES *const tdes = LOG_FIND_TDES (tran_index);
 	  // newer quick fix on top of older quick fix: mark the mvccid as completed
 	  log_rv_analysis_complete_mvccid (tran_index, tdes);
+
+	  tdes->ddl_repl_info_vec.clear ();
 
 	  // quick fix: reset mvccid.
 	  tdes->mvccinfo.id = MVCCID_NULL;
@@ -2553,6 +2584,10 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY * thread_p, LOG_RECTYPE log_
       (void) log_rv_analysis_assigned_mvccid (thread_p, tran_id, log_lsa, log_page_p, context);
       break;
 
+    case LOG_REPL_DDL_LOCK_INFO:
+      (void) log_rv_analysis_repl_ddl_lock_info (thread_p, tran_id, log_lsa, log_page_p);
+      break;
+
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
@@ -2563,7 +2598,6 @@ log_rv_analysis_record_on_tran_server (THREAD_ENTRY * thread_p, LOG_RECTYPE log_
     case LOG_START_ATOMIC_REPL:
     case LOG_END_ATOMIC_REPL:
     case LOG_TRANTABLE_SNAPSHOT:
-    case LOG_REPL_DDL_LOCK_INFO:
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:

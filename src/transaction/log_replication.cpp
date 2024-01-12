@@ -76,6 +76,7 @@ namespace cublog
     , m_perfmon_redo_sync { PSTAT_REDO_REPL_LOG_REDO_SYNC }
     , m_most_recent_trantable_snapshot_lsa { NULL_LSA }
     , m_perf_stat_idle { cublog::perf_stats::do_not_record_t {} }
+    , m_replication_thread_type { replication_thread_type }
   {
     // depending on parameter, instantiate the mechanism to execute replication in parallel
     // mandatory to initialize before daemon such that:
@@ -97,7 +98,26 @@ namespace cublog
       {
 	m_replicator_mvccid = std::make_unique<replicator_mvcc> ();
       }
+  }
 
+  replicator::~replicator ()
+  {
+    cubthread::get_manager ()->destroy_daemon (m_daemon);
+
+    if (m_parallel_replication_redo != nullptr)
+      {
+	m_parallel_replication_redo.reset (nullptr);
+      }
+
+    if (m_replicate_mvcc)
+      {
+	m_replicator_mvccid.reset (nullptr);
+      }
+  }
+
+  void
+  replicator::create_replication_thread (thread_type replication_thread_type)
+  {
     // Create the daemon
     cubthread::looper loop (std::chrono::milliseconds (1));   // don't spin when there is no new log, wait a bit
     auto func_exec = std::bind (&replicator::redo_upto_nxio_lsa, std::ref (*this), std::placeholders::_1);
@@ -116,19 +136,10 @@ namespace cublog
 	       m_daemon_context_manager.get ());
   }
 
-  replicator::~replicator ()
+  void
+  replicator::initialize ()
   {
-    cubthread::get_manager ()->destroy_daemon (m_daemon);
-
-    if (m_parallel_replication_redo != nullptr)
-      {
-	m_parallel_replication_redo.reset (nullptr);
-      }
-
-    if (m_replicate_mvcc)
-      {
-	m_replicator_mvccid.reset (nullptr);
-      }
+    create_replication_thread (m_replication_thread_type);
   }
 
   void

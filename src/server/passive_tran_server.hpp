@@ -19,6 +19,7 @@
 #ifndef _PASSIVE_TRAN_SERVER_HPP_
 #define _PASSIVE_TRAN_SERVER_HPP_
 
+#include "log_record.hpp"
 #include "log_replication_atomic.hpp"
 #include "tran_server.hpp"
 
@@ -81,11 +82,15 @@ class passive_tran_server : public tran_server
     void stop_outgoing_page_server_messages () final override;
     connection_handler *create_connection_handler (tran_server &ts, cubcomm::node &&node) const final override;
 
+    void gather_ddl_tran_list ();
+
   private:
     std::unique_ptr<cublog::atomic_replicator> m_replicator;
     cubthread::daemon *m_oldest_active_mvccid_sender = nullptr;
     /* the oldest visible mvcc id considering the replicator and RO transactions */
     MVCCID m_oldest_active_mvccid = MVCCID_NULL;
+
+    std::unordered_map<TRANID, std::vector<log_rec_repl_ddl_lock_info>> m_ddl_tran_list;
 };
 
 #endif // !_passive_tran_server_HPP_

@@ -22,6 +22,7 @@
 #include "client_credentials.hpp"
 #include "log_comm.h"
 #include "log_lsa.hpp"
+#include "log_record.hpp"
 #include "packable_object.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
@@ -111,6 +112,9 @@ namespace cublog
     MVCCID mvcc_id;
     MVCCID mvcc_sub_id;
     char user_name[LOG_USERNAME_MAX];	/* Name of the client */
+
+    int num_lock_info;
+    std::vector<log_rec_repl_ddl_lock_info> lock_info_vec;	/* DDL replication info */
 
     inline bool operator== (const tran_info &other) const;
   };

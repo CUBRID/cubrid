@@ -74,11 +74,11 @@ namespace cublog
       void wait_past_target_lsa (const log_lsa &a_target_lsa);
 
       log_lsa get_most_recent_trantable_snapshot_lsa () const;
-
-    private:
-      void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
+      virtual void initialize ();
 
     protected:
+      virtual void create_replication_thread (thread_type replication_thread_type);
+      virtual void redo_upto_nxio_lsa (cubthread::entry &thread_entry);
       virtual void redo_upto (cubthread::entry &thread_entry, const log_lsa &end_redo_lsa);
       template <typename T>
       void read_and_redo_record (cubthread::entry &thread_entry, const LOG_RECORD_HEADER &rec_header,
@@ -135,6 +135,7 @@ namespace cublog
 
     protected:
       std::unique_ptr<cublog::replicator_mvcc> m_replicator_mvccid;
+      thread_type m_replication_thread_type;
   };
 }
 

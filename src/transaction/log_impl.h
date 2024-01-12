@@ -478,14 +478,6 @@ struct log_rcv_tdes
   LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* to recover logical redo operation. */
 };
 
-typedef struct log_ddl_repl_info LOG_DDL_REPL_INFO;
-struct log_ddl_repl_info
-{
-  LOCK lock;
-  OID classoid;
-  OID oid;
-};
-
 typedef struct log_tdes LOG_TDES;
 struct log_tdes
 {
@@ -579,7 +571,7 @@ struct log_tdes
   bool has_supplemental_log;	/* Checks if supplemental log has been appended within the transaction */
 
   // *INDENT-OFF*
-  std::vector<log_ddl_repl_info> ddl_repl_info_vec;	/* DDL replication information vector */
+  std::vector<log_rec_repl_ddl_lock_info> ddl_repl_info_vec;	/* DDL replication information vector */
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
   bool is_active_worker_transaction () const;
@@ -602,7 +594,7 @@ struct log_tdes
   void lock_global_oldest_visible_mvccid ();
   void unlock_global_oldest_visible_mvccid ();
 
-  void add_ddl_lock_info (const OID *class_oid, const OID *oid, LOCK lock_mode);
+  void add_ddl_lock_info (const OID *class_oid, const OID *oid, const LOCK lock_mode);
 #endif
   // *INDENT-ON*
 };

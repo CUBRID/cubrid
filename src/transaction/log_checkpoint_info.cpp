@@ -23,10 +23,12 @@
 #include "log_impl.h"
 #include "log_lsa_utils.hpp"
 #include "log_manager.h"
+#include "log_record.hpp"
 #include "log_system_tran.hpp"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "scope_exit.hpp"
+#include "storage_common.h"
 #include "system_parameter.h"
 #include "thread_entry.hpp"
 #include "transaction_global.hpp"
@@ -61,6 +63,14 @@ namespace cublog
 	serializator.pack_bigint (tran_info.mvcc_sub_id);
 
 	serializator.pack_c_string (tran_info.user_name, strlen (tran_info.user_name));
+
+	serializator.pack_int (tran_info.num_lock_info);
+	for (auto lock_info : tran_info.lock_info_vec)
+	  {
+	    serializator.pack_oid (lock_info.oid);
+	    serializator.pack_oid (lock_info.classoid);
+	    serializator.pack_int (lock_info.lock_mode);
+	  }
       }
 
     serializator.pack_bigint (m_sysops.size ());
@@ -105,6 +115,20 @@ namespace cublog
 	deserializator.unpack_bigint (chkpt_trans.mvcc_sub_id);
 
 	deserializator.unpack_c_string (chkpt_trans.user_name, LOG_USERNAME_MAX);
+
+	deserializator.unpack_int (chkpt_trans.num_lock_info);
+	for (int i = 0; i < chkpt_trans.num_lock_info; i++)
+	  {
+	    OID classoid;
+	    OID oid;
+	    int lock_mode;
+
+	    deserializator.unpack_oid (oid);
+	    deserializator.unpack_oid (classoid);
+	    deserializator.unpack_int (lock_mode);
+
+	    chkpt_trans.lock_info_vec.emplace_back (oid, classoid, (LOCK) lock_mode);
+	  }
 
 	m_trans.push_back (chkpt_trans);
 
@@ -154,6 +178,14 @@ namespace cublog
 	size += serializator.get_packed_bigint_size (start_offset + size);
 
 	size += serializator.get_packed_c_string_size (tran_info.user_name, strlen (tran_info.user_name), start_offset + size);
+
+	size += serializator.get_packed_int_size (start_offset + size);
+	for (const auto &lock_info : tran_info.lock_info_vec)
+	  {
+	    size += serializator.get_packed_oid_size (start_offset + size);
+	    size += serializator.get_packed_oid_size (start_offset + size);
+	    size += serializator.get_packed_int_size (start_offset + size);
+	  }
       }
 
     size += serializator.get_packed_bigint_size (start_offset + size);
@@ -239,6 +271,16 @@ namespace cublog
 	if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &tdes.head_lsa))
 	  {
 	    LSA_COPY (&smallest_lsa, &tdes.head_lsa);
+	  }
+
+	if (tdes.is_ddl_replicated())
+	  {
+	    chkpt_tran.num_lock_info = tdes.ddl_repl_info_vec.size();
+
+	    for (const auto &ddl_repl_info : tdes.ddl_repl_info_vec)
+	      {
+		chkpt_tran.lock_info_vec.emplace_back (ddl_repl_info);
+	      }
 	  }
       }
   }
@@ -387,6 +429,14 @@ namespace cublog
 	LSA_COPY (&tdes->savept_lsa, &chkpt.savept_lsa);
 	LSA_COPY (&tdes->tail_topresult_lsa, &chkpt.tail_topresult_lsa);
 	LSA_COPY (&tdes->rcv.tran_start_postpone_lsa, &chkpt.start_postpone_lsa);
+	if (!chkpt.lock_info_vec.empty())
+	  {
+	    for (const auto &lock_info : chkpt.lock_info_vec)
+	      {
+		tdes->add_ddl_lock_info (&lock_info.classoid, &lock_info.oid, lock_info.lock_mode);
+	      }
+	  }
+
 	tdes->mvccinfo.last_mvcc_lsa = chkpt.last_mvcc_lsa;
 	tdes->mvccinfo.id = chkpt.mvcc_id;
 	if (chkpt.mvcc_sub_id != MVCCID_NULL)
