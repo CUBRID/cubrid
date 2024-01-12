@@ -55,6 +55,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "query_manager.h"
+#include "scope_exit.hpp"
 #include "server_support.h"
 #include "storage_common.h"
 #include "system_parameter.h"
@@ -70,7 +71,6 @@
 
 #include <array>
 
-#define CUBRID_DEBUG
 #define LK_DUMP
 
 extern LOCK_COMPATIBILITY lock_Comp[12][12];
@@ -589,8 +589,8 @@ static void lock_log_replication_withheld_clear_all (
 						      int tran_index
 #endif				/* !NDEBUG */
   );
-static bool lock_log_replication_withheld_is_tran_allowed_to_lock (int tran_index,
-								   const OID * const oid_actually_class_oid);
+static bool lock_log_replication_withheld_is_user_tran_allowed_to_lock (int tran_index,
+									const OID * const oid_actually_class_oid);
 
 // *INDENT-OFF*
 static cubthread::daemon *lock_Deadlock_detect_daemon = NULL;
@@ -3360,7 +3360,8 @@ start:
        * from being locked by user transactions */
       if (logtb_is_passive_transaction_server_user_transaction (tran_index))
 	{
-	  const bool is_tran_allowed_to_lock = lock_log_replication_withheld_is_tran_allowed_to_lock (tran_index, oid);
+	  const bool is_tran_allowed_to_lock =
+	    lock_log_replication_withheld_is_user_tran_allowed_to_lock (tran_index, oid);
 	  if (!is_tran_allowed_to_lock)
 	    {
 	      lock_set_error_for_aborted (tran_index);
@@ -5778,7 +5779,7 @@ lock_initialize (void)
 #endif /* !CUBRID_DEBUG */
 
 #if defined(LK_DUMP)
-  lk_Gl.dump_level = 2;
+  lk_Gl.dump_level = 0;
   env_value = envvar_get ("LK_DUMP_LEVEL");
   if (env_value != NULL)
     {
@@ -6062,7 +6063,6 @@ lock_interrupt_disconnect_and_free_locks_for_all_holders (THREAD_ENTRY * thread_
       LK_RES *const res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
       // find will also lock the resource mutex
 
-      //const bool is_class = (OID_IS_ROOTOID (oid) || OID_IS_ROOTOID (class_oid)) ? true : false;
       if (res_ptr != nullptr)
 	{
 	  // get to the last holder (might not matter the order)
@@ -6087,23 +6087,22 @@ lock_interrupt_disconnect_and_free_locks_for_all_holders (THREAD_ENTRY * thread_
 	      const int current_tran_index = thread_p->tran_index;
 	      logtb_set_current_tran_index (thread_p, holder_tran_index);
 
-	      // first, disconnect the client
-	      //logtb_slam_transaction(thread_p,  holder_tran_index);
-	      // then, abort the transaction and clean up its resources
+	      // NOTE: "slam transaction" - which actually disconnects the client connection - is not needed
+
+	      // abort the transaction and clean up its resources
 	      log_abort_read_only_on_pts (thread_p, holder_tran_index);
 
-	      // restore
 	      logtb_set_current_tran_index (thread_p, current_tran_index);
 	    }
 
 	  // as a last step, invalidate xasl cache for the resource
 	  assert (res_ptr->key.type == LOCK_RESOURCE_CLASS);
 	  xcache_remove_by_oid (thread_p, &res_ptr->key.oid);
-	  // TODO: invalidate here for each resource, or invalidate outside the loop
-	  // with all collected OIDs?
-	  // TODO: after removing the xasl cache for the class oid; the aborted read-only transactions still
-	  // do not get an error when wanting to retry a previous query; this might either be by design
-	  // or a bug; to be investigated at a later date; might also depend on isolation level
+	  // TODO: optimization: invalidate outside the loop all collected OIDs at once
+
+	  // at this point the transaction has all its resources cleaned-up and the flags state and abort reason
+	  // correctly set; upon the next client to server request of the connection the state & abort reason
+	  // must be checked and the proper response returned to the user
 	}
       else
 	{
@@ -10127,7 +10126,12 @@ lock_log_replication_withheld_add (int tran_index, const OID * const oid_actuall
   assert (logtb_is_passive_transaction_server_log_replication_transaction (tran_index));
 
   (void) pthread_mutex_lock (&lk_Gl.log_replication_withheld_mutex);
-  // TODO: RAII
+  // *INDENT-OFF*
+  scope_exit unlock_ftor ([]()
+    {
+      (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
+    });
+  // *INDENT-ON*
 
   assert (lk_Gl.log_replication_withheld_oid_free_index <= lk_Gl.log_replication_withheld_oid_alloc_count);
   if (lk_Gl.log_replication_withheld_oid_free_index == lk_Gl.log_replication_withheld_oid_alloc_count)
@@ -10142,8 +10146,6 @@ lock_log_replication_withheld_add (int tran_index, const OID * const oid_actuall
 
   lk_Gl.log_replication_withheld_oid[lk_Gl.log_replication_withheld_oid_free_index] = *oid_actually_class_oid;
   ++lk_Gl.log_replication_withheld_oid_free_index;
-
-  (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
 }
 
 static void
@@ -10156,7 +10158,12 @@ lock_log_replication_withheld_clear_all (
   assert (logtb_is_passive_transaction_server_log_replication_transaction (tran_index));
 
   (void) pthread_mutex_lock (&lk_Gl.log_replication_withheld_mutex);
-  // TODO: RAII
+  // *INDENT-OFF*
+  scope_exit unlock_ftor ([]()
+    {
+      (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
+    });
+  // *INDENT-ON*
 
   assert (lk_Gl.log_replication_withheld_oid_free_index <= lk_Gl.log_replication_withheld_oid_alloc_count);
   assert ((lk_Gl.log_replication_withheld_oid_alloc_count == 0 && lk_Gl.log_replication_withheld_oid == nullptr)
@@ -10171,18 +10178,20 @@ lock_log_replication_withheld_clear_all (
       // leave memory allocated; only reset occupied indices
       lk_Gl.log_replication_withheld_oid_free_index = 0;
     }
-
-  (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
 }
 
 static bool
-lock_log_replication_withheld_is_tran_allowed_to_lock (int tran_index, const OID * const oid_actually_class_oid)
+lock_log_replication_withheld_is_user_tran_allowed_to_lock (int tran_index, const OID * const oid_actually_class_oid)
 {
   assert (logtb_is_passive_transaction_server_user_transaction (tran_index));
-  //assert (!logtb_is_log_replication_transaction (tran_index));
 
   (void) pthread_mutex_lock (&lk_Gl.log_replication_withheld_mutex);
-  // TODO: RAII
+  // *INDENT-OFF*
+  scope_exit unlock_ftor ([]()
+    {
+      (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
+    });
+  // *INDENT-ON*
 
   for (int idx = 0; idx < lk_Gl.log_replication_withheld_oid_free_index; ++idx)
     {
@@ -10192,8 +10201,6 @@ lock_log_replication_withheld_is_tran_allowed_to_lock (int tran_index, const OID
 	  return false;
 	}
     }
-
-  (void) pthread_mutex_unlock (&lk_Gl.log_replication_withheld_mutex);
 
   return true;
 }
