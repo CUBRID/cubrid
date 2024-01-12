@@ -174,13 +174,16 @@ namespace cubmem
 
   int memory_monitor::generate_checksum (int tag_id, uint64_t size)
   {
-    char input[32]; // INT_MAX digits 10 +  ULLONG_MAX digits 20
+    //char input[32]; // INT_MAX digits 10 +  ULLONG_MAX digits 20
+    std::string input = std::to_string (tag_id) + std::to_string (size);
     unsigned char digest[MD5_DIGEST_LENGTH];
-    int ret = 0;
-    snprintf (input, sizeof (input), "%10d%20llu", tag_id, size);
+    int ret;
+    //memset (input, 0, sizeof (input));
+    //memset (digest, 0, sizeof (digest));
+    //sprintf (input, "%10d%20llu", tag_id, size);
     {
       std::lock_guard<std::mutex> lock (m_checksum_mutex);
-      MD5 ((const unsigned char *)input, sizeof (input), digest);
+      (void) MD5 (reinterpret_cast<const unsigned char *>(input.c_str()), input.length (), digest);
       memcpy (&ret, digest, sizeof (int));
     }
     return ret;
@@ -372,10 +375,8 @@ int mmon_initialize (const char *server_name)
   assert (server_name != NULL);
   assert (mmon_Gl == nullptr);
 
-  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING) && server_name != NULL)
+  if (prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
     {
-      fprintf (stderr, "server name: %s\n", server_name);
-      fflush (stderr);
       mmon_Gl = new (std::nothrow) memory_monitor (server_name);
 
       if (mmon_Gl == nullptr)
@@ -385,9 +386,6 @@ int mmon_initialize (const char *server_name)
 	  return error;
 	}
       is_mem_tracked = true;
-      // XXX: for debug / it will be deleted when the last phase
-      fprintf (stderr, "MMON INITIALIZED\n");
-      fflush (stderr);
     }
   return error;
 }
@@ -411,8 +409,9 @@ size_t mmon_get_alloc_size (char *ptr)
     {
       // XXX: for debug / it will be deleted when the last phase
       //fprintf (stdout, "mmon_get_alloc_size called\n");
-      mmon_Gl->get_alloc_size (ptr);
+      return mmon_Gl->get_alloc_size (ptr);
     }
+  return 0;
 }
 
 void mmon_add_stat (char *ptr, size_t size, const char *file, const int line)

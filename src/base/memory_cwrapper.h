@@ -114,9 +114,6 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
 
   if (is_mem_tracked)
     {
-      fprintf (stdout, "[cub_realloc] ptr = %p, get_alloc_size(ptr) = %lu, size = %lu\n",
-                        ptr, get_alloc_size (ptr), size + MMON_ALLOC_META_SIZE);
-      fflush (stdout);
       p = malloc (size + MMON_ALLOC_META_SIZE);
       if (p != NULL)
 	{
