@@ -5250,7 +5250,7 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 	}
     }
 
-  xlock_dump (thread_p, outfile, 0/* is_contention */);
+  xlock_dump (thread_p, outfile, 0 /* is_contention */ );
 }
 #endif /* SERVER_MODE */
 
@@ -8532,11 +8532,11 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
     }
   else if (size_alloc >= 1024 && size_alloc < 1048576)
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %dK\n\n", size_alloc/1024);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %dK\n\n", size_alloc / 1024);
     }
   else
     {
-      fprintf (outfp, "\tCurrent size of objects which are allocated = %dM\n\n", size_alloc/1024/1024);
+      fprintf (outfp, "\tCurrent size of objects which are allocated = %dM\n\n", size_alloc / 1024 / 1024);
     }
 
   // *INDENT-OFF*
@@ -8544,7 +8544,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   // *INDENT-ON*
   for (res_ptr = iterator.iterate (); res_ptr != NULL; res_ptr = iterator.iterate ())
     {
-      if (!is_contention || (res_ptr->holder != NULL && res_ptr->holder->blocked_mode != NULL_LOCK) || res_ptr->waiter != NULL)
+      if (!is_contention || (res_ptr->holder != NULL && res_ptr->holder->blocked_mode != NULL_LOCK)
+	  || res_ptr->waiter != NULL)
 	{
 	  lock_dump_resource (thread_p, outfp, res_ptr);
 	}
