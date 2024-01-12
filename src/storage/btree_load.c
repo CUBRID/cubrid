@@ -3985,6 +3985,13 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       goto end;
     }
 
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  // We are not doing btree_range_scan() here. Reset common_prefix page information. 
+  // TODO: 
+  extern void btree_clear_common_prefix_page_info (BTREE_SCAN * bts);
+  btree_clear_common_prefix_page_info (&pk_bt_scan);
+#endif
+
   /* Set the order. */
   is_fk_scan_desc = (sort_args->key_type->is_desc != pk_bt_scan.btid_int.key_type->is_desc);
 

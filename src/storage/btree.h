@@ -160,6 +160,20 @@ typedef enum bts_key_status BTS_KEY_STATUS;
 /* TODO: Move fields used to select visible objects only from BTREE_SCAN to
  *	 a different structure (that is pointed by bts_other).
  */
+
+#define COMMON_PREFIX_UNKNOWN	(-1)
+
+// *INDENT-OFF*
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(NDEBUG)
+#define COMMON_PREFIX_PAGE_DEBUG_INFO_RESET(bts)   
+#else
+#define COMMON_PREFIX_PAGE_DEBUG_INFO_RESET(bts)   do {            \
+            VPID_SET_NULL (&((bts)->cur_common_prefix_page_vpid)); \
+            LSA_SET_NULL(&((bts)->cur_common_prefix_page_lsa));    \
+        } while(0)
+#endif
+// *INDENT-ON*
+
 typedef struct btree_scan BTREE_SCAN;	/* BTS */
 struct btree_scan
 {
@@ -191,6 +205,19 @@ struct btree_scan
 
   DB_VALUE cur_key;		/* current key value */
   bool clear_cur_key;		/* clear flag for current key value */
+
+  //---------------------------------------------------------------------------------------------   
+  /* IMPROVE_RANGE_SCAN_IN_BTREE */
+#ifndef NDEBUG
+  VPID cur_common_prefix_page_vpid;
+  LOG_LSA cur_common_prefix_page_lsa;
+#endif
+  int common_prefix_size;	// size of common prefix key parts.
+  DB_VALUE common_prefix_key;	// common prefix key part 
+  bool clear_common_prefix_key;	// TODO: remove? ctshim  둘로 나뉘어진 부분 찿는 거 공통함수료?
+  bool is_cur_key_compressed;	/* If false, cur_key is a complete key.
+				 * Otherwise it must be combined with common_prefix_key. */
+  //---------------------------------------------------------------------------------------------
 
   BTREE_KEYRANGE key_range;	/* key range information */
   FILTER_INFO *key_filter;	/* key filter information pointer */
@@ -259,6 +286,10 @@ struct btree_scan
     (bts)->slot_id = NULL_SLOTID;			\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
+    (bts)->is_cur_key_compressed = false;               \
+    (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;  \
+    COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));         \
+    btree_init_temp_key_value (&(bts)->clear_common_prefix_key, &(bts)->common_prefix_key); \
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
@@ -305,6 +336,10 @@ struct btree_scan
     (bts)->slot_id = -1;				\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
+    (bts)->is_cur_key_compressed = false;               \
+    (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;  \
+    btree_clear_key_value (&(bts)->clear_common_prefix_key, &(bts)->common_prefix_key); \
+    COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));         \
     pr_clear_value (&(bts)->cur_key);			\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
@@ -750,8 +785,12 @@ extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERA
 				INDX_SCAN_ID * isidp, bool is_all_class_srch);
 extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
-extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids,
-					 int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id);
+extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+					 BTREE_SCAN * bts,
+#endif
+					 int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
+					 int func_index_col_id);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize, TP_DOMAIN * btree_domainp, int key_minmax);
 extern int btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
 			    const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename,
