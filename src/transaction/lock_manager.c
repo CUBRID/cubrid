@@ -583,14 +583,9 @@ static void lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & th
 static void lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_array_type & tran_lock_waiters,
 						       size_t & count);
 
-static void lock_log_replication_withheld_add (int tran_index, const OID * const oid_actually_class_oid);
-static void lock_log_replication_withheld_clear_all (
-#if !defined (NDEBUG)
-						      int tran_index
-#endif				/* !NDEBUG */
-  );
-static bool lock_log_replication_withheld_is_user_tran_allowed_to_lock (int tran_index,
-									const OID * const oid_actually_class_oid);
+static void lock_log_replication_withheld_add (const OID * oid_actually_class_oid);
+static void lock_log_replication_withheld_clear_all ();
+static bool lock_log_replication_withheld_is_user_tran_allowed_to_lock (const OID * const oid_actually_class_oid);
 
 // *INDENT-OFF*
 static cubthread::daemon *lock_Deadlock_detect_daemon = NULL;
@@ -3360,8 +3355,7 @@ start:
        * from being locked by user transactions */
       if (logtb_is_passive_transaction_server_user_transaction (tran_index))
 	{
-	  const bool is_tran_allowed_to_lock =
-	    lock_log_replication_withheld_is_user_tran_allowed_to_lock (tran_index, oid);
+	  const bool is_tran_allowed_to_lock = lock_log_replication_withheld_is_user_tran_allowed_to_lock (oid);
 	  if (!is_tran_allowed_to_lock)
 	    {
 	      lock_set_error_for_aborted (tran_index);
@@ -3625,7 +3619,7 @@ start:
       /* I am not a holder; my request cannot be granted; am also not a zero wait */
       if (is_class_lock_request && logtb_is_passive_transaction_server_log_replication_transaction (tran_index))
 	{
-	  lock_log_replication_withheld_add (tran_index, oid);
+	  lock_log_replication_withheld_add (oid);
 	}
 
       /* allocate a lock entry. */
@@ -6270,12 +6264,10 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	{
 	  if (granted == LK_NOTGRANTED_DUE_TIMEOUT)
 	    {
-	      // TODO: assert is passive transaction server
-	      // at this moment nothing is locked in the lock manager
+	      // at this point, newly occuring user transactions are forbidden to lock the same object
+	      // that the log replication transaction wants to now lock
 
-	      // TODO: put lock manager in a state to not accept any other actions until we our lock, needed
-	      // to prevent replication transaction starvation
-
+	      // revoke locks for all user transactions and retry acquiring lock
 	      (void) lock_interrupt_disconnect_and_free_locks_for_all_holders (thread_p, oid, class_oid);
 	      goto repl_tran_retry;
 	    }
@@ -6284,11 +6276,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	      assert (granted == LK_GRANTED);
 	      // only the replication transaction can clear this
 	      // if it was able to obtain the lock
-	      lock_log_replication_withheld_clear_all (
-#if !defined (NDEBUG)
-							tran_index
-#endif /* !NDEBUG */
-		);
+	      lock_log_replication_withheld_clear_all ();
 	    }
 	}
 
@@ -10121,10 +10109,8 @@ lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_arr
 
 #if defined(SERVER_MODE)
 static void
-lock_log_replication_withheld_add (int tran_index, const OID * const oid_actually_class_oid)
+lock_log_replication_withheld_add (const OID * const oid_actually_class_oid)
 {
-  assert (logtb_is_passive_transaction_server_log_replication_transaction (tran_index));
-
   (void) pthread_mutex_lock (&lk_Gl.log_replication_withheld_mutex);
   // *INDENT-OFF*
   scope_exit unlock_ftor ([]()
@@ -10149,11 +10135,7 @@ lock_log_replication_withheld_add (int tran_index, const OID * const oid_actuall
 }
 
 static void
-lock_log_replication_withheld_clear_all (
-#if !defined (NDEBUG)
-					  int tran_index
-#endif				/* !NDEBUG */
-  )
+lock_log_replication_withheld_clear_all ()
 {
   assert (logtb_is_passive_transaction_server_log_replication_transaction (tran_index));
 
@@ -10181,10 +10163,8 @@ lock_log_replication_withheld_clear_all (
 }
 
 static bool
-lock_log_replication_withheld_is_user_tran_allowed_to_lock (int tran_index, const OID * const oid_actually_class_oid)
+lock_log_replication_withheld_is_user_tran_allowed_to_lock (const OID * const oid_actually_class_oid)
 {
-  assert (logtb_is_passive_transaction_server_user_transaction (tran_index));
-
   (void) pthread_mutex_lock (&lk_Gl.log_replication_withheld_mutex);
   // *INDENT-OFF*
   scope_exit unlock_ftor ([]()

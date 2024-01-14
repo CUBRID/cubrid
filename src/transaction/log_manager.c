@@ -5718,9 +5718,6 @@ log_abort_local_read_only_on_pts (THREAD_ENTRY * thread_p, LOG_TDES * const tdes
   assert (is_passive_transaction_server ());
 
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, true);
-  // TODO: as far as it concerns, the current function works for read only transactions as well
-  // if a more "tight" implementation is needed, a new function can be done, or the current one
-  // decorated with an "enforce read only" flag
 
   tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;	// TRAN_UNACTIVE_ABORTED;
 
@@ -5730,35 +5727,25 @@ log_abort_local_read_only_on_pts (THREAD_ENTRY * thread_p, LOG_TDES * const tdes
   assert (LSA_ISNULL (&tdes->tail_lsa));
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
-      // TODO: needs more elaborate error handling
+      // by design, this is unreachable code
       assert_release (LSA_ISNULL (&tdes->tail_lsa));
     }
 
-  {
-    /*
-     * Transaction did not update anything or we are not logging
-     */
+  if (tdes->first_save_entry != NULL)
+    {
+      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+      tdes->first_save_entry = NULL;
+    }
 
-    if (tdes->first_save_entry != NULL)
-      {
-	spage_free_saved_spaces (thread_p, tdes->first_save_entry);
-	tdes->first_save_entry = NULL;
-      }
+  /* clear mvccid before releasing the locks */
+  logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, false);
 
-    /* clear mvccid before releasing the locks */
-    // TODO: does this need to be done for read-only transaction on PTS?
-    logtb_append_assigned_mvcc_if_needed_and_complete_mvcc (thread_p, tdes, false);
-
-    lock_unlock_all (thread_p);
-
-    /* There is no need to create a new transaction identifier */
-  }
+  lock_unlock_all (thread_p);
 
   assert (tdes->lob_locator_root.rbh_root == nullptr);
   if (tdes->lob_locator_root.rbh_root != nullptr)
     {
-      // Scalability architecture does not support LOB just yet.
-      //tx_lob_locator_clear (thread_p, tdes, false, NULL);
+      // TODO: Scalability architecture does not support LOB just yet.
       assert_release (tdes->lob_locator_root.rbh_root == nullptr);
     }
 
@@ -5994,7 +5981,6 @@ log_abort_read_only_on_pts (THREAD_ENTRY * thread_p, int tran_index)
   assert (thread_p->tran_index == tran_index);
   if (thread_p->tran_index != tran_index)
     {
-      // TODO:
       assert_release (thread_p->tran_index == tran_index);
     }
 
@@ -6014,21 +6000,20 @@ log_abort_read_only_on_pts (THREAD_ENTRY * thread_p, int tran_index)
        * May be a system error: Transaction is not in an active state nor
        * prepare to commit state
        */
-      // TODO: error handling
       return tdes->state;
     }
 
   assert (tdes->topops.last < 0);
   if (tdes->topops.last >= 0)
     {
-      // TODO: error handling
+      // by design, unreachable code
       assert_release (tdes->topops.last < 0);
     }
 
   assert (tdes->m_multiupd_stats.empty ());
   if (!tdes->m_multiupd_stats.empty ())
     {
-      // TODO: error handling
+      // by design, unreachable code
       assert_release (tdes->m_multiupd_stats.empty ());
     }
 

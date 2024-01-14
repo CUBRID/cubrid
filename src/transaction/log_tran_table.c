@@ -2633,11 +2633,10 @@ logtb_find_wait_msecs (int tran_index)
     }
 }
 
-// TODO: maybe we can do without this function?
 int
 logtb_is_passive_transaction_server_user_transaction (int tran_index)
 {
-  return (tran_index != LOG_SYSTEM_TRAN_INDEX && is_passive_transaction_server ());
+  return (tran_index > LOG_SYSTEM_TRAN_INDEX && is_passive_transaction_server ());
 }
 
 int
