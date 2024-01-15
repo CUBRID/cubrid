@@ -41,10 +41,10 @@ public class ExprLike extends Expr {
     }
 
     public final Expr target;
-    public final ExprStr pattern;
+    public final Expr pattern;
     public final ExprStr escape;
 
-    public ExprLike(ParserRuleContext ctx, Expr target, ExprStr pattern, ExprStr escape) {
+    public ExprLike(ParserRuleContext ctx, Expr target, Expr pattern, ExprStr escape) {
         super(ctx);
 
         this.target = target;

@@ -286,7 +286,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public TypeSpec visitPercent_type_spec(Percent_type_specContext ctx) {
 
         if (ctx.table_name() == null) {
-            // case variable%TYPE
+            // case <variable>%TYPE
             ExprId id = visitNonFuncIdentifier(ctx.identifier()); // s000: undeclared id
             if (!(id.decl instanceof DeclIdTyped)) {
                 throw new SemanticError(
@@ -298,8 +298,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             return ((DeclIdTyped) id.decl).typeSpec();
         } else {
-            // case table.column%TYPE
+            // case <table>.<column>%TYPE
             String table = Misc.getNormalizedText(ctx.table_name());
+            if (table.indexOf(".") >= 0) {
+                // table name contains its user schema name
+                table = table.replaceAll(" ", "");
+            }
             String column = Misc.getNormalizedText(ctx.identifier());
 
             TypeSpec ret = new TypeSpecPercent(table, column);
@@ -513,7 +517,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public Expr visitLike_exp(Like_expContext ctx) {
 
         Expr target = visitExpression(ctx.like_expression());
-        ExprStr pattern = visitQuoted_string(ctx.pattern);
+        Expr pattern = visitExpression(ctx.pattern);
         ExprStr escape = ctx.escape == null ? null : visitQuoted_string(ctx.escape);
 
         if (escape != null) {
@@ -549,23 +553,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public Expr visitAdd_exp(Add_expContext ctx) {
-        String opStr =
-                ctx.PLUS_SIGN() != null
-                        ? "Add"
-                        : ctx.MINUS_SIGN() != null
-                                ? "Subtract"
-                                : ctx.CONCAT_OP() != null ? "Concat" : null;
-        if (opStr == null) {
-            assert false : "unreachable"; // by syntax
-            throw new RuntimeException("unreachable");
-        }
-
-        String castTy = opStr.equals("Concat") ? "Object" : "Integer";
 
         Expr l = visitExpression(ctx.concatenation(0));
         Expr r = visitExpression(ctx.concatenation(1));
 
+        String opStr = ctx.PLUS_SIGN() != null ? "Add" : "Subtract";
         return new ExprBinaryOp(ctx, opStr, l, r);
+    }
+
+    @Override
+    public Expr visitStr_concat_exp(Str_concat_expContext ctx) {
+
+        Expr l = visitExpression(ctx.concatenation(0));
+        Expr r = visitExpression(ctx.concatenation(1));
+
+        return new ExprBinaryOp(ctx, "Concat", l, r);
     }
 
     @Override
@@ -2435,7 +2437,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private StaticSql checkAndConvertStaticSql(SqlSemantics sws, ParserRuleContext ctx) {
 
         LinkedHashMap<Expr, TypeSpec> hostExprs = new LinkedHashMap<>();
-        LinkedHashMap<String, TypeSpec> selectList = null;
+        List<Misc.Pair<String, TypeSpec>> selectList = null;
         ArrayList<ExprId> intoVars = null;
 
         // check (name-binding) and convert host variables used in the SQL
@@ -2443,7 +2445,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             for (PlParamInfo pi : sws.hostExprs) {
                 if (pi.name.equals("?")) {
                     // auto parameter
-                    assert pi.value != null;
                     if (!DBTypeAdapter.isSupported(pi.type)) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s419
@@ -2494,7 +2495,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (sws.kind == ServerConstants.CUBRID_STMT_SELECT) {
 
             // convert select list
-            selectList = new LinkedHashMap<>();
+            selectList = new ArrayList<>();
             for (ColumnInfo ci : sws.selectList) {
                 String col = Misc.getNormalizedText(getColumnNameInSelectList(ci));
 
@@ -2544,14 +2545,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
                 assert typeSpec != null;
 
-                TypeSpec old = selectList.put(col, typeSpec);
-                if (old != null) {
-                    throw new SemanticError(
-                            Misc.getLineColumnOf(ctx), // s427
-                            String.format(
-                                    "more than one columns have the same name '%s' in the SELECT list",
-                                    col));
-                }
+                selectList.add(new Misc.Pair<>(col, typeSpec));
             }
 
             // check (name-binding) and convert into-variables used in the SQL
