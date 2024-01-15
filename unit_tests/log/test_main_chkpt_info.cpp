@@ -452,6 +452,8 @@ test_env_chkpt::generate_log_info_chkpt_trans ()
     }
   chkpt_trans.user_name[length] = '\0';
 
+  chkpt_trans.num_lock_info = 0;
+
   return chkpt_trans;
 }
 
@@ -1128,4 +1130,17 @@ log_state_string (TRAN_STATE)
 {
   assert (false);
   return nullptr;
+}
+
+bool
+log_tdes::is_ddl_replicated () const
+{
+  return false;
+}
+
+void
+log_tdes::add_ddl_lock_info (const OID *classoid, const OID *oid, LOCK lock_mode)
+{
+  assert (false);
+  return;
 }
