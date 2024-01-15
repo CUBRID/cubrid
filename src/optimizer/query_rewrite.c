@@ -237,6 +237,7 @@ qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	case PT_IFNULL:
 	case PT_ISNULL:
 	case PT_CONCAT_WS:
+	case PT_NULLSAFE_EQ:
 	  /* NEED FUTURE OPTIMIZATION */
 	  (*nullable_cntp)++;
 	  break;
@@ -1360,6 +1361,10 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   PT_NODE *save_where_next;
   bool copy_arg2;
   PT_NODE *dt1, *dt2;
+  bool cut_off;
+  PT_NODE *expr_prev = NULL;
+  PT_NODE *opd1, *opd2;
+  DB_VALUE *dbv1, *dbv2;
 
   /* init */
   orgp = wherep;
@@ -1843,6 +1848,55 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
       *orgp = parser_append_node (join_term_list, *orgp);
     }
+
+  /* remove always-true term */
+  while ((expr = ((expr_prev) ? expr_prev->next : *orgp)))
+    {
+      PT_OP_TYPE op = expr->info.expr.op;
+      cut_off = false;
+      opd1 = expr->info.expr.arg1;
+      opd2 = expr->info.expr.arg2;
+
+      if (expr->or_next == NULL)
+	{
+	  if (opd1 && opd2 && op == PT_EQ && opd1->node_type == PT_VALUE && opd2->node_type == PT_VALUE)
+	    {
+	      dbv1 = pt_value_to_db (parser, opd1);
+	      dbv2 = pt_value_to_db (parser, opd2);
+	      if (db_value_compare (dbv1, dbv2) == DB_EQ)
+		{
+		  cut_off = true;
+		}
+	    }
+	}
+      else
+	{
+	  /*
+	   * give up
+	   */
+	  ;
+	}
+
+      if (cut_off)
+	{
+	  /* cut if off from CNF list */
+	  if (expr_prev)
+	    {
+	      expr_prev->next = expr->next;
+	    }
+	  else
+	    {
+	      *orgp = expr->next;
+	    }
+	  expr->next = NULL;
+	  parser_free_tree (parser, expr);
+	}
+      else
+	{
+	  expr_prev = expr;
+	}
+    }
+
 
 }
 
@@ -2409,7 +2463,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_check_path_eq (parser, attr, arg1))
+		      if (pt_check_path_eq (parser, attr, arg1) == 0)
 			{
 			  attr->line_number++;	/* increase attribute count */
 			  break;
@@ -2433,7 +2487,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		{
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_check_path_eq (parser, attr, arg2))
+		      if (pt_check_path_eq (parser, attr, arg2) == 0)
 			{
 			  attr->line_number++;	/* increase attribute count */
 			  break;
@@ -2627,11 +2681,11 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 		  arg1_cnt = arg2_cnt = 0;	/* init */
 		  for (attr = attr_list; attr; attr = attr->next)
 		    {
-		      if (pt_check_path_eq (parser, attr, arg1))
+		      if (pt_check_path_eq (parser, attr, arg1) == 0)
 			{
 			  arg1_cnt = attr->line_number;
 			}
-		      else if (pt_check_path_eq (parser, attr, arg2))
+		      else if (pt_check_path_eq (parser, attr, arg2) == 0)
 			{
 			  arg2_cnt = attr->line_number;
 			}

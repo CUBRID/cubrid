@@ -6066,6 +6066,7 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
     case PT_TO_CHAR:
       return true;
     case PT_REPLACE:
+    case PT_STRCAT:
       return prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
     default:
       return false;
@@ -18236,33 +18237,56 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     }
 
   if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
-      && (op == PT_STRCAT || op == PT_PLUS || op == PT_CONCAT || op == PT_CONCAT_WS))
+      && (op == PT_STRCAT || op == PT_PLUS || op == PT_CONCAT || op == PT_CONCAT_WS || op == PT_REPLACE))
     {
       TP_DOMAIN *domain;
+
+      if (op == PT_REPLACE)
+	{
+	  opd3 = expr->info.expr.arg3;
+	  type3 = (opd3) ? opd3->type_enum : PT_TYPE_NULL;
+	}
 
       /* use the caching variant of this function ! */
       domain = pt_xasl_node_to_domain (parser, expr);
 
-      if (domain && QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)))
+      if (domain
+	  && (QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)) || type1 == PT_TYPE_NULL || type2 == PT_TYPE_NULL))
 	{
-	  if (opd1 && opd1->node_type == PT_VALUE && type1 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type2))
+	  if (opd3)		/* REPLACE */
+	    {
+	      if (opd3->node_type == PT_VALUE && type3 == PT_TYPE_NULL)
+		{
+		  /* need to replace the NULL with empty string */
+		  int err =
+		    db_string_make_empty_typed_string (&opd3->info.value.db_value, DB_TYPE_STRING, DB_DEFAULT_PRECISION,
+						       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+		  if (err != NO_ERROR)
+		    {
+		      has_error = true;
+		    }
+		  else
+		    {
+		      result = expr;
+		    }
+		}
+	    }
+	  else if (opd1 && opd1->node_type == PT_VALUE && type1 == PT_TYPE_NULL)
 	    {
 	      /* fold 'null || char_opnd' expr to 'char_opnd' */
 	      result = parser_copy_tree (parser, opd2);
 	      if (result == NULL)
 		{
 		  has_error = true;
-		  goto end;
 		}
 	    }
-	  else if (opd2 && opd2->node_type == PT_VALUE && type2 == PT_TYPE_NULL && PT_IS_STRING_TYPE (type1))
+	  else if (opd2 && opd2->node_type == PT_VALUE && type2 == PT_TYPE_NULL)
 	    {
 	      /* fold 'char_opnd || null' expr to 'char_opnd' */
 	      result = parser_copy_tree (parser, opd1);
 	      if (result == NULL)
 		{
 		  has_error = true;
-		  goto end;
 		}
 	    }
 

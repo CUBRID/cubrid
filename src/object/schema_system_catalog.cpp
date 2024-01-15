@@ -18,15 +18,17 @@
 
 #include "schema_system_catalog.hpp"
 
+#include "db.h"
+#include "dbtype_function.h"
 #include "identifier_store.hpp"
 #include "oid.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 
 using namespace cubbase;
 
 namespace cubschema
 {
-  static const std::vector <std::string> sm_system_catalog_names =
+  static const std::vector <std::string> sm_system_class_names =
   {
     ROOTCLASS_NAME,			// "Rootclass"
     CT_DUAL_NAME,			// "dual"
@@ -79,7 +81,10 @@ namespace cubschema
 
     /* currently, not implemented */
     CT_RESOLUTION_NAME,		// "_db_resolution"
+  };
 
+  static const std::vector <std::string> sm_system_vclass_names =
+  {
     /*
      * catalog vclasses
      */
@@ -105,11 +110,24 @@ namespace cubschema
     CTV_SYNONYM_NAME			// "db_synonym"
   };
 
-  static const identifier_store sm_catalog_names (sm_system_catalog_names, false);
+  static const identifier_store sm_catalog_class_names (sm_system_class_names, false);
+  static const identifier_store sm_catalog_vclass_names (sm_system_vclass_names, false);
 }
 
 bool sm_check_system_class_by_name (const std::string_view name)
 {
   // TODO: bool is_enclosed = identifier_store::is_enclosed (name);
-  return identifier_store::check_identifier_is_valid (name, false) && cubschema::sm_catalog_names.is_exists (name);
+  return identifier_store::check_identifier_is_valid (name, false)
+	 && (cubschema::sm_catalog_class_names.is_exists (name)
+	     || cubschema::sm_catalog_vclass_names.is_exists (name));
+}
+
+bool sm_is_system_class (const std::string_view name)
+{
+  return cubschema::sm_catalog_class_names.is_exists (name);
+}
+
+bool sm_is_system_vclass (const std::string_view name)
+{
+  return cubschema::sm_catalog_vclass_names.is_exists (name);
 }

@@ -45,7 +45,7 @@
 #include "parser_support.h"
 #include "view_transform.h"
 #include "network_interface_cl.h"
-#include "transform.h"
+#include "schema_system_catalog_constants.h"
 #include "dbtype.h"
 #include "optimizer.h"		/* qo_need_skip_execution () */
 

@@ -185,7 +185,7 @@ $set 5 MSGCAT_SET_ERROR
 116 Database "%1$s" is unknown, or the file "databases.txt" cannot be accessed.
 117 Absolute pathname for the database is too long. The combined length of the path "%1$s" plus the name "%2$s" is %3$d; the combined length must be less than %4$d.
 118 Failed to locate current working directory.
-119 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
+119 Cannot find hostname ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 120 The maximum number of volumes (%1$d) has been exceeded.
 121 Trying to remove "%1$s" a permanent volume from the database.
 122 Unable to access system message catalog.
@@ -416,7 +416,7 @@ $set 5 MSGCAT_SET_ERROR
 347 Could not establish a pipe to the master server.
 348 Must specify either service or port identifier.
 349 Unknown service for TCP: %1$s.
-350 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
+350 Cannot find hostname ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 351 Cannot create TCP socket.
 352 tcp_open: cannot get a reserved TCP port.
 353 Cannot make connection to master server on host "%1$s".
@@ -683,8 +683,8 @@ $ LOADDB
 613 In class "%3$s", local component "%1$s" cannot serve as an alias substitute for class "%2$s". The domains are incompatible.
 614 Number of active log archives has been exceeded the max desired number of %1$d.
 615 Cannot establish contact with the Winsock interface. Winsock error: %1$d.
-616 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
-617 Cannot find ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
+616 Cannot find hostname ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
+617 Cannot find hostname ("%1$s") in "%2$s". Please check permissions of the file or if there is the hostname.
 618 Attribute is not updatable.
 619 Bad source codeset.
 620 Bad destination codeset.
@@ -1313,7 +1313,7 @@ $ LOADDB
 1243 Index loading was aborted after an error.
 1244 Loading shared attributes updates from object files is not supported in CS mode.
 1245 Loading class attributes updates from object files is not supported in CS mode.
-1246 Cannot get address and canonical name for ("%1$s") in "%2$s". Please check permission of the file or if there is the hostname.
+1246 Cannot get address and canonical name for hostname ("%1$s") in "%2$s". Please check permission of the file or if there is the hostname.
 1247 The time(%1$s) specified must be after the time(%2$s) of the specified backup.
 1248 Invalid Key file : %1$s
 1249 Cannot find the key (index: %1$d).

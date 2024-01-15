@@ -10408,25 +10408,22 @@ for (const cubload::class_entry * class_entry:class_entries)
     }
 
   /* start packing result */
-  if (oid_cnt > 0)
+  /* buffer_size is (int:number of OIDs) + size of packed OIDs */
+  buffer_size = OR_INT_SIZE + (oid_cnt * sizeof (OID));
+  buffer = (char *) db_private_alloc (thread_p, buffer_size);
+  if (buffer == NULL)
     {
-      /* buffer_size is (int:number of OIDs) + size of packed OIDs */
-      buffer_size = OR_INT_SIZE + (oid_cnt * sizeof (OID));
-      buffer = (char *) db_private_alloc (thread_p, buffer_size);
-      if (buffer == NULL)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  ptr = or_pack_int (buffer, oid_cnt);
+for (const cubload::class_entry * class_entry:class_entries)
+    {
+      if (!class_entry->is_ignored ())
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, buffer_size);
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-      ptr = or_pack_int (buffer, oid_cnt);
-    for (const cubload::class_entry * class_entry:class_entries)
-	{
-	  if (!class_entry->is_ignored ())
-	    {
-	      OID *class_oid = const_cast < OID * >(&class_entry->get_class_oid ());
-	      ptr = or_pack_oid (ptr, class_oid);
-	    }
+	  OID *class_oid = const_cast < OID * >(&class_entry->get_class_oid ());
+	  ptr = or_pack_oid (ptr, class_oid);
 	}
     }
 
