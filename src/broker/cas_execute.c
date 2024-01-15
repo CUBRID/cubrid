@@ -2585,7 +2585,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 {
   DB_VALUE *value_list = NULL;
   int err_code;
-  int i, num_bind = 0;
+  int i, num_bind_params, num_bind = 0;
   int num_markers;
   int stmt_id = -1;
   int first_value;
@@ -2646,7 +2646,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
     {
       goto return_success;
     }
-  num_bind = argc / 2;
+  num_bind_params = num_bind = argc / 2;
 
   err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
   if (err_code < 0)
@@ -2831,7 +2831,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
   if (value_list)
     {
-      for (i = 0; i < num_bind; i++)
+      for (i = 0; i < num_bind_params; i++)
 	{
 	  db_value_clear (&(value_list[i]));
 	}
@@ -2864,7 +2864,7 @@ execute_array_error:
 
   if (value_list)
     {
-      for (i = 0; i < num_bind; i++)
+      for (i = 0; i < num_bind_params; i++)
 	{
 	  db_value_clear (&(value_list[i]));
 	}
