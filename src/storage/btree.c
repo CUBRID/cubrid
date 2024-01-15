@@ -606,6 +606,8 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
               COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));            \
        } while(0)
 #endif
+#else
+#define COMMON_PREFIX_PAGE_SIZE_RESET(bts)
 #endif // #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 
 //
