@@ -174,16 +174,18 @@ namespace cubmem
 
   int memory_monitor::generate_checksum (int tag_id, uint64_t size)
   {
-    //char input[32]; // INT_MAX digits 10 +  ULLONG_MAX digits 20
-    std::string input = std::to_string (tag_id) + std::to_string (size);
+    char input[32]; // INT_MAX digits 10 +  ULLONG_MAX digits 20
+    //std::string input = std::to_string (tag_id) + std::to_string (size);
     unsigned char digest[MD5_DIGEST_LENGTH];
     int ret;
+
     //memset (input, 0, sizeof (input));
     //memset (digest, 0, sizeof (digest));
-    //sprintf (input, "%10d%20llu", tag_id, size);
+    sprintf (input, "%d%lu", tag_id, size);
     {
       std::lock_guard<std::mutex> lock (m_checksum_mutex);
-      (void) MD5 (reinterpret_cast<const unsigned char *>(input.c_str()), input.length (), digest);
+      (void) MD5 (reinterpret_cast<const unsigned char *>(input), strlen (input), digest);
+      //(void) MD5 (reinterpret_cast<const unsigned char *>(input.c_str()), input.length (), digest);
       memcpy (&ret, digest, sizeof (int));
     }
     return ret;
@@ -271,8 +273,9 @@ namespace cubmem
     // XXX: for debug / it will be deleted when the last phase
     //char *test = meta_ptr + sizeof(int);
     //uint64_t *temp_ptr = (uint64_t *)test;
-    //int test_checksum = generate_checksum (tag_id, size);
-    //fprintf (stdout, "tag_id: %d, size: %llu, checksum: %d, test_checksum: %d\n", tag_id, size, checksum, test_checksum);
+    //int test_checksum = generate_checksum (metainfo.tag_id, metainfo.size);
+    //fprintf (stdout, "tag_id: %d, size: %llu, checksum: %d, test_checksum: %d\n", metainfo.tag_id, metainfo.size, metainfo.checksum, test_checksum);
+    //fflush (stdout);
 
     if (metainfo.checksum == generate_checksum (metainfo.tag_id, metainfo.size))
       {
@@ -280,6 +283,9 @@ namespace cubmem
 	//fprintf (stdout, "tagid: %d, size: %lu, statmap_size: %d\n", tag_id, size, m_stat_map.size());
 
 	// assert (checksum == generate_checksum (tag_id, size));
+        //int test_checksum = generate_checksum (metainfo.tag_id, metainfo.size);
+        //fprintf (stdout, "tag_id: %d, size: %llu, checksum: %d, test_checksum: %d\n", metainfo.tag_id, metainfo.size, metainfo.checksum, test_checksum);
+        //fflush (stdout);
 	assert ((metainfo.tag_id >= 0 && metainfo.tag_id <= m_stat_map.size()));
 	assert (m_stat_map[metainfo.tag_id] >= metainfo.size);
 
