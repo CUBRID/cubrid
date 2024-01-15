@@ -2588,14 +2588,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             int plcsqlLine = plcsqlPos[0];
             int plcsqlColumn = plcsqlPos[1];
 
-            if (plcsqlLine < 0 && plcsqlColumn < 0) {
-                // OK
-            } else {
-                assert plcsqlLine > 0 && plcsqlColumn > 0
-                        : String.format(
-                                "%s - line and column numbers of code templates must be positive integers: (%d, %d)",
-                                astNode, plcsqlLine, plcsqlColumn);
-            }
+            assert (plcsqlLine < 0 && plcsqlColumn < 0) || (plcsqlLine > 0 && plcsqlColumn > 0)
+                    : String.format(
+                            "%s - line and column numbers of code templates must be positive integers: (%d, %d)",
+                            astNode, plcsqlLine, plcsqlColumn);
 
             for (String s : template) {
                 assert s != null;
