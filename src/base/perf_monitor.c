@@ -1052,6 +1052,11 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
   if (stats != NULL)
     {
       int offset = pstat_Metadata[statistic_id].start_offset;
+      if (statistic_id == PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)
+	{
+	  perfmon_server_calc_stats (stats);
+	  return stats[offset] / 100;
+	}
       return stats[offset];
     }
 

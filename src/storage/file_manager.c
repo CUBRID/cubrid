@@ -63,6 +63,7 @@
 #endif /* SERVER_MODE */
 #include "fault_injection.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "partition_sr.h"
 
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
@@ -6662,6 +6663,74 @@ file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user
 }
 
 /*
+ * file_get_num_total_user_pages () - Output number of user pages in class
+ *
+ * return                 : Error code
+ * thread_p (in)          : Thread entry
+ * OID (in)               : Class identifier
+ * total_pages (out) : Output number of user pages of class
+ */
+int
+file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * cls_oid, int *total_pages)
+{
+  int count = 0, part_pages = 0;
+  OID *partitions = NULL;
+  CLS_INFO *cls_info_p = NULL;
+  int error = NO_ERROR;
+
+  if (partition_get_partition_oids (thread_p, cls_oid, &partitions, &count) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  if (count > 0)
+    {
+      /* partition table */
+      for (int i = 0; i < count; i++)
+	{
+	  cls_info_p = catalog_get_class_info (thread_p, &partitions[i], NULL);
+	  if (cls_info_p == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	  if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), &part_pages) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	  *total_pages += part_pages;
+	  catalog_free_class_info_and_init (cls_info_p);
+	}
+    }
+  else
+    {
+      cls_info_p = catalog_get_class_info (thread_p, cls_oid, NULL);
+      if (cls_info_p == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+      if (file_get_num_user_pages (thread_p, &(cls_info_p->ci_hfid.vfid), total_pages) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+      catalog_free_class_info_and_init (cls_info_p);
+    }
+
+end:
+  if (partitions != NULL)
+    {
+      db_private_free (thread_p, partitions);
+    }
+  catalog_free_class_info_and_init (cls_info_p);
+
+  return NO_ERROR;
+}
+
+/*
  * file_check_vpid () - check vpid is one of the file's user pages
  *
  * return           : DISK_INVALID if page does not belong to file, DISK_ERROR for errors and DISK_VALID for successful
@@ -11308,11 +11377,13 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
   switch (fhead->type)
     {
     case FILE_BTREE:
+    case FILE_BTREE_OVERFLOW_KEY:
       /* index file */
       spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
+    case FILE_MULTIPAGE_OBJECT_HEAP:
       /* heap file */
       spacedb_ftype = SPACEDB_HEAP_FILE;
       break;
