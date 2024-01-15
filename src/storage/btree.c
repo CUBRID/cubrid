@@ -599,9 +599,9 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 #ifdef NDEBUG
-#define COMMON_PREFIX_SIZE_INFO_RESET(bts)   ((bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN)
+#define COMMON_PREFIX_PAGE_SIZE_RESET(bts)   ((bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN)
 #else
-#define COMMON_PREFIX_PAGE_INFO_RESET(bts)   do {                    \
+#define COMMON_PREFIX_PAGE_SIZE_RESET(bts)   do {                    \
               (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;     \
               COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));            \
        } while(0)
@@ -624,7 +624,7 @@ bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     {
       pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
-  COMMON_PREFIX_PAGE_INFO_RESET (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 }
 
 /* BTREE_FIND_FK_OBJECT -
@@ -1750,7 +1750,7 @@ static void btree_check_decompress_key (BTREE_SCAN * bts);
 void
 btree_init_common_prefix_page_info (BTREE_SCAN * bts)
 {
-  COMMON_PREFIX_PAGE_INFO_RESET (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
   btree_clear_key_value (&bts->clear_common_prefix_key, &bts->common_prefix_key);
   //btree_init_temp_key_value (&bts->clear_common_prefix_key, &bts->common_prefix_key); 
 }
@@ -1759,7 +1759,7 @@ void
 btree_clear_common_prefix_page_info (BTREE_SCAN * bts)
 {
   btree_clear_key_value (&bts->clear_common_prefix_key, &bts->common_prefix_key);
-  COMMON_PREFIX_PAGE_INFO_RESET (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
   bts->is_cur_key_compressed = false;
 }
 #endif
@@ -14873,7 +14873,7 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_ST
       goto exit_on_error;
     }
 
-  COMMON_PREFIX_PAGE_INFO_RESET (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
   /* get header information (key_cnt) */
   key_cnt = btree_node_number_of_keys (thread_p, bts->C_page);
 
@@ -16081,7 +16081,7 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   if (first_page != bts->C_page)
     {
       /* reset common_prefix to recalculate */
-      COMMON_PREFIX_PAGE_INFO_RESET (bts);
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
     }
 #endif
 
@@ -16336,7 +16336,7 @@ btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BT
 	      goto exit_on_error;
 	    }
 
-	  COMMON_PREFIX_PAGE_INFO_RESET (bts);
+	  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 	  (void) pgbuf_check_page_ptype (thread_p, bts->C_page, PAGE_BTREE);
 
 	  /* unfix the previous leaf page */
@@ -25019,7 +25019,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
 	    }
 
-	  COMMON_PREFIX_PAGE_INFO_RESET (bts);
+	  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 
 	  /* Page suffered some changes. */
 	  if (BTREE_IS_PAGE_VALID_LEAF (thread_p, bts->C_page))
@@ -25298,7 +25298,7 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 		  ASSERT_ERROR_AND_SET (error_code);
 		  return error_code;
 		}
-	      COMMON_PREFIX_PAGE_INFO_RESET (bts);
+	      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 	      /* Advance to next node. */
 	      pgbuf_unfix (thread_p, bts->C_page);
 	      bts->C_page = next_node_page;
@@ -25415,7 +25415,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       pgbuf_unfix_and_init (thread_p, bts->C_page);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
-      COMMON_PREFIX_PAGE_INFO_RESET (bts);
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
       bts->slot_id = *key_count;
       *node_header_ptr = btree_get_node_header (thread_p, bts->C_page);
@@ -25468,7 +25468,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       return error_code;
     }
 
-  COMMON_PREFIX_PAGE_INFO_RESET (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   // TODO: 
   btree_check_decompress_key (bts);
@@ -25537,7 +25537,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       pgbuf_unfix_and_init (thread_p, bts->C_page);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
-      COMMON_PREFIX_PAGE_INFO_RESET (bts);
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
       VPID_COPY (next_vpid, &(*node_header_ptr)->prev_vpid);
       bts->slot_id = *key_count;
@@ -25595,7 +25595,7 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       /* Update bts and advance to previous key. */
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
-      COMMON_PREFIX_PAGE_INFO_RESET (bts);
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
       VPID_COPY (next_vpid, &(*node_header_ptr)->prev_vpid);
       bts->slot_id = search_key.slotid - 1;
