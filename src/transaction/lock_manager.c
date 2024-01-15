@@ -583,6 +583,8 @@ static void lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & th
 static void lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_array_type & tran_lock_waiters,
 						       size_t & count);
 
+static void lock_interrupt_and_free_locks_for_all_holders (THREAD_ENTRY * thread_p, const OID * oid,
+							   const OID * class_oid);
 static void lock_log_replication_withheld_add (const OID * oid_actually_class_oid);
 static void lock_log_replication_withheld_clear_all ();
 static bool lock_log_replication_withheld_is_user_tran_allowed_to_lock (const OID * const oid_actually_class_oid);
@@ -6048,8 +6050,7 @@ lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, const OID * 
 
 #if defined(SERVER_MODE)
 static void
-lock_interrupt_disconnect_and_free_locks_for_all_holders (THREAD_ENTRY * thread_p, const OID * oid,
-							  const OID * class_oid)
+lock_interrupt_and_free_locks_for_all_holders (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
 {
   LK_RES_KEY search_key = lock_create_search_key (oid, class_oid);
   while (true)
@@ -6268,7 +6269,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	      // that the log replication transaction wants to now lock
 
 	      // revoke locks for all user transactions and retry acquiring lock
-	      (void) lock_interrupt_disconnect_and_free_locks_for_all_holders (thread_p, oid, class_oid);
+	      (void) lock_interrupt_and_free_locks_for_all_holders (thread_p, oid, class_oid);
 	      goto repl_tran_retry;
 	    }
 	  else
