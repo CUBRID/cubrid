@@ -10138,8 +10138,6 @@ lock_log_replication_withheld_add (const OID * const oid_actually_class_oid)
 static void
 lock_log_replication_withheld_clear_all ()
 {
-  assert (logtb_is_passive_transaction_server_log_replication_transaction (tran_index));
-
   (void) pthread_mutex_lock (&lk_Gl.log_replication_withheld_mutex);
   // *INDENT-OFF*
   scope_exit unlock_ftor ([]()
