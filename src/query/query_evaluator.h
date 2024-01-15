@@ -145,8 +145,6 @@ extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, DB_T
 extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 				    FILTER_INFO * filter);
 
-#define IMPROVE_RANGE_SCAN_IN_BTREE
-
 extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 				   int prefix_size, DB_VALUE * prefix_value,
