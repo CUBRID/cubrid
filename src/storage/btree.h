@@ -164,13 +164,17 @@ typedef enum bts_key_status BTS_KEY_STATUS;
 #define COMMON_PREFIX_UNKNOWN	(-1)
 
 // *INDENT-OFF*
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(NDEBUG)
-#define COMMON_PREFIX_PAGE_DEBUG_INFO_RESET(bts)   
-#else
+#ifndef NDEBUG
+#define CHECK_VERIFY_COMMON_PREFIX_PAGE_INFO
+#endif
+
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE) && defined(CHECK_VERIFY_COMMON_PREFIX_PAGE_INFO)
 #define COMMON_PREFIX_PAGE_DEBUG_INFO_RESET(bts)   do {            \
             VPID_SET_NULL (&((bts)->cur_common_prefix_page_vpid)); \
             LSA_SET_NULL(&((bts)->cur_common_prefix_page_lsa));    \
         } while(0)
+#else
+#define COMMON_PREFIX_PAGE_DEBUG_INFO_RESET(bts)           
 #endif
 // *INDENT-ON*
 
@@ -208,13 +212,13 @@ struct btree_scan
 
   //---------------------------------------------------------------------------------------------   
   /* IMPROVE_RANGE_SCAN_IN_BTREE */
-#ifndef NDEBUG
+#if defined(CHECK_VERIFY_COMMON_PREFIX_PAGE_INFO)
   VPID cur_common_prefix_page_vpid;
   LOG_LSA cur_common_prefix_page_lsa;
 #endif
   int common_prefix_size;	// size of common prefix key parts.
   DB_VALUE common_prefix_key;	// common prefix key part 
-  bool clear_common_prefix_key;	// TODO: remove? ctshim  둘로 나뉘어진 부분 찿는 거 공통함수료?
+  bool clear_common_prefix_key;	// 
   bool is_cur_key_compressed;	/* If false, cur_key is a complete key.
 				 * Otherwise it must be combined with common_prefix_key. */
   //---------------------------------------------------------------------------------------------
@@ -288,8 +292,8 @@ struct btree_scan
     (bts)->restart_scan = 0;                    	\
     (bts)->is_cur_key_compressed = false;               \
     (bts)->common_prefix_size = COMMON_PREFIX_UNKNOWN;  \
-    COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));         \
     btree_init_temp_key_value (&(bts)->clear_common_prefix_key, &(bts)->common_prefix_key); \
+    COMMON_PREFIX_PAGE_DEBUG_INFO_RESET((bts));         \
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\

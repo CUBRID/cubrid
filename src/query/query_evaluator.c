@@ -2837,7 +2837,11 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 	  DB_MIDXKEY *prefix_midxkey = NULL;
-	  if (prefix_value && prefix_size > 0)
+	  if (!prefix_value || prefix_size <= 0)
+	    {
+	      prefix_size = -1;
+	    }
+	  else
 	    {
 	      prefix_midxkey = db_get_midxkey (prefix_value);
 	      if (!prefix_midxkey)
@@ -2883,17 +2887,11 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 		  /* get j-th element value from the midxkey */
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
-		  if (prefix_midxkey && j < prefix_size)
-		    {
-		      if (pr_midxkey_get_element_nocopy (prefix_midxkey, j, valp, &prev_j_index, &prev_j_ptr) !=
-			  NO_ERROR)
-			{
-			  return V_ERROR;
-			}
-		    }
-		  else
-#endif
+		  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_midxkey : midxkey), j, valp,
+						     &prev_j_index, &prev_j_ptr) != NO_ERROR)
+#else
 		  if (pr_midxkey_get_element_nocopy (midxkey, j, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
+#endif
 		    {
 		      return V_ERROR;
 		    }
