@@ -18,7 +18,7 @@
 
 
 /*
- * schema_system_catalog_builder.hpp
+ * schema_system_catalog_definition.hpp
  */
 
 #ifndef _SCHEMA_SYSTEM_CATALOG_DEFINITION_HPP_

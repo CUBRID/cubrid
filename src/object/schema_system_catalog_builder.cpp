@@ -36,7 +36,6 @@ namespace cubschema
   {
     if (name.empty ())
       {
-	// should not happen
 	assert (false);
 	return nullptr;
       }
@@ -265,6 +264,6 @@ namespace cubschema
 	  }
       }
 
-    return error_code; // NO_ERROR
+    return error_code;
   }
 }
