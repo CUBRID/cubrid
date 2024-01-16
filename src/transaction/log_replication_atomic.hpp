@@ -98,7 +98,6 @@ namespace cublog
        * Make seperate class for ddl_replication_helper */
       void bookkeep_classname_for_ddl (cubthread::entry &thread_entry, const OID *classoid);
       void update_classname_cache_for_ddl (cubthread::entry &thread_entry, const OID *classoid);
-      void update_classname_cache_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
 
       void release_all_locks_for_ddl (cubthread::entry &thread_entry, const TRANID trid);
       void acquire_lock_for_ddl (cubthread::entry &thread_entry, const TRANID trid, const LOG_REC_REPL_DDL_LOCK_INFO &log_rec,

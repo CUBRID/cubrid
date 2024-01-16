@@ -184,11 +184,6 @@ namespace cublog
 	    const bool locked_classes_exist = m_locked_classes.count (header.trid) > 0;
 	    const bool locked_serials_exist = m_locked_serials.count (header.trid) > 0;
 
-	    if (locked_classes_exist)
-	      {
-		update_classname_cache_for_ddl (thread_entry, header.trid);
-	      }
-
 	    if (locked_classes_exist || locked_serials_exist)
 	      {
 		release_all_locks_for_ddl (thread_entry, header.trid);
@@ -457,7 +452,6 @@ namespace cublog
       }
     else
       {
-	assert (oid_is_serial (&log_rec.classoid));
 	m_locked_serials.emplace (trid, log_rec);
       }
   }
@@ -567,16 +561,6 @@ namespace cublog
 	(void) heap_delete_hfid_from_cache (&thread_entry, &log_rec.oid);
 	xcache_remove_by_oid (&thread_entry, &log_rec.oid);
 	partition_decache_class (&thread_entry, &log_rec.oid);
-      }
-  }
-
-  void
-  atomic_replicator::update_classname_cache_for_ddl (cubthread::entry &thread_entry, const TRANID trid)
-  {
-    auto [begin, end] = m_locked_classes.equal_range (trid);
-    for (auto it = begin; it != end; ++it)
-      {
-	update_classname_cache_for_ddl (thread_entry, &it->second.oid);
       }
   }
 
