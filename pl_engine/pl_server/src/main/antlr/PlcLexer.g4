@@ -208,7 +208,7 @@ SINGLE_LINE_COMMENT:    '--' ~('\r' | '\n')* NEWLINE_EOF                 -> chan
 SINGLE_LINE_COMMENT2:   '//' ~('\r' | '\n')* NEWLINE_EOF                 -> channel(HIDDEN);
 MULTI_LINE_COMMENT:     '/*' .*? '*/'                                    -> channel(HIDDEN);
 
-REGULAR_ID: SIMPLE_LETTER (SIMPLE_LETTER | '_' | [0-9])*;
+REGULAR_ID: (SIMPLE_LETTER | '_') (SIMPLE_LETTER | '_' | [0-9])*;
 
 SPACES: [ \t\r\n]+ -> channel(HIDDEN);
 

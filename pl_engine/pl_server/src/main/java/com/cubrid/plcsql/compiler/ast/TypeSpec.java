@@ -30,6 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import org.antlr.v4.runtime.ParserRuleContext;
+
 public abstract class TypeSpec extends AstNode {
 
     public final String plcName;
@@ -37,9 +39,10 @@ public abstract class TypeSpec extends AstNode {
     public final int simpleTypeIdx;
     public final String typicalValueStr; // used to type builtin function calls
 
-    public TypeSpec(String plcName, String javaCode, int simpleTypeIdx, String typicalValueStr) {
+    public TypeSpec(ParserRuleContext ctx,
+            String plcName, String javaCode, int simpleTypeIdx, String typicalValueStr) {
 
-        super(null);
+        super(ctx);
         this.plcName = plcName;
         this.javaCode = javaCode;
         this.simpleTypeIdx = simpleTypeIdx;
