@@ -114,6 +114,11 @@ struct filter_info
   /* filter information */
   SCAN_PRED *scan_pred;		/* predicates of the filter */
   SCAN_ATTRS *scan_attrs;	/* attributes scanning info */
+#define BTREE_REDUCE_FIND_MATCHING_ATTR_IDS
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+  int *matched_attid_idx_4_keyflt;
+  int *matched_attid_idx_4_readval;
+#endif
   val_list_node *val_list;	/* value list */
   VAL_DESCR *val_descr;		/* value descriptor */
 

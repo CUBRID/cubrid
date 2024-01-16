@@ -16376,7 +16376,11 @@ exit_on_error:
  */
 int
 btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids, int btree_num_att,
-			      HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id)
+			      HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+			      , int *attr_idx_ptr
+#endif
+  )
 {
   int i, j, error = NO_ERROR;
   HEAP_ATTRVALUE *attr_value;
@@ -16411,6 +16415,69 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
   else
     {
       attr_value = attr_info->values;
+
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+      bool filled_match_idx = (attr_idx_ptr && attr_idx_ptr[0] >= 0) ? true : false;
+
+      // TODO: func_index_col_id 이 있을때 j값 비교에서 = 상태일때에 대해서 고민이 필요.
+      for (i = 0; i < attr_info->num_values; i++)
+	{
+	  if (filled_match_idx)
+	    {
+	      j = attr_idx_ptr[i];
+	      assert (j <= btree_num_att);
+	    }
+	  else
+	    {
+	      found = false;
+	      for (j = 0; j < btree_num_att; j++)
+		{
+		  if (attr_value->attrid == btree_att_ids[j])
+		    {
+		      found = true;
+		      if (func_index_col_id != -1)
+			{
+			  /* consider that in the midxkey resides the function result, which must be skipped if we are interested
+			   * in attributes */
+			  if (j >= func_index_col_id)
+			    {
+			      j++;
+			    }
+			}
+
+		      break;
+		    }
+		}
+
+	      if (attr_idx_ptr)
+		{
+		  attr_idx_ptr[i] = j;
+		}
+
+	      if (found == false)
+		{
+		  error = ER_FAILED;
+		  goto error;
+		}
+	    }
+
+	  if (pr_clear_value (&(attr_value->dbvalue)) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto error;
+	    }
+
+	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (curr_key), j, &(attr_value->dbvalue), NULL, NULL) !=
+	      NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto error;
+	    }
+
+	  attr_value->state = HEAP_WRITTEN_ATTRVALUE;
+	  attr_value++;
+	}
+#else // #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
       for (i = 0; i < attr_info->num_values; i++)
 	{
 	  found = false;
@@ -16454,6 +16521,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
 	  attr_value->state = HEAP_WRITTEN_ATTRVALUE;
 	  attr_value++;
 	}
+#endif // #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
     }
 
   return NO_ERROR;
@@ -16514,7 +16582,11 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
 
   error =
     btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key), filter->btree_attr_ids, filter->btree_num_attrs, attr_info,
-				  iscan_id->indx_cov.func_index_col_id);
+				  iscan_id->indx_cov.func_index_col_id
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+				  , filter->matched_attid_idx_4_readval
+#endif
+    );
   if (error != NO_ERROR)
     {
       return error;
@@ -25229,6 +25301,93 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   return ER_FAILED;
 }
 
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+void
+btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts, int *array_attr, int *array_read, int arr_size)
+{
+  int cnt = 0;
+
+  assert (bts->key_filter->matched_attid_idx_4_keyflt == NULL);
+  assert (bts->key_filter->matched_attid_idx_4_readval == NULL);
+
+  if (bts->key_filter->scan_attrs && bts->key_filter->scan_attrs->num_attrs > 0)
+    {
+      cnt = bts->key_filter->scan_attrs->num_attrs;
+      if (cnt < arr_size)
+	{
+	  bts->key_filter->matched_attid_idx_4_keyflt = array_attr;
+	  bts->key_filter->matched_attid_idx_4_keyflt[0] = -1;
+	}
+      else
+	{
+	  bts->key_filter->matched_attid_idx_4_keyflt = (int *) malloc (cnt * sizeof (int));
+	  if (bts->key_filter->matched_attid_idx_4_keyflt)
+	    {
+	      bts->key_filter->matched_attid_idx_4_keyflt[0] = -1;
+	    }
+	}
+    }
+
+  /*
+   * Please refer to the btree_dump_curr_key() function for the processing logic below. 
+   */
+  if (bts->index_scan_idp->rest_attrs.num_attrs > 0)
+    {
+      /* normal index scan or join index scan */
+      cnt = bts->index_scan_idp->rest_attrs.attr_cache->num_values;
+    }
+  else if (bts->index_scan_idp->pred_attrs.num_attrs > 0)
+    {
+      /* rest_attrs.num_attrs == 0 if index scan term is join index scan with always-true condition. example: SELECT
+       * ... FROM X inner join Y on 1 = 1; */
+      cnt = bts->index_scan_idp->pred_attrs.attr_cache->num_values;
+    }
+  else
+    {
+      return;
+    }
+
+  if (cnt > 0)
+    {
+      if (cnt < arr_size)
+	{
+	  bts->key_filter->matched_attid_idx_4_readval = array_read;
+	  bts->key_filter->matched_attid_idx_4_readval[0] = -1;
+	}
+      else
+	{
+	  bts->key_filter->matched_attid_idx_4_readval = (int *) malloc (cnt * sizeof (int));
+	  if (bts->key_filter->matched_attid_idx_4_readval)
+	    {
+	      bts->key_filter->matched_attid_idx_4_readval[0] = -1;
+	    }
+	}
+    }
+}
+
+void
+btree_range_scan_free_matched_idx (BTREE_SCAN * bts, int *array_attr, int *array_read)
+{
+  if (bts->key_filter->matched_attid_idx_4_keyflt)
+    {
+      if (bts->key_filter->matched_attid_idx_4_keyflt != array_attr)
+	{
+	  free (bts->key_filter->matched_attid_idx_4_keyflt);
+	}
+      bts->key_filter->matched_attid_idx_4_keyflt = NULL;
+    }
+
+  if (bts->key_filter->matched_attid_idx_4_readval)
+    {
+      if (bts->key_filter->matched_attid_idx_4_readval != array_read)
+	{
+	  free (bts->key_filter->matched_attid_idx_4_readval);
+	}
+      bts->key_filter->matched_attid_idx_4_readval = NULL;
+    }
+}
+#endif
+
 /*
  * btree_range_scan () - Generic function to do a range scan on b-tree. It can scan key by key starting with first
  * 			 (or last key for descending scans). For each key, it calls an internal function to process
@@ -25250,6 +25409,12 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 
   PERF_UTIME_TRACKER_START (thread_p, &bts->time_track);
 
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+  int matched_attid_idx_4_keyflt_arr[32];
+  int matched_attid_idx_4_readval_arr[32];
+
+  btree_range_scan_alloc_matched_idx (bts, matched_attid_idx_4_keyflt_arr, matched_attid_idx_4_readval_arr, 32);
+#endif
   /* Reset end_scan and end_one_iteration flags. */
   bts->end_scan = false;
   bts->end_one_iteration = false;
@@ -25415,12 +25580,19 @@ end:
       assert ((*bts->key_limit_upper) >= 0);
     }
 
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+  btree_range_scan_free_matched_idx (bts, matched_attid_idx_4_keyflt_arr, matched_attid_idx_4_readval_arr);
+#endif
+
   PERF_UTIME_TRACKER_TIME (thread_p, &bts->time_track, PSTAT_BT_LEAF);
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &bts->time_track, PSTAT_BT_RANGE_SEARCH);
 
   return error_code;
 
 exit_on_error:
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+  btree_range_scan_free_matched_idx (bts, matched_attid_idx_4_keyflt_arr, matched_attid_idx_4_readval_arr);
+#endif
   error_code = error_code != NO_ERROR ? error_code : ER_FAILED;
   goto end;
 }

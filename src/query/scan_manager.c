@@ -676,6 +676,10 @@ scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_
   filter_info_p->num_vstr_ptr = num_vstr_ptr;
   filter_info_p->vstr_ids = vstr_ids;
   filter_info_p->func_idx_col_id = -1;
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+  filter_info_p->matched_attid_idx_4_keyflt = NULL;
+  filter_info_p->matched_attid_idx_4_readval = NULL;
+#endif
 }
 
 /*
@@ -7717,7 +7721,11 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
     }
 
   error = btree_attrinfo_read_dbvalues (thread_p, key, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache, -1);
+					iscan_id->rest_attrs.attr_cache, -1
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
+					, NULL
+#endif
+    );
   if (error != NO_ERROR)
     {
       return error;
