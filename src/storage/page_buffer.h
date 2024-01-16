@@ -167,7 +167,7 @@ extern const VPID vpid_Null_vpid;
   ((ptype) == PAGE_HEAP || (ptype) == PAGE_OVERFLOW)
 
 // check if page has change based on current LSA and a previous reference LSA 
-#define PGBUF_PAGE_HAS_CHANGED(pgptr, ref_lsa)    (!LSA_EQ ((ref_lsa), pgbuf_get_lsa ((pgptr))))
+#define PGBUF_IS_PAGE_CHANGED(pgptr, ref_lsa)    (!LSA_EQ ((ref_lsa), pgbuf_get_lsa ((pgptr))))
 
 typedef enum
 {
