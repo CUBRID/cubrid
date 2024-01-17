@@ -846,7 +846,7 @@ lockdb: Display lock-status of the database.\n\
 usage: %1$s lockdb [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -o, --output-file=FILE       redirect output messages to FILE; default: none\n
+  -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
   -c, --contention             display only lock information which has contention\n
 
 

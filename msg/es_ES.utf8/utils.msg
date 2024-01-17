@@ -844,7 +844,7 @@ lockdb: Mostrar estado de bloqueo de la base de datos.\n\
 uso : %1$s lockdb [OPTION] database-name\n\
 \n\
 opciones validas:\n\
-  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n
+  -o, --output-file=FILE       redireccionar mensajes de salida al ARCHIVO; estandar: ninguno\n\
   -c, --contention             display only lock information which has contention\n
 
 
