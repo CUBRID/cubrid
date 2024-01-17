@@ -50,7 +50,7 @@ typedef struct _sq_key
 
 typedef struct _sq_val
 {
-  VAL_LIST *single_tuple;
+  //VAL_LIST *single_tuple;
   DB_VALUE *dbval;
 } sq_val;
 
@@ -412,7 +412,7 @@ sq_make_val (xasl_node * xasl, DB_VALUE * result)
   sq_val *val;
   val = (sq_val *) malloc (sizeof (sq_val));
   val->dbval = db_value_copy (result);
-  sq_copy_val_list (xasl->single_tuple, &(val->single_tuple), true);
+  //sq_copy_val_list (xasl->single_tuple, &(val->single_tuple), true);
 
   return val;
 }
@@ -440,20 +440,20 @@ sq_free_val (sq_val * val)
 {
   QPROC_DB_VALUE_LIST p, tmp;
   pr_free_ext_value (val->dbval);
+  /*
+     if (val->single_tuple->val_cnt > 0)
+     {
+     p = val->single_tuple->valp;
+     while (p != NULL)
+     {
+     tmp = p;
+     p = p->next;
 
-  if (val->single_tuple->val_cnt > 0)
-    {
-      p = val->single_tuple->valp;
-      while (p != NULL)
-	{
-	  tmp = p;
-	  p = p->next;
-
-	  pr_free_ext_value (tmp->val);
-	  free (tmp);
-	}
-    }
-  free (val->single_tuple);
+     pr_free_ext_value (tmp->val);
+     free (tmp);
+     }
+     }
+     free (val->single_tuple); */
   free (val);
 
 }
