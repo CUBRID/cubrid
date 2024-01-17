@@ -112,13 +112,13 @@ public class CUBRIDPacker {
     public void packCString(byte[] value) {
         int len = value.length;
         if (len < DataUtilities.MAX_SMALL_STRING_SIZE) {
-            ensureSpace(value.length + 1); // str + len
+            ensureSpace(value.length + 1 + DataUtilities.INT_BYTES); // str + len + align
             buffer.put((byte) len);
             buffer.put(value);
             align(DataUtilities.INT_ALIGNMENT);
         } else {
             ensureSpace(
-                    value.length + 1 + DataUtilities.INT_BYTES); // str + LARGE_STRING_CODE + len
+                    value.length + 1 + DataUtilities.INT_BYTES * 3); // str + LARGE_STRING_CODE + len + align
             buffer.put((byte) DataUtilities.LARGE_STRING_CODE);
 
             align(DataUtilities.INT_ALIGNMENT);
