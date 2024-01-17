@@ -10986,6 +10986,7 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
       server_info.stat_info.resize (server_info.num_stat);
 
       // *INDENT-OFF*
+      // unpack memory usage entry info
       for (auto &s_info : server_info.stat_info)
         {
           ptr = or_unpack_string_nocopy (ptr, &temp_str);

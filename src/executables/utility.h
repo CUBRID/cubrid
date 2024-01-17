@@ -89,7 +89,8 @@ typedef enum
   MSGCAT_UTIL_SET_VACUUMDB = 55,
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
-  MSGCAT_UTIL_SET_FLASHBACK = 58
+  MSGCAT_UTIL_SET_FLASHBACK = 58,
+  MSGCAT_UTIL_SET_MEMMON = 59
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -737,6 +738,14 @@ typedef enum
   FLASHBACK_MSG_SYSTEM_CLASS_NOT_SUPPORTED = 15,
   FLASHBACK_MSG_USAGE = 60
 } MSGCAT_FLASHBACK_MSG;
+
+/* Message id in the set MSGCAT_UTIL_SET_MEMMON */
+typedef enum
+{
+  MEMMON_MSG_NOT_SUPPORTED = 1,
+  MEMMON_MSG_NOT_IN_STANDALONE = 2,
+  MEMMON_MSG_USAGE = 60
+} MSGCAT_MEMMON_MSG;
 
 typedef void *DSO_HANDLE;
 
@@ -1697,7 +1706,7 @@ typedef struct _ha_config
 
 /* memmon option list */
 #define MEMMON_OUTPUT_S             'o'
-#define MEMMON_OUTPUT_L             "output"
+#define MEMMON_OUTPUT_L             "output-file"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"

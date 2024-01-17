@@ -4573,11 +4573,10 @@ memmon (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      // TODO: add err log
-      goto error_exit;
+      goto print_memmon_usage;
     }
 
-  /* error message log fule */
+  /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
@@ -4590,7 +4589,7 @@ memmon (UTIL_FUNCTION_ARG * arg)
 
   if (!prm_get_bool_value (PRM_ID_MEMORY_MONITORING))
     {
-      // TODO: add err log
+      PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_SUPPORTED));
       goto error_exit;
     }
 
@@ -4613,6 +4612,10 @@ memmon (UTIL_FUNCTION_ARG * arg)
   return EXIT_SUCCESS;
 
 print_memmon_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_USAGE),
+           basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
 error_exit:
   if (need_shutdown)
     {
@@ -4626,7 +4629,8 @@ error_exit:
 
   return EXIT_FAILURE;
 #else /* CS_MODE */
-  fprintf (stdout, "not in CS_MODE\n");
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_MEMMON, MEMMON_MSG_NOT_IN_STANDALONE),
+	   basename (arg->argv0));
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 }

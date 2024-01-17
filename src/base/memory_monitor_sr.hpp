@@ -62,15 +62,9 @@ namespace cubmem
       mutable std::mutex m_tag_name_map_mutex;
       mutable std::mutex m_tag_map_mutex;
       mutable std::mutex m_checksum_mutex;
-      /*mutable std::shared_mutex m_tag_name_map_mutex;
-      mutable std::shared_mutex m_tag_map_mutex;
-      mutable std::shared_mutex m_stat_map_mutex;*/
       std::string m_server_name;
       std::atomic<uint64_t> m_total_mem_usage;
       int m_meta_alloc_count;
-      /*FILE *log_fp;
-      int vacuum_tagid;
-      int xasl_tagid;*/
   };
 } //namespace cubmem
 
