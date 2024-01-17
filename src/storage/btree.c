@@ -16418,14 +16418,15 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
 
 #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
       bool filled_match_idx = (attr_idx_ptr && attr_idx_ptr[0] >= 0) ? true : false;
+#endif
 
-      // TODO: func_index_col_id 이 있을때 j값 비교에서 = 상태일때에 대해서 고민이 필요.
       for (i = 0; i < attr_info->num_values; i++)
 	{
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 	  if (filled_match_idx)
 	    {
 	      j = attr_idx_ptr[i];
-	      assert (j <= btree_num_att);
+	      found = (j < btree_num_att || (j == btree_num_att && func_index_col_id != -1));
 	    }
 	  else
 	    {
@@ -16453,33 +16454,8 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
 		{
 		  attr_idx_ptr[i] = j;
 		}
-
-	      if (found == false)
-		{
-		  error = ER_FAILED;
-		  goto error;
-		}
 	    }
-
-	  if (pr_clear_value (&(attr_value->dbvalue)) != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto error;
-	    }
-
-	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (curr_key), j, &(attr_value->dbvalue), NULL, NULL) !=
-	      NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto error;
-	    }
-
-	  attr_value->state = HEAP_WRITTEN_ATTRVALUE;
-	  attr_value++;
-	}
 #else // #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-      for (i = 0; i < attr_info->num_values; i++)
-	{
 	  found = false;
 	  for (j = 0; j < btree_num_att; j++)
 	    {
@@ -16489,6 +16465,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
 		  break;
 		}
 	    }
+#endif // #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 
 	  if (found == false)
 	    {
@@ -16502,6 +16479,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
 	      goto error;
 	    }
 
+#if !defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 	  if (func_index_col_id != -1)
 	    {
 	      /* consider that in the midxkey resides the function result, which must be skipped if we are interested
@@ -16511,6 +16489,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
 		  j++;
 		}
 	    }
+#endif
 	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (curr_key), j, &(attr_value->dbvalue), NULL, NULL) !=
 	      NO_ERROR)
 	    {
@@ -16521,7 +16500,6 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int 
 	  attr_value->state = HEAP_WRITTEN_ATTRVALUE;
 	  attr_value++;
 	}
-#endif // #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
     }
 
   return NO_ERROR;
