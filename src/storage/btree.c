@@ -16968,7 +16968,7 @@ end:
 
   if (bts->O_page != NULL)
     {
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
+      pgbuf_unfix_and_init (thread_p, bts->O_page);
     }
 
   if (bts->P_page != NULL)
