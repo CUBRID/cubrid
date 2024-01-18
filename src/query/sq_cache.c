@@ -225,20 +225,20 @@ sq_add_term_to_list (PRED_EXPR * src, VAL_LIST * dest)
     {
       COMP_EVAL_TERM t = src->pe.m_eval_term.et.et_comp;
 
-      if (t.lhs->type == TYPE_CONSTANT)
+      if (t.lhs && t.lhs->type == TYPE_CONSTANT)
 	{
 	  sq_add_val_to_list (t.lhs->value.dbvalptr, dest);
 	}
-      else if (t.lhs->type == TYPE_DBVAL)
+      else if (t.lhs && t.lhs->type == TYPE_DBVAL)
 	{
 	  sq_add_val_to_list (&t.lhs->value.dbval, dest);
 	}
 
-      if (t.rhs->type == TYPE_CONSTANT)
+      if (t.rhs && t.rhs->type == TYPE_CONSTANT)
 	{
 	  sq_add_val_to_list (t.rhs->value.dbvalptr, dest);
 	}
-      else if (t.rhs->type == TYPE_DBVAL)
+      else if (t.rhs && t.rhs->type == TYPE_DBVAL)
 	{
 	  sq_add_val_to_list (&t.rhs->value.dbval, dest);
 	}
