@@ -810,6 +810,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      ResultSet r = stmt.executeQuery();",
                 "      if (r.next()) {",
                 "        ret = r.getBigDecimal(1);",
+                "        if (ret != null && r.wasNull()) {",
+                "          ret = null;",
+                "        }",
                 "      } else {",
                 "        ret = null;",
                 "      }",
@@ -1157,7 +1160,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
 
             Coercion c = node.coercions.get(i);
-            ret.add(String.format("%s = %s;", id.javaCode(), c.javaCode(resultStr)));
+            String idCode = id.javaCode();
+            ret.add(String.format("%s = %s;", idCode, c.javaCode(resultStr)));
+            ret.add(String.format("if (%s != null && rs.wasNull()) { %s = null; }", idCode, idCode));
 
             i++;
         }
@@ -1319,14 +1324,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
 
             Coercion c = node.coercions.get(i);
-            boolean checkNotNull = (id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull;
-            if (checkNotNull) {
-                ret.add(
-                        String.format(
-                                "%s = checkNotNull(%s, \"NOT NULL constraint violated\");",
-                                id.javaCode(), c.javaCode(resultStr)));
-            } else {
-                ret.add(String.format("%s = %s;", id.javaCode(), c.javaCode(resultStr)));
+            String idCode = id.javaCode();
+            ret.add(String.format("%s = %s;", idCode, c.javaCode(resultStr)));
+            ret.add(String.format("if (%s != null && r%%'LEVEL'%%.wasNull()) { %s = null; }", idCode, idCode));
+
+            if ((id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull) {
+                ret.add(String.format( "checkNotNull(%s, \"NOT NULL constraint violated\");", idCode));
             }
 
             i++;
