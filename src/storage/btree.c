@@ -1760,8 +1760,8 @@ btree_init_common_prefix_page_info (BTREE_SCAN * bts)
 void
 btree_clear_common_prefix_page_info (BTREE_SCAN * bts)
 {
-  btree_clear_key_value (&bts->clear_common_prefix_key, &bts->common_prefix_key);
   COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+  btree_clear_key_value (&bts->clear_common_prefix_key, &bts->common_prefix_key);
   bts->is_cur_key_compressed = false;
 }
 #endif
@@ -4319,10 +4319,10 @@ check_validate (BTREE_SCAN * bts)
     {
       assert (bts->common_prefix_size > 0);
       assert (VPID_ISNULL (&bts->C_vpid) == false);
-      assert (VPID_EQ (&(bts->C_vpid), &bts->cur_common_prefix_page_vpid) == true);
       assert (bts->C_page != NULL);
 #if defined(CHECK_VERIFY_COMMON_PREFIX_PAGE_INFO)
       assert (VPID_ISNULL (&bts->cur_common_prefix_page_vpid) == false);
+      assert (VPID_EQ (&(bts->C_vpid), &bts->cur_common_prefix_page_vpid) == true);
       assert (LSA_EQ (&bts->cur_common_prefix_page_lsa, pgbuf_get_lsa (bts->C_page)));
 #endif
     }
@@ -4360,11 +4360,11 @@ btree_read_record_in_leafpage (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, int copy
 
   if (bts->common_prefix_size >= 0)
     {
-      assert (VPID_EQ (&(bts->C_vpid), &bts->cur_common_prefix_page_vpid));
 #if defined(CHECK_VERIFY_COMMON_PREFIX_PAGE_INFO)
+      assert (VPID_EQ (&(bts->C_vpid), &bts->cur_common_prefix_page_vpid));
       assert (LSA_EQ (&bts->cur_common_prefix_page_lsa, pgbuf_get_lsa (pgptr)));
-      assert (bts->common_prefix_size == btree_node_get_common_prefix (thread_p, &bts->btid_int, pgptr));
 #endif
+      assert (bts->common_prefix_size == btree_node_get_common_prefix (thread_p, &bts->btid_int, pgptr));
 
       if (bts->common_prefix_size > 0)
 	{
