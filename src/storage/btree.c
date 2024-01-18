@@ -1750,19 +1750,10 @@ static void btree_make_complete_key_including_prefix (BTREE_SCAN * bts, DB_VALUE
 static void btree_check_decompress_key (BTREE_SCAN * bts);
 
 void
-btree_init_common_prefix_page_info (BTREE_SCAN * bts)
+btree_reset_common_prefix_page_info (BTREE_SCAN * bts)
 {
   COMMON_PREFIX_PAGE_SIZE_RESET (bts);
   btree_clear_key_value (&bts->clear_common_prefix_key, &bts->common_prefix_key);
-  //btree_init_temp_key_value (&bts->clear_common_prefix_key, &bts->common_prefix_key); 
-}
-
-void
-btree_clear_common_prefix_page_info (BTREE_SCAN * bts)
-{
-  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
-  btree_clear_key_value (&bts->clear_common_prefix_key, &bts->common_prefix_key);
-  bts->is_cur_key_compressed = false;
 }
 #endif
 
@@ -6358,7 +6349,8 @@ btree_scan_clear_key (BTREE_SCAN * btree_scan)
 {
   btree_clear_key_value (&btree_scan->clear_cur_key, &btree_scan->cur_key);
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  btree_clear_common_prefix_page_info (btree_scan);
+  btree_scan->is_cur_key_compressed = false;
+  btree_reset_common_prefix_page_info (btree_scan);
 #endif
 }
 
@@ -15957,7 +15949,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
   bts->bts_other = bts_other;
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  btree_init_common_prefix_page_info (bts);
+  btree_reset_common_prefix_page_info (bts);
 #endif
 
   /* Prepare successful. */
@@ -16080,11 +16072,7 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 #endif
 
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  if (first_page != bts->C_page)
-    {
-      /* reset common_prefix to recalculate */
-      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
-    }
+  assert (first_page == bts->C_page || bts->common_prefix_size == COMMON_PREFIX_UNKNOWN);
 #endif
 
   /*
@@ -16316,6 +16304,7 @@ btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BT
 
       bts->P_page = bts->C_page;
       bts->C_page = NULL;
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 
       if (!VPID_ISNULL (&(bts->C_vpid)))
 	{
@@ -16338,7 +16327,6 @@ btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BT
 	      goto exit_on_error;
 	    }
 
-	  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 	  (void) pgbuf_check_page_ptype (thread_p, bts->C_page, PAGE_BTREE);
 
 	  /* unfix the previous leaf page */
@@ -16956,7 +16944,11 @@ end:
     {
       LSA_COPY (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page));
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-      btree_check_decompress_key (bts);
+      if (result == S_SUCCESS)
+	{
+	  btree_check_decompress_key (bts);
+	}
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 #endif
       pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
@@ -16976,14 +16968,14 @@ end:
       pgbuf_unfix_and_init (thread_p, bts->P_page);
     }
 
-  if (result == S_END || result == S_ERROR)
-    {
-      btree_scan_clear_key (bts);
-    }
-
   if (result == S_END)
     {
+      btree_scan_clear_key (bts);
       VPID_SET_NULL (&bts->C_vpid);
+    }
+  else if (result == S_ERROR)
+    {
+      btree_scan_clear_key (bts);
     }
 
   return result;
@@ -24900,6 +24892,11 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (VPID_ISNULL (&bts->C_vpid));
   assert (bts->C_page == NULL);
 
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  assert (bts->is_cur_key_compressed == false);
+  assert (bts->common_prefix_size == COMMON_PREFIX_UNKNOWN);
+#endif
+
   /* Find starting key. */
   /* Starting key must be checked and pass filters first. */
   bts->key_status = BTS_KEY_IS_NOT_VERIFIED;
@@ -24990,13 +24987,10 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   assert (bts->force_restart_from_root || !VPID_ISNULL (&bts->C_vpid));
   assert (bts->C_page == NULL);
   assert (!BTS_IS_INDEX_ILS (bts));
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  // TODO: 
-  btree_check_decompress_key (bts);
-#endif
   assert (!DB_IS_NULL (&bts->cur_key));
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
   assert (bts->is_cur_key_compressed == false);
+  assert (bts->common_prefix_size == COMMON_PREFIX_UNKNOWN);
 #endif
 
   /* Resume range scan. It can be resumed from same leaf or by looking up the key again from root. */
@@ -25020,8 +25014,6 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	       * current position. */
 	      return btree_range_scan_advance_over_filtered_keys (thread_p, bts);
 	    }
-
-	  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 
 	  /* Page suffered some changes. */
 	  if (BTREE_IS_PAGE_VALID_LEAF (thread_p, bts->C_page))
@@ -25110,9 +25102,6 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   bts->force_restart_from_root = false;
 
   /* Search key from top. */
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  assert (bts->is_cur_key_compressed == false);
-#endif
   error_code = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, &bts->C_vpid, &bts->slot_id,
 				 &bts->C_page, &found);
   if (error_code != NO_ERROR)
@@ -25153,17 +25142,18 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 static int
 btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
+  assert (bts != NULL && bts->node_type == BTREE_LEAF_NODE);
   /* Clear current key value if needed. */
   btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
 
-#if !defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  bts->is_cur_key_compressed = false;
+  return btree_read_record_in_leafpage (thread_p, bts->C_page, COPY_KEY_VALUE, bts);
+#else
   /* Read record key (and other info). */
   return btree_read_record (thread_p, &bts->btid_int, bts->C_page, &bts->key_record, &bts->cur_key,
 			    &bts->leaf_rec_info, bts->node_type, &bts->clear_cur_key, &bts->offset, COPY_KEY_VALUE,
 			    bts);
-#else
-  assert (bts != NULL && bts->node_type == BTREE_LEAF_NODE);
-  return btree_read_record_in_leafpage (thread_p, bts->C_page, COPY_KEY_VALUE, bts);
 #endif
 }
 
@@ -25300,8 +25290,8 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 		  ASSERT_ERROR_AND_SET (error_code);
 		  return error_code;
 		}
-	      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 	      /* Advance to next node. */
+	      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 	      pgbuf_unfix (thread_p, bts->C_page);
 	      bts->C_page = next_node_page;
 	      VPID_COPY (&bts->C_vpid, &next_vpid);
@@ -25415,9 +25405,9 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
     {
       /* Previous leaf was successfully latched. Advance. */
       pgbuf_unfix_and_init (thread_p, bts->C_page);
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
-      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
       bts->slot_id = *key_count;
       *node_header_ptr = btree_get_node_header (thread_p, bts->C_page);
@@ -25427,6 +25417,11 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   /* Conditional latch failed. */
 
   /* Unfix current page and retry. */
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  // TODO: 
+  btree_check_decompress_key (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+#endif
   pgbuf_unfix_and_init (thread_p, bts->C_page);
   error_code =
     pgbuf_fix_if_not_deallocated (thread_p, &prev_leaf_vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &prev_leaf);
@@ -25469,12 +25464,6 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       pgbuf_unfix_and_init (thread_p, prev_leaf);
       return error_code;
     }
-
-  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  // TODO: 
-  btree_check_decompress_key (bts);
-#endif
 
   /* Before searching the key in leaf page, we must make sure to handle this next peculiar case: 1. First key search of
    * descending scan. Lower key limit is located as first in leaf page. 2. Range scan says strictly less than lower key
@@ -25537,9 +25526,9 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       assert (search_key.result == BTREE_KEY_FOUND);
       /* Move to previous page. */
       pgbuf_unfix_and_init (thread_p, bts->C_page);
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
-      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
       VPID_COPY (next_vpid, &(*node_header_ptr)->prev_vpid);
       bts->slot_id = *key_count;
@@ -25790,7 +25779,11 @@ end:
       assert (bts->end_scan || VPID_EQ (pgbuf_get_vpid_ptr (bts->C_page), &bts->C_vpid));
       LSA_COPY (&bts->cur_leaf_lsa, pgbuf_get_lsa (bts->C_page));
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-      btree_check_decompress_key (bts);
+      if (bts->end_one_iteration)
+	{
+	  btree_check_decompress_key (bts);
+	}
+      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 #endif
       pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
@@ -26325,9 +26318,6 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 
 	  /* Since range scan must be moved on a totally different range, it must restart by looking for the first
 	   * eligible key of the new range. Trick it to think this a new call of btree_range_scan. */
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-	  btree_check_decompress_key (bts);
-#endif
 	  bts_reset_scan (thread_p, bts);
 
 	  /* Adjust range of scan. */
