@@ -208,7 +208,7 @@ public class SymbolStack {
                         "SPACE",
                         "STRCMP",
                         "SUBSTR",
-                        "SUBSTRB",  // not in the user manual
+                        "SUBSTRB", // not in the user manual
                         "SUBSTRING",
                         "SUBSTRING_INDEX",
                         "TO_BASE64",
