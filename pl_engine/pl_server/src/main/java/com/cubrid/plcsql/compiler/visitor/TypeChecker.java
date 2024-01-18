@@ -615,6 +615,15 @@ public class TypeChecker extends AstVisitor<TypeSpec> {
             }
 
             node.setResultType(ret);
+
+            Expr arg0;
+            if (node.args.nodes.size() == 1
+                    && ((arg0 = node.args.nodes.get(0)) instanceof ExprNull)) {
+                // cast to Object, a hint for Javac compiler. see CBRD-25168
+                arg0.setCoercion(
+                        Coercion.Cast.getInstance(TypeSpecSimple.NULL, TypeSpecSimple.OBJECT));
+            }
+
             return ret;
         } else {
             throw new SemanticError(
