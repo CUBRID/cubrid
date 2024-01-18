@@ -210,6 +210,8 @@ public class SpLib {
     public static Object invokeBuiltinFunc(
             Connection conn, String name, int resultTypeCode, Object... args) {
 
+        assert args != null;
+
         int argsLen = args.length;
         String hostVars = getHostVarsStr(argsLen);
         String query = String.format("select %s%s from dual", name, hostVars);
@@ -466,6 +468,9 @@ public class SpLib {
         }
 
         public void open(Connection conn, Object... val) {
+
+            assert val != null;
+
             try {
                 if (isOpen()) {
                     throw new CURSOR_ALREADY_OPEN();
@@ -1496,18 +1501,21 @@ public class SpLib {
 
     // ====================================
     // in
+
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Boolean o, Boolean... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(String o, String... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     public static Boolean opInChar(String o, String... arr) {
-        assert arr != null; // guaranteed by the syntax
+        assert arr != null;
 
         if (o == null) {
             return null;
@@ -1530,46 +1538,55 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(BigDecimal o, BigDecimal... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Short o, Short... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Integer o, Integer... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Long o, Long... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Float o, Float... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Double o, Double... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Date o, Date... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Time o, Time... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Timestamp o, Timestamp... arr) {
+        assert arr != null;
         return commonOpIn(o, (Object[]) arr);
     }
 
@@ -1581,7 +1598,8 @@ public class SpLib {
     }
 
     public static Boolean opInTimestamp(Timestamp o, Timestamp... arr) {
-        assert arr != null; // guaranteed by the syntax
+        assert arr != null;
+
         if (o == null) {
             return null;
         }
@@ -1603,7 +1621,8 @@ public class SpLib {
 
     @Operator(coercionScheme = CoercionScheme.NAryCompOp)
     public static Boolean opIn(Object o, Object... arr) {
-        assert arr != null; // guaranteed by the syntax
+        assert arr != null;
+
         if (o == null) {
             return null;
         }
@@ -3387,7 +3406,8 @@ public class SpLib {
     }
 
     private static Boolean commonOpIn(Object o, Object... arr) {
-        assert arr != null; // guaranteed by the syntax
+        assert arr != null;
+
         if (o == null) {
             return null;
         }
