@@ -1162,7 +1162,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             Coercion c = node.coercions.get(i);
             String idCode = id.javaCode();
             ret.add(String.format("%s = %s;", idCode, c.javaCode(resultStr)));
-            ret.add(String.format("if (%s != null && rs.wasNull()) { %s = null; }", idCode, idCode));
+            ret.add(
+                    String.format(
+                            "if (%s != null && rs.wasNull()) { %s = null; }", idCode, idCode));
 
             i++;
         }
@@ -1326,10 +1328,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             Coercion c = node.coercions.get(i);
             String idCode = id.javaCode();
             ret.add(String.format("%s = %s;", idCode, c.javaCode(resultStr)));
-            ret.add(String.format("if (%s != null && r%%'LEVEL'%%.wasNull()) { %s = null; }", idCode, idCode));
+            ret.add(
+                    String.format(
+                            "if (%s != null && r%%'LEVEL'%%.wasNull()) { %s = null; }",
+                            idCode, idCode));
 
             if ((id.decl instanceof DeclVar) && ((DeclVar) id.decl).notNull) {
-                ret.add(String.format( "checkNotNull(%s, \"NOT NULL constraint violated\");", idCode));
+                ret.add(
+                        String.format(
+                                "checkNotNull(%s, \"NOT NULL constraint violated\");", idCode));
             }
 
             i++;
