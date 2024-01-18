@@ -425,6 +425,7 @@ sq_unpack_val (sq_val * val, xasl_node * xasl, DB_VALUE ** retp)
 
   if (*retp)
     {
+      pr_clear_value (*retp);
       db_value_clone (val->dbval, *retp);
     }
   else
@@ -474,8 +475,10 @@ sq_put (THREAD_ENTRY * thread_p, xasl_node * xasl, DB_VALUE * result)
 
   ret = mht_put_if_not_exists (sq_cache->hashtable, key, val);
 
-  if (!ret)
+  if (!ret || ret != val)
     {
+      sq_free_key (key);
+      sq_free_val (val);
       return ER_FAILED;
     }
 
