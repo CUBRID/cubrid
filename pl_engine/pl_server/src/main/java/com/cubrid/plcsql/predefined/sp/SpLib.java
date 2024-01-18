@@ -261,6 +261,9 @@ public class SpLib {
                         throw new PROGRAM_ERROR(); // unreachable
                 }
                 assert !rs.next(); // it must have only one record
+                if (ret != null && rs.wasNull()) {
+                    ret = null;
+                }
 
                 Statement stmt = rs.getStatement();
                 if (stmt != null) {
