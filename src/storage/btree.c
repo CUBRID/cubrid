@@ -14862,12 +14862,12 @@ btree_find_lower_bound_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_ST
       bts->C_page = btree_find_leftmost_leaf (thread_p, bts->btid_int.sys_btid, &bts->C_vpid, stat_info_p);
     }
 
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
   if (bts->C_page == NULL)
     {
       goto exit_on_error;
     }
 
-  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
   /* get header information (key_cnt) */
   key_cnt = btree_node_number_of_keys (thread_p, bts->C_page);
 
@@ -16946,6 +16946,8 @@ end:
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
       if (result == S_SUCCESS)
 	{
+	  /* In this case, we will re-enter this function and then we need the decompressed cur_key. 
+	   * Decompress it before doing pgbuf_unfix() on C_page. */
 	  btree_check_decompress_key (bts);
 	}
       COMMON_PREFIX_PAGE_SIZE_RESET (bts);
@@ -24955,6 +24957,11 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       assert (bts->use_desc_index);
       if (bts->C_page != NULL)
 	{
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+	  /* Decompress it before doing pgbuf_unfix() on C_page. */
+	  btree_check_decompress_key (bts);
+	  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+#endif
 	  pgbuf_unfix_and_init (thread_p, bts->C_page);
 	}
       VPID_SET_NULL (&bts->C_vpid);
@@ -25404,8 +25411,8 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   if (prev_leaf != NULL)
     {
       /* Previous leaf was successfully latched. Advance. */
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
       COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+      pgbuf_unfix_and_init (thread_p, bts->C_page);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
@@ -25418,7 +25425,8 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
 
   /* Unfix current page and retry. */
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-  // TODO: 
+  /* cur_key used in btree_leaf_is_key_between_min_max() below must be in decompressed state. 
+   * Decompress it before doing pgbuf_unfix() on C_page. */
   btree_check_decompress_key (bts);
   COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 #endif
@@ -25525,8 +25533,8 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       /* Safe guard: could not fall through from BTREE_KEY_BETWEEN. */
       assert (search_key.result == BTREE_KEY_FOUND);
       /* Move to previous page. */
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
       COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+      pgbuf_unfix_and_init (thread_p, bts->C_page);
       bts->C_page = prev_leaf;
       VPID_COPY (&bts->C_vpid, &prev_leaf_vpid);
       *key_count = btree_node_number_of_keys (thread_p, bts->C_page);
@@ -25557,6 +25565,9 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
   assert (search_key.result == BTREE_KEY_SMALLER);
   /* Unfix current page. */
   pgbuf_unfix_and_init (thread_p, bts->C_page);
+#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  assert (bts->is_cur_key_compressed == false);
+#endif
   error_code = btree_leaf_is_key_between_min_max (thread_p, &bts->btid_int, prev_leaf, &bts->cur_key, &search_key);
   if (error_code != NO_ERROR)
     {
@@ -25680,7 +25691,10 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	  if (bts->C_page != NULL)
 	    {
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+	      /* The btree_range_scan_resume() function assumes that cur_key is decompressed.
+	       * Decompress it before doing pgbuf_unfix() on C_page. */
 	      btree_check_decompress_key (bts);
+	      COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 #endif
 	      pgbuf_unfix_and_init (thread_p, bts->C_page);
 	    }
@@ -25739,7 +25753,10 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	      if (bts->C_page != NULL)
 		{
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+		  /* The btree_range_scan_resume() function assumes that cur_key is decompressed.
+		   * Decompress it before doing pgbuf_unfix() on C_page. */
 		  btree_check_decompress_key (bts);
+		  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 #endif
 		  pgbuf_unfix_and_init (thread_p, bts->C_page);
 		}
@@ -25781,6 +25798,8 @@ end:
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
       if (bts->end_one_iteration)
 	{
+	  /* In this case, we will re-enter this function and then we need the decompressed cur_key. 
+	   * Decompress it before doing pgbuf_unfix() on C_page. */
 	  btree_check_decompress_key (bts);
 	}
       COMMON_PREFIX_PAGE_SIZE_RESET (bts);
@@ -26609,7 +26628,11 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Must release fixed pages first. */
   bts->is_interrupted = true;
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
+  /* TODO: 
+   * It's not clear at this stage.
+   * To be safe, we put cur_key in decompressed state. */
   btree_check_decompress_key (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
 #endif
   pgbuf_unfix_and_init (thread_p, bts->C_page);
   if (bts->O_page != NULL)
