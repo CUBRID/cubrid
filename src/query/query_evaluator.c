@@ -2781,11 +2781,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
  * Note: evaluate key filter(predicates) given as FILTER_INFO
  */
 DB_LOGICAL
-eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-		 int compress_len, DB_VALUE * compress_value,
-#endif
-		 FILTER_INFO * filterp)
+eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filterp)
 {
   DB_MIDXKEY *midxkey;
   int i, j;
@@ -2835,18 +2831,6 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 	      return V_ERROR;
 	    }
 
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-	  DB_MIDXKEY *midxkey_compress = NULL;
-	  if (compress_value && compress_len > 0)
-	    {
-	      midxkey_compress = db_get_midxkey (compress_value);
-	      if (!midxkey_compress)
-		{
-		  return V_ERROR;
-		}
-	    }
-#endif
-
 	  prev_j_index = 0;
 	  prev_j_ptr = NULL;
 
@@ -2881,18 +2865,6 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 		    }
 
 		  /* get j-th element value from the midxkey */
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
-		  if (midxkey_compress && j < compress_len)
-		    {
-		      if (pr_midxkey_get_element_nocopy (midxkey_compress, j, valp, &prev_j_index, &prev_j_ptr) !=
-			  NO_ERROR)
-			{
-			  return V_ERROR;
-			}
-		    }
-		  else
-#endif
 		  if (pr_midxkey_get_element_nocopy (midxkey, j, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 		    {
 		      return V_ERROR;

@@ -4346,6 +4346,25 @@ pgbuf_get_lsa (PAGE_PTR pgptr)
 }
 
 /*
+ * pgbuf_page_has_changed () - check if page has change based on current LSA and a previous reference LSA
+ *   return: page lsa
+ *   pgptr(in): Pointer to page
+ */
+int
+pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa)
+{
+  LOG_LSA curr_lsa;
+
+  LSA_COPY (&curr_lsa, pgbuf_get_lsa (pgptr));
+
+  if (!LSA_EQ (ref_lsa, &curr_lsa))
+    {
+      return 1;
+    }
+  return 0;
+}
+
+/*
  * pgbuf_set_lsa () - Set the log sequence address of the page to the given lsa
  *   return: page lsa or NULL
  *   pgptr(in): Pointer to page

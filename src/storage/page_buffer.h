@@ -367,13 +367,7 @@ extern void pgbuf_set_dirty (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_
 #define pgbuf_set_dirty_and_free(thread_p, pgptr) pgbuf_set_dirty (thread_p, pgptr, FREE); pgptr = NULL
 
 extern LOG_LSA *pgbuf_get_lsa (PAGE_PTR pgptr);
-
-// pgbuf_page_has_changed () - check if page has change based on current LSA and a previous reference LSA 
-static inline bool
-pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa)
-{
-  return (!LSA_EQ (ref_lsa, pgbuf_get_lsa (pgptr)));
-}
+extern int pgbuf_page_has_changed (PAGE_PTR pgptr, LOG_LSA * ref_lsa);
 
 #if !defined(NDEBUG)
 #define pgbuf_set_lsa(...)   pgbuf_set_lsa_debug(__VA_ARGS__, ARG_FILE_LINE_FUNC)

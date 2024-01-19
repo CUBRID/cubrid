@@ -160,64 +160,6 @@ typedef enum bts_key_status BTS_KEY_STATUS;
 /* TODO: Move fields used to select visible objects only from BTREE_SCAN to
  *	 a different structure (that is pointed by bts_other).
  */
-
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-typedef enum
-{
-  BTREE_READER_TYPE_NONE = 0,
-  BTREE_READER_TYPE_RANGE_SCAN,
-  BTREE_READER_TYPE_STAT,
-  BTREE_READER_TYPE_CAPACITY,
-  BTREE_READER_TYPE_MAX
-} BTREE_READER_TYPE;
-
-typedef struct btree_page_prefix_info BTREE_PAGE_PREFIX_INFO;
-struct btree_page_prefix_info
-{
-  BTREE_READER_TYPE reader_type;
-  VPID vpid;
-  LOG_LSA leaf_lsa;
-
-  int n_compress_size;		// size of common prefix key parts.
-  DB_VALUE compress_key;	// common prefix key part 
-  bool clear_compress_key;
-
-  bool is_midxkey;
-  bool use_comparing;		// key compare  
-  bool satisfied_range_in_page;	// If true, it guarantees that all keys on the current page satisfy the range condition.  
-};
-
-#define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix, type)   do {  \
-    assert((pg_prefix) != NULL);                             \
-    (pg_prefix)->reader_type = (type);                       \
-    (pg_prefix)->use_comparing = true;                       \
-    (pg_prefix)->is_midxkey = false;                         \
-    (pg_prefix)->satisfied_range_in_page = false;            \
-    VPID_SET_NULL (&((pg_prefix)->vpid));                    \
-    LSA_SET_NULL(&((pg_prefix)->leaf_lsa));                  \
-    (pg_prefix)->n_compress_size = COMMON_PREFIX_UNKNOWN;    \
-    btree_init_temp_key_value (&(pg_prefix)->clear_compress_key, &(pg_prefix)->compress_key); \
-} while(0)
-
-#define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)  do {        \
-    if((pg_prefix))  {                                       \
-       btree_clear_key_value (&(pg_prefix)->clear_compress_key, &(pg_prefix)->compress_key); \
-       (pg_prefix)->reader_type = BTREE_READER_TYPE_NONE;    \
-       (pg_prefix)->use_comparing = true;                    \
-       (pg_prefix)->is_midxkey = false;                      \
-       (pg_prefix)->satisfied_range_in_page = false;         \
-       VPID_SET_NULL (&((pg_prefix)->vpid));                 \
-       LSA_SET_NULL(&((pg_prefix)->leaf_lsa));               \
-       (pg_prefix)->n_compress_size = COMMON_PREFIX_UNKNOWN; \
-    }                                                        \
-} while(0)
-
-#else
-#define BTREE_PAGE_PREFIX_INFO  void*
-#define INIT_BTREE_PAGE_PREFIX_INFO(pg_prefix, type)
-#define RESET_BTREE_PAGE_PREFIX_INFO(pg_prefix)
-#endif
-
 typedef struct btree_scan BTREE_SCAN;	/* BTS */
 struct btree_scan
 {
@@ -250,13 +192,6 @@ struct btree_scan
   DB_VALUE cur_key;		/* current key value */
   bool clear_cur_key;		/* clear flag for current key value */
 
-  //---------------------------------------------------------------------------------------------   
-  /* IMPROVE_RANGE_SCAN_IN_BTREE */
-  bool is_cur_key_decompressed;	/* If true, cur_key is a complete key.
-				 * Otherwise it must be combined with C_page_info.compress_key. */
-  BTREE_PAGE_PREFIX_INFO C_page_info;
-  //---------------------------------------------------------------------------------------------
-
   BTREE_KEYRANGE key_range;	/* key range information */
   FILTER_INFO *key_filter;	/* key filter information pointer */
   FILTER_INFO key_filter_storage;	/* key filter information storage */
@@ -269,6 +204,8 @@ struct btree_scan
   /* for query trace */
   int read_keys;
   int qualified_keys;
+
+  int common_prefix;
 
   bool key_range_max_value_equal;
 
@@ -325,8 +262,7 @@ struct btree_scan
     (bts)->slot_id = NULL_SLOTID;			\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
-    (bts)->is_cur_key_decompressed = true;              \
-    INIT_BTREE_PAGE_PREFIX_INFO(&(bts)->C_page_info, BTREE_READER_TYPE_NONE); \
+    (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_btid_int_valid = false;			\
@@ -373,8 +309,7 @@ struct btree_scan
     (bts)->slot_id = -1;				\
     (bts)->oid_pos = 0;					\
     (bts)->restart_scan = 0;                    	\
-    (bts)->is_cur_key_decompressed = true;              \
-    RESET_BTREE_PAGE_PREFIX_INFO(&(bts)->C_page_info);  \
+    (bts)->common_prefix = COMMON_PREFIX_UNKNOWN;	\
     pr_clear_value (&(bts)->cur_key);			\
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
@@ -820,12 +755,8 @@ extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERA
 				INDX_SCAN_ID * isidp, bool is_all_class_srch);
 extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
-extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key,
-#if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
-					 BTREE_PAGE_PREFIX_INFO * cur_page_info,
-#endif
-					 int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
-					 int func_index_col_id);
+extern int btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, int *btree_att_ids,
+					 int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info, int func_index_col_id);
 extern int btree_coerce_key (DB_VALUE * src_keyp, int keysize, TP_DOMAIN * btree_domainp, int key_minmax);
 extern int btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_oid, const OID * class_oid,
 			    const BTID * btid, const char *bt_name, int severity, int err_id, const char *filename,
