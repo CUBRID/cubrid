@@ -611,10 +611,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, sp_info.sp_name.data ());
 	  goto error_exit;
 	}
+
+      sp_info.args.push_back (arg_info);
     }
 
-  lang = PT_NODE_SP_LANG (statement);
-  if (lang == SP_LANG_PLCSQL)
+  sp_info.lang = (SP_LANG_ENUM) PT_NODE_SP_LANG (statement);
+  if (sp_info.lang == SP_LANG_PLCSQL)
     {
       std::string pl_code (statement->sql_user_text, statement->sql_user_text_len);
       err = plcsql_transfer_file (pl_code, false, compile_info);
