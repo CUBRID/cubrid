@@ -455,7 +455,7 @@ sp_add_stored_procedure_internal (const SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    if (info.comment.empty ())
+    if (!info.comment.empty ())
       {
 	db_make_string (&value, info.comment.data ());
 	err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
@@ -588,7 +588,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, const SP_ARG_INFO &info)
       goto error;
     }
 
-  if (info.comment.empty ())
+  if (!info.comment.empty ())
     {
       db_make_string (&value, info.comment.data ());
       err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
