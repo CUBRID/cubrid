@@ -18,10 +18,8 @@
 
 #include "schema_system_catalog_builder.hpp"
 
-// #include "dbi.h" /* db_create_class () */
 #include "db.h"
 #include "dbtype.h"
-// #include "dbtype_function.h" /* DB_IS_NULL () */
 #include "authenticate.h"
 #include "class_object.h" /* SM_TEMPLATE */
 #include "schema_template.h" /* smt_edit_class_mop() */
