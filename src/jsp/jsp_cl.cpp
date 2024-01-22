@@ -17,7 +17,7 @@
  */
 
 /*
- * jsp_cl.c - Java Stored Procedure Client Module Source
+ * jsp_cl.cpp - Java Stored Procedure Client Module Source
  */
 
 #ident "$Id$"
@@ -56,9 +56,11 @@
 #include "dbtype.h"
 #include "jsp_comm.h"
 #include "method_compile_def.hpp"
+#include "sp_definition.hpp"
 
 #define PT_NODE_SP_NAME(node) \
-  ((node)->info.sp.name->info.name.original)
+  (((node)->info.sp.name == NULL) ? "" : \
+   (node)->info.sp.name->info.name.original)
 
 #define PT_NODE_SP_TYPE(node) \
   ((node)->info.sp.type)
@@ -72,6 +74,9 @@
 #define PT_NODE_SP_LANG(node) \
   ((node)->info.sp.body->info.sp_body.lang)
 
+#define PT_NODE_SP_ARGS(node) \
+  ((node)->info.sp.param_list)
+
 #define PT_NODE_SP_DIRECT(node) \
   ((node)->info.sp.body->info.sp_body.direct)
 
@@ -82,16 +87,18 @@
   ((node)->info.sp.body->info.sp_body.decl->info.value.data_value.str->bytes)
 
 #define PT_NODE_SP_COMMENT(node) \
-  (((node)->info.sp.comment == NULL) ? NULL : \
-   (node)->info.sp.comment->info.value.data_value.str->bytes)
+  (((node)->info.sp.comment == NULL) ? "" : \
+   (char *) (node)->info.sp.comment->info.value.data_value.str->bytes)
+
+#define PT_NODE_SP_ARG_NAME(node) \
+  (((node)->info.sp_param.name == NULL) ? "" : \
+   (node)->info.sp_param.name->info.name.original)
 
 #define PT_NODE_SP_ARG_COMMENT(node) \
-  (((node)->info.sp_param.comment == NULL) ? NULL : \
-   (node)->info.sp_param.comment->info.value.data_value.str->bytes)
+  (((node)->info.sp_param.comment == NULL) ? "" : \
+   (char *) (node)->info.sp_param.comment->info.value.data_value.str->bytes)
 
 #define MAX_CALL_COUNT  16
-#define SAVEPOINT_ADD_STORED_PROC "ADDSTOREDPROC"
-#define SAVEPOINT_CREATE_STORED_PROC "CREATESTOREDPROC"
 
 #define MAX_ARG_COUNT 64
 
@@ -100,18 +107,14 @@ static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
 
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
-static int jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
+static SP_MODE_ENUM jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
 
-static int jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-					      PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment);
 static char *jsp_check_stored_procedure_name (const char *str);
-static int jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM ret_type,
-				     PT_NODE * param_list, const char *java_method, const char *comment);
 static int drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type);
 
-static int jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, method_sig_list & sig_list);
-static int *jsp_make_method_arglist (PARSER_CONTEXT * parser, PT_NODE * node_list);
+static int jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node_list, method_sig_list &sig_list);
+static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list);
 
 extern bool ssl_client;
 
@@ -181,7 +184,7 @@ jsp_is_exist_stored_procedure (const char *name)
  */
 
 int
-jsp_check_param_type_supported (PT_NODE * node)
+jsp_check_param_type_supported (PT_NODE *node)
 {
   assert (node && node->node_type == PT_SP_PARAMETERS);
 
@@ -224,7 +227,6 @@ jsp_check_param_type_supported (PT_NODE * node)
 
   return er_errid ();
 }
-
 
 /*
  * jsp_check_return_type_supported
@@ -369,13 +371,13 @@ jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type)
  */
 
 int
-jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
+jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *method;
   const char *method_name;
-  if (!statement || !(method = statement->info.method_call.method_name) || method->node_type != PT_NAME
-      || !(method_name = method->info.name.original))
+  if (!statement || ! (method = statement->info.method_call.method_name) || method->node_type != PT_NAME
+      || ! (method_name = method->info.name.original))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return er_errid ();
@@ -456,7 +458,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (!PT_IS_CONST (vc))
 	{
-	  DB_VALUE & arg = args[i];
+	  DB_VALUE &arg = args[i];
 	  db_value_clear (&arg);
 	  free (&arg);
 	}
@@ -495,7 +497,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 
 int
-jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
+jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   const char *name;
   PT_MISC_TYPE type;
@@ -544,18 +546,19 @@ jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 
 int
-jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
+jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  const char *name, *decl, *comment = NULL;
+  const char *decl, *comment = NULL;
 
   PT_MISC_TYPE type;
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
-  int param_count;
   int lang;
   int err = NO_ERROR;
   bool has_savepoint = false;
   PLCSQL_COMPILE_INFO compile_info;
+
+  SP_INFO sp_info;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -565,29 +568,49 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_BLOCK_DDL_STMT;
     }
 
-  name = (char *) PT_NODE_SP_NAME (statement);
-  if (name == NULL || name[0] == '\0')
+  sp_info.sp_name = PT_NODE_SP_NAME (statement);
+  if (sp_info.sp_name.empty ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_NAME, 0);
       return er_errid ();
     }
 
-  type = PT_NODE_SP_TYPE (statement);
-  if (type == PT_SP_FUNCTION)
+  sp_info.sp_type = jsp_map_pt_misc_to_sp_type (PT_NODE_SP_TYPE (statement));
+  if (sp_info.sp_type == SP_TYPE_FUNCTION)
     {
-      ret_type = statement->info.sp.ret_type;
+      sp_info.return_type = pt_type_enum_to_db (statement->info.sp.ret_type);
+    }
+  else
+    {
+      sp_info.return_type = DB_TYPE_NULL;
     }
 
-  param_list = statement->info.sp.param_list;
-  for (p = param_list, param_count = 0; p != NULL; p = p->next, param_count++)
-    {
-      ;
-    }
 
-  if (param_count > MAX_ARG_COUNT)
+  // TODO: pkg_name
+  // sp_info.pkg_name = "";
+  sp_info.is_system_generated = false;
+
+  int param_count = 0;
+  param_list = PT_NODE_SP_ARGS (statement);
+  for (p = param_list; p != NULL; p = p->next)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, name);
-      goto error_exit;
+      SP_ARG_INFO arg_info;
+
+      arg_info.sp_name = sp_info.sp_name;
+      // arg_info.pkg_name = sp_info.pkg_name;
+      arg_info.index_of = param_count++;
+      arg_info.is_system_generated = false;
+      arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
+      arg_info.data_type = pt_type_enum_to_db (p->type_enum);
+      arg_info.mode = jsp_map_pt_misc_to_sp_mode (p->info.sp_param.mode);
+      arg_info.comment = (char *) PT_NODE_SP_ARG_COMMENT (p);
+
+      // check # of args constraint
+      if (param_count >= MAX_ARG_COUNT)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, sp_info.sp_name.data ());
+	  goto error_exit;
+	}
     }
 
   lang = PT_NODE_SP_LANG (statement);
@@ -633,6 +656,9 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
 	}
     }
+  sp_info.target = decl ? decl : "";
+  sp_info.owner = Au_user; // current user
+  sp_info.comment = (char *) PT_NODE_SP_COMMENT (statement);
 
   if (err != NO_ERROR)
     {
@@ -640,7 +666,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* check already exists */
-  if (jsp_is_exist_stored_procedure (name))
+  if (jsp_is_exist_stored_procedure (sp_info.sp_name.data ()))
     {
       if (statement->info.sp.or_replace)
 	{
@@ -652,7 +678,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  has_savepoint = true;
 
-	  err = drop_stored_procedure (name, type);
+	  err = drop_stored_procedure (sp_info.sp_name.data (), type);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -660,14 +686,12 @@ jsp_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALREADY_EXIST, 1, sp_info.sp_name.data ());
 	  return er_errid ();
 	}
     }
 
-  comment = (char *) PT_NODE_SP_COMMENT (statement);
-
-  err = jsp_add_stored_procedure (name, type, ret_type, param_list, decl, comment);
+  err = sp_add_stored_procedure (sp_info);
   if (err != NO_ERROR)
     {
       goto error_exit;
@@ -692,7 +716,7 @@ error_exit:
  */
 
 int
-jsp_alter_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
+jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR;
   PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
@@ -842,7 +866,7 @@ jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum)
  * Note:
  */
 
-static int
+static SP_MODE_ENUM
 jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum)
 {
   if (pt_enum == PT_INPUT || pt_enum == PT_NOPUT)
@@ -857,126 +881,6 @@ jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum)
     {
       return SP_MODE_INOUT;
     }
-}
-
-/*
- * jsp_add_stored_procedure_argument
- *   return: Error Code
- *   mop_p(in/out) :
- *   sp_name(in) :
- *   arg_name(in) :
- *   index(in) :
- *   data_type(in) :
- *   mode(in) :
- *   arg_comment(in):
- *
- * Note:
- */
-
-static int
-jsp_add_stored_procedure_argument (MOP * mop_p, const char *sp_name, const char *arg_name, int index,
-				   PT_TYPE_ENUM data_type, PT_MISC_TYPE mode, const char *arg_comment)
-{
-  DB_OBJECT *classobj_p, *object_p;
-  DB_OTMPL *obt_p = NULL;
-  DB_VALUE value;
-  int save;
-  int err;
-
-  AU_DISABLE (save);
-
-  classobj_p = db_find_class (SP_ARG_CLASS_NAME);
-  if (classobj_p == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-
-  obt_p = dbt_create_object_internal (classobj_p);
-  if (obt_p == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-
-  db_make_string (&value, sp_name);
-  err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_string (&value, arg_name);
-  err = dbt_put_internal (obt_p, SP_ATTR_ARG_NAME, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_int (&value, index);
-  err = dbt_put_internal (obt_p, SP_ATTR_INDEX_OF_NAME, &value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_int (&value, pt_type_enum_to_db (data_type));
-  err = dbt_put_internal (obt_p, SP_ATTR_DATA_TYPE, &value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_int (&value, jsp_map_pt_misc_to_sp_mode (mode));
-  err = dbt_put_internal (obt_p, SP_ATTR_MODE, &value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_string (&value, arg_comment);
-  err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  object_p = dbt_finish_object (obt_p);
-  if (!object_p)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-  obt_p = NULL;
-
-  err = locator_flush_instance (object_p);
-  if (err != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      obj_delete (object_p);
-      goto error;
-    }
-
-  *mop_p = object_p;
-
-  AU_ENABLE (save);
-  return NO_ERROR;
-
-error:
-  if (obt_p)
-    {
-      dbt_abort_object (obt_p);
-    }
-
-  AU_ENABLE (save);
-  return err;
 }
 
 /*
@@ -997,229 +901,6 @@ jsp_check_stored_procedure_name (const char *str)
   name = strdup (buffer);
 
   return name;
-}
-
-/*
- * jsp_add_stored_procedure -
- *   return: Error ID
- *   name(in): jsp name
- *   type(in): type
- *   ret_type(in): return type
- *   param_list(in): parameter list
- *   java_method(in):
- *   comment(in):
- *
- * Note:
- */
-
-static int
-jsp_add_stored_procedure (const char *name, const PT_MISC_TYPE type, const PT_TYPE_ENUM return_type,
-			  PT_NODE * param_list, const char *java_method, const char *comment)
-{
-  DB_OBJECT *classobj_p, *object_p;
-  DB_OTMPL *obt_p = NULL;
-  DB_VALUE value, v;
-  DB_SET *param = NULL;
-  int i, save;
-  int err;
-  PT_NODE *node_p;
-  PT_NAME_INFO name_info;
-  bool has_savepoint = false;
-  char *checked_name;
-  const char *arg_comment;
-  DB_TYPE return_type_value;
-
-  if (java_method == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVAILD_JAVA_METHOD, 0);
-      return er_errid ();
-    }
-
-  AU_DISABLE (save);
-
-  checked_name = jsp_check_stored_procedure_name (name);
-
-  classobj_p = db_find_class (SP_CLASS_NAME);
-
-  if (classobj_p == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-
-  err = tran_system_savepoint (SAVEPOINT_ADD_STORED_PROC);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-  has_savepoint = true;
-
-  obt_p = dbt_create_object_internal (classobj_p);
-  if (!obt_p)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-
-  db_make_string (&value, checked_name);
-  err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
-  pr_clear_value (&value);
-
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_int (&value, jsp_map_pt_misc_to_sp_type (type));
-  err = dbt_put_internal (obt_p, SP_ATTR_SP_TYPE, &value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  return_type_value = pt_type_enum_to_db (return_type);
-  if (jsp_check_return_type_supported (return_type_value) != NO_ERROR)
-    {
-      err = er_errid ();
-      goto error;
-    }
-
-  db_make_int (&value, (int) return_type_value);
-  err = dbt_put_internal (obt_p, SP_ATTR_RETURN_TYPE, &value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  param = set_create_sequence (0);
-  if (param == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-
-  for (node_p = param_list, i = 0; node_p != NULL; node_p = node_p->next)
-    {
-      MOP mop = NULL;
-
-      if (jsp_check_param_type_supported (node_p) != NO_ERROR)
-	{
-	  err = er_errid ();
-	  goto error;
-	}
-
-      name_info = node_p->info.sp_param.name->info.name;
-
-      arg_comment = (char *) PT_NODE_SP_ARG_COMMENT (node_p);
-
-      err =
-	jsp_add_stored_procedure_argument (&mop, checked_name, name_info.original, i, node_p->type_enum,
-					   node_p->info.sp_param.mode, arg_comment);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      db_make_object (&v, mop);
-      err = set_put_element (param, i++, &v);
-      pr_clear_value (&v);
-
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  db_make_sequence (&value, param);
-  err = dbt_put_internal (obt_p, SP_ATTR_ARGS, &value);
-  pr_clear_value (&value);
-  param = NULL;
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_int (&value, i);
-  err = dbt_put_internal (obt_p, SP_ATTR_ARG_COUNT, &value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_int (&value, SP_LANG_JAVA);
-  err = dbt_put_internal (obt_p, SP_ATTR_LANG, &value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_string (&value, java_method);
-  err = dbt_put_internal (obt_p, SP_ATTR_TARGET, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_object (&value, Au_user);
-  err = dbt_put_internal (obt_p, SP_ATTR_OWNER, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_string (&value, comment);
-  err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  object_p = dbt_finish_object (obt_p);
-  if (!object_p)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      goto error;
-    }
-  obt_p = NULL;
-
-  err = locator_flush_instance (object_p);
-  if (err != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      err = er_errid ();
-      obj_delete (object_p);
-      goto error;
-    }
-
-  free_and_init (checked_name);
-  AU_ENABLE (save);
-  return NO_ERROR;
-
-error:
-  if (param)
-    set_free (param);
-
-  if (obt_p)
-    {
-      dbt_abort_object (obt_p);
-    }
-
-  if (has_savepoint)
-    {
-      tran_abort_upto_system_savepoint (SAVEPOINT_ADD_STORED_PROC);
-    }
-
-  free_and_init (checked_name);
-  AU_ENABLE (save);
-
-  return err;
 }
 
 /*
@@ -1374,7 +1055,7 @@ jsp_is_prepare_call ()
  *   subquery_as_attr_list(in):
  */
 static int
-jsp_make_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node, method_sig_list & sig_list)
+jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node, method_sig_list &sig_list)
 {
   int error = NO_ERROR;
   int save;
@@ -1585,7 +1266,7 @@ end:
  *   subquery_as_attr_list(in):
  */
 static int *
-jsp_make_method_arglist (PARSER_CONTEXT * parser, PT_NODE * node_list)
+jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list)
 {
   int *arg_list = NULL;
   int i = 0;
