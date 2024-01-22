@@ -26335,9 +26335,11 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 	  /* Interrupt range scan. It must be restarted with a new range. */
 	  bts->is_interrupted = true;
 
+#if !defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 	  /* Since range scan must be moved on a totally different range, it must restart by looking for the first
 	   * eligible key of the new range. Trick it to think this a new call of btree_range_scan. */
 	  bts_reset_scan (thread_p, bts);
+#endif
 
 	  /* Adjust range of scan. */
 	  error_code = btree_ils_adjust_range (thread_p, bts);
@@ -26357,6 +26359,10 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 	  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 	  bts->is_cur_key_compressed = false;
+
+	  /* Since range scan must be moved on a totally different range, it must restart by looking for the first
+	   * eligible key of the new range. Trick it to think this a new call of btree_range_scan. */
+	  bts_reset_scan (thread_p, bts);
 #endif
 	}
       else
