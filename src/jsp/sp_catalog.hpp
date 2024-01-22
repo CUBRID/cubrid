@@ -66,7 +66,7 @@ typedef sp_info SP_INFO;
 
 int sp_builtin_install ();
 
-int sp_add_stored_procedure (const SP_INFO &info);
-int sp_add_stored_procedure_argument (MOP *mop_p, const SP_ARG_INFO &info);
+int sp_add_stored_procedure (SP_INFO &info);
+int sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info);
 
 #endif // _SP_DEFINITION_HPP_

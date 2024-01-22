@@ -111,7 +111,7 @@ static SP_MODE_ENUM jsp_map_pt_misc_to_sp_mode (PT_MISC_TYPE pt_enum);
 static PT_MISC_TYPE jsp_map_sp_type_to_pt_misc (SP_TYPE_ENUM sp_type);
 
 static char *jsp_check_stored_procedure_name (const char *str);
-static int drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type);
+static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 
 static int jsp_make_method_sig_list (PARSER_CONTEXT *parser, PT_NODE *node_list, method_sig_list &sig_list);
 static int *jsp_make_method_arglist (PARSER_CONTEXT *parser, PT_NODE *node_list);
@@ -525,7 +525,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  return er_errid ();
 	}
 
-      err = drop_stored_procedure (name, type);
+      err = drop_stored_procedure (name, jsp_map_pt_misc_to_sp_type (type));
       if (err != NO_ERROR)
 	{
 	  break;
@@ -550,7 +550,6 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   const char *decl, *comment = NULL;
 
-  PT_MISC_TYPE type;
   PT_NODE *param_list, *p;
   PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
   int lang;
@@ -606,7 +605,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       arg_info.comment = (char *) PT_NODE_SP_ARG_COMMENT (p);
 
       // check # of args constraint
-      if (param_count >= MAX_ARG_COUNT)
+      if (param_count > MAX_ARG_COUNT)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_ARG_COUNT, 1, sp_info.sp_name.data ());
 	  goto error_exit;
@@ -680,7 +679,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	  has_savepoint = true;
 
-	  err = drop_stored_procedure (sp_info.sp_name.data (), type);
+	  err = drop_stored_procedure (sp_info.sp_name.data (), sp_info.sp_type);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -915,7 +914,7 @@ jsp_check_stored_procedure_name (const char *str)
  */
 
 static int
-drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
+drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
   MOP sp_mop, arg_mop, owner;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, temp;
@@ -958,7 +957,7 @@ drop_stored_procedure (const char *name, PT_MISC_TYPE expected_type)
     }
 
   real_type = (SP_TYPE_ENUM) db_get_int (&sp_type_val);
-  if (real_type != jsp_map_pt_misc_to_sp_type (expected_type))
+  if (real_type != expected_type)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVALID_TYPE, 2, name,
 	      real_type == SP_TYPE_FUNCTION ? "FUNCTION" : "PROCEDURE");

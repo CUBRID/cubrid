@@ -40,7 +40,7 @@
 // memory representation of built-in stored procedures
 static std::vector <sp_info> sp_builtin_definition;
 
-static int sp_add_stored_procedure_internal (const SP_INFO &info, bool has_savepoint);
+static int sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint);
 static int sp_builtin_init ();
 
 // TODO
@@ -232,7 +232,7 @@ int sp_builtin_install ()
   (void) sp_builtin_init ();
 
   int error = NO_ERROR;
-  for (const sp_info &info : sp_builtin_definition)
+  for (sp_info &info : sp_builtin_definition)
     {
       error = sp_add_stored_procedure_internal (info, false);
       assert (error == NO_ERROR);
@@ -281,13 +281,13 @@ sp_check_param_type_supported (DB_TYPE domain_type, SP_MODE_ENUM mode)
 }
 
 int
-sp_add_stored_procedure (const SP_INFO &info)
+sp_add_stored_procedure (SP_INFO &info)
 {
   return sp_add_stored_procedure_internal (info, true);
 }
 
 static int
-sp_add_stored_procedure_internal (const SP_INFO &info, bool has_savepoint)
+sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
@@ -298,8 +298,7 @@ sp_add_stored_procedure_internal (const SP_INFO &info, bool has_savepoint)
   AU_DISABLE (save);
 
   {
-    std::string lowercase_name;
-    std::transform (info.sp_name.begin (), info.sp_name.end (), lowercase_name.begin (),[] (unsigned char c)
+    std::transform (info.sp_name.begin (), info.sp_name.end (), info.sp_name.begin (),[] (unsigned char c)
     {
       return std::tolower (c);
     }
@@ -331,7 +330,7 @@ sp_add_stored_procedure_internal (const SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    db_make_string (&value, lowercase_name.data ());
+    db_make_string (&value, info.sp_name.data ());
     err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
     pr_clear_value (&value);
 
@@ -362,6 +361,11 @@ sp_add_stored_procedure_internal (const SP_INFO &info, bool has_savepoint)
 
     if (!info.pkg_name.empty ())
       {
+	std::transform (info.pkg_name.begin (), info.pkg_name.end (), info.pkg_name.begin (),[] (unsigned char c)
+	{
+	  return std::tolower (c);
+	}
+		       );
 	db_make_string (&value, info.pkg_name.data ());
 	err = dbt_put_internal (obt_p, SP_ATTR_PKG, &value);
 	pr_clear_value (&value);
@@ -389,7 +393,7 @@ sp_add_stored_procedure_internal (const SP_INFO &info, bool has_savepoint)
       }
 
     int i = 0;
-    for (const sp_arg_info &arg: info.args)
+    for (sp_arg_info &arg: info.args)
       {
 	DB_VALUE v;
 	MOP mop = NULL;
@@ -399,6 +403,9 @@ sp_add_stored_procedure_internal (const SP_INFO &info, bool has_savepoint)
 	    err = er_errid ();
 	    goto error;
 	  }
+
+	arg.sp_name = info.sp_name;
+	arg.pkg_name = info.pkg_name;
 
 	err = sp_add_stored_procedure_argument (&mop, arg);
 	if (err != NO_ERROR)
@@ -510,7 +517,7 @@ error:
 }
 
 int
-sp_add_stored_procedure_argument (MOP *mop_p, const SP_ARG_INFO &info)
+sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
 {
   DB_OBJECT *classobj_p, *object_p;
   DB_OTMPL *obt_p = NULL;
