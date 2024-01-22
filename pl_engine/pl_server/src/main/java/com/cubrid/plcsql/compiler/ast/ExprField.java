@@ -66,13 +66,13 @@ public class ExprField extends Expr {
             //
             assert type != null;
             return String.format(
-                    "(%s) %s.getObject(%d)", type.javaCode, record.javaCode(), colIndex);
+                    "(%s) getFieldWithIndex(%s, %d)", type.javaCode, record.javaCode(), colIndex);
         } else {
 
             // record is for a Dynamic SQL
             //
             assert type == null;
-            return String.format("%s.getObject(\"%s\")", record.javaCode(), fieldName);
+            return String.format("getFieldWithName(%s, \"%s\")", record.javaCode(), fieldName);
         }
     }
 

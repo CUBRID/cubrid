@@ -41,9 +41,6 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.sql.*;
-import java.sql.Date;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
@@ -59,6 +56,24 @@ import java.util.Stack;
 import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
+
+    public static Object getFieldWithIndex(ResultSet rs, int idx) throws SQLException {
+        Object o = rs.getObject(idx);
+        if (o != null && rs.wasNull()) {
+            return null;
+        } else {
+            return o;
+        }
+    }
+
+    public static Object getFieldWithName(ResultSet rs, String name) throws SQLException {
+        Object o = rs.getObject(name);
+        if (o != null && rs.wasNull()) {
+            return null;
+        } else {
+            return o;
+        }
+    }
 
     public static String checkStrLength(boolean isChar, int length, String val) {
 
@@ -263,6 +278,9 @@ public class SpLib {
                         throw new PROGRAM_ERROR(); // unreachable
                 }
                 assert !rs.next(); // it must have only one record
+                if (ret != null && rs.wasNull()) {
+                    ret = null;
+                }
 
                 Statement stmt = rs.getStatement();
                 if (stmt != null) {
