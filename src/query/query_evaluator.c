@@ -2828,6 +2828,8 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
     {
       if (DB_VALUE_TYPE (value) == DB_TYPE_MIDXKEY)
 	{
+	  int func_idx_col_id = filterp->func_idx_col_id;
+
 	  midxkey = db_get_midxkey (value);
 
 	  if (filterp->btree_num_attrs <= 0 || !filterp->btree_attr_ids || !midxkey)
@@ -2854,6 +2856,11 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 	  prev_j_index = 0;
 	  prev_j_ptr = NULL;
 
+	  if (func_idx_col_id == -1)
+	    {
+	      func_idx_col_id = filterp->btree_num_attrs + 1;
+	    }
+
 	  /* for all attributes specified in the filter */
 	  for (i = 0; i < scan_attrsp->num_attrs; i++)
 	    {
@@ -2879,18 +2886,15 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value,
 		      return V_ERROR;
 		    }
 
-		  if (filterp->func_idx_col_id != -1 && j > filterp->func_idx_col_id)
-		    {
-		      j = j + 1;
-		    }
-
 		  /* get j-th element value from the midxkey */
 #if defined(IMPROVE_RANGE_SCAN_IN_BTREE)
 		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
-		  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_midxkey : midxkey), j, valp,
-						     &prev_j_index, &prev_j_ptr) != NO_ERROR)
+		  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_midxkey : midxkey),
+						     ((j < func_idx_col_id) ? j : j + 1),
+						     valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 #else
-		  if (pr_midxkey_get_element_nocopy (midxkey, j, valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
+		  if (pr_midxkey_get_element_nocopy (midxkey, ((j < func_idx_col_id) ? j : j + 1),
+						     valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
 #endif
 		    {
 		      return V_ERROR;
