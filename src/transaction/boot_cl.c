@@ -88,7 +88,7 @@
 #include "connection_globals.h"
 #include "host_lookup.h"
 #include "schema_system_catalog.hpp"
-#include "sp_definition.hpp"
+#include "sp_catalog.hpp"
 
 #if defined(CS_MODE)
 #include "network.h"

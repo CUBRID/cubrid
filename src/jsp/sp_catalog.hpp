@@ -18,7 +18,7 @@
 
 
 /*
- * sp_definition.hpp - Define stored procedure related system catalog's row sturcture and initializer
+ * sp_catalog.hpp - Define stored procedure related system catalog's row sturcture and initializer
  *
  * Note: _db_stored_proceudre, _db_stored_procedure_args
  */

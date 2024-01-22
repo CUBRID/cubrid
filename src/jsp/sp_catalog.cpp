@@ -17,10 +17,10 @@
  */
 
 /*
- * sp_definition.cpp - Implement stored procedure related system catalog's row sturcture and initializer
+ * sp_catalog.cpp - Implement stored procedure related system catalog's row sturcture and initializer
 */
 
-#include "sp_definition.hpp"
+#include "sp_catalog.hpp"
 
 #include <vector>
 
@@ -360,13 +360,16 @@ sp_add_stored_procedure_internal (const SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
-    db_make_string (&value, info.pkg_name.data ());
-    err = dbt_put_internal (obt_p, SP_ATTR_PKG, &value);
-    pr_clear_value (&value);
-
-    if (err != NO_ERROR)
+    if (!info.pkg_name.empty ())
       {
-	goto error;
+	db_make_string (&value, info.pkg_name.data ());
+	err = dbt_put_internal (obt_p, SP_ATTR_PKG, &value);
+	pr_clear_value (&value);
+
+	if (err != NO_ERROR)
+	  {
+	    goto error;
+	  }
       }
 
     db_make_int (&value, info.is_system_generated ? 1 : 0);
