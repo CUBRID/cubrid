@@ -283,7 +283,7 @@ sp_check_param_type_supported (DB_TYPE domain_type, SP_MODE_ENUM mode)
 int
 sp_add_stored_procedure (const SP_INFO &info)
 {
-  return sp_add_stored_procedure_internal (info, false);
+  return sp_add_stored_procedure_internal (info, true);
 }
 
 static int
