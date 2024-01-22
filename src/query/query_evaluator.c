@@ -2843,10 +2843,12 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 
 #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 	  bool filled_match_idx = (filterp->matched_attid_idx_4_keyflt && filterp->matched_attid_idx_4_keyflt[0] >= 0);
+#endif
 
 	  /* for all attributes specified in the filter */
 	  for (i = 0; i < scan_attrsp->num_attrs; i++)
 	    {
+#if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 	      if (filled_match_idx)
 		{
 		  j = filterp->matched_attid_idx_4_keyflt[i];
@@ -2856,23 +2858,26 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		  /* for the attribute ID array of the index key */
 		  for (j = 0; j < filterp->btree_num_attrs; j++)
 		    {
-		      if (scan_attrsp->attr_ids[i] != filterp->btree_attr_ids[j])
+		      if (scan_attrsp->attr_ids[i] == filterp->btree_attr_ids[j])
 			{
-			  continue;
+			  if (filterp->matched_attid_idx_4_keyflt)
+			    {
+			      filterp->matched_attid_idx_4_keyflt[i] = j;
+			    }
+			  break;	/* immediately exit inner-loop */
 			}
-
-		      if (filterp->func_idx_col_id != -1 && j > filterp->func_idx_col_id)
-			{
-			  j++;
-			}
-
-		      if (filterp->matched_attid_idx_4_keyflt)
-			{
-			  filterp->matched_attid_idx_4_keyflt[i] = j;
-			}
+		    }
+		}
+#else
+	      /* for the attribute ID array of the index key */
+	      for (j = 0; j < filterp->btree_num_attrs; j++)
+		{
+		  if (scan_attrsp->attr_ids[i] == filterp->btree_attr_ids[j])
+		    {
 		      break;	/* immediately exit inner-loop */
 		    }
 		}
+#endif
 
 	      if (j < filterp->btree_num_attrs)
 		{
@@ -2935,81 +2940,6 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 		    }
 		}
 	    }
-#else // #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
-	  /* for all attributes specified in the filter */
-	  for (i = 0; i < scan_attrsp->num_attrs; i++)
-	    {
-	      /* for the attribute ID array of the index key */
-	      for (j = 0; j < filterp->btree_num_attrs; j++)
-		{
-		  if (scan_attrsp->attr_ids[i] != filterp->btree_attr_ids[j])
-		    {
-		      continue;
-		    }
-
-		  /* now, found the attr */
-
-		  attrvalue = heap_attrvalue_locate (scan_attrsp->attr_ids[i], scan_attrsp->attr_cache);
-		  if (attrvalue == NULL)
-		    {
-		      return V_ERROR;
-		    }
-
-		  valp = &(attrvalue->dbvalue);
-		  if (pr_clear_value (valp) != NO_ERROR)
-		    {
-		      return V_ERROR;
-		    }
-
-		  /* get j-th element value from the midxkey */
-		  if (pr_midxkey_get_element_nocopy (midxkey, ((j < func_idx_col_id) ? j : j + 1),
-						     valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
-		    {
-		      return V_ERROR;
-		    }
-
-		  found_empty_str = false;
-		  if (oracle_style_empty_string && db_value_is_null (valp))
-		    {
-		      if (valp->need_clear)
-			{
-			  type = DB_VALUE_DOMAIN_TYPE (valp);
-			  if (QSTR_IS_ANY_CHAR_OR_BIT (type) && valp->data.ch.medium.buf != NULL)
-			    {
-			      /* convert NULL into Empty-string */
-			      valp->domain.general_info.is_null = 0;
-			      found_empty_str = true;
-			    }
-			}
-		    }
-
-		  if (found_empty_str)
-		    {
-		      /* convert NULL into Empty-string */
-		      valp->domain.general_info.is_null = 0;
-		    }
-
-		  attrvalue->state = HEAP_WRITTEN_ATTRVALUE;
-
-		  break;	/* immediately exit inner-loop */
-		}
-
-	      if (j >= filterp->btree_num_attrs)
-		{
-		  /*
-		   * the attribute exists in key filter scan cache, but it is
-		   * not a member of attributes consisting index key
-		   */
-		  DB_VALUE null;
-
-		  db_make_null (&null);
-		  if (heap_attrinfo_set (NULL, scan_attrsp->attr_ids[i], &null, scan_attrsp->attr_cache) != NO_ERROR)
-		    {
-		      return V_ERROR;
-		    }
-		}
-	    }
-#endif // #if defined(BTREE_REDUCE_FIND_MATCHING_ATTR_IDS)
 	}
       else
 	{
