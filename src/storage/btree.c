@@ -25289,6 +25289,12 @@ btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts, int *array_attr, int *arra
 {
   int cnt = 0;
 
+  assert (bts);
+  if (bts->key_filter == NULL)
+    {
+      return;
+    }
+
   assert (bts->key_filter->matched_attid_idx_4_keyflt == NULL);
   assert (bts->key_filter->matched_attid_idx_4_readval == NULL);
 
@@ -25350,22 +25356,26 @@ btree_range_scan_alloc_matched_idx (BTREE_SCAN * bts, int *array_attr, int *arra
 void
 btree_range_scan_free_matched_idx (BTREE_SCAN * bts, int *array_attr, int *array_read)
 {
-  if (bts->key_filter->matched_attid_idx_4_keyflt)
+  assert (bts);
+  if (bts->key_filter)
     {
-      if (bts->key_filter->matched_attid_idx_4_keyflt != array_attr)
+      if (bts->key_filter->matched_attid_idx_4_keyflt)
 	{
-	  free (bts->key_filter->matched_attid_idx_4_keyflt);
+	  if (bts->key_filter->matched_attid_idx_4_keyflt != array_attr)
+	    {
+	      free (bts->key_filter->matched_attid_idx_4_keyflt);
+	    }
+	  bts->key_filter->matched_attid_idx_4_keyflt = NULL;
 	}
-      bts->key_filter->matched_attid_idx_4_keyflt = NULL;
-    }
 
-  if (bts->key_filter->matched_attid_idx_4_readval)
-    {
-      if (bts->key_filter->matched_attid_idx_4_readval != array_read)
+      if (bts->key_filter->matched_attid_idx_4_readval)
 	{
-	  free (bts->key_filter->matched_attid_idx_4_readval);
+	  if (bts->key_filter->matched_attid_idx_4_readval != array_read)
+	    {
+	      free (bts->key_filter->matched_attid_idx_4_readval);
+	    }
+	  bts->key_filter->matched_attid_idx_4_readval = NULL;
 	}
-      bts->key_filter->matched_attid_idx_4_readval = NULL;
     }
 }
 #endif
