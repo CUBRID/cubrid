@@ -586,7 +586,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
 
   // TODO: pkg_name
-  // sp_info.pkg_name = "";
+  sp_info.pkg_name = "";
   sp_info.is_system_generated = false;
 
   int param_count = 0;
@@ -917,7 +917,7 @@ static int
 drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 {
   MOP sp_mop, arg_mop, owner;
-  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, temp;
+  DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, temp;
   SP_TYPE_ENUM real_type;
   DB_SET *arg_set_p;
   int save, i, arg_cnt;
@@ -945,10 +945,23 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_PRIVILEGES, 0);
       err = er_errid ();
       goto error;
     }
+
+  err = db_get (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (1 == db_get_int (&generated_val))
+  {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
+      err = er_errid ();
+      goto error;
+  }
 
   err = db_get (sp_mop, SP_ATTR_SP_TYPE, &sp_type_val);
   if (err != NO_ERROR)
