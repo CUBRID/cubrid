@@ -835,7 +835,7 @@ namespace cubschema
       {"arg_count", "integer"},
       {"args", format_sequence (CT_STORED_PROC_ARGS_NAME)},
       {"lang", "integer"},
-      {"pkg_name", format_varchar (128)},
+      {"pkg_name", format_varchar (255)},
       {"is_system_generated", "integer"},
       {"target", format_varchar (4096)},
       {"owner", AU_USER_CLASS_NAME},

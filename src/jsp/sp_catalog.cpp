@@ -298,12 +298,6 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
   AU_DISABLE (save);
 
   {
-    std::transform (info.sp_name.begin (), info.sp_name.end (), info.sp_name.begin (),[] (unsigned char c)
-    {
-      return std::tolower (c);
-    }
-		   );
-
     classobj_p = db_find_class (SP_CLASS_NAME);
     if (classobj_p == NULL)
       {
@@ -330,6 +324,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
+    sp_normalize_name (info.sp_name);
     db_make_string (&value, info.sp_name.data ());
     err = dbt_put_internal (obt_p, SP_ATTR_NAME, &value);
     pr_clear_value (&value);
@@ -361,19 +356,15 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     if (!info.pkg_name.empty ())
       {
-	std::transform (info.pkg_name.begin (), info.pkg_name.end (), info.pkg_name.begin (),[] (unsigned char c)
-	{
-	  return std::tolower (c);
-	}
-		       );
+	sp_normalize_name (info.pkg_name);
 	db_make_string (&value, info.pkg_name.data ());
-	err = dbt_put_internal (obt_p, SP_ATTR_PKG, &value);
-	pr_clear_value (&value);
+      }
+    err = dbt_put_internal (obt_p, SP_ATTR_PKG, &value);
+    pr_clear_value (&value);
 
-	if (err != NO_ERROR)
-	  {
-	    goto error;
-	  }
+    if (err != NO_ERROR)
+      {
+	goto error;
       }
 
     db_make_int (&value, info.is_system_generated ? 1 : 0);
@@ -465,12 +456,12 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
     if (!info.comment.empty ())
       {
 	db_make_string (&value, info.comment.data ());
-	err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
-	pr_clear_value (&value);
-	if (err != NO_ERROR)
-	  {
-	    goto error;
-	  }
+      }
+    err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
       }
 
     object_p = dbt_finish_object (obt_p);
@@ -551,9 +542,13 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
       goto error;
     }
 
-  db_make_string (&value, info.pkg_name.data ());
+  if (!info.pkg_name.empty ())
+    {
+      db_make_string (&value, info.pkg_name.data ());
+    }
   err = dbt_put_internal (obt_p, SP_ATTR_PKG, &value);
   pr_clear_value (&value);
+
   if (err != NO_ERROR)
     {
       goto error;
@@ -598,12 +593,12 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
   if (!info.comment.empty ())
     {
       db_make_string (&value, info.comment.data ());
-      err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
-      pr_clear_value (&value);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
+    }
+  err = dbt_put_internal (obt_p, SP_ATTR_ARG_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
     }
 
   object_p = dbt_finish_object (obt_p);
@@ -637,4 +632,10 @@ error:
 
   AU_ENABLE (save);
   return err;
+}
+
+void sp_normalize_name (std::string &s)
+{
+  s.resize (SM_MAX_IDENTIFIER_LENGTH);
+  sm_downcase_name (s.data (), s.data (), SM_MAX_IDENTIFIER_LENGTH);
 }

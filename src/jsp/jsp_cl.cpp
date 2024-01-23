@@ -596,7 +596,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       SP_ARG_INFO arg_info;
 
       arg_info.sp_name = sp_info.sp_name;
-      // arg_info.pkg_name = sp_info.pkg_name;
+      arg_info.pkg_name = sp_info.pkg_name;
       arg_info.index_of = param_count++;
       arg_info.is_system_generated = false;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
