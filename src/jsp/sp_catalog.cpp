@@ -336,6 +336,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     db_make_int (&value, info.sp_type);
     err = dbt_put_internal (obt_p, SP_ATTR_SP_TYPE, &value);
+    pr_clear_value (&value);
     if (err != NO_ERROR)
       {
 	goto error;
@@ -349,6 +350,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     db_make_int (&value, (int) info.return_type);
     err = dbt_put_internal (obt_p, SP_ATTR_RETURN_TYPE, &value);
+    pr_clear_value (&value);
     if (err != NO_ERROR)
       {
 	goto error;
@@ -369,6 +371,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     db_make_int (&value, info.is_system_generated ? 1 : 0);
     err = dbt_put_internal (obt_p, SP_ATTR_IS_SYSTEM_GENERATED, &value);
+    pr_clear_value (&value);
     if (err != NO_ERROR)
       {
 	goto error;
@@ -425,6 +428,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     db_make_int (&value, (int) info.args.size ());
     err = dbt_put_internal (obt_p, SP_ATTR_ARG_COUNT, &value);
+    pr_clear_value (&value);
     if (err != NO_ERROR)
       {
 	goto error;
@@ -432,6 +436,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     db_make_int (&value, info.lang);
     err = dbt_put_internal (obt_p, SP_ATTR_LANG, &value);
+    pr_clear_value (&value);
     if (err != NO_ERROR)
       {
 	goto error;
@@ -564,6 +569,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
 
   db_make_int (&value, info.index_of);
   err = dbt_put_internal (obt_p, SP_ATTR_INDEX_OF_NAME, &value);
+  pr_clear_value (&value);
   if (err != NO_ERROR)
     {
       goto error;
@@ -571,6 +577,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
 
   db_make_int (&value, info.is_system_generated ? 1 : 0);
   err = dbt_put_internal (obt_p, SP_ATTR_IS_SYSTEM_GENERATED, &value);
+  pr_clear_value (&value);
   if (err != NO_ERROR)
     {
       goto error;
@@ -578,6 +585,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
 
   db_make_int (&value, info.data_type);
   err = dbt_put_internal (obt_p, SP_ATTR_DATA_TYPE, &value);
+  pr_clear_value (&value);
   if (err != NO_ERROR)
     {
       goto error;
@@ -585,6 +593,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
 
   db_make_int (&value, info.mode);
   err = dbt_put_internal (obt_p, SP_ATTR_MODE, &value);
+  pr_clear_value (&value);
   if (err != NO_ERROR)
     {
       goto error;
