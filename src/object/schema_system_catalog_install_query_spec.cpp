@@ -1211,7 +1211,6 @@ sm_define_view_stored_procedure_arguments_spec (void)
 	  "[%s] AS [sp] "
         "WHERE [sp].[is_system_generated] = 0 "
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
-          "[sp].[pkg_name], "
 	  "[sp].[sp_name], "
 	  "[sp].[index_of] ",
 	CT_DATATYPE_NAME,
