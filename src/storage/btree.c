@@ -6934,11 +6934,6 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	{
 	  pgbuf_unfix_and_init (thread_p, BTS->C_page);
 	}
-
-      if (BTS->O_page != NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, BTS->O_page);
-	}
     }				/* for (n = 0; ... ) */
 
   /* apply distributed expension */
@@ -6978,11 +6973,6 @@ end:
   if (BTS->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, BTS->C_page);
-    }
-
-  if (BTS->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   return ret;
@@ -7065,11 +7055,6 @@ end:
   if (BTS->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, BTS->C_page);
-    }
-
-  if (BTS->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   return ret;
@@ -15973,6 +15958,7 @@ btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p, BTREE_SCA
    */
 
   /* unfix the overflow page if it is fixed. */
+  assert (bts->O_page == NULL);
   if (bts->O_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, bts->O_page);
@@ -16690,11 +16676,6 @@ end:
       pgbuf_unfix_and_init (thread_p, bts->C_page);
     }
 
-  if (bts->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, bts->C_page);
-    }
-
   if (bts->P_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, bts->P_page);
@@ -16869,11 +16850,6 @@ end:
   if (BTS->C_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, BTS->C_page);
-    }
-
-  if (BTS->O_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, BTS->O_page);
     }
 
   if (root_page_ptr)
