@@ -17,6 +17,7 @@ test_defaults: &test_defaults
         shell: /bin/bash
         environment:
           _JAVA_OPTIONS: -Xmx1g
+          BRANCH_TESTCASES: feature/plcsql
         command: |
           ulimit -c 1
           /entrypoint.sh checkout
