@@ -2016,6 +2016,8 @@ struct pt_alter_user_info
   PT_NODE *user_name;		/* PT_NAME */
   PT_NODE *password;		/* PT_VALUE (string) */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_NODE *groups;		/* PT_NAME list */
+  PT_NODE *members;		/* PT_NAME list */
 };
 
 /* Info for ALTER_TRIGGER */

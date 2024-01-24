@@ -3608,6 +3608,27 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ALTER			/* 1 */
+	  USER			/* 2 */
+	  identifier	        /* 3 */
+	  ADD			/* 4 */
+	  opt_groups	        /* 5 */
+	  opt_members	    	/* 6 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER USER identifier ADD opt_groups opt_members);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_USER);
+
+			if (node)
+			  {
+				node->info.alter_user.user_name = $3;
+				node->info.alter_user.groups = $5;
+				node->info.alter_user.members = $6;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| ALTER						/* 1 */
 	  TRIGGER					/* 2 */
 	  trigger_name_list				/* 3 */

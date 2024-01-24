@@ -6400,6 +6400,8 @@ pt_apply_alter_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.alter_user.user_name, arg);
   PT_APPLY_WALK (parser, p->info.alter_user.password, arg);
+  PT_APPLY_WALK (parser, p->info.alter_user.groups, arg);
+  PT_APPLY_WALK (parser, p->info.alter_user.members, arg);
   return p;
 }
 
@@ -6429,6 +6431,19 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       r1 = pt_print_bytes (parser, p->info.alter_user.comment);
       b = pt_append_nulstring (parser, b, " comment ");
+      b = pt_append_varchar (parser, b, r1);
+    }
+
+  if (p->info.alter_user.groups != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.alter_user.groups);
+      b = pt_append_nulstring (parser, b, " groups ");
+      b = pt_append_varchar (parser, b, r1);
+    }
+  if (p->info.alter_user.members != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.alter_user.members);
+      b = pt_append_nulstring (parser, b, " members ");
       b = pt_append_varchar (parser, b, r1);
     }
 

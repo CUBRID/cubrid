@@ -2191,9 +2191,10 @@ int
 do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 {
   int error = NO_ERROR;
-  DB_OBJECT *user;
+  DB_OBJECT *user, *group, *member;
   PT_NODE *node;
   const char *user_name, *password, *comment;
+  const char *group_name, *member_name;
   bool set_savepoint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -2259,6 +2260,66 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	{
 	  goto end;
 	}
+    }
+
+  /* group */
+  node = statement->info.alter_user.groups;
+  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (group_name != NULL)
+    {
+      do
+	{
+	  group = db_find_user (group_name);
+
+	  if (group == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+	  else
+	    {
+	      error = db_add_member (group, user);
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  node = node->next;
+	  group_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	}
+      while (group_name != NULL);
+    }
+
+  /* member */
+  node = statement->info.alter_user.members;
+  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+  if (member_name != NULL)
+    {
+      do
+	{
+	  member = db_find_user (member_name);
+
+	  if (member == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+	  else
+	    {
+	      error = db_add_member (user, member);
+	    }
+
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+
+	  node = node->next;
+	  member_name = (node && IS_NAME (node)) ? GET_NAME (node) : NULL;
+	}
+      while (member_name != NULL);
     }
 
 end:
